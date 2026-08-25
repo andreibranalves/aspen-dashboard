@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
-import { useSetTopBarActions } from '@/components/layout/Layout';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -364,40 +363,37 @@ export default function WhatsAppDeliveriesPage() {
 
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
-  const setTopBarActions = useSetTopBarActions();
-
-  useEffect(() => {
-    setTopBarActions?.(
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setReloadVersion((value) => value + 1)}
-          disabled={loading || clearing}
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-          Atualizar
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setClearConfirmOpen(true)}
-          disabled={loading || clearing}
-          className="border-l border-line pl-3 text-destructive hover:bg-destructive/10"
-        >
-          <Trash2 size={14} />
-          {clearing ? 'Limpando…' : 'Limpar fila'}
-        </Button>
-      </>
-    );
-    return () => setTopBarActions?.(null);
-  }, [setTopBarActions, loading, clearing, setReloadVersion, setClearConfirmOpen]);
-
   return (
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
-      <PageHeader title="Envios WhatsApp" description="Fila de mensagens disparadas pelo funil de orçamentos." />
+      <PageHeader
+        title="Envios WhatsApp"
+        description="Fila de mensagens disparadas pelo funil de orçamentos."
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReloadVersion((value) => value + 1)}
+              disabled={loading || clearing}
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
+              Atualizar
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setClearConfirmOpen(true)}
+              disabled={loading || clearing}
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 size={14} />
+              {clearing ? 'Limpando…' : 'Limpar fila'}
+            </Button>
+          </>
+        }
+      />
 
       <section className="space-y-4" aria-label="Filtros de entregas">
         <div className="flex flex-wrap gap-2">

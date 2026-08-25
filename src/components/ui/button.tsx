@@ -14,7 +14,7 @@ const variants = {
   destructive:
     'bg-destructive text-on-solid dark:text-page hover:bg-destructive/90 active:scale-[0.97] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
   outline: 'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.97]',
-  secondary: 'bg-surface text-fg hover:bg-surface-hover active:scale-[0.97]',
+  secondary: 'border border-line bg-surface text-fg hover:bg-surface-hover active:scale-[0.97]',
   ghost: 'text-fg hover:bg-surface-hover',
   link: 'text-primary underline-offset-4 hover:underline',
   success:
@@ -27,7 +27,7 @@ const sizes = {
   md: 'h-9 px-3 text-sm',
   default: 'h-9 px-3 text-sm',
   lg: 'h-10 px-4 text-sm',
-  icon: 'h-9 w-9',
+  icon: 'h-9 w-9 p-0',
 } as const;
 
 type ButtonVariant = keyof typeof variants;
@@ -53,7 +53,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       'data-variant': dataVariant,
       ...props
     },
-    ref,
+    ref
   ) => {
     const classes = cn(
       'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm font-medium transition-colors duration-150',
@@ -62,7 +62,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
       variants[variant],
       sizes[size],
-      className,
+      className
     );
 
     if (asChild) {
@@ -79,16 +79,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     }
 
     return (
-      <button
-        ref={ref}
-        data-variant={dataVariant ?? variant}
-        className={classes}
-        {...props}
-      >
+      <button ref={ref} data-variant={dataVariant ?? variant} className={classes} {...props}>
         {children}
       </button>
     );
-  },
+  }
 );
 Button.displayName = 'Button';
 

@@ -23,7 +23,6 @@ import { fetchFlows, saveFlows } from '@/lib/api/communicationApi';
 import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/api/communicationApi';
 import { renderFlowTemplate } from '@/lib/api/whatsappFlows';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
-import { useSetTopBarActions } from '@/components/layout/Layout';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -124,7 +123,11 @@ function createFlow(index: number): EditableFlow {
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export default function FlowEditorTab() {
+export interface FlowEditorTabProps {
+  onActionsChange?: (actions: ReactNode | null) => void;
+}
+
+export default function FlowEditorTab({ onActionsChange }: FlowEditorTabProps) {
   const [flows, setFlows] = useState<EditableFlow[]>([]);
   const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
@@ -180,31 +183,29 @@ export default function FlowEditorTab() {
     setExpandedFlow(newFlow.id);
   }, [flows.length]);
 
-  const setTopBarActions = useSetTopBarActions();
-
   useEffect(() => {
-    if (!setTopBarActions) return undefined;
+    if (!onActionsChange) return undefined;
     if (loading) {
-      setTopBarActions(null);
-      return () => setTopBarActions(null);
+      onActionsChange(null);
+      return () => onActionsChange(null);
     }
 
-    setTopBarActions(
-      <div className="flex items-center gap-2">
-        <Button onClick={addFlow} size="sm">
+    onActionsChange(
+      <>
+        <Button type="button" onClick={addFlow} size="sm">
           <Plus size={14} /> Novo fluxo
         </Button>
         {(isDirty || saving) && (
-          <Button onClick={handleSave} size="sm" disabled={saving}>
+          <Button type="button" onClick={handleSave} size="sm" disabled={saving}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             Salvar
           </Button>
         )}
-      </div> as ReactNode,
+      </>,
     );
 
-    return () => setTopBarActions(null);
-  }, [addFlow, handleSave, isDirty, loading, saving, setTopBarActions]);
+    return () => onActionsChange(null);
+  }, [addFlow, handleSave, isDirty, loading, onActionsChange, saving]);
 
   const duplicateFlow = (flowId: string) => {
     const idx = flows.findIndex((f) => f.id === flowId);

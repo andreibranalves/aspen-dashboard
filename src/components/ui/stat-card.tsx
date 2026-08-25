@@ -16,7 +16,9 @@ export interface StatCardProps {
 
 export function StatCard({ icon: Icon, label, value, metadata, className }: StatCardProps) {
   return (
-    <div className={cn('flex flex-col gap-2 rounded-lg border border-line bg-surface p-5 shadow-sm', className)}>
+    <div
+      className={cn('flex flex-col gap-2 rounded-lg border border-line bg-surface p-5', className)}
+    >
       <div className="flex items-start gap-2 text-fg-muted">
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="min-w-0">
@@ -24,7 +26,9 @@ export function StatCard({ icon: Icon, label, value, metadata, className }: Stat
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="text-2xl font-semibold text-fg">{value}</span>
             {metadata != null && (
-              <span className="whitespace-nowrap text-xs font-medium text-fg-muted">{metadata}</span>
+              <span className="whitespace-nowrap text-xs font-medium text-fg-muted">
+                {metadata}
+              </span>
             )}
           </div>
         </div>

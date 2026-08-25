@@ -5,26 +5,26 @@ import { cn } from '@/lib/utils';
  * Neutral surface with semantic color text for each status.
  */
 const badgeVariants: Record<string, string> = {
-  Draft:     'tone-neutral-soft',
-  Issued:    'tone-success-soft',
-  Open:      'tone-primary-soft',
-  Replied:   'tone-warning-soft',
-  Ordered:   'tone-success-soft',
-  Lost:      'tone-destructive-soft',
-  Expired:   'tone-neutral-muted',
+  Draft: 'tone-neutral-soft',
+  Issued: 'tone-success-soft',
+  Open: 'tone-primary-soft',
+  Replied: 'tone-warning-soft',
+  Ordered: 'tone-success-soft',
+  Lost: 'tone-destructive-soft',
+  Expired: 'tone-neutral-muted',
   Cancelled: 'tone-neutral-muted line-through',
   // Pedidos (status do ERP)
   'To Deliver and Bill': 'tone-primary-soft',
-  'To Bill':             'tone-info-soft',
-  'To Deliver':          'tone-info-soft',
-  Completed:             'tone-success-soft',
-  Closed:                'tone-neutral-muted',
+  'To Bill': 'tone-info-soft',
+  'To Deliver': 'tone-info-soft',
+  Completed: 'tone-success-soft',
+  Closed: 'tone-neutral-muted',
   // Clientes
-  Active:    'tone-success-soft',
-  Archived:  'tone-neutral-soft',
+  Active: 'tone-success-soft',
+  Archived: 'tone-neutral-soft',
 };
 
-interface StatusBadgeProps {
+export interface StatusBadgeProps {
   status: string;
   label?: string;
   className?: string;
@@ -36,10 +36,12 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const variant = badgeVariants[status] || (hasCustomTone ? '' : badgeVariants.Draft);
   return (
     <span
+      title={label || status}
+      data-status={status}
       className={cn(
         'inline-flex max-w-[180px] items-center whitespace-nowrap overflow-hidden text-ellipsis rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
         variant,
-        className,
+        className
       )}
     >
       {label || status}

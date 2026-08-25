@@ -1,66 +1,93 @@
-import { Fragment, type ReactNode } from 'react';
-import { Menu, ChevronRight } from 'lucide-react';
+import { Fragment } from 'react';
+import { Menu, ChevronRight, Moon, Sun } from 'lucide-react';
 import BackButton from '@/components/ui/back-button';
 import type { BreadcrumbItem } from './Layout';
 
 export interface TopBarProps {
+  /** Kept for compatibility with direct consumers; breadcrumbItems is canonical. */
   route?: string;
   onMenuClick: () => void;
+  sidebarOpen?: boolean;
+  isMobile?: boolean;
   breadcrumbItems: BreadcrumbItem[];
   onNavigate: (hash: string) => void;
-  actions?: ReactNode;
+  darkMode?: boolean;
+  toggleDarkMode?: () => void;
 }
 
 /**
- * TopBar — breadcrumb (left) + page-specific actions (right).
- * "Aspen Estamparia" and dark mode toggle removed — toggle lives in Sidebar.
+ * TopBar is intentionally limited to navigation context and global utilities.
+ * Page-specific actions belong to PageHeader on the rendered screen.
  */
 export default function TopBar({
-  route: _route,
   onMenuClick,
+  sidebarOpen = false,
+  isMobile = false,
   breadcrumbItems,
   onNavigate,
-  actions,
+  darkMode = false,
+  toggleDarkMode,
 }: TopBarProps) {
   // Show back button on detail pages (e.g. Início > Orçamentos > ORC-1234).
   const parentItem = breadcrumbItems.length >= 3 ? breadcrumbItems[1] : null;
 
   return (
     <header
-      className="flex items-center justify-between px-4 md:px-6 shrink-0 border-b border-line bg-page"
+      className="flex shrink-0 items-center justify-between border-b border-line bg-page px-4 md:px-6"
       style={{ height: '4rem' }}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <button
-          onClick={onMenuClick}
-          className="p-1.5 rounded-md hover:bg-surface-muted transition-colors lg:hidden shrink-0"
-          aria-label="Abrir menu"
-        >
-          <Menu size={20} className="text-fg" />
-        </button>
-        {parentItem?.hash && (
-          <BackButton onClick={() => onNavigate(parentItem.hash!)} />
+      <div className="flex min-w-0 items-center gap-3">
+        {isMobile && (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className="min-h-9 min-w-9 shrink-0 rounded-sm p-2 text-fg transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="Abrir menu"
+            aria-expanded={sidebarOpen}
+            aria-controls="aspen-sidebar"
+          >
+            <Menu size={20} aria-hidden="true" />
+          </button>
         )}
-        <nav className="flex items-center gap-1.5 text-sm overflow-hidden">
+        {parentItem?.hash && <BackButton onClick={() => onNavigate(parentItem.hash!)} />}
+        <nav
+          className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
+          aria-label="Trilha de navegação"
+        >
           {breadcrumbItems.map((item, i) => (
             <Fragment key={`${item.label}-${i}`}>
-              {i > 0 && <ChevronRight size={14} className="text-fg-muted shrink-0" />}
+              {i > 0 && (
+                <ChevronRight size={14} className="shrink-0 text-fg-muted" aria-hidden="true" />
+              )}
               {item.hash ? (
                 <button
                   type="button"
                   onClick={() => onNavigate(item.hash!)}
-                  className="text-fg-muted hover:text-fg transition-colors truncate"
+                  className="truncate rounded-sm text-fg-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   {item.label}
                 </button>
               ) : (
-                <span className="text-fg font-medium truncate">{item.label}</span>
+                <span className="truncate font-medium text-fg" aria-current="page">
+                  {item.label}
+                </span>
               )}
             </Fragment>
           ))}
         </nav>
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+
+      {toggleDarkMode && (
+        <button
+          type="button"
+          onClick={toggleDarkMode}
+          className="min-h-9 min-w-9 shrink-0 rounded-sm p-2 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
+          title={darkMode ? 'Modo claro' : 'Modo escuro'}
+        >
+          {darkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+        </button>
+      )}
     </header>
   );
 }

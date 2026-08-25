@@ -7,7 +7,6 @@ import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useToast } from '@/components/shared/toast';
-import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QualityBadges } from '@/features/customers/components/QualityBadges';
@@ -119,7 +118,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   const [fields, setFields] = useState<EditFields>(initialFields);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
-  const setTopBarActions = useSetTopBarActions();
 
   const loadDetail = useCallback(async () => {
     if (!decodedId) return;
@@ -205,16 +203,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     }
   }, [decodedId, detail, isNewClient, toast]);
 
-  useEffect(() => {
-    if (!setTopBarActions) return undefined;
-    if (loading || error || (isNewClient ? false : !detail)) {
-      setTopBarActions(null);
-      return () => setTopBarActions(null);
-    }
-    setTopBarActions(<div className="flex items-center gap-2">{editing ? <><Button size="sm" onClick={() => void save()} disabled={saving}><Save size={14} />{saving ? 'Salvando…' : isNewClient ? 'Criar cliente' : 'Salvar'}</Button><Button variant="outline" size="sm" onClick={() => { if (isNewClient) navigate('/leads'); else { setEditing(false); setFields(EMPTY_FIELDS); } }} disabled={saving}><X size={14} /> Cancelar</Button></> : <><Button size="sm" onClick={() => { if (detail) { setFields(fieldsFromDetail(detail)); setEditing(true); } }}><Edit3 size={14} /> Editar cadastro</Button><Button variant="outline" size="sm" onClick={() => void archive()}><ArchiveIcon archived={detail?.status === 'archived' || detail?.arquivado === true} /></Button></>}</div>);
-    return () => setTopBarActions(null);
-  }, [archive, detail, editing, error, fields, isNewClient, loading, navigate, save, saving, setTopBarActions]);
-
   if (loading) return <SkeletonDetail />;
   if (error === 'not_found') return <div className="flex flex-col items-center py-16 text-fg-muted gap-3"><UserRound size={40} className="text-fg-muted/40" /><p className="text-lg font-medium">Registro não encontrado</p><Button variant="outline" onClick={loadDetail}>Tentar novamente</Button></div>;
   if (error) return <div className="flex flex-col items-center py-16 text-fg-muted gap-3"><AlertTriangle size={40} className="text-destructive" /><p className="text-lg font-medium">Erro ao carregar cliente</p><p className="text-sm">{error}</p><Button variant="outline" onClick={loadDetail}>Tentar novamente</Button></div>;
@@ -227,8 +215,61 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   if (detail && !isNewClient) contextActions.push({ label: 'Criar orçamento', icon: Sparkles, onClick: () => createQuoteForClient(current, navigate), title: 'Criar orçamento com os dados deste cliente' });
   if (current.latest_quotation) contextActions.push({ label: 'Orçamento recente', icon: FileText, onClick: () => navigate(`/quotations/${encodeURIComponent(current.latest_quotation!.name)}`), title: `Abrir ${current.latest_quotation.name}` });
 
-  return <div className="space-y-5 animate-fade-in max-w-[1060px] mx-auto">
-    {isNewClient && <PageHeader title="Novo cliente" />}
+  return <div className="mx-auto max-w-[1060px] space-y-5 animate-fade-in">
+    <PageHeader
+      title={isNewClient ? 'Novo cliente' : 'Detalhe do cliente'}
+      actions={
+        editing ? (
+          <>
+            <Button type="button" size="sm" onClick={() => void save()} disabled={saving}>
+              <Save size={14} />
+              {saving ? 'Salvando…' : isNewClient ? 'Criar cliente' : 'Salvar'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (isNewClient) navigate('/leads');
+                else {
+                  setEditing(false);
+                  setFields(EMPTY_FIELDS);
+                }
+              }}
+              disabled={saving}
+            >
+              <X size={14} />
+              Cancelar
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                if (detail) {
+                  setFields(fieldsFromDetail(detail));
+                  setEditing(true);
+                }
+              }}
+            >
+              <Edit3 size={14} />
+              Editar cadastro
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void archive()}
+              aria-label={detail?.status === 'archived' || detail?.arquivado === true ? 'Restaurar cliente' : 'Arquivar cliente'}
+            >
+              <ArchiveIcon archived={detail?.status === 'archived' || detail?.arquivado === true} />
+            </Button>
+          </>
+        )
+      }
+    />
     {!isNewClient && <section className="bg-surface rounded-lg border border-line shadow-sm p-5"><div className="flex items-start gap-4"><div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10 text-xl font-semibold text-primary">{title.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'CL'}</div><div className="min-w-0 space-y-2"><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold text-fg truncate">{title}</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">{current.status === 'archived' || current.arquivado ? 'Arquivado' : 'Cliente'}</span></div><QualityBadges badges={current.quality_flags?.map((flag) => ({ label: flag, type: 'warning' as const })) || [{ label: 'Cadastro local', type: 'success' as const }]} />{contextActions.length > 0 && <ContextActions actions={contextActions} />}</div></div></section>}
     {editing ? <SectionCard title="Dados do cliente" description="Contato e identificação comercial." icon={UserRound}><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="text-xs text-fg-muted">Nome<Input value={fields.nome} onChange={(event) => setFields((value) => ({ ...value, nome: event.target.value }))} placeholder="Nome do cliente" /></label><label className="text-xs text-fg-muted">E-mail<Input type="email" value={fields.email} onChange={(event) => setFields((value) => ({ ...value, email: event.target.value }))} placeholder="email@exemplo.com" /></label><label className="text-xs text-fg-muted">Telefone<Input value={fields.telefone} onChange={(event) => setFields((value) => ({ ...value, telefone: event.target.value }))} placeholder="(99) 99999-9999" /></label><label className="text-xs text-fg-muted">Documento<Input value={fields.documento} onChange={(event) => setFields((value) => ({ ...value, documento: event.target.value }))} placeholder="CPF ou CNPJ" /></label><label className="text-xs text-fg-muted md:col-span-2">Observações<textarea aria-label="Observações" value={fields.observacoes} onChange={(event) => setFields((value) => ({ ...value, observacoes: event.target.value }))} className="mt-1 min-h-24 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" /></label></div></SectionCard> : <><SectionCard title="Dados gerais" description="Contato e identificação comercial." icon={UserRound}><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><InfoField label="Nome" value={title} /><InfoField label="E-mail" value={current.email || ''} /><InfoField label="Telefone" value={fmtPhone(current.telefone) || ''} /><InfoField label="Documento" value={formatDocument(current.tax_id || current.documento)} /><InfoField label="Observações" value={current.notes ?? current.observacoes ?? ''} /><InfoField label="Criado / modificado" value={current.creation ? formatDate(current.creation) : ''} /></div></SectionCard><SectionCard title="Endereço" description={addressText(current.address)} icon={MapPin}><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><InfoField label="Endereço" value={[current.address?.endereco, current.address?.numero].filter(Boolean).join(', ')} /><InfoField label="Município/UF" value={[current.address?.municipio, current.address?.uf].filter(Boolean).join('/')} /><InfoField label="Bairro" value={current.address?.bairro || ''} /><InfoField label="Complemento" value={current.address?.complemento || ''} /></div></SectionCard><SectionCard title="Atividade recente" description="Contexto comercial local." icon={FileText}>{current.latest_quotation ? <div className="space-y-2"><p className="font-medium">{current.latest_quotation.name}</p><p className="text-xs text-fg-muted">{current.latest_quotation.status || '—'}{current.latest_quotation.date ? ` · ${formatDate(current.latest_quotation.date)}` : ''}</p>{current.latest_quotation.grand_total != null && <p className="text-sm">{formatBRL(current.latest_quotation.grand_total)}</p>}<Button variant="outline" size="sm" onClick={() => navigate(`/quotations/${encodeURIComponent(current.latest_quotation!.name)}`)}>Abrir orçamento</Button></div> : <p className="text-sm text-fg-muted">Nenhum orçamento recente vinculado.</p>}</SectionCard></>}
   </div>;

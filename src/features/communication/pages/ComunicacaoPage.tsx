@@ -2,7 +2,7 @@
 // Tabs: Fluxos WhatsApp, Biblioteca de Mídias, Histórico and Canais.
 // Route: #/comunicacao
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
@@ -30,6 +30,7 @@ const parseCommunicationTab = parseHashOption<string>(TABS.map((tab) => tab.id))
 export default function ComunicacaoPage() {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'flows', parseCommunicationTab);
   const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
+  const [flowActions, setFlowActions] = useState<ReactNode | null>(null);
 
   const handleUploadComplete = useCallback(() => {
     setMediaRefreshKey((k) => k + 1);
@@ -42,7 +43,11 @@ export default function ComunicacaoPage() {
   return (
     <>
       <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-        <PageHeader title="Comunicação" description="Fluxos, mídias e histórico das mensagens de WhatsApp." />
+        <PageHeader
+          title="Comunicação"
+          description="Fluxos, mídias e histórico das mensagens de WhatsApp."
+          actions={activeTab === 'flows' ? flowActions : undefined}
+        />
 
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 border-b border-line">
@@ -70,7 +75,7 @@ export default function ComunicacaoPage() {
 
         {/* Tab content */}
         <div className="min-h-[400px]">
-          {activeTab === 'flows' && <FlowEditorTab />}
+          {activeTab === 'flows' && <FlowEditorTab onActionsChange={setFlowActions} />}
 
           {activeTab === 'media' && (
             <div className="space-y-6">

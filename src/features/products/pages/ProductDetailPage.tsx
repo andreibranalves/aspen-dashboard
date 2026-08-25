@@ -29,7 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
-import { useSetTopBarActions } from '@/components/layout/Layout';
+import PageHeader from '@/components/shared/PageHeader';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 
 interface Produto {
@@ -250,7 +250,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const productGenerationRef = useRef(0);
   const activityGenerationRef = useRef(0);
   currentSkuRef.current = decodedSku;
-  const setTopBarActions = useSetTopBarActions();
 
   useEffect(() => {
     if (lifecycleCleanupRef.current !== null) {
@@ -567,105 +566,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     }
   }, [decodedSku, fetchProduct, isNewProduct, product, refreshActivity, toast]);
 
-  useEffect(() => {
-    if (!setTopBarActions) return undefined;
-
-    if (loading || error || !product?.produto) {
-      setTopBarActions(null);
-      return () => setTopBarActions(null);
-    }
-
-    setTopBarActions(
-      <div className="flex items-center gap-2">
-        {!isNewProduct && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/products/new?duplicate=${encodeURIComponent(decodedSku)}`)}
-            disabled={saving || deleting}
-            aria-label="Duplicar produto"
-          >
-            <Copy size={14} />
-            Duplicar
-          </Button>
-        )}
-        {editing ? (
-          <>
-            <Button
-              onClick={saveProduct}
-              disabled={saving || deleting}
-              size="sm"
-              aria-label={isNewProduct ? 'Criar produto' : 'Salvar produto'}
-            >
-              <Save size={14} />
-              {saving
-                ? isNewProduct
-                  ? 'Criando…'
-                  : 'Salvando…'
-                : isNewProduct
-                  ? 'Criar produto'
-                  : 'Salvar'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={cancelEditing}
-              disabled={saving || deleting}
-              aria-label="Cancelar edição"
-            >
-              <X size={14} />
-              Cancelar
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" aria-label="Editar produto" onClick={startEditing} disabled={deleting}>
-            <Edit3 size={14} />
-            Editar
-          </Button>
-        )}
-        {!isNewProduct && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={requestArchive}
-            disabled={saving || deleting}
-            aria-label={product?.produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
-            className="text-destructive border-destructive/20 hover:bg-destructive/10"
-          >
-            {product?.produto.ativo === false ? (
-              <ArchiveRestore size={14} />
-            ) : (
-              <Archive size={14} />
-            )}
-            {deleting
-              ? 'Atualizando…'
-              : product?.produto.ativo === false
-                ? 'Restaurar'
-                : 'Arquivar'}
-          </Button>
-        )}
-      </div>
-    );
-
-    return () => setTopBarActions(null);
-  }, [
-    cancelEditing,
-    decodedSku,
-    deleteProduct,
-    deleting,
-    error,
-    isNewProduct,
-    loading,
-    navigate,
-    product,
-    requestArchive,
-    saveProduct,
-    saving,
-    setTopBarActions,
-    startEditing,
-    editing,
-  ]);
-
   if (loading) return <SkeletonDetail />;
 
   if (error === 'not_found') {
@@ -700,7 +600,77 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const hasImage = Boolean(!editing && produto.imagem && typeof produto.imagem === 'string');
 
   return (
-    <div className="space-y-5 animate-fade-in max-w-[1060px] mx-auto">
+    <div className="mx-auto max-w-[1060px] space-y-5 animate-fade-in">
+      <PageHeader
+        title={isNewProduct ? 'Novo produto' : 'Detalhe do produto'}
+        actions={
+          <>
+            {!isNewProduct && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/products/new?duplicate=${encodeURIComponent(decodedSku)}`)}
+                disabled={saving || deleting}
+                aria-label="Duplicar produto"
+              >
+                <Copy size={14} />
+                Duplicar
+              </Button>
+            )}
+            {editing ? (
+              <>
+                <Button
+                  type="button"
+                  onClick={() => void saveProduct()}
+                  disabled={saving || deleting}
+                  size="sm"
+                  aria-label={isNewProduct ? 'Criar produto' : 'Salvar produto'}
+                >
+                  <Save size={14} />
+                  {saving
+                    ? isNewProduct
+                      ? 'Criando…'
+                      : 'Salvando…'
+                    : isNewProduct
+                      ? 'Criar produto'
+                      : 'Salvar'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={cancelEditing}
+                  disabled={saving || deleting}
+                  aria-label="Cancelar edição"
+                >
+                  <X size={14} />
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <Button type="button" size="sm" aria-label="Editar produto" onClick={startEditing} disabled={deleting}>
+                <Edit3 size={14} />
+                Editar
+              </Button>
+            )}
+            {!isNewProduct && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={requestArchive}
+                disabled={saving || deleting}
+                aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
+                className="border-destructive/20 text-destructive hover:bg-destructive/10"
+              >
+                {produto.ativo === false ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                {deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}
+              </Button>
+            )}
+          </>
+        }
+      />
       {isDuplicateDraft && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
           <strong>Rascunho de duplicação.</strong>{' '}
