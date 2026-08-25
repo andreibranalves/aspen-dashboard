@@ -1232,7 +1232,7 @@ export function createPostgresQuoteDraftRepository(
             ? inputText(input.entrega, 'Entrega', 500)
             : settings.entrega,
           observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-          prazo_producao: deadline,
+          prazo_producao: canonicalDeadline,
           template_padrao: template.model.key,
           template_key: template.model.key,
           template_hash: template.version.sourceHash,

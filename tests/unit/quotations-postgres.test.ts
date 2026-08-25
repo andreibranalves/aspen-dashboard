@@ -127,6 +127,20 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       ...explicitSettings.quotationSections.prazo_producao,
       value: '',
     });
+    const conflictingDeadlineDraft = await create.createDraft({
+      client_id: clientId,
+      prazo_producao: '5 dias',
+      secoes: { prazo_producao: { value: '7 dias' } },
+      items: [{ item_code: sku, qty: '30.000' }],
+    });
+    assert.equal(conflictingDeadlineDraft.prazo_producao, '7 dias');
+    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.base.value, '7 dias');
+    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.current.value, '7 dias');
+    const [conflictingDeadlineRevision] = await db
+      .select({ prazoProducao: quoteRevisions.prazoProducao })
+      .from(quoteRevisions)
+      .where(eq(quoteRevisions.id, conflictingDeadlineDraft.revision_id));
+    assert.equal(conflictingDeadlineRevision?.prazoProducao, '7 dias');
     overrideDraft.secoes.pagamento.current.body = 'Mutado';
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
