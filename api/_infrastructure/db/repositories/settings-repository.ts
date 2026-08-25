@@ -3,6 +3,11 @@ import { eq } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
 import { appSettings } from '../schema.js';
 import {
+  DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  normalizeQuotationCompanyConfiguration,
+  type QuotationCompanyConfiguration,
+} from '../../../_modules/quotation-company.js';
+import {
   DEFAULT_QUOTATION_SECTIONS,
   normalizeQuotationSections,
   type QuotationSectionsSettings,
@@ -16,11 +21,13 @@ export interface Settings {
   observacoes: string;
   template_padrao: string;
   secoes: QuotationSectionsSettings;
+  empresa: QuotationCompanyConfiguration;
 }
 
-export type SettingsInput = Omit<Settings, 'template_padrao' | 'entrega'> & {
+export type SettingsInput = Omit<Settings, 'template_padrao' | 'entrega' | 'empresa'> & {
   entrega?: string;
   template_padrao?: string;
+  empresa?: QuotationCompanyConfiguration;
 };
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
@@ -31,6 +38,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   observacoes: '',
   template_padrao: 'padrao',
   secoes: DEFAULT_QUOTATION_SECTIONS,
+  empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
 });
 
 /**
@@ -46,6 +54,7 @@ type DatabaseProvider = () => AppDatabase;
 
 function toSettings(row: typeof appSettings.$inferSelect): Settings {
   const secoes = normalizeQuotationSections(row.quotationSections, row);
+  const empresa = normalizeQuotationCompanyConfiguration(row.companyConfiguration);
   return {
     validade_dias: row.validadeDias,
     pagamento: secoes.pagamento.body,
@@ -54,6 +63,7 @@ function toSettings(row: typeof appSettings.$inferSelect): Settings {
     observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
     secoes,
+    empresa,
   };
 }
 
@@ -85,6 +95,12 @@ export function createPostgresSettingsRepository(
         .where(eq(appSettings.singletonId, 1))
         .limit(1);
       const secoes = settings.secoes;
+      const empresa = normalizeQuotationCompanyConfiguration(
+        settings.empresa,
+        current?.companyConfiguration
+          ? normalizeQuotationCompanyConfiguration(current.companyConfiguration)
+          : DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+      );
       const [row] = await db
         .insert(appSettings)
         .values({
@@ -95,6 +111,7 @@ export function createPostgresSettingsRepository(
           fretePadrao: settings.frete_padrao,
           observacoes: secoes.condicoes_gerais.body,
           quotationSections: secoes,
+          companyConfiguration: empresa,
           templatePadrao: settings.template_padrao ?? current?.templatePadrao ?? 'padrao',
         })
         .onConflictDoUpdate({
@@ -106,6 +123,7 @@ export function createPostgresSettingsRepository(
             fretePadrao: settings.frete_padrao,
             observacoes: secoes.condicoes_gerais.body,
             quotationSections: secoes,
+            companyConfiguration: empresa,
             ...(settings.template_padrao === undefined
               ? {}
               : { templatePadrao: settings.template_padrao }),

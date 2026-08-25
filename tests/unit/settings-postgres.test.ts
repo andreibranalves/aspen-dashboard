@@ -15,6 +15,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/products-repository.js';
 import { createPostgresClientRepository } from '../../api/_infrastructure/db/repositories/client-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { createHandler } from '../../api/_modules/settings.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -88,6 +89,7 @@ test(
         frete_padrao: '0.00',
         observacoes: '',
         template_padrao: 'padrao',
+        empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
 
         secoes: {
           schema_version: 1,
@@ -140,6 +142,7 @@ test(
         frete_padrao: '129.90',
         observacoes: 'Prazo de entrega:\n15 dias úteis\n\nObservações:\nEnviar prova digital para aprovação.',
         template_padrao: 'comercial-2026',
+        empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         secoes: {
           schema_version: 1,
           prazo_producao: { enabled: true, title: 'Prazo de produção' },

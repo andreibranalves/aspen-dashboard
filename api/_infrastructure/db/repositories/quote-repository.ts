@@ -40,12 +40,16 @@ import {
   type PricingResolution,
 } from '../../../_modules/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
+import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import {
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
 } from '../../../_modules/quotation-content.js';
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
-import { getQuotationTemplate } from '../../../_modules/quotation-template-catalog.js';
+import {
+  getQuotationTemplate,
+  HISTORICAL_QUOTATION_TEMPLATES,
+} from '../../../_modules/quotation-template-catalog.js';
 import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;
@@ -555,6 +559,7 @@ async function readSettings(tx: QuoteTransaction): Promise<Settings> {
     observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
     secoes,
+    empresa: normalizeQuotationCompanyConfiguration(row.companyConfiguration),
   };
 }
 
@@ -745,7 +750,13 @@ function resolutionSource(resolution: PricingResolution): 'base' | 'tier' {
 
 interface SelectedTemplate {
   model: { id: string; key: string; name: string; archived: boolean };
-  version: { id: string; version: number; source: string; sourceHash: string };
+  version: {
+    id: string;
+    version: number;
+    source: string;
+    sourceHash: string;
+    contractVersion?: number;
+  };
 }
 
 export interface TemplateSelectionLookup {
@@ -772,6 +783,7 @@ export async function readSelectedTemplate(
           version: quotationTemplateVersions.version,
           source: quotationTemplateVersions.source,
           sourceHash: quotationTemplateVersions.sourceHash,
+          contractVersion: quotationTemplateVersions.contractVersion,
         })
         .from(quotationTemplateVersions)
         .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
@@ -779,7 +791,13 @@ export async function readSelectedTemplate(
         .limit(1);
       return row && {
         model: { id: row.modelId, key: row.modelKey, name: row.modelName, archived: row.archived },
-        version: { id: row.versionId, version: row.version, source: row.source, sourceHash: row.sourceHash },
+        version: {
+          id: row.versionId,
+          version: row.version,
+          source: row.source,
+          sourceHash: row.sourceHash,
+          contractVersion: row.contractVersion === 2 ? 2 : 1,
+        },
       };
     },
     current: (selection: string | { id: string }) => readCurrentQuotationTemplateVersion(tx, selection),
@@ -798,7 +816,14 @@ export async function readSelectedTemplate(
       if (!model || model.archived) return null;
       await tx
         .insert(quotationTemplateVersions)
-        .values({ id: versionId, templateId: model.id, version: 1, source: legacy.source, sourceHash: legacy.hash })
+        .values({
+          id: versionId,
+          templateId: model.id,
+          version: 2,
+          source: legacy.source,
+          sourceHash: legacy.hash,
+          contractVersion: 2,
+        })
         .onConflictDoNothing({ target: [quotationTemplateVersions.templateId, quotationTemplateVersions.version] });
       return readCurrentQuotationTemplateVersion(tx, { id: model.id });
     },
@@ -813,12 +838,28 @@ export async function readSelectedTemplate(
   }
 
   const selected = await lookup.current(key || settings.template_padrao);
-  if (selected && !selected.model.archived) return selected;
+  const currentBuiltin = getQuotationTemplate(key || settings.template_padrao);
+  if (selected && !selected.model.archived) {
+    // Existing official rows created before the v2 publication remain immutable
+    // v1 history. New drafts select the current v2 source and persist it as a
+    // separate version instead of mutating the historical row. Custom versions
+    // under an official key remain selected and are never replaced silently.
+    const historicalBuiltin = currentBuiltin
+      ? HISTORICAL_QUOTATION_TEMPLATES.find((template) => template.key === currentBuiltin.key)
+      : undefined;
+    const isHistoricalBuiltin = Boolean(
+      historicalBuiltin &&
+        selected.version.contractVersion === 1 &&
+        selected.version.source === historicalBuiltin.source &&
+        selected.version.sourceHash === historicalBuiltin.hash,
+    );
+    if (!isHistoricalBuiltin) return selected;
+    return lookup.seedLegacy(currentBuiltin!);
+  }
   // Seed a missing static template so the revision FK and historical resolver
   // have persisted identity, even when another static template already exists.
-  const legacy = getQuotationTemplate(key || settings.template_padrao);
-  if (!legacy) return null;
-  return lookup.seedLegacy(legacy);
+  if (!currentBuiltin) return null;
+  return lookup.seedLegacy(currentBuiltin);
 }
 
 /** PostgreSQL quote-draft writer. Every mutation is intentionally kept in one
@@ -1125,6 +1166,7 @@ export function createPostgresQuoteDraftRepository(
           templateHash: template.version.sourceHash,
           templateVersionId: template.version.id || revisionMetadata.templateVersionId,
           sectionsSnapshot,
+          companySnapshot: settings.empresa,
           ...clientSnapshotToRow(client),
           subtotal: formatMoneyCents(subtotalCents),
           total: formatMoneyCents(totalCents),
@@ -1292,6 +1334,7 @@ export function createPostgresQuoteDraftRepository(
               sectionsSnapshot: copy(sourceRevision.sectionsSnapshot),
             }
           : await resolveQuotationRevisionMetadata(tx, sourceRevision);
+        const settings = await readSettings(tx);
         const clientSnapshot = clientSnapshotFromRevision(sourceRevision, sourceQuotation.clientId);
         const businessNumber = await reserveBusinessNumber(tx, createdAt.getUTCFullYear());
         const quotationId = idFactory();
@@ -1332,6 +1375,7 @@ export function createPostgresQuoteDraftRepository(
           templateHash: sourceRevision.templateHash,
           templateVersionId: revisionMetadata.templateVersionId,
           sectionsSnapshot: copy(revisionMetadata.sectionsSnapshot),
+          companySnapshot: settings.empresa,
           ...clientSnapshotToRow(clientSnapshot),
           subtotal: sourceRevision.subtotal,
           total: sourceRevision.total,

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import {
   DEFAULT_QUOTATION_TEMPLATE,
+  HISTORICAL_QUOTATION_TEMPLATES,
   getQuotationTemplateManifest,
   getQuotationTemplate,
   QUOTATION_TEMPLATES,
@@ -235,7 +236,7 @@ test('manifest has one default, explicit historical contracts and hashes without
   assert.equal(new Set(manifest.map((template) => template.key)).size, manifest.length);
   for (const template of manifest) {
     assert.match(template.hash, /^[0-9a-f]{64}$/);
-    assert.equal(template.contract_version, 1);
+    assert.equal(template.contract_version, 2);
     assert.equal('source' in template, false);
   }
 });
@@ -1019,23 +1020,22 @@ test('comparativo source satisfies the new-template contract', () => {
   validateQuotationSource(template.source, template.key);
 });
 
-test('simples template is registered with fixed commercial sections', () => {
+test('simples template is registered as a v2 canonical commercial template', () => {
   const template = getQuotationTemplate('simples');
   assert.ok(template);
   assert.equal(template.name, 'Simples');
+  assert.equal(template.contract_version, 2);
 
   const model = quotationSnapshotViewModel(snapshot);
   const html = renderQuotationTemplate(template, model);
-  assert.match(html, /15 a 20 dias úteis após confirmação do pagamento e aprovação da arte/);
-  assert.match(html, /Dados para pagamento/);
-  assert.match(html, /Formas de pagamento: PIX, boleto bancário e transferência/);
-  assert.match(template.source, /counter-increment: simple-item/);
-  assert.match(template.source, /counter\(simple-item\)/);
-  assert.match(template.source, /-webkit-print-color-adjust:\s*exact/);
-  assert.match(template.source, /print-color-adjust:\s*exact/);
-  assert.doesNotMatch(template.source, /\{\{position\}\}\./);
-  assert.doesNotMatch(template.source, /\{%|%\}|\\bfrappe\\b|\\bdoc\\./i);
-  assert.doesNotMatch(template.source, /terms\./i);
+  assert.match(html, /Prazo de produção/);
+  assert.match(html, /Stone Pagamentos S\.A\./);
+  assert.match(html, /Condições Gerais/);
+  assert.match(template.source, /secoes\.prazo_producao/);
+  assert.match(template.source, /secoes\.pagamento/);
+  assert.match(template.source, /secoes\.condicoes_gerais/);
+  assert.doesNotMatch(template.source, /terms\.(pagamento|production_deadline|observations)/i);
+  assert.doesNotMatch(template.source, /15 a 20 dias úteis|Formas de pagamento: PIX/);
 });
 
 test('simples source satisfies the new-template contract', () => {
@@ -1145,18 +1145,17 @@ test('rejects end tag without matching open tag', () => {
 
 // ── Required fields: built-in compatibility exception ─────────────
 
-test('exact built-in source/hash accepts missing display.total', () => {
-  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
-  assert.ok(branded, 'branded template exists');
-  // Built-in source does not contain {{display.total}} - verify it renders
+test('exact historical branded source/hash accepts missing display.total', () => {
+  const branded = HISTORICAL_QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'historical branded template exists');
   const model = quotationSnapshotViewModel(snapshot);
   const html = renderQuotationTemplate(branded, model);
-  assert.ok(html.length > 100, 'branded renders substantial HTML');
+  assert.ok(html.length > 100, 'historical branded renders substantial HTML');
 });
 
-test('persisted built-in version keeps trusted provenance', () => {
-  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
-  assert.ok(branded, 'branded template exists');
+test('persisted historical built-in version keeps trusted provenance', () => {
+  const branded = HISTORICAL_QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'historical branded template exists');
   const persisted = quotationTemplateFromVersion({
     source: branded.source,
     sourceHash: branded.hash,
@@ -1164,12 +1163,12 @@ test('persisted built-in version keeps trusted provenance', () => {
     template: { key: branded.key, name: branded.name },
   });
   const html = renderQuotationTemplate(persisted, quotationSnapshotViewModel(snapshot));
-  assert.ok(html.length > 100, 'persisted branded renders substantial HTML');
+  assert.ok(html.length > 100, 'persisted historical branded renders substantial HTML');
 });
 
-test('legacy template key keeps trusted provenance for the immutable branded source', () => {
-  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
-  assert.ok(branded, 'branded template exists');
+test('legacy template key keeps trusted provenance for the immutable historical branded source', () => {
+  const branded = HISTORICAL_QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'historical branded template exists');
   const persisted = quotationTemplateFromVersion({
     source: branded.source,
     sourceHash: branded.hash,
@@ -1186,9 +1185,9 @@ test('new source missing display.total is rejected', () => {
   assert.throws(() => validateQuotationHtmlSource(newSource, 'new-template'), /display\.total/);
 });
 
-test('public validators cannot grant the built-in display.total exemption', () => {
-  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
-  assert.ok(branded, 'branded template exists');
+test('public validators cannot grant the historical branded display.total exemption', () => {
+  const branded = HISTORICAL_QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'historical branded template exists');
   assert.throws(
     () => validateQuotationHtmlSource(branded.source, 'branded'),
     /display\.total/
@@ -1199,9 +1198,9 @@ test('public validators cannot grant the built-in display.total exemption', () =
   );
 });
 
-test('spoofed template object with built-in key/hash is rejected at render', () => {
-  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
-  assert.ok(branded, 'branded template exists');
+test('spoofed historical branded object with built-in key/hash is rejected at render', () => {
+  const branded = HISTORICAL_QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'historical branded template exists');
   // Construct a forged template that copies key, hash, and source but is NOT the built-in object
   const spoofed = {
     key: 'branded',
@@ -1225,12 +1224,12 @@ test('spoofed template object with built-in key/hash is rejected at render', () 
   }
 });
 
-test('trusted built-in template still renders with missing display.total', () => {
-  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
-  assert.ok(branded, 'branded template exists');
+test('trusted historical template still renders with missing display.total', () => {
+  const branded = HISTORICAL_QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'historical branded template exists');
   const model = quotationSnapshotViewModel(snapshot);
   const html = renderQuotationTemplate(branded, model);
-  assert.ok(html.length > 100, 'branded built-in renders substantial HTML');
+  assert.ok(html.length > 100, 'historical branded built-in renders substantial HTML');
 });
 
 test('built-in definitions are validated for both AST and HTML policy', () => {

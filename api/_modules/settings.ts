@@ -7,6 +7,11 @@ import {
   type SettingsRepository,
 } from '../_infrastructure/db/repositories/settings-repository.js';
 import {
+  normalizeQuotationCompanyConfiguration,
+  QuotationCompanyConfigurationError,
+  type QuotationCompanyConfiguration,
+} from './quotation-company.js';
+import {
   normalizeQuotationSections,
   validateQuotationSections,
   type QuotationSectionsSettings,
@@ -130,6 +135,18 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     fields.template_padrao = 'Informe a chave do template padrão.';
   }
 
+  let empresa: QuotationCompanyConfiguration | undefined;
+  if (payload.empresa !== undefined) {
+    try {
+      empresa = normalizeQuotationCompanyConfiguration(payload.empresa);
+    } catch (error) {
+      fields.empresa =
+        error instanceof QuotationCompanyConfigurationError
+          ? error.message
+          : 'Informe uma configuração empresarial válida.';
+    }
+  }
+
   let secoes: QuotationSectionsSettings;
   if (payload.secoes !== undefined) {
     try {
@@ -165,6 +182,7 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     frete_padrao: fretePadrao as string,
     observacoes: secoes.condicoes_gerais.body,
     secoes,
+    ...(empresa ? { empresa } : {}),
     ...(typeof templatePadrao === 'string' ? { template_padrao: templatePadrao.trim() } : {}),
   };
 }

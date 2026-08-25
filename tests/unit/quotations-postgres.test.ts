@@ -48,6 +48,12 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       pagamento: { enabled: false, title: 'Título de pagamento configurado', body: 'Pagamento da configuração' },
       condicoes_gerais: { enabled: false, title: 'Título de condições configurado', body: 'Observações da configuração' },
     },
+    companyConfiguration: {
+      schema_version: 1 as const,
+      identity: { legal_name: 'Empresa capturada LTDA', document: '12.345.678/0001-95' },
+      banking: { bank_name: 'Banco capturado', bank_code: '001', branch: '0001', account: '123-4', pix_key: 'pix@capturada.example' },
+      contacts: { website: 'https://capturada.example', phone: '(11) 99999-0000', email: 'contato@capturada.example', instagram: 'https://instagram.com/capturada' },
+    },
     templatePadrao: 'padrao',
   };
   let previousSettings: typeof appSettings.$inferSelect | undefined;
@@ -125,6 +131,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
     assert.equal(createdRevision?.templatePadrao, defaultTemplate.key);
     assert.equal(createdRevision?.templateHash, defaultTemplate.hash);
+    assert.equal(createdRevision?.companySnapshot?.identity.legal_name, 'Empresa capturada LTDA');
     const management = createPostgresQuoteDraftManagementRepository(() => db, { now: () => new Date('2026-07-04T12:01:00.000Z') });
     const managementGet = management.get!;
     const managementUpdate = management.update!;
@@ -438,6 +445,14 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(sentDetail.email_sent, true);
     assert.equal(sentDetail.email_sent_at, '2026-08-17T12:05:00.000Z');
 
+    const nextCompanyConfiguration = {
+      ...explicitSettings.companyConfiguration,
+      identity: {
+        ...explicitSettings.companyConfiguration.identity,
+        legal_name: 'Empresa da revisão 2 LTDA',
+      },
+    };
+    await db.update(appSettings).set({ companyConfiguration: nextCompanyConfiguration }).where(eq(appSettings.singletonId, 1));
     const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
       now: () => new Date('2026-08-17T12:01:00.000Z'),
     });
@@ -445,6 +460,10 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       source_revision_id: updated.revision_id,
       concurrency_token: sentDetail.concurrency_token,
     });
+    const [createdNextRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, nextRevision.revision_id));
+    assert.equal(createdNextRevision?.companySnapshot?.identity.legal_name, 'Empresa da revisão 2 LTDA');
+    const [unchangedFirstRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, updated.revision_id));
+    assert.equal(unchangedFirstRevision?.companySnapshot?.identity.legal_name, 'Empresa capturada LTDA');
     const currentList = await managementList({ page: 1, limit: 50 });
     const currentRow = currentList.rows.find((row) => row.id === updated.quotation_name);
     assert.equal(currentRow?.revision_id, nextRevision.revision_id);
@@ -477,17 +496,25 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(item?.produtoNome, customItemName);
 
     const snapshotRepository = createQuotationTemplateRepository(() => db);
-    const beforeSnapshot = await snapshotRepository.get(updated.quotation_name);
+    const beforeSnapshot = await snapshotRepository.get(nextRevision.revision_id);
     assert.ok(beforeSnapshot);
     const beforeHtml = renderQuotationDocument(beforeSnapshot, alternateTemplate).html;
     assert.match(beforeHtml, /Lenço 100 x 100 cm/);
     await db.update(products).set({ nome: 'Produto alterado depois' }).where(eq(products.sku, sku));
     await db.update(clients).set({ nome: 'Cliente alterado depois' }).where(eq(clients.id, secondClientId));
-    await db.update(appSettings).set({ templatePadrao: 'minimalista' }).where(eq(appSettings.singletonId, 1));
-    const afterSnapshot = await snapshotRepository.get(updated.quotation_name);
+    await db.update(appSettings).set({
+      templatePadrao: 'minimalista',
+      companyConfiguration: {
+        ...explicitSettings.companyConfiguration,
+        identity: { ...explicitSettings.companyConfiguration.identity, legal_name: 'Empresa alterada LTDA' },
+      },
+    }).where(eq(appSettings.singletonId, 1));
+    const afterSnapshot = await snapshotRepository.get(nextRevision.revision_id);
     assert.ok(afterSnapshot);
     const afterHtml = renderQuotationDocument(afterSnapshot, alternateTemplate).html;
     assert.equal(afterHtml, beforeHtml);
+    assert.match(afterHtml, /Empresa da revisão 2 LTDA/);
+    assert.doesNotMatch(afterHtml, /Empresa alterada LTDA/);
   } finally {
     const rows = await db.select({ id: quotations.id }).from(quotations).where(inArray(quotations.clientId, [clientId, secondClientId]));
     if (rows.length) await db.delete(quotations).where(inArray(quotations.id, rows.map((row) => row.id)));
@@ -503,6 +530,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         fretePadrao: previousSettings.fretePadrao,
         observacoes: previousSettings.observacoes,
         quotationSections: previousSettings.quotationSections,
+        companyConfiguration: previousSettings.companyConfiguration,
         templatePadrao: previousSettings.templatePadrao,
       }).where(eq(appSettings.singletonId, 1));
     } else {

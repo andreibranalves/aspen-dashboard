@@ -169,6 +169,13 @@
       "when": 1787641660453,
       "tag": "0023_quotation_template_contracts",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787663816272,
+      "tag": "0024_quotation_company_snapshots",
+      "breakpoints": true
     }
   ]
 }
