@@ -25,8 +25,8 @@ export interface MediaUploaderProps {
   onUploadComplete?: () => void;
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) {

@@ -167,11 +167,11 @@ export default function ProductsPage() {
         setData(projected.data);
         setTotalPages(projected.pagination.total_pages);
         setTotalRecords(projected.pagination.total);
-      } catch (err) {
+      } catch {
         setData([]);
         setTotalPages(0);
         setTotalRecords(0);
-        setError((err as Error).message || 'Erro ao carregar produtos.');
+        setError('Não foi possível carregar o catálogo. Tente novamente.');
       } finally {
         setLoading(false);
       }

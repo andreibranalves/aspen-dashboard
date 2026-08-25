@@ -292,11 +292,9 @@ export default function WhatsAppDeliveriesPage() {
           );
         });
       })
-      .catch((nextError) => {
+      .catch(() => {
         if (cancelled) return;
-        setError(
-          nextError instanceof Error ? nextError.message : 'Não foi possível consultar as entregas.'
-        );
+        setError('Não foi possível consultar as entregas. Tente novamente.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -323,9 +321,8 @@ export default function WhatsAppDeliveriesPage() {
         cancelled === 0 ? 'info' : 'success'
       );
       setReloadVersion((value) => value + 1);
-    } catch (nextError) {
-      const message =
-        nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.';
+    } catch {
+      const message = 'Não foi possível limpar a fila. Tente novamente.';
       toast(message, 'error');
     } finally {
       setClearing(false);

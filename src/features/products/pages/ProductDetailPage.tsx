@@ -33,6 +33,7 @@ import { useToast } from '@/components/shared/toast';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
 
 interface Produto {
   sku: string;
@@ -149,11 +150,8 @@ function buildEditedState(
   };
 }
 
-function selectContextualErrorMessage(error: unknown, fallback: string): string {
-  const message = (error as { message?: unknown })?.message;
-  if (typeof message !== 'string') return fallback;
-  const trimmedMessage = message.trim();
-  return trimmedMessage && !/^Erro \d+$/i.test(trimmedMessage) ? message : fallback;
+function selectContextualErrorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 interface SectionCardProps {
@@ -216,7 +214,10 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const [saving, setSaving] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
   const { toast } = useToast();
+  const { setNavigationGuard } = useRouteGuardContext();
   const [confirmArchiveOpen, setConfirmArchiveOpen] = useState<boolean>(false);
+  const [confirmDiscardEdits, setConfirmDiscardEdits] = useState<boolean>(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [activityLoading, setActivityLoading] = useState<boolean>(() => !isNewProduct);
@@ -394,21 +395,57 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     void fetchAtividades();
   }, [fetchAtividades]);
 
+  const hasUnsavedChanges = Boolean(
+    editing &&
+      product &&
+      JSON.stringify(edited) !==
+        JSON.stringify(
+          buildEditedState(
+            product.produto,
+            product.precos,
+            product.preco_base ?? product.produto.preco_base
+          )
+        )
+  );
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return () => setNavigationGuard(null);
+    }
+    setNavigationGuard((nextRoute) => {
+      setPendingRoute(nextRoute);
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, [hasUnsavedChanges, setNavigationGuard]);
+
   const startEditing = useCallback(() => {
     const { produto, precos = [], preco_base } = product || {};
     setEdited(buildEditedState(produto, precos, preco_base ?? produto?.preco_base));
     setEditing(true);
   }, [product]);
 
-  const cancelEditing = useCallback(() => {
+  const discardEditing = useCallback(() => {
+    setConfirmDiscardEdits(false);
     if (isNewProduct) {
+      setNavigationGuard(null);
       navigate('/products');
       return;
     }
 
     setEditing(false);
     setEdited({});
-  }, [isNewProduct, navigate]);
+  }, [isNewProduct, navigate, setNavigationGuard]);
+
+  const cancelEditing = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setConfirmDiscardEdits(true);
+      return;
+    }
+    discardEditing();
+  }, [discardEditing, hasUnsavedChanges]);
 
   const refreshActivity = useCallback(() => {
     if (!mountedRef.current) return;
@@ -1082,6 +1119,31 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           void deleteProduct();
         }}
         onCancel={() => setConfirmArchiveOpen(false)}
+      />
+      <ConfirmDialog
+        open={confirmDiscardEdits}
+        title="Descartar alterações?"
+        message="As alterações do cadastro e dos preços que ainda não foram salvas serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        variant="destructive"
+        onConfirm={discardEditing}
+        onCancel={() => setConfirmDiscardEdits(false)}
+      />
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem salvar?"
+        message="As alterações do cadastro e dos preços que ainda não foram salvas serão perdidas."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
       />
     </PageShell>
   );

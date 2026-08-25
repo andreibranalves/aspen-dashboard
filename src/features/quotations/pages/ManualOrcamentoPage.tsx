@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LEAD_SOURCES,
@@ -155,6 +156,7 @@ function clearManualDraft(): void {
 }
 
 export default function ManualOrcamentoPage() {
+  const { toast } = useToast();
   // ── Client state ──
   const [clientType, setClientType] = useState<string>(CLIENT_TYPE.NEW);
   const [clientSearch, setClientSearch] = useState<string>('');
@@ -335,10 +337,10 @@ export default function ManualOrcamentoPage() {
       ]);
       setProductSearch('');
       setProductResults([]);
-    } catch (err) {
+    } catch {
       // An unavailable lookup must not create a zero-rate line. The user can
       // retry after pricing is configured while the cart remains consistent.
-      setError(err instanceof Error ? err.message : 'Preço indisponível para este produto.');
+      setError('Preço indisponível para este produto.');
     } finally {
       setAddingSku(null);
     }
@@ -460,11 +462,11 @@ export default function ManualOrcamentoPage() {
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
     const { nome } = getClientInfo();
-    if (!nome) { alert('Informe o nome do cliente.'); return; }
-    if (!leadSource) { alert('Selecione a origem antes de criar o orçamento.'); return; }
-    if (!isValidLeadSource(leadSource)) { alert('Origem selecionada não é válida.'); return; }
-    if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido. Corrija ou deixe em branco.'); return; }
-    if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
+    if (!nome) { toast('Informe o nome do cliente.', 'error'); return; }
+    if (!leadSource) { toast('Selecione a origem antes de criar o orçamento.', 'error'); return; }
+    if (!isValidLeadSource(leadSource)) { toast('Origem selecionada não é válida.', 'error'); return; }
+    if (cnpj && !isValidCnpj(cnpj)) { toast('CNPJ informado é inválido. Corrija ou deixe em branco.', 'error'); return; }
+    if (items.length === 0) { toast('Adicione ao menos um produto.', 'error'); return; }
 
     setSubmitting(true);
     setError(null);
@@ -474,19 +476,18 @@ export default function ManualOrcamentoPage() {
       const res = await apiPost<OrcamentoResponse>('/orcamento', buildManualPayload());
       setResult(res);
       clearManualDraft();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao criar orçamento.';
-      setError(message);
+    } catch {
+      setError('Não foi possível criar o orçamento. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
-  }, [buildManualPayload, getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj]);
+  }, [buildManualPayload, cnpj, getClientInfo, items, leadSource, toast]);
 
   const handlePreview = useCallback(() => {
     const { nome } = getClientInfo();
-    if (!nome) { alert('Informe o nome do cliente.'); return; }
-    if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
-    if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido.'); return; }
+    if (!nome) { toast('Informe o nome do cliente.', 'error'); return; }
+    if (items.length === 0) { toast('Adicione ao menos um produto.', 'error'); return; }
+    if (cnpj && !isValidCnpj(cnpj)) { toast('CNPJ informado é inválido.', 'error'); return; }
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/api/quotation-preview?format=html';
@@ -500,11 +501,11 @@ export default function ManualOrcamentoPage() {
     document.body.append(form);
     form.submit();
     form.remove();
-  }, [buildManualPayload, cnpj, getClientInfo, items.length]);
+  }, [buildManualPayload, cnpj, getClientInfo, items.length, toast]);
 
   const handleSend = useCallback(async () => {
     const { nome } = getClientInfo();
-    if (!nome || items.length === 0) { alert('Informe cliente e ao menos um produto.'); return; }
+    if (!nome || items.length === 0) { toast('Informe cliente e ao menos um produto.', 'error'); return; }
     if (manualSendInFlight.current) return;
     const payload = buildManualPayload();
     const fingerprint = JSON.stringify(payload);
@@ -517,13 +518,13 @@ export default function ManualOrcamentoPage() {
     try {
       const issue = await issueQuotation(payload, key);
       setResult({ success: true, quotation_id: issue.businessNumber, quotation_name: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision_number: issue.revisionNumber, status: issue.status });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível enviar o orçamento.');
+    } catch {
+      setError('Não foi possível enviar o orçamento. Tente novamente.');
     } finally {
       manualSendInFlight.current = false;
       setSending(false);
     }
-  }, [buildManualPayload, getClientInfo, items.length]);
+  }, [buildManualPayload, getClientInfo, items.length, toast]);
 
   // ── Reset all ──
   const resetForm = useCallback(() => {

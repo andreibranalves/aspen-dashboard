@@ -382,8 +382,8 @@ export default function AutoQuotePage() {
         const next = [...prev, ...appendedDrafts];
         return next;
       });
-    } catch (err) {
-      setError((err as Error).message || 'Erro na extração.');
+    } catch {
+      setError('Não foi possível extrair os pedidos. Tente novamente.');
     } finally {
       setExtracting(false);
     }
@@ -423,9 +423,9 @@ export default function AutoQuotePage() {
         const priceConflict = Boolean(apiError && isPriceAuthoritativeConflict(apiError));
         const message = apiError?.status === 409
           ? priceConflict
-            ? `${apiError.message} Atualize os preços e tente novamente.`
-            : apiError.message
-          : err instanceof Error ? err.message : 'Não foi possível emitir o orçamento. Tente novamente.';
+            ? 'Os preços dos produtos foram atualizados. Atualize os preços e tente novamente.'
+            : 'O orçamento mudou ou já está em processamento. Tente novamente.'
+          : 'Não foi possível emitir o orçamento. Tente novamente.';
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, status: undefined, result: { success: false, error: message } } as StoredAutoQuoteDraft)
           : candidate));
@@ -497,9 +497,9 @@ export default function AutoQuotePage() {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
         ? ({ ...candidate, saved: { quotationId, revisionId, businessNumber } } as StoredAutoQuoteDraft)
         : candidate));
-    } catch (error) {
+    } catch {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
-        ? ({ ...candidate, result: { success: false, error: error instanceof Error ? error.message : 'Não foi possível salvar o rascunho.' } } as StoredAutoQuoteDraft)
+        ? ({ ...candidate, result: { success: false, error: 'Não foi possível salvar o rascunho. Tente novamente.' } } as StoredAutoQuoteDraft)
         : candidate));
     } finally {
       setSavingDraftByIndex((current) => {

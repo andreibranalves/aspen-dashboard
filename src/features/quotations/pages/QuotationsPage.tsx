@@ -142,7 +142,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         setStatusSummary(projectedSummary);
       } catch (err) {
         console.error('[quotations]', err);
-        setError((err as Error).message || 'Erro ao carregar orçamentos.');
+        setError('Não foi possível carregar os orçamentos. Tente novamente.');
       } finally {
         setLoading(false);
       }

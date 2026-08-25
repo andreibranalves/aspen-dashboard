@@ -108,8 +108,8 @@ function createFlow(index: number): EditableFlow {
   };
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 function displayName(flow: Pick<CommunicationFlow, 'name'>): string {

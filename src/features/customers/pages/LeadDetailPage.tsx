@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Edit3,
@@ -28,6 +28,7 @@ import { readNewClientPrefill } from '@/features/customers/new-client-prefill';
 import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
 import { CustomerActionMenu } from '@/features/customers/components/CustomerActionMenu';
 import { projectClientDetail, type ProjectedClientDetail } from '@/lib/localProjections';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
 
 interface Address {
   endereco?: string;
@@ -192,9 +193,10 @@ function addressField(
 export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetailPageProps) {
   const decodedId = decodeURIComponent(id || '');
   const isNewClient = decodedId === 'new';
-  const initialFields: EditFields = isNewClient
-    ? { ...EMPTY_FIELDS, ...readNewClientPrefill(window.location.hash) }
-    : EMPTY_FIELDS;
+  const initialFields = useMemo<EditFields>(
+    () => (isNewClient ? { ...EMPTY_FIELDS, ...readNewClientPrefill(window.location.hash) } : EMPTY_FIELDS),
+    [isNewClient]
+  );
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | 'not_found' | null>(null);
@@ -202,7 +204,10 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   const [fields, setFields] = useState<EditFields>(initialFields);
   const [saving, setSaving] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [confirmDiscardEdits, setConfirmDiscardEdits] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const { toast } = useToast();
+  const { setNavigationGuard } = useRouteGuardContext();
 
   const loadDetail = useCallback(async () => {
     if (!decodedId) return;
@@ -234,6 +239,25 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (!editing) return false;
+    const baseline = detail ? fieldsFromDetail(detail) : initialFields;
+    return JSON.stringify(fields) !== JSON.stringify(baseline);
+  }, [detail, editing, fields, initialFields]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return () => setNavigationGuard(null);
+    }
+    setNavigationGuard((nextRoute) => {
+      setPendingRoute(nextRoute);
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, [hasUnsavedChanges, setNavigationGuard]);
 
   const save = useCallback(async () => {
     if (!fields.nome.trim()) {
@@ -309,14 +333,24 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     }
   }, [decodedId, detail, isNewClient, toast]);
 
-  const cancelEditing = useCallback(() => {
+  const discardEditing = useCallback(() => {
+    setConfirmDiscardEdits(false);
     if (isNewClient) {
+      setNavigationGuard(null);
       navigate('/leads');
       return;
     }
     if (detail) setFields(fieldsFromDetail(detail));
     setEditing(false);
-  }, [detail, isNewClient, navigate]);
+  }, [detail, isNewClient, navigate, setNavigationGuard]);
+
+  const cancelEditing = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setConfirmDiscardEdits(true);
+      return;
+    }
+    discardEditing();
+  }, [discardEditing, hasUnsavedChanges]);
 
   if (loading) return <SkeletonDetail />;
   if (error === 'not_found')
@@ -657,6 +691,31 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         variant={archived ? 'default' : 'destructive'}
         onConfirm={() => void archive()}
         onCancel={() => setArchiveDialogOpen(false)}
+      />
+      <ConfirmDialog
+        open={confirmDiscardEdits}
+        title="Descartar alterações?"
+        message="As alterações do cadastro do cliente que ainda não foram salvas serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        variant="destructive"
+        onConfirm={discardEditing}
+        onCancel={() => setConfirmDiscardEdits(false)}
+      />
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem salvar?"
+        message="As alterações do cadastro do cliente que ainda não foram salvas serão perdidas."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
       />
     </PageShell>
   );

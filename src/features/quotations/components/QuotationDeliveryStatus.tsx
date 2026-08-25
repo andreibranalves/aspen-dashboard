@@ -108,10 +108,8 @@ export function QuotationDeliveryStatus({
     try {
       await onResolve(decision, normalizedNote);
       closeDialog();
-    } catch (error) {
-      setDialogError(
-        error instanceof Error ? error.message : 'Não foi possível resolver a entrega.'
-      );
+    } catch {
+      setDialogError('Não foi possível resolver a entrega. Tente novamente.');
     } finally {
       setSubmitting(false);
     }

@@ -4,6 +4,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiPost } from '@/lib/api/api';
+import { useToast } from '@/components/shared/toast';
 import { isUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/api/productCache';
 import type {
   Draft,
@@ -32,6 +33,7 @@ interface PricingRef {
 }
 
 export function useExtractionDrafts(initialDrafts: Draft[] = []) {
+  const { toast } = useToast();
   // ── State ──
   const [drafts, setDrafts] = useState<Draft[]>(initialDrafts);
   const [productSearch, setProductSearch] = useState<Record<number, ProductSearchEntry>>({});
@@ -185,29 +187,29 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       const d = next[draftIdx];
       const items = d.edited.items.filter(it => it.item_code && it.qty > 0);
       if (items.length === 0) {
-        alert('Adicione ao menos um item com SKU e quantidade > 0.');
+        toast('Adicione ao menos um item com SKU e quantidade > 0.', 'error');
         return prev;
       }
       if (!d.edited.nome?.trim()) {
-        alert('Informe o nome do cliente antes de aprovar.');
+        toast('Informe o nome do cliente antes de aprovar.', 'error');
         return prev;
       }
       if (!d.edited.origem) {
-        alert('Selecione a origem do lead antes de aprovar.');
+        toast('Selecione a origem do lead antes de aprovar.', 'error');
         return prev;
       }
       if (!isValidLeadSource(d.edited.origem)) {
-        alert('Origem selecionada não é válida.');
+        toast('Origem selecionada não é válida.', 'error');
         return prev;
       }
       if (d.edited.cnpj && !isValidCnpj(d.edited.cnpj)) {
-        alert('CNPJ informado é inválido. Corrija ou deixe em branco.');
+        toast('CNPJ informado é inválido. Corrija ou deixe em branco.', 'error');
         return prev;
       }
       next[draftIdx] = { ...d, approved: true };
       return next;
     });
-  }, []);
+  }, [toast]);
 
   const discardDraft = useCallback((draftIdx: number) => {
     setDrafts(prev => {

@@ -239,6 +239,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [detailSaving, setDetailSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editFields, setEditFields] = useState<EditFields>(EMPTY_FIELDS);
+  const [confirmDrawerDiscard, setConfirmDrawerDiscard] = useState(false);
+  const [drawerDiscardAction, setDrawerDiscardAction] = useState<(() => void) | null>(null);
 
   const fetchData = useCallback(
     async (searchValue = search, pageValue = page, statusValue = status, limitValue = limit) => {
@@ -308,6 +310,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     setDetailError(null);
     setDetailLoading(true);
     setEditMode(false);
+    setConfirmDrawerDiscard(false);
+    setDrawerDiscardAction(null);
     try {
       const result = await apiGet<unknown>(`/client-detail?name=${encodeURIComponent(row.id)}`);
       const projected = projectClientDetail(result);
@@ -326,7 +330,29 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     setDetail(null);
     setDetailError(null);
     setEditMode(false);
+    setConfirmDrawerDiscard(false);
+    setDrawerDiscardAction(null);
   }, []);
+
+  const drawerHasUnsavedChanges = Boolean(
+    drawerOpen &&
+      editMode &&
+      detail &&
+      JSON.stringify(editFields) !== JSON.stringify(fieldsFromDetail(detail))
+  );
+
+  const requestDrawerClose = useCallback(
+    (afterClose?: () => void) => {
+      if (drawerHasUnsavedChanges) {
+        setDrawerDiscardAction(() => afterClose || null);
+        setConfirmDrawerDiscard(true);
+        return;
+      }
+      closeDrawer();
+      afterClose?.();
+    },
+    [closeDrawer, drawerHasUnsavedChanges]
+  );
 
   const updateDetail = useCallback(async () => {
     if (!selectedId || !detail) return;
@@ -417,10 +443,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {
         label: 'Página completa',
         icon: ChevronRight,
-        onClick: () => {
-          closeDrawer();
-          navigateToDetail(detail.id);
-        },
+        onClick: () => requestDrawerClose(() => navigateToDetail(detail.id)),
         title: 'Abrir página completa do cadastro',
       },
     ];
@@ -441,10 +464,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     actions.push({
       label: 'Criar orçamento',
       icon: Sparkles,
-      onClick: () => {
-        closeDrawer();
-        createQuoteForClient(detail, navigate);
-      },
+      onClick: () => requestDrawerClose(() => createQuoteForClient(detail, navigate)),
       title: 'Criar orçamento com os dados deste cliente',
     });
     if (detail.latest_quotation)
@@ -452,11 +472,13 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         label: 'Orçamento recente',
         icon: ChevronRight,
         onClick: () =>
-          navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`),
+          requestDrawerClose(() =>
+            navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`)
+          ),
         title: `Abrir ${detail.latest_quotation.name}`,
       });
     return actions;
-  }, [closeDrawer, detail, navigate, navigateToDetail]);
+  }, [detail, navigate, navigateToDetail, requestDrawerClose]);
 
   const allSelected = data.length > 0 && selectedIds.length === data.length;
   const toggleAll = (checked: boolean) => setSelectedIds(checked ? data.map((row) => row.id) : []);
@@ -986,7 +1008,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
       <DetailDrawer
         open={drawerOpen}
-        onClose={closeDrawer}
+        onClose={() => requestDrawerClose()}
         title={detail?.display_name || detail?.nome || 'Carregando…'}
         description={selectedId ? `Cliente · ${selectedId}` : undefined}
         actions={
@@ -1092,7 +1114,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`)
+                  requestDrawerClose(() =>
+                    navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`)
+                  )
                 }
               >
                 Abrir orçamento recente
@@ -1166,6 +1190,25 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         variant={archiveDialog?.variant}
         onConfirm={confirmPendingArchive}
         onCancel={() => setPendingArchive(null)}
+      />
+      <ConfirmDialog
+        open={confirmDrawerDiscard}
+        title="Descartar alterações?"
+        message="As alterações do cadastro que ainda não foram salvas serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        variant="destructive"
+        onConfirm={() => {
+          const afterClose = drawerDiscardAction;
+          setConfirmDrawerDiscard(false);
+          setDrawerDiscardAction(null);
+          closeDrawer();
+          afterClose?.();
+        }}
+        onCancel={() => {
+          setConfirmDrawerDiscard(false);
+          setDrawerDiscardAction(null);
+        }}
       />
     </PageShell>
   );

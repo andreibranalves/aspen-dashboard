@@ -62,6 +62,8 @@ function statusBadgeProps(status: unknown): { status: string; label: string } {
 }
 
 const LOSS_REASONS = ['Preço', 'Prazo', 'Sem retorno do cliente', 'Outro'] as const;
+const DIALOG_FOCUSABLE_SELECTOR =
+  'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type QuotationItem = ProjectedQuotationItem & {
   _key?: string;
@@ -196,6 +198,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [lossReasonOpen, setLossReasonOpen] = useState(false);
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
+  const lossReasonDialogRef = useRef<HTMLDivElement>(null);
+  const lossReasonSelectRef = useRef<HTMLSelectElement>(null);
+  const lossReasonRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [conflict, setConflict] = useState('');
   const { toast } = useToast();
   const showMessage = useCallback((text: string, tone: 'info' | 'error' = 'info') => {
@@ -350,11 +355,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         }
         setTemplateError('');
       })
-      .catch((error) => {
-        if (active)
-          setTemplateError(
-            error instanceof Error ? error.message : 'Não foi possível carregar os templates.'
-          );
+      .catch(() => {
+        if (active) setTemplateError('Não foi possível carregar os templates. Tente novamente.');
       });
     return () => {
       active = false;
@@ -414,8 +416,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         throw new Error('Resposta inválida ao buscar produtos.');
       }
       setProductResults((previous) => ({ ...previous, [key]: results as Product[] }));
-    } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível buscar produtos.', 'error');
+    } catch {
+      toast('Não foi possível buscar produtos. Tente novamente.', 'error');
       setProductResults((previous) => ({ ...previous, [key]: [] }));
     }
   }, []);
@@ -472,8 +474,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               : current,
           ),
         );
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Não foi possível consultar o preço.');
+      } catch {
+        setMessage('Não foi possível consultar o preço. Tente novamente.');
       }
     },
     [items, lookupProductPrice],
@@ -504,8 +506,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           price_difference: '0.00',
           line_total: String(Number(qty) * Number(rate)),
         });
-      } catch (error) {
-        toast(error instanceof Error ? error.message : 'Não foi possível consultar o preço.', 'error');
+      } catch {
+        toast('Não foi possível consultar o preço. Tente novamente.', 'error');
       }
     },
     [items, lookupProductPrice, updateItem]
@@ -625,10 +627,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 409) {
-        setConflict(
-          (error as Error).message ||
-            'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.'
-        );
+        setConflict('O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.');
         showMessage('');
       } else {
         showMessage('Não foi possível salvar o orçamento. Tente novamente.', 'error');
@@ -760,10 +759,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
-          setConflict(
-            (error as Error).message ||
-              'O orçamento mudou. Recarregue para conferir o estado atual.'
-          );
+          setConflict('O orçamento mudou. Recarregue para conferir o estado atual.');
           showMessage('');
         } else {
           showMessage('Não foi possível atualizar o estado do orçamento. Tente novamente.', 'error');
@@ -805,10 +801,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
-          setConflict(
-            (error as Error).message ||
-              'A revisão mudou ou já existe um rascunho. Recarregue para conferir.'
-          );
+          setConflict('A revisão mudou ou já existe um rascunho. Recarregue para conferir.');
           showMessage('');
         } else {
           showMessage('Não foi possível criar a revisão. Tente novamente.', 'error');
@@ -843,13 +836,51 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [lossReasonChoice, lossReasonDetail, markCommercialStatus]);
 
   useEffect(() => {
-    if (!lossReasonOpen) return;
+    if (!lossReasonOpen) return undefined;
+
+    lossReasonRestoreFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    lossReasonSelectRef.current?.focus();
+    const dialog = lossReasonDialogRef.current;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeLossReasonDialog();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeLossReasonDialog();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR)
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (dialog && !dialog.contains(event.target as Node)) lossReasonSelectRef.current?.focus();
+    };
+
     document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [lossReasonOpen, closeLossReasonDialog]);
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('focusin', handleFocusIn);
+      lossReasonRestoreFocusRef.current?.focus();
+      lossReasonRestoreFocusRef.current = null;
+    };
+  }, [closeLossReasonDialog, lossReasonOpen]);
 
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.revision_id || data.id || '', format: 'pdf' });
@@ -1211,8 +1242,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             </span>
           </div>
           {displayItems.length > 0 ? (
-            <Table>
-              <table className="min-w-[760px] text-sm">
+            <Table className="min-w-[760px] text-sm">
             <TableHeader>
               <TableRow>
                 <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>
@@ -1351,7 +1381,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 );
               })}
             </TableBody>
-              </table>
             </Table>
           ) : (
             <EmptyState
@@ -1523,8 +1552,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         {(data.revision_history || []).length > 0 && (
           <section className="space-y-3 border-t border-line px-4 py-4 sm:px-6" aria-label="Histórico de revisões">
             <h2 className="text-base font-semibold">Histórico de revisões</h2>
-            <Table>
-              <table className="min-w-[860px] text-sm">
+            <Table className="min-w-[860px] text-sm">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="h-9">Versão</TableHead>
@@ -1599,7 +1627,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                     );
                   })}
                 </TableBody>
-              </table>
             </Table>
           </section>
         )}
@@ -1653,22 +1680,25 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             aria-hidden="true"
           />
           <div
+            ref={lossReasonDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="loss-reason-title"
+            aria-describedby="loss-reason-description"
+            tabIndex={-1}
             className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
           >
             <h3 id="loss-reason-title" className="text-lg font-semibold text-fg">
               Motivo da perda
             </h3>
-            <p className="mt-2 text-sm text-fg-muted">
+            <p id="loss-reason-description" className="mt-2 text-sm text-fg-muted">
               Informe por que o orçamento {data.id} foi perdido. O motivo fica registrado no
               histórico.
             </p>
             <label className="mt-4 block text-sm">
               <span className="text-xs text-fg-muted">Motivo</span>
               <select
-                autoFocus
+                ref={lossReasonSelectRef}
                 value={lossReasonChoice}
                 onChange={(event) => setLossReasonChoice(event.target.value)}
                 className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"

@@ -16,8 +16,8 @@ export interface MediaLibraryProps {
   refreshKey?: number | string;
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {

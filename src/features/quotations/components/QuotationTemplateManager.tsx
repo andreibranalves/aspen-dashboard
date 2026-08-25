@@ -20,8 +20,8 @@ interface QuotationTemplateManagerProps {
   onTemplatesChanged?: (defaultKey?: string) => void;
 }
 
-function errorMessage(error: unknown, fallback: string) {
-  return (error as { message?: string })?.message || fallback;
+function errorMessage(_error: unknown, fallback: string) {
+  return fallback;
 }
 
 export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTemplateManagerProps) {

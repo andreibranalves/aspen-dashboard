@@ -67,8 +67,8 @@ const STATUS_META: Record<
   },
 };
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 function formatDate(value: string | undefined): string | null {

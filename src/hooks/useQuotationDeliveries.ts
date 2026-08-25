@@ -16,8 +16,8 @@ export function deliveryIdentityKey(identity: DeliveryIdentity): string {
   return `${identity.revisionId}\u0000${identity.flowId}`;
 }
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 function addKey(keys: string[], key: string): string[] {

@@ -56,6 +56,12 @@ export default function WhatsAppSendPanel({
   const deliveryProjection = delivery ? projectDelivery(delivery) : null;
   const isPending = pending || status?.state === 'sending';
   const deliveryBlocksSend = Boolean(delivery);
+  const legacyStatusMessage =
+    status?.state === 'error'
+      ? 'Não foi possível enviar pelo WhatsApp. Tente novamente.'
+      : status?.state === 'retryable'
+        ? 'O envio pode ser tentado novamente.'
+        : null;
 
   return (
     <>
@@ -142,7 +148,7 @@ export default function WhatsAppSendPanel({
                   .
                 </p>
               )}
-              {(status?.message || delivery?.publicError) && (
+              {(legacyStatusMessage || delivery?.publicError) && (
                 <p
                   className={cn(
                     'text-xs leading-5 text-center',
@@ -157,7 +163,7 @@ export default function WhatsAppSendPanel({
                         : 'text-fg-muted'
                   )}
                 >
-                  {delivery?.publicError || status?.message}
+                  {delivery?.publicError || legacyStatusMessage}
                 </p>
               )}
             </>
