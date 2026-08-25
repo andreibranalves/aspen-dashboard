@@ -207,10 +207,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [clientResults, setClientResults] = useState<CoreClientResult[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
   const [validadeDias, setValidadeDias] = useState(String(data.validade_dias ?? ''));
-  const [pagamento, setPagamento] = useState(data.pagamento || '');
   const [entrega, setEntrega] = useState(data.entrega || '');
   const [frete, setFrete] = useState(String(data.frete));
-  const [observacoes, setObservacoes] = useState(data.observacoes || '');
   const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
   const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
@@ -252,10 +250,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setClientId(initialData.client_id || '');
     setClientSearch(initialData.cliente || '');
     setValidadeDias(String(initialData.validade_dias ?? ''));
-    setPagamento(initialData.pagamento || '');
     setEntrega(initialData.entrega || '');
     setFrete(String(initialData.frete));
-    setObservacoes(initialData.observacoes || '');
     setPrazoProducao(initialData.prazo_producao || '');
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.template_key || 'padrao');
@@ -549,10 +545,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       Object.values(productTimers.current).forEach((timer) => clearTimeout(timer));
       productTimers.current = {};
       setValidadeDias(String(authoritative.validade_dias ?? ''));
-      setPagamento(authoritative.pagamento || '');
       setEntrega(authoritative.entrega || '');
       setFrete(String(authoritative.frete));
-      setObservacoes(authoritative.observacoes || '');
       setPrazoProducao(authoritative.prazo_producao || '');
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.template_key || 'padrao');
@@ -570,16 +564,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     if (JSON.stringify(comparableItems(items)) !== JSON.stringify(comparableItems(asCoreItems(data.items)))) return true;
     if (clientId !== (data.client_id || '')) return true;
     if (validadeDias !== String(data.validade_dias ?? '')) return true;
-    if (pagamento !== (data.pagamento || '')) return true;
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
-    if (observacoes !== (data.observacoes || '')) return true;
     if (prazoProducao !== (data.prazo_producao || '')) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
     if (selectedTemplate !== (data.template_key || 'padrao')) return true;
     if (selectedVersionId !== (data.template_version_id || '')) return true;
     return false;
-  }, [editing, items, data, clientId, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate, selectedVersionId]);
+  }, [editing, items, data, clientId, validadeDias, entrega, frete, prazoProducao, sections, selectedTemplate, selectedVersionId]);
 
   const save = useCallback(async () => {
     const token = concurrencyTokenRef.current;
@@ -604,10 +596,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             manual_rate: item.manual_rate,
           })),
           validade_dias: Number(validadeDias),
-          pagamento,
           entrega,
           frete,
-          observacoes,
           prazo_producao: prazoProducao,
           template_key: selectedTemplate,
           template_version_id: selectedVersionId || undefined,
@@ -641,8 +631,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     entrega,
     frete,
     items,
-    observacoes,
-    pagamento,
     prazoProducao,
     resetEditor,
     selectedTemplate,
@@ -685,6 +673,43 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     (template) => !template.archived || template.key === selectedTemplate
   );
   const openPreview = useCallback(() => {
+    if (draftEditable && isDirty) {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/api/quotation-preview?format=html';
+      form.target = '_blank';
+      form.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify({
+        extracted: {
+          nome: data.cliente || '',
+          email: data.email || null,
+          telefone: data.telefone || null,
+          urgente: false,
+          items: items.map((item) => ({
+            item_code: item.sku || item.item_code,
+            item_name: item.item_name,
+            qty: Number(item.qty),
+            rate: Number(item.applied_unit_price),
+            manual_rate: item.manual_rate,
+          })),
+          prazo_producao: prazoProducao || undefined,
+          entrega: entrega || undefined,
+          frete: frete || undefined,
+          validade_dias: validadeDias ? Number(validadeDias) : undefined,
+          template_key: selectedTemplate,
+          template_version_id: selectedVersionId || undefined,
+          secoes: sections,
+        },
+      });
+      form.append(input);
+      document.body.append(form);
+      form.submit();
+      form.remove();
+      return;
+    }
     const params = new URLSearchParams({ id: data.revision_id || data.id });
     if (draftEditable && selectedVersionId) params.set('template_version_id', selectedVersionId);
     window.open(
@@ -692,7 +717,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       '_blank',
       'noopener,noreferrer'
     );
-  }, [data.id, data.revision_id, draftEditable, selectedVersionId]);
+  }, [data.cliente, data.email, data.id, data.revision_id, draftEditable, entrega, frete, isDirty, items, prazoProducao, sections, selectedTemplate, selectedVersionId, validadeDias]);
   const runIssue = useCallback(async () => {
     setConfirmIssueOpen(false);
     setIssuing(true);
@@ -704,10 +729,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         nome: data.cliente || '', email: data.email || null, telefone: data.telefone || null,
         items: items.map((item) => ({ item_code: item.sku, item_name: item.item_name, qty: Number(item.qty), rate: Number(item.applied_unit_price), manual_rate: item.manual_rate })),
         prazo_producao: prazoProducao || undefined, frete: frete || undefined,
-        pagamento,
+        pagamento: sections.pagamento.current.body,
         entrega,
         validade_dias: Number(validadeDias),
-        observacoes,
+        observacoes: sections.condicoes_gerais.current.body,
         template_key: selectedTemplate,
         template_version_id: selectedVersionId || undefined,
         secoes: sections,
@@ -719,7 +744,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } finally {
       setIssuing(false);
     }
-  }, [data.cliente, data.email, data.id, data.quotation_uuid, data.revision_id, entrega, frete, items, observacoes, onReload, pagamento, prazoProducao, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
+  }, [data.cliente, data.email, data.quotation_uuid, data.revision_id, entrega, frete, items, onReload, prazoProducao, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido', lossReason?: string) => {
@@ -1021,18 +1046,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
         <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="text-sm">
-            <span className="text-xs text-fg-muted">Pagamento</span>
-            {editing ? (
-              <Input
-                aria-label="Pagamento do orçamento"
-                value={pagamento}
-                onChange={(event) => setPagamento(event.target.value)}
-              />
-            ) : (
-              <p>{pagamento || '—'}</p>
-            )}
-          </label>
-          <label className="text-sm">
             <span className="text-xs text-fg-muted">Entrega</span>
             {editing ? (
               <Input
@@ -1074,31 +1087,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <p>{formatBRL(data.frete)}</p>
             )}
           </label>
-          <label className="text-sm md:col-span-2">
-            <span className="text-xs text-fg-muted">Prazo de produção</span>
-            {editing ? (
-              <Input
-                aria-label="Prazo de produção do orçamento"
-                value={prazoProducao}
-                onChange={(event) => setPrazoProducao(event.target.value)}
-              />
-            ) : (
-              <p>{prazoProducao || '—'}</p>
-            )}
-          </label>
-          <label className="text-sm md:col-span-2">
-            <span className="text-xs text-fg-muted">Observações</span>
-            {editing ? (
-              <textarea
-                aria-label="Observações do orçamento"
-                className="mt-1 w-full min-h-20 rounded border border-line bg-surface px-3 py-2 text-sm"
-                value={observacoes}
-                onChange={(event) => setObservacoes(event.target.value)}
-              />
-            ) : (
-              <p className="whitespace-pre-wrap">{observacoes || '—'}</p>
-            )}
-          </label>
         </div>
 
         <div className="px-6 py-4 border-b space-y-3">
@@ -1111,6 +1099,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             sections={sections}
             editable={editing && draftEditable}
             onChange={setSections}
+            productionDeadline={prazoProducao}
+            onProductionDeadlineChange={setPrazoProducao}
             onRestore={(key) => {
               if (!key) return;
               setSections((current) => ({

@@ -1296,7 +1296,6 @@ export function createPostgresQuoteDraftManagementRepository(
           }
           const templateSelection = await readTemplateSelection(tx, input, revision);
           const sectionsSnapshot = sectionSnapshotForUpdate(input, revision);
-          const hasDedicatedPrazo = hasOwn(input, 'prazo_producao');
           const clientId = selectedClientId || quotation.clientId;
           const [client] = await tx
             .select()
@@ -1410,25 +1409,25 @@ export function createPostgresQuoteDraftManagementRepository(
           const totalCents = subtotalCents + freightCents;
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
-          const pagamento = hasOwn(input, 'pagamento')
-            ? inputText(input.pagamento, 'Pagamento', 4000, revision.pagamento)
-            : sectionsSnapshot
-              ? sectionsSnapshot.pagamento.current.body
+          const pagamento = sectionsSnapshot
+            ? sectionsSnapshot.pagamento.current.body
+            : hasOwn(input, 'pagamento')
+              ? inputText(input.pagamento, 'Pagamento', 4000, revision.pagamento)
               : revision.pagamento;
           const entrega = hasOwn(input, 'entrega')
             ? inputText(input.entrega, 'Entrega', 500, revision.entrega)
             : sectionsSnapshot
               ? ''
               : revision.entrega;
-          const observacoes = hasOwn(input, 'observacoes') || hasOwn(input, 'notes')
-            ? inputText(
-                firstDefined(input, ['observacoes', 'notes']),
-                'Observações',
-                4000,
-                revision.observacoes
-              )
-            : sectionsSnapshot
-              ? sectionsSnapshot.condicoes_gerais.current.body
+          const observacoes = sectionsSnapshot
+            ? sectionsSnapshot.condicoes_gerais.current.body
+            : hasOwn(input, 'observacoes') || hasOwn(input, 'notes')
+              ? inputText(
+                  firstDefined(input, ['observacoes', 'notes']),
+                  'Observações',
+                  4000,
+                  revision.observacoes
+                )
               : revision.observacoes;
           const prazoProducao = inputText(
             input.prazo_producao,
@@ -1444,17 +1443,11 @@ export function createPostgresQuoteDraftManagementRepository(
             observacoes,
             prazoProducao,
           });
-          // Dedicated legacy input wins when both forms are supplied. Otherwise
-          // disabling the section clears its legacy mirror; enabling preserves
-          // the existing duration because the section has no body field.
+          // Canonical section values win whenever a snapshot is supplied. The
+          // deadline mirror is cleared when the canonical section is hidden.
           if (sectionsSnapshot) {
-            if (hasOwn(input, 'pagamento')) revisionSections.pagamento.current.body = pagamento;
-            if (hasOwn(input, 'observacoes') || hasOwn(input, 'notes')) {
-              revisionSections.condicoes_gerais.current.body = observacoes;
-            }
-            revisionSections.prazo_producao.current.enabled = hasDedicatedPrazo
-              ? Boolean(prazoProducao)
-              : Boolean(prazoProducao) && sectionsSnapshot.prazo_producao.current.enabled;
+            revisionSections.prazo_producao.current.enabled =
+              Boolean(prazoProducao) && sectionsSnapshot.prazo_producao.current.enabled;
           }
           const synchronizedPrazoProducao = revisionSections.prazo_producao.current.enabled
             ? prazoProducao

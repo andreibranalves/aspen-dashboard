@@ -121,6 +121,7 @@ test('core UI selects/previews a repository template and saves template_key @quo
   await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
   await expect(page.getByLabel('Observações padrão')).toBeEditable();
   await page.getByLabel('Título - Pagamento').fill('Pagamento personalizado');
+  await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
   await expect(page.getByText('Personalizado').first()).toBeVisible();
   await page.getByRole('button', { name: 'Restaurar padrão' }).nth(1).click();
   await expect(page.getByText('Padrão').first()).toBeVisible();
@@ -128,6 +129,8 @@ test('core UI selects/previews a repository template and saves template_key @quo
   await expect(page.getByText('Salvo.')).toBeVisible();
   expect(lastPayload.template_key).toBe('minimalista');
   expect(lastPayload.template_version_id).toBe('77777777-7777-4777-8777-777777777777');
+  expect(lastPayload.pagamento).toBeUndefined();
+  expect(lastPayload.observacoes).toBeUndefined();
   expect(lastPayload.secoes).toEqual(expect.objectContaining({
     schema_version: 1,
     pagamento: expect.objectContaining({
@@ -136,11 +139,68 @@ test('core UI selects/previews a repository template and saves template_key @quo
   }));
   await page.getByRole('button', { name: 'Editar' }).click();
   await expect(page.getByLabel('Título - Pagamento')).toHaveValue('Título confirmado pelo servidor');
+  await expect(page.getByLabel('Exibir seção - Prazo de produção')).not.toBeChecked();
   const refreshedPreview = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Visualizar modelo' }).click();
   const refreshedPopup = await refreshedPreview;
   await expect(refreshedPopup).toHaveURL(new RegExp('template_version_id=99999999-9999-4999-8999-999999999999'));
   await refreshedPopup.close();
+});
+
+test('draft preview uses the unsaved canonical section patch without saving @quotations', async ({ page }) => {
+  let previewPayload;
+  let saveCalls = 0;
+  page.context().on('request', (request) => {
+    if (request.url().includes('/api/quotation-preview') && request.method() === 'POST') {
+      const encoded = new globalThis.URLSearchParams(request.postData() || '').get('payload');
+      previewPayload = encoded ? JSON.parse(encoded) : undefined;
+    }
+  });
+  await page.route('**/api/quotations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.get('id')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(coreDetail()) });
+      return;
+    }
+    if (request.method() === 'PUT') {
+      saveCalls += 1;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(coreDetail()) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifest) });
+  });
+  await page.route('**/api/quotation-preview**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<html><body>preview</body></html>' });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await page.getByLabel('Condição de pagamento').fill('Pagamento sem salvar');
+  await page.getByLabel('Título - Pagamento').fill('Título transitório');
+  await page.getByLabel('Exibir seção - Condições Gerais').uncheck();
+  const preview = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  const popup = await preview;
+  await expect(popup).toHaveURL(/\/api\/quotation-preview\?format=html/);
+  await popup.close();
+
+  expect(saveCalls).toBe(0);
+  expect(previewPayload).toMatchObject({
+    extracted: {
+      template_key: 'padrao',
+      template_version_id: '55555555-5555-4555-8555-555555555555',
+      secoes: {
+        pagamento: { current: { title: 'Título transitório', body: 'Pagamento sem salvar' } },
+        condicoes_gerais: { current: { enabled: false } },
+      },
+    },
+  });
+  expect(previewPayload.extracted.pagamento).toBeUndefined();
+  expect(previewPayload.extracted.observacoes).toBeUndefined();
 });
 
 test('draft retains an archived current template when saving unchanged @quotations', async ({ page }) => {

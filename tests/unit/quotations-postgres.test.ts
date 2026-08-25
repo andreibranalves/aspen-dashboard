@@ -250,11 +250,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         prazo_producao: { enabled: false, title: 'Prazo de produção' },
       },
     });
-    assert.equal(sectionOverride.pagamento, longPagamento);
-    assert.equal(sectionOverride.observacoes, 'Legacy observações');
+    assert.equal(sectionOverride.pagamento, 'Seção pagamento');
+    assert.equal(sectionOverride.observacoes, 'Seção condição');
     assert.equal(sectionOverride.entrega, 'Legacy entrega');
-    assert.equal(sectionOverride.secoes?.pagamento.current.body, longPagamento);
-    assert.equal(sectionOverride.secoes?.condicoes_gerais.current.body, 'Legacy observações');
+    assert.equal(sectionOverride.secoes?.pagamento.current.body, 'Seção pagamento');
+    assert.equal(sectionOverride.secoes?.condicoes_gerais.current.body, 'Seção condição');
     assert.equal(sectionOverride.prazo_producao, '');
     assert.ok(sectionOverride.secoes);
     assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);

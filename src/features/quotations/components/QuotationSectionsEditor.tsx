@@ -76,6 +76,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
         const section = currentSections[key];
         return (
           <article key={key} className="space-y-3 rounded-lg border border-line bg-surface-muted p-4">
+            <h3 className="text-sm font-semibold text-fg">{label}</h3>
             <label className="flex items-center gap-2 text-sm font-medium text-fg">
               <input
                 type="checkbox"
@@ -119,6 +120,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
                   <label className="block space-y-1.5 text-sm text-fg">
                     <span className="font-medium">Prazo desta revisão</span>
                     <input
+                      aria-label="Prazo de produção do orçamento"
                       value={productionDeadline || ''}
                       onChange={(event) => onProductionDeadlineChange(event.target.value)}
                       disabled={!editable}
