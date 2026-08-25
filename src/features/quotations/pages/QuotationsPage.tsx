@@ -209,8 +209,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       setTotalRecords((prev) => prev - 1);
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       toast(`Orçamento ${id} excluído.`, 'success');
-    } catch (err) {
-      toast(`Erro ao excluir: ${(err as Error).message || 'Tente novamente.'}`, 'error');
+    } catch {
+      toast('Não foi possível excluir o orçamento. Tente novamente.', 'error');
     }
   }, [deleteTarget, toast]);
 
@@ -229,8 +229,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         } else {
           toast('Não foi possível duplicar o orçamento. Tente novamente.', 'error');
         }
-      } catch (err) {
-        toast(`Erro ao duplicar: ${(err as Error).message || 'Tente novamente.'}`, 'error');
+      } catch {
+        toast('Não foi possível duplicar o orçamento. Tente novamente.', 'error');
       }
     },
     [duplicateTarget, navigate, toast]
@@ -268,12 +268,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           : `${selectedRows.length} orçamentos excluídos.`,
         'success'
       );
-    } catch (err) {
-      toast(
-        'Erro ao excluir orçamentos selecionados: ' +
-          ((err as Error).message || 'Tente novamente.'),
-        'error'
-      );
+    } catch {
+      toast('Não foi possível excluir os orçamentos selecionados. Tente novamente.', 'error');
     } finally {
       setBulkDeleting(false);
     }

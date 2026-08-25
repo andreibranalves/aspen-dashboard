@@ -631,7 +631,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         );
         showMessage('');
       } else {
-        showMessage(`Erro ao salvar: ${(error as Error).message || 'Tente novamente.'}`, 'error');
+        showMessage('Não foi possível salvar o orçamento. Tente novamente.', 'error');
       }
     } finally {
       setSaving(false);
@@ -667,8 +667,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       await apiDelete(`/quotations?id=${encodeURIComponent(data.id)}`);
       toast(`Orçamento ${data.id} excluído.`, 'success');
       navigate('/quotations');
-    } catch (err) {
-      showMessage(`Erro ao excluir: ${err instanceof Error ? err.message : 'Tente novamente.'}`, 'error');
+    } catch {
+      showMessage('Não foi possível excluir o orçamento. Tente novamente.', 'error');
     }
   }, [data.id, data.status_canonical, navigate, showMessage, toast]);
 
@@ -715,8 +715,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } }, key, { sourceQuotationId: data.quotation_uuid || undefined, sourceRevisionId: data.revision_id || undefined });
       toast(`Orçamento ${issue.businessNumber} emitido.`, 'success');
       await onReload();
-    } catch (error) {
-      showMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`, 'error');
+    } catch {
+      showMessage('Não foi possível emitir o orçamento. Tente novamente.', 'error');
     } finally {
       setIssuing(false);
     }
@@ -766,10 +766,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           );
           showMessage('');
         } else {
-          showMessage(
-            `Erro ao atualizar o estado: ${(error as Error).message || 'Tente novamente.'}`,
-            'error'
-          );
+          showMessage('Não foi possível atualizar o estado do orçamento. Tente novamente.', 'error');
         }
       } finally {
         setLifecycleAction(null);
@@ -814,7 +811,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           );
           showMessage('');
         } else {
-          showMessage(`Erro ao criar revisão: ${(error as Error).message || 'Tente novamente.'}`, 'error');
+          showMessage('Não foi possível criar a revisão. Tente novamente.', 'error');
         }
       } finally {
         setLifecycleAction(null);
@@ -1171,7 +1168,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 </Button>
               </>
             )}
-            {templateError && <span className="text-xs text-destructive">{templateError}</span>}
+            {templateError && (
+              <span className="text-xs text-destructive">
+                Não foi possível carregar os modelos. Tente novamente mais tarde.
+              </span>
+            )}
           </section>
         )}
         {(data.status_canonical === 'emitido' || data.status_canonical === 'enviado') && !editing && (
@@ -1737,9 +1738,9 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       concurrencyTokenRef.current = projection.concurrencyToken;
       dataRef.current = projection.data;
       setData(projection.data);
-    } catch (err) {
+    } catch {
       if (!hasExistingDetail) {
-        setError(err instanceof Error ? err.message : 'Erro ao carregar orçamento.');
+        setError('Não foi possível carregar o orçamento.');
       } else {
         setReloadWarning(true);
       }
