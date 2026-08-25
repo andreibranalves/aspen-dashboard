@@ -100,6 +100,7 @@ export const quotationTemplateVersions = pgTable(
     version: integer('version').notNull(),
     source: text('source').notNull(),
     sourceHash: varchar('source_hash', { length: 64 }).notNull(),
+    contractVersion: integer('contract_version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -110,6 +111,10 @@ export const quotationTemplateVersions = pgTable(
     uniqueIndex('quotation_template_versions_template_hash_unique').on(
       table.templateId,
       table.sourceHash
+    ),
+    check(
+      'quotation_template_versions_contract_version_check',
+      sql`${table.contractVersion} IN (1, 2)`
     ),
   ]
 );

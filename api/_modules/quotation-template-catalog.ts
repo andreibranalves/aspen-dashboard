@@ -281,10 +281,13 @@ const BRANDED_SOURCE = `<!doctype html>
 </body>
 </html>`;
 
+export type QuotationTemplateContractVersion = 1 | 2;
+
 export interface QuotationTemplateDefinition {
   key: string;
   name: string;
   is_default: boolean;
+  contract_version: QuotationTemplateContractVersion;
   source: string;
 }
 
@@ -292,6 +295,7 @@ export interface QuotationTemplateMetadata {
   key: string;
   name: string;
   is_default: boolean;
+  contract_version: QuotationTemplateContractVersion;
   hash: string;
 }
 
@@ -305,6 +309,15 @@ export class QuotationTemplateResolutionError extends Error {
   constructor() {
     super('Template do orçamento não encontrado.');
     this.name = 'QuotationTemplateResolutionError';
+  }
+}
+
+export class QuotationTemplateContractError extends Error {
+  readonly statusCode = 400;
+
+  constructor(message = 'Contrato de template do orçamento inválido.') {
+    super(message);
+    this.name = 'QuotationTemplateContractError';
   }
 }
 
@@ -1506,11 +1519,41 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
 </html>`;
 
 const DEFINITIONS: readonly QuotationTemplateDefinition[] = [
-  { key: 'padrao', name: 'Padrão Aspen', is_default: true, source: PADRAO_SOURCE },
-  { key: 'minimalista', name: 'Minimalista', is_default: false, source: MINIMAL_SOURCE },
-  { key: 'branded', name: 'Aspen Original', is_default: false, source: BRANDED_SOURCE },
-  { key: 'comparativo', name: 'Comparativo por faixa', is_default: false, source: COMPARATIVE_SOURCE },
-  { key: 'simples', name: 'Simples', is_default: false, source: SIMPLE_SOURCE },
+  {
+    key: 'padrao',
+    name: 'Padrão Aspen',
+    is_default: true,
+    contract_version: 1,
+    source: PADRAO_SOURCE,
+  },
+  {
+    key: 'minimalista',
+    name: 'Minimalista',
+    is_default: false,
+    contract_version: 1,
+    source: MINIMAL_SOURCE,
+  },
+  {
+    key: 'branded',
+    name: 'Aspen Original',
+    is_default: false,
+    contract_version: 1,
+    source: BRANDED_SOURCE,
+  },
+  {
+    key: 'comparativo',
+    name: 'Comparativo por faixa',
+    is_default: false,
+    contract_version: 1,
+    source: COMPARATIVE_SOURCE,
+  },
+  {
+    key: 'simples',
+    name: 'Simples',
+    is_default: false,
+    contract_version: 1,
+    source: SIMPLE_SOURCE,
+  },
 ];
 
 const ALLOWED_HELPERS = new Set(['if', 'each']);
@@ -1637,7 +1680,13 @@ export const QUOTATION_TEMPLATES = TEMPLATES;
 export const DEFAULT_QUOTATION_TEMPLATE = DEFAULT_TEMPLATE;
 
 export function getQuotationTemplateManifest(): QuotationTemplateMetadata[] {
-  return TEMPLATES.map(({ key, name, is_default, hash }) => ({ key, name, is_default, hash }));
+  return TEMPLATES.map(({ key, name, is_default, contract_version, hash }) => ({
+    key,
+    name,
+    is_default,
+    contract_version,
+    hash,
+  }));
 }
 
 export function getQuotationTemplate(key: unknown): QuotationTemplate | null {
@@ -1651,19 +1700,38 @@ export function resolveQuotationTemplate(key: unknown, hash?: unknown): Quotatio
   throw new QuotationTemplateResolutionError();
 }
 
+export function parseQuotationTemplateContractVersion(
+  value: unknown
+): QuotationTemplateContractVersion {
+  if (value === 1 || value === 2) return value;
+  throw new QuotationTemplateContractError();
+}
+
 export function quotationTemplateFromVersion(version: {
   source: string;
   sourceHash: string;
+  contractVersion?: unknown;
+  contract_version?: unknown;
   template?: { key: string; name: string };
 }): QuotationTemplate {
+  const contractVersion = parseQuotationTemplateContractVersion(
+    version.contractVersion ?? version.contract_version
+  );
   // Persisted copies retain compatibility by immutable source identity, including legacy keys.
-  if (version.source === BRANDED_TEMPLATE.source && version.sourceHash === BRANDED_TEMPLATE.hash) {
+  // The branded exception is selected by stored v1 metadata plus its immutable source/hash,
+  // never by a mutable template name or a runtime fallback.
+  if (
+    contractVersion === 1 &&
+    version.source === BRANDED_TEMPLATE.source &&
+    version.sourceHash === BRANDED_TEMPLATE.hash
+  ) {
     return BRANDED_TEMPLATE;
   }
   return {
     key: version.template?.key || 'persisted',
     name: version.template?.name || 'Template persistido',
     is_default: false,
+    contract_version: contractVersion,
     source: version.source,
     hash: version.sourceHash,
   };
@@ -1797,9 +1865,21 @@ export const QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL: QuotationTemplateViewModel =
     observations: 'Observação de demonstração',
   },
   secoes: {
-    prazo_producao: true,
-    pagamento: true,
-    condicoes_gerais: true,
+    prazo_producao: {
+      enabled: true,
+      title: 'Prazo de produção',
+      value: '15 dias úteis',
+    },
+    pagamento: {
+      enabled: true,
+      title: 'Pagamento',
+      body_html: new Handlebars.SafeString('À vista<br>Pix ou transferência'),
+    },
+    condicoes_gerais: {
+      enabled: true,
+      title: 'Condições Gerais',
+      body_html: new Handlebars.SafeString('Frete FOB<br>Arte aprovada pelo cliente'),
+    },
   },
 };
 
@@ -2468,11 +2548,17 @@ function stripHandlebars(source: string): string {
 
 type AstWalk = Record<string, unknown> & { type?: string };
 
+export interface QuotationTemplateValidationReport {
+  contract_version: QuotationTemplateContractVersion;
+  warnings: string[];
+  missing_sections: string[];
+}
+
 function findRequiredFields(
   source: string,
-  templateKey: string,
+  contractVersion: QuotationTemplateContractVersion,
   provenance?: symbol
-): { missing: string[]; secoesPresent: boolean; missingSections: string[] } {
+): { missing: string[]; report: QuotationTemplateValidationReport } {
   const ast = Handlebars.parse(source) as unknown as AstWalk;
   const found = {
     quote_number: false,
@@ -2490,7 +2576,6 @@ function findRequiredFields(
       if (n === 'client.name') found.client_name = true;
       if (n === 'display.total') found.display_total = true;
       if (n.startsWith('secoes.')) {
-        // Track each exact secoes path: secoes.prazo_producao, secoes.pagamento, secoes.condicoes_gerais
         const parts = n.split('.');
         if (parts.length >= 2) secoesFound.add(parts[1]);
       }
@@ -2519,29 +2604,26 @@ function findRequiredFields(
   if (!found.client_name) missing.push('client.name');
   if (!found.each_items) missing.push('#each items');
 
-  // Only the exact historical source, reached through the private internal path,
-  // may omit display.total. Public/persisted validation always requires it.
+  // Only the exact historical branded source may omit display.total. Public
+  // validation of persisted or new sources always requires it.
   const isTrustedBuiltin = source === BRANDED_SOURCE && provenance === BRANDED_PROVENANCE_TOKEN;
-  if (!found.display_total && isTrustedBuiltin) {
-    // Emit the plan-required compatibility warning
-    console.warn(
-      `[quotation-templates] Aviso: template ${templateKey} é um legado histórico que não usa display.total. Novos templates devem incluir display.total.`
-    );
-  }
-  if (!found.display_total && !isTrustedBuiltin) {
-    missing.push('display.total');
-  }
+  if (!found.display_total && !isTrustedBuiltin) missing.push('display.total');
 
-  // Track each missing section placeholder individually
   const allSections = ['prazo_producao', 'pagamento', 'condicoes_gerais'];
-  const missingSections = allSections.filter((s) => !secoesFound.has(s));
-  for (const s of missingSections) {
-    console.warn(
-      `[quotation-templates] Aviso: seção editável "${s}" não usada no template ${templateKey}`
-    );
-  }
+  const missingSections = allSections.filter((section) => !secoesFound.has(section));
+  const warnings =
+    contractVersion === 2
+      ? missingSections.map((section) => `A seção ${section} não é usada pelo template.`)
+      : [];
 
-  return { missing, secoesPresent: secoesFound.size > 0, missingSections };
+  return {
+    missing,
+    report: {
+      contract_version: contractVersion,
+      warnings,
+      missing_sections: missingSections,
+    },
+  };
 }
 
 function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
@@ -2565,28 +2647,42 @@ function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
  * Performs HTML policy validation (tokenizer + attribute/tag allowlists + required fields)
  * then AST validation (Handlebars helper/expression restrictions).
  */
-export function validateQuotationSource(source: string, templateKey: string): void {
-  validateQuotationSourceInternal(source, templateKey);
+export function validateQuotationSource(
+  source: string,
+  templateKey: string
+): QuotationTemplateValidationReport {
+  return validateQuotationSourceInternal(source, templateKey, 2);
 }
 
-export function validateQuotationHtmlSource(source: string, templateKey = 'desconhecido'): void {
-  validateQuotationHtmlSourceInternal(source, templateKey);
+export function validateQuotationHtmlSource(
+  source: string,
+  templateKey = 'desconhecido'
+): QuotationTemplateValidationReport {
+  return validateQuotationHtmlSourceInternal(source, templateKey, 2);
 }
 
 function validateQuotationSourceInternal(
   source: string,
   templateKey: string,
+  contractVersion: QuotationTemplateContractVersion,
   provenance?: symbol
-): void {
-  validateQuotationHtmlSourceInternal(source, templateKey, provenance);
+): QuotationTemplateValidationReport {
+  const report = validateQuotationHtmlSourceInternal(
+    source,
+    templateKey,
+    contractVersion,
+    provenance
+  );
   validateQuotationTemplateSource(source, templateKey);
+  return report;
 }
 
 function validateQuotationHtmlSourceInternal(
   source: string,
   templateKey = 'desconhecido',
+  contractVersion: QuotationTemplateContractVersion = 2,
   provenance?: symbol
-): void {
+): QuotationTemplateValidationReport {
   // Reject Handlebars expressions in URL/style contexts on the ORIGINAL source
   // (before stripping, since stripping removes them and bypasses the check)
   checkDynamicUrlStyleBypass(source, templateKey);
@@ -2599,14 +2695,15 @@ function validateQuotationHtmlSourceInternal(
 
   // Required fields check (only for full HTML documents)
   const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
-  if (isHtmlDocument) {
-    const { missing } = findRequiredFields(source, templateKey, provenance);
-    if (missing.length > 0) {
-      throw new Error(
-        `Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`
-      );
-    }
+  if (!isHtmlDocument) {
+    return { contract_version: contractVersion, warnings: [], missing_sections: [] };
   }
+
+  const { missing, report } = findRequiredFields(source, contractVersion, provenance);
+  if (missing.length > 0) {
+    throw new Error(`Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`);
+  }
+  return report;
 }
 
 function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]): void {
@@ -2622,7 +2719,13 @@ function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]
       throw new Error(`Template incompleto: ${definition.key}`);
     const provenance =
       definition === BRANDED_DEFINITION ? BRANDED_PROVENANCE_TOKEN : undefined;
-    validateQuotationSourceInternal(definition.source, definition.key, provenance);
+    parseQuotationTemplateContractVersion(definition.contract_version);
+    validateQuotationSourceInternal(
+      definition.source,
+      definition.key,
+      definition.contract_version,
+      provenance
+    );
     if (definition.is_default) defaults += 1;
   }
   if (defaults !== 1)
@@ -2686,7 +2789,12 @@ export function renderQuotationTemplate(
     // Forged objects with matching key/hash metadata are rejected.
     const provenance =
       template === BRANDED_TEMPLATE ? BRANDED_PROVENANCE_TOKEN : undefined;
-    validateQuotationSourceInternal(template.source, template.key, provenance);
+    validateQuotationSourceInternal(
+      template.source,
+      template.key,
+      template.contract_version,
+      provenance
+    );
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,
       knownHelpersOnly: true,

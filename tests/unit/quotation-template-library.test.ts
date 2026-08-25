@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createQuotationTemplatesHandler } from '../../api/_modules/quotation-templates.js';
 import {
+  createQuotationTemplateLibraryRepository,
   QuotationTemplateLibraryConflictError,
   QuotationTemplateLibraryInputError,
 } from '../../api/_infrastructure/db/repositories/quotation-template-library-repository.js';
@@ -158,6 +159,28 @@ test('template library handler maps missing details and repository validation fa
       event('PUT', '/api/quotation-templates', { id: 'template-id' }, { action: 'archive' })
     );
     assert.equal(archive.statusCode, 409);
+});
+
+test('persisted-template validation previews the production secoes shape', async () => {
+  const source = `<!doctype html><html><body>
+    {{quote_number}} {{client.name}}
+    {{#each items}}{{name}}{{/each}}
+    {{display.total}}
+    {{#if secoes.prazo_producao.enabled}}<h2>{{secoes.prazo_producao.title}}</h2><p>{{secoes.prazo_producao.value}}</p>{{/if}}
+    {{#if secoes.pagamento.enabled}}<h2>{{secoes.pagamento.title}}</h2><p>{{secoes.pagamento.body_html}}</p>{{/if}}
+    {{#if secoes.condicoes_gerais.enabled}}<h2>{{secoes.condicoes_gerais.title}}</h2><p>{{secoes.condicoes_gerais.body_html}}</p>{{/if}}
+  </body></html>`;
+  const library = createQuotationTemplateLibraryRepository(() => {
+    throw new Error('database must not be used by validation preview');
+  });
+  const result = await library.validate({ key: 'v2-real-shape', source });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.contract_version, 2);
+  assert.deepEqual(result.warnings, []);
+  assert.match(result.preview, /Prazo de produção/);
+  assert.match(result.preview, /À vista<br>Pix ou transferência/);
+  assert.match(result.preview, /Frete FOB<br>Arte aprovada pelo cliente/);
 });
 
 test('template library handler rejects malformed JSON and unsupported methods', { concurrency: false }, async () => {

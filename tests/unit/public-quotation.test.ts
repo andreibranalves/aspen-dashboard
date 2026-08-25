@@ -160,6 +160,7 @@ test('renders the immutable PostgreSQL snapshot with its versioned template', as
     version: 7,
     source: versionedTemplate.source,
     sourceHash: versionedTemplate.hash,
+    contractVersion: 1,
     template: { key: versionedTemplate.key, name: versionedTemplate.name },
   };
   const token = 'V'.repeat(32);

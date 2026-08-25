@@ -98,7 +98,7 @@ function fakePreparationDatabase(options: {
           revisionReads += 1;
           return new Query([revision], options.failRevisionRead && revisionReads > 1 ? new Error('database read failed') : undefined);
         }
-        if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: templateSource, sourceHash: templateHash }]);
+        if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: templateSource, sourceHash: templateHash, contractVersion: 2 }]);
         if (table === quoteRevisionItems) return new Query(options.items || []);
         if (table === quotations) return new Query([{
           id: quotationId,
