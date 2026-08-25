@@ -12,10 +12,15 @@ import {
   type QuotationTemplate,
   type QuotationTemplateViewModel,
 } from './quotation-template-catalog.js';
-import { normalizeQuotationSections, toSafeMultilineHtml } from './quotation-content.js';
+import {
+  normalizeQuotationSections,
+  toSafeMultilineHtml,
+  type QuotationSectionsSettings,
+} from './quotation-content.js';
 import { canonicalQuotationStatus } from './quotation-status.js';
 
 export type QuotationDocumentSnapshot = QuotationTemplateSnapshot;
+export type QuotationDocumentInput = QuotationTemplateSnapshot | DraftQuotationSnapshot;
 
 export interface RenderedQuotationDocument {
   html: string;
@@ -24,18 +29,18 @@ export interface RenderedQuotationDocument {
 }
 
 export type QuotationDocumentRenderer = (
-  snapshot: QuotationTemplateSnapshot,
+  snapshot: QuotationDocumentInput,
   template?: QuotationTemplate
 ) => RenderedQuotationDocument;
 
-/** Render a transient draft through the same document execution seam. */
-export function renderQuotationDraftDocument(
-  draft: Pick<DraftQuotationSnapshot, 'template' | 'viewModel'>
+function renderTemplateDocument(
+  template: QuotationTemplate,
+  viewModel: QuotationTemplateViewModel
 ): RenderedQuotationDocument {
   return {
-    html: renderQuotationTemplate(draft.template, draft.viewModel),
-    template: draft.template,
-    viewModel: draft.viewModel,
+    html: renderQuotationTemplate(template, viewModel),
+    template,
+    viewModel,
   };
 }
 
@@ -135,6 +140,55 @@ export function buildComparison(items: ComparisonItem[]) {
     }));
 
   return { brackets, products };
+}
+
+export function applyQuotationSectionPolicy(
+  viewModel: QuotationTemplateViewModel,
+  sections: QuotationSectionsSettings,
+  legacy: {
+    entrega?: string;
+    prazoProducao?: string;
+  }
+): QuotationTemplateViewModel {
+  const prazoVisible = sections.prazo_producao.enabled;
+  const pagamentoVisible = sections.pagamento.enabled;
+  const condicoesVisible = sections.condicoes_gerais.enabled;
+  return {
+    ...viewModel,
+    secoes: {
+      prazo_producao: {
+        enabled: prazoVisible,
+        title: prazoVisible ? sections.prazo_producao.title : '',
+        value: prazoVisible ? legacy.prazoProducao || '' : '',
+      },
+      pagamento: {
+        enabled: pagamentoVisible,
+        title: pagamentoVisible ? sections.pagamento.title : '',
+        body_html: pagamentoVisible
+          ? toSafeMultilineHtml(sections.pagamento.body)
+          : toSafeMultilineHtml(''),
+      },
+      condicoes_gerais: {
+        enabled: condicoesVisible,
+        title: condicoesVisible ? sections.condicoes_gerais.title : '',
+        body_html: condicoesVisible
+          ? toSafeMultilineHtml(sections.condicoes_gerais.body)
+          : toSafeMultilineHtml(''),
+      },
+    },
+    terms: {
+      pagamento: pagamentoVisible ? sections.pagamento.body : '',
+      entrega: condicoesVisible ? legacy.entrega || '' : '',
+      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
+    },
+    terms_snapshot: {
+      pagamento: pagamentoVisible ? sections.pagamento.body : '',
+      entrega: condicoesVisible ? legacy.entrega || '' : '',
+      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
+    },
+  };
 }
 
 /** Convert the immutable snapshot into the only template-facing model. */
@@ -296,44 +350,12 @@ export function quotationSnapshotViewModel(
         body: String(condicoesCurrent.body || ''),
       },
     });
-    const prazoVisible = sections.prazo_producao.enabled;
-    const pagamentoVisible = sections.pagamento.enabled;
-    const condicoesVisible = sections.condicoes_gerais.enabled;
-    result.secoes = {
-      prazo_producao: {
-        enabled: prazoVisible,
-        title: prazoVisible ? sections.prazo_producao.title : '',
-        value: prazoVisible ? nullable(revision.prazoProducao) : '',
-      },
-      pagamento: {
-        enabled: pagamentoVisible,
-        title: pagamentoVisible ? sections.pagamento.title : '',
-        body_html: pagamentoVisible
-          ? toSafeMultilineHtml(sections.pagamento.body)
-          : toSafeMultilineHtml(''),
-      },
-      condicoes_gerais: {
-        enabled: condicoesVisible,
-        title: condicoesVisible ? sections.condicoes_gerais.title : '',
-        body_html: condicoesVisible
-          ? toSafeMultilineHtml(sections.condicoes_gerais.body)
-          : toSafeMultilineHtml(''),
-      },
-    };
     // Once a canonical snapshot exists, legacy mirror fields must not leak a
     // disabled section or override its current content in a historical template.
-    result.terms = {
-      pagamento: pagamentoVisible ? sections.pagamento.body : '',
-      entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? revision.prazoProducao : '',
-      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
-    };
-    result.terms_snapshot = {
-      pagamento: pagamentoVisible ? sections.pagamento.body : '',
-      entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? revision.prazoProducao : '',
-      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
-    };
+    return applyQuotationSectionPolicy(result, sections, {
+      entrega: revision.entrega,
+      prazoProducao: revision.prazoProducao,
+    });
   }
 
   return result;
@@ -344,16 +366,20 @@ export function quotationSnapshotViewModel(
  * A caller may provide the resolved template explicitly; otherwise the stored
  * version is preferred and legacy revisions use their stored key/hash pair.
  */
+function isDraftQuotationDocument(
+  snapshot: QuotationDocumentInput
+): snapshot is DraftQuotationSnapshot {
+  return 'viewModel' in snapshot && 'template' in snapshot && !('quotation' in snapshot);
+}
+
 export const renderQuotationDocument: QuotationDocumentRenderer = (snapshot, exactTemplate) => {
+  if (isDraftQuotationDocument(snapshot)) {
+    return renderTemplateDocument(exactTemplate || snapshot.template, snapshot.viewModel);
+  }
   const template =
     exactTemplate ||
     (snapshot.templateVersion
       ? quotationTemplateFromVersion(snapshot.templateVersion)
       : resolveQuotationTemplate(snapshot.revision.templatePadrao, snapshot.revision.templateHash));
-  const viewModel = quotationSnapshotViewModel(snapshot);
-  return {
-    html: renderQuotationTemplate(template, viewModel),
-    template,
-    viewModel,
-  };
+  return renderTemplateDocument(template, quotationSnapshotViewModel(snapshot));
 };

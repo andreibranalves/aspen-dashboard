@@ -10,11 +10,7 @@ import {
   QuotationTemplateResolutionError,
   type QuotationTemplate,
 } from './quotation-template-catalog.js';
-import {
-  renderQuotationDocument,
-  renderQuotationDraftDocument,
-  type QuotationDocumentRenderer,
-} from './quotation-document.js';
+import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
 import {
   buildDraftQuotationSnapshot,
   DraftPreviewInputError,
@@ -119,7 +115,7 @@ export function createQuotationPreviewHandler(
           resolvePricing,
           resolveSettings,
         });
-        const html = renderQuotationDraftDocument(snapshot).html;
+        const html = renderDocument(snapshot).html;
         if (event.queryStringParameters?.format === 'html') {
           return {
             statusCode: 200,

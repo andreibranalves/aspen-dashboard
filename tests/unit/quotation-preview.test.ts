@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createQuotationPreviewHandler } from '../../api/_modules/quotation-preview.js';
-import { getQuotationTemplate } from '../../api/_modules/quotation-template-catalog.js';
+import {
+  getQuotationTemplate,
+  quotationTemplateFromVersion,
+} from '../../api/_modules/quotation-template-catalog.js';
+import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import { toFunctionEvent } from '../../api/_http/function-adapter.js';
 
 const template = getQuotationTemplate('padrao')!;
+const v2Source = '<!doctype html><html><head><title>{{quote_number}}</title></head><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}} {{#if secoes.pagamento.enabled}}<h2>{{secoes.pagamento.title}}</h2><div>{{secoes.pagamento.body_html}}</div>{{/if}}</body></html>';
+const v2Template = quotationTemplateFromVersion({
+  source: v2Source,
+  sourceHash: createHash('sha256').update(v2Source, 'utf8').digest('hex'),
+  template: { key: 'v2-preview', name: 'Preview v2' },
+});
 const extracted = {
   nome: 'Cliente Preview',
   email: 'preview@example.com',
@@ -74,6 +85,45 @@ test('renders an unsaved quotation draft as HTML when requested', async () => {
   assert.match(response.body || '', /Cliente Preview/);
   assert.match(response.body || '', /Produto Preview/);
   assert.equal(renderCalls, 0);
+});
+
+test('routes an unsaved draft through the canonical v2 section model', async () => {
+  let renderCalls = 0;
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => v2Template,
+    resolveSettings: async () => ({
+      validade_dias: 15,
+      pagamento: '',
+      entrega: '',
+      frete_padrao: '0.00',
+      observacoes: '',
+      template_padrao: v2Template.key,
+      secoes: {
+        schema_version: 1,
+        prazo_producao: { enabled: true, title: 'Prazo customizado' },
+        pagamento: {
+          enabled: true,
+          title: 'Pagamento personalizado',
+          body: 'Linha 1\nLinha 2 <script>',
+        },
+        condicoes_gerais: { enabled: true, title: 'Condições customizadas', body: '' },
+      },
+    }),
+    renderDocument: (value, exactTemplate) => {
+      renderCalls += 1;
+      return renderQuotationDocument(value, exactTemplate);
+    },
+    renderPdf: pdfRender,
+  });
+
+  const response = await handler(post({ extracted }, { format: 'html' }));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(renderCalls, 1);
+  assert.match(response.body || '', /Pagamento personalizado/);
+  assert.match(response.body || '', /Linha 1<br>Linha 2 &lt;script&gt;/);
+  assert.doesNotMatch(response.body || '', /<script>/);
 });
 
 test('renders an unsaved quotation draft as secured PDF by default', async () => {
