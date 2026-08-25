@@ -7,10 +7,13 @@ import {
   renderQuotationDocument,
   type QuotationDocumentRenderer,
 } from '../../api/_modules/quotation-document.js';
-import { quotationTemplateFromVersion } from '../../api/_modules/quotation-template-catalog.js';
+import {
+  getQuotationTemplate,
+  quotationTemplateFromVersion,
+} from '../../api/_modules/quotation-template-catalog.js';
 
 const source =
-  '<!doctype html><html><head><title>Documento</title></head><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}<h1>{{secoes.pagamento.title}}</h1><div>{{secoes.pagamento.body_html}}</div><h2>{{terms.pagamento}}</h2><h3>{{secoes.condicoes_gerais.title}}</h3><div>{{secoes.condicoes_gerais.body_html}}</div></body></html>';
+  '<!doctype html><html><head><title>Documento</title></head><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}<h1>{{secoes.prazo_producao.title}}</h1><div>{{secoes.prazo_producao.value}}</div><h2>{{secoes.pagamento.title}}</h2><div>{{secoes.pagamento.body_html}}</div><h3>{{secoes.condicoes_gerais.title}}</h3><div>{{secoes.condicoes_gerais.body_html}}</div><p>{{terms.pagamento}}|{{terms.entrega}}|{{terms.production_deadline}}|{{terms.observations}}</p></body></html>';
 const sourceHash = createHash('sha256').update(source, 'utf8').digest('hex');
 const template = quotationTemplateFromVersion({
   source,
@@ -118,6 +121,102 @@ test('canonical document seam formats, escapes and hides disabled section data',
   assert.equal(document.viewModel.secoes.condicoes_gerais.title, '');
   assert.equal(document.viewModel.secoes.condicoes_gerais.body_html.toString(), '');
   assert.equal(document.viewModel.terms.pagamento, '<script>alert(1)</script>\nSaldo');
+});
+
+test('canonical seam resolves a historical built-in v1 by key and hash', () => {
+  const builtIn = getQuotationTemplate('padrao');
+  assert.ok(builtIn);
+  const legacySnapshot = {
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      templatePadrao: builtIn.key,
+      templateHash: builtIn.hash,
+      templateVersionId: null,
+    },
+    templateVersion: null,
+  } as any;
+
+  const document = renderQuotationDocument(legacySnapshot);
+
+  assert.equal(document.template, builtIn);
+  assert.match(document.html, /ORC-20260001/);
+});
+
+type SectionVisibility = {
+  prazo_producao: boolean;
+  pagamento: boolean;
+  condicoes_gerais: boolean;
+};
+
+function snapshotWithSectionVisibility(visibility: SectionVisibility) {
+  const sections = snapshot.revision.sectionsSnapshot;
+  return {
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        ...sections,
+        prazo_producao: {
+          ...sections.prazo_producao,
+          current: { ...sections.prazo_producao.current, enabled: visibility.prazo_producao },
+        },
+        pagamento: {
+          ...sections.pagamento,
+          current: { ...sections.pagamento.current, enabled: visibility.pagamento },
+        },
+        condicoes_gerais: {
+          ...sections.condicoes_gerais,
+          current: { ...sections.condicoes_gerais.current, enabled: visibility.condicoes_gerais },
+        },
+      },
+    },
+    sectionsSnapshot: null,
+  } as any;
+}
+
+test('canonical seam redacts every disabled-section combination and preserves the snapshot', () => {
+  const keys = ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const;
+  for (let mask = 0; mask < 2 ** keys.length; mask += 1) {
+    const visibility = Object.fromEntries(
+      keys.map((key, index) => [key, Boolean(mask & (1 << index))])
+    ) as SectionVisibility;
+    const document = renderQuotationDocument(snapshotWithSectionVisibility(visibility), template);
+    const expected = [
+      [visibility.prazo_producao, 'Prazo'],
+      [visibility.prazo_producao, '5 dias'],
+      [visibility.pagamento, 'Pagamento customizado'],
+      [visibility.pagamento, '&lt;script&gt;alert(1)&lt;/script&gt;<br>Saldo'],
+      [visibility.condicoes_gerais, 'Não mostrar'],
+      [visibility.condicoes_gerais, 'segredo'],
+      [visibility.condicoes_gerais, 'legacy delivery must be hidden'],
+    ] as const;
+
+    for (const [visible, value] of expected) {
+      assert.equal(
+        document.html.includes(value),
+        visible,
+        `combinação ${mask}: ${visible ? 'esperava' : 'não esperava'} ${value}`
+      );
+    }
+    assert.doesNotMatch(document.html, /legacy payment must be hidden|legacy observation must be hidden/);
+  }
+
+  const hiddenSnapshot = snapshotWithSectionVisibility({
+    prazo_producao: false,
+    pagamento: false,
+    condicoes_gerais: false,
+  });
+  renderQuotationDocument(hiddenSnapshot, template);
+  const current = hiddenSnapshot.revision.sectionsSnapshot;
+  assert.equal(current.prazo_producao.current.title, 'Prazo');
+  assert.equal(current.pagamento.current.title, 'Pagamento customizado');
+  assert.equal(current.pagamento.current.body, '<script>alert(1)</script>\nSaldo');
+  assert.equal(current.condicoes_gerais.current.title, 'Não mostrar');
+  assert.equal(current.condicoes_gerais.current.body, 'segredo');
+  assert.equal(hiddenSnapshot.revision.pagamento, 'legacy payment must be hidden');
+  assert.equal(hiddenSnapshot.revision.entrega, 'legacy delivery must be hidden');
+  assert.equal(hiddenSnapshot.revision.observacoes, 'legacy observation must be hidden');
 });
 
 test('persisted preview routes through the canonical document seam', async () => {

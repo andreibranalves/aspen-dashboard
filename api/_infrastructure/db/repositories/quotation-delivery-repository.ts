@@ -24,7 +24,7 @@ import {
   renderQuotationPdf,
   renderQuotationWebpHtml,
 } from '../../../_modules/quotation-pdf-renderer.js';
-import { buildComparison } from './quotation-template-repository.js';
+import { buildComparison } from '../../../_modules/quotation-document.js';
 import {
   isValidPdfBuffer,
   isValidWebpBuffer,

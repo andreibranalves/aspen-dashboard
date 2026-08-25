@@ -16,11 +16,11 @@ import {
   QuoteManagementConflictError,
   QuoteManagementInputError,
 } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';
+import { createQuotationTemplateRepository } from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';
+import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import {
   getQuotationTemplate,
   getQuotationTemplateManifest,
-  renderQuotationTemplate,
 } from '../../api/_modules/quotation-template-catalog.js';
 import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotationEmailDeliveries, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_infrastructure/db/schema.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
@@ -479,14 +479,14 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const snapshotRepository = createQuotationTemplateRepository(() => db);
     const beforeSnapshot = await snapshotRepository.get(updated.quotation_name);
     assert.ok(beforeSnapshot);
-    const beforeHtml = renderQuotationTemplate(alternateTemplate, quotationSnapshotViewModel(beforeSnapshot));
+    const beforeHtml = renderQuotationDocument(beforeSnapshot, alternateTemplate).html;
     assert.match(beforeHtml, /Lenço 100 x 100 cm/);
     await db.update(products).set({ nome: 'Produto alterado depois' }).where(eq(products.sku, sku));
     await db.update(clients).set({ nome: 'Cliente alterado depois' }).where(eq(clients.id, secondClientId));
     await db.update(appSettings).set({ templatePadrao: 'minimalista' }).where(eq(appSettings.singletonId, 1));
     const afterSnapshot = await snapshotRepository.get(updated.quotation_name);
     assert.ok(afterSnapshot);
-    const afterHtml = renderQuotationTemplate(alternateTemplate, quotationSnapshotViewModel(afterSnapshot));
+    const afterHtml = renderQuotationDocument(afterSnapshot, alternateTemplate).html;
     assert.equal(afterHtml, beforeHtml);
   } finally {
     const rows = await db.select({ id: quotations.id }).from(quotations).where(inArray(quotations.clientId, [clientId, secondClientId]));
