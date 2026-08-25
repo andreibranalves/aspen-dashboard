@@ -17,6 +17,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/sales-orders-repository.js';
 import { createSalesDashboardHandler } from '../../api/_modules/sales-dashboard.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -186,6 +187,7 @@ test(
           version: 1,
           status: 'emitido',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Cliente Dashboard A',
           subtotal: '100.00',
           total: '100.00',
@@ -197,6 +199,7 @@ test(
           version: 1,
           status: 'emitido',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Cliente Dashboard B',
           subtotal: '50.00',
           total: '50.00',
@@ -208,6 +211,7 @@ test(
           version: 1,
           status: 'emitido',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Cliente Dashboard B',
           subtotal: '75.00',
           total: '75.00',

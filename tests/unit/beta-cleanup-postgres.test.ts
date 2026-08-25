@@ -31,6 +31,7 @@ import {
   salesOrders,
 } from '../../api/_infrastructure/db/schema.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
@@ -79,6 +80,7 @@ test('beta cleanup plans exact graphs, preserves shared data, blocks orders and 
     await db.insert(quotations).values({ id: quotationId, businessNumber: `ORC-2099${sequence}`, clientId });
     await db.insert(quoteRevisions).values({
       id: revisionId, quotationId, version: 1, validadeDias: 15, clienteNome: 'Cliente beta cleanup',
+      companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
     });
     await db.insert(quoteRevisionItems).values({
       id: itemId, revisionId, position: 0, productSku: sku, quantidade: '1.000', produtoSku: sku,

@@ -43,6 +43,7 @@ export interface DashboardSettings {
   template_padrao: string;
   secoes: QuotationSectionsSettings;
   empresa: QuotationCompanyConfiguration;
+  settings_version: number;
 }
 
 export function getSettings(): Promise<DashboardSettings> {

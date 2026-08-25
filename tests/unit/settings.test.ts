@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
     condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
   },
   empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  settings_version: 1,
 };
 
 function event(method: string, body?: unknown) {
@@ -92,6 +93,7 @@ describe('settings handler', () => {
       template_padrao: 'corporativo',
       secoes: payload.secoes,
       empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+      settings_version: 1,
     });
 
     const reloaded = await handler(event('GET'));

@@ -22,12 +22,17 @@ export interface Settings {
   template_padrao: string;
   secoes: QuotationSectionsSettings;
   empresa: QuotationCompanyConfiguration;
+  settings_version: number;
 }
 
-export type SettingsInput = Omit<Settings, 'template_padrao' | 'entrega' | 'empresa'> & {
+export type SettingsInput = Omit<
+  Settings,
+  'template_padrao' | 'entrega' | 'empresa' | 'settings_version'
+> & {
   entrega?: string;
   template_padrao?: string;
   empresa?: QuotationCompanyConfiguration;
+  settings_version?: number;
 };
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
@@ -39,7 +44,20 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   template_padrao: 'padrao',
   secoes: DEFAULT_QUOTATION_SECTIONS,
   empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  settings_version: 1,
 });
+
+export class SettingsConflictError extends Error {
+  readonly statusCode = 409;
+  readonly expose = true;
+
+  constructor(
+    message = 'As configurações foram alteradas por outro usuário. Recarregue antes de salvar.'
+  ) {
+    super(message);
+    this.name = 'SettingsConflictError';
+  }
+}
 
 /**
  * Application seam used by the HTTP handler. It intentionally does not leak
@@ -64,6 +82,7 @@ function toSettings(row: typeof appSettings.$inferSelect): Settings {
     template_padrao: row.templatePadrao,
     secoes,
     empresa,
+    settings_version: row.settingsVersion,
   };
 }
 
@@ -89,53 +108,91 @@ export function createPostgresSettingsRepository(
 
     async save(settings: SettingsInput): Promise<Settings> {
       const db = getDb();
-      const [current] = await db
-        .select()
-        .from(appSettings)
-        .where(eq(appSettings.singletonId, 1))
-        .limit(1);
-      const secoes = settings.secoes;
-      const empresa = normalizeQuotationCompanyConfiguration(
-        settings.empresa,
-        current?.companyConfiguration
-          ? normalizeQuotationCompanyConfiguration(current.companyConfiguration)
-          : DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
-      );
-      const [row] = await db
-        .insert(appSettings)
-        .values({
-          singletonId: 1,
-          validadeDias: settings.validade_dias,
-          pagamento: secoes.pagamento.body,
-          entrega: settings.entrega ?? current?.entrega ?? '',
-          fretePadrao: settings.frete_padrao,
-          observacoes: secoes.condicoes_gerais.body,
-          quotationSections: secoes,
-          companyConfiguration: empresa,
-          templatePadrao: settings.template_padrao ?? current?.templatePadrao ?? 'padrao',
-        })
-        .onConflictDoUpdate({
-          target: appSettings.singletonId,
-          set: {
+      return db.transaction(async (tx) => {
+        const [claimedInitialRow] = await tx
+          .insert(appSettings)
+          .values({ singletonId: 1 })
+          .onConflictDoNothing({ target: appSettings.singletonId })
+          .returning({ singletonId: appSettings.singletonId });
+        const [current] = await tx
+          .select()
+          .from(appSettings)
+          .where(eq(appSettings.singletonId, 1))
+          .for('update')
+          .limit(1);
+        const isInitialRow = Boolean(claimedInitialRow);
+        const currentForMerge = isInitialRow ? undefined : current;
+        const requestedVersion = settings.settings_version;
+        if (
+          requestedVersion !== undefined &&
+          (!Number.isInteger(requestedVersion) || requestedVersion < 1)
+        ) {
+          throw new SettingsConflictError(
+            'Versão das configurações inválida. Recarregue antes de salvar.'
+          );
+        }
+        if (currentForMerge && settings.empresa !== undefined && requestedVersion === undefined) {
+          throw new SettingsConflictError(
+            'Informe a versão das configurações antes de atualizar os dados empresariais.'
+          );
+        }
+        if (
+          currentForMerge &&
+          requestedVersion !== undefined &&
+          requestedVersion !== currentForMerge.settingsVersion
+        ) {
+          throw new SettingsConflictError();
+        }
+        if (isInitialRow && requestedVersion !== undefined && requestedVersion !== 1) {
+          throw new SettingsConflictError();
+        }
+
+        const secoes = settings.secoes;
+        const empresa = normalizeQuotationCompanyConfiguration(
+          settings.empresa,
+          currentForMerge?.companyConfiguration
+            ? normalizeQuotationCompanyConfiguration(currentForMerge.companyConfiguration)
+            : DEFAULT_QUOTATION_COMPANY_CONFIGURATION
+        );
+        const settingsVersion = isInitialRow ? 2 : (currentForMerge?.settingsVersion || 0) + 1;
+        const [row] = await tx
+          .insert(appSettings)
+          .values({
+            singletonId: 1,
             validadeDias: settings.validade_dias,
             pagamento: secoes.pagamento.body,
-            entrega: settings.entrega ?? current?.entrega ?? '',
+            entrega: settings.entrega ?? currentForMerge?.entrega ?? '',
             fretePadrao: settings.frete_padrao,
             observacoes: secoes.condicoes_gerais.body,
             quotationSections: secoes,
             companyConfiguration: empresa,
-            ...(settings.template_padrao === undefined
-              ? {}
-              : { templatePadrao: settings.template_padrao }),
-          },
-        })
-        .returning();
+            templatePadrao: settings.template_padrao ?? currentForMerge?.templatePadrao ?? 'padrao',
+            settingsVersion,
+          })
+          .onConflictDoUpdate({
+            target: appSettings.singletonId,
+            set: {
+              validadeDias: settings.validade_dias,
+              pagamento: secoes.pagamento.body,
+              entrega: settings.entrega ?? currentForMerge?.entrega ?? '',
+              fretePadrao: settings.frete_padrao,
+              observacoes: secoes.condicoes_gerais.body,
+              quotationSections: secoes,
+              companyConfiguration: empresa,
+              settingsVersion,
+              ...(settings.template_padrao === undefined
+                ? {}
+                : { templatePadrao: settings.template_padrao }),
+            },
+          })
+          .returning();
 
-      if (!row) {
-        throw new Error('Não foi possível salvar as configurações.');
-      }
+        if (!row) {
+          throw new Error('Não foi possível salvar as configurações.');
+        }
 
-      return toSettings(row);
+        return toSettings(row);
+      });
     },
   };
 }

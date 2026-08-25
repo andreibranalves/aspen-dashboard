@@ -560,6 +560,7 @@ async function readSettings(tx: QuoteTransaction): Promise<Settings> {
     template_padrao: row.templatePadrao,
     secoes,
     empresa: normalizeQuotationCompanyConfiguration(row.companyConfiguration),
+    settings_version: row.settingsVersion,
   };
 }
 

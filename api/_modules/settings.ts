@@ -2,6 +2,7 @@ import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/type
 import {
   DEFAULT_SETTINGS,
   createPostgresSettingsRepository,
+  SettingsConflictError,
   type Settings,
   type SettingsInput,
   type SettingsRepository,
@@ -131,6 +132,13 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
   const templatePadrao = payload.template_padrao === undefined
     ? undefined
     : validateText(payload.template_padrao, 'template_padrao', MAX_TEMPLATE_KEY_LENGTH, fields);
+  const settingsVersion = payload.settings_version === undefined
+    ? undefined
+    : typeof payload.settings_version === 'number' &&
+        Number.isInteger(payload.settings_version) &&
+        payload.settings_version >= 1
+      ? payload.settings_version
+      : (fields.settings_version = 'Informe uma versão de configurações válida.', undefined);
   if (templatePadrao !== null && templatePadrao !== undefined && !templatePadrao.trim()) {
     fields.template_padrao = 'Informe a chave do template padrão.';
   }
@@ -184,6 +192,7 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     secoes,
     ...(empresa ? { empresa } : {}),
     ...(typeof templatePadrao === 'string' ? { template_padrao: templatePadrao.trim() } : {}),
+    ...(settingsVersion === undefined ? {} : { settings_version: settingsVersion }),
   };
 }
 
@@ -235,6 +244,9 @@ export function createHandler(
         const saved = await dependencies.repository.save(settings);
         return jsonResponse(200, saved);
       } catch (error) {
+        if (error instanceof SettingsConflictError) {
+          return jsonResponse(error.statusCode, { error: error.message });
+        }
         logDatabaseError('save', error);
         return jsonResponse(500, {
           error: 'Não foi possível salvar as configurações. Tente novamente.',

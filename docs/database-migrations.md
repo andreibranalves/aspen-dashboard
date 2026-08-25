@@ -9,6 +9,12 @@ contra um PostgreSQL service container descartável, nunca contra staging ou pro
 
 `npm run db:migrate` continua sendo o único apply e deve ser invocado explicitamente.
 
+A migration de publicação dos templates oficiais é forward-only: ela mantém versões
+históricas e acrescenta as versões v2 de forma idempotente. Em caso de rollback de
+código, mantenha as colunas e versões aplicadas; restaure somente o código compatível
+e valide novamente em um alvo descartável antes de qualquer novo apply. Não há down
+migration destrutiva.
+
 ## Classificação
 
 Toda migration nova começa com `-- migration-risk: additive` ou `-- migration-risk: destructive`.

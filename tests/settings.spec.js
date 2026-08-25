@@ -8,6 +8,7 @@ const INITIAL_SETTINGS = {
   frete_padrao: '0.00',
   observacoes: '',
   template_padrao: 'padrao',
+  settings_version: 1,
   empresa: {
     schema_version: 1,
     identity: { legal_name: 'ASPEN COMÉRCIO DE ARTIGOS PERSONALIZADOS LTDA', document: '55.458.072/0001-79' },
@@ -80,6 +81,7 @@ test.describe('Configurações de orçamento @quotations', () => {
       entrega: '7 dias úteis',
       frete_padrao: '12.5',
       empresa: INITIAL_SETTINGS.empresa,
+      settings_version: 1,
       secoes: {
         schema_version: 1,
         prazo_producao: { enabled: false, title: 'Produção customizada' },

@@ -94,6 +94,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:migrate
+      - run: npm run verify:quotation-company
       - run: npm run test:postgres
 
   migrations:

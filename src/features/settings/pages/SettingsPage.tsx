@@ -25,6 +25,7 @@ interface SettingsForm {
   observacoes: string;
   secoes: DashboardSettings['secoes'];
   empresa: DashboardSettings['empresa'];
+  settings_version: number;
 }
 
 const EMPTY_SECTIONS: DashboardSettings['secoes'] = {
@@ -47,6 +48,7 @@ const EMPTY_FORM: SettingsForm = {
     banking: { bank_name: '', bank_code: '', branch: '', account: '', pix_key: '' },
     contacts: { website: '', phone: '', email: '', instagram: '' },
   },
+  settings_version: 1,
 };
 
 function toForm(settings: DashboardSettings): SettingsForm {
@@ -58,6 +60,7 @@ function toForm(settings: DashboardSettings): SettingsForm {
     observacoes: settings.secoes.condicoes_gerais.body,
     secoes: settings.secoes,
     empresa: settings.empresa || EMPTY_FORM.empresa,
+    settings_version: settings.settings_version || 1,
   };
 }
 
@@ -140,6 +143,7 @@ export default function SettingsPage() {
         frete_padrao: form.frete_padrao,
         secoes: form.secoes,
         empresa: form.empresa,
+        settings_version: form.settings_version,
       });
       setForm(toForm(saved));
       setSavedMessage('Configurações salvas com sucesso.');
