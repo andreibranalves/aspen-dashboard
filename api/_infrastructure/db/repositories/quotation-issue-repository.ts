@@ -8,12 +8,21 @@ import { buildDraftQuotationSnapshot, DraftPreviewInputError, type DraftQuotatio
 import {
   getQuotationTemplate,
   parseQuotationTemplateContractVersion,
+  quotationTemplateFromVersion,
   renderQuotationTemplate,
 } from '../../../_modules/quotation-template-catalog.js';
 import { renderQuotationPdf } from '../../../_modules/quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from '../../../_modules/quotation-document-storage.js';
 import { normalizeProductPricing, resolveProductPrice, formatMoneyCents, parseMoneyCents, parseScaledInteger, PricingUnavailableError, PricingValidationError } from '../../../_modules/pricing-core.js';
-import { normalizeQuotationSections, type QuotationSectionsSnapshot } from '../../../_modules/quotation-content.js';
+import {
+  DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  normalizeQuotationCompanyConfiguration,
+} from '../../../_modules/quotation-company.js';
+import {
+  normalizeQuotationSections,
+  toSafeMultilineHtml,
+  type QuotationSectionsSnapshot,
+} from '../../../_modules/quotation-content.js';
 import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 import { convertQuoteLeadInTransaction } from './quote-leads-repository.js';
 
@@ -243,7 +252,16 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         const inputDraft = record(input.draft);
         const extracted = record(inputDraft.extracted || inputDraft);
         const [settingsRow] = await tx.select().from(appSettings).where(eq(appSettings.singletonId, 1)).limit(1);
-        const settings = settingsRow || { validadeDias: 15, pagamento: '', entrega: '', fretePadrao: '0.00', observacoes: '', templatePadrao: 'padrao', quotationSections: null };
+        const settings = settingsRow || {
+          validadeDias: 15,
+          pagamento: '',
+          entrega: '',
+          fretePadrao: '0.00',
+          observacoes: '',
+          templatePadrao: 'padrao',
+          quotationSections: null,
+          companyConfiguration: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+        };
         const items = Array.isArray(extracted.items) ? extracted.items : [];
         if (!String(extracted.nome || '').trim() || items.length === 0) throw new QuotationIssueInputError('Informe o cliente e ao menos um item antes de emitir o orçamento.');
         const skus = [...new Set(items.map((item) => String(record(item).item_code || record(item).sku || '').trim()).filter(Boolean))];
@@ -292,11 +310,20 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         const quotationId = sourceQuotation?.id || idFactory();
         const businessNumber = sourceQuotation?.businessNumber || await reserveNumber(tx, issuedAt.getUTCFullYear());
         const sourceDraft = sourceRevision?.status === 'rascunho' ? sourceRevision : null;
+        const companySnapshot = normalizeQuotationCompanyConfiguration(
+          sourceDraft?.companySnapshot || settings.companyConfiguration,
+        );
         const version = sourceDraft ? sourceDraft.version : sourceRevision ? sourceRevision.version + 1 : 1;
         const revisionId = sourceDraft?.id || idFactory(); const clientId = sourceQuotation?.clientId || idFactory();
         if (![quotationId, revisionId, clientId].every((id) => UUID.test(id))) throw new QuotationIssueRepositoryError('Não foi possível gerar os identificadores do orçamento.');
-        const selectedTemplateKey = String(extracted.template_key || sourceRevision?.templatePadrao || settings.templatePadrao || 'padrao').trim();
-        const selectedTemplateVersionId = String(extracted.template_version_id || '').trim();
+        const selectedTemplateKey = String(
+          sourceRevision?.templatePadrao || extracted.template_key || settings.templatePadrao || 'padrao',
+        ).trim();
+        const requestedTemplateVersionId = String(extracted.template_version_id || '').trim();
+        const selectedTemplateVersionId = sourceRevision
+          ? sourceRevision.templateVersionId || ''
+          : requestedTemplateVersionId;
+        const selectedTemplateHash = sourceRevision?.templateHash || '';
         const requestedSections = extracted.secoes ?? extracted.sections_snapshot;
         const suppliedSnapshot = sectionsSnapshot(requestedSections);
         if (requestedSections !== undefined && !suppliedSnapshot) {
@@ -363,6 +390,15 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         try {
           snapshot = await buildSnapshot(pdfDraft, {
             now: () => issuedAt,
+            resolveSettings: async () => ({
+              validade_dias: reviewedValidityDays,
+              pagamento: payment,
+              entrega: deliveryTerms,
+              frete_padrao: formatMoneyCents(freight),
+              observacoes: observations,
+              template_padrao: selectedTemplateKey,
+              empresa: companySnapshot,
+            }),
             resolveTemplate: async (key) => {
               const rows = await tx.select({
                 key: quotationTemplates.key,
@@ -375,19 +411,19 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
                 .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
                 .where(selectedTemplateVersionId
                   ? and(eq(quotationTemplateVersions.id, selectedTemplateVersionId), eq(quotationTemplates.key, key))
-                  : eq(quotationTemplates.key, key))
+                  : selectedTemplateHash
+                    ? and(eq(quotationTemplates.key, key), eq(quotationTemplateVersions.sourceHash, selectedTemplateHash))
+                    : eq(quotationTemplates.key, key))
                 .orderBy(desc(quotationTemplateVersions.version)).limit(1);
               const selected = rows[0];
               return selected
-                ? {
-                    key: selected.key,
-                    name: selected.name,
-                    is_default: selected.key === settings.templatePadrao,
-                    contract_version: parseQuotationTemplateContractVersion(selected.contractVersion),
+                ? quotationTemplateFromVersion({
                     source: selected.source,
-                    hash: selected.hash,
-                  }
-                : selectedTemplateVersionId
+                    sourceHash: selected.hash,
+                    contractVersion: parseQuotationTemplateContractVersion(selected.contractVersion),
+                    template: { key: selected.key, name: selected.name },
+                  })
+                : selectedTemplateVersionId || selectedTemplateHash
                   ? null
                   : getQuotationTemplate(key);
             },
@@ -411,8 +447,8 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
           terms_snapshot: { pagamento: payment, entrega: deliveryTerms, production_deadline: String(extracted.prazo_producao || ''), observations },
           secoes: {
             prazo_producao: { ...deadlineSection, value: String(extracted.prazo_producao || '') },
-            pagamento: { ...paymentSection, body_html: paymentSection.body },
-            condicoes_gerais: { ...conditionsSection, body_html: conditionsSection.body },
+            pagamento: { ...paymentSection, body_html: toSafeMultilineHtml(paymentSection.body) },
+            condicoes_gerais: { ...conditionsSection, body_html: toSafeMultilineHtml(conditionsSection.body) },
           },
           sections_snapshot: sections,
         };
@@ -446,6 +482,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
           templateHash: snapshot.template.hash,
           templateVersionId: metadata.templateVersionId,
           sectionsSnapshot: sections,
+          companySnapshot,
           clienteNome: String(extracted.nome).trim(),
           clienteDocumento: extracted.cnpj ? String(extracted.cnpj).trim() : null,
           clienteEmail: extracted.email ? String(extracted.email).trim().toLowerCase() : null,

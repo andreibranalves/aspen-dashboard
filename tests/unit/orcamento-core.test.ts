@@ -8,6 +8,7 @@ import {
   readSelectedTemplate,
   type TemplateSelectionLookup,
 } from '../../api/_infrastructure/db/repositories/quote-repository.js';
+import { HISTORICAL_QUOTATION_TEMPLATES } from '../../api/_modules/quotation-template-catalog.js';
 
 function event(body: unknown) {
   return {
@@ -166,6 +167,50 @@ test('repository template selection seeds a missing static template', async () =
   assert.equal(seeded, 'padrao');
   assert.equal(selected?.version.id, 'seed-version');
   assert.equal(selected?.version.sourceHash.length, 64);
+});
+
+test('repository template selection upgrades only the exact official historical source', async () => {
+  const historical = HISTORICAL_QUOTATION_TEMPLATES.find((template) => template.key === 'padrao')!;
+  let seeded: string | undefined;
+  const lookup = selectionLookup({
+    current: async () => ({
+      model: { id: 'historical-model', key: 'padrao', name: historical.name, archived: false },
+      version: {
+        id: 'historical-version',
+        version: 1,
+        source: historical.source,
+        sourceHash: historical.hash,
+        contractVersion: 1,
+      },
+    }),
+    seedLegacy: async (legacy) => {
+      seeded = legacy.key;
+      return { model: { id: 'v2-model', key: legacy.key, name: legacy.name, archived: false }, version: { id: 'v2-version', version: 2, source: legacy.source, sourceHash: legacy.hash, contractVersion: 2 } };
+    },
+  });
+  const selected = await readSelectedTemplate({} as never, settings, {}, lookup);
+  assert.equal(seeded, 'padrao');
+  assert.equal(selected?.version.id, 'v2-version');
+});
+
+test('repository template selection preserves custom versions under official keys', async () => {
+  const custom = {
+    model: { id: 'custom-model', key: 'padrao', name: 'Padrão customizado', archived: false },
+    version: {
+      id: 'custom-version',
+      version: 2,
+      source: '<!doctype html><html><body>custom</body></html>',
+      sourceHash: 'c'.repeat(64),
+      contractVersion: 2,
+    },
+  };
+  const lookup = selectionLookup({
+    current: async () => custom,
+    seedLegacy: async () => {
+      throw new Error('custom version must not be replaced');
+    },
+  });
+  assert.equal((await readSelectedTemplate({} as never, settings, {}, lookup))?.version.id, 'custom-version');
 });
 
 test('quote core maps invalid template selection to 400', async () => {

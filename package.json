@@ -15,6 +15,8 @@
     "check:db-migrations": "node scripts/check-db-migrations.mjs",
     "db:migration:preflight": "node scripts/migration-preflight.mjs",
     "verify:quotation-template-contracts": "npm run build:api && node scripts/verify-quotation-template-contract-backfill.mjs",
+    "verify:quotation-company": "npm run build:api && node scripts/verify-quotation-company-backfill.mjs",
+    "seed:quotation-company-verification": "node scripts/seed-quotation-company-verification.mjs",
     "check:email-cutover": "node scripts/quotation-email-cutover-preflight.mjs",
     "preview:preflight": "node scripts/preview-preflight.mjs",
     "db:backup": "node scripts/backup-crm.mjs",

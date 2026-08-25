@@ -21,6 +21,7 @@ import {
 import { createSalesOrderFromQuotationHandler } from '../../api/_modules/sales-order-from-quotation.js';
 import { createSalesOrdersHandler } from '../../api/_modules/sales-orders.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -292,6 +293,7 @@ test(
           version: 1,
           status: 'aprovado',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '123.45',
           total: '130.00',
@@ -303,6 +305,7 @@ test(
           version: 2,
           status: 'aprovado',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '222.22',
           total: '230.00',
@@ -313,6 +316,7 @@ test(
           quotationId,
           version: 3,
           status: 'rascunho',
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           validadeDias: 30,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '999.99',
@@ -379,6 +383,7 @@ test(
         version: 1,
         status: 'aprovado',
         validadeDias: 30,
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: `Cliente pedido local ${fixtureTag}`,
         subtotal: '10.00',
         total: '10.00',
@@ -398,6 +403,7 @@ test(
         version: 1,
         status: 'aprovado',
         validadeDias: 30,
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: `Cliente pedido local ${fixtureTag}`,
         subtotal: '20.00',
         total: '20.00',

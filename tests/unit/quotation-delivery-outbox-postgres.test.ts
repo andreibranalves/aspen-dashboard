@@ -24,6 +24,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -129,6 +130,7 @@ test.before(async () => {
     prazoProducao: '',
     templatePadrao: 'padrao',
     clienteNome: 'Cliente outbox',
+    companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
     subtotal: '0.00',
     total: '0.00',
     createdAt: now,

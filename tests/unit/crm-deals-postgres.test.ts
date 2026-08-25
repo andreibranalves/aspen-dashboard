@@ -15,6 +15,7 @@ import type { FunctionEvent } from '../../api/_http/types.js';
 import { createCrmDealsHandler } from '../../api/_modules/crm-deals.js';
 import { createCrmUpdateDealHandler } from '../../api/_modules/crm-update-deal.js';
 import { createCrmPruneCandidatesHandler } from '../../api/_modules/crm-prune-candidates.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import {
   CRM_PIPELINE,
   type CrmDealRecord,
@@ -328,6 +329,7 @@ test(
         version: 1,
         status: 'emitido',
         validadeDias: 15,
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: 'Ana PostgreSQL',
         subtotal: '100.00',
         total: '100.00',

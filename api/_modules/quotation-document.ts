@@ -17,6 +17,7 @@ import {
   toSafeMultilineHtml,
   type QuotationSectionsSettings,
 } from './quotation-content.js';
+import { normalizeQuotationCompanyConfiguration } from './quotation-company.js';
 import { canonicalQuotationStatus } from './quotation-status.js';
 
 export type QuotationDocumentSnapshot = QuotationTemplateSnapshot;
@@ -284,6 +285,9 @@ export function quotationSnapshotViewModel(
     uf: revision.clienteUf || '',
     cep: revision.clienteCep || '',
   };
+  const company = normalizeQuotationCompanyConfiguration(
+    snapshot.companySnapshot || revision.companySnapshot,
+  );
   const result: QuotationTemplateViewModel = {
     quote_number: quotation.businessNumber,
     quotation_name: quotation.businessNumber,
@@ -300,6 +304,7 @@ export function quotationSnapshotViewModel(
     validity_days: revision.validadeDias,
     client,
     client_snapshot: client,
+    company,
     items,
     items_snapshot: items,
     comparison: buildComparison(items),

@@ -17,8 +17,12 @@ import {
 
 test('quotation template schema exposes versioned templates and snapshots', () => {
   assert.equal(appSettings.quotationSections.name, 'quotation_sections');
+  assert.equal(appSettings.companyConfiguration.name, 'company_configuration');
+  assert.equal(appSettings.settingsVersion.name, 'settings_version');
   assert.equal(quoteRevisions.templateVersionId.name, 'template_version_id');
+  assert.equal(quoteRevisions.companySnapshot.notNull, true);
   assert.equal(quoteRevisions.sectionsSnapshot.name, 'sections_snapshot');
+  assert.equal(quoteRevisions.companySnapshot.name, 'company_snapshot');
   assert.equal(quotationTemplates.key.name, 'key');
   assert.equal(quotationTemplateVersions.sourceHash.name, 'source_hash');
   assert.equal(quotationTemplateVersions.contractVersion.name, 'contract_version');

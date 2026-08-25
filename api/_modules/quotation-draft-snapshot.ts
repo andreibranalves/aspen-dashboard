@@ -7,6 +7,10 @@ import {
   type QuotationTemplateViewModel,
 } from './quotation-template-catalog.js';
 import {
+  normalizeQuotationCompanyConfiguration,
+  type QuotationCompanyConfiguration,
+} from './quotation-company.js';
+import {
   formatMoneyCents,
   parseScaledInteger,
   QUANTITY_SCALE,
@@ -35,6 +39,7 @@ export interface DraftSnapshotSettings {
   observacoes?: string;
   template_padrao?: string;
   secoes?: QuotationSectionsSettings;
+  empresa?: QuotationCompanyConfiguration;
 }
 
 export interface DraftSnapshotDependencies {
@@ -259,7 +264,8 @@ function normalizeDraftSections(
 
 function draftPreviewViewModel(
   extracted: DraftPreviewInput,
-  now: Date
+  now: Date,
+  company: QuotationCompanyConfiguration | undefined,
 ): QuotationTemplateViewModel {
   const current = Number.isNaN(now.getTime()) ? new Date() : now;
   const validityDays = extracted.validade_dias || 15;
@@ -365,6 +371,7 @@ function draftPreviewViewModel(
     validity_days: validityDays,
     client,
     client_snapshot: client,
+    company: normalizeQuotationCompanyConfiguration(company),
     items,
     items_snapshot: items,
     comparison: { brackets: [], products: [] },
@@ -445,9 +452,14 @@ export async function buildDraftQuotationSnapshot(
     }
   );
   const now = dependencies.now || (() => new Date());
-  const viewModel = applyQuotationSectionPolicy(draftPreviewViewModel(extracted, now()), sections, {
-    entrega: extracted.entrega,
-  });
+  const viewModel = applyQuotationSectionPolicy(
+    draftPreviewViewModel(extracted, now(), settings?.empresa),
+    sections,
+    {
+      entrega: extracted.entrega,
+      prazoProducao: extracted.prazo_producao,
+    },
+  );
   return {
     template,
     viewModel,

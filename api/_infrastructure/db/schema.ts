@@ -22,6 +22,10 @@ import {
   type QuotationSectionsSnapshot,
 } from '../../_modules/quotation-content.js';
 import type { RenderedQuotationEmail } from '../../_modules/quotation-email-renderer.js';
+import {
+  DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  type QuotationCompanyConfiguration,
+} from '../../_modules/quotation-company.js';
 import type { QuotationStatus } from '../../_modules/quotation-status.js';
 
 // Database default retained for the legacy column until its approved cleanup migration.
@@ -49,6 +53,10 @@ export const appSettings = pgTable(
       .$type<QuotationSectionsSettings>()
       .notNull()
       .default(DEFAULT_QUOTATION_SECTIONS),
+    companyConfiguration: jsonb('company_configuration')
+      .$type<QuotationCompanyConfiguration>()
+      .notNull()
+      .default(DEFAULT_QUOTATION_COMPANY_CONFIGURATION),
     // Legacy column retained until an explicitly approved cleanup migration.
     quotationEmailTemplate: jsonb('quotation_email_template')
       .$type<Record<string, unknown>>()
@@ -59,6 +67,7 @@ export const appSettings = pgTable(
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
     observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),
     templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
+    settingsVersion: integer('settings_version').notNull().default(1),
   },
   (table) => [
     check('app_settings_singleton_id_check', sql`${table.singletonId} = 1`),
@@ -68,6 +77,7 @@ export const appSettings = pgTable(
       'app_settings_template_padrao_not_blank_check',
       sql`char_length(btrim(${table.templatePadrao})) > 0`
     ),
+    check('app_settings_settings_version_positive_check', sql`${table.settingsVersion} > 0`),
   ]
 );
 
@@ -350,6 +360,9 @@ export const quoteRevisions = pgTable(
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
     templateVersionId: uuid('template_version_id').references(() => quotationTemplateVersions.id),
     sectionsSnapshot: jsonb('sections_snapshot').$type<QuotationSectionsSnapshot>(),
+    companySnapshot: jsonb('company_snapshot')
+      .$type<QuotationCompanyConfiguration>()
+      .notNull(),
     fretePadrao: numeric('frete_padrao', { precision: 20, scale: 2 }).notNull().default('0.00'),
     frete: numeric('frete', { precision: 20, scale: 2 }).notNull().default('0.00'),
     observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),

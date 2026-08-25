@@ -14,6 +14,7 @@ import {
   createPostgresQuotationEmailDeliveryRepository,
   QuotationEmailDeliveryRepositoryError,
 } from '../../api/_infrastructure/db/repositories/quotation-email-delivery-repository.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -83,6 +84,7 @@ test(
             status: 'emitido',
             issuedAt: NOW,
             validadeDias: 15,
+            companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
             templateHash: 'a'.repeat(64),
             clienteNome: 'Cliente e-mail',
             subtotal: '10.00',
@@ -96,6 +98,7 @@ test(
             status: 'emitido',
             issuedAt: NOW,
             validadeDias: 15,
+            companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
             templateHash: 'b'.repeat(64),
             clienteNome: 'Cliente e-mail',
             subtotal: '12.00',

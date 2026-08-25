@@ -47,7 +47,7 @@ async function seed(db: AppDatabase) {
   await db.insert(schema.products).values({ sku: 'TASK4-SKU', nome: 'Produto teste', descricao: '', unidade: 'Und', precoBase: '12.30', ativo: true });
   await db.insert(schema.quotationTemplates).values({ id: randomUUID(), key: DEFAULT_QUOTATION_TEMPLATE.key, name: 'Padrão', archived: false });
   const [template] = await db.select().from(schema.quotationTemplates).where(eq(schema.quotationTemplates.key, DEFAULT_QUOTATION_TEMPLATE.key));
-  await db.insert(schema.quotationTemplateVersions).values({ id: randomUUID(), templateId: template.id, version: 1, source: DEFAULT_QUOTATION_TEMPLATE.source, sourceHash: DEFAULT_QUOTATION_TEMPLATE.hash });
+  await db.insert(schema.quotationTemplateVersions).values({ id: randomUUID(), templateId: template.id, version: 2, source: DEFAULT_QUOTATION_TEMPLATE.source, sourceHash: DEFAULT_QUOTATION_TEMPLATE.hash, contractVersion: 2 });
 }
 
 const gated = (name: string, fn: () => Promise<void>) => test(name, { skip: !TEST_DATABASE_URL, concurrency: false }, fn);

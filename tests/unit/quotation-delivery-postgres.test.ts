@@ -28,6 +28,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import type { QuotationSectionsSnapshot } from '../../api/_modules/quotation-content.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
@@ -365,6 +366,7 @@ test(
           condicoes_gerais: { base: { enabled: true, title: 'Condições', body: 'old' }, current: { enabled: true, title: 'Condições', body: 'FROZEN-CONDICOES' } },
         } as unknown) as QuotationSectionsSnapshot,
         clienteNome: 'Cliente entrega',
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteTelefone: '5521995419741',
         subtotal: '10.00',
         total: '10.00',
@@ -489,6 +491,7 @@ test(
         prazoProducao: '',
         templatePadrao: templateKey,
         templateHash: SECTION_TEMPLATE_HASH,
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: 'Rascunho',
         subtotal: '0.00',
         total: '0.00',

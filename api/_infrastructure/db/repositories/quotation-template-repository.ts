@@ -35,6 +35,7 @@ export interface QuotationTemplateSnapshot {
       })
     | null;
   sectionsSnapshot: typeof quoteRevisions.$inferSelect.sectionsSnapshot;
+  companySnapshot: typeof quoteRevisions.$inferSelect.companySnapshot;
   items: (typeof quoteRevisionItems.$inferSelect)[];
 }
 
@@ -134,6 +135,7 @@ export async function readQuotationTemplateSnapshot(
     revision,
     templateVersion,
     sectionsSnapshot: revision.sectionsSnapshot,
+    companySnapshot: revision.companySnapshot,
     items,
   };
 }
