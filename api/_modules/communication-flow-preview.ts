@@ -11,7 +11,8 @@ import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import { KV_KEY_FLOWS } from './media-schema.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_infrastructure/db/repositories/quotation-template-repository.js';
+import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
+import { renderQuotationDocument } from './quotation-document.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 import {
   readCommunicationMediaRecords,
@@ -190,7 +191,7 @@ async function resolvePostgresQuotationContext(
   const snapshot = await repository.get(revisionId);
   if (!snapshot || snapshot.revision.id !== revisionId) return null;
   if (quotationId !== snapshot.quotation.id && quotationId !== snapshot.quotation.businessNumber) return null;
-  const view = quotationSnapshotViewModel(snapshot);
+  const view = renderQuotationDocument(snapshot).viewModel;
   const client = view.client as Record<string, unknown>;
   const items = (view.items || []) as Record<string, unknown>[];
   const categories = detectCategories(items);

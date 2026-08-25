@@ -17,8 +17,10 @@ import {
   resolveQuotationTemplate,
 } from '../../api/_modules/quotation-template-catalog.js';
 import {
-  createQuotationTemplateRepository,
   quotationSnapshotViewModel,
+} from '../../api/_modules/quotation-document.js';
+import {
+  createQuotationTemplateRepository,
   QuotationTemplateSnapshotRepositoryError,
   readQuotationTemplateSnapshot,
 } from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';

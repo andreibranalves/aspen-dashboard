@@ -2,12 +2,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from './quotation-status.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_infrastructure/db/repositories/quotation-template-repository.js';
-import {
-  quotationTemplateFromVersion,
-  renderQuotationTemplate,
-  resolveQuotationTemplate,
-} from './quotation-template-catalog.js';
+import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
+import { renderQuotationDocument } from './quotation-document.js';
 import { renderQuotationPdfHtml } from './quotation-pdf-renderer.js';
 import {
   isValidPdfBuffer,
@@ -129,11 +125,8 @@ function renderSnapshot(
   snapshot: Awaited<ReturnType<NonNullable<PublicQuotationDependencies['repository']>['get']>>
 ) {
   if (!snapshot) return null;
-  const template = snapshot.templateVersion
-    ? quotationTemplateFromVersion(snapshot.templateVersion)
-    : resolveQuotationTemplate(snapshot.revision.templatePadrao, snapshot.revision.templateHash);
-  const html = renderQuotationTemplate(template, quotationSnapshotViewModel(snapshot));
-  return { snapshot, template, html };
+  const document = renderQuotationDocument(snapshot);
+  return { snapshot, template: document.template, html: document.html };
 }
 
 export async function issuePublicQuotationToken(

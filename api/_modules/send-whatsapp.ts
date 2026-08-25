@@ -9,9 +9,9 @@ import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import {
   createQuotationTemplateRepository,
-  quotationSnapshotViewModel,
   type QuotationTemplateSnapshot,
 } from '../_infrastructure/db/repositories/quotation-template-repository.js';
+import { renderQuotationDocument } from './quotation-document.js';
 import {
   issuePublicQuotationToken,
   isRevisionBoundPublicQuotationUrl,
@@ -402,7 +402,7 @@ type LocalDealResolver = (quotationId: string, businessNumber: string) => Promis
 
 type PostgresSendContext = {
   snapshot: QuotationTemplateSnapshot;
-  view: ReturnType<typeof quotationSnapshotViewModel>;
+  view: ReturnType<typeof renderQuotationDocument>['viewModel'];
   quotation: Record<string, unknown>;
   dealId: string | null;
   quotationUuid: string;
@@ -471,7 +471,7 @@ export async function loadPostgresSendContext(input: {
     throw createHttpError(409, 'O número do orçamento não corresponde à revisão PostgreSQL informada.');
   }
 
-  const view = quotationSnapshotViewModel(snapshot);
+  const view = renderQuotationDocument(snapshot).viewModel;
   const client = view.client as unknown as Record<string, unknown>;
   const telefone = String(client.phone || client.telefone || '').trim();
   const phone = normalizePhone(telefone);

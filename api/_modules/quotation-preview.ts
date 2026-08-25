@@ -3,16 +3,15 @@ import { getDatabase } from '../_infrastructure/db/client.js';
 import { readCurrentQuotationTemplateVersion } from '../_infrastructure/db/repositories/quotation-template-library-repository.js';
 import {
   createQuotationTemplateRepository,
-  quotationSnapshotViewModel,
   QuotationTemplateSnapshotRepositoryError,
 } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import {
   quotationTemplateFromVersion,
   QuotationTemplateResolutionError,
   renderQuotationTemplate,
-  resolveQuotationTemplate,
   type QuotationTemplate,
 } from './quotation-template-catalog.js';
+import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
 import {
   buildDraftQuotationSnapshot,
   DraftPreviewInputError,
@@ -26,7 +25,10 @@ import { isValidPdfBuffer } from './quotation-document-storage.js';
 
 export interface QuotationPreviewDependencies {
   repository?: {
-    get(id: string, templateVersionId?: string): ReturnType<ReturnType<typeof createQuotationTemplateRepository>['get']>;
+    get(
+      id: string,
+      templateVersionId?: string
+    ): ReturnType<ReturnType<typeof createQuotationTemplateRepository>['get']>;
   };
   renderPdf?: (html: string) => Promise<Buffer>;
   recordWrite?: (...args: never[]) => Promise<void>;
@@ -34,11 +36,13 @@ export interface QuotationPreviewDependencies {
   now?: () => Date;
   resolvePricing?: PricingResolver;
   resolveSettings?: DraftSnapshotDependencies['resolveSettings'];
+  renderDocument?: QuotationDocumentRenderer;
 }
 
 const HTML_SECURITY_HEADERS = {
   'Cache-Control': 'no-store',
-  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline' https:; img-src data: https:; font-src data: https:; script-src 'none'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  'Content-Security-Policy':
+    "default-src 'none'; style-src 'unsafe-inline' https:; img-src data: https:; font-src data: https:; script-src 'none'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   'Referrer-Policy': 'no-referrer',
   'X-Content-Type-Options': 'nosniff',
 };
@@ -95,8 +99,13 @@ export function createQuotationPreviewHandler(
   const repository = dependencies.repository || createQuotationTemplateRepository();
   const renderPdf = dependencies.renderPdf || renderQuotationPdf;
   const resolveDraftTemplate = dependencies.resolveDraftTemplate || resolveCurrentDraftTemplate;
-  const resolvePricing = dependencies.resolvePricing || (process.env.DATABASE_URL ? createPostgresQuotationPreviewPricingResolver() : undefined);
-  const resolveSettings = dependencies.resolveSettings || (process.env.DATABASE_URL ? () => createPostgresSettingsRepository().get() : undefined);
+  const resolvePricing =
+    dependencies.resolvePricing ||
+    (process.env.DATABASE_URL ? createPostgresQuotationPreviewPricingResolver() : undefined);
+  const resolveSettings =
+    dependencies.resolveSettings ||
+    (process.env.DATABASE_URL ? () => createPostgresSettingsRepository().get() : undefined);
+  const renderDocument = dependencies.renderDocument || renderQuotationDocument;
   const now = dependencies.now || (() => new Date());
   return async function quotationPreviewHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod === 'POST') {
@@ -158,10 +167,9 @@ export function createQuotationPreviewHandler(
     try {
       const snapshot = await repository.get(id, selectedVersionId);
       if (!snapshot) return json(404, { error: 'Orçamento não encontrado.' });
-      const template = snapshot.templateVersion
-        ? quotationTemplateFromVersion(snapshot.templateVersion)
-        : resolveQuotationTemplate(snapshot.revision.templatePadrao, snapshot.revision.templateHash);
-      const html = renderQuotationTemplate(template, quotationSnapshotViewModel(snapshot));
+      const document = renderDocument(snapshot);
+      const template = document.template;
+      const html = document.html;
       if (asPdf) {
         let pdf: Buffer;
         try {
