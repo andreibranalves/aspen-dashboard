@@ -8,22 +8,34 @@ interface NotFoundPageProps {
 /** Tela 404 para rotas sem match — nunca cair silenciosamente no fluxo Auto. */
 export default function NotFoundPage({ navigate }: NotFoundPageProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center animate-fade-in">
-      <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-surface-muted mb-4">
-        <Compass size={32} className="text-fg-muted" aria-hidden="true" />
+    <section
+      className="flex min-h-[50vh] flex-col items-center justify-center px-4 py-16 text-center animate-fade-in sm:py-24"
+      aria-labelledby="not-found-title"
+    >
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-md bg-surface-muted">
+        <Compass size={28} className="text-fg-muted" aria-hidden="true" />
       </div>
-      <h1 className="text-lg font-semibold text-fg">Página não encontrada</h1>
-      <p className="mt-1 max-w-sm text-sm text-fg-muted">
-        O endereço acessado não existe ou foi movido.
+      <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Erro 404</p>
+      <h1 id="not-found-title" className="mt-2 text-xl font-semibold text-fg">
+        Página não encontrada
+      </h1>
+      <p className="mt-2 max-w-md text-sm leading-5 text-fg-muted">
+        Não encontramos este endereço. Volte para uma área válida ou abra o fluxo de orçamento para
+        continuar.
       </p>
-      <div className="mt-6 flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => navigate('/dashboard')}>
+      <div className="mt-6 flex w-full max-w-sm flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full sm:w-auto"
+          onClick={() => navigate('/dashboard')}
+        >
           Ir para o Início
         </Button>
-        <Button size="sm" onClick={() => navigate('/auto')}>
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => navigate('/auto')}>
           Abrir Auto
         </Button>
       </div>
-    </div>
+    </section>
   );
 }
