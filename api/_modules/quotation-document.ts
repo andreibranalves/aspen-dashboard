@@ -261,65 +261,79 @@ export function quotationSnapshotViewModel(
   const sectionsSnapshot = (snapshot.sectionsSnapshot || revision.sectionsSnapshot) as unknown as
     | Record<string, unknown>
     | undefined;
-  if (sectionsSnapshot && typeof sectionsSnapshot === 'object') {
-    const prazo = (sectionsSnapshot.prazo_producao || {}) as Record<string, unknown>;
-    const pagto = (sectionsSnapshot.pagamento || {}) as Record<string, unknown>;
-    const condicoes = (sectionsSnapshot.condicoes_gerais || {}) as Record<string, unknown>;
-    const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
-    const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
-    const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
-    const sections = normalizeQuotationSections({
-      prazo_producao: {
-        enabled: prazoCurrent.enabled === true,
-        title: String(prazoCurrent.title || 'Prazo de produção'),
-      },
-      pagamento: {
-        enabled: pagtoCurrent.enabled === true,
-        title: String(pagtoCurrent.title || 'Pagamento'),
-        body: String(pagtoCurrent.body || ''),
-      },
-      condicoes_gerais: {
-        enabled: condicoesCurrent.enabled === true,
-        title: String(condicoesCurrent.title || 'Condições Gerais'),
-        body: String(condicoesCurrent.body || ''),
-      },
-    });
-    const prazoVisible = sections.prazo_producao.enabled;
-    const pagamentoVisible = sections.pagamento.enabled;
-    const condicoesVisible = sections.condicoes_gerais.enabled;
-    result.secoes = {
-      prazo_producao: {
-        enabled: prazoVisible,
-        title: prazoVisible ? sections.prazo_producao.title : '',
-        value: prazoVisible ? nullable(revision.prazoProducao) : '',
-      },
-      pagamento: {
-        enabled: pagamentoVisible,
-        title: pagamentoVisible ? sections.pagamento.title : '',
-        body_html: pagamentoVisible
-          ? toSafeMultilineHtml(sections.pagamento.body)
-          : toSafeMultilineHtml(''),
-      },
-      condicoes_gerais: {
-        enabled: condicoesVisible,
-        title: condicoesVisible ? sections.condicoes_gerais.title : '',
-        body_html: condicoesVisible
-          ? toSafeMultilineHtml(sections.condicoes_gerais.body)
-          : toSafeMultilineHtml(''),
-      },
-    };
+  const hasCanonicalSections = Boolean(sectionsSnapshot && typeof sectionsSnapshot === 'object');
+  const prazo = (sectionsSnapshot?.prazo_producao || {}) as Record<string, unknown>;
+  const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
+  const productionDeadline = nullable(
+    prazoCurrent.value === undefined ? revision.prazoProducao : prazoCurrent.value
+  );
+  const sections = hasCanonicalSections
+    ? (() => {
+        const pagto = (sectionsSnapshot!.pagamento || {}) as Record<string, unknown>;
+        const condicoes = (sectionsSnapshot!.condicoes_gerais || {}) as Record<string, unknown>;
+        const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
+        const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
+        return normalizeQuotationSections({
+          prazo_producao: {
+            enabled: prazoCurrent.enabled === true,
+            title: String(prazoCurrent.title || 'Prazo de produção'),
+          },
+          pagamento: {
+            enabled: pagtoCurrent.enabled === true,
+            title: String(pagtoCurrent.title || 'Pagamento'),
+            body: String(pagtoCurrent.body || ''),
+          },
+          condicoes_gerais: {
+            enabled: condicoesCurrent.enabled === true,
+            title: String(condicoesCurrent.title || 'Condições Gerais'),
+            body: String(condicoesCurrent.body || ''),
+          },
+        });
+      })()
+    : normalizeQuotationSections(undefined, {
+        pagamento: nullable(revision.pagamento),
+        entrega: nullable(revision.entrega),
+        observacoes: nullable(revision.observacoes),
+      });
+  const prazoVisible = hasCanonicalSections
+    ? sections.prazo_producao.enabled
+    : Boolean(revision.prazoProducao);
+  const pagamentoVisible = sections.pagamento.enabled;
+  const condicoesVisible = sections.condicoes_gerais.enabled;
+  result.secoes = {
+    prazo_producao: {
+      enabled: prazoVisible,
+      title: prazoVisible ? sections.prazo_producao.title : '',
+      value: prazoVisible ? productionDeadline : '',
+    },
+    pagamento: {
+      enabled: pagamentoVisible,
+      title: pagamentoVisible ? sections.pagamento.title : '',
+      body_html: pagamentoVisible
+        ? toSafeMultilineHtml(sections.pagamento.body)
+        : toSafeMultilineHtml(''),
+    },
+    condicoes_gerais: {
+      enabled: condicoesVisible,
+      title: condicoesVisible ? sections.condicoes_gerais.title : '',
+      body_html: condicoesVisible
+        ? toSafeMultilineHtml(sections.condicoes_gerais.body)
+        : toSafeMultilineHtml(''),
+    },
+  };
+  if (hasCanonicalSections) {
     // Once a canonical snapshot exists, legacy mirror fields must not leak a
     // disabled section or override its current content in a historical template.
     result.terms = {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
       entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? revision.prazoProducao : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     };
     result.terms_snapshot = {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
       entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? revision.prazoProducao : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     };
   }

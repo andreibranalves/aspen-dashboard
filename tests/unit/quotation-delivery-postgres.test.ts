@@ -26,6 +26,7 @@ import {
   QuotationDeliveryPdfError,
   QuotationDeliveryRepositoryError,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
+import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import type { QuotationSectionsSnapshot } from '../../api/_modules/quotation-content.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -44,6 +45,7 @@ function fakePreparationDatabase(options: {
   total?: string;
   templateKey?: string;
   templateSource?: string;
+  sectionsSnapshot?: QuotationSectionsSnapshot | null;
 } = {}) {
   const now = new Date('2026-08-13T12:00:00.000Z');
   const templateKey = options.templateKey || 'test';
@@ -57,10 +59,11 @@ function fakePreparationDatabase(options: {
     id: revisionId, quotationId, version: 1, status: 'emitido', issuedAt: now, createdAt: now,
     validadeDias: 15, pagamento: 'Pix', entrega: '', fretePadrao: '0.00', frete: '0.00',
     observacoes: '', prazoProducao: '', templatePadrao: templateKey, templateHash,
-    templateVersionId, sectionsSnapshot: null, clienteNome: 'ANDREI ALVES', clienteTelefone: '21999999999',
+    templateVersionId, clienteNome: 'ANDREI ALVES', clienteTelefone: '21999999999',
     clienteEmail: null, clienteDocumento: null, clienteEndereco: null, clienteNumero: null,
     clienteBairro: null, clienteComplemento: null, clienteMunicipio: null, clienteUf: null,
     clienteCep: null, clienteNotas: null, subtotal: revisionTotal, total: revisionTotal,
+    sectionsSnapshot: options.sectionsSnapshot || null,
   } as any;
   const delivery = {
     id: '00000000-0000-4000-8000-000000000004', revisionId, phone: '5511999990000', flowId: 'flow',
@@ -74,6 +77,14 @@ function fakePreparationDatabase(options: {
     private failure?: Error;
     constructor(rows: unknown[], failure?: Error) { this.rows = rows; this.failure = failure; }
     where() { return this; }
+    orderBy() { return this; }
+    innerJoin() {
+      this.rows = this.rows.map((version) => ({
+        version,
+        model: { key: templateKey, name: templateKey, archived: false },
+      }));
+      return this;
+    }
     limit() { return this.failure ? Promise.reject(this.failure) : Promise.resolve(this.rows); }
     then(resolve: (value: unknown[]) => unknown, reject: (error: unknown) => unknown) {
       return (this.failure ? Promise.reject(this.failure) : Promise.resolve(this.rows)).then(resolve, reject);
@@ -89,7 +100,14 @@ function fakePreparationDatabase(options: {
         }
         if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: templateSource, sourceHash: templateHash }]);
         if (table === quoteRevisionItems) return new Query(options.items || []);
-        if (table === quotations) return new Query([{ businessNumber: 'ORC-20260001' }]);
+        if (table === quotations) return new Query([{
+          id: quotationId,
+          businessNumber: 'ORC-20260001',
+          clientId: '00000000-0000-4000-8000-000000000009',
+          status: 'emitido',
+          createdAt: now,
+          updatedAt: now,
+        }]);
         return new Query([]);
       },
     }),
@@ -134,6 +152,49 @@ test('delivery PDF formats issue and validity dates for display', async () => {
   assert.match(renderedHtml, /Telefone: \(21\) 99999-9999/);
   assert.match(renderedHtml, /Data: 13\/08\/2026/);
   assert.match(renderedHtml, /Validade: 28\/08\/2026/);
+});
+
+test('delivery PDF uses the canonical document output for section content and visibility', async () => {
+  const source = '<!doctype html><html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}<h1>{{secoes.pagamento.title}}</h1><div>{{secoes.pagamento.body_html}}</div><h2>{{secoes.condicoes_gerais.title}}</h2><div>{{secoes.condicoes_gerais.body_html}}</div></body></html>';
+  const sections = {
+    schema_version: 1,
+    prazo_producao: {
+      base: { enabled: true, title: 'Prazo' },
+      current: { enabled: true, title: 'Prazo' },
+    },
+    pagamento: {
+      base: { enabled: true, title: 'Pagamento' , body: 'Base' },
+      current: { enabled: true, title: 'Pagamento customizado', body: 'Pix <script>não executar</script>\nSaldo' },
+    },
+    condicoes_gerais: {
+      base: { enabled: true, title: 'Condições', body: 'Base' },
+      current: { enabled: false, title: 'Não mostrar', body: 'segredo' },
+    },
+  } as QuotationSectionsSnapshot;
+  const { db, now, revisionId } = fakePreparationDatabase({
+    templateSource: source,
+    sectionsSnapshot: sections,
+  });
+  let seamCalls = 0;
+  let renderedHtml = '';
+  const repository = createPostgresQuotationDeliveryRepository(() => db, {
+    now: () => now,
+    renderDocument: (snapshot) => {
+      seamCalls += 1;
+      return renderQuotationDocument(snapshot);
+    },
+    renderPdf: async (html) => {
+      renderedHtml = html;
+      return pdfWithEof();
+    },
+  });
+
+  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+
+  assert.equal(seamCalls, 1);
+  assert.match(renderedHtml, /Pagamento customizado/);
+  assert.match(renderedHtml, /Pix &lt;script&gt;não executar&lt;\/script&gt;<br>Saldo/);
+  assert.doesNotMatch(renderedHtml, /Não mostrar|segredo/);
 });
 
 test('delivery PDF supplies comparison data to the comparative template', async () => {
