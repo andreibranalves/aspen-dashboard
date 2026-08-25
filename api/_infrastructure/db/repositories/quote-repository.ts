@@ -51,7 +51,6 @@ import {
   getQuotationTemplate,
   HISTORICAL_QUOTATION_TEMPLATES,
 } from '../../../_modules/quotation-template-catalog.js';
-import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 import { quotationConcurrencyToken } from './quote-draft-management-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
@@ -553,7 +552,7 @@ function safeErrorKind(error: unknown): string {
 async function readSettings(tx: QuoteTransaction): Promise<Settings> {
   const [row] = await tx.select().from(appSettings).where(eq(appSettings.singletonId, 1)).limit(1);
   if (!row) return { ...DEFAULT_SETTINGS };
-  const secoes = normalizeQuotationSections(row.quotationSections, row);
+  const secoes = normalizeQuotationSections(row.quotationSections);
   return {
     validade_dias: row.validadeDias,
     pagamento: secoes.pagamento.body,
@@ -1018,18 +1017,12 @@ export function createPostgresQuoteDraftRepository(
                     body: inputText(requestPayment, 'Pagamento', 4000),
                   }
                 : undefined;
-            currentSections = normalizeQuotationSections(
-              {
-                schema_version: baseSections.schema_version,
-                prazo_producao: mergeSection('prazo_producao'),
-                pagamento: paymentOverride || mergeSection('pagamento'),
-                condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
-              },
-              {
-                pagamento: baseSections.pagamento.body,
-                observacoes: baseSections.condicoes_gerais.body,
-              }
-            );
+            currentSections = normalizeQuotationSections({
+              schema_version: baseSections.schema_version,
+              prazo_producao: mergeSection('prazo_producao'),
+              pagamento: paymentOverride || mergeSection('pagamento'),
+              condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
+            });
             if (requestObservations !== undefined && input.secoes !== undefined) {
               inputText(requestObservations, 'Observações', 4000);
             }
@@ -1150,37 +1143,21 @@ export function createPostgresQuoteDraftRepository(
           updatedAt: createdAt,
         });
 
-        const revisionMetadata =
-          template.version.id && template.version.id.length > 0
-            ? { templateVersionId: template.version.id, sectionsSnapshot }
-            : await resolveQuotationRevisionMetadata(tx, {
-                templatePadrao: template.model.key,
-                templateHash: template.version.sourceHash,
-                pagamento: sectionsSnapshot.pagamento.current.body,
-                entrega: input.entrega !== undefined
-                  ? inputText(input.entrega, 'Entrega', 500)
-                  : settings.entrega,
-                observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-                prazoProducao: canonicalDeadline,
-              });
         await tx.insert(quoteRevisions).values({
           id: revisionId,
           quotationId,
           version: 1,
           status: 'rascunho',
           validadeDias: validityDays,
-          pagamento: sectionsSnapshot.pagamento.current.body,
           entrega:
             input.entrega !== undefined
               ? inputText(input.entrega, 'Entrega', 500)
               : settings.entrega,
           fretePadrao: settings.frete_padrao,
           frete: formatMoneyCents(freightCents),
-          observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-          prazoProducao: canonicalDeadline,
           templatePadrao: template.model.key,
           templateHash: template.version.sourceHash,
-          templateVersionId: template.version.id || revisionMetadata.templateVersionId,
+          templateVersionId: template.version.id,
           sectionsSnapshot,
           companySnapshot: settings.empresa,
           ...clientSnapshotToRow(client),
@@ -1281,7 +1258,7 @@ export function createPostgresQuoteDraftRepository(
           template_padrao: template.model.key,
           template_key: template.model.key,
           template_hash: template.version.sourceHash,
-          template_version_id: template.version.id || revisionMetadata.templateVersionId,
+          template_version_id: template.version.id,
           secoes: sectionsSnapshot,
           // Optimistic-concurrency token for issuing this draft by reference.
           concurrency_token: quotationConcurrencyToken(createdAt),
@@ -1346,12 +1323,10 @@ export function createPostgresQuoteDraftRepository(
           throw new QuoteDraftInputError('Orçamento sem itens não pode ser duplicado.');
         }
 
-        const revisionMetadata = sourceRevision.sectionsSnapshot
-          ? {
-              templateVersionId: sourceRevision.templateVersionId,
-              sectionsSnapshot: copy(sourceRevision.sectionsSnapshot),
-            }
-          : await resolveQuotationRevisionMetadata(tx, sourceRevision);
+        if (!sourceRevision.sectionsSnapshot) {
+          throw new QuoteDraftNotFoundError('Revisão do orçamento não encontrada.');
+        }
+
         const settings = await readSettings(tx);
         const clientSnapshot = clientSnapshotFromRevision(sourceRevision, sourceQuotation.clientId);
         const businessNumber = await reserveBusinessNumber(tx, createdAt.getUTCFullYear());
@@ -1383,16 +1358,13 @@ export function createPostgresQuoteDraftRepository(
           version: 1,
           status: 'rascunho',
           validadeDias: sourceRevision.validadeDias,
-          pagamento: sourceRevision.pagamento,
           entrega: sourceRevision.entrega,
           fretePadrao: sourceRevision.fretePadrao,
           frete: sourceRevision.frete,
-          observacoes: sourceRevision.observacoes,
-          prazoProducao: sourceRevision.prazoProducao,
           templatePadrao: sourceRevision.templatePadrao,
           templateHash: sourceRevision.templateHash,
-          templateVersionId: revisionMetadata.templateVersionId,
-          sectionsSnapshot: copy(revisionMetadata.sectionsSnapshot),
+          templateVersionId: sourceRevision.templateVersionId,
+          sectionsSnapshot: copy(sourceRevision.sectionsSnapshot),
           companySnapshot: settings.empresa,
           ...clientSnapshotToRow(clientSnapshot),
           subtotal: sourceRevision.subtotal,
@@ -1494,15 +1466,15 @@ export function createPostgresQuoteDraftRepository(
           frete: String(sourceRevision.frete),
           total: String(sourceRevision.total),
           validade_dias: sourceRevision.validadeDias,
-          pagamento: sourceRevision.pagamento,
+          pagamento: sourceRevision.sectionsSnapshot.pagamento.current.body,
           entrega: sourceRevision.entrega,
-          observacoes: sourceRevision.observacoes,
-          prazo_producao: sourceRevision.prazoProducao,
+          observacoes: sourceRevision.sectionsSnapshot.condicoes_gerais.current.body,
+          prazo_producao: sourceRevision.sectionsSnapshot.prazo_producao.current.value ?? '',
           template_padrao: sourceRevision.templatePadrao,
           template_key: sourceRevision.templatePadrao,
           template_hash: sourceRevision.templateHash,
-          template_version_id: revisionMetadata.templateVersionId,
-          secoes: copy(revisionMetadata.sectionsSnapshot),
+          template_version_id: sourceRevision.templateVersionId,
+          secoes: copy(sourceRevision.sectionsSnapshot),
           created_at: createdAt.toISOString(),
           crm_deal_id: linkedDealId,
         } satisfies QuoteDuplicateResult;

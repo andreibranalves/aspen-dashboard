@@ -3,19 +3,12 @@ import { test } from 'node:test';
 import { normalizePublicQuotationUrl } from '../../src/lib/formatting/printFormats.ts';
 import {
   DEFAULT_QUOTATION_SECTIONS,
-  combineLegacyConditions,
   createQuotationSectionsSnapshot,
   normalizeQuotationSections,
   toSafeMultilineHtml,
   validateQuotationSections,
   withQuotationProductionDeadline,
 } from '../../api/_modules/quotation-content.js';
-
-const legacy = {
-  pagamento: '50% na aprovação',
-  entrega: '3 dias úteis',
-  observacoes: 'A arte precisa ser aprovada antes da produção.',
-};
 
 test('aceita somente links públicos revision-bound para clientes', () => {
   assert.equal(normalizePublicQuotationUrl('/api/view?q=ORC-1'), '');
@@ -26,14 +19,11 @@ test('aceita somente links públicos revision-bound para clientes', () => {
   assert.equal(normalizePublicQuotationUrl('https://app.test/api/view?q=ORC-1', 'https://app.test'), '');
 });
 
-test('normaliza três seções e combina campos legados em condições gerais', () => {
-  const sections = normalizeQuotationSections(undefined, legacy);
+test('normaliza três seções a partir dos defaults canônicos', () => {
+  const sections = normalizeQuotationSections(undefined);
   assert.equal(sections.schema_version, 1);
-  assert.equal(sections.pagamento.body, '50% na aprovação');
-  assert.equal(
-    sections.condicoes_gerais.body,
-    'Prazo de entrega:\n3 dias úteis\n\nObservações:\nA arte precisa ser aprovada antes da produção.'
-  );
+  assert.equal(sections.pagamento.body, '');
+  assert.equal(sections.condicoes_gerais.body, '');
 });
 
 test('cria base e current independentes', () => {
@@ -44,12 +34,6 @@ test('cria base e current independentes', () => {
   snapshot.prazo_producao.current.value = '7 dias';
   assert.equal(snapshot.pagamento.base.title, DEFAULT_QUOTATION_SECTIONS.pagamento.title);
   assert.equal(snapshot.prazo_producao.base.value, '5 dias');
-});
-
-test('combina somente os valores legados existentes', () => {
-  assert.equal(combineLegacyConditions('', 'Observação'), 'Observações:\nObservação');
-  assert.equal(combineLegacyConditions('Entrega', ''), 'Prazo de entrega:\nEntrega');
-  assert.equal(combineLegacyConditions('', ''), '');
 });
 
 test('valida seções: rejeita entrada inválida', () => {
@@ -90,11 +74,11 @@ test('normaliza seções com entrada parcial', () => {
   assert.equal(sections.prazo_producao.value, '5 dias');
 });
 
-test('não sobrescreve condicoes_gerais existente com legado', () => {
+test('preserva condicoes_gerais fornecido sem derivar de campos legados', () => {
   const input = {
     condicoes_gerais: { enabled: true, title: 'Custom', body: 'Corpo custom' },
   };
-  const sections = normalizeQuotationSections(input, legacy);
+  const sections = normalizeQuotationSections(input);
   assert.equal(sections.condicoes_gerais.body, 'Corpo custom');
 });
 
@@ -118,15 +102,6 @@ test('toSafeMultilineHtml escapa apóstrofos, crases e iguais via Handlebars.esc
   assert.ok(str.includes('&#x27;'), 'should escape apostrophe');
   assert.ok(str.includes('&#x60;'), 'should escape backtick');
   assert.ok(str.includes('&#x3D;'), 'should escape equals');
-});
-
-test('recupera espelhos legados quando JSON contém apenas o default da migração', () => {
-  const sections = normalizeQuotationSections(DEFAULT_QUOTATION_SECTIONS, legacy);
-  assert.equal(sections.pagamento.body, legacy.pagamento);
-  assert.equal(
-    sections.condicoes_gerais.body,
-    combineLegacyConditions(legacy.entrega, legacy.observacoes)
-  );
 });
 
 test('normalização rejeita chaves desconhecidas', () => {
@@ -169,18 +144,6 @@ test('normalização rejeita título oversized', () => {
     () => normalizeQuotationSections({ pagamento: { enabled: true, title: 'x'.repeat(121) } }),
     /excede 120 caracteres/
   );
-});
-
-test('legado só é derivado quando chave condicoes_gerais está ausente', () => {
-  // condicoes_gerais present with valid object: should NOT derive from legacy
-  const sections = normalizeQuotationSections(
-    { condicoes_gerais: { enabled: true, title: 'Custom', body: '' } },
-    legacy
-  );
-  assert.equal(sections.condicoes_gerais.body, '');
-  // condicoes_gerais absent: SHOULD derive from legacy
-  const sections2 = normalizeQuotationSections({}, legacy);
-  assert.ok(sections2.condicoes_gerais.body.includes('Prazo de entrega'));
 });
 
 test('DEFAULT_QUOTATION_SECTIONS é congelado', () => {

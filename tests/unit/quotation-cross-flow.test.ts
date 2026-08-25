@@ -43,8 +43,8 @@ const snapshot = {
     sectionsSnapshot: {
       schema_version: 1,
       prazo_producao: {
-        base: { enabled: true, title: 'Prazo base' },
-        current: { enabled: true, title: 'Prazo customizado' },
+        base: { enabled: true, title: 'Prazo base', value: '5 dias' },
+        current: { enabled: true, title: 'Prazo customizado', value: '5 dias' },
       },
       pagamento: {
         base: { enabled: true, title: 'Pagamento base', body: 'Base' },

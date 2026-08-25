@@ -24,6 +24,12 @@ import { quoteRevisions, quotationDeliveries } from '../../api/_infrastructure/d
 import { normalizeEvolutionDelivery } from '../../api/_infrastructure/integrations/evolution/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import {
+  createQuotationSectionsSnapshot,
+  normalizeQuotationSections,
+  withQuotationProductionDeadline,
+  type QuotationSectionsSnapshot,
+} from '../../api/_modules/quotation-content.js';
+import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
   type DeliverQuotationInput,
@@ -179,6 +185,19 @@ function mediaHeadResult(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
+function canonicalSectionsSnapshot(
+  legacy: { pagamento: string; entrega: string; observacoes: string; prazoProducao: string }
+): QuotationSectionsSnapshot {
+  const sections = withQuotationProductionDeadline(
+    normalizeQuotationSections(undefined),
+    legacy.prazoProducao
+  );
+  sections.pagamento.body = legacy.pagamento;
+  sections.condicoes_gerais.body = [legacy.entrega ? `Prazo de entrega:\n${legacy.entrega}` : '',
+    legacy.observacoes ? `Observações:\n${legacy.observacoes}` : ''].filter(Boolean).join('\n\n');
+  return createQuotationSectionsSnapshot(sections);
+}
+
 function snapshot() {
   return {
     quotation: {
@@ -218,14 +237,18 @@ function snapshot() {
       subtotal: '20.00',
       total: '20.00',
       createdAt: new Date('2026-08-08T10:00:00.000Z'),
+      sectionsSnapshot: canonicalSectionsSnapshot({
+        pagamento: 'Pix',
+        entrega: '30 dias',
+        observacoes: '',
+        prazoProducao: '30 dias',
+      }),
       templateVersionId: null,
-      sectionsSnapshot: null,
       statusOriginal: null,
       orderLinkage: null,
       orderPending: false,
     },
     templateVersion: null,
-    sectionsSnapshot: null,
     items: [
       {
         id: 'item-1',

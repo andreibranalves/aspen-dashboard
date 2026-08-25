@@ -58,13 +58,6 @@ function deepCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
-export function combineLegacyConditions(entrega: string, observacoes: string): string {
-  const parts: string[] = [];
-  if (entrega) parts.push(`Prazo de entrega:\n${entrega}`);
-  if (observacoes) parts.push(`Observações:\n${observacoes}`);
-  return parts.join('\n\n');
-}
-
 export function toSafeMultilineHtml(value: string): Handlebars.SafeString {
   if (!value) return new Handlebars.SafeString('');
   const lines = value.split('\n').map((line) => Handlebars.Utils.escapeExpression(line));
@@ -144,21 +137,9 @@ function validateAndNormalizeSection(
   return result as unknown as QuotationSectionSettings & { body?: string };
 }
 
-export function normalizeQuotationSections(
-  input: unknown,
-  legacy?: { pagamento?: string; entrega?: string; observacoes?: string }
-): QuotationSectionsSettings {
-  // No input: build from defaults + legacy
+export function normalizeQuotationSections(input: unknown): QuotationSectionsSettings {
   if (input === undefined || input === null) {
-    const result = deepCopy(DEFAULT_QUOTATION_SECTIONS) as QuotationSectionsSettings;
-    if (legacy?.pagamento) result.pagamento.body = legacy.pagamento;
-    if (legacy?.entrega || legacy?.observacoes) {
-      result.condicoes_gerais.body = combineLegacyConditions(
-        legacy.entrega || '',
-        legacy.observacoes || ''
-      );
-    }
-    return result;
+    return deepCopy(DEFAULT_QUOTATION_SECTIONS);
   }
 
   // Non-object input: reject
@@ -187,11 +168,6 @@ export function normalizeQuotationSections(
     DEFAULT_QUOTATION_SECTIONS.condicoes_gerais
   );
 
-  // Derive legacy conditions ONLY when condicoes_gerais key is absent
-  if (!('condicoes_gerais' in obj) && (legacy?.entrega || legacy?.observacoes)) {
-    condicoes_gerais.body = combineLegacyConditions(legacy.entrega || '', legacy.observacoes || '');
-  }
-
   const result: QuotationSectionsSettings = {
     schema_version: QUOTATION_SECTION_SCHEMA_VERSION,
     prazo_producao: validateAndNormalizeSection(
@@ -202,17 +178,6 @@ export function normalizeQuotationSections(
     pagamento: pagamento as QuotationSectionsSettings['pagamento'],
     condicoes_gerais: condicoes_gerais as QuotationSectionsSettings['condicoes_gerais'],
   };
-
-  // The migration adds this exact JSON as a non-null database default. Treat
-  // it as an empty marker so old mirror columns are not hidden after upgrade.
-  const isEmptySchemaDefault = JSON.stringify(result) === JSON.stringify(DEFAULT_QUOTATION_SECTIONS);
-  if (isEmptySchemaDefault && (legacy?.pagamento || legacy?.entrega || legacy?.observacoes)) {
-    if (legacy.pagamento) result.pagamento.body = legacy.pagamento;
-    result.condicoes_gerais.body = combineLegacyConditions(
-      legacy.entrega || '',
-      legacy.observacoes || ''
-    );
-  }
 
   return result;
 }

@@ -176,12 +176,18 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
       fields[`secoes.${sectionKey}${fieldKey ? `.${fieldKey}` : ''}`] = message;
       secoes = normalizeQuotationSections(undefined);
     }
+  } else if (pagamento !== null || observacoes !== null) {
+    // Top-level section bodies remain accepted as the settings save contract;
+    // they fold into the canonical sections instead of separate columns.
+    const base = normalizeQuotationSections(undefined);
+    base.pagamento.body = pagamento ?? '';
+    const parts = [];
+    if (entrega) parts.push(`Prazo de entrega:\n${entrega}`);
+    if (observacoes) parts.push(`Observações:\n${observacoes}`);
+    base.condicoes_gerais.body = parts.join('\n\n');
+    secoes = base;
   } else {
-    secoes = normalizeQuotationSections(undefined, {
-      pagamento: pagamento ?? '',
-      entrega: entrega ?? '',
-      observacoes: observacoes ?? '',
-    });
+    secoes = normalizeQuotationSections(undefined);
   }
 
   if (Object.keys(fields).length > 0) {

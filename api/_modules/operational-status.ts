@@ -2,6 +2,7 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { getDatabase } from '../_infrastructure/db/client.js';
 import { appSettings } from '../_infrastructure/db/schema.js';
+import { normalizeQuotationSections } from './quotation-content.js';
 import { sql } from 'drizzle-orm';
 
 function jsonResponse(statusCode: number, body: unknown): FunctionResult {
@@ -26,9 +27,10 @@ async function checkMandatorySettings(): Promise<{ configured: boolean; missing:
   try {
     const [settings] = await getDatabase().select().from(appSettings).limit(1);
     if (!settings) return { configured: false, missing: requiredFields };
+    const secoes = normalizeQuotationSections(settings.quotationSections);
     const missing: string[] = [];
     if (!settings.validadeDias || settings.validadeDias < 1) missing.push('validade_dias');
-    if (!settings.pagamento.trim()) missing.push('pagamento');
+    if (!secoes.pagamento.body.trim()) missing.push('pagamento');
     if (!settings.templatePadrao.trim()) missing.push('template_padrao');
     return { configured: missing.length === 0, missing };
   } catch {

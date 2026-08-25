@@ -12,10 +12,8 @@ import {
   type QuoteDatabase,
   type QuoteDraftManagementDetail,
 } from './quote-draft-management-repository.js';
-import { appSettings, quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';
-import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
+import { appSettings, quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
-import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 import {
   assertQuotationTransition,
   canonicalQuotationStatus,
@@ -273,16 +271,13 @@ export function createPostgresQuotationLifecycleRepository(
             version,
             status: 'rascunho',
             validadeDias: source.validadeDias,
-            pagamento: source.pagamento,
             entrega: source.entrega,
             fretePadrao: source.fretePadrao,
             frete: source.frete,
-            observacoes: source.observacoes,
-            prazoProducao: source.prazoProducao,
             templatePadrao: source.templatePadrao,
             templateHash: source.templateHash,
-            templateVersionId: source.templateVersionId || (await resolveQuotationRevisionMetadata(tx, source)).templateVersionId,
-            sectionsSnapshot: revisionSectionsSnapshot(source),
+            templateVersionId: source.templateVersionId,
+            sectionsSnapshot: structuredClone(source.sectionsSnapshot),
             companySnapshot,
             clienteNome: source.clienteNome,
             clienteDocumento: source.clienteDocumento,

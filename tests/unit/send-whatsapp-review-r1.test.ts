@@ -7,10 +7,24 @@ import { createDeliveryPlan, type DeliveryFlow } from '../../api/_modules/quotat
 import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
 import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
+import {
+  createQuotationSectionsSnapshot,
+  normalizeQuotationSections,
+  withQuotationProductionDeadline,
+} from '../../api/_modules/quotation-content.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = '00000000-0000-4000-8000-000000000001';
+
+function canonicalSectionsSnapshot() {
+  const sections = withQuotationProductionDeadline(
+    normalizeQuotationSections(undefined),
+    '30 dias'
+  );
+  sections.pagamento.body = 'Pix';
+  return createQuotationSectionsSnapshot(sections);
+}
 const businessNumber = 'ORC-20260001';
 const publicToken = 'A'.repeat(32);
 
@@ -53,14 +67,13 @@ function snapshot() {
       subtotal: '20.00',
       total: '20.00',
       createdAt: new Date('2026-08-08T10:00:00.000Z'),
+      sectionsSnapshot: canonicalSectionsSnapshot(),
       templateVersionId: null,
-      sectionsSnapshot: null,
       statusOriginal: null,
       orderLinkage: null,
       orderPending: false,
     },
     templateVersion: null,
-    sectionsSnapshot: null,
     items: [{
       id: 'item-1',
       revisionId,
