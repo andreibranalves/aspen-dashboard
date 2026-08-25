@@ -2,7 +2,7 @@
 // Supports text, quotation documents and product media steps without changing
 // the existing flow API or WhatsApp transport.
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
   CalendarDays,
@@ -34,8 +34,6 @@ import type {
   FlowContext,
 } from '@/lib/api/communicationApi';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
-import { useSetTopBarActions } from '@/components/layout/Layout';
-
 const STEP_TYPES = {
   TEXT: 'text',
   DOCUMENT: 'document',
@@ -215,38 +213,6 @@ export default function FlowEditorTab() {
     setActionError('');
   }, [flows.length]);
 
-  const setTopBarActions = useSetTopBarActions();
-
-  useEffect(() => {
-    if (!setTopBarActions) return undefined;
-    if (loading) {
-      setTopBarActions(null);
-      return () => setTopBarActions(null);
-    }
-
-    setTopBarActions(
-      (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={addFlow} size="sm">
-            <Plus size={14} aria-hidden="true" /> Novo fluxo
-          </Button>
-          {(isDirty || saving) && (
-            <Button onClick={handleSave} size="sm" disabled={saving}>
-              {saving ? (
-                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              ) : (
-                <Save size={14} aria-hidden="true" />
-              )}
-              {saving ? 'Salvando…' : 'Salvar'}
-            </Button>
-          )}
-        </div>
-      ) as ReactNode
-    );
-
-    return () => setTopBarActions(null);
-  }, [addFlow, handleSave, isDirty, loading, saving, setTopBarActions]);
-
   const duplicateFlow = (flowId: string) => {
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return;
@@ -348,6 +314,22 @@ export default function FlowEditorTab() {
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button onClick={addFlow} size="sm">
+          <Plus size={14} aria-hidden="true" /> Novo fluxo
+        </Button>
+        {(isDirty || saving) && (
+          <Button onClick={handleSave} size="sm" disabled={saving}>
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Save size={14} aria-hidden="true" />
+            )}
+            {saving ? 'Salvando…' : 'Salvar'}
+          </Button>
+        )}
+      </div>
+
       {loadError && (
         <div
           className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
