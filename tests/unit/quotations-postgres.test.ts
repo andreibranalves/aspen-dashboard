@@ -44,6 +44,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     observacoes: 'Observações da configuração',
     quotationSections: {
       schema_version: 1 as const,
+      show_summary: false,
+      rich_text: true,
       prazo_producao: { enabled: true, title: 'Prazo de produção' },
       pagamento: { enabled: false, title: 'Título de pagamento configurado', body: 'Pagamento da configuração' },
       condicoes_gerais: { enabled: false, title: 'Título de condições configurado', body: 'Observações da configuração' },
@@ -108,6 +110,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(draft.template_key, defaultTemplate.key);
     assert.equal(draft.template_hash, defaultTemplate.hash);
     assert.equal(draft.secoes.pagamento.current.body, explicitSettings.quotationSections.pagamento.body);
+    assert.equal(draft.secoes.show_summary, false);
+    assert.equal(draft.secoes.rich_text, true);
     assert.notEqual(draft.secoes, explicitSettings.quotationSections);
     const alternateDraft = await create.createDraft({
       client_id: clientId,
@@ -126,6 +130,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     });
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     assert.equal(overrideDraft.secoes.pagamento.current.body, 'Override');
+    assert.equal(overrideDraft.secoes.show_summary, false);
+    assert.equal(overrideDraft.secoes.rich_text, true);
     assert.equal(overrideDraft.secoes.pagamento.current.enabled, false);
     assert.equal(overrideDraft.secoes.pagamento.current.title, 'Título de pagamento configurado');
     assert.deepEqual(overrideDraft.secoes.condicoes_gerais.current, explicitSettings.quotationSections.condicoes_gerais);
@@ -264,6 +270,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(sectionOverride.observacoes, 'Seção condição');
     assert.equal(sectionOverride.entrega, 'Legacy entrega');
     assert.equal(sectionOverride.secoes?.pagamento.current.body, 'Seção pagamento');
+    assert.equal(sectionOverride.secoes?.show_summary, false);
+    assert.equal(sectionOverride.secoes?.rich_text, true);
     assert.equal(sectionOverride.secoes?.condicoes_gerais.current.body, 'Seção condição');
     assert.equal(sectionOverride.prazo_producao, '');
     assert.ok(sectionOverride.secoes);
@@ -515,6 +523,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const [item] = await db.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, updated.revision_id));
     const revisionSectionsAfter = revision?.sectionsSnapshot as Record<string, any> | undefined;
     assert.equal(revisionSectionsAfter?.condicoes_gerais.current.body, 'Alterado');
+    assert.equal(revisionSectionsAfter?.show_summary, false);
+    assert.equal(revisionSectionsAfter?.rich_text, true);
     assert.equal(revision?.clienteNome, 'Segundo cliente de gerenciamento');
     assert.equal(revision?.clienteEmail, 'management-second@example.com');
     assert.equal(item?.precoAplicado, '10.00');

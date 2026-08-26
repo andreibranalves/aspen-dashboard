@@ -3,6 +3,122 @@
 -- Existing quotation revisions keep their previously selected template_version_id.
 
 INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
+SELECT 'f4000000-0000-4000-8000-000000000001'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_padrao_content_v4$<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <title>Orçamento {{quote_number}}</title>
+  <style>:root{font-family:Arial,sans-serif;color:#172033}body{margin:0;padding:32px}.header{display:flex;justify-content:space-between;border-bottom:2px solid #172033;padding-bottom:18px}.muted{color:#5c667a;font-size:13px}.meta{text-align:right}.client,.items,.commercial{margin-top:24px}.client{border:1px solid #d9deea;border-radius:8px;padding:14px}.client p{margin:4px 0}h1,h2,p{margin-top:0}h2{font-size:16px}table{width:100%;border-collapse:collapse}th,td{padding:9px 8px;border-bottom:1px solid #e5e8ef;text-align:left}.totals{display:flex;justify-content:flex-end;gap:18px;margin-top:16px}.totals strong{border-top:2px solid #172033;padding-top:8px}.commercial section{margin-top:18px}.commercial section div,.commercial section p{white-space:pre-line}.banking{margin-top:10px}.footer{display:flex;flex-wrap:wrap;gap:16px;border-top:1px solid #d9deea;margin-top:28px;padding-top:14px;font-size:12px}</style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>Orçamento</h1>
+      <p class="muted">{{company.identity.legal_name}} · CNPJ {{company.identity.document}}</p>
+      <p class="muted">{{quote_number}} · Revisão {{revision}}</p>
+    </div>
+    <div class="meta">{{display.quote_date}}<br>Válido até {{display.validity_date}}</div>
+  </header>
+  <section class="client">
+    <h2>Cliente</h2>
+    <p>{{client.name}}</p>
+    {{#if client.document}}<p>{{client.document}}</p>{{/if}}
+    {{#if client.email}}<p>{{client.email}}</p>{{/if}}
+    {{#if client.phone}}<p>{{client.phone}}</p>{{/if}}
+    {{#if client.address}}<p>{{client.address}}</p>{{/if}}
+  </section>
+  <section class="items">
+    <h2>Itens</h2>
+    <table><thead><tr><th>SKU</th><th>Produto</th><th>Quantidade</th><th>Unitário</th><th>Total</th></tr></thead><tbody>
+      {{#each items}}<tr><td>{{sku}}</td><td>{{name}}{{#if description}}<div class="muted">{{description}}</div>{{/if}}</td><td>{{quantity}}</td><td>{{display.unit_price}}</td><td>{{display.line_total}}</td></tr>{{/each}}
+    </tbody></table>
+    <div class="totals">{{#if display.show_summary}}<div><span>Subtotal</span><span>{{display.subtotal}}</span></div><div><span>Frete</span><span>{{display.freight}}</span></div>{{/if}}<div class="grand-total"><span>Total</span><span>{{display.total}}</span></div></div>
+  </section>
+  <div class="commercial">
+    {{#if terms.entrega}}<p>Entrega: {{terms.entrega}}</p>{{/if}}
+    {{#if secoes.prazo_producao.enabled}}<section><h2>{{secoes.prazo_producao.title}}</h2><div>{{secoes.prazo_producao.value_html}}</div></section>{{/if}}
+    {{#if secoes.pagamento.enabled}}<section><h2>{{secoes.pagamento.title}}</h2><div>{{secoes.pagamento.body_html}}</div><div class="banking">{{#if company.banking.bank_name}}<p>{{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}{{#if company.banking.branch}}<p>Agência: {{company.banking.branch}}</p>{{/if}}{{#if company.banking.account}}<p>Conta: {{company.banking.account}}</p>{{/if}}{{#if company.banking.pix_key}}<p>Pix: {{company.banking.pix_key}}</p>{{/if}}</div></section>{{/if}}
+    {{#if secoes.condicoes_gerais.enabled}}<section><h2>{{secoes.condicoes_gerais.title}}</h2><div>{{secoes.condicoes_gerais.body_html}}</div></section>{{/if}}
+  </div>
+  <footer class="footer">
+    {{#if company.contacts.website}}<span>{{company.contacts.website}}</span>{{/if}}
+    {{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}
+    {{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}
+    {{#if company.contacts.instagram}}<span>{{company.contacts.instagram}}</span>{{/if}}
+  </footer>
+</body>
+</html>$quotation_padrao_content_v4$, '22ccdcc533917d073da3e49b4157b9624b71e74f0a334dcd3facdec5138de64c', 2
+FROM "quotation_templates" AS template
+LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
+WHERE template."key" = 'padrao'
+  AND NOT EXISTS (
+    SELECT 1 FROM "quotation_template_versions" AS duplicate
+    WHERE duplicate."template_id" = template."id"
+      AND duplicate."source_hash" = '22ccdcc533917d073da3e49b4157b9624b71e74f0a334dcd3facdec5138de64c'
+  )
+GROUP BY template."id"
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
+INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
+SELECT 'f4000000-0000-4000-8000-000000000002'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_minimalista_content_v4$<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <title>Proposta comercial {{quote_number}}</title>
+  <style>body{margin:0;padding:28px;font:14px/1.5 Georgia,serif;color:#222}h1{font-weight:500}.header{display:flex;justify-content:space-between;border-bottom:1px solid #222;padding-bottom:12px}.meta{text-align:right;font-size:12px}.muted{font-size:12px;color:#555}.client,.items,.commercial{margin-top:22px}.client p{margin:3px 0}h2{font-size:15px;margin:0 0 7px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:7px 3px;text-align:left}.totals{display:flex;justify-content:flex-end;gap:14px;margin-top:14px}.totals strong{border-top:1px solid #222;padding-top:7px}.commercial section{margin-top:18px}.commercial section div,.commercial section p{white-space:pre-line}.footer{display:flex;flex-wrap:wrap;gap:14px;border-top:1px solid #ddd;margin-top:24px;padding-top:12px;font-size:12px}</style>
+</head>
+<body>
+  <header class="header">
+    <div>
+      <h1>Proposta comercial</h1>
+      <p class="muted">{{company.identity.legal_name}} · CNPJ {{company.identity.document}}</p>
+      <p class="muted">{{quote_number}} · Revisão {{revision}}</p>
+    </div>
+    <div class="meta">{{display.quote_date}}<br>Válido até {{display.validity_date}}</div>
+  </header>
+  <section class="client">
+    <h2>Cliente</h2>
+    <p>{{client.name}}</p>
+    {{#if client.document}}<p>{{client.document}}</p>{{/if}}
+    {{#if client.email}}<p>{{client.email}}</p>{{/if}}
+    {{#if client.phone}}<p>{{client.phone}}</p>{{/if}}
+    {{#if client.address}}<p>{{client.address}}</p>{{/if}}
+  </section>
+  <section class="items">
+    <h2>Itens</h2>
+    <table><thead><tr><th>SKU</th><th>Produto</th><th>Quantidade</th><th>Unitário</th><th>Total</th></tr></thead><tbody>
+      {{#each items}}<tr><td>{{sku}}</td><td>{{name}}{{#if description}}<div class="muted">{{description}}</div>{{/if}}</td><td>{{quantity}}</td><td>{{display.unit_price}}</td><td>{{display.line_total}}</td></tr>{{/each}}
+    </tbody></table>
+    <div class="totals">{{#if display.show_summary}}<div><span>Subtotal</span><span>{{display.subtotal}}</span></div><div><span>Frete</span><span>{{display.freight}}</span></div>{{/if}}<div class="grand-total"><span>Total</span><span>{{display.total}}</span></div></div>
+  </section>
+  <div class="commercial">
+    {{#if terms.entrega}}<p>Entrega: {{terms.entrega}}</p>{{/if}}
+    {{#if secoes.prazo_producao.enabled}}<section><h2>{{secoes.prazo_producao.title}}</h2><div>{{secoes.prazo_producao.value_html}}</div></section>{{/if}}
+    {{#if secoes.pagamento.enabled}}<section><h2>{{secoes.pagamento.title}}</h2><div>{{secoes.pagamento.body_html}}</div><div class="banking">{{#if company.banking.bank_name}}<p>{{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}{{#if company.banking.branch}}<p>Agência: {{company.banking.branch}}</p>{{/if}}{{#if company.banking.account}}<p>Conta: {{company.banking.account}}</p>{{/if}}{{#if company.banking.pix_key}}<p>Pix: {{company.banking.pix_key}}</p>{{/if}}</div></section>{{/if}}
+    {{#if secoes.condicoes_gerais.enabled}}<section><h2>{{secoes.condicoes_gerais.title}}</h2><div>{{secoes.condicoes_gerais.body_html}}</div></section>{{/if}}
+  </div>
+  <footer class="footer">
+    {{#if company.contacts.website}}<span>{{company.contacts.website}}</span>{{/if}}
+    {{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}
+    {{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}
+    {{#if company.contacts.instagram}}<span>{{company.contacts.instagram}}</span>{{/if}}
+  </footer>
+</body>
+</html>$quotation_minimalista_content_v4$, '4dc66a529eecb8dfa895c05c91e4bd7fd6d8f7606f779a821717af61df368102', 2
+FROM "quotation_templates" AS template
+LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
+WHERE template."key" = 'minimalista'
+  AND NOT EXISTS (
+    SELECT 1 FROM "quotation_template_versions" AS duplicate
+    WHERE duplicate."template_id" = template."id"
+      AND duplicate."source_hash" = '4dc66a529eecb8dfa895c05c91e4bd7fd6d8f7606f779a821717af61df368102'
+  )
+GROUP BY template."id"
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
+INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
 SELECT 'f4000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_branded_content_v4$<!doctype html>
 <html lang="pt-BR">
 <head>

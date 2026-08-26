@@ -1601,11 +1601,11 @@ function officialV2Source({ pageTitle, css, comparison = false }: OfficialV2Opti
     <table><thead><tr><th>SKU</th><th>Produto</th><th>Quantidade</th><th>Unitário</th><th>Total</th></tr></thead><tbody>
       {{#each items}}<tr><td>{{sku}}</td><td>{{name}}{{#if description}}<div class="muted">{{description}}</div>{{/if}}</td><td>{{quantity}}</td><td>{{display.unit_price}}</td><td>{{display.line_total}}</td></tr>{{/each}}
     </tbody></table>
-    <div class="totals"><div><span>Subtotal</span><span>{{display.subtotal}}</span></div><div><span>Frete</span><span>{{display.freight}}</span></div><div class="grand-total"><span>Total</span><span>{{display.total}}</span></div></div>
+    <div class="totals">{{#if display.show_summary}}<div><span>Subtotal</span><span>{{display.subtotal}}</span></div><div><span>Frete</span><span>{{display.freight}}</span></div>{{/if}}<div class="grand-total"><span>Total</span><span>{{display.total}}</span></div></div>
   </section>${comparisonMarkup}
   <div class="commercial">
     {{#if terms.entrega}}<p>Entrega: {{terms.entrega}}</p>{{/if}}
-    {{#if secoes.prazo_producao.enabled}}<section><h2>{{secoes.prazo_producao.title}}</h2><p>{{secoes.prazo_producao.value}}</p></section>{{/if}}
+    {{#if secoes.prazo_producao.enabled}}<section><h2>{{secoes.prazo_producao.title}}</h2><div>{{secoes.prazo_producao.value_html}}</div></section>{{/if}}
     {{#if secoes.pagamento.enabled}}<section><h2>{{secoes.pagamento.title}}</h2><div>{{secoes.pagamento.body_html}}</div><div class="banking">{{#if company.banking.bank_name}}<p>{{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}{{#if company.banking.branch}}<p>Agência: {{company.banking.branch}}</p>{{/if}}{{#if company.banking.account}}<p>Conta: {{company.banking.account}}</p>{{/if}}{{#if company.banking.pix_key}}<p>Pix: {{company.banking.pix_key}}</p>{{/if}}</div></section>{{/if}}
     {{#if secoes.condicoes_gerais.enabled}}<section><h2>{{secoes.condicoes_gerais.title}}</h2><div>{{secoes.condicoes_gerais.body_html}}</div></section>{{/if}}
   </div>

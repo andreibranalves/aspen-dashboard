@@ -22,7 +22,7 @@ const migrationStatements = migrationSql
   .split('--> statement-breakpoint')
   .map((statement) => statement.trim())
   .filter(Boolean);
-const templateKeys = ['branded', 'comparativo', 'simples'] as const;
+const templateKeys = ['padrao', 'minimalista', 'branded', 'comparativo', 'simples'] as const;
 const migrationSkip = TEST_DATABASE_URL
   ? false
   : 'TEST_DATABASE_URL is required for PostgreSQL migration validation.';

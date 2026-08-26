@@ -1055,6 +1055,37 @@ test('restored v2 templates keep the Aspen visual shell with dynamic company dat
   }
 });
 
+test('all official templates honor summary visibility and rich-text deadline', () => {
+  const controlledSnapshot = {
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        ...snapshot.revision.sectionsSnapshot,
+        show_summary: false,
+        rich_text: true,
+        prazo_producao: {
+          ...snapshot.revision.sectionsSnapshot.prazo_producao,
+          current: {
+            ...snapshot.revision.sectionsSnapshot.prazo_producao.current,
+            value: '<strong>10 dias úteis</strong>',
+          },
+        },
+      },
+    },
+  };
+  const model = quotationSnapshotViewModel(controlledSnapshot);
+  for (const key of ['padrao', 'minimalista', 'branded', 'comparativo', 'simples']) {
+    const template = getQuotationTemplate(key);
+    assert.ok(template);
+    const html = renderQuotationTemplate(template, model);
+    assert.doesNotMatch(html, /<span>Subtotal<\/span>/);
+    assert.doesNotMatch(html, /<span>Frete<\/span>/);
+    assert.match(html, /<span>Total<\/span>/);
+    assert.match(html, /<strong>10 dias úteis<\/strong>/);
+  }
+});
+
 test('comparativo template is registered and renders the saved matrix', () => {
   const template = getQuotationTemplate('comparativo');
   assert.ok(template);
