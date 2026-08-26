@@ -694,23 +694,11 @@ export default function ManualOrcamentoPage() {
   return (
     <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
       {!result && (
-        <header className="space-y-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
-              Documento comercial
-            </p>
-            <h1 className="mt-1 text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-5 text-fg-muted">
-              Preencha os dados do cliente, revise os itens e escolha quando salvar ou enviar.
-            </p>
-          </div>
-          <ol aria-label="Etapas do orçamento" className="flex flex-wrap gap-2 text-xs text-fg-muted">
-            <li className="rounded-sm border border-primary/30 bg-primary/5 px-3 py-1.5 font-medium text-primary">
-              1 · Cliente
-            </li>
-            <li className="rounded-sm border border-line bg-surface px-3 py-1.5">2 · Itens</li>
-            <li className="rounded-sm border border-line bg-surface px-3 py-1.5">3 · Condições e fechamento</li>
-          </ol>
+        <header>
+          <h1 className="text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-fg-muted">
+            Preencha os dados do cliente, revise os itens e escolha quando salvar ou enviar.
+          </p>
         </header>
       )}
 

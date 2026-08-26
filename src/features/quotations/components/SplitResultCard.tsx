@@ -255,9 +255,6 @@ export default function SplitResultCard({
       >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
-              O que foi entendido
-            </span>
             <span className="text-xs font-medium text-fg-muted">
               Pedido {displayIdx + 1} de {totalDrafts}
             </span>
@@ -357,10 +354,7 @@ export default function SplitResultCard({
       {/* ── Stage 2: extracted values remain editable until creation. ── */}
       {!isDone && (
         <div className="border-b border-line bg-primary/5 px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
-            2 · Precisa de revisão
-          </p>
-          <p className="mt-1 text-xs leading-5 text-fg-muted">
+          <p className="text-xs leading-5 text-fg-muted">
             Confirme cliente, itens, quantidades e preços. Nada será criado enquanto você não gerar o orçamento.
           </p>
         </div>
@@ -612,10 +606,7 @@ export default function SplitResultCard({
       <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface/30 p-3">
         {!isDone && (
           <div className="w-full border-b border-line pb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
-              3 · Será criado
-            </p>
-            <p className="mt-1 text-xs leading-5 text-fg-muted">
+            <p className="text-xs leading-5 text-fg-muted">
               Um orçamento comercial com os dados revisados e o modelo selecionado.
             </p>
           </div>

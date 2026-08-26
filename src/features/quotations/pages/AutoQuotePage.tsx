@@ -722,11 +722,7 @@ export default function AutoQuotePage() {
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex h-1/2 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto border-r border-line bg-surface lg:h-auto lg:overflow-hidden lg:w-1/2 lg:flex-none">
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 md:px-6 md:pt-5 space-y-4">
-            {/* Stage 1: the source material is what the system understood. */}
             <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
-                1 · O que foi entendido
-              </p>
               <h1 className="text-lg font-semibold tracking-tight text-fg">Pedido do cliente</h1>
               <p className="text-sm leading-5 text-fg-muted">
                 Cole a conversa ou envie uma imagem. O conteúdo só vira orçamento depois da sua revisão.
@@ -911,10 +907,7 @@ export default function AutoQuotePage() {
         <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
             <div className="flex h-full flex-col">
-              <div className="mb-3 space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
-                  2 · Precisa de revisão
-                </p>
+              <div className="mb-3">
                 <h2 className="text-lg font-semibold tracking-tight text-fg">Resultado</h2>
               </div>
               <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-line text-center">
@@ -933,9 +926,6 @@ export default function AutoQuotePage() {
             <div className="space-y-3">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
-                    2 · Precisa de revisão
-                  </p>
                   <h2 className="text-lg font-semibold tracking-tight text-fg">
                     Resultados ({activeDrafts.length})
                   </h2>
