@@ -4,10 +4,13 @@ export interface QuotationSectionSettings {
   enabled: boolean;
   title: string;
   body?: string;
+  value?: string;
 }
 
 export interface QuotationSectionsSettings {
   schema_version: 1;
+  show_summary?: boolean;
+  rich_text?: boolean;
   prazo_producao: QuotationSectionSettings;
   pagamento: QuotationSectionSettings & { body: string };
   condicoes_gerais: QuotationSectionSettings & { body: string };

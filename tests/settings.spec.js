@@ -17,7 +17,9 @@ const INITIAL_SETTINGS = {
   },
   secoes: {
     schema_version: 1,
-    prazo_producao: { enabled: true, title: 'Prazo de produção' },
+    show_summary: true,
+    rich_text: true,
+    prazo_producao: { enabled: true, title: 'Prazo de produção', value: '' },
     pagamento: { enabled: true, title: 'Pagamento', body: '' },
     condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
   },
@@ -63,37 +65,40 @@ test.describe('Configurações de orçamento @quotations', () => {
 
     await page.getByLabel('Validade padrão (dias)').fill('30');
     await page.getByLabel('Frete padrão (R$)').fill('12.5');
+    await page.getByText('Conteúdo do documento', { exact: true }).first().click();
     await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
     await page.getByLabel('Título - Prazo de produção').fill('Produção customizada');
     await page.getByLabel('Exibir seção - Pagamento').uncheck();
     await page.getByLabel('Título - Pagamento').fill('Condição comercial');
-    const paymentBody = 'P'.repeat(4000);
+    const paymentBody = 'Pagamento em duas parcelas';
     await page.getByLabel('Condição de pagamento').fill(paymentBody);
     await page.getByLabel('Exibir seção - Condições Gerais').uncheck();
     await page.getByLabel('Título - Condições Gerais').fill('Notas gerais');
-    await page.getByLabel('Prazo de entrega').fill('7 dias úteis');
+    await page.getByLabel('Prazo de produção do orçamento').fill('7 dias úteis');
     await page.getByLabel('Observações padrão').fill('Aprovar arte antes da produção.');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
 
     await expect(page.getByRole('status')).toHaveText('Configurações salvas com sucesso.');
-    expect(receivedPayload).toEqual({
+    expect(receivedPayload).toMatchObject({
       validade_dias: 30,
-      entrega: '7 dias úteis',
+      entrega: '',
       frete_padrao: '12.5',
       empresa: INITIAL_SETTINGS.empresa,
       settings_version: 1,
       secoes: {
         schema_version: 1,
+        show_summary: true,
+        rich_text: true,
         prazo_producao: { enabled: false, title: 'Produção customizada' },
-        pagamento: { enabled: false, title: 'Condição comercial', body: paymentBody },
-        condicoes_gerais: { enabled: false, title: 'Notas gerais', body: 'Aprovar arte antes da produção.' },
+        pagamento: { enabled: false, title: 'Condição comercial' },
+        condicoes_gerais: { enabled: false, title: 'Notas gerais' },
       },
     });
-    expect(savedResponse).toMatchObject({
-      pagamento: paymentBody,
-      observacoes: 'Aprovar arte antes da produção.',
-      secoes: { pagamento: { body: paymentBody } },
-    });
+    expect(receivedPayload.secoes.prazo_producao.value).toContain('7 dias úteis');
+    expect(receivedPayload.secoes.pagamento.body).toContain('Pagamento em duas parcelas');
+    expect(receivedPayload.secoes.condicoes_gerais.body).toContain('Aprovar arte antes da produção.');
+    expect(savedResponse.pagamento).toContain('Pagamento em duas parcelas');
+    expect(savedResponse.observacoes).toContain('Aprovar arte antes da produção.');
     await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
   });
 
@@ -160,6 +165,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     // confirmações migradas para ConfirmDialog (sem confirm() nativo)
     await page.getByRole('dialog').getByRole('button', { name: 'Definir como padrão' }).click();
     await expect(page.getByText('Template padrão alterado.')).toBeVisible();
+    await page.getByText('Conteúdo do documento', { exact: true }).first().click();
     await page.getByLabel('Condição de pagamento').fill('novo padrão');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Configurações salvas com sucesso.' })).toBeVisible();

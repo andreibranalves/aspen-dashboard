@@ -5,7 +5,9 @@ import {
   DEFAULT_QUOTATION_SECTIONS,
   createQuotationSectionsSnapshot,
   normalizeQuotationSections,
+  sanitizeQuotationRichText,
   toSafeMultilineHtml,
+  toSafeRichTextHtml,
   validateQuotationSections,
   withQuotationProductionDeadline,
 } from '../../api/_modules/quotation-content.js';
@@ -88,6 +90,23 @@ test('toSafeMultilineHtml escapa HTML e preserva quebras de linha', () => {
   assert.equal(typeof str, 'string');
   assert.match(str, /&lt;script&gt;alert\(1\)&lt;\/script&gt;<br>Saldo/);
   assert.doesNotMatch(str, /<script>/);
+});
+
+test('rich text preserva apenas formatação comercial permitida', () => {
+  const input = '<p><strong>50% de entrada</strong></p><ul><li>Pix</li></ul><img src=x onerror=alert(1)><script>alert(2)</script>';
+  const sanitized = sanitizeQuotationRichText(input);
+  assert.equal(sanitized, '<p><strong>50% de entrada</strong></p><ul><li>Pix</li></ul>');
+  assert.equal(toSafeRichTextHtml(sanitized).toString(), sanitized);
+});
+
+test('preferência de resumo é normalizada e preservada no snapshot', () => {
+  assert.equal(normalizeQuotationSections(undefined).show_summary, true);
+  const sections = normalizeQuotationSections({ show_summary: false, rich_text: true });
+  assert.equal(sections.show_summary, false);
+  assert.equal(sections.rich_text, true);
+  assert.equal(createQuotationSectionsSnapshot(sections).show_summary, false);
+  assert.throws(() => normalizeQuotationSections({ show_summary: 'não' }), /show_summary deve ser booleano/);
+  assert.throws(() => normalizeQuotationSections({ rich_text: 'sim' }), /rich_text deve ser booleano/);
 });
 
 test('toSafeMultilineHtml retorna string vazia para valor vazio', () => {

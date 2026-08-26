@@ -45,6 +45,7 @@ function model(visibility = { prazo: true, pagamento: true, condicoes: true }) {
         enabled: visibility.prazo,
         title: 'Prazo customizado',
         value: 'Entrega em 20 dias',
+        value_html: toSafeMultilineHtml('Entrega em 20 dias'),
       },
       pagamento: {
         enabled: visibility.pagamento,
@@ -94,7 +95,11 @@ test('official catalog publishes five v2 templates while retaining immutable v1 
 test('every official v2 template renders customized company and commercial sections safely', () => {
   for (const template of QUOTATION_TEMPLATES) {
     const html = renderQuotationTemplate(template, model());
-    assert.match(html, /Empresa Nova LTDA/);
+    if (['branded', 'comparativo', 'simples'].includes(template.key)) {
+      assert.doesNotMatch(html, /Empresa Nova LTDA|12\.345\.678\/0001-95/);
+    } else {
+      assert.match(html, /Empresa Nova LTDA/);
+    }
     assert.match(html, /Banco Novo/);
     assert.match(html, /Prazo customizado/);
     assert.match(html, /Pagamento customizado/);
@@ -133,7 +138,11 @@ test('disabled sections hide titles, content and payment company details in ever
     for (const [, visibility, hidden] of cases) {
       const html = renderQuotationTemplate(template, model(visibility));
       assert.doesNotMatch(html, hidden);
-      assert.match(html, /Empresa Nova LTDA/);
+      if (['branded', 'comparativo', 'simples'].includes(template.key)) {
+        assert.doesNotMatch(html, /Empresa Nova LTDA|12\.345\.678\/0001-95/);
+      } else {
+        assert.match(html, /Empresa Nova LTDA/);
+      }
     }
   }
 });

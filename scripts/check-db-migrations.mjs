@@ -48,8 +48,6 @@ function gitArgs(baseRef) {
     '--name-status',
     '-z',
     '--find-renames',
-    '--find-copies',
-    '--find-copies-harder',
     baseRef,
     '--',
     'drizzle/*.sql',

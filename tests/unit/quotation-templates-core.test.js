@@ -1047,11 +1047,42 @@ test('restored v2 templates keep the Aspen visual shell with dynamic company dat
     assert.match(template.source, /secoes\.pagamento/);
     assert.match(template.source, /secoes\.condicoes_gerais/);
     assert.doesNotMatch(template.source, /15 a 20 dias úteis|Formas de pagamento: PIX/);
-    assert.match(html, /EMPRESA VISUAL LTDA/);
+    assert.doesNotMatch(html, /EMPRESA VISUAL LTDA|11\.222\.333\/0001-81/);
     assert.match(html, /Banco Dinâmico/);
     assert.match(html, /empresa-visual\.example\/propostas/);
     assert.match(html, /@empresa_visual/);
     assert.match(html, />Total<[^]*R\$ 10,00/);
+  }
+});
+
+test('all official templates honor summary visibility and rich-text deadline', () => {
+  const controlledSnapshot = {
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        ...snapshot.revision.sectionsSnapshot,
+        show_summary: false,
+        rich_text: true,
+        prazo_producao: {
+          ...snapshot.revision.sectionsSnapshot.prazo_producao,
+          current: {
+            ...snapshot.revision.sectionsSnapshot.prazo_producao.current,
+            value: '<strong>10 dias úteis</strong>',
+          },
+        },
+      },
+    },
+  };
+  const model = quotationSnapshotViewModel(controlledSnapshot);
+  for (const key of ['padrao', 'minimalista', 'branded', 'comparativo', 'simples']) {
+    const template = getQuotationTemplate(key);
+    assert.ok(template);
+    const html = renderQuotationTemplate(template, model);
+    assert.doesNotMatch(html, /<span>Subtotal<\/span>/);
+    assert.doesNotMatch(html, /<span>Frete<\/span>/);
+    assert.match(html, /<span>Total<\/span>/);
+    assert.match(html, /<strong>10 dias úteis<\/strong>/);
   }
 });
 

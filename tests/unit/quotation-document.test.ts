@@ -125,6 +125,22 @@ test('canonical document seam formats, escapes and hides disabled section data',
   assert.equal(document.viewModel.terms.pagamento, '<script>alert(1)</script>\nSaldo');
 });
 
+test('rich text is explicit so historical tag-like text remains escaped', () => {
+  const payment = snapshot.revision.sectionsSnapshot.pagamento;
+  const legacy = renderQuotationDocument({
+    ...snapshot,
+    revision: { ...snapshot.revision, sectionsSnapshot: { ...snapshot.revision.sectionsSnapshot, pagamento: { ...payment, current: { ...payment.current, body: '<strong>literal</strong>' } } } },
+  } as any, template);
+  assert.match(legacy.html, /&lt;strong&gt;literal&lt;\/strong&gt;/);
+
+  const rich = renderQuotationDocument({
+    ...snapshot,
+    revision: { ...snapshot.revision, sectionsSnapshot: { ...snapshot.revision.sectionsSnapshot, rich_text: true, pagamento: { ...payment, current: { ...payment.current, body: '<strong>formatado</strong><script>não</script>' } } } },
+  } as any, template);
+  assert.match(rich.html, /<strong>formatado<\/strong>/);
+  assert.doesNotMatch(rich.html, /<script>/);
+});
+
 test('canonical production deadline feeds section and legacy mirrors', () => {
   const canonicalSnapshot = {
     ...snapshot,

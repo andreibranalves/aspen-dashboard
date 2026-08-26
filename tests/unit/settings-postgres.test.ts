@@ -94,6 +94,8 @@ test(
 
         secoes: {
           schema_version: 1,
+          show_summary: true,
+          rich_text: true,
           prazo_producao: { enabled: true, title: 'Prazo de produção' },
           pagamento: { enabled: true, title: 'Pagamento', body: '' },
           condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
@@ -145,6 +147,8 @@ test(
         settings_version: 2,
         secoes: {
           schema_version: 1,
+          show_summary: true,
+          rich_text: true,
           prazo_producao: { enabled: true, title: 'Prazo de produção' },
           pagamento: { enabled: true, title: 'Pagamento', body: 'Pix em 30 dias' },
           condicoes_gerais: {

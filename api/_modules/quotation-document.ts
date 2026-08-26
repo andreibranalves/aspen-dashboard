@@ -15,6 +15,7 @@ import {
 import {
   normalizeQuotationSections,
   toSafeMultilineHtml,
+  toSafeRichTextHtml,
   type QuotationSectionsSettings,
 } from './quotation-content.js';
 import { normalizeQuotationCompanyConfiguration } from './quotation-company.js';
@@ -151,27 +152,44 @@ export function applyQuotationSectionPolicy(
   const pagamentoVisible = sections.pagamento.enabled;
   const condicoesVisible = sections.condicoes_gerais.enabled;
   const productionDeadline = sections.prazo_producao.value ?? '';
+  const renderSectionHtml = sections.rich_text ? toSafeRichTextHtml : toSafeMultilineHtml;
+  const company = viewModel.company as Record<string, unknown> | undefined;
+  const banking = company?.banking as Record<string, unknown> | undefined;
+  const paymentText = sections.pagamento.body.replace(/<[^>]*>/g, ' ').toLocaleLowerCase('pt-BR');
+  const repeatedBankingValues = banking
+    ? Object.values(banking).filter(
+        (value) => typeof value === 'string' && value.length >= 4 && paymentText.includes(value.toLocaleLowerCase('pt-BR'))
+      ).length
+    : 0;
   return {
     ...viewModel,
+    ...(company && banking && repeatedBankingValues >= 2
+      ? { company: { ...company, banking: Object.fromEntries(Object.keys(banking).map((key) => [key, ''])) } }
+      : {}),
+    display: {
+      ...(viewModel.display as Record<string, unknown>),
+      show_summary: sections.show_summary,
+    },
     secoes: {
       prazo_producao: {
         enabled: prazoVisible,
         title: prazoVisible ? sections.prazo_producao.title : '',
         value: prazoVisible ? productionDeadline : '',
+        value_html: prazoVisible ? renderSectionHtml(productionDeadline) : renderSectionHtml(''),
       },
       pagamento: {
         enabled: pagamentoVisible,
         title: pagamentoVisible ? sections.pagamento.title : '',
         body_html: pagamentoVisible
-          ? toSafeMultilineHtml(sections.pagamento.body)
-          : toSafeMultilineHtml(''),
+          ? renderSectionHtml(sections.pagamento.body)
+          : renderSectionHtml(''),
       },
       condicoes_gerais: {
         enabled: condicoesVisible,
         title: condicoesVisible ? sections.condicoes_gerais.title : '',
         body_html: condicoesVisible
-          ? toSafeMultilineHtml(sections.condicoes_gerais.body)
-          : toSafeMultilineHtml(''),
+          ? renderSectionHtml(sections.condicoes_gerais.body)
+          : renderSectionHtml(''),
       },
     },
     terms: {
@@ -347,6 +365,8 @@ export function quotationSnapshotViewModel(
   const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
   const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
   const sections = normalizeQuotationSections({
+    show_summary: sectionsSnapshot.show_summary !== false,
+    rich_text: sectionsSnapshot.rich_text === true,
     prazo_producao: {
       enabled: prazoCurrent.enabled === true,
       title: String(prazoCurrent.title || 'Prazo de produção'),

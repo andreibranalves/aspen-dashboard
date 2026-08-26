@@ -48,8 +48,14 @@ async function seed(db: AppDatabase) {
   await db.delete(schema.productActivityEvents).where(eq(schema.productActivityEvents.productSku, 'TASK4-SKU'));
   await db.delete(schema.productPricingTiers).where(eq(schema.productPricingTiers.productSku, 'TASK4-SKU'));
   await db.delete(schema.products).where(eq(schema.products.sku, 'TASK4-SKU'));
-  await db.delete(schema.quotationTemplateVersions).where(eq(schema.quotationTemplateVersions.sourceHash, DEFAULT_QUOTATION_TEMPLATE.hash));
-  await db.delete(schema.quotationTemplates).where(eq(schema.quotationTemplates.key, DEFAULT_QUOTATION_TEMPLATE.key));
+  const [existingTemplate] = await db
+    .select({ id: schema.quotationTemplates.id })
+    .from(schema.quotationTemplates)
+    .where(eq(schema.quotationTemplates.key, DEFAULT_QUOTATION_TEMPLATE.key));
+  if (existingTemplate) {
+    await db.delete(schema.quotationTemplateVersions).where(eq(schema.quotationTemplateVersions.templateId, existingTemplate.id));
+    await db.delete(schema.quotationTemplates).where(eq(schema.quotationTemplates.id, existingTemplate.id));
+  }
   await db.insert(schema.appSettings).values({ singletonId: 1, pagamento: 'À vista', templatePadrao: DEFAULT_QUOTATION_TEMPLATE.key }).onConflictDoUpdate({ target: schema.appSettings.singletonId, set: { pagamento: 'À vista', templatePadrao: DEFAULT_QUOTATION_TEMPLATE.key } });
   await db.insert(schema.products).values({ sku: 'TASK4-SKU', nome: 'Produto teste', descricao: '', unidade: 'Und', precoBase: '12.30', ativo: true });
   await db.insert(schema.quotationTemplates).values({ id: randomUUID(), key: DEFAULT_QUOTATION_TEMPLATE.key, name: 'Padrão', archived: false });

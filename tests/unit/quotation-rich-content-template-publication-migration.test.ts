@@ -7,25 +7,22 @@ import test from 'node:test';
 
 import postgres from 'postgres';
 
+import { QUOTATION_TEMPLATES } from '../../api/_modules/quotation-template-catalog.js';
+
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
   '..',
   'drizzle',
-  '0027_quotation_visual_templates.sql',
+  '0028_quotation_rich_content_templates.sql',
 );
 const migrationSql = readFileSync(migrationPath, 'utf8');
 const migrationStatements = migrationSql
   .split('--> statement-breakpoint')
   .map((statement) => statement.trim())
   .filter(Boolean);
-const templateKeys = ['branded', 'comparativo', 'simples'] as const;
-const publishedHashes = {
-  branded: '8b4c3b6e2d2b4c75fede3cfc3c3aa30b00962420fc9ba31ea0cf643e9dba698a',
-  comparativo: '840aba835f4674cc128ada9ab479034d41e61fb51c74556bff6aa013c6882a12',
-  simples: '925af8f135b3f8831de2087052b865b905203654ad40c7f60c9848e5a7d2f9d8',
-} as const;
+const templateKeys = ['padrao', 'minimalista', 'branded', 'comparativo', 'simples'] as const;
 const migrationSkip = TEST_DATABASE_URL
   ? false
   : 'TEST_DATABASE_URL is required for PostgreSQL migration validation.';
@@ -36,21 +33,14 @@ function hash(source: string): string {
   return createHash('sha256').update(source, 'utf8').digest('hex');
 }
 
-function embeddedSource(key: (typeof templateKeys)[number]): string {
-  const delimiter = `$quotation_${key}_visual_v3$`;
-  const start = migrationSql.indexOf(delimiter);
-  const end = migrationSql.indexOf(`${delimiter}, '`, start + delimiter.length);
-  assert.notEqual(start, -1);
-  assert.notEqual(end, -1);
-  return migrationSql.slice(start + delimiter.length, end);
-}
-
-test('0027 embeds the exact restored catalog sources without mutating historical versions', () => {
+test('0028 embeds the exact rich-content catalog sources without mutating historical versions', () => {
   assert.equal(migrationStatements.length, templateKeys.length);
   assert.doesNotMatch(migrationSql, /\b(?:UPDATE|DELETE)\b/i);
 
   for (const key of templateKeys) {
-    const delimiter = `$quotation_${key}_visual_v3$`;
+    const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === key);
+    assert.ok(template);
+    const delimiter = `$quotation_${key}_content_v4$`;
     const sourceStart = migrationSql.indexOf(delimiter);
     const sourceMarker = `${delimiter}, '`;
     const sourceEnd = migrationSql.indexOf(sourceMarker, sourceStart + delimiter.length);
@@ -58,13 +48,15 @@ test('0027 embeds the exact restored catalog sources without mutating historical
     assert.notEqual(sourceEnd, -1, `migration hash for ${key}`);
     const embeddedSource = migrationSql.slice(sourceStart + delimiter.length, sourceEnd);
     const embeddedHash = migrationSql.slice(sourceEnd + sourceMarker.length, sourceEnd + sourceMarker.length + 64);
-    assert.equal(embeddedHash, publishedHashes[key]);
-    assert.equal(hash(embeddedSource), publishedHashes[key]);
+    assert.equal(embeddedSource, template.source);
+    assert.equal(embeddedHash, template.hash);
+    assert.equal(hash(embeddedSource), embeddedHash);
+    assert.equal(migrationSql.split(embeddedHash).length - 1, 2, `insert and idempotency hash for ${key}`);
   }
 });
 
 test(
-  '0027 appends one idempotent visual version per template on disposable PostgreSQL',
+  '0028 appends one idempotent rich-content version per template on disposable PostgreSQL',
   { skip: migrationSkip, concurrency: false },
   async () => {
     const client = postgres(TEST_DATABASE_URL!, {
@@ -74,7 +66,7 @@ test(
       idle_timeout: 20,
       onnotice: () => {},
     });
-    const schema = `quotation_visual_templates_${process.pid}_${Date.now()}`;
+    const schema = `quotation_rich_content_${process.pid}_${Date.now()}`;
 
     try {
       try {
@@ -104,12 +96,13 @@ test(
 
           for (let index = 0; index < templateKeys.length; index += 1) {
             const key = templateKeys[index];
+            const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === key)!;
             const templateId = `a1000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
             const versionId = `a2000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
             const oldSource = `<html><body>generic-${key}</body></html>`;
             await tx`
               INSERT INTO quotation_templates (id, key, name)
-              VALUES (${templateId}::uuid, ${key}, ${key})
+              VALUES (${templateId}::uuid, ${key}, ${template.name})
             `;
             await tx`
               INSERT INTO quotation_template_versions
@@ -138,10 +131,11 @@ test(
           assert.equal(rows.length, templateKeys.length * 2);
           for (const key of templateKeys) {
             const versions = rows.filter((row) => row.key === key);
+            const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === key)!;
             assert.deepEqual(versions.map((row) => row.version), [1, 2]);
             assert.match(versions[0].source, new RegExp(`generic-${key}`));
-            assert.equal(versions[1].source, embeddedSource(key));
-            assert.equal(versions[1].source_hash, publishedHashes[key]);
+            assert.equal(versions[1].source, template.source);
+            assert.equal(versions[1].source_hash, template.hash);
             assert.equal(versions[1].contract_version, 2);
           }
 

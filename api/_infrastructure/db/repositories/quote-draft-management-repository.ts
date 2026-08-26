@@ -546,6 +546,8 @@ function sectionSnapshotForUpdate(
     });
     return {
       schema_version: stored.schema_version,
+      show_summary: stored.show_summary,
+      rich_text: stored.rich_text,
       prazo_producao: {
         base: copy(stored.prazo_producao.base),
         current: {

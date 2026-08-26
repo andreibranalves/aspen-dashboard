@@ -307,7 +307,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   // cancelar com edições sujas pede confirmação
   await page.getByRole('dialog').getByRole('button', { name: 'Descartar' }).click();
   await page.getByRole('button', { name: /Editar/ }).click();
-  await expect(page.getByLabel('Condição de pagamento')).toHaveValue('À vista');
+  await expect(page.getByLabel('Condição de pagamento')).toHaveText('À vista');
   await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
   await page.getByLabel('Condição de pagamento').fill('30 dias');
   await page.getByLabel('Frete do orçamento').fill('1.25');
@@ -320,8 +320,8 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   expect(lastPutPayload.pagamento).toBeUndefined();
   expect(lastPutPayload.frete).toBe('1.25');
   expect(lastPutPayload.observacoes).toBeUndefined();
-  expect(lastPutPayload.secoes.pagamento.current.body).toBe('30 dias');
-  expect(lastPutPayload.secoes.condicoes_gerais.current.body).toBe('Alteração local');
+  expect(lastPutPayload.secoes.pagamento.current.body).toContain('30 dias');
+  expect(lastPutPayload.secoes.condicoes_gerais.current.body).toContain('Alteração local');
   expect(lastPutPayload.items[0].manual_rate).toBe(true);
   expect(lastPutPayload.items[0].rate).toBe('10.00');
   expect(lastPutPayload.items[0].item_name).toBe(customItemName);

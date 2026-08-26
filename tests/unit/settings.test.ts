@@ -17,6 +17,8 @@ const DEFAULT_SETTINGS: Settings = {
   template_padrao: 'padrao',
   secoes: {
     schema_version: 1,
+    show_summary: true,
+    rich_text: true,
     prazo_producao: { enabled: true, title: 'Prazo de produção' },
     pagamento: { enabled: true, title: 'Pagamento', body: '' },
     condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
@@ -77,6 +79,8 @@ describe('settings handler', () => {
       template_padrao: '  corporativo  ',
       secoes: {
         schema_version: 1,
+        show_summary: true,
+        rich_text: true,
         prazo_producao: { enabled: true, title: 'Produção' },
         pagamento: { enabled: true, title: 'Pagamento', body: '50% na aprovação' },
         condicoes_gerais: { enabled: false, title: 'Condições', body: '' },

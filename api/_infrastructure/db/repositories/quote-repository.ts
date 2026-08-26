@@ -1019,6 +1019,8 @@ export function createPostgresQuoteDraftRepository(
                 : undefined;
             currentSections = normalizeQuotationSections({
               schema_version: baseSections.schema_version,
+              show_summary: baseSections.show_summary,
+              rich_text: baseSections.rich_text,
               prazo_producao: mergeSection('prazo_producao'),
               pagamento: paymentOverride || mergeSection('pagamento'),
               condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
@@ -1047,6 +1049,8 @@ export function createPostgresQuoteDraftRepository(
         );
         const sectionsSnapshot: QuotationSectionsSnapshot = {
           schema_version: baseSections.schema_version,
+          show_summary: baseSections.show_summary,
+          rich_text: baseSections.rich_text,
           prazo_producao: {
             base: copy(baseSectionsWithDeadline.prazo_producao),
             current: copy(currentSectionsWithDeadline.prazo_producao),

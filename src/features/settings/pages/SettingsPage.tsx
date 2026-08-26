@@ -29,6 +29,8 @@ interface SettingsForm {
 
 const EMPTY_SECTIONS: DashboardSettings['secoes'] = {
   schema_version: 1,
+  show_summary: true,
+  rich_text: true,
   prazo_producao: { enabled: true, title: 'Prazo de produção' },
   pagamento: { enabled: true, title: 'Pagamento', body: '' },
   condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
@@ -107,11 +109,12 @@ export default function SettingsPage() {
   }
 
   function updateSections(secoes: DashboardSettings['secoes']) {
+    const richSections = { ...secoes, rich_text: true };
     setForm((current) => ({
       ...current,
-      pagamento: secoes.pagamento.body,
-      observacoes: secoes.condicoes_gerais.body,
-      secoes,
+      pagamento: richSections.pagamento.body,
+      observacoes: richSections.condicoes_gerais.body,
+      secoes: richSections,
     }));
     setSaveError(null);
     setSavedMessage(null);
@@ -230,11 +233,13 @@ export default function SettingsPage() {
               void handleSave();
             }}
           >
-            <fieldset className="space-y-4">
-              <legend className="text-sm font-semibold text-fg">Prazos e valores padrão</legend>
-              <p className="-mt-2 text-sm text-fg-muted">
-                Defina os valores aplicados automaticamente em cada novo orçamento.
-              </p>
+            <details name="quotation-settings" open className="group overflow-hidden rounded-lg border border-line bg-surface">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
+                <span><span className="text-sm font-semibold text-fg">Prazos e valores</span><span className="ml-3 text-xs text-fg-muted">Validade, frete e produção</span></span>
+                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <fieldset className="space-y-4 p-5">
+                <legend className="sr-only">Prazos e valores</legend>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5 text-sm text-fg">
                   <span className="font-medium">Validade padrão (dias)</span>
@@ -265,67 +270,36 @@ export default function SettingsPage() {
                   </span>
                 </label>
               </div>
-            </fieldset>
+              </fieldset>
+            </details>
 
-            <fieldset className="space-y-4 border-t border-line pt-5">
-              <legend className="text-sm font-semibold text-fg">Conteúdo comercial</legend>
-              <p className="-mt-2 text-sm text-fg-muted">
-                Organize os prazos e as informações exibidas no documento do orçamento.
-              </p>
-              <label className="space-y-1.5 text-sm text-fg">
-                <span className="font-medium">Prazo de entrega</span>
-                <textarea
-                  value={form.entrega}
-                  onChange={(event) => updateField('entrega', event.target.value)}
-                  disabled={saving}
-                  maxLength={500}
-                  rows={3}
-                  className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </label>
-
+            <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
+                <span><span className="text-sm font-semibold text-fg">Conteúdo do documento</span><span className="ml-3 text-xs text-fg-muted">{Object.values(form.secoes).filter((section) => typeof section === 'object' && 'enabled' in section && section.enabled).length} seções ativas · resumo {form.secoes.show_summary ? 'visível' : 'oculto'}</span></span>
+                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <fieldset className="space-y-5 p-5">
+                <legend className="sr-only">Conteúdo do documento</legend>
               <QuotationSectionsEditor
                 mode="settings"
                 sections={form.secoes}
                 editable={!saving}
                 onChange={updateSections}
               />
-            </fieldset>
+              <label className="flex items-start gap-3 rounded-md border border-line bg-surface-muted p-4 text-sm text-fg">
+                <input type="checkbox" className="mt-0.5" checked={form.secoes.show_summary} onChange={(event) => updateSections({ ...form.secoes, show_summary: event.target.checked })} disabled={saving} />
+                <span><span className="block font-medium">Exibir subtotal e frete</span><span className="mt-1 block text-xs text-fg-muted">O total final continua visível. Esta preferência vale para novos orçamentos.</span></span>
+              </label>
+              </fieldset>
+            </details>
 
-            <section className="space-y-4 rounded-lg border border-line bg-page/40 p-4">
-              <div className="flex items-start gap-3">
-                <Building2 size={20} className="mt-0.5 text-primary" />
-                <div>
-                  <h3 className="text-sm font-semibold text-fg">Dados empresariais</h3>
-                  <p className="mt-1 text-xs text-fg-muted">
-                    Estes dados são capturados em novos orçamentos e não alteram revisões já emitidas.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Razão social</span>
-                  <Input
-                    value={form.empresa.identity.legal_name}
-                    onChange={(event) => updateCompanyField('identity', 'legal_name', event.target.value)}
-                    disabled={saving}
-                    maxLength={255}
-                    required
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">CNPJ</span>
-                  <Input
-                    value={form.empresa.identity.document}
-                    onChange={(event) => updateCompanyField('identity', 'document', event.target.value)}
-                    disabled={saving}
-                    maxLength={18}
-                    required
-                  />
-                </label>
-              </div>
-
+            <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
+                <span><span className="text-sm font-semibold text-fg">Dados para pagamento</span><span className="ml-3 text-xs text-fg-muted">Banco, conta e Pix</span></span>
+                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+            <section className="space-y-4 p-5">
+              <p className="text-xs text-fg-muted">Os dados estruturados aparecem uma única vez na seção de pagamento.</p>
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="space-y-1.5 text-sm text-fg">
                   <span className="font-medium">Banco</span>
@@ -373,7 +347,20 @@ export default function SettingsPage() {
                   />
                 </label>
               </div>
+            </section>
+            </details>
 
+            <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
+                <span><span className="text-sm font-semibold text-fg">Identidade e contatos</span><span className="ml-3 text-xs text-fg-muted">Dados institucionais</span></span>
+                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <section className="space-y-4 p-5">
+                <div className="flex items-start gap-3"><Building2 size={20} className="mt-0.5 text-primary" /><p className="text-xs text-fg-muted">Capturados em novos orçamentos sem alterar revisões emitidas.</p></div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Razão social</span><Input value={form.empresa.identity.legal_name} onChange={(event) => updateCompanyField('identity', 'legal_name', event.target.value)} disabled={saving} maxLength={255} required /></label>
+                  <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">CNPJ</span><Input value={form.empresa.identity.document} onChange={(event) => updateCompanyField('identity', 'document', event.target.value)} disabled={saving} maxLength={18} required /></label>
+                </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5 text-sm text-fg">
                   <span className="font-medium">Site</span>
@@ -415,9 +402,8 @@ export default function SettingsPage() {
                   />
                 </label>
               </div>
-            </section>
-
-
+              </section>
+            </details>
 
             {saveError && (
               <div
@@ -444,7 +430,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div className="flex justify-end border-t border-line pt-4">
+            <div className="sticky bottom-4 z-10 flex justify-end rounded-lg border border-line bg-surface/95 p-3 shadow-sm backdrop-blur">
               <Button type="submit" disabled={saving} aria-busy={saving}>
                 {saving ? (
                   <Loader2 className="animate-spin" aria-hidden="true" />
