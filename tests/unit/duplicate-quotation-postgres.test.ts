@@ -187,7 +187,7 @@ test(
       };
       await db
         .update(quoteRevisions)
-        .set({ templateVersionId: null, sectionsSnapshot: customSnapshot })
+        .set({ sectionsSnapshot: customSnapshot })
         .where(eq(quoteRevisions.id, source.revision_id));
 
       const [sourceQuotationBefore] = await db
@@ -253,7 +253,7 @@ test(
       assert.equal(duplicateRevision.clienteNotas, sourceRevisionBefore.clienteNotas);
       assert.equal(duplicateRevision.subtotal, sourceRevisionBefore.subtotal);
       assert.equal(duplicateRevision.total, sourceRevisionBefore.total);
-      assert.equal(duplicateRevision.templateVersionId, null);
+      assert.equal(duplicateRevision.templateVersionId, sourceRevisionBefore.templateVersionId);
       assert.deepEqual(duplicateRevision.sectionsSnapshot, sourceRevisionBefore.sectionsSnapshot);
 
       const duplicateItems = await db

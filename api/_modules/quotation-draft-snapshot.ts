@@ -21,6 +21,7 @@ import { applyQuotationSectionPolicy } from './quotation-document.js';
 import {
   normalizeQuotationSections,
   withQuotationProductionDeadline,
+  QUOTATION_SECTION_SCHEMA_VERSION,
   type QuotationSectionsSettings,
 } from './quotation-content.js';
 
@@ -208,27 +209,9 @@ function addressValue(address: Record<string, unknown> | undefined, ...keys: str
   return '';
 }
 
-function draftSettingsWithLegacyOverrides(
-  source: QuotationSectionsSettings | undefined,
-  legacy: { pagamento?: string; observacoes?: string }
-): QuotationSectionsSettings | undefined {
-  if (!source) return undefined;
-  return {
-    ...source,
-    pagamento: {
-      ...source.pagamento,
-      ...(legacy.pagamento === undefined ? {} : { body: legacy.pagamento }),
-    },
-    condicoes_gerais: {
-      ...source.condicoes_gerais,
-      ...(legacy.observacoes === undefined ? {} : { body: legacy.observacoes }),
-    },
-  };
-}
-
 function normalizeDraftSections(
   source: unknown,
-  legacy: { pagamento?: string; entrega?: string; observacoes?: string; prazoProducao?: string }
+  payloadDeadline?: string
 ): QuotationSectionsSettings {
   let settings = source;
   if (isRecord(source)) {
@@ -251,9 +234,9 @@ function normalizeDraftSections(
     }
   }
   try {
-    const normalized = normalizeQuotationSections(settings, legacy);
+    const normalized = normalizeQuotationSections(settings);
     return normalized.prazo_producao.value === undefined
-      ? withQuotationProductionDeadline(normalized, legacy.prazoProducao)
+      ? withQuotationProductionDeadline(normalized, payloadDeadline)
       : normalized;
   } catch (error) {
     throw new DraftPreviewInputError(
@@ -440,25 +423,39 @@ export async function buildDraftQuotationSnapshot(
   const sections = normalizeDraftSections(
     extracted.secoes !== undefined
       ? extracted.secoes
-      : draftSettingsWithLegacyOverrides(settings?.secoes, {
-          pagamento: extracted.pagamento,
-          observacoes: extracted.observacoes,
-        }),
-    {
-      pagamento: extracted.pagamento,
-      entrega: extracted.entrega,
-      observacoes: extracted.observacoes,
-      prazoProducao: extracted.prazo_producao,
-    }
+      : settings?.secoes !== undefined
+        ? {
+            ...settings.secoes,
+            ...(extracted.pagamento === undefined
+              ? {}
+              : { pagamento: { ...settings.secoes.pagamento, body: extracted.pagamento } }),
+            ...(extracted.observacoes === undefined
+              ? {}
+              : {
+                  condicoes_gerais: {
+                    ...settings.secoes.condicoes_gerais,
+                    body: extracted.observacoes,
+                  },
+                }),
+          }
+        : extracted.pagamento === undefined && extracted.observacoes === undefined
+          ? undefined
+          : {
+              schema_version: QUOTATION_SECTION_SCHEMA_VERSION,
+              prazo_producao: { enabled: true, title: 'Prazo de produção' },
+              pagamento: { enabled: true, title: 'Pagamento', body: extracted.pagamento || '' },
+              condicoes_gerais: {
+                enabled: true,
+                title: 'Condições Gerais',
+                body: extracted.observacoes || '',
+              },
+            },
+    extracted.prazo_producao
   );
   const now = dependencies.now || (() => new Date());
   const viewModel = applyQuotationSectionPolicy(
     draftPreviewViewModel(extracted, now(), settings?.empresa),
     sections,
-    {
-      entrega: extracted.entrega,
-      prazoProducao: extracted.prazo_producao,
-    },
   );
   return {
     template,

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { ensureFixtureTemplateVersion } from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 
@@ -115,20 +116,18 @@ test.before(async () => {
     createdAt: now,
     updatedAt: now,
   });
+  const fixtureFields = await ensureFixtureTemplateVersion(db as any);
   await db.insert(quoteRevisions).values({
+    ...fixtureFields,
     id: ids.revision,
     quotationId: ids.quotation,
     version: 1,
     status: 'emitido',
     issuedAt: now,
     validadeDias: 15,
-    pagamento: '',
     entrega: '',
     fretePadrao: '0.00',
     frete: '0.00',
-    observacoes: '',
-    prazoProducao: '',
-    templatePadrao: 'padrao',
     clienteNome: 'Cliente outbox',
     companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
     subtotal: '0.00',

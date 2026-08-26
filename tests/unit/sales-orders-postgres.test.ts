@@ -8,6 +8,10 @@ import test from 'node:test';
 import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
@@ -259,6 +263,7 @@ test(
 
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       migrated = true;
       [initialSequence] = await db
         .select()
@@ -288,6 +293,7 @@ test(
       });
       await db.insert(schema.quoteRevisions).values([
         {
+          ...fixtureFields,
           id: revisionId,
           quotationId,
           version: 1,
@@ -300,6 +306,7 @@ test(
           createdAt: NOW,
         },
         {
+          ...fixtureFields,
           id: latestRevisionId,
           quotationId,
           version: 2,
@@ -312,6 +319,7 @@ test(
           createdAt: NOW,
         },
         {
+          ...fixtureFields,
           id: draftRevisionId,
           quotationId,
           version: 3,
@@ -378,6 +386,7 @@ test(
         updatedAt: NOW,
       });
       await db.insert(schema.quoteRevisions).values({
+        ...fixtureFields,
         id: secondRevisionId,
         quotationId: secondQuotationId,
         version: 1,
@@ -398,6 +407,7 @@ test(
         updatedAt: NOW,
       });
       await db.insert(schema.quoteRevisions).values({
+        ...fixtureFields,
         id: concurrentRevisionId,
         quotationId: concurrentQuotationId,
         version: 1,
@@ -609,6 +619,7 @@ test(
     const sku = `LIST-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       await db.insert(schema.clients).values({ id: clientId, nome: 'Busca Case Cliente' });
       await db.insert(schema.products).values({ sku, nome: 'Lista', unidade: 'Und' });
       await db.insert(schema.quotations).values({

@@ -5,6 +5,10 @@ import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 
 import { eq } from 'drizzle-orm';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
@@ -323,7 +327,9 @@ test(
         createdAt: old,
         updatedAt: old,
       });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       await db.insert(schema.quoteRevisions).values({
+        ...fixtureFields,
         id: revisionId,
         quotationId,
         version: 1,

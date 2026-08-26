@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import postgres from 'postgres';
 
 import { isDisposablePostgresUrl } from './test-postgres.mjs';
@@ -7,6 +8,25 @@ import { isDisposablePostgresUrl } from './test-postgres.mjs';
 const VERIFICATION_CLIENT_ID = 'f3000000-0000-4000-8000-000000000001';
 const VERIFICATION_QUOTATION_ID = 'f3000000-0000-4000-8000-000000000002';
 const VERIFICATION_REVISION_ID = 'f3000000-0000-4000-8000-000000000003';
+const VERIFICATION_TEMPLATE_ID = 'f3000000-0000-4000-8000-000000000004';
+const VERIFICATION_TEMPLATE_VERSION_ID = 'f3000000-0000-4000-8000-000000000005';
+// Snapshot canônico equivalente à consolidação da migration 0026 para uma
+// revisão sem conteúdo nas seções (mesma forma de snapshotFromLegacyRevision).
+const VERIFICATION_SECTIONS_SNAPSHOT = {
+  schema_version: 1,
+  prazo_producao: {
+    base: { enabled: false, title: 'Prazo de produção', value: '' },
+    current: { enabled: false, title: 'Prazo de produção', value: '' },
+  },
+  pagamento: {
+    base: { enabled: true, title: 'Pagamento', body: '' },
+    current: { enabled: true, title: 'Pagamento', body: '' },
+  },
+  condicoes_gerais: {
+    base: { enabled: true, title: 'Condições Gerais', body: '' },
+    current: { enabled: true, title: 'Condições Gerais', body: '' },
+  },
+};
 const VERIFICATION_BUSINESS_NUMBER = 'ORC-20990101';
 const VERIFICATION_COMPANY_CONFIGURATION = {
   schema_version: 1,
@@ -61,11 +81,34 @@ export async function seedQuotationCompanyVerification(databaseUrl) {
         ON CONFLICT (singleton_id) DO NOTHING
       `;
       await tx`
+        INSERT INTO quotation_templates (id, key, name)
+        VALUES (
+          ${VERIFICATION_TEMPLATE_ID}::uuid,
+          ${'ci-fixture'},
+          ${'Fixture de verificação'}
+        )
+        ON CONFLICT (id) DO NOTHING
+      `;
+      await tx`
+        INSERT INTO quotation_template_versions (
+          id, template_id, version, source, source_hash
+        ) VALUES (
+          ${VERIFICATION_TEMPLATE_VERSION_ID}::uuid,
+          ${VERIFICATION_TEMPLATE_ID}::uuid,
+          1,
+          ${'<section data-slot="display.total"></section>'},
+          ${createHash('sha256').update('<section data-slot="display.total"></section>').digest('hex')}
+        )
+        ON CONFLICT (id) DO NOTHING
+      `;
+      await tx`
         INSERT INTO quote_revisions (
           id,
           quotation_id,
           version,
           validade_dias,
+          template_version_id,
+          sections_snapshot,
           company_snapshot,
           cliente_nome
         ) VALUES (
@@ -73,6 +116,8 @@ export async function seedQuotationCompanyVerification(databaseUrl) {
           ${VERIFICATION_QUOTATION_ID}::uuid,
           1,
           15,
+          ${VERIFICATION_TEMPLATE_VERSION_ID}::uuid,
+          ${JSON.stringify(VERIFICATION_SECTIONS_SNAPSHOT)}::jsonb,
           ${JSON.stringify(VERIFICATION_COMPANY_CONFIGURATION)}::jsonb,
           ${'CI fixture'}
         )

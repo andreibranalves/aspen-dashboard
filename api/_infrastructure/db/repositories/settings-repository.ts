@@ -71,7 +71,7 @@ export interface SettingsRepository {
 type DatabaseProvider = () => AppDatabase;
 
 function toSettings(row: typeof appSettings.$inferSelect): Settings {
-  const secoes = normalizeQuotationSections(row.quotationSections, row);
+  const secoes = normalizeQuotationSections(row.quotationSections);
   const empresa = normalizeQuotationCompanyConfiguration(row.companyConfiguration);
   return {
     validade_dias: row.validadeDias,
@@ -160,10 +160,8 @@ export function createPostgresSettingsRepository(
           .values({
             singletonId: 1,
             validadeDias: settings.validade_dias,
-            pagamento: secoes.pagamento.body,
             entrega: settings.entrega ?? currentForMerge?.entrega ?? '',
             fretePadrao: settings.frete_padrao,
-            observacoes: secoes.condicoes_gerais.body,
             quotationSections: secoes,
             companyConfiguration: empresa,
             templatePadrao: settings.template_padrao ?? currentForMerge?.templatePadrao ?? 'padrao',
@@ -173,10 +171,8 @@ export function createPostgresSettingsRepository(
             target: appSettings.singletonId,
             set: {
               validadeDias: settings.validade_dias,
-              pagamento: secoes.pagamento.body,
               entrega: settings.entrega ?? currentForMerge?.entrega ?? '',
               fretePadrao: settings.frete_padrao,
-              observacoes: secoes.condicoes_gerais.body,
               quotationSections: secoes,
               companyConfiguration: empresa,
               settingsVersion,

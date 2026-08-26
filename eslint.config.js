@@ -48,6 +48,7 @@ export default [
         clearInterval: 'readonly',
         AbortController: 'readonly',
         AbortSignal: 'readonly',
+        structuredClone: 'readonly',
       },
     },
     rules: {

@@ -27,11 +27,9 @@ import {
   type PricingResolution,
 } from '../../../_modules/pricing-core.js';
 import {
-  combineLegacyConditions,
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
 } from '../../../_modules/quotation-content.js';
-import { snapshotFromLegacyRevision } from '../../../_modules/quotation-template-snapshot.js';
 import { canonicalQuotationStatus, type QuotationStatus } from '../../../_modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
@@ -489,50 +487,12 @@ function hydrateProductionDeadlineValue(
   revision: typeof quoteRevisions.$inferSelect,
   snapshot: QuotationSectionsSnapshot
 ): QuotationSectionsSnapshot {
-  const deadline =
-    snapshot.prazo_producao.current.value ??
-    snapshot.prazo_producao.base.value ??
-    String(revision.prazoProducao || '');
+  const deadline = snapshot.prazo_producao.current.value ?? snapshot.prazo_producao.base.value ?? '';
   return {
     ...snapshot,
     prazo_producao: {
       base: { ...snapshot.prazo_producao.base, value: snapshot.prazo_producao.base.value ?? deadline },
       current: { ...snapshot.prazo_producao.current, value: snapshot.prazo_producao.current.value ?? deadline },
-    },
-  };
-}
-
-function legacySectionsSnapshotForUpdate(
-  revision: typeof quoteRevisions.$inferSelect,
-  values: { pagamento: string; entrega: string; observacoes: string; prazoProducao: string }
-): QuotationSectionsSnapshot {
-  const stored = hydrateProductionDeadlineValue(
-    revision,
-    revision.sectionsSnapshot || snapshotFromLegacyRevision(revision)
-  );
-  const storedDeadline =
-    stored.prazo_producao.base.value ?? stored.prazo_producao.current.value ?? values.prazoProducao;
-  const deadline = values.prazoProducao;
-  return {
-    schema_version: stored.schema_version,
-    prazo_producao: {
-      base: { ...copy(stored.prazo_producao.base), value: storedDeadline },
-      current: {
-        ...copy(stored.prazo_producao.current),
-        value: deadline,
-        enabled: Boolean(deadline),
-      },
-    },
-    pagamento: {
-      base: copy(stored.pagamento.base),
-      current: { ...copy(stored.pagamento.current), body: values.pagamento },
-    },
-    condicoes_gerais: {
-      base: copy(stored.condicoes_gerais.base),
-      current: {
-        ...copy(stored.condicoes_gerais.current),
-        body: combineLegacyConditions(values.entrega, values.observacoes),
-      },
     },
   };
 }
@@ -546,7 +506,7 @@ function sectionSnapshotForUpdate(
   if (!isRecord(supplied)) throw new QuoteManagementInputError('Seções devem ser um objeto.');
   const stored = hydrateProductionDeadlineValue(
     revision,
-    revision.sectionsSnapshot || snapshotFromLegacyRevision(revision)
+    structuredClone(revision.sectionsSnapshot)
   );
   const candidate = supplied as Record<string, unknown>;
   if (hasOwn(candidate, 'base')) {
@@ -572,7 +532,7 @@ function sectionSnapshotForUpdate(
     if (key === 'prazo_producao' && merged.value === undefined) {
       return {
         ...merged,
-        value: stored.prazo_producao.current.value ?? stored.prazo_producao.base.value ?? String(revision.prazoProducao || ''),
+        value: stored.prazo_producao.current.value ?? stored.prazo_producao.base.value ?? '',
       };
     }
     return merged;
@@ -850,7 +810,7 @@ export async function readPostgresQuotationDetail(
         .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
         .limit(1)
     : [];
-  const sectionsSnapshot = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
+  const sectionsSnapshot = revision.sectionsSnapshot;
   const currentExpired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
   const currentValidityDate = validUntil(revision.createdAt, revision.validadeDias);
   return {
@@ -880,12 +840,12 @@ export async function readPostgresQuotationDetail(
     is_expired: currentExpired,
     expirada: currentExpired,
     validade_dias: revision.validadeDias,
-    pagamento: revision.pagamento,
+    pagamento: sectionsSnapshot.pagamento.current.body,
     entrega: revision.entrega,
     frete_padrao: formatDbMoney(revision.fretePadrao),
     frete: formatDbMoney(revision.frete),
-    observacoes: revision.observacoes,
-    prazo_producao: revision.prazoProducao,
+    observacoes: sectionsSnapshot.condicoes_gerais.current.body,
+    prazo_producao: sectionsSnapshot.prazo_producao.current.value ?? '',
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
@@ -1458,65 +1418,32 @@ export function createPostgresQuoteDraftManagementRepository(
           const totalCents = subtotalCents + freightCents;
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
-          const pagamento = sectionsSnapshot
-            ? sectionsSnapshot.pagamento.current.body
-            : hasOwn(input, 'pagamento')
-              ? inputText(input.pagamento, 'Pagamento', 4000, revision.pagamento)
-              : revision.pagamento;
           const entrega = hasOwn(input, 'entrega')
             ? inputText(input.entrega, 'Entrega', 500, revision.entrega)
-            : sectionsSnapshot
-              ? ''
-              : revision.entrega;
-          const observacoes = sectionsSnapshot
-            ? sectionsSnapshot.condicoes_gerais.current.body
-            : hasOwn(input, 'observacoes') || hasOwn(input, 'notes')
-              ? inputText(
-                  firstDefined(input, ['observacoes', 'notes']),
-                  'Observações',
-                  4000,
-                  revision.observacoes
-                )
-              : revision.observacoes;
-          const prazoProducao = sectionsSnapshot
-            ? String(sectionsSnapshot.prazo_producao.current.value ?? '')
-            : inputText(input.prazo_producao, 'Prazo de produção', 500, revision.prazoProducao);
-          const revisionSections = sectionsSnapshot || legacySectionsSnapshotForUpdate(revision, {
-            pagamento,
-            entrega,
-            observacoes,
-            prazoProducao,
-          });
-          // Canonical section values win whenever a snapshot is supplied. The
-          // deadline mirror is cleared when the canonical section is hidden.
-          if (sectionsSnapshot) {
-            revisionSections.prazo_producao.current.enabled =
-              sectionsSnapshot.prazo_producao.current.enabled;
+            : revision.entrega;
+          // Canonical sections win whenever a snapshot is supplied; without one
+          // the stored snapshot stays untouched (no legacy field folding).
+          const revisionSections = structuredClone(
+            sectionsSnapshot ?? revision.sectionsSnapshot
+          );
+          if (!revisionSections.prazo_producao.current.enabled) {
+            // The deadline is cleared when the canonical section is hidden.
+            revisionSections.prazo_producao.current.value = '';
           }
-          const synchronizedPrazoProducao = revisionSections.prazo_producao.current.enabled
-            ? revisionSections.prazo_producao.current.value
-            : '';
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
-          const revisionMetadata = {
-            templateVersionId: templateSelection!.versionId,
-            sectionsSnapshot: revisionSections,
-          };
 
           await tx
             .update(quoteRevisions)
             .set({
               validadeDias,
-              pagamento,
               entrega,
               // fretePadrao and templatePadrao are snapshots from Settings and
               // are deliberately never accepted from the edit payload.
               frete: formatMoneyCents(freightCents),
-              observacoes,
-              prazoProducao: synchronizedPrazoProducao,
               templatePadrao: templateSelection?.key || revision.templatePadrao,
               templateHash: templateSelection?.hash || revision.templateHash,
-              templateVersionId: revisionMetadata.templateVersionId,
-              sectionsSnapshot: revisionMetadata.sectionsSnapshot,
+              templateVersionId: templateSelection!.versionId,
+              sectionsSnapshot: revisionSections,
               ...{
                 clienteNome: client.nome,
                 clienteDocumento: client.documento,
