@@ -287,67 +287,17 @@ export default function SettingsPage() {
                 onChange={updateSections}
               />
               <label className="flex items-start gap-3 rounded-md border border-line bg-surface-muted p-4 text-sm text-fg">
-                <input type="checkbox" className="mt-0.5" checked={form.secoes.show_summary} onChange={(event) => updateSections({ ...form.secoes, show_summary: event.target.checked })} disabled={saving} />
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  aria-label="Exibir subtotal e frete"
+                  checked={form.secoes.show_summary}
+                  onChange={(event) => updateSections({ ...form.secoes, show_summary: event.target.checked })}
+                  disabled={saving}
+                />
                 <span><span className="block font-medium">Exibir subtotal e frete</span><span className="mt-1 block text-xs text-fg-muted">O total final continua visível. Esta preferência vale para novos orçamentos.</span></span>
               </label>
               </fieldset>
-            </details>
-
-            <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
-                <span><span className="text-sm font-semibold text-fg">Dados para pagamento</span><span className="ml-3 text-xs text-fg-muted">Banco, conta e Pix</span></span>
-                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
-              </summary>
-            <section className="space-y-4 p-5">
-              <p className="text-xs text-fg-muted">Os dados estruturados aparecem uma única vez na seção de pagamento.</p>
-              <div className="grid gap-4 md:grid-cols-3">
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Banco</span>
-                  <Input
-                    value={form.empresa.banking.bank_name}
-                    onChange={(event) => updateCompanyField('banking', 'bank_name', event.target.value)}
-                    disabled={saving}
-                    maxLength={255}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Código</span>
-                  <Input
-                    value={form.empresa.banking.bank_code}
-                    onChange={(event) => updateCompanyField('banking', 'bank_code', event.target.value)}
-                    disabled={saving}
-                    maxLength={255}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Agência</span>
-                  <Input
-                    value={form.empresa.banking.branch}
-                    onChange={(event) => updateCompanyField('banking', 'branch', event.target.value)}
-                    disabled={saving}
-                    maxLength={255}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Conta</span>
-                  <Input
-                    value={form.empresa.banking.account}
-                    onChange={(event) => updateCompanyField('banking', 'account', event.target.value)}
-                    disabled={saving}
-                    maxLength={255}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Pix</span>
-                  <Input
-                    value={form.empresa.banking.pix_key}
-                    onChange={(event) => updateCompanyField('banking', 'pix_key', event.target.value)}
-                    disabled={saving}
-                    maxLength={255}
-                  />
-                </label>
-              </div>
-            </section>
             </details>
 
             <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">

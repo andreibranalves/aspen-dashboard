@@ -66,6 +66,9 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.getByLabel('Validade padrão (dias)').fill('30');
     await page.getByLabel('Frete padrão (R$)').fill('12.5');
     await page.getByText('Conteúdo do documento', { exact: true }).first().click();
+    await expect(page.getByText('Dados para pagamento', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
+    await page.getByLabel('Exibir subtotal e frete').uncheck();
     await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
     await page.getByLabel('Título - Prazo de produção').fill('Produção customizada');
     await page.getByLabel('Exibir seção - Pagamento').uncheck();
@@ -87,7 +90,7 @@ test.describe('Configurações de orçamento @quotations', () => {
       settings_version: 1,
       secoes: {
         schema_version: 1,
-        show_summary: true,
+        show_summary: false,
         rich_text: true,
         prazo_producao: { enabled: false, title: 'Produção customizada' },
         pagamento: { enabled: false, title: 'Condição comercial' },

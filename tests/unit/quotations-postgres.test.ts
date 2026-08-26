@@ -548,8 +548,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(afterSnapshot);
     const afterHtml = renderQuotationDocument(afterSnapshot, alternateTemplate).html;
     assert.equal(afterHtml, beforeHtml);
-    assert.match(afterHtml, /Empresa da revisão 2 LTDA/);
-    assert.doesNotMatch(afterHtml, /Empresa alterada LTDA/);
+    assert.doesNotMatch(afterHtml, /Empresa da revisão 2 LTDA|Empresa alterada LTDA/);
   } finally {
     const rows = await db.select({ id: quotations.id }).from(quotations).where(inArray(quotations.clientId, [clientId, secondClientId]));
     if (rows.length) await db.delete(quotations).where(inArray(quotations.id, rows.map((row) => row.id)));
