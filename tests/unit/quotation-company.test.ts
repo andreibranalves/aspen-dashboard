@@ -102,6 +102,7 @@ test('every official v2 template renders commercial sections without company pay
     assert.match(html, /Pix em duas parcelas/);
     assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.match(html, /R\$ 10,00/);
+    assert.match(html, /<span>Total<\/span><span>R\$ 10,00<\/span>/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
   }
 });
