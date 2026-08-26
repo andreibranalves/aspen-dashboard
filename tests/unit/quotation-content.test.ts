@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { test } from 'node:test';
 import { normalizePublicQuotationUrl } from '../../src/lib/formatting/printFormats.ts';
 import {
@@ -97,6 +101,34 @@ test('rich text preserva apenas formatação comercial permitida', () => {
   const sanitized = sanitizeQuotationRichText(input);
   assert.equal(sanitized, '<p><strong>50% de entrada</strong></p><ul><li>Pix</li></ul>');
   assert.equal(toSafeRichTextHtml(sanitized).toString(), sanitized);
+});
+
+test('sanitizador mantém entrada CommonJS para o runtime da Vercel', () => {
+  const require = createRequire(import.meta.url);
+  const sanitizeEntry = require.resolve('sanitize-html');
+  const parserEntry = createRequire(sanitizeEntry).resolve('htmlparser2');
+  let directory = path.dirname(parserEntry);
+  let parserPackage: { name?: string; exports?: Record<string, unknown> } | undefined;
+  while (directory !== path.dirname(directory)) {
+    const packagePath = path.join(directory, 'package.json');
+    if (existsSync(packagePath)) {
+      const candidate = JSON.parse(readFileSync(packagePath, 'utf8')) as typeof parserPackage;
+      if (candidate.name === 'htmlparser2') {
+        parserPackage = candidate;
+        break;
+      }
+    }
+    directory = path.dirname(directory);
+  }
+  const rootExports = parserPackage?.exports?.['.'];
+  assert.ok(
+    rootExports && typeof rootExports === 'object' && !Array.isArray(rootExports) && 'require' in rootExports,
+    'htmlparser2 precisa expor uma entrada require para o bundle CommonJS da Vercel',
+  );
+  execFileSync(process.execPath, ['-e', "require('sanitize-html')"], {
+    cwd: process.cwd(),
+    stdio: 'pipe',
+  });
 });
 
 test('preferência de resumo é normalizada e preservada no snapshot', () => {
