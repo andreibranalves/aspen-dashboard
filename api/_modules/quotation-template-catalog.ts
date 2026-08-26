@@ -1632,6 +1632,8 @@ const RESTORED_V2_STYLES = String.raw`
   .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
   .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
   .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .company-data { margin-top: 10px; }
   .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .contact-item span { color: #ffffff; }
@@ -1644,7 +1646,11 @@ const RESTORED_V2_TOTAL = String.raw`    <div class="quotation-summary">
     </div>
 `;
 
-const RESTORED_V2_SECTIONS = String.raw`    <div class="info-grid">
+const RESTORED_V2_SECTIONS = String.raw`    <div class="company-identity">
+      <p><strong>{{company.identity.legal_name}}</strong></p>
+      <p>CNPJ: {{company.identity.document}}</p>
+    </div>
+    <div class="info-grid">
       {{#if secoes.prazo_producao.enabled}}
       <div class="info-block">
         <div class="section-label">{{secoes.prazo_producao.title}}</div>
@@ -1656,8 +1662,6 @@ const RESTORED_V2_SECTIONS = String.raw`    <div class="info-grid">
         <div class="section-label">{{secoes.pagamento.title}}</div>
         <div class="section-copy">{{secoes.pagamento.body_html}}</div>
         <div class="company-data">
-          <p><strong>{{company.identity.legal_name}}</strong></p>
-          <p><strong>CNPJ:</strong> {{company.identity.document}}</p>
           {{#if company.banking.bank_name}}<p><strong>Banco:</strong> {{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}
           {{#if company.banking.branch}}<p><strong>Agência:</strong> {{company.banking.branch}}</p>{{/if}}
           {{#if company.banking.account}}<p><strong>Conta:</strong> {{company.banking.account}}</p>{{/if}}

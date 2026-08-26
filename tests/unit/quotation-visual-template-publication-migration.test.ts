@@ -40,14 +40,17 @@ test('0027 embeds the exact restored catalog sources without mutating historical
   for (const key of templateKeys) {
     const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === key);
     assert.ok(template);
-    const delimiter = `\\$quotation_${key}_visual_v3\\$`;
-    const match = new RegExp(`${delimiter}\\n([\\s\\S]*?)\\n${delimiter}, '([0-9a-f]{64})'`).exec(
-      migrationSql,
-    );
-    assert.ok(match, `migration source for ${key}`);
-    assert.equal(match[1], template.source);
-    assert.equal(match[2], template.hash);
-    assert.equal(hash(match[1]), match[2]);
+    const delimiter = `$quotation_${key}_visual_v3$`;
+    const sourceStart = migrationSql.indexOf(delimiter);
+    const sourceMarker = `${delimiter}, '`;
+    const sourceEnd = migrationSql.indexOf(sourceMarker, sourceStart + delimiter.length);
+    assert.notEqual(sourceStart, -1, `migration source for ${key}`);
+    assert.notEqual(sourceEnd, -1, `migration hash for ${key}`);
+    const embeddedSource = migrationSql.slice(sourceStart + delimiter.length, sourceEnd);
+    const embeddedHash = migrationSql.slice(sourceEnd + sourceMarker.length, sourceEnd + sourceMarker.length + 64);
+    assert.equal(embeddedSource, template.source);
+    assert.equal(embeddedHash, template.hash);
+    assert.equal(hash(embeddedSource), embeddedHash);
   }
 });
 

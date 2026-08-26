@@ -3,8 +3,7 @@
 -- Existing quotation revisions keep their previously selected template_version_id.
 
 INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
-SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_branded_visual_v3$
-<!doctype html>
+SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_branded_visual_v3$<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
@@ -78,6 +77,8 @@ SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX
   .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
   .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
   .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .company-data { margin-top: 10px; }
   .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .contact-item span { color: #ffffff; }
@@ -155,6 +156,10 @@ SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX
       <div class="quotation-summary-row"><span>Frete</span><span>{{display.freight}}</span></div>
       <div class="quotation-summary-row quotation-summary-total"><span>Total</span><span>{{display.total}}</span></div>
     </div>
+    <div class="company-identity">
+      <p><strong>{{company.identity.legal_name}}</strong></p>
+      <p>CNPJ: {{company.identity.document}}</p>
+    </div>
     <div class="info-grid">
       {{#if secoes.prazo_producao.enabled}}
       <div class="info-block">
@@ -167,8 +172,6 @@ SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX
         <div class="section-label">{{secoes.pagamento.title}}</div>
         <div class="section-copy">{{secoes.pagamento.body_html}}</div>
         <div class="company-data">
-          <p><strong>{{company.identity.legal_name}}</strong></p>
-          <p><strong>CNPJ:</strong> {{company.identity.document}}</p>
           {{#if company.banking.bank_name}}<p><strong>Banco:</strong> {{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}
           {{#if company.banking.branch}}<p><strong>Agência:</strong> {{company.banking.branch}}</p>{{/if}}
           {{#if company.banking.account}}<p><strong>Conta:</strong> {{company.banking.account}}</p>{{/if}}
@@ -214,23 +217,21 @@ SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX
   </div>
 </div>
 </body>
-</html>
-$quotation_branded_visual_v3$, 'db6bcde523819e5b17d4cb770bb4fcc5615c47835699dcd86f577a3cf3015961', 2
+</html>$quotation_branded_visual_v3$, '8b4c3b6e2d2b4c75fede3cfc3c3aa30b00962420fc9ba31ea0cf643e9dba698a', 2
 FROM "quotation_templates" AS template
 LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
 WHERE template."key" = 'branded'
   AND NOT EXISTS (
     SELECT 1 FROM "quotation_template_versions" AS duplicate
     WHERE duplicate."template_id" = template."id"
-      AND duplicate."source_hash" = 'db6bcde523819e5b17d4cb770bb4fcc5615c47835699dcd86f577a3cf3015961'
+      AND duplicate."source_hash" = '8b4c3b6e2d2b4c75fede3cfc3c3aa30b00962420fc9ba31ea0cf643e9dba698a'
   )
 GROUP BY template."id"
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 
 INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
-SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_comparativo_visual_v3$
-<!doctype html>
+SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_comparativo_visual_v3$<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -591,6 +592,8 @@ SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX
   .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
   .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
   .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .company-data { margin-top: 10px; }
   .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .contact-item span { color: #ffffff; }
@@ -813,6 +816,10 @@ SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX
 
   <!-- ══ PÁGINA 2: INFORMAÇÕES ADICIONAIS ══ -->
   <div class="page-2-content">
+    <div class="company-identity">
+      <p><strong>{{company.identity.legal_name}}</strong></p>
+      <p>CNPJ: {{company.identity.document}}</p>
+    </div>
     <div class="info-grid">
       {{#if secoes.prazo_producao.enabled}}
       <div class="info-block">
@@ -825,8 +832,6 @@ SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX
         <div class="section-label">{{secoes.pagamento.title}}</div>
         <div class="section-copy">{{secoes.pagamento.body_html}}</div>
         <div class="company-data">
-          <p><strong>{{company.identity.legal_name}}</strong></p>
-          <p><strong>CNPJ:</strong> {{company.identity.document}}</p>
           {{#if company.banking.bank_name}}<p><strong>Banco:</strong> {{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}
           {{#if company.banking.branch}}<p><strong>Agência:</strong> {{company.banking.branch}}</p>{{/if}}
           {{#if company.banking.account}}<p><strong>Conta:</strong> {{company.banking.account}}</p>{{/if}}
@@ -850,23 +855,21 @@ SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX
     <span>{{display.total}}</span>
   </div>
 </body>
-</html>
-$quotation_comparativo_visual_v3$, '8911a8e3eb95e854abf09658ea165f8e1f651d5789c12ed91936b4ba74978594', 2
+</html>$quotation_comparativo_visual_v3$, '840aba835f4674cc128ada9ab479034d41e61fb51c74556bff6aa013c6882a12', 2
 FROM "quotation_templates" AS template
 LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
 WHERE template."key" = 'comparativo'
   AND NOT EXISTS (
     SELECT 1 FROM "quotation_template_versions" AS duplicate
     WHERE duplicate."template_id" = template."id"
-      AND duplicate."source_hash" = '8911a8e3eb95e854abf09658ea165f8e1f651d5789c12ed91936b4ba74978594'
+      AND duplicate."source_hash" = '840aba835f4674cc128ada9ab479034d41e61fb51c74556bff6aa013c6882a12'
   )
 GROUP BY template."id"
 ON CONFLICT DO NOTHING;
 --> statement-breakpoint
 
 INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
-SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_simples_visual_v3$
-<!doctype html>
+SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_simples_visual_v3$<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
@@ -1220,6 +1223,8 @@ SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX
   .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
   .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
   .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .company-data { margin-top: 10px; }
   .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
   .contact-item span { color: #ffffff; }
@@ -1383,6 +1388,10 @@ SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX
       <div class="quotation-summary-row"><span>Frete</span><span>{{display.freight}}</span></div>
       <div class="quotation-summary-row quotation-summary-total"><span>Total</span><span>{{display.total}}</span></div>
     </div>
+    <div class="company-identity">
+      <p><strong>{{company.identity.legal_name}}</strong></p>
+      <p>CNPJ: {{company.identity.document}}</p>
+    </div>
     <div class="info-grid">
       {{#if secoes.prazo_producao.enabled}}
       <div class="info-block">
@@ -1395,8 +1404,6 @@ SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX
         <div class="section-label">{{secoes.pagamento.title}}</div>
         <div class="section-copy">{{secoes.pagamento.body_html}}</div>
         <div class="company-data">
-          <p><strong>{{company.identity.legal_name}}</strong></p>
-          <p><strong>CNPJ:</strong> {{company.identity.document}}</p>
           {{#if company.banking.bank_name}}<p><strong>Banco:</strong> {{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}
           {{#if company.banking.branch}}<p><strong>Agência:</strong> {{company.banking.branch}}</p>{{/if}}
           {{#if company.banking.account}}<p><strong>Conta:</strong> {{company.banking.account}}</p>{{/if}}
@@ -1468,15 +1475,14 @@ SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX
   <span>{{display.total}}</span>
 </div>
 </body>
-</html>
-$quotation_simples_visual_v3$, 'd656d5badc31b8c2878bfc402d0cedb22ea20142ef1f0a1ba01507ac71b16e6d', 2
+</html>$quotation_simples_visual_v3$, '925af8f135b3f8831de2087052b865b905203654ad40c7f60c9848e5a7d2f9d8', 2
 FROM "quotation_templates" AS template
 LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
 WHERE template."key" = 'simples'
   AND NOT EXISTS (
     SELECT 1 FROM "quotation_template_versions" AS duplicate
     WHERE duplicate."template_id" = template."id"
-      AND duplicate."source_hash" = 'd656d5badc31b8c2878bfc402d0cedb22ea20142ef1f0a1ba01507ac71b16e6d'
+      AND duplicate."source_hash" = '925af8f135b3f8831de2087052b865b905203654ad40c7f60c9848e5a7d2f9d8'
   )
 GROUP BY template."id"
 ON CONFLICT DO NOTHING;
