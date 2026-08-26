@@ -3110,6 +3110,40 @@ function withQuotationDocumentTitle(html: string, viewModel: QuotationTemplateVi
   return html.replace(/<head\b[^>]*>/i, (head) => `${head}${titleTag}`);
 }
 
+const OFFICIAL_TEMPLATE_SOURCES = new Set(
+  [...TEMPLATES, ...HISTORICAL_TEMPLATES].map((template) => template.source),
+);
+
+function officialTemplateRenderSource(template: QuotationTemplate): string {
+  if (!OFFICIAL_TEMPLATE_SOURCES.has(template.source)) return template.source;
+
+  let source = template.source
+    // The company identity is configuration data, not quotation content.
+    .replace(
+      /\s*<p class="muted">\{\{company\.identity\.legal_name\}\} · CNPJ \{\{company\.identity\.document\}\}<\/p>\s*/g,
+      '\n',
+    )
+    // Payment instructions now belong exclusively to the rich-text section.
+    .replace(/\s*<div class="banking">[\s\S]*?<\/div>/g, '')
+    .replace(/\s*<div class="company-data">[\s\S]*?<\/div>/g, '')
+    .replace(
+      /\s*<div class="info-block">\s*<div class="section-label">Dados para pagamento:<\/div>[\s\S]*?<\/div>(?=\s*<\/div>\s*(?:<!--[^>]*-->\s*)?<div class="conditions"|<\/div><!-- \/body -->)/gi,
+      '\n',
+    );
+
+  source = source
+    .replace(
+      /(<div class="totals">)(\s*<div><span>Subtotal<\/span><span>\{\{display\.subtotal\}\}<\/span><\/div>\s*<div><span>Frete<\/span><span>\{\{display\.freight\}\}<\/span><\/div>)(\s*<div class="grand-total">)/,
+      '$1{{#if display.show_summary}}$2{{/if}}$3',
+    )
+    .replace(
+      /(<div class="summary">)(\s*<p><span>Subtotal<\/span><span>\{\{display\.subtotal\}\}<\/span><\/p>\s*<p><span>Frete<\/span><span>\{\{display\.freight\}\}<\/span><\/p>)/,
+      '$1{{#if display.show_summary}}$2{{/if}}',
+    );
+
+  return source;
+}
+
 export function renderQuotationTemplate(
   template: QuotationTemplate,
   viewModel: QuotationTemplateViewModel
@@ -3128,7 +3162,7 @@ export function renderQuotationTemplate(
       provenance,
       true
     );
-    compiled = environment.compile(template.source, {
+    compiled = environment.compile(officialTemplateRenderSource(template), {
       knownHelpers: HELPER_NAMES,
       knownHelpersOnly: true,
       noEscape: false,

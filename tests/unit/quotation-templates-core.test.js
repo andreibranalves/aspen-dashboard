@@ -1048,7 +1048,7 @@ test('restored v2 templates keep the Aspen visual shell with dynamic company dat
     assert.match(template.source, /secoes\.condicoes_gerais/);
     assert.doesNotMatch(template.source, /15 a 20 dias úteis|Formas de pagamento: PIX/);
     assert.doesNotMatch(html, /EMPRESA VISUAL LTDA|11\.222\.333\/0001-81/);
-    assert.match(html, /Banco Dinâmico/);
+    assert.doesNotMatch(html, /Banco Dinâmico|Dados para pagamento/);
     assert.match(html, /empresa-visual\.example\/propostas/);
     assert.match(html, /@empresa_visual/);
     assert.match(html, />Total<[^]*R\$ 10,00/);
@@ -1083,6 +1083,19 @@ test('all official templates honor summary visibility and rich-text deadline', (
     assert.doesNotMatch(html, /<span>Frete<\/span>/);
     assert.match(html, /<span>Total<\/span>/);
     assert.match(html, /<strong>10 dias úteis<\/strong>/);
+    assert.doesNotMatch(html, /ASPEN COMÉRCIO|55\.458\.072|Stone Pagamentos|Dados para pagamento/);
+  }
+});
+
+test('historical official templates apply the current quotation display policy', () => {
+  const model = {
+    ...QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
+    display: { ...QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL.display, show_summary: false },
+  };
+  for (const template of HISTORICAL_QUOTATION_TEMPLATES) {
+    const html = renderQuotationTemplate(template, model);
+    assert.doesNotMatch(html, /ASPEN COMÉRCIO|55\.458\.072|Stone Pagamentos|Dados para pagamento/);
+    assert.doesNotMatch(html, /<span>Subtotal<\/span>|<span>Frete<\/span>/);
   }
 });
 
@@ -1115,7 +1128,7 @@ test('simples template is registered as a v2 canonical commercial template', () 
   const model = quotationSnapshotViewModel(snapshot);
   const html = renderQuotationTemplate(template, model);
   assert.match(html, /Prazo de produção/);
-  assert.match(html, /Stone Pagamentos S\.A\./);
+  assert.doesNotMatch(html, /Stone Pagamentos S\.A\.|Dados para pagamento/);
   assert.match(html, /Condições Gerais/);
   assert.match(template.source, /secoes\.prazo_producao/);
   assert.match(template.source, /secoes\.pagamento/);
