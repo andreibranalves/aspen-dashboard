@@ -1,44 +1,58 @@
-// FlowEditorTab — full flow editor for CommunicationFlows.
-// Adapted from SettingsPage WhatsApp section. Supports step types:
-//   text, document(source:quotation_pdf|quotation_webp), product_media
-//
-// Uses communication-flows API (new KV namespace) for persistence.
+// FlowEditorTab — editor for CommunicationFlows.
+// Supports text, quotation documents and product media steps without changing
+// the existing flow API or WhatsApp transport.
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Plus,
-  Trash2,
-  Copy,
-  ChevronUp,
-  ChevronDown,
-  FileText,
-  MessageSquare,
+  AlertCircle,
+  CalendarDays,
   Camera,
-  Save,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CircleOff,
+  Copy,
+  FileText,
   Loader2,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import EmptyState from '@/components/shared/EmptyState';
 import { fetchFlows, saveFlows } from '@/lib/api/communicationApi';
-import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/api/communicationApi';
-import { renderFlowTemplate } from '@/lib/api/whatsappFlows';
+import type {
+  CommunicationFlow,
+  CommunicationFlowStep,
+  FlowChannel,
+  FlowContext,
+} from '@/lib/api/communicationApi';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
-import { useSetTopBarActions } from '@/components/layout/Layout';
-
-// ── Constants ──────────────────────────────────────────────────────────────
-
 const STEP_TYPES = {
   TEXT: 'text',
   DOCUMENT: 'document',
   PRODUCT_MEDIA: 'product_media',
 } as const;
 
-type StepType = typeof STEP_TYPES[keyof typeof STEP_TYPES];
+type StepType = (typeof STEP_TYPES)[keyof typeof STEP_TYPES];
+type FlowStep = CommunicationFlowStep;
 
 const STEP_TYPE_ICONS: Record<StepType, typeof MessageSquare> = {
   [STEP_TYPES.TEXT]: MessageSquare,
   [STEP_TYPES.DOCUMENT]: FileText,
   [STEP_TYPES.PRODUCT_MEDIA]: Camera,
+};
+
+const STEP_TYPE_LABELS: Record<StepType, string> = {
+  [STEP_TYPES.TEXT]: 'Texto',
+  [STEP_TYPES.DOCUMENT]: 'Orçamento',
+  [STEP_TYPES.PRODUCT_MEDIA]: 'Mídia da biblioteca',
 };
 
 const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
@@ -47,40 +61,12 @@ const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
   { value: STEP_TYPES.PRODUCT_MEDIA, label: 'Mídia da biblioteca' },
 ];
 
-const PREVIEW_CONTEXT: Record<string, string> = {
-  '(nome)': 'Labo Buriti',
-  '(primeiro_nome)': 'Labo',
-  '(numero_pedido)': 'ORC-20261289',
-  '(empresa)': 'Aspen Estamparia',
-  '(link_orcamento)': '(link público emitido no envio)',
-  '(vendedora)': 'Juliana',
-  '(produto_resumo)': 'cangas',
-  '(produto_adjetivo_personalizado)': 'personalizadas',
-  '(grupo_produto)': 'canga',
+const CONTEXT_LABELS: Record<FlowContext, string> = {
+  already_talking: 'Já conversando',
+  email_first_contact: 'Primeiro contato por e-mail',
+  form_first_contact: 'Primeiro contato por formulário',
+  manual: 'Manual',
 };
-
-interface TextStep {
-  id: string;
-  type: 'text';
-  template: string;
-}
-
-interface DocumentStep {
-  id: string;
-  type: 'document';
-  source: 'quotation_pdf' | 'quotation_webp';
-  caption?: string;
-}
-
-interface ProductMediaStep {
-  id: string;
-  type: 'product_media';
-  selection?: string;
-  max_items?: number;
-  caption_template?: string;
-}
-
-type FlowStep = TextStep | DocumentStep | ProductMediaStep;
 
 interface EditableFlow extends CommunicationFlow {
   steps: FlowStep[];
@@ -109,11 +95,11 @@ function createStep(type: StepType = STEP_TYPES.TEXT): FlowStep {
 function createFlow(index: number): EditableFlow {
   return {
     id: `flow_${Date.now().toString(36)}${index}`,
-    name: `Novo Fluxo ${index + 1}`,
+    name: `Novo fluxo ${index + 1}`,
     description: '',
     context: 'email_first_contact' as FlowContext,
     channel: 'whatsapp' as FlowChannel,
-    vendor_name: 'Juliana',
+    vendor_name: '',
     delay_min_seconds: 5,
     delay_max_seconds: 8,
     max_media_per_product_group: 1,
@@ -122,9 +108,51 @@ function createFlow(index: number): EditableFlow {
   };
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
+}
 
-export default function FlowEditorTab() {
+function displayName(flow: Pick<CommunicationFlow, 'name'>): string {
+  return flow.name?.trim() || 'Fluxo sem nome';
+}
+
+function contextLabel(value: string | undefined): string {
+  if (!value) return 'Contexto não informado';
+  return CONTEXT_LABELS[value as FlowContext] || value;
+}
+
+function channelLabel(value: string | undefined): string {
+  if (!value) return 'Canal não informado';
+  return value === 'whatsapp' ? 'WhatsApp' : value;
+}
+
+function formatDate(value: string | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function stepLabel(step: FlowStep): string {
+  if (step.type === STEP_TYPES.DOCUMENT) {
+    return step.source === 'quotation_webp' ? 'Orçamento em WebP' : 'Orçamento em PDF';
+  }
+  if (step.type === STEP_TYPES.PRODUCT_MEDIA) return 'Mídia da biblioteca';
+  return step.template?.trim() || 'Texto sem conteúdo';
+}
+
+function stepCountLabel(count: number): string {
+  return `${count} ${count === 1 ? 'etapa' : 'etapas'}`;
+}
+
+interface FlowEditorTabProps {
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
   const [flows, setFlows] = useState<EditableFlow[]>([]);
   const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
@@ -132,522 +160,716 @@ export default function FlowEditorTab() {
   const [expandedFlow, setExpandedFlow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
-  const selectedFlow = flows.find((f) => f.id === selectedFlowId) || flows[0];
+  const selectedFlow = flows.find((flow) => flow.id === selectedFlowId) || flows[0];
 
-  // Load flows
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await fetchFlows();
-        const loaded = (data.flows || []).map((f, i) => ({ ...f, id: f.id || `flow_${i}` })) as EditableFlow[];
-        setFlows(loaded);
-        setSavedFlows(loaded);
-        setSelectedFlowId(data.selectedFlowId || loaded[0]?.id || '');
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
+
+  const loadFlows = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    setActionError('');
+    try {
+      const data = await fetchFlows();
+      const loaded = (data.flows || []).map((flow, index) => ({
+        ...flow,
+        id: flow.id || `flow_${index}`,
+      })) as EditableFlow[];
+      const nextSelectedId = data.selectedFlowId || loaded[0]?.id || '';
+      setFlows(loaded);
+      setSavedFlows(loaded);
+      setSelectedFlowId(nextSelectedId);
+      setExpandedFlow(nextSelectedId || null);
+    } catch (error) {
+      setLoadError(errorMessage(error, 'Não foi possível carregar os fluxos.'));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Save
+  useEffect(() => {
+    void loadFlows();
+  }, [loadFlows]);
+
   const handleSave = useCallback(async () => {
     setSaving(true);
-    setError('');
+    setActionError('');
     setSuccessMsg('');
     try {
       await saveFlows(flows, selectedFlowId);
-      setSavedFlows(JSON.parse(JSON.stringify(flows)));
+      setSavedFlows(JSON.parse(JSON.stringify(flows)) as EditableFlow[]);
       setSuccessMsg('Fluxos salvos com sucesso.');
-      setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (err) {
-      setError((err as Error).message);
+      window.setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (error) {
+      setActionError(errorMessage(error, 'Não foi possível salvar os fluxos.'));
     } finally {
       setSaving(false);
     }
   }, [flows, selectedFlowId]);
 
-  // Flow mutations
   const addFlow = useCallback(() => {
     const newFlow = createFlow(flows.length);
-    setFlows((prev) => [...prev, newFlow]);
+    setFlows((current) => [...current, newFlow]);
     setSelectedFlowId(newFlow.id);
     setExpandedFlow(newFlow.id);
+    setActionError('');
   }, [flows.length]);
 
-  const setTopBarActions = useSetTopBarActions();
-
-  useEffect(() => {
-    if (!setTopBarActions) return undefined;
-    if (loading) {
-      setTopBarActions(null);
-      return () => setTopBarActions(null);
-    }
-
-    setTopBarActions(
-      <div className="flex items-center gap-2">
-        <Button onClick={addFlow} size="sm">
-          <Plus size={14} /> Novo fluxo
-        </Button>
-        {(isDirty || saving) && (
-          <Button onClick={handleSave} size="sm" disabled={saving}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Salvar
-          </Button>
-        )}
-      </div> as ReactNode,
-    );
-
-    return () => setTopBarActions(null);
-  }, [addFlow, handleSave, isDirty, loading, saving, setTopBarActions]);
-
   const duplicateFlow = (flowId: string) => {
-    const idx = flows.findIndex((f) => f.id === flowId);
-    if (idx === -1) return;
-    const dup = JSON.parse(JSON.stringify(flows[idx])) as EditableFlow;
-    dup.id = `flow_${Date.now().toString(36)}`;
-    dup.name = `${dup.name} (cópia)`;
+    const index = flows.findIndex((flow) => flow.id === flowId);
+    if (index === -1) return;
+    const duplicate = JSON.parse(JSON.stringify(flows[index])) as EditableFlow;
+    duplicate.id = `flow_${Date.now().toString(36)}`;
+    duplicate.name = `${displayName(duplicate)} (cópia)`;
     const next = [...flows];
-    next.splice(idx + 1, 0, dup);
+    next.splice(index + 1, 0, duplicate);
     setFlows(next);
-    setSelectedFlowId(dup.id);
+    setSelectedFlowId(duplicate.id);
+    setExpandedFlow(duplicate.id);
+    setActionError('');
   };
 
   const deleteFlow = (flowId: string) => {
     if (flows.length <= 1) {
-      setError('É necessário pelo menos um fluxo.');
+      setActionError('É necessário manter pelo menos um fluxo.');
       return;
     }
-    const next = flows.filter((f) => f.id !== flowId);
+    const next = flows.filter((flow) => flow.id !== flowId);
     setFlows(next);
-    if (selectedFlowId === flowId) setSelectedFlowId(next[0]?.id || '');
+    if (selectedFlowId === flowId) {
+      setSelectedFlowId(next[0]?.id || '');
+      setExpandedFlow(next[0]?.id || null);
+    }
+    setActionError('');
   };
 
   const updateFlow = (flowId: string, field: keyof EditableFlow, value: unknown) => {
-    setFlows((prev) => prev.map((f) => (f.id === flowId ? { ...f, [field]: value } : f)));
+    setFlows((current) =>
+      current.map((flow) => (flow.id === flowId ? { ...flow, [field]: value } : flow))
+    );
+    setSuccessMsg('');
   };
 
-  // Step mutations
   const addStep = (flowId: string) => {
-    setFlows((prev) =>
-      prev.map((f) => {
-        if (f.id !== flowId) return f;
-        return { ...f, steps: [...f.steps, createStep(STEP_TYPES.TEXT)] };
-      })
+    setFlows((current) =>
+      current.map((flow) =>
+        flow.id === flowId ? { ...flow, steps: [...flow.steps, createStep(STEP_TYPES.TEXT)] } : flow
+      )
     );
   };
 
   const updateStep = (flowId: string, stepId: string, field: string, value: unknown) => {
-    setFlows((prev) =>
-      prev.map((f) => {
-        if (f.id !== flowId) return f;
+    setFlows((current) =>
+      current.map((flow) => {
+        if (flow.id !== flowId) return flow;
         return {
-          ...f,
-          steps: f.steps.map((s) => (s.id === stepId ? { ...s, [field]: value } : s)),
+          ...flow,
+          steps: flow.steps.map((step) =>
+            step.id === stepId ? { ...step, [field]: value } : step
+          ),
         };
       })
     );
+    setSuccessMsg('');
   };
 
   const removeStep = (flowId: string, stepId: string) => {
-    setFlows((prev) =>
-      prev.map((f) => {
-        if (f.id !== flowId) return f;
-        if (f.steps.length <= 1) return f; // keep at least one step
-        return { ...f, steps: f.steps.filter((s) => s.id !== stepId) };
+    setFlows((current) =>
+      current.map((flow) => {
+        if (flow.id !== flowId || flow.steps.length <= 1) return flow;
+        return { ...flow, steps: flow.steps.filter((step) => step.id !== stepId) };
       })
     );
   };
 
   const moveStep = (flowId: string, stepId: string, direction: number) => {
-    setFlows((prev) =>
-      prev.map((f) => {
-        if (f.id !== flowId) return f;
-        const idx = f.steps.findIndex((s) => s.id === stepId);
-        if (idx === -1) return f;
-        const newIdx = idx + direction;
-        if (newIdx < 0 || newIdx >= f.steps.length) return f;
-        const steps = [...f.steps];
-        [steps[idx], steps[newIdx]] = [steps[newIdx], steps[idx]];
-        return { ...f, steps };
+    setFlows((current) =>
+      current.map((flow) => {
+        if (flow.id !== flowId) return flow;
+        const index = flow.steps.findIndex((step) => step.id === stepId);
+        const nextIndex = index + direction;
+        if (index === -1 || nextIndex < 0 || nextIndex >= flow.steps.length) return flow;
+        const steps = [...flow.steps];
+        [steps[index], steps[nextIndex]] = [steps[nextIndex], steps[index]];
+        return { ...flow, steps };
       })
     );
   };
 
   const handleStepTypeChange = (flowId: string, stepId: string, newType: StepType) => {
-    setFlows((prev) =>
-      prev.map((f) => {
-        if (f.id !== flowId) return f;
+    setFlows((current) =>
+      current.map((flow) => {
+        if (flow.id !== flowId) return flow;
         return {
-          ...f,
-          steps: f.steps.map((s) => {
-            if (s.id !== stepId) return s;
-            const fresh = createStep(newType);
-            return { ...fresh, id: s.id };
+          ...flow,
+          steps: flow.steps.map((step) => {
+            if (step.id !== stepId) return step;
+            const freshStep = createStep(newType);
+            return { ...freshStep, id: step.id };
           }),
         };
       })
     );
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return <SkeletonComunicacao />;
-  }
+  if (loading) return <SkeletonComunicacao />;
 
   return (
-    <div className="space-y-6">
-      {/* Status messages */}
-      <div className="flex items-center gap-2 flex-wrap min-h-[20px]">
-        {successMsg && (
-          <span className="text-xs text-success dark:text-success/80">{successMsg}</span>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button onClick={addFlow} size="sm">
+          <Plus size={14} aria-hidden="true" /> Novo fluxo
+        </Button>
+        {(isDirty || saving) && (
+          <Button onClick={handleSave} size="sm" disabled={saving}>
+            {saving ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Save size={14} aria-hidden="true" />
+            )}
+            {saving ? 'Salvando…' : 'Salvar'}
+          </Button>
         )}
-        {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
 
-      {/* Flow selector */}
-      <div className="flex gap-2 flex-wrap">
-        {flows.map((flow) => (
-          <button
-            key={flow.id}
-            onClick={() => setSelectedFlowId(flow.id)}
-            className={[
-              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
-              flow.id === selectedFlowId
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
-            ].join(' ')}
-          >
-            {flow.name}
-          </button>
-        ))}
-      </div>
-
-      {/* Flow editor — hint quando nada selecionado */}
-      {!selectedFlow && flows.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-line text-center py-12">
-          <MessageSquare size={28} className="text-fg-muted/40 mb-3" aria-hidden="true" />
-          <p className="text-sm font-medium text-fg">Nenhum fluxo criado ainda</p>
-          <p className="mt-1 max-w-sm text-sm text-fg-muted">
-            Use <strong>Novo fluxo</strong> para criar sua primeira automação de WhatsApp.
-          </p>
+      {loadError && (
+        <div
+          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-medium">Não foi possível carregar os fluxos.</p>
+            <p className="mt-1 text-fg-muted">{loadError}</p>
+            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadFlows()}>
+              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Flow editor */}
-      {selectedFlow && (
-        <div className="border border-line rounded-lg bg-surface overflow-hidden">
-          {/* Flow metadata */}
-          <button
-            onClick={() =>
-              setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
+      {actionError && (
+        <div
+          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <span>{actionError}</span>
+        </div>
+      )}
+
+      {successMsg && (
+        <div
+          className="flex items-center gap-2 rounded-md border border-success/25 bg-success/10 p-3 text-sm text-fg"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 size={17} className="shrink-0 text-success" aria-hidden="true" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      <section aria-labelledby="flows-list-title" className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="flows-list-title" className="text-base font-semibold text-fg">
+              Fluxos cadastrados
+            </h2>
+            <p className="mt-1 text-sm text-fg-muted">
+              Selecione um fluxo para consultar ou editar suas etapas.
+            </p>
+          </div>
+          <span className="text-xs text-fg-muted">
+            {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}
+          </span>
+        </div>
+
+        {flows.length === 0 ? (
+          <EmptyState
+            icon={MessageSquare}
+            title="Nenhum fluxo criado ainda"
+            description="Crie um fluxo para organizar mensagens, documentos e mídias enviados pelo WhatsApp."
+            actions={
+              <Button onClick={addFlow}>
+                <Plus size={14} aria-hidden="true" /> Novo fluxo
+              </Button>
             }
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-muted transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-fg">{selectedFlow.name}</span>
-              <span className="text-xs text-fg-muted">
-                {selectedFlow.steps?.length || 0} {selectedFlow.steps?.length === 1 ? 'etapa' : 'etapas'}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  duplicateFlow(selectedFlow.id);
-                }}
-                className="p-1 rounded hover:bg-surface-muted"
+            className="rounded-md border border-dashed border-line bg-surface py-12"
+          />
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2">
+            {flows.map((flow) => {
+              const isSelected = flow.id === selectedFlow?.id;
+              const date = formatDate(flow.updated_at || flow.created_at);
+              return (
+                <button
+                  key={flow.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    setSelectedFlowId(flow.id);
+                    setExpandedFlow(flow.id);
+                  }}
+                  className={[
+                    'min-w-0 rounded-md border p-3 text-left transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                    isSelected
+                      ? 'border-primary bg-primary/5'
+                      : 'border-line bg-surface hover:border-primary/40 hover:bg-surface-hover',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-2">
+                      {flow.enabled ? (
+                        <CheckCircle2
+                          size={17}
+                          className="mt-0.5 shrink-0 text-success"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <CircleOff
+                          size={17}
+                          className="mt-0.5 shrink-0 text-fg-muted"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-fg">
+                          {displayName(flow)}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-fg-muted">
+                          {contextLabel(flow.context)} · {channelLabel(flow.channel)}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusBadge
+                      status={flow.enabled ? 'Active' : 'Archived'}
+                      label={flow.enabled ? 'Ativo' : 'Inativo'}
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-xs text-fg-muted">
+                    <span>{stepCountLabel(flow.steps?.length || 0)}</span>
+                    <span className="text-fg-muted/60">·</span>
+                    <span className="truncate">
+                      {flow.steps?.length
+                        ? flow.steps
+                            .map((step) => STEP_TYPE_LABELS[step.type] || step.type)
+                            .join(' · ')
+                        : 'Sem etapas'}
+                    </span>
+                    {date && (
+                      <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
+                        <CalendarDays size={13} aria-hidden="true" />
+                        <time dateTime={flow.updated_at || flow.created_at}>{date}</time>
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {selectedFlow && (
+        <section
+          className="overflow-hidden rounded-md border border-line bg-surface"
+          aria-labelledby="selected-flow-title"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line p-4">
+            <button
+              type="button"
+              onClick={() =>
+                setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
+              }
+              aria-expanded={expandedFlow === selectedFlow.id}
+              className="flex min-w-0 flex-1 items-start gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                <MessageSquare size={18} className="text-primary" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
+                  {displayName(selectedFlow)}
+                </h2>
+                <p className="mt-1 text-sm text-fg-muted">
+                  {contextLabel(selectedFlow.context)} · {channelLabel(selectedFlow.channel)} ·{' '}
+                  {stepCountLabel(selectedFlow.steps?.length || 0)}
+                </p>
+                {(selectedFlow.updated_at || selectedFlow.created_at) && (
+                  <p className="mt-1 inline-flex items-center gap-1 text-xs text-fg-muted">
+                    <CalendarDays size={13} aria-hidden="true" />
+                    {selectedFlow.updated_at ? 'Atualizado' : 'Criado'}{' '}
+                    <time dateTime={selectedFlow.updated_at || selectedFlow.created_at}>
+                      {formatDate(selectedFlow.updated_at || selectedFlow.created_at)}
+                    </time>
+                  </p>
+                )}
+              </div>
+              {expandedFlow === selectedFlow.id ? (
+                <ChevronUp size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
+              ) : (
+                <ChevronDown size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
+              )}
+            </button>
+
+            <div className="flex shrink-0 items-center gap-1">
+              <StatusBadge
+                status={selectedFlow.enabled ? 'Active' : 'Archived'}
+                label={selectedFlow.enabled ? 'Ativo' : 'Inativo'}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => duplicateFlow(selectedFlow.id)}
+                aria-label={`Duplicar ${displayName(selectedFlow)}`}
                 title="Duplicar fluxo"
               >
-                <Copy size={14} className="text-fg-muted" />
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmDeleteFlowId(selectedFlow.id);
-                }}
-                className="p-1 rounded text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
+                <Copy aria-hidden="true" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirmDeleteFlowId(selectedFlow.id)}
+                aria-label={`Remover ${displayName(selectedFlow)}`}
                 title="Remover fluxo"
               >
-                <Trash2 size={14} />
-              </button>
-              <ChevronDown
-                size={16}
-                className={
-                  expandedFlow === selectedFlow.id
-                    ? 'rotate-180 transition-transform'
-                    : 'transition-transform'
-                }
-              />
+                <Trash2 aria-hidden="true" />
+              </Button>
             </div>
-          </button>
+          </div>
 
           {expandedFlow === selectedFlow.id && (
-            <div className="px-4 pb-4 space-y-4 border-t border-line pt-4">
-              {/* Metadata fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-fg-muted">Nome do fluxo</label>
-                  <input
+            <div className="space-y-5 p-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label
+                  htmlFor={`flow-name-${selectedFlow.id}`}
+                  className="space-y-1.5 text-sm text-fg"
+                >
+                  <span className="font-medium">Nome do fluxo</span>
+                  <Input
+                    id={`flow-name-${selectedFlow.id}`}
                     type="text"
-                    value={selectedFlow.name}
-                    onChange={(e) => updateFlow(selectedFlow.id, 'name', e.target.value)}
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
+                    value={selectedFlow.name || ''}
+                    onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
                   />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-fg-muted">Vendedora</label>
-                  <input
+                </label>
+                <label
+                  htmlFor={`flow-vendor-${selectedFlow.id}`}
+                  className="space-y-1.5 text-sm text-fg"
+                >
+                  <span className="font-medium">Vendedora</span>
+                  <Input
+                    id={`flow-vendor-${selectedFlow.id}`}
                     type="text"
-                    value={selectedFlow.vendor_name || 'Juliana'}
-                    onChange={(e) => updateFlow(selectedFlow.id, 'vendor_name', e.target.value)}
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
+                    value={selectedFlow.vendor_name || ''}
+                    onChange={(event) =>
+                      updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
+                    }
                   />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-fg-muted">Delay mínimo (seg)</label>
-                  <input
+                </label>
+                <label
+                  htmlFor={`flow-delay-min-${selectedFlow.id}`}
+                  className="space-y-1.5 text-sm text-fg"
+                >
+                  <span className="font-medium">Delay mínimo (segundos)</span>
+                  <Input
+                    id={`flow-delay-min-${selectedFlow.id}`}
                     type="number"
                     min="0"
                     max="30"
-                    value={selectedFlow.delay_min_seconds || 1}
-                    onChange={(e) =>
-                      updateFlow(selectedFlow.id, 'delay_min_seconds', Number(e.target.value))
+                    value={selectedFlow.delay_min_seconds ?? ''}
+                    onChange={(event) =>
+                      updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
                     }
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-fg-muted">Delay máximo (seg)</label>
-                  <input
+                </label>
+                <label
+                  htmlFor={`flow-delay-max-${selectedFlow.id}`}
+                  className="space-y-1.5 text-sm text-fg"
+                >
+                  <span className="font-medium">Delay máximo (segundos)</span>
+                  <Input
+                    id={`flow-delay-max-${selectedFlow.id}`}
                     type="number"
                     min="0"
                     max="45"
-                    value={selectedFlow.delay_max_seconds || 3}
-                    onChange={(e) =>
-                      updateFlow(selectedFlow.id, 'delay_max_seconds', Number(e.target.value))
+                    value={selectedFlow.delay_max_seconds ?? ''}
+                    onChange={(event) =>
+                      updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
                     }
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
-                </div>
+                </label>
               </div>
 
-              {/* Steps */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-medium text-fg">Etapas do fluxo</h4>
-                  <Button onClick={() => addStep(selectedFlow.id)} size="sm" variant="ghost">
-                    <Plus size={14} /> Etapa
+              <section
+                className="space-y-3 border-t border-line pt-4"
+                aria-labelledby="flow-steps-title"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 id="flow-steps-title" className="text-sm font-semibold text-fg">
+                      Etapas do fluxo
+                    </h3>
+                    <p className="mt-1 text-xs text-fg-muted">
+                      A ordem abaixo é a ordem usada no envio.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={() => addStep(selectedFlow.id)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Plus size={14} aria-hidden="true" /> Etapa
                   </Button>
                 </div>
 
-                {selectedFlow.steps?.map((step, idx) => {
+                {selectedFlow.steps?.map((step, index) => {
                   const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
-                  const isLast = idx === (selectedFlow.steps?.length || 0) - 1;
-                  const isFirst = idx === 0;
-
+                  const isFirst = index === 0;
+                  const isLast = index === selectedFlow.steps.length - 1;
                   return (
-                    <div
+                    <article
                       key={step.id}
-                      className="border border-line rounded-lg p-3 bg-surface-muted/50 space-y-2"
+                      className="space-y-3 rounded-md border border-line bg-surface-muted/40 p-3"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-fg-muted">Etapa {idx + 1}</span>
-                        <StepIcon size={14} className="text-fg-muted" />
-                        <select
-                          value={step.type}
-                          onChange={(e) =>
-                            handleStepTypeChange(selectedFlow.id, step.id, e.target.value as StepType)
-                          }
-                          className="appearance-none rounded-sm border border-line bg-surface px-2.5 py-1 text-xs font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface text-xs font-semibold text-fg-muted"
+                          aria-hidden="true"
                         >
-                          {STEP_TYPE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
+                          {index + 1}
+                        </span>
+                        <StepIcon size={16} className="shrink-0 text-fg-muted" aria-hidden="true" />
+                        <span className="text-sm font-medium text-fg">Etapa {index + 1}</span>
+                        <Select
+                          aria-label={`Tipo da etapa ${index + 1}`}
+                          value={step.type}
+                          onChange={(event) =>
+                            handleStepTypeChange(
+                              selectedFlow.id,
+                              step.id,
+                              event.target.value as StepType
+                            )
+                          }
+                          className="min-w-0 flex-1 sm:max-w-xs"
+                        >
+                          {STEP_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
                             </option>
                           ))}
-                        </select>
-                        <div className="flex-1" />
-                        <button
-                          onClick={() => moveStep(selectedFlow.id, step.id, -1)}
-                          disabled={isFirst}
-                          className="p-0.5 rounded hover:bg-surface-muted disabled:opacity-30"
-                        >
-                          <ChevronUp size={14} />
-                        </button>
-                        <button
-                          onClick={() => moveStep(selectedFlow.id, step.id, 1)}
-                          disabled={isLast}
-                          className="p-0.5 rounded hover:bg-surface-muted disabled:opacity-30"
-                        >
-                          <ChevronDown size={14} />
-                        </button>
-                        <button
-                          onClick={() => removeStep(selectedFlow.id, step.id)}
-                          className="p-0.5 rounded hover:bg-destructive/10 text-destructive/60"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        </Select>
+                        <div className="ml-auto flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => moveStep(selectedFlow.id, step.id, -1)}
+                            disabled={isFirst}
+                            aria-label={`Mover etapa ${index + 1} para cima`}
+                            title="Mover para cima"
+                          >
+                            <ChevronUp aria-hidden="true" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => moveStep(selectedFlow.id, step.id, 1)}
+                            disabled={isLast}
+                            aria-label={`Mover etapa ${index + 1} para baixo`}
+                            title="Mover para baixo"
+                          >
+                            <ChevronDown aria-hidden="true" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => removeStep(selectedFlow.id, step.id)}
+                            disabled={selectedFlow.steps.length <= 1}
+                            aria-label={`Remover etapa ${index + 1}`}
+                            title="Remover etapa"
+                          >
+                            <Trash2 aria-hidden="true" />
+                          </Button>
+                        </div>
                       </div>
 
-                      {/* Step type-specific fields */}
                       {step.type === STEP_TYPES.TEXT && (
-                        <div>
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor={`step-template-${step.id}`}
+                            className="text-xs font-medium text-fg-muted"
+                          >
+                            Mensagem
+                          </label>
                           <textarea
+                            id={`step-template-${step.id}`}
                             value={step.template || ''}
-                            onChange={(e) =>
-                              updateStep(selectedFlow.id, step.id, 'template', e.target.value)
+                            onChange={(event) =>
+                              updateStep(selectedFlow.id, step.id, 'template', event.target.value)
                             }
-                            placeholder="Digite a mensagem. Use variáveis como (primeiro_nome), (produto_resumo)..."
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg min-h-[60px] resize-y"
+                            placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
+                            className="min-h-[96px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                           />
-                          <p className="text-[10px] text-fg-muted mt-1">
-                            Preview:{' '}
-                            {renderFlowTemplate(step.template || '', PREVIEW_CONTEXT) || '(vazio)'}
+                          <p className="text-xs text-fg-muted">
+                            As variáveis serão preenchidas com o contexto real do envio.
                           </p>
                         </div>
                       )}
 
                       {step.type === STEP_TYPES.DOCUMENT && (
-                        <div className="space-y-2">
-                          <div>
-                            <label className="text-[10px] font-medium text-fg-muted">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <label
+                            htmlFor={`step-source-${step.id}`}
+                            className="space-y-1.5 text-sm text-fg"
+                          >
+                            <span className="text-xs font-medium text-fg-muted">
                               Formato do orçamento
-                            </label>
-                            <select
+                            </span>
+                            <Select
+                              id={`step-source-${step.id}`}
                               value={step.source}
-                              onChange={(e) =>
-                                updateStep(selectedFlow.id, step.id, 'source', e.target.value)
+                              onChange={(event) =>
+                                updateStep(selectedFlow.id, step.id, 'source', event.target.value)
                               }
-                      className="mt-0.5 w-full appearance-none rounded-sm border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                              className="w-full"
                             >
                               <option value="quotation_pdf">PDF (documento)</option>
                               <option value="quotation_webp">WebP (imagem)</option>
-                            </select>
-                          </div>
-                          <input
-                            type="text"
-                            value={step.caption || ''}
-                            onChange={(e) =>
-                              updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
-                            }
-                            placeholder="Legenda (opcional)"
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg"
-                          />
-                          <p className="text-[10px] text-fg-muted mt-1">
-                            {step.source === 'quotation_webp'
-                              ? 'Envia uma imagem WebP por página do orçamento.'
-                              : 'Envia o PDF do orçamento como documento no WhatsApp.'}
-                          </p>
+                            </Select>
+                          </label>
+                          <label
+                            htmlFor={`step-caption-${step.id}`}
+                            className="space-y-1.5 text-sm text-fg"
+                          >
+                            <span className="text-xs font-medium text-fg-muted">
+                              Legenda (opcional)
+                            </span>
+                            <Input
+                              id={`step-caption-${step.id}`}
+                              type="text"
+                              value={step.caption || ''}
+                              onChange={(event) =>
+                                updateStep(selectedFlow.id, step.id, 'caption', event.target.value)
+                              }
+                              placeholder="Legenda do documento"
+                            />
+                          </label>
                         </div>
                       )}
 
                       {step.type === STEP_TYPES.PRODUCT_MEDIA && (
-                        <div className="space-y-2">
-                          <div>
-                            <label className="text-[10px] font-medium text-fg-muted">
+                        <div className="grid gap-3 md:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
+                          <label
+                            htmlFor={`step-max-items-${step.id}`}
+                            className="space-y-1.5 text-sm text-fg"
+                          >
+                            <span className="text-xs font-medium text-fg-muted">
                               Máx. mídias por grupo
-                            </label>
-                            <input
+                            </span>
+                            <Input
+                              id={`step-max-items-${step.id}`}
                               type="number"
                               min="1"
                               max="5"
-                              value={step.max_items || 1}
-                              onChange={(e) =>
+                              value={step.max_items ?? ''}
+                              onChange={(event) =>
                                 updateStep(
                                   selectedFlow.id,
                                   step.id,
                                   'max_items',
-                                  Number(e.target.value)
+                                  Number(event.target.value)
                                 )
                               }
-                              className="w-20 rounded-lg border border-line bg-surface px-2 py-1 text-sm mt-0.5"
                             />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-fg-muted">
+                          </label>
+                          <label
+                            htmlFor={`step-caption-template-${step.id}`}
+                            className="space-y-1.5 text-sm text-fg"
+                          >
+                            <span className="text-xs font-medium text-fg-muted">
                               Template de legenda (opcional)
-                            </label>
-                            <input
+                            </span>
+                            <Input
+                              id={`step-caption-template-${step.id}`}
                               type="text"
                               value={step.caption_template || ''}
-                              onChange={(e) =>
+                              onChange={(event) =>
                                 updateStep(
                                   selectedFlow.id,
                                   step.id,
                                   'caption_template',
-                                  e.target.value
+                                  event.target.value
                                 )
                               }
-                              placeholder="Ex: Referência de (grupo_produto)"
-                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-0.5"
+                              placeholder="Ex.: Referência de (grupo_produto)"
                             />
-                          </div>
-                          <p className="text-[10px] text-fg-muted">
-                            Seleciona automaticamente mídias da biblioteca conforme os produtos do
+                          </label>
+                          <p className="text-xs text-fg-muted md:col-span-2">
+                            Seleciona mídias existentes na biblioteca conforme os produtos do
                             orçamento.
                           </p>
                         </div>
                       )}
-                    </div>
+                    </article>
                   );
                 })}
-              </div>
+              </section>
 
-              {/* Flow Preview Summary */}
-              <div className="border-t border-line pt-3">
-                <p className="text-xs font-medium text-fg-muted mb-2">Resumo do fluxo</p>
-                <div className="space-y-1">
-                  {(selectedFlow.steps || []).map((step, idx) => {
-                    if (step.type === STEP_TYPES.TEXT) {
-                      const preview =
-                        renderFlowTemplate(step.template || '', PREVIEW_CONTEXT) || '(vazio)';
-                      return (
-                        <div key={step.id} className="flex gap-2 text-xs text-fg">
-                          <span className="text-fg-muted shrink-0">{idx + 1}.</span>
-                          <span className="truncate">{preview}</span>
-                        </div>
-                      );
-                    }
-                    if (step.type === STEP_TYPES.DOCUMENT) {
-                      return (
-                        <div key={step.id} className="flex gap-2 text-xs text-fg">
-                          <span className="text-fg-muted shrink-0">{idx + 1}.</span>
-                          <span>
-                            {step.source === 'quotation_webp'
-                              ? '🖼️ WebP do orçamento'
-                              : '📎 PDF do orçamento'}
-                          </span>
-                        </div>
-                      );
-                    }
-                    if (step.type === STEP_TYPES.PRODUCT_MEDIA) {
-                      return (
-                        <div key={step.id} className="flex gap-2 text-xs text-fg">
-                          <span className="text-fg-muted shrink-0">{idx + 1}.</span>
-                          <span>🖼️ Mídia da biblioteca por grupo de produto</span>
-                        </div>
-                      );
-                    }
-                    return null;
+              <section
+                className="space-y-2 border-t border-line pt-4"
+                aria-labelledby="flow-summary-title"
+              >
+                <h3 id="flow-summary-title" className="text-sm font-semibold text-fg">
+                  Resumo das etapas
+                </h3>
+                <ol className="space-y-1.5">
+                  {(selectedFlow.steps || []).map((step, index) => {
+                    const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
+                    return (
+                      <li key={step.id} className="flex min-w-0 items-start gap-2 text-sm text-fg">
+                        <span className="w-5 shrink-0 text-right text-xs text-fg-muted">
+                          {index + 1}.
+                        </span>
+                        <StepIcon
+                          size={15}
+                          className="mt-0.5 shrink-0 text-fg-muted"
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 truncate">{stepLabel(step)}</span>
+                      </li>
+                    );
                   })}
-                </div>
-              </div>
+                </ol>
+                <p className="text-xs text-fg-muted">
+                  Nenhum valor de exemplo é aplicado nesta prévia; tokens serão resolvidos durante o
+                  envio.
+                </p>
+              </section>
             </div>
           )}
-        </div>
+        </section>
       )}
 
       <ConfirmDialog
         open={confirmDeleteFlowId !== null}
         title="Remover fluxo?"
-        message={`O fluxo "${flows.find((f) => f.id === confirmDeleteFlowId)?.name || ''}" será removido da lista local. Salve para persistir a alteração.`}
+        message={`O fluxo "${displayName(flows.find((flow) => flow.id === confirmDeleteFlowId) || { name: '' })}" será removido da lista local. Salve para persistir a alteração.`}
         confirmLabel="Remover"
         cancelLabel="Cancelar"
         variant="destructive"

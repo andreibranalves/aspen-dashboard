@@ -100,6 +100,130 @@ test('email markers render on desktop and mobile', async ({ page }) => {
   await expect(pendingMobileCard).not.toContainText('17/08/2026');
 });
 
+test('lista oferece recuperação sem expor erro bruto @quotations @smoke', async ({ page }) => {
+  let attempts = 0;
+  await page.route('**/api/quotations**', async (route) => {
+    attempts += 1;
+    if (attempts <= 2) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'internal database details' }) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [{
+          id: 'ORC-RETRY-1',
+          data: '2026-08-20',
+          cliente: 'Cliente de recuperação',
+          valor: '100.00',
+          status: 'Rascunho',
+          status_canonical: 'rascunho',
+          revision_id: '11111111-1111-4111-8111-111111111111',
+          email_sent: false,
+          email_sent_at: null,
+        }],
+        pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        status_summary: { Rascunho: 1 },
+      }),
+    });
+  });
+
+  await page.goto('/#/quotations');
+  await expect(page.getByText('Não foi possível carregar os orçamentos.')).toBeVisible();
+  await expect(page.getByText('internal database details')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByRole('cell', { name: 'ORC-RETRY-1', exact: true })).toBeVisible();
+  expect(attempts).toBeGreaterThanOrEqual(3);
+});
+
+test('lista distingue filtro sem resultado, preserva paginação e destaca o orçamento como ação primária @quotations @smoke', async ({ page }) => {
+  const row = {
+    id: 'ORC-PRIMARY-1',
+    data: '2026-08-20',
+    cliente: 'Cliente com nome longo para uma proposta comercial',
+    valor: '1250.00',
+    status: 'Aprovado',
+    status_canonical: 'aprovado',
+    revision_id: '11111111-1111-4111-8111-111111111111',
+    email_sent: false,
+    email_sent_at: null,
+  };
+  await page.route('**/api/quotations**', async (route) => {
+    const url = new globalThis.URL(route.request().url());
+    const filtered = url.searchParams.get('search') === 'sem-resultado';
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: filtered ? [] : [row],
+        pagination: { page: 1, limit: 25, total: filtered ? 0 : 1, total_pages: 1 },
+        status_summary: { Rascunho: 0, Enviado: 0, Aprovado: 1, Perdido: 0 },
+      }),
+    });
+  });
+
+  await page.goto('/#/quotations?search=sem-resultado&status=aprovado&page=2&limit=25');
+  await expect(page.getByText('Nenhum orçamento encontrado')).toBeVisible();
+  await page.getByRole('button', { name: 'Limpar filtros' }).click();
+  await expect(page.getByRole('cell', { name: row.id, exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Aprovado', exact: true })).toBeVisible();
+
+  const hash = new globalThis.URL(page.url().replace(/^.*#/, 'http://local/'));
+  expect(hash.searchParams.get('search')).toBeNull();
+  expect(hash.searchParams.get('status')).toBeNull();
+  expect(hash.searchParams.get('page')).toBeNull();
+  expect(hash.searchParams.get('limit')).toBe('25');
+});
+
+test('detalhe mantém conteúdo longo legível em modo somente leitura @quotations @smoke', async ({ page }) => {
+  const longText = 'Observação comercial com conteúdo extenso que deve continuar legível e quebrar dentro da seção sem criar rolagem horizontal.'.repeat(3);
+  await page.route('**/api/quotations?id=*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(detail({
+        status: 'Enviado',
+        status_canonical: 'emitido',
+        observacoes: longText,
+        secoes: {
+          ...detail().secoes,
+          condicoes_gerais: {
+            ...detail().secoes.condicoes_gerais,
+            current: { ...detail().secoes.condicoes_gerais.current, body: longText },
+          },
+        },
+        items: [{
+          id: '44444444-4444-4444-8444-444444444444',
+          sku: 'SKU-LONGO',
+          item_code: 'SKU-LONGO',
+          nome: 'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
+          item_name: 'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
+          qty: '10.000',
+          suggested_unit_price: '9.00',
+          applied_unit_price: '9.00',
+          price_difference: '0.00',
+          line_total: '90.00',
+          manual_rate: false,
+        }],
+      })),
+    });
+  });
+  await page.route('**/api/communication-flows', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }) });
+  });
+  await page.route('**/api/quotation-templates', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [] }) });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByText('Este orçamento está somente para leitura porque já foi emitido.')).toBeVisible();
+  await expect(page.getByText(longText)).toBeVisible();
+  await expect(page.getByText('Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Itens' })).toBeVisible();
+});
+
 test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({ page }) => {
   let authoritative = detail();
   await page.route('**/api/quotations**', async (route) => {
@@ -207,7 +331,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await expect(page.getByText(customItemName)).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText(/alterado por outro usuário/i)).toBeVisible();
+  await expect(page.getByText(/O orçamento (foi alterado por outro usuário|mudou ou não pode mais ser editado)/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Recarregar' })).toBeVisible();
 });
 

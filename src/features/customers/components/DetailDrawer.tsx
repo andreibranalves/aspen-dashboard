@@ -1,4 +1,4 @@
-import { useEffect, useCallback, type ReactNode } from 'react';
+import { useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -12,8 +12,12 @@ export interface DetailDrawerProps {
   className?: string;
 }
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /**
  * DetailDrawer — painel lateral reutilizável para drill-down operacional.
+ * Mantém foco no painel e devolve o foco ao controle que o abriu.
  */
 export function DetailDrawer({
   open,
@@ -24,85 +28,94 @@ export function DetailDrawer({
   children,
   className,
 }: DetailDrawerProps) {
-  // Fecha ao pressionar Escape
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   const handleKeyDown = useCallback(
-    (e: Event) => {
-      if ((e as KeyboardEvent).key === 'Escape' && open) {
-        onClose?.();
+    (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+        if (dialogs.at(-1) !== panelRef.current) return;
+        event.stopPropagation();
+        onCloseRef.current?.();
+        return;
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     },
-    [open, onClose],
+    []
   );
 
   useEffect(() => {
-    if (open) {
-      document.addEventListener('keydown', handleKeyDown);
-      // Previne scroll do body quando drawer está aberto
-      document.body.style.overflow = 'hidden';
-    }
+    if (!open) return undefined;
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
       document.body.style.overflow = '';
+      restoreFocusRef.current?.focus?.();
+      restoreFocusRef.current = null;
     };
-  }, [open, handleKeyDown]);
+  }, [handleKeyDown, open]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Overlay */}
       <div
         className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
-
-      {/* Painel */}
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title || 'Detalhes'}
         className={cn(
           'relative z-10 flex h-full flex-col bg-white shadow-2xl dark:bg-surface',
-          // Mobile: tela cheia
-          'w-full',
-          // Desktop: painel lateral com largura limitada
-          'lg:max-w-xl',
-          className,
+          'w-full lg:max-w-xl',
+          className
         )}
       >
-        {/* Cabeçalho */}
         <div className="flex shrink-0 items-start justify-between border-b border-line px-5 py-4 dark:border-line">
           <div className="min-w-0 flex-1 pr-4">
-            <h2 className="text-lg font-semibold text-fg truncate">
-              {title || 'Detalhes'}
-            </h2>
+            <h2 className="break-words text-lg font-semibold text-fg">{title || 'Detalhes'}</h2>
             {description && (
-              <p className="mt-0.5 text-sm text-fg-muted line-clamp-2">
-                {description}
-              </p>
+              <p className="mt-0.5 break-words text-sm text-fg-muted">{description}</p>
             )}
           </div>
           <button
+            ref={closeRef}
+            type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="shrink-0 rounded-full p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+            className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           >
-            <X className="size-5" />
+            <X className="size-5" aria-hidden="true" />
           </button>
         </div>
-
-        {/* Ações (se fornecidas) */}
         {actions && (
-          <div className="shrink-0 border-b border-line px-5 py-3 dark:border-line">
-            {actions}
-          </div>
+          <div className="shrink-0 border-b border-line px-5 py-3 dark:border-line">{actions}</div>
         )}
-
-        {/* Conteúdo rolável */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {children}
-        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </div>
     </div>
   );

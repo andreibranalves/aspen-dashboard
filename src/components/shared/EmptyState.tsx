@@ -14,14 +14,24 @@ export interface EmptyStateProps {
   className?: string;
 }
 
-export function EmptyState({ icon: Icon, title, description, actions, className }: EmptyStateProps) {
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  actions,
+  className,
+}: EmptyStateProps) {
   return (
-    <div className={cn('flex flex-col items-center gap-3 py-16 text-center text-fg-muted', className)}>
+    <section
+      role="status"
+      aria-label={title}
+      className={cn('flex flex-col items-center gap-3 py-16 text-center text-fg-muted', className)}
+    >
       <Icon size={36} className="text-fg-muted/40" aria-hidden="true" />
-      <p>{title}</p>
+      <h2 className="text-sm font-medium text-fg">{title}</h2>
       {description && <p className="max-w-md text-sm">{description}</p>}
       {actions && <div className="flex flex-wrap items-center justify-center gap-2">{actions}</div>}
-    </div>
+    </section>
   );
 }
 

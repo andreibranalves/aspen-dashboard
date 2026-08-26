@@ -60,13 +60,13 @@ export const routes: AppRoute[] = [
     path: '/quotations/:id',
     match: prefix('/quotations/'),
     suspense: true,
-    render: ({ navigate, params }) => <QuotationDetailPage id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => <QuotationDetailPage key={params.id} id={params.id} navigate={navigate} />,
   },
   {
     path: '/sales-orders/:id',
     match: prefix('/sales-orders/'),
     suspense: true,
-    render: ({ navigate, params }) => <SalesOrderDetailPage id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => <SalesOrderDetailPage key={params.id} id={params.id} navigate={navigate} />,
   },
   {
     path: '/products/:sku',
@@ -81,7 +81,7 @@ export const routes: AppRoute[] = [
       return params && params.tipo && params.id ? params : null;
     },
     suspense: true,
-    render: ({ navigate, params }) => <LeadDetailPage tipo={params.tipo} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => <LeadDetailPage key={`${params.tipo}:${params.id}`} tipo={params.tipo} id={params.id} navigate={navigate} />,
   },
   {
     path: '/auto',

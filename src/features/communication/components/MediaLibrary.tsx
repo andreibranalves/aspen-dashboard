@@ -1,17 +1,23 @@
-// MediaLibrary — grid view of media assets with product group filtering.
-// Shows MediaGridItem cards and a delete confirmation flow.
+// MediaLibrary — dense view of media assets with product-group filtering.
+// Delete confirmation and the existing media API calls are preserved.
 
-import { useState, useEffect, useCallback } from 'react';
-import { Filter } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { AlertCircle, Filter, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
 import MediaGridItem from '@/features/communication/components/MediaGridItem';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import EmptyState from '@/components/shared/EmptyState';
 import { useToast } from '@/components/shared/toast';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 
 export interface MediaLibraryProps {
   refreshKey?: number | string;
+}
+
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
 }
 
 export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
@@ -21,6 +27,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
   const [error, setError] = useState('');
   const [filterGroup, setFilterGroup] = useState<ProductGroup | ''>('');
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
+  const deleteInFlightRef = useRef(false);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -28,104 +35,158 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
     try {
       const data = await fetchMedia({ active: true });
       setItems(data.items || []);
-    } catch (err) {
-      setError((err as Error).message);
+    } catch (loadError) {
+      setError(errorMessage(loadError, 'Não foi possível carregar a biblioteca de mídias.'));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadMedia();
+    void loadMedia();
   }, [loadMedia, refreshKey]);
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const removedTitle = deleteTarget.title;
+    const target = deleteTarget;
+    if (!target || deleteInFlightRef.current) return;
+    deleteInFlightRef.current = true;
+    setDeleteTarget(null);
+    const removedTitle = target.title;
     try {
-      await deleteMedia(deleteTarget.id);
-      setItems((prev) => prev.filter((m) => m.id !== deleteTarget.id));
-      toast(`Mídia "${removedTitle || 'selecionada'}" removida.`, 'success');
-    } catch (err) {
-      setError((err as Error).message);
+      await deleteMedia(target.id);
+      setItems((current) => current.filter((item) => item.id !== target.id));
+      toast(`Mídia “${removedTitle || 'selecionada'}” removida.`, 'success');
+    } catch (deleteError) {
+      setError(errorMessage(deleteError, 'Não foi possível remover a mídia.'));
     } finally {
-      setDeleteTarget(null);
+      deleteInFlightRef.current = false;
     }
   };
 
-  const filtered = filterGroup ? items.filter((m) => m.product_group === filterGroup) : items;
-  const groups = [...new Set(items.map((item) => item.product_group))].sort();
+  const filtered = filterGroup ? items.filter((item) => item.product_group === filterGroup) : items;
+  const groups = [...new Set(items.map((item) => item.product_group).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, 'pt-BR')
+  );
 
   return (
-    <div className="space-y-4">
-      {/* Filter bar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter size={14} className="text-fg-muted shrink-0" />
+    <section className="space-y-4" aria-labelledby="media-library-title">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 id="media-library-title" className="text-base font-semibold text-fg">
+            Biblioteca de mídias
+          </h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            Arquivos disponíveis para etapas de mídia dos fluxos.
+          </p>
+        </div>
+        <span className="text-xs text-fg-muted">
+          {items.length} {items.length === 1 ? 'mídia' : 'mídias'}
+        </span>
+      </div>
+
+      <fieldset className="flex flex-wrap items-center gap-2" disabled={loading}>
+        <legend className="sr-only">Filtrar biblioteca por grupo de produto</legend>
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted">
+          <Filter size={14} aria-hidden="true" /> Grupo de produto
+        </span>
         <button
+          type="button"
+          aria-pressed={filterGroup === ''}
           onClick={() => setFilterGroup('')}
           className={[
-            'text-xs px-3 py-1 font-medium rounded-full transition-colors',
+            'min-h-9 rounded-sm border px-3 text-xs font-medium transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
             filterGroup === ''
-              ? 'bg-primary text-on-solid'
-              : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
+              ? 'border-primary bg-primary text-on-solid'
+              : 'border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg',
           ].join(' ')}
         >
           Todos ({items.length})
         </button>
-        {groups.map((group) => (
-          <button
-            key={group}
-            onClick={() => setFilterGroup(group)}
-            className={[
-              'text-xs px-3 py-1 font-medium rounded-full transition-colors',
-              filterGroup === group
-                ? 'bg-primary text-on-solid'
-                : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
-            ].join(' ')}
-          >
-            {formatProductGroup(group)} ({items.filter((item) => item.product_group === group).length})
-          </button>
-        ))}
-      </div>
+        {groups.map((group) => {
+          const count = items.filter((item) => item.product_group === group).length;
+          return (
+            <button
+              key={group}
+              type="button"
+              aria-pressed={filterGroup === group}
+              onClick={() => setFilterGroup(group)}
+              className={[
+                'min-h-9 rounded-sm border px-3 text-xs font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                filterGroup === group
+                  ? 'border-primary bg-primary text-on-solid'
+                  : 'border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg',
+              ].join(' ')}
+            >
+              {formatProductGroup(group)} ({count})
+            </button>
+          );
+        })}
+      </fieldset>
 
-      {/* Loading */}
       {loading && <SkeletonComunicacao />}
 
-      {/* Error */}
-      {error && (
-        <p className="text-sm text-destructive p-3 rounded-lg bg-destructive/10">{error}</p>
-      )}
-
-      {/* Empty state */}
-      {!loading && !error && filtered.length === 0 && (
-        <div className="text-center py-12 text-fg-muted">
-          <p className="text-sm">
-            {filterGroup
-              ? `Nenhuma mídia cadastrada para ${formatProductGroup(filterGroup)}.`
-              : 'Nenhuma mídia cadastrada. Faça upload de imagens ou vídeos.'}
-          </p>
+      {!loading && error && (
+        <div
+          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-medium">Não foi possível carregar a biblioteca.</p>
+            <p className="mt-1 text-fg-muted">{error}</p>
+            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadMedia()}>
+              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Grid */}
-      {!loading && filtered.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+      {!loading && !error && filtered.length === 0 && (
+        <EmptyState
+          icon={ImageIcon}
+          title={
+            filterGroup
+              ? `Nenhuma mídia cadastrada para ${formatProductGroup(filterGroup)}.`
+              : 'Nenhuma mídia cadastrada.'
+          }
+          description={
+            filterGroup
+              ? 'Limpe o filtro para consultar os demais grupos.'
+              : 'Use o formulário acima para enviar imagens ou vídeos.'
+          }
+          actions={
+            filterGroup ? (
+              <Button variant="outline" onClick={() => setFilterGroup('')}>
+                Limpar filtro
+              </Button>
+            ) : undefined
+          }
+          className="rounded-md border border-dashed border-line bg-surface py-12"
+        />
+      )}
+
+      {!loading && !error && filtered.length > 0 && (
+        <div
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+          aria-label="Mídias cadastradas"
+        >
           {filtered.map((item) => (
             <MediaGridItem key={item.id} item={item} onDelete={setDeleteTarget} />
           ))}
         </div>
       )}
 
-      {/* Delete confirmation */}
       <ConfirmDialog
         open={!!deleteTarget}
         title="Remover mídia"
-        message={`Tem certeza que deseja remover "${deleteTarget?.title || 'esta mídia'}"? Esta ação não pode ser desfeita.`}
+        message={`Tem certeza que deseja remover “${deleteTarget?.title || 'esta mídia'}”? Esta ação não pode ser desfeita.`}
         confirmLabel="Remover"
         variant="destructive"
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </div>
+    </section>
   );
 }

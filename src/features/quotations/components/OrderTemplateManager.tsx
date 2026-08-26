@@ -240,8 +240,8 @@ export default function OrderTemplateManager({
       else if (editingId) await updateOrderTemplate(editingId, input);
       await onChanged();
       cancelEdit(true);
-    } catch (err) {
-      setError((err as Error).message || 'Não foi possível salvar o template.');
+    } catch {
+      setError('Não foi possível salvar o template. Tente novamente.');
     } finally {
       operationRef.current = false;
       setSaving(false);
@@ -259,8 +259,8 @@ export default function OrderTemplateManager({
       await archiveOrderTemplate(target.id);
       await onChanged();
       if (editingId === target.id) cancelEdit(true);
-    } catch (err) {
-      setError((err as Error).message || 'Não foi possível arquivar o template.');
+    } catch {
+      setError('Não foi possível arquivar o template. Tente novamente.');
     } finally {
       operationRef.current = false;
       setSaving(false);

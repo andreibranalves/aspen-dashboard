@@ -1,10 +1,18 @@
 // MediaUploader — file drag-drop + picker for Vercel Blob client upload.
-// Uses @vercel/blob/client upload() to send directly to Blob,
-// then saves metadata via POST /api/communication-media.
+// The existing upload and metadata calls remain unchanged.
 
-import { useState, useRef, useCallback, useEffect, type DragEvent } from 'react';
-import { Upload, Loader2, AlertCircle } from 'lucide-react';
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  type DragEvent,
+  type KeyboardEvent,
+} from 'react';
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Upload } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import {
   createMedia,
   fetchProductCategories,
@@ -17,38 +25,57 @@ export interface MediaUploaderProps {
   onUploadComplete?: () => void;
 }
 
+function errorMessage(_error: unknown, fallback: string): string {
+  return fallback;
+}
+
 export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [groupsLoading, setGroupsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [categoryError, setCategoryError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [groups, setGroups] = useState<Array<{ value: ProductGroup; label: string }>>([]);
   const [selectedGroup, setSelectedGroup] = useState<ProductGroup>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let active = true;
-    fetchProductCategories()
-      .then((categories) => {
-        if (!active) return;
-        const seen = new Set<string>();
-        const options = categories.flatMap((label) => {
-          const value = normalizeProductGroup(label);
-          if (!value || seen.has(value)) return [];
-          seen.add(value);
-          return [{ value, label }];
-        });
-        setGroups(options);
-        setSelectedGroup((current) => current || options[0]?.value || '');
-      })
-      .catch((err: Error) => active && setError(err.message));
-    return () => { active = false; };
+  const loadGroups = useCallback(async () => {
+    setGroupsLoading(true);
+    setCategoryError('');
+    try {
+      const categories = await fetchProductCategories();
+      const seen = new Set<string>();
+      const options = categories.flatMap((label) => {
+        const value = normalizeProductGroup(label);
+        if (!value || seen.has(value)) return [];
+        seen.add(value);
+        return [{ value, label }];
+      });
+      setGroups(options);
+      setSelectedGroup((current) =>
+        options.some((option) => option.value === current) ? current : options[0]?.value || ''
+      );
+    } catch (loadError) {
+      setCategoryError(errorMessage(loadError, 'Não foi possível carregar os grupos de produto.'));
+    } finally {
+      setGroupsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadGroups();
+  }, [loadGroups]);
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
-      if (!files || files.length === 0 || !selectedGroup) return;
-      const file = files[0]; // Upload one at a time
+      if (!files || files.length === 0) return;
+      if (!selectedGroup) {
+        setError('Selecione um grupo de produto antes de enviar o arquivo.');
+        return;
+      }
 
+      const file = files[0];
       const isVideo = file.type.startsWith('video/');
       const maxSize = isVideo ? 16 * 1024 * 1024 : 5 * 1024 * 1024;
       if (file.size > maxSize) {
@@ -57,6 +84,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
       }
 
       setError('');
+      setSuccessMessage('');
       setUploading(true);
 
       try {
@@ -69,7 +97,6 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
           clientPayload: JSON.stringify({ product_group: selectedGroup }),
         });
 
-        // Save metadata
         const title = file.name.replace(/\.[^.]+$/, '');
         await createMedia({
           title,
@@ -82,104 +109,173 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
           caption: '',
         });
 
+        setSuccessMessage(`Arquivo “${title}” enviado para a biblioteca.`);
         onUploadComplete?.();
-      } catch (err) {
-        console.error('[MediaUploader]', err);
-        setError((err as Error).message || 'Erro no upload. Verifique se o Blob Store está configurado.');
+      } catch (uploadError) {
+        setError(
+          errorMessage(
+            uploadError,
+            'Não foi possível concluir o upload. Verifique a configuração do armazenamento.'
+          )
+        );
       } finally {
         setUploading(false);
       }
     },
-    [selectedGroup, onUploadComplete]
+    [onUploadComplete, selectedGroup]
   );
 
   const onDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
       setDragging(false);
-      handleFiles(e.dataTransfer?.files ?? null);
+      void handleFiles(event.dataTransfer?.files ?? null);
     },
     [handleFiles]
   );
 
-  const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragging(true);
-  }, []);
+  const onDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      if (!uploading && groups.length > 0) setDragging(true);
+    },
+    [groups.length, uploading]
+  );
 
-  const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  const onDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
     setDragging(false);
   }, []);
 
+  const onDropZoneKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (uploading || groups.length === 0 || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      fileInputRef.current?.click();
+    },
+    [groups.length, uploading]
+  );
+
   return (
-    <div className="space-y-4">
-      {/* Product group selector */}
-      <div>
-        <label className="text-xs font-medium text-fg-muted mb-1.5 block">
-          Grupo de produto
-        </label>
-        <select
+    <section
+      className="space-y-4 rounded-md border border-line bg-surface p-4"
+      aria-labelledby="media-upload-title"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="media-upload-title" className="text-base font-semibold text-fg">
+            Adicionar mídia
+          </h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            Envie uma imagem ou vídeo para um grupo de produto existente.
+          </p>
+        </div>
+        <Upload size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
+      </div>
+
+      <label htmlFor="media-product-group" className="block space-y-1.5 text-sm text-fg">
+        <span className="font-medium">Grupo de produto</span>
+        <Select
+          id="media-product-group"
           value={selectedGroup}
-          onChange={(e) => setSelectedGroup(e.target.value as ProductGroup)}
-          className="w-full appearance-none rounded-sm border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-          disabled={uploading || groups.length === 0}
+          onChange={(event) => setSelectedGroup(event.target.value as ProductGroup)}
+          disabled={uploading || groupsLoading || groups.length === 0}
+          className="w-full"
         >
-          {groups.length === 0 && <option value="">Nenhuma categoria cadastrada</option>}
+          {groupsLoading && <option value="">Carregando grupos…</option>}
+          {!groupsLoading && groups.length === 0 && (
+            <option value="">Nenhuma categoria cadastrada</option>
+          )}
           {groups.map((group) => (
             <option key={group.value} value={group.value}>
               {group.label}
             </option>
           ))}
-        </select>
-      </div>
+        </Select>
+      </label>
 
-      {/* Drop zone */}
+      {categoryError && (
+        <div
+          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <div className="min-w-0">
+            <p>{categoryError}</p>
+            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadGroups()}>
+              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div
+        role="button"
+        tabIndex={uploading || groups.length === 0 ? -1 : 0}
+        aria-disabled={uploading || groups.length === 0}
+        aria-label="Selecionar arquivo de imagem ou vídeo para upload"
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
-        onClick={() => !uploading && fileInputRef.current?.click()}
+        onKeyDown={onDropZoneKeyDown}
+        onClick={() => !uploading && groups.length > 0 && fileInputRef.current?.click()}
         className={[
-          'relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+          'relative flex min-h-36 items-center justify-center rounded-md border-2 border-dashed p-6 text-center transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
           dragging
             ? 'border-primary bg-primary/5'
-            : 'border-line hover:border-primary/50 hover:bg-surface-muted',
-          uploading ? 'opacity-60 pointer-events-none' : '',
+            : 'border-line hover:border-primary/50 hover:bg-surface-hover',
+          uploading || groups.length === 0 ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
         ].join(' ')}
       >
         {uploading ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 size={28} className="animate-spin text-primary" />
-            <p className="text-sm text-fg-muted">Enviando arquivo...</p>
+          <div className="flex flex-col items-center gap-2" role="status" aria-live="polite">
+            <Loader2 size={28} className="animate-spin text-primary" aria-hidden="true" />
+            <p className="text-sm text-fg-muted">Enviando arquivo…</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <Upload size={28} className="text-fg-muted" />
+            <Upload size={28} className="text-fg-muted" aria-hidden="true" />
             <p className="text-sm text-fg-muted">
-              Arraste uma imagem ou vídeo aqui, ou clique para selecionar
+              Arraste uma imagem ou vídeo aqui, ou pressione Enter para selecionar
             </p>
-            <p className="text-xs text-fg-muted/60">
-              JPEG, PNG, WebP (até 5 MB) · MP4 (até 16 MB)
-            </p>
+            <p className="text-xs text-fg-muted/70">JPEG, PNG, WebP (até 5 MB) · MP4 (até 16 MB)</p>
           </div>
         )}
         <input
           ref={fileInputRef}
+          id="media-file"
           type="file"
           accept="image/jpeg,image/png,image/webp,video/mp4"
-          onChange={(e) => handleFiles(e.target.files)}
-          className="hidden"
+          onChange={(event) => {
+            void handleFiles(event.target.files);
+            event.currentTarget.value = '';
+          }}
+          className="sr-only"
+          tabIndex={-1}
         />
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive">
-          <AlertCircle size={16} className="shrink-0 mt-0.5" />
-          <p className="text-sm">{error}</p>
+        <div
+          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <p>{error}</p>
         </div>
       )}
-    </div>
+
+      {successMessage && (
+        <div
+          className="flex items-start gap-2 rounded-md border border-success/25 bg-success/10 p-3 text-sm text-fg"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+          <p>{successMessage}</p>
+        </div>
+      )}
+    </section>
   );
 }

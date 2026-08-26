@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
-import { useSetTopBarActions } from '@/components/layout/Layout';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -127,6 +126,12 @@ function stateTone(state: DeliveryState): string {
   return 'tone-primary-soft';
 }
 
+function formatDeliveryProgress(delivery: DeliveryView): string {
+  const { delivered, total } = delivery.progress;
+  if (total === 0) return 'Sem etapas';
+  return `${delivered} de ${total} ${total === 1 ? 'etapa' : 'etapas'}`;
+}
+
 function inclusiveUtcEndOfDay(value: string): string {
   const endOfDay = new Date(`${value}T23:59:59.999Z`);
   return Number.isNaN(endOfDay.getTime()) ? value : endOfDay.toISOString();
@@ -179,7 +184,7 @@ interface DeliveryDetailsProps {
 
 function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps) {
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+    <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <QuotationDeliveryStatus
         delivery={delivery}
         pending={pending}
@@ -191,6 +196,11 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
           Passos da entrega
         </h3>
         <ol className="mt-3 space-y-2" aria-label={`Passos da entrega ${delivery.businessNumber}`}>
+          {delivery.steps.length === 0 && (
+            <li className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-fg-muted">
+              Nenhuma etapa configurada para esta entrega.
+            </li>
+          )}
           {delivery.steps.map((step, index) => (
             <li
               key={step.id}
@@ -282,11 +292,9 @@ export default function WhatsAppDeliveriesPage() {
           );
         });
       })
-      .catch((nextError) => {
+      .catch(() => {
         if (cancelled) return;
-        setError(
-          nextError instanceof Error ? nextError.message : 'Não foi possível consultar as entregas.'
-        );
+        setError('Não foi possível consultar as entregas. Tente novamente.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -313,9 +321,8 @@ export default function WhatsAppDeliveriesPage() {
         cancelled === 0 ? 'info' : 'success'
       );
       setReloadVersion((value) => value + 1);
-    } catch (nextError) {
-      const message =
-        nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.';
+    } catch {
+      const message = 'Não foi possível limpar a fila. Tente novamente.';
       toast(message, 'error');
     } finally {
       setClearing(false);
@@ -364,40 +371,37 @@ export default function WhatsAppDeliveriesPage() {
 
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
-  const setTopBarActions = useSetTopBarActions();
-
-  useEffect(() => {
-    setTopBarActions?.(
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setReloadVersion((value) => value + 1)}
-          disabled={loading || clearing}
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-          Atualizar
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setClearConfirmOpen(true)}
-          disabled={loading || clearing}
-          className="border-l border-line pl-3 text-destructive hover:bg-destructive/10"
-        >
-          <Trash2 size={14} />
-          {clearing ? 'Limpando…' : 'Limpar fila'}
-        </Button>
-      </>
-    );
-    return () => setTopBarActions?.(null);
-  }, [setTopBarActions, loading, clearing, setReloadVersion, setClearConfirmOpen]);
-
   return (
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
-      <PageHeader title="Envios WhatsApp" description="Fila de mensagens disparadas pelo funil de orçamentos." />
+      <PageHeader
+        title="Envios WhatsApp"
+        description="Fila de mensagens disparadas pelo funil de orçamentos."
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReloadVersion((value) => value + 1)}
+              disabled={loading || clearing}
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
+              Atualizar
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setClearConfirmOpen(true)}
+              disabled={loading || clearing}
+              className="text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 size={14} />
+              {clearing ? 'Limpando…' : 'Limpar fila'}
+            </Button>
+          </>
+        }
+      />
 
       <section className="space-y-4" aria-label="Filtros de entregas">
         <div className="flex flex-wrap gap-2">
@@ -556,7 +560,10 @@ export default function WhatsAppDeliveriesPage() {
       )}
 
       {loading && !result ? (
-        <SkeletonTable cols={8} rows={8} />
+        <div role="status" aria-live="polite" aria-label="Carregando entregas">
+          <span className="sr-only">Carregando entregas…</span>
+          <SkeletonTable cols={8} rows={8} />
+        </div>
       ) : result && result.data.length === 0 ? (
         <div
           className="rounded-lg border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
@@ -566,17 +573,21 @@ export default function WhatsAppDeliveriesPage() {
         </div>
       ) : result ? (
         <>
-          <Table>
+          <Table
+            aria-label="Tabela de entregas WhatsApp"
+            aria-busy={loading}
+            className="min-w-[760px]"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead>Orçamento</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Fluxo</TableHead>
-                <TableHead className="whitespace-nowrap">Passos</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="whitespace-nowrap">Atualização</TableHead>
-                <TableHead>Ação</TableHead>
+                <TableHead scope="col">Orçamento</TableHead>
+                <TableHead scope="col">Cliente</TableHead>
+                <TableHead scope="col">Telefone</TableHead>
+                <TableHead scope="col">Fluxo</TableHead>
+                <TableHead scope="col" className="whitespace-nowrap">Passos</TableHead>
+                <TableHead scope="col">Estado</TableHead>
+                <TableHead scope="col" className="whitespace-nowrap">Atualização</TableHead>
+                <TableHead scope="col">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -591,20 +602,24 @@ export default function WhatsAppDeliveriesPage() {
                       <TableCell className="whitespace-nowrap font-medium text-fg">
                         {delivery.businessNumber}
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate">
-                        {delivery.clientName}
+                      <TableCell className="max-w-[180px] truncate" title={delivery.clientName || 'Cliente não identificado'}>
+                        {delivery.clientName || 'Cliente não identificado'}
                       </TableCell>
-                      <TableCell className="max-w-[140px] truncate text-xs">
+                      <TableCell className="max-w-[140px] truncate text-xs" title={fmtPhone(delivery.phone) || 'Sem telefone'}>
                         {fmtPhone(delivery.phone) || 'Sem telefone'}
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate">
+                      <TableCell className="max-w-[180px] truncate" title={delivery.flowName || 'Fluxo não identificado'}>
                         {delivery.flowName || 'Fluxo não identificado'}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {delivery.progress.delivered} / {delivery.progress.total}
+                      <TableCell className="whitespace-nowrap text-xs" aria-label={`Progresso: ${formatDeliveryProgress(delivery)}`}>
+                        {formatDeliveryProgress(delivery)}
                       </TableCell>
                       <TableCell>
-                        <span role="status" aria-live="polite">
+                        <span
+                          role="status"
+                          aria-live="polite"
+                          aria-label={`Estado: ${projection.label}. Progresso: ${formatDeliveryProgress(delivery)}`}
+                        >
                           <StatusBadge
                             status={delivery.state}
                             label={projection.label}

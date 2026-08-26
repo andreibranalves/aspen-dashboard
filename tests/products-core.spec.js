@@ -41,7 +41,11 @@ async function mockProductApi(page, initialRows) {
   await page.route('**/api/products**', async (route) => {
     const request = route.request();
     const method = request.method();
-    requests.push({ method, url: request.url(), body: method === 'POST' ? request.postDataJSON() : undefined });
+    requests.push({
+      method,
+      url: request.url(),
+      body: method === 'POST' ? request.postDataJSON() : undefined,
+    });
 
     if (method === 'GET') {
       const url = new globalThis.URL(request.url());
@@ -191,7 +195,9 @@ async function mockProductApi(page, initialRows) {
 }
 
 test.describe('Produtos — catálogo principal @products @smoke', () => {
-  test('cria produto core com preços no POST atômico sem segundo update de pricing', async ({ page }) => {
+  test('cria produto core com preços no POST atômico sem segundo update de pricing', async ({
+    page,
+  }) => {
     const { requests, updates, rows } = await mockProductApi(page, []);
     await page.goto('/#/products/new');
     await page.getByPlaceholder('LNC-SED-70').fill('CORE-ATOMIC');
@@ -246,7 +252,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(rows.map((row) => row.sku)).toEqual(['CORE-SOURCE', 'CORE-COPY']);
   });
 
-  test('edita preço base/faixas dinâmicas e resolve limites no orçamento sem mutar cadastro', async ({ page }) => {
+  test('edita preço base/faixas dinâmicas e resolve limites no orçamento sem mutar cadastro', async ({
+    page,
+  }) => {
     const priced = product('CORE-PRICED', 'Produto com preço');
     priced.preco_base = '10.00';
     priced.precos = [];
@@ -287,7 +295,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     const updateCountBeforeManual = updates.length;
     await page.goto('/#/manual');
-    await page.getByPlaceholder('Digite SKU ou nome para adicionar um produto…').fill('CORE-PRICED');
+    await page
+      .getByPlaceholder('Digite SKU ou nome para adicionar um produto…')
+      .fill('CORE-PRICED');
     await page.getByRole('button', { name: 'Adicionar CORE-PRICED ao orçamento' }).click();
     const quantity = page.getByLabel('Quantidade de CORE-PRICED').first();
     const unitPrice = page.getByLabel('Preço unitário de CORE-PRICED').first();
@@ -299,7 +309,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(updates).toHaveLength(updateCountBeforeManual);
   });
 
-  test('cria, pesquisa e edita produto no PostgreSQL sem metadados de rollout', async ({ page }) => {
+  test('cria, pesquisa e edita produto no PostgreSQL sem metadados de rollout', async ({
+    page,
+  }) => {
     const { rows } = await mockProductApi(page, [product('CORE-SEED', 'Produto inicial')]);
 
     await page.goto('/#/products');
@@ -334,7 +346,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
     await page.getByPlaceholder('Buscar por SKU ou nome…').fill('CORE-NEW');
     await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
-
   });
 
   test('impede selecionar produto do core sem preço e não cria linha R$ 0,00', async ({ page }) => {
@@ -383,7 +394,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           sku: 'CORE-ACTIVITY',
-          atividades: [{ tipo: 'produto', texto: 'Produto criado', data: '2026-01-01', id: 'activity-1' }],
+          atividades: [
+            { tipo: 'produto', texto: 'Produto criado', data: '2026-01-01', id: 'activity-1' },
+          ],
         }),
       });
     });
@@ -432,8 +445,12 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     let releaseOldProduct = () => {};
     /** @type {(value?: unknown) => void} */
     let releaseOldActivity = () => {};
-    const oldProductReady = new Promise((resolve) => { releaseOldProduct = resolve; });
-    const oldActivityReady = new Promise((resolve) => { releaseOldActivity = resolve; });
+    const oldProductReady = new Promise((resolve) => {
+      releaseOldProduct = resolve;
+    });
+    const oldActivityReady = new Promise((resolve) => {
+      releaseOldActivity = resolve;
+    });
     let oldProductStarted = 0;
     let oldActivityStarted = 0;
     const lifecycleErrors = [];
@@ -449,20 +466,45 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
       if (requestSku === 'OLD-SKU') {
         oldProductStarted += 1;
         await oldProductReady;
-        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha antiga' }) });
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Falha antiga' }),
+        });
         return;
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(newProduct)) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(detail(newProduct)),
+      });
     });
     await page.route('**/api/product-activity**', async (route) => {
       const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
       if (requestSku === 'OLD-SKU') {
         oldActivityStarted += 1;
         await oldActivityReady;
-        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha antiga' }) });
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Falha antiga' }),
+        });
         return;
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Atividade atual', data: '2026-01-02T00:00:00.000Z', id: 'new-activity' }] }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          atividades: [
+            {
+              tipo: 'produto',
+              texto: 'Atividade atual',
+              data: '2026-01-02T00:00:00.000Z',
+              id: 'new-activity',
+            },
+          ],
+        }),
+      });
     });
 
     await page.goto('/#/products/OLD-SKU');
@@ -480,19 +522,27 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(lifecycleErrors).toEqual([]);
   });
 
-  test('limpa atividade ao trocar SKU e exibe carregamento até a nova resposta', async ({ page }) => {
+  test('limpa atividade ao trocar SKU e exibe carregamento até a nova resposta', async ({
+    page,
+  }) => {
     const oldProduct = product('ACTIVITY-OLD', 'Produto com atividade antiga');
     const newProduct = product('ACTIVITY-NEW', 'Produto com atividade nova');
     await mockProductApi(page, [oldProduct, newProduct]);
     /** @type {(value?: unknown) => void} */
     let releaseNewActivity = () => {};
-    const newActivityReady = new Promise((resolve) => { releaseNewActivity = resolve; });
+    const newActivityReady = new Promise((resolve) => {
+      releaseNewActivity = resolve;
+    });
     let newActivityStarted = 0;
 
     await page.route('**/api/product-detail**', async (route) => {
       const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
       const row = requestSku === 'ACTIVITY-OLD' ? oldProduct : newProduct;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(row)) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(detail(row)),
+      });
     });
     await page.route('**/api/product-activity**', async (route) => {
       const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
@@ -502,14 +552,32 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Atividade nova', data: '2026-01-02T00:00:00.000Z', id: 'new-activity' }] }),
+          body: JSON.stringify({
+            atividades: [
+              {
+                tipo: 'produto',
+                texto: 'Atividade nova',
+                data: '2026-01-02T00:00:00.000Z',
+                id: 'new-activity',
+              },
+            ],
+          }),
         });
         return;
       }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Atividade antiga', data: '2026-01-01T00:00:00.000Z', id: 'old-activity' }] }),
+        body: JSON.stringify({
+          atividades: [
+            {
+              tipo: 'produto',
+              texto: 'Atividade antiga',
+              data: '2026-01-01T00:00:00.000Z',
+              id: 'old-activity',
+            },
+          ],
+        }),
       });
     });
 
@@ -531,8 +599,12 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     let releaseSave = () => {};
     /** @type {(value?: unknown) => void} */
     let releaseDelete = () => {};
-    const saveReady = new Promise((resolve) => { releaseSave = resolve; });
-    const deleteReady = new Promise((resolve) => { releaseDelete = resolve; });
+    const saveReady = new Promise((resolve) => {
+      releaseSave = resolve;
+    });
+    const deleteReady = new Promise((resolve) => {
+      releaseDelete = resolve;
+    });
     let saveStarted = 0;
     let deleteStarted = 0;
 
@@ -569,7 +641,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
     const saveResponse = page.waitForResponse((response) => {
       const request = response.request();
-      return request.method() === 'PUT' && response.url().includes('/api/product-update?sku=STATE-FIRST');
+      return (
+        request.method() === 'PUT' && response.url().includes('/api/product-update?sku=STATE-FIRST')
+      );
     });
     await releaseSave();
     await saveResponse;
@@ -590,7 +664,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
     const deleteResponse = page.waitForResponse((response) => {
       const request = response.request();
-      return request.method() === 'DELETE' && response.url().includes('/api/products?id=STATE-FIRST');
+      return (
+        request.method() === 'DELETE' && response.url().includes('/api/products?id=STATE-FIRST')
+      );
     });
     await releaseDelete();
     await deleteResponse;
@@ -608,15 +684,43 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     let activityRequests = 0;
     /** @type {(value?: unknown) => void} */
     let releaseInitialActivity = () => {};
-    const initialActivityReady = new Promise((resolve) => { releaseInitialActivity = resolve; });
+    const initialActivityReady = new Promise((resolve) => {
+      releaseInitialActivity = resolve;
+    });
     await page.route('**/api/product-activity**', async (route) => {
       activityRequests += 1;
       if (activityRequests === 1) {
         await initialActivityReady;
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Histórico antigo', data: '2026-01-01T00:00:00.000Z', id: 'old-activity' }] }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            atividades: [
+              {
+                tipo: 'produto',
+                texto: 'Histórico antigo',
+                data: '2026-01-01T00:00:00.000Z',
+                id: 'old-activity',
+              },
+            ],
+          }),
+        });
         return;
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Histórico atualizado', data: '2026-01-02T00:00:00.000Z', id: 'fresh-activity' }] }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          atividades: [
+            {
+              tipo: 'produto',
+              texto: 'Histórico atualizado',
+              data: '2026-01-02T00:00:00.000Z',
+              id: 'fresh-activity',
+            },
+          ],
+        }),
+      });
     });
 
     await page.goto('/#/products/SAVE-SKU');
@@ -638,23 +742,46 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     let activityRequests = 0;
     /** @type {(value?: unknown) => void} */
     let releaseRetryActivity = () => {};
-    const retryActivityReady = new Promise((resolve) => { releaseRetryActivity = resolve; });
+    const retryActivityReady = new Promise((resolve) => {
+      releaseRetryActivity = resolve;
+    });
     await page.route('**/api/product-activity**', async (route) => {
       activityRequests += 1;
       if (activityRequests === 1) {
-        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Falha temporária' }) });
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Falha temporária' }),
+        });
         return;
       }
       await retryActivityReady;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'preco', texto: 'Preço atualizado', data: '2026-01-01T15:04:05.000Z', id: 'readable-date' }] }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          atividades: [
+            {
+              tipo: 'preco',
+              texto: 'Preço atualizado',
+              data: '2026-01-01T15:04:05.000Z',
+              id: 'readable-date',
+            },
+          ],
+        }),
+      });
     });
 
     await page.goto('/#/products/ERROR-SKU');
     await expect(page.getByRole('alert')).toContainText('Não foi possível carregar a atividade.');
-    await expect(page.getByText('Sem atividade recente para este produto.', { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText('Sem atividade recente para este produto.', { exact: true })
+    ).toHaveCount(0);
     await page.getByRole('alert').getByRole('button', { name: 'Tentar novamente' }).click();
     await expect(page.getByRole('status')).toHaveText('Carregando atividade…');
-    await expect(page.getByText('Sem atividade recente para este produto.', { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByText('Sem atividade recente para este produto.', { exact: true })
+    ).toHaveCount(0);
     releaseRetryActivity();
     await expect(page.getByText('Preço atualizado', { exact: true })).toBeVisible();
     await expect(page.getByText(/01\/01\/2026/).first()).toBeVisible();
@@ -680,7 +807,11 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
       const request = route.request();
       const url = new globalThis.URL(request.url());
       if (request.method() === 'DELETE' && url.searchParams.get('id') === 'ARCHIVE-SKU') {
-        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({}) });
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({}),
+        });
         return;
       }
       await route.fallback();
@@ -711,5 +842,26 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(post?.body?.preco_base).toBe('12.50');
     expect(post?.body?.precos).toEqual([]);
     expect(requests.filter((request) => request.method === 'GET')).toHaveLength(0);
+  });
+
+  test('distingue busca sem resultado e mantém a ação primária acessível por teclado', async ({
+    page,
+  }) => {
+    await mockProductApi(page, [product('A11Y-SKU', 'Produto acessível')]);
+    await page.goto('/#/products');
+    await expect(
+      page.getByRole('button', { name: 'Abrir produto A11Y-SKU' }).first()
+    ).toBeVisible();
+
+    await page.getByRole('textbox', { name: 'Buscar produtos' }).fill('SEM-RESULTADO');
+    await expect(
+      page.getByText('Nenhum produto encontrado para estes filtros', { exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Limpar filtros' }).last()).toBeVisible();
+    await page.getByRole('button', { name: 'Limpar filtros' }).last().click();
+    await expect(page.getByText('Produto acessível', { exact: true }).first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Abrir produto A11Y-SKU' }).first().press('Enter');
+    await expect(page).toHaveURL(/#\/products\/A11Y-SKU$/);
   });
 });

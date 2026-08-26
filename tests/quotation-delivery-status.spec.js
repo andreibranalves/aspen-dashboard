@@ -343,7 +343,7 @@ test('initial identity lookup failure keeps warning and blocks blind send', asyn
     json(route, { error: 'status unavailable' }, 503));
   await page.goto(`/#/quotations/${quotationId}`);
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await expect(page.getByText('status unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
 });
 
@@ -426,6 +426,6 @@ test('polling failure keeps the last delivery status and shows a non-destructive
   });
   await page.goto(`/#/quotations/${quotationId}`);
   await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
-  await expect(page.getByText('status unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
   await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
 });

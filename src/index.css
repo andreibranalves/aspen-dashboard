@@ -221,7 +221,7 @@
   }
 
   .tone-neutral-muted {
-    @apply bg-surface-muted text-fg-muted/50;
+    @apply bg-surface-muted text-fg-muted;
   }
 }
 

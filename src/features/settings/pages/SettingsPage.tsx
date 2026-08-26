@@ -3,9 +3,8 @@ import {
   AlertCircle,
   Building2,
   CheckCircle2,
-  ExternalLink,
+  ChevronDown,
   Loader2,
-  MessageCircle,
   RefreshCw,
   Save,
   SlidersHorizontal,
@@ -66,7 +65,15 @@ function toForm(settings: DashboardSettings): SettingsForm {
 
 function formatApiError(error: unknown, fallback: string): string {
   const message = (error as { message?: string })?.message;
-  return message || fallback;
+  if (
+    !message ||
+    message.length > 180 ||
+    /[\r\n<>]/.test(message) ||
+    /(?:stack|trace|secret|password|token|authorization|bearer|postgres|sql)/i.test(message)
+  ) {
+    return fallback;
+  }
+  return message;
 }
 
 export default function SettingsPage() {
@@ -155,20 +162,26 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader title="Configurações" />
+    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
+      <PageHeader
+        title="Configurações"
+        description="Defina os padrões usados na criação de novos orçamentos."
+      />
 
-      <QuotationTemplateManager />
-
-      <section className="rounded-lg border border-line bg-surface p-6 space-y-5">
+      <section
+        className="space-y-6 rounded-lg border border-line bg-surface p-4 sm:p-6"
+        aria-labelledby="quotation-settings-title"
+      >
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-            <SlidersHorizontal size={20} className="text-primary" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+            <SlidersHorizontal size={18} className="text-primary" aria-hidden="true" />
           </div>
-          <div>
-            <h2 className="text-sm font-semibold text-fg">Padrões de orçamento</h2>
-            <p className="mt-1 text-sm text-fg-muted">
-              Estes dados serão usados como ponto de partida nos novos orçamentos.
+          <div className="min-w-0">
+            <h2 id="quotation-settings-title" className="text-base font-semibold text-fg">
+              Padrões de orçamento
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-fg-muted">
+              Estes valores e textos serão usados como ponto de partida nos novos orçamentos.
             </p>
           </div>
         </div>
@@ -182,9 +195,16 @@ export default function SettingsPage() {
         )}
 
         {!loading && loadError && (
-          <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-fg">
+          <div
+            className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-fg"
+            role="alert"
+          >
             <div className="flex items-start gap-2">
-              <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
+              <AlertCircle
+                size={18}
+                className="mt-0.5 shrink-0 text-destructive"
+                aria-hidden="true"
+              />
               <div>
                 <p className="font-medium">Não foi possível carregar as configurações.</p>
                 <p className="mt-1 text-fg-muted">{loadError}</p>
@@ -194,7 +214,7 @@ export default function SettingsPage() {
                   size="sm"
                   onClick={() => void loadSettings()}
                 >
-                  <RefreshCw size={14} />
+                  <RefreshCw size={14} aria-hidden="true" />
                   Tentar novamente
                 </Button>
               </div>
@@ -204,54 +224,73 @@ export default function SettingsPage() {
 
         {!loading && !loadError && (
           <form
-            className="space-y-5"
+            className="space-y-6"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSave();
             }}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <fieldset className="space-y-4">
+              <legend className="text-sm font-semibold text-fg">Prazos e valores padrão</legend>
+              <p className="-mt-2 text-sm text-fg-muted">
+                Defina os valores aplicados automaticamente em cada novo orçamento.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Validade padrão (dias)</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="365"
+                    step="1"
+                    value={form.validade_dias}
+                    onChange={(event) => updateField('validade_dias', event.target.value)}
+                    disabled={saving}
+                    required
+                  />
+                </label>
+
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Frete padrão (R$)</span>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={form.frete_padrao}
+                    onChange={(event) => updateField('frete_padrao', event.target.value)}
+                    disabled={saving}
+                    required
+                  />
+                  <span className="block text-xs text-fg-muted">
+                    Use ponto e até duas casas decimais.
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="space-y-4 border-t border-line pt-5">
+              <legend className="text-sm font-semibold text-fg">Conteúdo comercial</legend>
+              <p className="-mt-2 text-sm text-fg-muted">
+                Organize os prazos e as informações exibidas no documento do orçamento.
+              </p>
               <label className="space-y-1.5 text-sm text-fg">
-                <span className="font-medium">Validade padrão (dias)</span>
-                <Input
-                  type="number"
-                  min="1"
-                  max="365"
-                  step="1"
-                  value={form.validade_dias}
-                  onChange={(event) => updateField('validade_dias', event.target.value)}
+                <span className="font-medium">Prazo de entrega</span>
+                <textarea
+                  value={form.entrega}
+                  onChange={(event) => updateField('entrega', event.target.value)}
                   disabled={saving}
-                  required
+                  maxLength={500}
+                  rows={3}
+                  className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
                 />
               </label>
 
-              <label className="space-y-1.5 text-sm text-fg">
-                <span className="font-medium">Frete padrão (R$)</span>
-                <Input
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={form.frete_padrao}
-                  onChange={(event) => updateField('frete_padrao', event.target.value)}
-                  disabled={saving}
-                  required
-                />
-                <span className="block text-xs text-fg-muted">
-                  Use ponto e até duas casas decimais.
-                </span>
-              </label>
-            </div>
-
-            <label className="space-y-1.5 text-sm text-fg">
-              <span className="font-medium">Prazo de entrega</span>
-              <textarea
-                value={form.entrega}
-                onChange={(event) => updateField('entrega', event.target.value)}
-                disabled={saving}
-                maxLength={500}
-                rows={3}
-                className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
+              <QuotationSectionsEditor
+                mode="settings"
+                sections={form.secoes}
+                editable={!saving}
+                onChange={updateSections}
               />
-            </label>
+            </fieldset>
 
             <section className="space-y-4 rounded-lg border border-line bg-page/40 p-4">
               <div className="flex items-start gap-3">
@@ -378,19 +417,18 @@ export default function SettingsPage() {
               </div>
             </section>
 
-            <QuotationSectionsEditor
-              mode="settings"
-              sections={form.secoes}
-              editable={!saving}
-              onChange={updateSections}
-            />
+
 
             {saveError && (
               <div
                 className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
                 role="alert"
               >
-                <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
+                <AlertCircle
+                  size={18}
+                  className="mt-0.5 shrink-0 text-destructive"
+                  aria-hidden="true"
+                />
                 <span>{saveError}</span>
               </div>
             )}
@@ -399,15 +437,20 @@ export default function SettingsPage() {
               <div
                 className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-fg"
                 role="status"
+                aria-live="polite"
               >
-                <CheckCircle2 size={18} className="shrink-0 text-success" />
+                <CheckCircle2 size={18} className="shrink-0 text-success" aria-hidden="true" />
                 <span>{savedMessage}</span>
               </div>
             )}
 
             <div className="flex justify-end border-t border-line pt-4">
-              <Button type="submit" disabled={saving}>
-                {saving ? <Loader2 className="animate-spin" /> : <Save />}
+              <Button type="submit" disabled={saving} aria-busy={saving}>
+                {saving ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save aria-hidden="true" />
+                )}
                 {saving ? 'Salvando...' : 'Salvar configurações'}
               </Button>
             </div>
@@ -415,28 +458,34 @@ export default function SettingsPage() {
         )}
       </section>
 
-      {/* WhatsApp flows moved notice */}
-      <div className="rounded-lg border border-line bg-surface p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
-            <MessageCircle size={20} className="text-primary" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-fg">Fluxos de WhatsApp</h3>
-            <p className="text-sm text-fg-muted">
-              A configuração de fluxos de WhatsApp, biblioteca de mídias e histórico de envios agora
-              está disponível na página dedicada de Comunicação.
-            </p>
-            <a
-              href="#/comunicacao"
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-            >
-              <ExternalLink size={14} />
-              Ir para Comunicação
-            </a>
-          </div>
+      <section aria-labelledby="advanced-settings-title" className="space-y-3">
+        <div className="px-1">
+          <h2 id="advanced-settings-title" className="text-base font-semibold text-fg">
+            Configurações avançadas
+          </h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            Modelos HTML e versões ficam separados dos padrões usados no dia a dia.
+          </p>
         </div>
-      </div>
+        <details open className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg border border-line bg-surface p-4 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&::-webkit-details-marker]:hidden">
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-fg">Modelos de orçamento</span>
+              <span className="mt-1 block text-sm text-fg-muted">
+                Edite o HTML somente quando precisar ajustar o documento.
+              </span>
+            </span>
+            <ChevronDown
+              size={18}
+              className="shrink-0 text-fg-muted transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+          <div className="mt-3">
+            <QuotationTemplateManager />
+          </div>
+        </details>
+      </section>
     </div>
   );
 }

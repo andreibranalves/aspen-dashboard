@@ -16,8 +16,11 @@ export function deliveryIdentityKey(identity: DeliveryIdentity): string {
   return `${identity.revisionId}\u0000${identity.flowId}`;
 }
 
+const SAFE_DELIVERY_ERRORS = new Set(['Resposta inválida da entrega WhatsApp.']);
+
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+  const message = error instanceof Error ? error.message.trim() : '';
+  return SAFE_DELIVERY_ERRORS.has(message) ? message : fallback;
 }
 
 function addKey(keys: string[], key: string): string[] {

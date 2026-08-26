@@ -101,6 +101,7 @@ export default function AutoQuotePage() {
   const [pricingConflictByDraft] = useState<Record<number, string[]>>({});
   const [savingDraftByIndex, setSavingDraftByIndex] = useState<Record<number, boolean>>({});
   const issueInFlight = useRef(new Set<number>());
+  const extractionGenerationRef = useRef(0);
 
   // ── Quotation template ──
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
@@ -263,8 +264,8 @@ export default function AutoQuotePage() {
         (f) => f.context === 'already_talking' || /já estou/i.test(f.name || '')
       );
       setDefaultWaFlowId(alreadyTalking?.id || data.selectedFlowId || flows[0]?.id || '');
-    } catch (err) {
-      console.warn('[AutoQuotePage] failed to load communication flows:', (err as Error).message);
+    } catch {
+      console.warn('[AutoQuotePage] failed to load communication flows');
       setWaFlows([]);
       setDefaultWaFlowId('');
     }
@@ -337,6 +338,7 @@ export default function AutoQuotePage() {
       setError(`Template não encontrado: ${inline.unknown.join(', ')}.`);
       return;
     }
+    const generation = ++extractionGenerationRef.current;
     setExtracting(true);
     setError(null);
     try {
@@ -348,30 +350,43 @@ export default function AutoQuotePage() {
         imageMimeType: imageData?.mime || null,
         ...(inline.selections.length ? { orderTemplateSelections: inline.selections } : {}),
       });
+      if (generation !== extractionGenerationRef.current) return;
       const orders = res.orders;
       if (!orders || orders.length === 0) {
         setError('Nenhum pedido identificado no texto.');
         setExtracting(false);
         return;
       }
-      let newDrafts = buildDraftsFromOrders(orders, '', templateKey);
+      const newDrafts = buildDraftsFromOrders(orders, '', templateKey);
       const nonUrgent = newDrafts.filter((d) => !d.edited.urgente);
-      if (nonUrgent.length > 0) newDrafts = await fetchPricing(nonUrgent, false);
       const urgent = newDrafts.filter((d) => d.edited.urgente);
-      if (urgent.length > 0) await fetchPricing(urgent, true);
+      const pricedNonUrgent = nonUrgent.length > 0
+        ? await fetchPricing(nonUrgent, false)
+        : [];
+      if (generation !== extractionGenerationRef.current) return;
+      const pricedUrgent = urgent.length > 0
+        ? await fetchPricing(urgent, true)
+        : [];
+      if (generation !== extractionGenerationRef.current) return;
+      const pricedByIndex = new Map(
+        [...pricedNonUrgent, ...pricedUrgent].map((draft) => [draft.index, draft])
+      );
+      const pricedDrafts = newDrafts.map((draft) => pricedByIndex.get(draft.index) || draft);
       setDrafts((prev) => {
         const startIndex = prev.length;
-        const appendedDrafts = newDrafts.map((draft, offset) => ({
+        const appendedDrafts = pricedDrafts.map((draft, offset) => ({
           ...draft,
           index: startIndex + offset,
         }));
         const next = [...prev, ...appendedDrafts];
         return next;
       });
-    } catch (err) {
-      setError((err as Error).message || 'Erro na extração.');
+    } catch {
+      if (generation === extractionGenerationRef.current) {
+        setError('Não foi possível extrair os pedidos. Tente novamente.');
+      }
     } finally {
-      setExtracting(false);
+      if (generation === extractionGenerationRef.current) setExtracting(false);
     }
   }, [text, imageData, orderTemplates, templateKey, fetchPricing, buildDraftsFromOrders]);
 
@@ -422,8 +437,8 @@ export default function AutoQuotePage() {
       } catch (err) {
         const apiError = err instanceof QuotationIssueApiError ? err : null;
         const message = apiError?.status === 409
-          ? apiError.message
-          : err instanceof Error ? err.message : 'Não foi possível emitir o orçamento. Tente novamente.';
+          ? 'O orçamento mudou ou já está em processamento. Tente novamente.'
+          : 'Não foi possível emitir o orçamento. Tente novamente.';
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, status: undefined, result: { success: false, error: message } } as StoredAutoQuoteDraft)
           : candidate));
@@ -458,9 +473,9 @@ export default function AutoQuotePage() {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
         ? ({ ...candidate, saved: { quotationId, revisionId, businessNumber, concurrencyToken } } as StoredAutoQuoteDraft)
         : candidate));
-    } catch (error) {
+    } catch {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
-        ? ({ ...candidate, result: { success: false, error: error instanceof Error ? error.message : 'Não foi possível salvar o rascunho.' } } as StoredAutoQuoteDraft)
+        ? ({ ...candidate, result: { success: false, error: 'Não foi possível salvar o rascunho. Tente novamente.' } } as StoredAutoQuoteDraft)
         : candidate));
     } finally {
       setSavingDraftByIndex((current) => {
@@ -564,6 +579,7 @@ export default function AutoQuotePage() {
 
   // ── Reset ──
   const handleReset = useCallback(() => {
+    extractionGenerationRef.current += 1;
     setText('');
     clearImage();
     skipDraftPersistence.current = true;
@@ -574,20 +590,21 @@ export default function AutoQuotePage() {
     setWaFlowByDraft({});
     try {
       window.sessionStorage.removeItem('aspen_drafts');
-    } catch (storageError) {
-      console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
+    } catch {
+      console.warn('[AutoQuotePage] failed to clear drafts');
     }
   }, [clearImage, setDrafts, setProductSearch]);
 
   const clearResults = useCallback(() => {
+    extractionGenerationRef.current += 1;
     skipDraftPersistence.current = true;
     setDrafts([]);
     setProductSearch({});
     setWaFlowByDraft({});
     try {
       window.sessionStorage.removeItem('aspen_drafts');
-    } catch (storageError) {
-      console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
+    } catch {
+      console.warn('[AutoQuotePage] failed to clear drafts');
     }
   }, [setDrafts, setProductSearch]);
 
@@ -682,8 +699,8 @@ export default function AutoQuotePage() {
           revisionId: context.revisionId,
           flowId: context.flowId,
         });
-      } catch (err) {
-        console.error('[sendWhatsApp] failed:', err instanceof Error ? err.message : err);
+      } catch {
+        console.error('[sendWhatsApp] failed');
       } finally {
         activeSendKeys.current.delete(contextKey);
       }
@@ -705,8 +722,16 @@ export default function AutoQuotePage() {
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex h-1/2 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto border-r border-line bg-surface lg:h-auto lg:overflow-hidden lg:w-1/2 lg:flex-none">
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 md:px-6 md:pt-5 space-y-4">
-            {/* Page title */}
-            <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
+            {/* Stage 1: the source material is what the system understood. */}
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
+                1 · O que foi entendido
+              </p>
+              <h1 className="text-lg font-semibold tracking-tight text-fg">Pedido do cliente</h1>
+              <p className="text-sm leading-5 text-fg-muted">
+                Cole a conversa ou envie uma imagem. O conteúdo só vira orçamento depois da sua revisão.
+              </p>
+            </div>
             {templateError && (
               <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm">
                 <span className="min-w-0">{templateError}</span>
@@ -766,11 +791,13 @@ export default function AutoQuotePage() {
                 )}
 
                 <textarea
+                  id="auto-quote-input"
                   ref={textareaRef}
                   className={cn(
                     'relative z-10 w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
+                  aria-label="Mensagem do cliente para extração"
                   placeholder="Cole aqui a mensagem do cliente, formato natural é aceito. Inclua nome, telefone, e-mail, produto e quantidade."
                   value={text}
                   onChange={(event) => {
@@ -857,7 +884,7 @@ export default function AutoQuotePage() {
 
             {/* Error */}
             {error && (
-              <div className="tone-destructive-soft rounded-lg p-3 text-sm">
+              <div className="tone-destructive-soft rounded-lg p-3 text-sm" role="alert">
                 <div className="flex items-start gap-2">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
@@ -884,7 +911,12 @@ export default function AutoQuotePage() {
         <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
             <div className="flex h-full flex-col">
-              <h2 className="text-lg font-semibold text-fg mb-3">Resultado</h2>
+              <div className="mb-3 space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+                  2 · Precisa de revisão
+                </p>
+                <h2 className="text-lg font-semibold tracking-tight text-fg">Resultado</h2>
+              </div>
               <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-line text-center">
                 {/* The canonical large radius keeps this empty-state icon balanced. */}
                 <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-surface-muted mb-4">
@@ -899,10 +931,18 @@ export default function AutoQuotePage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-fg">
-                  Resultados ({activeDrafts.length})
-                </h2>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+                    2 · Precisa de revisão
+                  </p>
+                  <h2 className="text-lg font-semibold tracking-tight text-fg">
+                    Resultados ({activeDrafts.length})
+                  </h2>
+                  <p className="text-sm text-fg-muted">
+                    Confira os dados, itens e preços antes de criar o documento.
+                  </p>
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"

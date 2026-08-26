@@ -3,9 +3,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * PageHeader — cabeçalho de página reutilizável.
- * Título padronizado em text-2xl; descrição em text-sm text-fg-muted.
- * Ações da página ficam aqui (não na TopBar): a secundária à esquerda,
- * a primária à direita, dentro do grupo `actions`.
+ * Ações específicas da página ficam aqui; a TopBar reserva-se à navegação e utilidades globais.
  */
 export interface PageHeaderProps {
   /** título da página (obrigatório) */
@@ -21,14 +19,14 @@ export interface PageHeaderProps {
 export default function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
     <div className={cn('flex items-start justify-between gap-4 flex-wrap', className)}>
-      <div className="space-y-1 min-w-0">
-        <h1 className="text-2xl font-semibold text-fg">{title}</h1>
-        {description && (
-          <p className="text-sm text-fg-muted">{description}</p>
-        )}
+      <div className="min-w-0 space-y-1">
+        <h1 className="text-xl font-semibold leading-7 tracking-[-0.2px] text-fg">{title}</h1>
+        {description && <p className="text-sm text-fg-muted">{description}</p>}
       </div>
       {actions && (
-        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          {actions}
+        </div>
       )}
     </div>
   );

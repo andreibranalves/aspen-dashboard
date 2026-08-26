@@ -1,8 +1,9 @@
-// MediaGridItem — thumbnail card for a single media asset.
-// Shows preview, title, group badge, size, and delete action.
+// MediaGridItem — dense card for a single media asset.
+// The delete action remains available without relying on hover.
 
 import { useState } from 'react';
-import { Trash2, Image, Video } from 'lucide-react';
+import { CalendarDays, Image, Trash2, Video } from 'lucide-react';
+import { StatusBadge } from '@/components/ui/badge';
 import { formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem } from '@/lib/api/communicationApi';
 
@@ -13,6 +14,13 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatDate(value: string | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date);
+}
+
 export interface MediaGridItemProps {
   item: MediaItem;
   onDelete?: (item: MediaItem) => void;
@@ -21,71 +29,88 @@ export interface MediaGridItemProps {
 export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
   const [imgError, setImgError] = useState(false);
   const isVideo = item.kind === 'video';
+  const createdDate = formatDate(item.created_at);
+  const size = formatBytes(item.size_bytes);
 
   return (
-    <div className="group relative rounded-lg border border-line bg-surface overflow-hidden hover:border-primary/30 transition-colors">
-      {/* Thumbnail */}
-      <div className="aspect-square bg-surface-muted flex items-center justify-center overflow-hidden">
+    <article className="group relative min-w-0 overflow-hidden rounded-md border border-line bg-surface transition-colors hover:border-primary/30">
+      <div className="aspect-square overflow-hidden bg-surface-muted">
         {isVideo ? (
-          <div className="flex flex-col items-center gap-1 text-fg-muted">
-            <Video size={32} />
-            <span className="text-xs">{item.title || 'Vídeo'}</span>
+          <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center text-fg-muted">
+            <Video size={30} aria-hidden="true" />
+            <span className="text-xs">{item.title || 'Vídeo sem título'}</span>
           </div>
         ) : imgError ? (
-          <div className="flex flex-col items-center gap-1 text-fg-muted">
-            <Image size={32} />
-            <span className="text-xs">Sem preview</span>
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-fg-muted">
+            <Image size={30} aria-hidden="true" />
+            <span className="text-xs">Prévia indisponível</span>
           </div>
         ) : (
           <img
             src={item.blob_url}
-            alt={item.title || 'Mídia'}
-            className="w-full h-full object-cover"
+            alt={item.title ? `Prévia de ${item.title}` : 'Prévia da mídia'}
+            className="h-full w-full object-cover"
             onError={() => setImgError(true)}
             loading="lazy"
           />
         )}
-
-        {/* Hover overlay with delete */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-          <button
-            onClick={() => onDelete?.(item)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg bg-destructive text-on-solid hover:bg-destructive/90"
-            title="Remover mídia"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
       </div>
 
-      {/* Info */}
-      <div className="p-3 space-y-1.5">
-        <p className="text-sm font-medium text-fg truncate" title={item.title}>
-          {item.title || 'Sem título'}
-        </p>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+      <div className="space-y-2 p-3">
+        <div className="flex items-start justify-between gap-2">
+          <p
+            className="min-w-0 truncate text-sm font-medium text-fg"
+            title={item.title || undefined}
+          >
+            {item.title || 'Sem título'}
+          </p>
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => onDelete(item)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+              aria-label={`Remover ${item.title || 'mídia'}`}
+              title="Remover mídia"
+            >
+              <Trash2 size={15} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span
+            className="max-w-full truncate rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+            title={formatProductGroup(item.product_group)}
+          >
             {formatProductGroup(item.product_group)}
           </span>
           {item.caption && (
-            <span
-              className="text-[10px] text-fg-muted truncate max-w-[120px]"
-              title={item.caption}
-            >
+            <span className="max-w-full truncate text-[10px] text-fg-muted" title={item.caption}>
               {item.caption}
             </span>
           )}
         </div>
-        {item.size_bytes > 0 && (
-          <p className="text-[10px] text-fg-muted">
-            {formatBytes(item.size_bytes)}
-            {item.content_type ? ` · ${item.content_type.split('/')[1]?.toUpperCase()}` : ''}
-          </p>
+
+        {(size || item.content_type || createdDate) && (
+          <div className="space-y-1 text-[10px] text-fg-muted">
+            {(size || item.content_type) && (
+              <p>
+                {size}
+                {size && item.content_type ? ' · ' : ''}
+                {item.content_type ? item.content_type.split('/')[1]?.toUpperCase() : ''}
+              </p>
+            )}
+            {createdDate && (
+              <p className="inline-flex items-center gap-1">
+                <CalendarDays size={12} aria-hidden="true" />
+                <time dateTime={item.created_at}>Adicionado em {createdDate}</time>
+              </p>
+            )}
+          </div>
         )}
-        {item.active === false && (
-          <span className="text-[10px] text-warning">Inativo</span>
-        )}
+
+        {item.active === false && <StatusBadge status="Archived" label="Inativo" />}
       </div>
-    </div>
+    </article>
   );
 }

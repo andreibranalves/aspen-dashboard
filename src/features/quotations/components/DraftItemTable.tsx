@@ -2,7 +2,7 @@
 // Items table with SKU autocomplete, qty/rate inputs, drag reorder, and add/remove.
 // Extracted from AutoQuotePage.jsx.
 
-import { GripVertical, X, Plus, Package, Loader2 } from 'lucide-react';
+import { GripVertical, X, Plus, Package, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { formatBRL } from '@/lib/formatting/formatters';
@@ -45,6 +45,20 @@ export default function DraftItemTable({
   removeDraftItem,
   addDraftItem,
 }: DraftItemTableProps) {
+  const applyPricedDraft = (requested: Draft, priced: Draft) => {
+    setDrafts((previous) => previous.map((candidate) => {
+      if (candidate.index !== requested.index || candidate.edited.urgente !== requested.edited.urgente) return candidate;
+      const items = candidate.edited.items.map((current, index) => {
+        const before = requested.edited.items[index];
+        const next = priced.edited.items[index];
+        if (!before || !next) return current;
+        if (current.item_code !== before.item_code || current.qty !== before.qty || Boolean(current._rateManual) !== Boolean(before._rateManual)) return current;
+        return { ...current, rate: next.rate, item_name: current.item_name || next.item_name };
+      });
+      return { ...candidate, edited: { ...candidate.edited, items } };
+    }));
+  };
+
   return (
     <div className="overflow-hidden rounded-lg border border-line">
       <div className="flex items-center justify-between gap-3 border-b border-line bg-surface/50 px-4 py-3">
@@ -57,12 +71,12 @@ export default function DraftItemTable({
         <table className="w-full min-w-[680px] text-sm">
           <thead className="bg-surface/70 text-xs text-fg-muted">
             <tr>
-              <th className="w-10 p-3"></th>
-              <th className="p-3 text-left">Produto</th>
-              <th className="w-24 p-3 text-right">Qtd</th>
-              <th className="w-28 p-3 text-right">R$/un</th>
-              <th className="w-28 p-3 text-right">Total</th>
-              <th className="w-10 p-3"></th>
+              <th scope="col" className="w-10 p-3"><span className="sr-only">Reordenar</span></th>
+              <th scope="col" className="p-3 text-left">Produto</th>
+              <th scope="col" className="w-24 p-3 text-right">Qtd</th>
+              <th scope="col" className="w-28 p-3 text-right">R$/un</th>
+              <th scope="col" className="w-28 p-3 text-right">Total</th>
+              <th scope="col" className="w-10 p-3">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -85,7 +99,31 @@ export default function DraftItemTable({
                   className="border-t border-line transition-colors hover:bg-primary/5"
                 >
                   <td className="p-2 text-center text-fg-muted">
-                    <GripVertical size={14} className={cn(!isApproved && 'cursor-grab')} />
+                    <div className="flex items-center justify-center gap-1">
+                      <GripVertical size={14} aria-hidden="true" className={cn(!isApproved && 'cursor-grab')} />
+                      {!isApproved && (
+                        <span className="flex flex-col">
+                          <button
+                            type="button"
+                            aria-label={`Mover item ${ii + 1} para cima`}
+                            disabled={ii === 0}
+                            onClick={() => reorderItems(draftIdx, ii, ii - 1)}
+                            className="rounded-sm p-0.5 text-fg-muted hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-30"
+                          >
+                            <ChevronUp size={12} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Mover item ${ii + 1} para baixo`}
+                            disabled={ii === items.length - 1}
+                            onClick={() => reorderItems(draftIdx, ii, ii + 1)}
+                            className="rounded-sm p-0.5 text-fg-muted hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-30"
+                          >
+                            <ChevronDown size={12} aria-hidden="true" />
+                          </button>
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-2 relative">
                     <div className="relative">
@@ -99,10 +137,10 @@ export default function DraftItemTable({
                         onBlur={() => {
                           setTimeout(() => closeProductSearch(draftIdx), 200);
                           if (!items[ii]._rateManual) {
-                            const draft = drafts.find(d => d.index === draftIdx) || drafts[draftIdx];
+                            const draft = drafts.find(d => d.index === draftIdx);
                             if (draft) {
                               fetchPricing([draft], draft.edited.urgente).then(priced => {
-                                setDrafts(prev => { const next = [...prev]; next[draftIdx] = priced[0]; return next; });
+                                if (priced[0]) applyPricedDraft(draft, priced[0]);
                               });
                             }
                           }
@@ -111,6 +149,7 @@ export default function DraftItemTable({
                           if (item.item_code) onProductSearchChange(draftIdx, item.item_code);
                         }}
                         placeholder="SKU"
+                        aria-label={`SKU do item ${ii + 1}`}
                         disabled={isApproved}
                       />
                       {productSearch[draftIdx]?.loading && (
@@ -157,16 +196,15 @@ export default function DraftItemTable({
                       type="number"
                       min="1"
                       className="ml-auto h-9 w-20 text-right text-xs"
+                      aria-label={`Quantidade do item ${ii + 1}`}
                       value={item.qty || ''}
                       onChange={e => { const v = Number(e.target.value); if (!isNaN(v)) updateDraftItem(draftIdx, ii, 'qty', v); }}
                       onBlur={async () => {
                         if (!items[ii]._rateManual) {
-                          const priced = await fetchPricing([drafts.find(d => d.index === draftIdx) || drafts[draftIdx]], drafts[draftIdx].edited.urgente);
-                          setDrafts(prev => {
-                            const next = [...prev];
-                            next[draftIdx] = priced[0];
-                            return next;
-                          });
+                          const draft = drafts.find(d => d.index === draftIdx);
+                          if (!draft) return;
+                          const priced = await fetchPricing([draft], draft.edited.urgente);
+                          if (priced[0]) applyPricedDraft(draft, priced[0]);
                         }
                       }}
                       disabled={isApproved}
@@ -178,6 +216,7 @@ export default function DraftItemTable({
                       min="0"
                       step="0.01"
                       className="ml-auto h-9 w-24 text-right text-xs"
+                      aria-label={`Preço unitário do item ${ii + 1}`}
                       value={item.rate || ''}
                       onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateDraftItem(draftIdx, ii, 'rate', v); }}
                       placeholder="0,00"
@@ -191,7 +230,7 @@ export default function DraftItemTable({
                         type="button"
                         onClick={() => removeDraftItem(draftIdx, ii)}
                         className="rounded-full p-1 text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive"
-                        aria-label="Remover item"
+                        aria-label={`Remover item ${ii + 1}`}
                       >
                         <X size={14} />
                       </button>

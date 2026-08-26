@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
@@ -20,8 +20,8 @@ interface QuotationTemplateManagerProps {
   onTemplatesChanged?: (defaultKey?: string) => void;
 }
 
-function errorMessage(error: unknown, fallback: string) {
-  return (error as { message?: string })?.message || fallback;
+function errorMessage(_error: unknown, fallback: string) {
+  return fallback;
 }
 
 export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTemplateManagerProps) {
@@ -40,6 +40,8 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   const [saving, setSaving] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<'archive' | 'set_default' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const detailRequestRef = useRef(0);
+  const newFormIntentRef = useRef(false);
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
@@ -49,7 +51,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       const available = result.templates || result.data || [];
       setTemplates(available);
       setDefaultKey(result.default_key || available.find((item) => item.is_default)?.key || '');
-      setSelectedId((current) => current || available[0]?.id || null);
+      setSelectedId((current) => current || (newFormIntentRef.current ? null : available[0]?.id || null));
     } catch (error) {
       setListError(errorMessage(error, 'Não foi possível carregar os templates.'));
     } finally {
@@ -58,10 +60,12 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }, []);
 
   const loadDetail = useCallback(async (id: string) => {
+    const requestId = ++detailRequestRef.current;
     setDetailLoading(true);
     setDetailError(null);
     try {
       const result = await getQuotationTemplate(id);
+      if (requestId !== detailRequestRef.current) return;
       setDetail(result);
       setName(result.name);
       setKey(result.key);
@@ -69,10 +73,11 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       setValidation(null);
       setMessage(null);
     } catch (error) {
+      if (requestId !== detailRequestRef.current) return;
       setDetail(null);
       setDetailError(errorMessage(error, 'Não foi possível carregar o template.'));
     } finally {
-      setDetailLoading(false);
+      if (requestId === detailRequestRef.current) setDetailLoading(false);
     }
   }, []);
 
@@ -85,6 +90,8 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }, [loadDetail, selectedId]);
 
   function resetNew() {
+    newFormIntentRef.current = true;
+    detailRequestRef.current += 1;
     setSelectedId(null);
     setDetail(null);
     setName('');
@@ -180,7 +187,13 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
               <button
                 type="button"
                 key={template.id}
-                onClick={() => setSelectedId(template.id)}
+                onClick={() => {
+                  newFormIntentRef.current = false;
+                  setDetail(null);
+                  setDetailError(null);
+                  setSelectedId(template.id);
+                }}
+                disabled={saving}
                 className={`block w-full rounded-lg border p-3 text-left ${selectedId === template.id ? 'border-primary bg-primary/5' : 'border-line'}`}
               >
                 <span className="block font-medium text-fg">{template.name}</span>

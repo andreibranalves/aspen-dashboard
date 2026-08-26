@@ -4,6 +4,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiPost } from '@/lib/api/api';
+import { useToast } from '@/components/shared/toast';
 import { isUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/api/productCache';
 import type {
   Draft,
@@ -32,8 +33,12 @@ interface PricingRef {
 }
 
 export function useExtractionDrafts(initialDrafts: Draft[] = []) {
+  const { toast } = useToast();
   // ── State ──
   const [drafts, setDrafts] = useState<Draft[]>(initialDrafts);
+  const draftsRef = useRef<Draft[]>(initialDrafts);
+  draftsRef.current = drafts;
+  const pricingVersionsRef = useRef<Record<number, number>>({});
   const [productSearch, setProductSearch] = useState<Record<number, ProductSearchEntry>>({});
   const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,43 +87,90 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     }
   }, []);
 
-  // ── Draft item mutations ──
-  const updateDraftItem = useCallback(
-    (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => {
+  const nextPricingVersion = useCallback((draftIdx: number): number => {
+    const version = (pricingVersionsRef.current[draftIdx] || 0) + 1;
+    pricingVersionsRef.current[draftIdx] = version;
+    return version;
+  }, []);
+
+  const applyPricingResult = useCallback(
+    (draftIdx: number, requested: Draft, priced: Draft, requestVersion: number) => {
       setDrafts(prev => {
+        if (pricingVersionsRef.current[draftIdx] !== requestVersion) return prev;
+        const currentIndex = prev.findIndex((draft) => draft.index === draftIdx);
+        if (currentIndex < 0) return prev;
+        const current = prev[currentIndex];
+        if (current.edited.urgente !== requested.edited.urgente) return prev;
+        const items = current.edited.items.map((item, itemIndex) => {
+          const requestedItem = requested.edited.items[itemIndex];
+          const pricedItem = priced.edited.items[itemIndex];
+          if (!requestedItem || !pricedItem) return item;
+          if (
+            item.item_code !== requestedItem.item_code ||
+            item.qty !== requestedItem.qty ||
+            Boolean(item._rateManual) !== Boolean(requestedItem._rateManual)
+          ) return item;
+          return {
+            ...item,
+            rate: pricedItem.rate,
+            item_name: item.item_name || pricedItem.item_name,
+          };
+        });
         const next = [...prev];
-        const items = [...next[draftIdx].edited.items];
-        items[itemIdx] = { ...items[itemIdx], [field]: value } as DraftItem;
-        if (field === 'rate') items[itemIdx]._rateManual = true;
-        if (field === 'item_code') delete items[itemIdx]._rateManual;
-        if (field === 'qty') delete items[itemIdx]._rateManual;
-        next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
+        next[currentIndex] = { ...current, edited: { ...current.edited, items } };
         return next;
       });
     },
     [],
   );
 
+  // ── Draft item mutations ──
+  const updateDraftItem = useCallback(
+    (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => {
+      nextPricingVersion(draftIdx);
+      setDrafts(prev => {
+        const draftIndex = prev.findIndex((draft) => draft.index === draftIdx);
+        if (draftIndex < 0) return prev;
+        const items = [...prev[draftIndex].edited.items];
+        if (!items[itemIdx]) return prev;
+        items[itemIdx] = { ...items[itemIdx], [field]: value } as DraftItem;
+        if (field === 'rate') items[itemIdx]._rateManual = true;
+        if (field === 'item_code') delete items[itemIdx]._rateManual;
+        if (field === 'qty') delete items[itemIdx]._rateManual;
+        const next = [...prev];
+        next[draftIndex] = { ...next[draftIndex], edited: { ...next[draftIndex].edited, items } };
+        return next;
+      });
+    },
+    [nextPricingVersion],
+  );
+
   const addDraftItem = useCallback((draftIdx: number) => {
+    nextPricingVersion(draftIdx);
     setDrafts(prev => {
-      const next = [...prev];
+      const currentIndex = prev.findIndex((draft) => draft.index === draftIdx);
+      if (currentIndex < 0) return prev;
       const items = [
-        ...next[draftIdx].edited.items,
+        ...prev[currentIndex].edited.items,
         { item_code: '', qty: 30, rate: null, _rateManual: true } as DraftItem,
       ];
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
+      const next = [...prev];
+      next[currentIndex] = { ...next[currentIndex], edited: { ...next[currentIndex].edited, items } };
       return next;
     });
-  }, []);
+  }, [nextPricingVersion]);
 
   const removeDraftItem = useCallback((draftIdx: number, itemIdx: number) => {
+    nextPricingVersion(draftIdx);
     setDrafts(prev => {
+      const currentIndex = prev.findIndex((draft) => draft.index === draftIdx);
+      if (currentIndex < 0) return prev;
+      const items = prev[currentIndex].edited.items.filter((_, i) => i !== itemIdx);
       const next = [...prev];
-      const items = next[draftIdx].edited.items.filter((_, i) => i !== itemIdx);
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
+      next[currentIndex] = { ...next[currentIndex], edited: { ...next[currentIndex].edited, items } };
       return next;
     });
-  }, []);
+  }, [nextPricingVersion]);
 
   // ── Draft field helpers ──
   const updateDraftField = useCallback(
@@ -150,32 +202,17 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
   // ── Urgente toggle (updates flag then re-prices) ──
   const handleUrgenteToggle = useCallback(
     async (draftIdx: number, checked: boolean) => {
-      setDrafts(prev => {
-        const next = [...prev];
-        next[draftIdx] = {
-          ...next[draftIdx],
-          edited: { ...next[draftIdx].edited, urgente: checked },
-        };
-        return next;
-      });
-
-      const current = await new Promise<Draft | undefined>(resolve => {
-        setDrafts(prev => {
-          resolve(prev.find(d => d.index === draftIdx));
-          return prev;
-        });
-      });
-      if (current) {
-        const updated = { ...current, edited: { ...current.edited, urgente: checked } };
-        const priced = await fetchPricing([updated], checked);
-        setDrafts(prev => {
-          const next = [...prev];
-          next[draftIdx] = priced[0];
-          return next;
-        });
-      }
+      const current = draftsRef.current.find((draft) => draft.index === draftIdx);
+      if (!current) return;
+      const updated = { ...current, edited: { ...current.edited, urgente: checked } };
+      const requestVersion = nextPricingVersion(draftIdx);
+      setDrafts(prev => prev.map((draft) => (
+        draft.index === draftIdx ? updated : draft
+      )));
+      const priced = await fetchPricing([updated], checked);
+      applyPricingResult(draftIdx, updated, priced[0], requestVersion);
     },
-    [fetchPricing],
+    [applyPricingResult, fetchPricing, nextPricingVersion],
   );
 
   // ── Draft approval / discard ──
@@ -185,29 +222,29 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       const d = next[draftIdx];
       const items = d.edited.items.filter(it => it.item_code && it.qty > 0);
       if (items.length === 0) {
-        alert('Adicione ao menos um item com SKU e quantidade > 0.');
+        toast('Adicione ao menos um item com SKU e quantidade > 0.', 'error');
         return prev;
       }
       if (!d.edited.nome?.trim()) {
-        alert('Informe o nome do cliente antes de aprovar.');
+        toast('Informe o nome do cliente antes de aprovar.', 'error');
         return prev;
       }
       if (!d.edited.origem) {
-        alert('Selecione a origem do lead antes de aprovar.');
+        toast('Selecione a origem do lead antes de aprovar.', 'error');
         return prev;
       }
       if (!isValidLeadSource(d.edited.origem)) {
-        alert('Origem selecionada não é válida.');
+        toast('Origem selecionada não é válida.', 'error');
         return prev;
       }
       if (d.edited.cnpj && !isValidCnpj(d.edited.cnpj)) {
-        alert('CNPJ informado é inválido. Corrija ou deixe em branco.');
+        toast('CNPJ informado é inválido. Corrija ou deixe em branco.', 'error');
         return prev;
       }
       next[draftIdx] = { ...d, approved: true };
       return next;
     });
-  }, []);
+  }, [toast]);
 
   const discardDraft = useCallback((draftIdx: number) => {
     setDrafts(prev => {
@@ -262,28 +299,31 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
   const selectProduct = useCallback(
     async (draftIdx: number, itemIdx: number, product: Product) => {
       if (isUnpricedProduct(product)) return;
-      updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
-      updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
+      const current = draftsRef.current.find((draft) => draft.index === draftIdx);
+      if (!current || !current.edited.items[itemIdx]) return;
+      const updated: Draft = {
+        ...current,
+        edited: {
+          ...current.edited,
+          items: current.edited.items.map((item, index) => (
+            index === itemIdx
+              ? { ...item, item_code: product.sku, item_name: product.nome || '', _rateManual: undefined }
+              : item
+          )),
+        },
+      };
+      const requestVersion = nextPricingVersion(draftIdx);
+      setDrafts(prev => prev.map((draft) => (
+        draft.index === draftIdx ? updated : draft
+      )));
       setProductSearch(prev => ({
         ...prev,
         [draftIdx]: { term: product.sku, results: [], loading: false, open: false },
       }));
-      let draft: Draft | undefined;
-      setDrafts(prev => {
-        draft = prev.find(d => d.index === draftIdx);
-        return prev;
-      });
-      await new Promise(r => setTimeout(r, 0));
-      if (draft) {
-        const priced = await fetchPricing([draft], draft.edited.urgente);
-        setDrafts(prev => {
-          const next = [...prev];
-          next[draftIdx] = priced[0];
-          return next;
-        });
-      }
+      const priced = await fetchPricing([updated], updated.edited.urgente);
+      applyPricingResult(draftIdx, updated, priced[0], requestVersion);
     },
-    [fetchPricing, updateDraftItem],
+    [applyPricingResult, fetchPricing, nextPricingVersion],
   );
 
   const closeProductSearch = useCallback((draftIdx: number) => {
@@ -293,24 +333,15 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
   // ── Refetch pricing for a single draft (e.g. after qty change) ──
   const refetchDraftPricing = useCallback(
     async (draftIdx: number): Promise<Draft | undefined> => {
-      const current = await new Promise<Draft | undefined>(resolve => {
-        setDrafts(prev => {
-          resolve(prev.find(d => d.index === draftIdx));
-          return prev;
-        });
-      });
+      const current = draftsRef.current.find((draft) => draft.index === draftIdx);
       if (!current) return undefined;
-      const priced = await fetchPricing([{ ...current }], current.edited.urgente);
-      setDrafts(prev => {
-        const idx = prev.findIndex(d => d.index === draftIdx);
-        if (idx === -1) return prev;
-        const next = [...prev];
-        next[idx] = priced[0];
-        return next;
-      });
+      const requestVersion = nextPricingVersion(draftIdx);
+      const requested = { ...current, edited: { ...current.edited, items: current.edited.items.map((item) => ({ ...item })) } };
+      const priced = await fetchPricing([requested], requested.edited.urgente);
+      applyPricingResult(draftIdx, requested, priced[0], requestVersion);
       return priced[0];
     },
-    [fetchPricing],
+    [applyPricingResult, fetchPricing, nextPricingVersion],
   );
 
   // ── Helper: build draft objects from extracted orders ──

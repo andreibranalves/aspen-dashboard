@@ -205,7 +205,7 @@ export default function SplitResultCard({
     ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || []
     : draft.edited.items || [];
   const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
-  const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
+  const totalUrgente = total;
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const canCreate = validItems > 0 && Boolean(draft.edited.nome?.trim());
   const displayItems = editing ? items : items.filter((it) => it.item_code);
@@ -213,6 +213,7 @@ export default function SplitResultCard({
   const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
   const deliveryBlocksSend = Boolean(delivery);
+  const failedDelivery = delivery?.state === 'failed';
 
   function toggleEditing() {
     if (!editing) {
@@ -239,6 +240,7 @@ export default function SplitResultCard({
   return (
     <div
       ref={cardRef}
+      aria-busy={isProcessing}
       className={cn(
         'rounded-lg border border-line bg-surface',
         isProcessing && !immutableIssue && 'opacity-60 pointer-events-none'
@@ -252,10 +254,13 @@ export default function SplitResultCard({
         )}
       >
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-fg-muted">
-                Pedido {displayIdx + 1} de {totalDrafts}
-              </span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+              O que foi entendido
+            </span>
+            <span className="text-xs font-medium text-fg-muted">
+              Pedido {displayIdx + 1} de {totalDrafts}
+            </span>
 
             {draft.edited.urgente && (
               <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
@@ -349,6 +354,18 @@ export default function SplitResultCard({
         </div>
       </div>
 
+      {/* ── Stage 2: extracted values remain editable until creation. ── */}
+      {!isDone && (
+        <div className="border-b border-line bg-primary/5 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
+            2 · Precisa de revisão
+          </p>
+          <p className="mt-1 text-xs leading-5 text-fg-muted">
+            Confirme cliente, itens, quantidades e preços. Nada será criado enquanto você não gerar o orçamento.
+          </p>
+        </div>
+      )}
+
       {/* ── Template selector ── */}
       {!isDone && (
         <div className="border-b border-line bg-surface/20 px-4 py-3">
@@ -379,8 +396,11 @@ export default function SplitResultCard({
 
       {/* ── Items table ── */}
       {!isDone && (
-        <div className="overflow-visible">
-          <table className="w-full table-fixed text-xs">
+        <div className="overflow-x-auto">
+          <table
+            className="w-full min-w-[520px] table-fixed text-xs"
+            aria-label={`Itens do pedido ${displayIdx + 1}`}
+          >
             <colgroup>
               <col />
               <col className="w-24" />
@@ -390,11 +410,11 @@ export default function SplitResultCard({
             </colgroup>
             <thead>
               <tr className="border-b border-line text-fg-muted">
-                <th className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
-                <th className="px-3 py-2 text-center font-medium">Qtd</th>
-                <th className="px-3 py-2 text-center font-medium">Preço</th>
-                <th className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
-                <th className="py-2 pr-4" />
+                <th scope="col" className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
+                <th scope="col" className="px-3 py-2 text-center font-medium">Qtd</th>
+                <th scope="col" className="px-3 py-2 text-center font-medium">Preço</th>
+                <th scope="col" className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
+                <th scope="col" className="py-2 pr-4" />
               </tr>
             </thead>
             <tbody>
@@ -443,15 +463,13 @@ export default function SplitResultCard({
                                       : undefined
                                   }
                                   className={cn(
-                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2',
+                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
                                     isUnpricedProduct(p)
                                       ? 'cursor-not-allowed opacity-50'
                                       : 'hover:bg-surface-muted'
                                   )}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    handleSelectProduct(ii, p);
-                                  }}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => handleSelectProduct(ii, p)}
                                 >
                                   <span className="font-mono text-[10px] text-fg-muted shrink-0">
                                     {p.sku || p.item_code}
@@ -492,6 +510,7 @@ export default function SplitResultCard({
                       {editing ? (
                         <Input
                           type="number"
+                          aria-label={`Quantidade do item ${item.item_code || ii + 1}`}
                           value={item.qty}
                           onChange={(e) => {
                             const val = Math.max(1, Number(e.target.value));
@@ -515,6 +534,7 @@ export default function SplitResultCard({
                         <Input
                           type="number"
                           step="0.01"
+                          aria-label={`Preço unitário do item ${item.item_code || ii + 1}`}
                           value={item.rate || ''}
                           onChange={(e) =>
                             onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))
@@ -535,8 +555,9 @@ export default function SplitResultCard({
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
-                        className="p-0.5 rounded text-fg-muted hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        title="Remover produto"
+                        className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                        aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
+                        title="Excluir produto"
                       >
                         <X size={13} />
                       </button>
@@ -587,8 +608,18 @@ export default function SplitResultCard({
         </div>
       )}
 
-      {/* ── Actions ── */}
-      <div className="flex items-center gap-2 p-3 border-t border-line bg-surface/30">
+      {/* ── Stage 3 + actions ── */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface/30 p-3">
+        {!isDone && (
+          <div className="w-full border-b border-line pb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+              3 · Será criado
+            </p>
+            <p className="mt-1 text-xs leading-5 text-fg-muted">
+              Um orçamento comercial com os dados revisados e o modelo selecionado.
+            </p>
+          </div>
+        )}
         {!isDone && (
           <>
             <Button variant="ghost" size="sm" onClick={toggleEditing}>
@@ -617,7 +648,7 @@ export default function SplitResultCard({
                 href={issueViewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-              className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+              className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
               >
                 <FileText size={13} />
                 Abrir PDF
@@ -625,11 +656,22 @@ export default function SplitResultCard({
             ) : (
               <span
                 aria-disabled="true"
-                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg opacity-40"
+                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-surface px-3 text-xs font-medium text-fg opacity-40"
               >
                 <FileText size={13} />
                 Abrir PDF
               </span>
+            )}
+            {failedDelivery && issue?.businessNumber && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.location.hash = `/quotations/${encodeURIComponent(issue.businessNumber)}`;
+                }}
+              >
+                Nova revisão
+              </Button>
             )}
             {waSendEnabled ? (
               <Button

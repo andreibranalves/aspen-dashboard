@@ -48,7 +48,11 @@ test.describe('Clientes locais @crm @smoke', () => {
       });
     });
     await page.route('**/api/client-detail**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(DETAIL) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(DETAIL),
+      });
     });
 
     await page.goto('/#/leads');
@@ -85,7 +89,9 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(textarea).toHaveValue(new RegExp(CLIENT.telefone));
   });
 
-  test('cria, pesquisa, edita, arquiva, filtra arquivados e restaura sem terminologia Lead', async ({ page }) => {
+  test('cria, pesquisa, edita, arquiva, filtra arquivados e restaura sem terminologia Lead', async ({
+    page,
+  }) => {
     let rows = [{ ...CLIENT }];
     /** @type {Map<string, ClientDetail>} */
     const details = new Map([[CLIENT.id, { ...DETAIL }]]);
@@ -106,23 +112,59 @@ test.describe('Clientes locais @crm @smoke', () => {
           observacoes: body.notes ?? body.observacoes ?? null,
         };
         rows = [...rows, created];
-        details.set(created.id, { ...DETAIL, id: created.id, name: created.id, display_name: created.nome, nome: created.nome, email: created.email, documento: created.documento, tax_id: created.documento });
-        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, id: created.id, created: created.id, data: created }) });
+        details.set(created.id, {
+          ...DETAIL,
+          id: created.id,
+          name: created.id,
+          display_name: created.nome,
+          nome: created.nome,
+          email: created.email,
+          documento: created.documento,
+          tax_id: created.documento,
+        });
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            id: created.id,
+            created: created.id,
+            data: created,
+          }),
+        });
         return;
       }
       const url = new globalThis.URL(request.url());
       if (request.method() === 'DELETE') {
         const id = url.searchParams.get('id') || '';
-        rows = rows.map((row) => row.id === id ? { ...row, arquivado: true, status: 'archived' } : row);
+        rows = rows.map((row) =>
+          row.id === id ? { ...row, arquivado: true, status: 'archived' } : row
+        );
         const detail = details.get(id);
-        if (detail) details.set(id, { ...detail, arquivado: true, archived: true, status: 'archived' });
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, deleted: id, archived: true, arquivado: true }) });
+        if (detail)
+          details.set(id, { ...detail, arquivado: true, archived: true, status: 'archived' });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, id, deleted: id, archived: true, arquivado: true }),
+        });
         return;
       }
       const status = url.searchParams.get('status') || 'active';
       const search = (url.searchParams.get('search') || '').toLowerCase();
-      const data = rows.filter((row) => (status === 'all' || row.status === status) && (!search || `${row.nome} ${row.email} ${row.documento}`.toLowerCase().includes(search)));
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data, pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 } }) });
+      const data = rows.filter(
+        (row) =>
+          (status === 'all' || row.status === status) &&
+          (!search || `${row.nome} ${row.email} ${row.documento}`.toLowerCase().includes(search))
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data,
+          pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 },
+        }),
+      });
     });
 
     await page.route('**/api/client-detail**', async (route) => {
@@ -159,11 +201,29 @@ test.describe('Clientes locais @crm @smoke', () => {
           next.archived = body.arquivado;
         }
         details.set(id, next);
-        rows = rows.map((row) => row.id === id ? { ...row, nome: next.display_name, email: next.email, arquivado: next.arquivado, status: next.status } : row);
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...next }) });
+        rows = rows.map((row) =>
+          row.id === id
+            ? {
+                ...row,
+                nome: next.display_name,
+                email: next.email,
+                arquivado: next.arquivado,
+                status: next.status,
+              }
+            : row
+        );
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...next }),
+        });
         return;
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...current }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...current }),
+      });
     });
 
     await page.goto('/#/leads');
@@ -198,16 +258,21 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByText('Nota do drawer', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Fechar', exact: true }).click();
 
-    // Confirmação migrada para ConfirmDialog (sem confirm() nativo)
-    await page.getByRole('button', { name: /Arquivar Ana Cliente Editada/ }).click();
+    // Ações secundárias usam menu e confirmação (sem confirm() nativo)
+    await page.getByRole('button', { name: /Mais ações para Ana Cliente Editada/ }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
     await page.getByRole('button', { name: 'Arquivados' }).click();
-    await expect(page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /Restaurar Ana Cliente Editada/ })).toBeVisible();
-    await page.getByRole('button', { name: /Restaurar Ana Cliente Editada/ }).click();
+    await expect(
+      page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()
+    ).toBeVisible();
+    await page.getByRole('button', { name: /Mais ações para Ana Cliente Editada/ }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Restaurar cliente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Restaurar', exact: true }).click();
     await page.getByRole('button', { name: 'Ativos' }).click();
-    await expect(page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()).toBeVisible();
+    await expect(
+      page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()
+    ).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
   });
 
@@ -226,7 +291,9 @@ test.describe('Clientes locais @crm @smoke', () => {
     /** @type {() => void} */
     let release = () => {};
     /** @type {Promise<void>} */
-    const pending = new Promise((resolve) => { release = () => resolve(); });
+    const pending = new Promise((resolve) => {
+      release = () => resolve();
+    });
     const initialRequests = [];
     await page.route('**/api/leads-clients**', async (route) => {
       initialRequests.push(route.request().url());
@@ -242,12 +309,18 @@ test.describe('Clientes locais @crm @smoke', () => {
     });
 
     await page.goto('/#/leads');
-    const sidebarClients = page.locator('aside').getByRole('button', { name: 'Clientes', exact: true });
+    const sidebarClients = page
+      .locator('aside')
+      .getByRole('button', { name: 'Clientes', exact: true });
     await expect(sidebarClients).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
     await expect(page.getByText('Leads', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-    expect(initialRequests.every((requestUrl) => !new globalThis.URL(requestUrl).searchParams.has('tipo'))).toBe(true);
+    expect(
+      initialRequests.every(
+        (requestUrl) => !new globalThis.URL(requestUrl).searchParams.has('tipo')
+      )
+    ).toBe(true);
 
     release();
     await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
@@ -257,7 +330,9 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
   });
 
-  test('ação em massa core arquiva ativos e restaura arquivados sem exclusão irreversível', async ({ page }) => {
+  test('ação em massa core arquiva ativos e restaura arquivados sem exclusão irreversível', async ({
+    page,
+  }) => {
     let rows = [{ ...CLIENT }];
     const archiveRequests = [];
     const restoreRequests = [];
@@ -268,17 +343,28 @@ test.describe('Clientes locais @crm @smoke', () => {
       if (request.method() === 'DELETE') {
         const id = url.searchParams.get('id');
         archiveRequests.push({ id });
-        rows = rows.map((row) => row.id === id ? { ...row, arquivado: true, status: 'archived' } : row);
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, archived: true, arquivado: true }) });
+        rows = rows.map((row) =>
+          row.id === id ? { ...row, arquivado: true, status: 'archived' } : row
+        );
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, id, archived: true, arquivado: true }),
+        });
         return;
       }
 
       const requestedStatus = url.searchParams.get('status') || 'active';
-      const data = rows.filter((row) => requestedStatus === 'all' || row.status === requestedStatus);
+      const data = rows.filter(
+        (row) => requestedStatus === 'all' || row.status === requestedStatus
+      );
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data, pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 } }),
+        body: JSON.stringify({
+          data,
+          pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 },
+        }),
       });
     });
 
@@ -286,8 +372,14 @@ test.describe('Clientes locais @crm @smoke', () => {
       const id = new globalThis.URL(route.request().url()).searchParams.get('name');
       const body = route.request().postDataJSON();
       restoreRequests.push({ id, body });
-      rows = rows.map((row) => row.id === id ? { ...row, arquivado: false, status: 'active' } : row);
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, arquivado: false, status: 'active' }) });
+      rows = rows.map((row) =>
+        row.id === id ? { ...row, arquivado: false, status: 'active' } : row
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, id, arquivado: false, status: 'active' }),
+      });
     });
 
     await page.goto('/#/leads');
@@ -313,13 +405,21 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByRole('button', { name: 'Restaurar clientes' }).click();
     await expect(page.getByRole('dialog').getByText('Restaurar 1 cliente?')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'Restaurar', exact: true }).click();
-    await expect(page.getByText('Nenhum cliente encontrado')).toBeVisible();
+    await expect(page.getByText('Nenhum cliente corresponde aos filtros')).toBeVisible();
     expect(restoreRequests).toEqual([{ id: CLIENT.id, body: { arquivado: false } }]);
   });
 
   test('cliente local cria, lê e edita observações', async ({ page }) => {
     const id = '00000000-0000-4000-8000-000000000003';
-    let record = { ...DETAIL, id, name: id, display_name: '', nome: '', notes: null, observacoes: null };
+    let record = {
+      ...DETAIL,
+      id,
+      name: id,
+      display_name: '',
+      nome: '',
+      notes: null,
+      observacoes: null,
+    };
     let createdNotes = null;
     let editedNotes = null;
     /** @type {{ nome: string, email: string, telefone: string, documento?: string, notes?: string, endereco?: object }} */
@@ -331,14 +431,27 @@ test.describe('Clientes locais @crm @smoke', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: [], pagination: { page: 1, limit: 1, total: 0, total_pages: 0 } }),
+          body: JSON.stringify({
+            data: [],
+            pagination: { page: 1, limit: 1, total: 0, total_pages: 0 },
+          }),
         });
         return;
       }
       const body = request.postDataJSON();
       createdPost = body;
       createdNotes = body.notes ?? null;
-      record = { ...record, display_name: body.nome, nome: body.nome, email: body.email || null, telefone: body.telefone || null, notes: body.notes ?? null, observacoes: body.notes ?? null, documento: body.documento ?? null, tax_id: body.documento ?? null };
+      record = {
+        ...record,
+        display_name: body.nome,
+        nome: body.nome,
+        email: body.email || null,
+        telefone: body.telefone || null,
+        notes: body.notes ?? null,
+        observacoes: body.notes ?? null,
+        documento: body.documento ?? null,
+        tax_id: body.documento ?? null,
+      };
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -349,7 +462,11 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.route('**/api/client-detail**', async (route) => {
       const request = route.request();
       if (request.method() === 'GET') {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...record }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...record }),
+        });
         return;
       }
       const body = request.postDataJSON();
@@ -365,7 +482,11 @@ test.describe('Clientes locais @crm @smoke', () => {
         notes,
         observacoes: notes,
       };
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...record, updated: true }) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...record, updated: true }),
+      });
     });
 
     await page.goto('/#/leads/cliente/new');
@@ -394,5 +515,90 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByRole('button', { name: 'Salvar' }).click();
     await expect(page.getByText('Nota editada', { exact: true })).toBeVisible();
     expect(editedNotes).toBe('Nota editada');
+  });
+
+  test('lista preserva filtros na URL, usa o nome como link e mantém arquivar no menu secundário', async ({
+    page,
+  }) => {
+    const requests = [];
+    await page.route('**/api/leads-clients**', async (route) => {
+      const requestUrl = new globalThis.URL(route.request().url());
+      requests.push(requestUrl);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [{ ...CLIENT, nome: 'Cliente com nome longo para validar quebra de conteúdo' }],
+          pagination: { page: 2, limit: 25, total: 26, total_pages: 2 },
+        }),
+      });
+    });
+
+    await page.goto('/#/leads?search=Maria&status=all&page=2&limit=25');
+    await expect(page.locator('tbody a[href^="#/leads/cliente/"]').first()).toHaveAttribute(
+      'href',
+      `#/leads/cliente/${CLIENT.id}`
+    );
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((requestUrl) => requestUrl.searchParams.get('search') === 'Maria')).toBe(
+      true
+    );
+    expect(requests.every((requestUrl) => requestUrl.searchParams.get('status') === 'all')).toBe(
+      true
+    );
+    expect(requests.every((requestUrl) => requestUrl.searchParams.get('page') === '2')).toBe(true);
+    expect(requests.every((requestUrl) => requestUrl.searchParams.get('limit') === '25')).toBe(
+      true
+    );
+
+    await page.getByRole('button', { name: /Mais ações para Cliente com nome longo/ }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
+    await expect(
+      page
+        .getByRole('dialog')
+        .getByText('Arquivar o cliente Cliente com nome longo para validar quebra de conteúdo?')
+    ).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancelar', exact: true }).click();
+    expect(requests.length).toBeGreaterThan(0);
+  });
+
+  test('detalhe cancela para o último estado do servidor e omite relações ausentes', async ({
+    page,
+  }) => {
+    const serverName = 'Cliente no servidor';
+    await page.route('**/api/client-detail**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...DETAIL,
+          nome: serverName,
+          display_name: serverName,
+          notes: null,
+          observacoes: null,
+          address: null,
+          latest_quotation: null,
+          deal: null,
+          quality_flags: [],
+        }),
+      });
+    });
+
+    await page.goto(`/#/leads/cliente/${CLIENT.id}`);
+    await expect(page.getByRole('heading', { name: serverName }).first()).toBeVisible();
+    await expect(page.getByText('Observações', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Orçamento recente', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Endereço', { exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Editar cadastro' }).click();
+    await page.getByPlaceholder('Nome do cliente').fill('Alteração descartada');
+    await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Descartar', exact: true }).click();
+    await expect(page.getByText(serverName, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Alteração descartada', { exact: true })).toHaveCount(0);
+
+    await page.getByRole('button', { name: /Mais ações para Cliente no servidor/ }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancelar', exact: true }).click();
   });
 });

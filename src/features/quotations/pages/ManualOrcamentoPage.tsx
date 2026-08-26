@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LEAD_SOURCES,
@@ -119,13 +120,34 @@ interface ManualDraft {
   templateKey: string;
 }
 
+function isNewClient(value: unknown): value is NewClient {
+  if (typeof value !== 'object' || value === null) return false;
+  const client = value as Record<string, unknown>;
+  return typeof client.nome === 'string' && typeof client.email === 'string' && typeof client.telefone === 'string';
+}
+
+function isCartItem(value: unknown): value is CartItem {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item._key === 'string' &&
+    typeof item.sku === 'string' &&
+    typeof item.nome === 'string' &&
+    typeof item.qty === 'number' && Number.isFinite(item.qty) && item.qty > 0 &&
+    typeof item.rate === 'number' && Number.isFinite(item.rate) && item.rate >= 0 &&
+    typeof item._rateManual === 'boolean'
+  );
+}
+
 function isManualDraft(value: unknown): value is ManualDraft {
   if (typeof value !== 'object' || value === null) return false;
   const draft = value as Record<string, unknown>;
   return (
     draft.version === MANUAL_DRAFT_STORAGE_VERSION &&
     typeof draft.clientType === 'string' &&
-    Array.isArray(draft.items)
+    isNewClient(draft.newClient) &&
+    Array.isArray(draft.items) &&
+    draft.items.every(isCartItem)
   );
 }
 
@@ -155,6 +177,7 @@ function clearManualDraft(): void {
 }
 
 export default function ManualOrcamentoPage() {
+  const { toast } = useToast();
   // ── Client state ──
   const [clientType, setClientType] = useState<string>(CLIENT_TYPE.NEW);
   const [clientSearch, setClientSearch] = useState<string>('');
@@ -191,6 +214,7 @@ export default function ManualOrcamentoPage() {
   const [templateKey, setTemplateKey] = useState<string>('');
   const [templateLoading, setTemplateLoading] = useState<boolean>(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const templateOverrideRef = useRef<string | null>(null);
   // ── Destructive-action confirmation ──
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
@@ -202,7 +226,8 @@ export default function ManualOrcamentoPage() {
       const response = await listQuotationTemplates(true);
       const available = response.templates || response.data || [];
       setTemplates(available);
-      setTemplateKey(response.default_key || available.find((template) => template.is_default)?.key || '');
+      const defaultKey = response.default_key || available.find((template) => template.is_default)?.key || '';
+      setTemplateKey(templateOverrideRef.current ?? defaultKey);
     } catch {
       setTemplateError('Não foi possível carregar os modelos HTML.');
     } finally {
@@ -219,6 +244,12 @@ export default function ManualOrcamentoPage() {
   const [sending, setSending] = useState<boolean>(false);
   const manualSendInFlight = useRef(false);
   const manualSendKey = useRef<{ fingerprint: string; key: string } | null>(null);
+  const pricingVersionsRef = useRef<Record<string, number>>({});
+  const nextPricingVersion = useCallback((_key: string): number => {
+    const version = (pricingVersionsRef.current[_key] || 0) + 1;
+    pricingVersionsRef.current[_key] = version;
+    return version;
+  }, []);
   const [result, setResult] = useState<OrcamentoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -241,21 +272,31 @@ export default function ManualOrcamentoPage() {
     if (autoItems.length === 0) return;
 
     setPricingRows(new Set(autoItems.map(item => item._key)));
+    const requested = autoItems.map((item) => ({
+      ...item,
+      version: nextPricingVersion(item._key),
+    }));
     try {
-      const pricedItems = await Promise.all(autoItems.map(async (item) => ({
+      const pricedItems = await Promise.all(requested.map(async (item) => ({
         _key: item._key,
+        sku: item.sku,
+        qty: item.qty,
+        version: item.version,
         rate: await lookupRate(item.sku, item.qty, urgentValue),
       })));
-      const priceMap = new Map(pricedItems.map(item => [item._key, item.rate]));
-      setItems(prev => prev.map(item => (
-        priceMap.has(item._key) ? { ...item, rate: priceMap.get(item._key) ?? item.rate } : item
-      )));
+      const priceMap = new Map(pricedItems.map(item => [item._key, item]));
+      setItems(prev => prev.map(item => {
+        const priced = priceMap.get(item._key);
+        if (!priced || pricingVersionsRef.current[item._key] !== priced.version) return item;
+        if (item.sku !== priced.sku || item.qty !== priced.qty || item._rateManual) return item;
+        return { ...item, rate: priced.rate };
+      }));
     } catch {
       // mantém os preços atuais se a precificação não responder
     } finally {
       setPricingRows(new Set());
     }
-  }, [items, lookupRate]);
+  }, [items, lookupRate, nextPricingVersion]);
 
   // ── Client search ──
   const searchClients = useCallback(async (term: string) => {
@@ -335,10 +376,10 @@ export default function ManualOrcamentoPage() {
       ]);
       setProductSearch('');
       setProductResults([]);
-    } catch (err) {
+    } catch {
       // An unavailable lookup must not create a zero-rate line. The user can
       // retry after pricing is configured while the cart remains consistent.
-      setError(err instanceof Error ? err.message : 'Preço indisponível para este produto.');
+      setError('Preço indisponível para este produto.');
     } finally {
       setAddingSku(null);
     }
@@ -353,36 +394,19 @@ export default function ManualOrcamentoPage() {
     setItems(prev => prev.map(item => (item._key === _key ? { ...item, qty } : item)));
     if (current._rateManual) return;
 
+    const requestVersion = nextPricingVersion(_key);
+    const requestedSku = current.sku;
     setPricingRows(prev => new Set(prev).add(_key));
     try {
-      const rate = await lookupRate(current.sku, qty, urgente);
-      setItems(prev => prev.map(item => (item._key === _key ? { ...item, rate } : item)));
-    } catch {
-      // mantém preço atual
-    } finally {
-      setPricingRows(prev => {
-        const next = new Set(prev);
-        next.delete(_key);
-        return next;
-      });
-    }
-  }, [items, lookupRate, urgente]);
-
-  const updateItemRate = useCallback((_key: string, value: string | number) => {
-    const rate = Math.max(0, toNumber(value, 0));
-    setItems(prev => prev.map(item => (
-      item._key === _key ? { ...item, rate, _rateManual: true } : item
-    )));
-  }, []);
-
-  const resetItemRate = useCallback(async (_key: string) => {
-    const current = items.find(item => item._key === _key);
-    if (!current) return;
-    setPricingRows(prev => new Set(prev).add(_key));
-    try {
-      const rate = await lookupRate(current.sku, current.qty, urgente);
+      const rate = await lookupRate(requestedSku, qty, urgente);
       setItems(prev => prev.map(item => (
-        item._key === _key ? { ...item, rate, _rateManual: false } : item
+        item._key === _key &&
+        pricingVersionsRef.current[_key] === requestVersion &&
+        item.sku === requestedSku &&
+        item.qty === qty &&
+        !item._rateManual
+          ? { ...item, rate }
+          : item
       )));
     } catch {
       // mantém preço atual
@@ -393,7 +417,43 @@ export default function ManualOrcamentoPage() {
         return next;
       });
     }
-  }, [items, lookupRate, urgente]);
+  }, [items, lookupRate, nextPricingVersion, urgente]);
+
+  const updateItemRate = useCallback((_key: string, value: string | number) => {
+    nextPricingVersion(_key);
+    const rate = Math.max(0, toNumber(value, 0));
+    setItems(prev => prev.map(item => (
+      item._key === _key ? { ...item, rate, _rateManual: true } : item
+    )));
+  }, [nextPricingVersion]);
+
+  const resetItemRate = useCallback(async (_key: string) => {
+    const current = items.find(item => item._key === _key);
+    if (!current) return;
+    const requestVersion = nextPricingVersion(_key);
+    const requestedSku = current.sku;
+    const requestedQty = current.qty;
+    setPricingRows(prev => new Set(prev).add(_key));
+    try {
+      const rate = await lookupRate(requestedSku, requestedQty, urgente);
+      setItems(prev => prev.map(item => (
+        item._key === _key &&
+        pricingVersionsRef.current[_key] === requestVersion &&
+        item.sku === requestedSku &&
+        item.qty === requestedQty
+          ? { ...item, rate, _rateManual: false }
+          : item
+      )));
+    } catch {
+      // mantém preço atual
+    } finally {
+      setPricingRows(prev => {
+        const next = new Set(prev);
+        next.delete(_key);
+        return next;
+      });
+    }
+  }, [items, lookupRate, nextPricingVersion, urgente]);
 
   const removeItem = useCallback((_key: string) => {
     setItems(prev => prev.filter(item => item._key !== _key));
@@ -460,11 +520,11 @@ export default function ManualOrcamentoPage() {
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
     const { nome } = getClientInfo();
-    if (!nome) { alert('Informe o nome do cliente.'); return; }
-    if (!leadSource) { alert('Selecione a origem antes de criar o orçamento.'); return; }
-    if (!isValidLeadSource(leadSource)) { alert('Origem selecionada não é válida.'); return; }
-    if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido. Corrija ou deixe em branco.'); return; }
-    if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
+    if (!nome) { toast('Informe o nome do cliente.', 'error'); return; }
+    if (!leadSource) { toast('Selecione a origem antes de criar o orçamento.', 'error'); return; }
+    if (!isValidLeadSource(leadSource)) { toast('Origem selecionada não é válida.', 'error'); return; }
+    if (cnpj && !isValidCnpj(cnpj)) { toast('CNPJ informado é inválido. Corrija ou deixe em branco.', 'error'); return; }
+    if (items.length === 0) { toast('Adicione ao menos um produto.', 'error'); return; }
 
     setSubmitting(true);
     setError(null);
@@ -474,19 +534,18 @@ export default function ManualOrcamentoPage() {
       const res = await apiPost<OrcamentoResponse>('/orcamento', buildManualPayload());
       setResult(res);
       clearManualDraft();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao criar orçamento.';
-      setError(message);
+    } catch {
+      setError('Não foi possível criar o orçamento. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
-  }, [buildManualPayload, getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj]);
+  }, [buildManualPayload, cnpj, getClientInfo, items, leadSource, toast]);
 
   const handlePreview = useCallback(() => {
     const { nome } = getClientInfo();
-    if (!nome) { alert('Informe o nome do cliente.'); return; }
-    if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
-    if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido.'); return; }
+    if (!nome) { toast('Informe o nome do cliente.', 'error'); return; }
+    if (items.length === 0) { toast('Adicione ao menos um produto.', 'error'); return; }
+    if (cnpj && !isValidCnpj(cnpj)) { toast('CNPJ informado é inválido.', 'error'); return; }
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/api/quotation-preview?format=html';
@@ -500,11 +559,11 @@ export default function ManualOrcamentoPage() {
     document.body.append(form);
     form.submit();
     form.remove();
-  }, [buildManualPayload, cnpj, getClientInfo, items.length]);
+  }, [buildManualPayload, cnpj, getClientInfo, items.length, toast]);
 
   const handleSend = useCallback(async () => {
     const { nome } = getClientInfo();
-    if (!nome || items.length === 0) { alert('Informe cliente e ao menos um produto.'); return; }
+    if (!nome || items.length === 0) { toast('Informe cliente e ao menos um produto.', 'error'); return; }
     if (manualSendInFlight.current) return;
     const payload = buildManualPayload();
     const fingerprint = JSON.stringify(payload);
@@ -522,14 +581,15 @@ export default function ManualOrcamentoPage() {
       const concurrencyToken = String(created.concurrency_token || '');
       if (!revisionId || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
       const issue = await issuePersistedDraft(revisionId, concurrencyToken, key);
+      clearManualDraft();
       setResult({ success: true, quotation_id: issue.businessNumber, quotation_name: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision_number: issue.revisionNumber, status: issue.status });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível enviar o orçamento.');
+    } catch {
+      setError('Não foi possível enviar o orçamento. Tente novamente.');
     } finally {
       manualSendInFlight.current = false;
       setSending(false);
     }
-  }, [buildManualPayload, getClientInfo, items.length]);
+  }, [buildManualPayload, getClientInfo, items.length, toast]);
 
   // ── Reset all ──
   const resetForm = useCallback(() => {
@@ -575,7 +635,10 @@ export default function ManualOrcamentoPage() {
     if (draft.prazo) setPrazo(draft.prazo);
     if (draft.observacoes) setObservacoes(draft.observacoes);
     setUrgente(Boolean(draft.urgente));
-    if (draft.templateKey) setTemplateKey(draft.templateKey);
+    if (draft.templateKey) {
+      templateOverrideRef.current = draft.templateKey;
+      setTemplateKey(draft.templateKey);
+    }
   }, []);
 
   const hasFormData = Boolean(
@@ -629,10 +692,31 @@ export default function ManualOrcamentoPage() {
 
   // ── Render ──
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
+    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
+      {!result && (
+        <header className="space-y-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
+              Documento comercial
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-5 text-fg-muted">
+              Preencha os dados do cliente, revise os itens e escolha quando salvar ou enviar.
+            </p>
+          </div>
+          <ol aria-label="Etapas do orçamento" className="flex flex-wrap gap-2 text-xs text-fg-muted">
+            <li className="rounded-sm border border-primary/30 bg-primary/5 px-3 py-1.5 font-medium text-primary">
+              1 · Cliente
+            </li>
+            <li className="rounded-sm border border-line bg-surface px-3 py-1.5">2 · Itens</li>
+            <li className="rounded-sm border border-line bg-surface px-3 py-1.5">3 · Condições e fechamento</li>
+          </ol>
+        </header>
+      )}
+
       {/* ══ Success Result ══ */}
       {result && (
-        <div className="bg-success/10 border border-success/30 rounded-lg p-5 space-y-4">
+        <div className="bg-success/10 border border-success/30 rounded-lg p-5 space-y-4" role="status" aria-live="polite">
           {(() => {
             const businessNumber = result.quotation_name || result.quotation_id || '';
             return (
@@ -673,7 +757,7 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Error ══ */}
       {error && !result && (
-        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3" role="alert">
           <AlertTriangle size={20} className="text-destructive shrink-0" />
           <div>
             <p className="font-medium text-destructive">Erro ao salvar ou enviar orçamento</p>
@@ -687,7 +771,7 @@ export default function ManualOrcamentoPage() {
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
             <div className="space-y-5 min-w-0">
               {/* ══ 1. Cliente ══ */}
-              <section aria-label="Seleção de cliente" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Seleção de cliente" className="rounded-lg border border-line bg-surface p-5 space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
@@ -943,7 +1027,7 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 2. Itens ══ */}
-              <section aria-label="Itens do orçamento" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Itens do orçamento" className="rounded-lg border border-line bg-surface p-5 space-y-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
@@ -1196,7 +1280,7 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 3. Condições ══ */}
-              <section aria-label="Condições do orçamento" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Condições do orçamento" className="rounded-lg border border-line bg-surface p-5 space-y-4">
                 <div>
                   <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
                     <FileText size={18} /> 3. Condições e fechamento
@@ -1231,9 +1315,12 @@ export default function ManualOrcamentoPage() {
                   <div>
                     <label className="text-xs text-fg-muted mb-1 block">Modelo HTML</label>
                     <select
-                      className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg"
+                      className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                       value={templateKey}
-                      onChange={(event) => setTemplateKey(event.target.value)}
+                      onChange={(event) => {
+                        templateOverrideRef.current = event.target.value;
+                        setTemplateKey(event.target.value);
+                      }}
                       disabled={templateLoading || templates.length === 0}
                       aria-label="Modelo HTML"
                     >
@@ -1279,7 +1366,7 @@ export default function ManualOrcamentoPage() {
             </div>
 
             {/* ══ Side Summary ══ */}
-            <aside className="xl:sticky xl:top-0 bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+            <aside className="xl:sticky xl:top-0 rounded-lg border border-line bg-surface p-5 space-y-4" aria-label="Resumo e ações do orçamento">
               <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
                 <Calculator size={17} /> Resumo
               </div>

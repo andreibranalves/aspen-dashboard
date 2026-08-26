@@ -4,11 +4,12 @@ import {
   useCallback,
   useRef,
   type ChangeEvent,
+  type KeyboardEvent,
   type MouseEvent,
 } from 'react';
 import { Search, ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
-import { formatBRL } from '@/lib/formatting/formatters';
+import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
@@ -29,7 +30,12 @@ import {
 } from '@/hooks/useHashQueryState';
 import { Input } from '@/components/ui/input';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
 } from '@/components/ui/table';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -55,11 +61,34 @@ const PERIODS: PeriodOption[] = [
   { value: 'month', label: 'Mês atual' },
 ];
 
-const STATUSES = ['', 'Draft', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
-const STATUS_DISPLAY = ['Todos', 'Rascunho', 'A entregar e faturar', 'A faturar', 'A entregar', 'Concluído', 'Cancelado', 'Fechado'];
+const STATUSES = [
+  '',
+  'Draft',
+  'To Deliver and Bill',
+  'To Bill',
+  'To Deliver',
+  'Completed',
+  'Cancelled',
+  'Closed',
+];
+const STATUS_DISPLAY = [
+  'Todos',
+  'Rascunho',
+  'A entregar e faturar',
+  'A faturar',
+  'A entregar',
+  'Concluído',
+  'Cancelado',
+  'Fechado',
+];
 const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => option.value));
 const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
 const parseSalesOrderLimit = parseHashAllowedInteger([10, 25, 50, 100]);
+
+function formatSalesOrderDate(value: string): string {
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
+}
 
 interface SalesOrdersPageProps {
   navigate: (path: string) => void;
@@ -87,7 +116,13 @@ interface OrdersResponse {
 function projectDashboardSummary(value: unknown): DashboardSummary | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const response = value as Record<string, unknown>;
-  if (response.success !== true || !response.summary || typeof response.summary !== 'object' || Array.isArray(response.summary)) return null;
+  if (
+    response.success !== true ||
+    !response.summary ||
+    typeof response.summary !== 'object' ||
+    Array.isArray(response.summary)
+  )
+    return null;
   const summary = response.summary as Record<string, unknown>;
   const money = (field: unknown): number | null =>
     typeof field === 'number' && Number.isFinite(field) && field >= 0 ? field : null;
@@ -107,9 +142,15 @@ function projectDashboardSummary(value: unknown): DashboardSummary | null {
   const avgTicketDelta = delta(summary.avg_ticket_delta);
   const conversionDelta = delta(summary.conversion_delta);
   if (
-    totalRevenue === null || ordersCount === null || avgTicket === null || openOrders === null ||
-    conversionRate === null
-  ) return null;
+    totalRevenue === null ||
+    ordersCount === null ||
+    avgTicket === null ||
+    openOrders === null ||
+    conversionRate === null ||
+    conversionRate < 0 ||
+    conversionRate > 1
+  )
+    return null;
   return {
     total_revenue: totalRevenue,
     revenue_delta: revenueDelta,
@@ -137,16 +178,21 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState<number>(1);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGenerationRef = useRef(0);
+  const summaryRequestGenerationRef = useRef(0);
 
   const fetchSummary = useCallback(async () => {
+    const requestGeneration = ++summaryRequestGenerationRef.current;
     setSummary(null);
     setSummaryError(null);
     try {
       const response = await apiGet<unknown>('/sales-dashboard?period=30d');
+      if (requestGeneration !== summaryRequestGenerationRef.current) return;
       const projected = projectDashboardSummary(response);
       if (!projected) throw new Error('Resposta inválida ao carregar métricas de vendas.');
       setSummary(projected);
     } catch {
+      if (requestGeneration !== summaryRequestGenerationRef.current) return;
       setSummaryError('Não foi possível carregar as métricas de vendas. Tente novamente.');
     }
   }, []);
@@ -158,6 +204,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
   // ── Fetch orders ────────────────────────────────────────────────────────────
   const fetchOrders = useCallback(async () => {
+    const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -168,6 +215,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       if (status) params.set('status', status);
       if (search) params.set('search', search);
       const data = await apiGet<OrdersResponse>(`/sales-orders?${params}`);
+      if (requestGeneration !== requestGenerationRef.current) return;
       if (!Array.isArray(data.items) || typeof data.has_more !== 'boolean') {
         throw new Error('Resposta inválida ao carregar pedidos.');
       }
@@ -177,10 +225,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       }
       setItems(projectedRows as SalesOrderItem[]);
       setTotalPages(data.has_more ? page + 1 : page);
-    } catch (err) {
-      setError((err as Error).message || 'Erro ao carregar pedidos.');
+    } catch {
+      if (requestGeneration !== requestGenerationRef.current) return;
+      setError('Não foi possível carregar os pedidos. Tente novamente.');
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
     }
   }, [page, limit, period, status, search]);
 
@@ -221,13 +270,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
   // ── Format delivery info ────────────────────────────────────────────────────
   const formatDelivery = (item: SalesOrderItem) => {
-    if (item.delivery_date) {
-      const d = new Date(item.delivery_date);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('pt-BR');
-      }
-      return item.delivery_date;
-    }
+    if (item.delivery_date) return formatSalesOrderDate(item.delivery_date);
     if (item.per_delivered !== undefined && item.per_delivered !== null) {
       return `${item.per_delivered}% entregue`;
     }
@@ -239,6 +282,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     if (item.source_quotation) {
       return (
         <button
+          type="button"
           onClick={(e: MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
             navigate(`/quotations/${encodeURIComponent(item.source_quotation!)}`);
@@ -252,6 +296,15 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     return <span className="text-fg-muted">—</span>;
   };
 
+  const clearFilters = useCallback(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setSearch('');
+    setSearchDraft('');
+    setStatus('');
+    setPeriod('30d');
+    setPage(1);
+  }, []);
+  const hasListFilters = Boolean(search || status || period !== '30d');
   const summaryData = summary;
 
   return (
@@ -259,18 +312,23 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
-        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM — ${{
-          today: 'hoje',
-          '7d': 'últimos 7 dias',
-          '30d': 'últimos 30 dias',
-          '90d': 'últimos 90 dias',
-          month: 'mês atual',
-        }[period] ?? 'período selecionado'}.`}
+        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM — ${
+          {
+            today: 'hoje',
+            '7d': 'últimos 7 dias',
+            '30d': 'últimos 30 dias',
+            '90d': 'últimos 90 dias',
+            month: 'mês atual',
+          }[period] ?? 'período selecionado'
+        }.`}
       />
 
       {/* Summary cards */}
       {summaryError && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-6 text-fg-muted" role="alert">
+        <div
+          className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-6 text-fg-muted"
+          role="alert"
+        >
           <p className="text-sm text-destructive">Erro ao carregar métricas de vendas</p>
           <p className="text-sm">{summaryError}</p>
           <Button variant="outline" onClick={() => void fetchSummary()}>
@@ -285,7 +343,14 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             label="Receita"
             className="flex-1"
             value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-            metadata={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
+            metadata={
+              summaryData.revenue_delta === null ||
+              (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
+                ? undefined
+                : summaryData.revenue_delta === 0
+                  ? 'sem variação vs período anterior'
+                  : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
+            }
           />
           <StatCard
             icon={ShoppingCart}
@@ -298,7 +363,14 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             label="Ticket Médio"
             className="flex-1"
             value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-            metadata={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? undefined : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
+            metadata={
+              summaryData.avg_ticket_delta === null ||
+              (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
+                ? undefined
+                : summaryData.avg_ticket_delta === 0
+                  ? 'sem variação vs período anterior'
+                  : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
+            }
           />
           <StatCard
             icon={Package}
@@ -314,7 +386,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         {/* Period chips */}
         <div className="flex flex-wrap gap-1.5">
           {PERIODS.map((p) => (
-            <FilterChip key={p.value} selected={period === p.value} onClick={() => onPeriodChange(p.value)}>
+            <FilterChip
+              key={p.value}
+              selected={period === p.value}
+              onClick={() => onPeriodChange(p.value)}
+            >
               {p.label}
             </FilterChip>
           ))}
@@ -323,9 +399,19 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         {/* Status select */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-fg-muted whitespace-nowrap">Status</span>
-          <Select aria-labelledby="order-status-label" value={status} onChange={onStatusChange} title="Status do pedido">
+          <span id="order-status-label" className="sr-only">
+            Status do pedido
+          </span>
+          <Select
+            aria-labelledby="order-status-label"
+            value={status}
+            onChange={onStatusChange}
+            title="Status do pedido"
+          >
             {STATUSES.map((s, i) => (
-              <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
+              <option key={s} value={s}>
+                {STATUS_DISPLAY[i]}
+              </option>
             ))}
           </Select>
         </div>
@@ -346,8 +432,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span className="whitespace-nowrap">Itens por página</span>
           <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
-            {[10, 25, 50, 100].map(n => (
-              <option key={n} value={n}>{n}</option>
+            {[10, 25, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
             ))}
           </Select>
         </div>
@@ -372,9 +460,23 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {!loading && !error && items.length === 0 && (
         <EmptyState
           icon={ShoppingCart}
-          title={search ? 'Nenhum pedido encontrado para a busca.' : status ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}
+          title={
+            hasListFilters
+              ? 'Nenhum pedido corresponde aos filtros.'
+              : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'
+          }
+          description={
+            hasListFilters
+              ? 'Revise o período, status ou busca para consultar outros pedidos.'
+              : undefined
+          }
           actions={
             <>
+              {hasListFilters && (
+                <Button variant="outline" onClick={clearFilters}>
+                  Limpar filtros
+                </Button>
+              )}
               <Button asChild>
                 <a href="#/manual">Novo orçamento</a>
               </Button>
@@ -402,15 +504,24 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map(row => (
+              {items.map((row) => (
                 <TableRow
                   key={row.id}
                   className="cursor-pointer bg-surface"
+                  tabIndex={0}
+                  aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
+                  onKeyDown={(event: KeyboardEvent<HTMLTableRowElement>) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    const target = event.target as HTMLElement;
+                    if (target.closest('button, a, input, select')) return;
+                    event.preventDefault();
+                    navigate(`/sales-orders/${encodeURIComponent(row.id)}`);
+                  }}
                 >
                   <TableCell className="font-mono text-sm">{row.id}</TableCell>
                   <TableCell className="whitespace-nowrap text-fg-muted">
-                    {row.date ? new Date(row.date).toLocaleDateString('pt-BR') : '—'}
+                    {row.date ? formatSalesOrderDate(row.date) : '—'}
                   </TableCell>
                   <TableCell>{row.customer_name || 'Cliente não identificado'}</TableCell>
                   <TableCell className="text-right font-mono">
@@ -422,12 +533,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                       label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                     />
                   </TableCell>
-                  <TableCell className="text-sm text-fg-muted">
-                    {formatDelivery(row)}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {formatQuotation(row)}
-                  </TableCell>
+                  <TableCell className="text-sm text-fg-muted">{formatDelivery(row)}</TableCell>
+                  <TableCell className="text-sm">{formatQuotation(row)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -438,11 +545,21 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* ── Mobile Cards (hidden on md+) ── */}
       {!loading && !error && items.length > 0 && (
         <div className="md:hidden space-y-3">
-          {items.map(row => (
+          {items.map((row) => (
             <div
               key={row.id}
               className="bg-surface rounded-lg border border-line shadow-sm p-4 space-y-3 cursor-pointer"
+              tabIndex={0}
+              role="link"
+              aria-label={`Abrir pedido ${row.id}`}
               onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
+              onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                const target = event.target as HTMLElement;
+                if (target.closest('button, a, input, select')) return;
+                event.preventDefault();
+                navigate(`/sales-orders/${encodeURIComponent(row.id)}`);
+              }}
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
@@ -452,29 +569,35 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 />
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-fg truncate">{row.customer_name || 'Cliente não identificado'}</span>
+                <span className="text-fg truncate">
+                  {row.customer_name || 'Cliente não identificado'}
+                </span>
                 <span className="text-fg-muted text-xs">
-                  {row.date ? new Date(row.date).toLocaleDateString('pt-BR') : '—'}
+                  {row.date ? formatSalesOrderDate(row.date) : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-mono font-semibold">{formatBRL(row.grand_total)}</span>
-                <div className="text-xs text-fg-muted">
-                  {formatDelivery(row)}
-                </div>
+                <div className="text-xs text-fg-muted">{formatDelivery(row)}</div>
               </div>
               <div className="flex items-center justify-between text-xs text-fg-muted">
-                <span>Orçamento relacionado: {row.source_quotation ? (
-                  <button
-                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      navigate(`/quotations/${encodeURIComponent(row.source_quotation || '')}`);
-                    }}
-                    className="text-primary hover:underline"
-                  >
-                    {row.source_quotation}
-                  </button>
-                ) : '—'}</span>
+                <span>
+                  Orçamento relacionado:{' '}
+                  {row.source_quotation ? (
+                    <button
+                      type="button"
+                      onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                        e.stopPropagation();
+                        navigate(`/quotations/${encodeURIComponent(row.source_quotation || '')}`);
+                      }}
+                      className="text-primary hover:underline"
+                    >
+                      {row.source_quotation}
+                    </button>
+                  ) : (
+                    '—'
+                  )}
+                </span>
               </div>
             </div>
           ))}
@@ -492,7 +615,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               ‹ Anterior
             </Button>
@@ -503,7 +626,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
+              onClick={() => setPage((p) => p + 1)}
             >
               Próximo ›
             </Button>

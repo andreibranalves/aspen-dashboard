@@ -274,7 +274,7 @@ test('same component double click sends one backend request and failure cleanup 
   });
   await expect.poll(() => sendCount).toBe(1);
   releaseFirst?.();
-  await expect(page.getByText('Falha temporária.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toBeVisible();
   await expect(send).toBeEnabled();
   fail = false;
   await send.click();
