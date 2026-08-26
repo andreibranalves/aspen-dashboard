@@ -77,6 +77,21 @@ const snapshot = {
     subtotal: '110.00',
     total: '122.50',
     createdAt: new Date('2026-07-01T12:00:00.000Z'),
+    sectionsSnapshot: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo de produção', value: '5 dias' },
+        current: { enabled: true, title: 'Prazo de produção', value: '5 dias' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: 'À vista' },
+        current: { enabled: true, title: 'Pagamento', body: '<script>alert(1)</script>' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições Gerais', body: '' },
+        current: { enabled: true, title: 'Condições Gerais', body: '<script>alert(1)</script>' },
+      },
+    },
   },
   items: [
     {
@@ -382,7 +397,7 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
   const standard = renderQuotationTemplate(DEFAULT_QUOTATION_TEMPLATE, model);
   const alternate = renderQuotationTemplate(getQuotationTemplate('minimalista'), model);
   assert.ok(standard.indexOf('Primeiro') < standard.indexOf('Segundo'));
-  assert.match(standard, /À vista/);
+  assert.match(standard, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(standard, /R\$ 110,00/);
   assert.match(standard, /R\$ 12,50/);
   assert.match(standard, /R\$ 122,50/);
@@ -1356,14 +1371,12 @@ test('validateQuotationSource rejects HTML policy violation and AST violation', 
 });
 
 test('factory snapshot → view-model round-trip produces correct secoes', () => {
-  const settings = normalizeQuotationSections(undefined, {
-    pagamento: '50% na aprovação',
-    entrega: '3 dias',
-    observacoes: 'Obs.',
+  const settings = normalizeQuotationSections({
+    prazo_producao: { enabled: true, title: 'Prazo de produção', value: snapshot.revision.prazoProducao },
+    pagamento: { enabled: true, title: 'Pagamento', body: '50% na aprovação' },
+    condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Prazo de entrega:\n3 dias\n\nObservações:\nObs.' },
   });
-  const snap = createQuotationSectionsSnapshot(
-    withQuotationProductionDeadline(settings, snapshot.revision.prazoProducao)
-  );
+  const snap = createQuotationSectionsSnapshot(settings);
   const model = quotationSnapshotViewModel({
     ...snapshot,
     revision: {

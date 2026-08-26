@@ -6,6 +6,10 @@ import test from 'node:test';
 import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
@@ -30,7 +34,9 @@ const RENDERED_EMAIL = {
   text: 'Orçamento ORC-42 - Aspen',
 };
 
-async function withDatabase<T>(callback: (db: AppDatabase) => Promise<T>): Promise<T> {
+async function withDatabase<T>(
+  callback: (db: AppDatabase, fixtures: FixtureRevisionFields) => Promise<T>
+): Promise<T> {
   const client = postgres(TEST_DATABASE_URL!, {
     max: 2,
     prepare: false,
@@ -41,7 +47,8 @@ async function withDatabase<T>(callback: (db: AppDatabase) => Promise<T>): Promi
   const db = drizzle(client, { schema }) as AppDatabase;
   try {
     await migrate(db, { migrationsFolder });
-    return await callback(db);
+    const emailDeliveryFixtures: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
+    return await callback(db, emailDeliveryFixtures);
   } finally {
     await client.end({ timeout: 5 });
   }
@@ -56,7 +63,7 @@ test(
   'quotation email delivery reservations and transitions are idempotent in PostgreSQL',
   { skip: !TEST_DATABASE_URL, concurrency: false },
   async () =>
-    withDatabase(async (db) => {
+    withDatabase(async (db, emailDeliveryFixtures) => {
       const ids = {
         client: randomUUID(),
         quotation: randomUUID(),
@@ -78,6 +85,7 @@ test(
         });
         await db.insert(schema.quoteRevisions).values([
           {
+            ...emailDeliveryFixtures,
             id: ids.firstRevision,
             quotationId: ids.quotation,
             version: 1,
@@ -85,13 +93,13 @@ test(
             issuedAt: NOW,
             validadeDias: 15,
             companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
-            templateHash: 'a'.repeat(64),
             clienteNome: 'Cliente e-mail',
             subtotal: '10.00',
             total: '10.00',
             createdAt: NOW,
           },
           {
+            ...emailDeliveryFixtures,
             id: ids.secondRevision,
             quotationId: ids.quotation,
             version: 2,
@@ -99,7 +107,6 @@ test(
             issuedAt: NOW,
             validadeDias: 15,
             companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
-            templateHash: 'b'.repeat(64),
             clienteNome: 'Cliente e-mail',
             subtotal: '12.00',
             total: '12.00',

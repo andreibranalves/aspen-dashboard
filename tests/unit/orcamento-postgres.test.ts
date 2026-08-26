@@ -218,7 +218,8 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
       .from(quoteRevisions)
       .where(eq(quoteRevisions.id, inlineWithQuoteObservations.revision_id));
     assert.equal(inlineClient?.notes, null);
-    assert.equal(inlineRevision?.observacoes, quoteObservations);
+    const inlineSections = inlineRevision?.sectionsSnapshot as Record<string, any>;
+    assert.equal(inlineSections?.condicoes_gerais.current.body, quoteObservations);
 
     const boundaryCounts = {
       clients: (await db.select().from(clients)).length,

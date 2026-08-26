@@ -100,30 +100,28 @@ test(
         },
       });
 
-      // Migration-created rows can have the empty JSON default alongside legacy mirrors.
+      // After the cutover (#79) quotation_sections is the sole source for the
+      // payment/general-condition bodies; no mirror columns remain.
       await client`
         INSERT INTO app_settings (
-          singleton_id, validade_dias, pagamento, entrega,
-          quotation_sections, frete_padrao, observacoes, template_padrao
+          singleton_id, validade_dias, entrega,
+          quotation_sections, frete_padrao, template_padrao
         ) VALUES (
-          1, 15, ${'Pagamento legado'}, ${'Entrega legada'},
+          1, 15, ${'Entrega legada'},
           ${JSON.stringify({
             schema_version: 1,
             prazo_producao: { enabled: true, title: 'Prazo de produção' },
-            pagamento: { enabled: true, title: 'Pagamento', body: '' },
-            condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+            pagamento: { enabled: true, title: 'Pagamento', body: 'Pagamento da seção' },
+            condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Condição da seção' },
           })}::jsonb,
-          ${'0.00'}, ${'Observações legadas'}, ${'padrao'}
+          ${'0.00'}, ${'padrao'}
         )
       `;
       const migrated = await handler(event('GET'));
       assert.equal(migrated.statusCode, 200);
-      assert.equal(parse(migrated).pagamento, 'Pagamento legado');
+      assert.equal(parse(migrated).pagamento, 'Pagamento da seção');
       assert.equal(parse(migrated).entrega, 'Entrega legada');
-      assert.equal(
-        parse(migrated).observacoes,
-        'Prazo de entrega:\nEntrega legada\n\nObservações:\nObservações legadas'
-      );
+      assert.equal(parse(migrated).observacoes, 'Condição da seção');
 
       const saved = await handler(
         event('PUT', {
@@ -239,9 +237,9 @@ test(
         () =>
           client`
             INSERT INTO app_settings (
-              singleton_id, validade_dias, pagamento, entrega,
-              frete_padrao, observacoes, template_padrao
-            ) VALUES (${2}, ${15}, ${''}, ${''}, ${'0.00'}, ${''}, ${'padrao'})
+              singleton_id, validade_dias, entrega,
+              frete_padrao, template_padrao
+            ) VALUES (${2}, ${15}, ${''}, ${'0.00'}, ${'padrao'})
           `,
         /app_settings_singleton_id_check/
       );

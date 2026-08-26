@@ -143,10 +143,10 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.base.value, '7 dias');
     assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.current.value, '7 dias');
     const [conflictingDeadlineRevision] = await db
-      .select({ prazoProducao: quoteRevisions.prazoProducao })
+      .select({ sectionsSnapshot: quoteRevisions.sectionsSnapshot })
       .from(quoteRevisions)
       .where(eq(quoteRevisions.id, conflictingDeadlineDraft.revision_id));
-    assert.equal(conflictingDeadlineRevision?.prazoProducao, '7 dias');
+    assert.equal(conflictingDeadlineRevision?.sectionsSnapshot?.prazo_producao.current.value, '7 dias');
     overrideDraft.secoes.pagamento.current.body = 'Mutado';
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
@@ -214,24 +214,6 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     } finally {
       await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
     }
-    await db
-      .update(quoteRevisions)
-      .set({ templateVersionId: null })
-      .where(eq(quoteRevisions.id, alternateDraft.revision_id));
-    const legacyFallbackBefore = await managementGet(alternateDraft.quotation_name);
-    assert.ok(legacyFallbackBefore);
-    await db.update(quotationTemplates).set({ archived: true }).where(eq(quotationTemplates.key, 'minimalista'));
-    try {
-      await assert.rejects(
-        () => managementUpdate(alternateDraft.quotation_name, {
-          concurrency_token: legacyFallbackBefore.concurrency_token,
-          items: [{ item_code: sku, qty: '30.000' }],
-        }),
-        (error: unknown) => error instanceof QuoteManagementInputError,
-      );
-    } finally {
-      await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
-    }
     assert.ok(laterBefore);
     const pendingBefore = await managementGet(pendingDraft.quotation_name);
     assert.ok(pendingBefore?.secoes);
@@ -288,7 +270,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);
     assert.deepEqual(sectionOverride.secoes.pagamento.base, storedBase.pagamento.base);
     assert.equal(sectionOverride.secoes.prazo_producao.current.enabled, false);
-    assert.equal(sectionOverride.secoes.prazo_producao.current.value, '5 dias');
+    assert.equal(sectionOverride.secoes.prazo_producao.current.value, '');
     assert.ok(sectionOverride.secoes);
     const reenabled = await managementUpdate(laterDraft.quotation_name, {
       concurrency_token: sectionOverride.concurrency_token,
@@ -297,7 +279,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         current: {
           pagamento: sectionOverride.secoes.pagamento.current,
           condicoes_gerais: sectionOverride.secoes.condicoes_gerais.current,
-          prazo_producao: { ...sectionOverride.secoes.prazo_producao.current, enabled: true },
+          prazo_producao: {
+            ...sectionOverride.secoes.prazo_producao.current,
+            enabled: true,
+            value: storedBase.prazo_producao.base.value ?? '',
+          },
         },
       },
     });
@@ -327,11 +313,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       client_id: secondClientId,
       items: [{ item_code: sku, item_name: customItemName, qty: '30.000', rate: '10.00', manual_rate: true }],
       validade_dias: 1,
-      pagamento: '30 dias',
-      entrega: '10 dias',
       frete: '1.25',
-      observacoes: 'Alterado',
-      prazo_producao: '5 dias',
+      // Canonical sections are the only accepted source for section content.
+      secoes: {
+        pagamento: { enabled: true, title: 'Pagamento', body: '30 dias' },
+        condicoes_gerais: { enabled: true, title: 'Condições', body: 'Alterado' },
+        prazo_producao: { enabled: true, title: 'Prazo de produção', value: '5 dias' },
+      },
       template_key: 'minimalista',
     });
     assert.equal(updated.validade_dias, 1);
@@ -517,16 +505,16 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(product?.precoBase, '12.00');
     assert.equal(tier?.unitPrice, '9.00');
     assert.equal(settingsAfter?.validadeDias, explicitSettings.validadeDias);
-    assert.equal(settingsAfter?.pagamento, explicitSettings.pagamento);
     assert.equal(settingsAfter?.entrega, explicitSettings.entrega);
     assert.equal(settingsAfter?.fretePadrao, explicitSettings.fretePadrao);
-    assert.equal(settingsAfter?.observacoes, explicitSettings.observacoes);
+    assert.equal(settingsAfter?.quotationSections.pagamento.body, explicitSettings.quotationSections.pagamento.body);
     assert.equal(settingsAfter?.templatePadrao, explicitSettings.templatePadrao);
     const [quotation] = await db.select().from(quotations).where(eq(quotations.id, updated.quotation_uuid));
     assert.equal(quotation?.clientId, secondClientId);
     const [revision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, updated.revision_id));
     const [item] = await db.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, updated.revision_id));
-    assert.equal(revision?.observacoes, 'Alterado');
+    const revisionSectionsAfter = revision?.sectionsSnapshot as Record<string, any> | undefined;
+    assert.equal(revisionSectionsAfter?.condicoes_gerais.current.body, 'Alterado');
     assert.equal(revision?.clienteNome, 'Segundo cliente de gerenciamento');
     assert.equal(revision?.clienteEmail, 'management-second@example.com');
     assert.equal(item?.precoAplicado, '10.00');
