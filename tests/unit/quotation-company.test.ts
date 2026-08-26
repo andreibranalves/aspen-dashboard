@@ -92,15 +92,10 @@ test('official catalog publishes five v2 templates while retaining immutable v1 
   }
 });
 
-test('every official v2 template renders customized company and commercial sections safely', () => {
+test('every official v2 template renders commercial sections without company payment details', () => {
   for (const template of QUOTATION_TEMPLATES) {
     const html = renderQuotationTemplate(template, model());
-    if (['branded', 'comparativo', 'simples'].includes(template.key)) {
-      assert.doesNotMatch(html, /Empresa Nova LTDA|12\.345\.678\/0001-95/);
-    } else {
-      assert.match(html, /Empresa Nova LTDA/);
-    }
-    assert.match(html, /Banco Novo/);
+    assert.doesNotMatch(html, /Empresa Nova LTDA|12\.345\.678\/0001-95|Banco Novo|pix@empresa\.example/);
     assert.match(html, /Prazo customizado/);
     assert.match(html, /Pagamento customizado/);
     assert.match(html, /Condições customizadas/);
@@ -111,7 +106,7 @@ test('every official v2 template renders customized company and commercial secti
   }
 });
 
-test('disabled sections hide titles, content and payment company details in every official template', () => {
+test('disabled sections hide titles and content in every official template', () => {
   const cases = [
     [
       'prazo',
@@ -121,7 +116,7 @@ test('disabled sections hide titles, content and payment company details in ever
     [
       'pagamento',
       { prazo: true, pagamento: false, condicoes: true },
-      /Pagamento customizado|Banco Novo|Pix em duas parcelas/,
+      /Pagamento customizado|Pix em duas parcelas/,
     ],
     [
       'condicoes',
@@ -131,18 +126,14 @@ test('disabled sections hide titles, content and payment company details in ever
     [
       'todas',
       { prazo: false, pagamento: false, condicoes: false },
-      /Prazo customizado|Entrega em 20 dias|Pagamento customizado|Banco Novo|Pix em duas parcelas|Condições customizadas|Condição A|Condição B/,
+      /Prazo customizado|Entrega em 20 dias|Pagamento customizado|Pix em duas parcelas|Condições customizadas|Condição A|Condição B/,
     ],
   ] as const;
   for (const template of QUOTATION_TEMPLATES) {
     for (const [, visibility, hidden] of cases) {
       const html = renderQuotationTemplate(template, model(visibility));
       assert.doesNotMatch(html, hidden);
-      if (['branded', 'comparativo', 'simples'].includes(template.key)) {
-        assert.doesNotMatch(html, /Empresa Nova LTDA|12\.345\.678\/0001-95/);
-      } else {
-        assert.match(html, /Empresa Nova LTDA/);
-      }
+      assert.doesNotMatch(html, /Empresa Nova LTDA|12\.345\.678\/0001-95|Banco Novo|pix@empresa\.example/);
     }
   }
 });
