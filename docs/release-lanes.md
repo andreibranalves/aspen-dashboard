@@ -1,76 +1,53 @@
-# Release lanes
+# Classificação de risco: FAST, CRITICAL e RELEASE
 
-Escolha a lane pelo maior risco presente na mudança.
+Escolha a classificação pela consequência possível da mudança, não pelo domínio.
+`FAST` é o padrão; promova apenas com critério objetivo (ver `AGENTS.md`).
 
-Quando houver dúvida entre duas lanes, use a mais alta.
+## FAST
 
-## LOW
-
-Use para CSS, copy, ícones, formatação e componentes puramente visuais.
+Padrão para mudanças reversíveis: UI, copy, navegação, filtros, CRUD comum,
+refactors locais, cálculos em rascunho experimental.
 
 ```text
-CI
+CI (rede de segurança assíncrona)
 -> Preview
 -> merge
 -> Production
 ```
 
-Checks locais recomendados:
+Checks locais:
 
 ```bash
 npm run verify:fast
-npm run test:e2e:smoke
+npm run test:unit:focused -- tests/unit/<arquivo>.test.ts   # quando houver comportamento relevante
+npx playwright test <spec da jornada alterada>              # quando houver jornada de UI afetada
 ```
 
-LOW não pode alterar banco, autenticação, permissões, integrações externas ou envio WhatsApp.
+Mudança puramente visual ou de copy não exige teste automatizado novo.
+FAST não pode alterar banco de forma destrutiva, autenticação, permissões,
+integrações externas nem envio real de WhatsApp/e-mail.
 
-## MEDIUM
+## CRITICAL
 
-Use para novos endpoints, regras de negócio, filtros, CRM e alterações comuns em orçamentos.
+Use quando a mudança puder causar: perda destrutiva ou irreversível de dados;
+envio real de WhatsApp/e-mail/documento ao cliente; valores oficialmente
+emitidos; alterações de autenticação, autorização ou isolamento de tenant;
+invariantes de idempotência, locks ou concorrência.
 
-```text
-CI
--> unit
--> E2E do domínio
--> Preview
--> Production
-```
-
-Checks mínimos:
-
-```bash
-npm run verify:fast
-npx playwright test --grep "@crm|@quotations|@products|@smoke"
-```
-
-Escolha a tag do domínio afetado.
-
-Não use esta lane quando houver escrita externa, migration, autenticação, permissão ou mudança destrutiva.
-
-## HIGH
-
-Use para migrations, autenticação, envio WhatsApp, integrações externas, permissões e mudanças destrutivas.
-
-Consulte o [runbook Migrations PostgreSQL](./database-migrations.md).
+Consulte o [runbook Migrations PostgreSQL](./database-migrations.md) para migrations.
 
 ```text
 CI (checks estáticos + PostgreSQL descartável)
--> todos unit
--> repositories contra banco efêmero
--> build
--> check:db-migrations
-
-Fluxo HIGH controlado e opt-in (fora do CI padrão)
--> staging DB migration
--> full E2E
--> backup
+-> testes das invariantes e caminhos de erro
+-> repositories contra banco efêmero (quando persistência for afetada)
+-> E2E das jornadas afetadas
+-> revisão independente de lógica
 -> Preview
 -> aprovação explícita
 -> Production
--> read-only canary
 ```
 
-Checks locais e controlados:
+Fluxo de staging controlado e opt-in (fora do CI padrão), quando houver migration:
 
 ```bash
 npm run verify:full
@@ -82,27 +59,18 @@ npm run test:e2e:staging
 ```
 
 A CI executa checks estáticos e um apply somente no PostgreSQL descartável do job;
-não executa migration em staging/produção nem E2E staging.
-
-O fluxo de staging, incluindo preflight, apply e E2E staging, é controlado e opt-in, fora do CI padrão.
+alvos operacionais continuam fora do CI padrão.
 
 `STAGING_DATABASE_URL` e `STAGING_PG_SERVICE` precisam representar o mesmo staging.
+A identidade staging não pode igualar produção. Stdout redigido fica fora do checkout.
 
-A identidade staging não pode igualar produção.
-
-Stdout redigido fica fora do checkout.
-
-Qualquer falha interrompe a lane.
-
-Antes da migration, `node scripts/cutover-env-status.mjs` deve retornar sucesso.
-
-A configuração do Drizzle prioriza `TEST_DATABASE_URL`, por isso o comando copia o alvo staging para `TEST_DATABASE_URL` e esvazia `DATABASE_URL`.
-
-Depois da migration bem-sucedida, execute `npm run test:e2e:staging` antes de Preview.
-
+Qualquer falha interrompe o fluxo. Antes da migration,
+`node scripts/cutover-env-status.mjs` deve retornar sucesso.
+A configuração do Drizzle prioriza `TEST_DATABASE_URL`, por isso o comando copia o
+alvo staging para `TEST_DATABASE_URL` e esvazia `DATABASE_URL`.
 Nunca execute `npm run db:migrate` usando somente `DATABASE_URL` ou apontando para produção.
-
-Execute os comandos operacionais somente com o ambiente aprovado e sem imprimir credenciais, dados de produção ou PII.
+Execute os comandos operacionais somente com o ambiente aprovado e sem imprimir
+credenciais, dados de produção ou PII.
 
 Migrations não executam no startup ou implicitamente durante o build. O único apply
 no CI é a exceção explícita do banco descartável do job `postgres`; alvos operacionais
@@ -110,10 +78,52 @@ continuam fora do CI padrão.
 
 Mudanças destrutivas seguem expand, deploy compatível, migração de dados e contract.
 
+## RELEASE (gate periódico)
+
+RELEASE não é tipo de issue: é um gate aplicado ao conjunto integrado antes de
+deploy importante, milestone concluído, epic grande fechado ou candidata a beta.
+
+```bash
+npm run verify:full          # FAST + corpus unitário completo + build + E2E completo
+npm run test:postgres        # PostgreSQL real, quando aplicável
+```
+
+Inclui também: smoke manual das jornadas principais, revisão de migrations pendentes
+e regressões conhecidas documentadas.
+
+## Ciclo de vida das branches de Preview
+
+A integração Vercel + Neon cria uma branch PostgreSQL `preview/<git-branch>` para cada nova branch implantada em Preview. O projeto Neon Free comporta 10 branches; `main` ocupa uma delas.
+
+Mantenha somente:
+
+- `main`;
+- branches de Preview vinculadas a PRs abertos;
+- branches usadas por uma validação de release em andamento.
+
+Uma branch de Preview torna-se candidata a remoção quando o PR correspondente foi merged ou fechado e nenhuma validação ativa depende dela. A branch Git e deployments históricos não justificam reter indefinidamente o banco de Preview.
+
+Faça a limpeza:
+
+1. após merge ou fechamento de PR;
+2. antes de abrir ou reimplantar Previews quando houver 8 ou mais branches Neon;
+3. semanalmente, como auditoria de segurança.
+
+Antes de remover qualquer branch:
+
+1. liste as branches Neon sem alterar recursos;
+2. compare cada `preview/*` com os PRs abertos no GitHub;
+3. preserve `main` e qualquer release em validação;
+4. apresente a lista de candidatas e obtenha aprovação humana explícita;
+5. remova somente as candidatas aprovadas e confirme a capacidade liberada.
+
+A remoção é destrutiva para o banco daquela Preview. Nunca automatize a exclusão sem a comparação com PRs abertos e nunca remova `main`.
+
 ## Regras comuns
 
-- CI padrão executa lint, tipos, unitários, repositories contra banco descartável e build.
-- E2E de staging não executa no CI padrão.
-- Writes externos, WhatsApp, auth, migrations e mudanças destrutivas nunca são LOW.
-- Preview não substitui aprovação da lane HIGH.
+- CI padrão executa lint, tipos, corpus unitário completo, repositories contra banco descartável, build e smoke E2E como rede de segurança assíncrona.
+- E2E completo de staging não executa no CI padrão.
+- Writes externos reais, auth, migrations e mudanças destrutivas nunca são FAST.
+- Falha já existente no baseline exige reprodução na base e issue própria antes de ser ignorada.
+- Preview não substitui aprovação de fluxos CRITICAL.
 - O documento orienta o processo, mas não automatiza deploy, backup, aprovação, migration ou canary.
