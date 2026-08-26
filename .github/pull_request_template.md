@@ -1,6 +1,10 @@
 ## Ticket
 
-Closes #
+Ref #
+
+## Risk level
+
+FAST / CRITICAL
 
 ## Scope
 
@@ -10,11 +14,18 @@ Closes #
 
 -
 
-## Verification
+## Validação realizada
 
-- [ ] Relevant local checks
-- [ ] Relevant tests
-- [ ] CI green
+- [ ] lint
+- [ ] typecheck
+- [ ] testes focados
+- [ ] verify:fast
+
+### Somente quando aplicável (CRITICAL / RELEASE)
+
+- [ ] PostgreSQL descartável/real
+- [ ] E2E das jornadas afetadas
+- [ ] verify:full
 
 ## Risks
 
