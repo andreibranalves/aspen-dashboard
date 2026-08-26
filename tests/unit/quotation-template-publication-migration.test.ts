@@ -37,6 +37,17 @@ function sourceHash(source: string): string {
   return createHash('sha256').update(source, 'utf8').digest('hex');
 }
 
+// 0025 is immutable: its v2 rows are intentionally tested against the
+// hashes published by that migration, not the newer visual versions in the
+// runtime catalog.
+const OFFICIAL_V2_MIGRATION_HASHES = new Map([
+  ['padrao', 'ac72b75b66ac7e190d80ce9fda24bd77188d39394ffac18a3d756f2ef0b4c38a'],
+  ['minimalista', 'bc2dbc33ff7792ff90c96bea293e6855560bdd330c0b46a41f0d61b7cc7aab47'],
+  ['branded', '9cdd38836f5fb0ef8d56bee43abbb4da4506d84b2ac364ff4f7d7fb7f09cd66c'],
+  ['comparativo', 'abac432292ccc6a6818c12a0995a8367e0d7a1f72f49523ea6e0793f210e5b24'],
+  ['simples', 'df30255bfb82aa561b1cf690ca2462c4fbd981f69661846fb2477560ff91bc42'],
+]);
+
 function schemaName(suffix: string): string {
   return `quotation_template_publication_${process.pid}_${Date.now()}_${suffix}`;
 }
@@ -172,7 +183,7 @@ test(
           );
           for (const row of freshRows) {
             const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === row.key);
-            assert.equal(row.source_hash, template && sourceHash(template.source));
+            assert.equal(row.source_hash, OFFICIAL_V2_MIGRATION_HASHES.get(template?.key));
           }
 
           await tx.unsafe(`SET LOCAL search_path TO "${upgradedName}"`);
@@ -192,7 +203,7 @@ test(
               rows.map((row) => row.contract_version),
               [1, 2]
             );
-            assert.equal(rows[1]?.source_hash, sourceHash(template.source));
+            assert.equal(rows[1]?.source_hash, OFFICIAL_V2_MIGRATION_HASHES.get(template.key));
           }
           const [snapshotColumn] = await tx<
             {

@@ -1015,6 +1015,46 @@ test('deterministic preview fixture renders the standard template with every nes
   assert.match(rendered, /Entrega:/);
 });
 
+test('restored v2 templates keep the Aspen visual shell with dynamic company data', () => {
+  const model = {
+    ...QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
+    company: {
+      schema_version: 1,
+      identity: { legal_name: 'EMPRESA VISUAL LTDA', document: '11.222.333/0001-81' },
+      banking: {
+        bank_name: 'Banco Dinâmico',
+        bank_code: '999',
+        branch: '1234',
+        account: '56789-0',
+        pix_key: 'financeiro@example.com',
+      },
+      contacts: {
+        website: 'https://www.empresa-visual.example/propostas',
+        phone: '(11) 98888-7777',
+        email: 'contato@empresa-visual.example',
+        instagram: 'https://www.instagram.com/empresa_visual',
+      },
+    },
+  };
+
+  for (const key of ['branded', 'simples', 'comparativo']) {
+    const template = getQuotationTemplate(key);
+    assert.ok(template);
+    const html = renderQuotationTemplate(template, model);
+    assert.match(template.source, /viewBox="0 0 349\.14 87\.82"/);
+    assert.match(template.source, /quotation-summary-total/);
+    assert.match(template.source, /secoes\.prazo_producao/);
+    assert.match(template.source, /secoes\.pagamento/);
+    assert.match(template.source, /secoes\.condicoes_gerais/);
+    assert.doesNotMatch(template.source, /15 a 20 dias úteis|Formas de pagamento: PIX/);
+    assert.match(html, /EMPRESA VISUAL LTDA/);
+    assert.match(html, /Banco Dinâmico/);
+    assert.match(html, /empresa-visual\.example\/propostas/);
+    assert.match(html, /@empresa_visual/);
+    assert.match(html, />Total<[^]*R\$ 10,00/);
+  }
+});
+
 test('comparativo template is registered and renders the saved matrix', () => {
   const template = getQuotationTemplate('comparativo');
   assert.ok(template);

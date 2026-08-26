@@ -1,98 +1,9 @@
-import { createHash } from 'node:crypto';
+-- migration-risk: additive
+-- Publishes restored Aspen visual shells as new immutable v2 template versions.
+-- Existing quotation revisions keep their previously selected template_version_id.
 
-import Handlebars, { type TemplateDelegate } from 'handlebars';
-import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from './quotation-company.js';
-
-/**
- * Repository-versioned quote templates.  Keep the source strings in this
- * module so a deployment always renders with the same source that produced a
- * persisted template hash.  Template interpolation deliberately uses normal
- * Handlebars escaping; templates must never use triple-stash expressions.
- */
-const PADRAO_SOURCE = `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <title>Orçamento {{quote_number}}</title>
-  <style>
-    :root { color-scheme: light; font-family: Arial, sans-serif; color: #172033; }
-    body { margin: 0; padding: 32px; background: #fff; }
-    .header { display: flex; justify-content: space-between; gap: 24px; border-bottom: 2px solid #172033; padding-bottom: 18px; }
-    h1 { margin: 0; font-size: 26px; }
-    .muted { color: #5c667a; font-size: 13px; }
-    .section { margin-top: 24px; }
-    .client { border: 1px solid #d9deea; border-radius: 8px; padding: 14px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { padding: 9px 8px; border-bottom: 1px solid #e5e8ef; text-align: left; }
-    th { background: #f4f6fa; font-size: 12px; text-transform: uppercase; }
-    .number { text-align: right; white-space: nowrap; }
-    .totals { margin-left: auto; width: min(360px, 100%); margin-top: 16px; }
-    .totals div { display: flex; justify-content: space-between; padding: 4px 0; }
-    .grand-total { border-top: 2px solid #172033; font-size: 18px; font-weight: 700; padding-top: 8px !important; }
-    .terms { white-space: pre-line; }
-  </style>
-</head>
-<body>
-  <header class="header">
-    <div><h1>Orçamento</h1><div class="muted">{{quote_number}} · Revisão {{revision}}</div></div>
-    <div class="muted">Emitido em {{display.quote_date}}<br>Válido até {{display.validity_date}}</div>
-  </header>
-  <section class="section client">
-    <strong>Cliente</strong><br>
-    {{client.name}}<br>
-    {{#if client.document}}Documento: {{client.document}}<br>{{/if}}
-    {{#if client.email}}E-mail: {{client.email}}<br>{{/if}}
-    {{#if client.phone}}Telefone: {{client.phone}}<br>{{/if}}
-    {{#if client.address}}{{client.address}}{{/if}}
-  </section>
-  <section class="section">
-    <strong>Itens</strong>
-    <table><thead><tr><th>SKU</th><th>Produto</th><th>Qtd.</th><th>Un.</th><th class="number">Unitário</th><th class="number">Total</th></tr></thead><tbody>
-      {{#each items}}<tr><td>{{sku}}</td><td>{{name}}{{#if description}}<div class="muted">{{description}}</div>{{/if}}</td><td>{{quantity}}</td><td>{{unit}}</td><td class="number">{{display.unit_price}}</td><td class="number">{{display.line_total}}</td></tr>{{/each}}
-    </tbody></table>
-    <div class="totals"><div><span>Subtotal</span><span>{{display.subtotal}}</span></div><div><span>Frete</span><span>{{display.freight}}</span></div><div class="grand-total"><span>Total</span><span>{{display.total}}</span></div></div>
-  </section>
-  <section class="section terms">
-    {{#if terms.pagamento}}<strong>Pagamento:</strong> {{terms.pagamento}}<br>{{/if}}
-    {{#if terms.entrega}}<strong>Entrega:</strong> {{terms.entrega}}<br>{{/if}}
-    {{#if terms.production_deadline}}<strong>Prazo de produção:</strong> {{terms.production_deadline}}<br>{{/if}}
-    {{#if terms.observations}}<strong>Observações:</strong> {{terms.observations}}{{/if}}
-  </section>
-</body>
-</html>`;
-
-const MINIMAL_SOURCE = `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <title>{{quote_number}} — {{client.name}}</title>
-  <style>
-    body { margin: 0; padding: 28px; font: 14px/1.5 Georgia, serif; color: #222; }
-    header { display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding-bottom: 12px; }
-    h1 { margin: 0; font-size: 23px; font-weight: 500; }
-    .meta { text-align: right; font-size: 12px; }
-    h2 { font-size: 15px; margin: 22px 0 5px; }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { border-bottom: 1px solid #ddd; padding: 7px 3px; text-align: left; }
-    th { font-size: 11px; text-transform: uppercase; }
-    .right { text-align: right; }
-    .summary { margin: 14px 0 0 auto; width: 260px; }
-    .summary p { display: flex; justify-content: space-between; margin: 4px 0; }
-    .summary .total { border-top: 1px solid #222; padding-top: 7px; font-size: 17px; }
-    .terms { margin-top: 24px; white-space: pre-line; }
-  </style>
-</head>
-<body>
-  <header><h1>Proposta comercial</h1><div class="meta">{{quote_number}} · Rev. {{revision}}<br>{{display.quote_date}} — válida até {{display.validity_date}}</div></header>
-  <h2>Cliente</h2><div>{{client.name}}{{#if client.document}} · {{client.document}}{{/if}}{{#if client.email}} · {{client.email}}{{/if}}</div>
-  <h2>Itens</h2>
-  <table><thead><tr><th>Descrição</th><th>Qtd.</th><th>Un.</th><th class="right">Preço</th><th class="right">Total</th></tr></thead><tbody>{{#each items}}<tr><td>{{name}}</td><td>{{quantity}}</td><td>{{unit}}</td><td class="right">{{display.unit_price}}</td><td class="right">{{display.line_total}}</td></tr>{{/each}}</tbody></table>
-  <div class="summary"><p><span>Subtotal</span><span>{{display.subtotal}}</span></p><p><span>Frete</span><span>{{display.freight}}</span></p><p class="total"><strong>Total</strong><strong>{{display.total}}</strong></p></div>
-  <div class="terms">{{#if terms.pagamento}}Pagamento: {{terms.pagamento}}\n{{/if}}{{#if terms.entrega}}Entrega: {{terms.entrega}}\n{{/if}}{{#if terms.production_deadline}}Prazo de produção: {{terms.production_deadline}}\n{{/if}}{{#if terms.observations}}Observações: {{terms.observations}}{{/if}}</div>
-</body>
-</html>`;
-
-const BRANDED_SOURCE = `<!doctype html>
+INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
+SELECT 'f3000000-0000-4000-8000-000000000003'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_branded_visual_v3$<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
@@ -161,7 +72,17 @@ const BRANDED_SOURCE = `<!doctype html>
     .contact-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #ffffff; }
     .contact-icon { width: 18px; height: 18px; background: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .contact-icon svg { width: 10px; height: 10px; fill: #1e3159; }
-  </style>
+  
+  .quotation-summary { width: 280px; margin: 20px 0 28px auto; font-variant-numeric: tabular-nums; }
+  .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
+  .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
+  .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
+  .company-data { margin-top: 10px; }
+  .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
+  .contact-item span { color: #ffffff; }
+</style>
 </head>
 <body>
 <div class="page">
@@ -230,25 +151,41 @@ const BRANDED_SOURCE = `<!doctype html>
         </tbody>
       </table>
     </div>
+    <div class="quotation-summary">
+      <div class="quotation-summary-row"><span>Subtotal</span><span>{{display.subtotal}}</span></div>
+      <div class="quotation-summary-row"><span>Frete</span><span>{{display.freight}}</span></div>
+      <div class="quotation-summary-row quotation-summary-total"><span>Total</span><span>{{display.total}}</span></div>
+    </div>
+    <div class="company-identity">
+      <p><strong>{{company.identity.legal_name}}</strong></p>
+      <p>CNPJ: {{company.identity.document}}</p>
+    </div>
     <div class="info-grid">
+      {{#if secoes.prazo_producao.enabled}}
       <div class="info-block">
-        <div class="section-label">Prazo de produ&ccedil;&atilde;o:</div>
-        {{#if terms.production_deadline}}<p>{{terms.production_deadline}}</p>{{else}}<p>15 a 20 dias &uacute;teis ap&oacute;s confirma&ccedil;&atilde;o do pagamento e aprova&ccedil;&atilde;o da arte.</p>{{/if}}
+        <div class="section-label">{{secoes.prazo_producao.title}}</div>
+        <p class="section-copy">{{secoes.prazo_producao.value}}</p>
       </div>
+      {{/if}}
+      {{#if secoes.pagamento.enabled}}
       <div class="info-block">
-        <div class="section-label">Dados para pagamento:</div>
-        <p><strong>ASPEN COM&Eacute;RCIO DE ARTIGOS PERSONALIZADOS LTDA</strong></p>
-        <p><strong>CNPJ:</strong> 55.458.072/0001-79</p>
-        <p><strong>Banco:</strong> Stone Pagamentos S.A. (197)</p>
-        <p><strong>Ag&ecirc;ncia:</strong> 0001 &nbsp;|&nbsp; <strong>Conta:</strong> 35207618-6</p>
-        <p><strong>Pix:</strong> 55.458.072/0001-79</p>
+        <div class="section-label">{{secoes.pagamento.title}}</div>
+        <div class="section-copy">{{secoes.pagamento.body_html}}</div>
+        <div class="company-data">
+          {{#if company.banking.bank_name}}<p><strong>Banco:</strong> {{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}
+          {{#if company.banking.branch}}<p><strong>Agência:</strong> {{company.banking.branch}}</p>{{/if}}
+          {{#if company.banking.account}}<p><strong>Conta:</strong> {{company.banking.account}}</p>{{/if}}
+          {{#if company.banking.pix_key}}<p><strong>Pix:</strong> {{company.banking.pix_key}}</p>{{/if}}
+        </div>
       </div>
+      {{/if}}
     </div>
+    {{#if secoes.condicoes_gerais.enabled}}
     <div class="conditions">
-      <div class="section-label">Condi&ccedil;&otilde;es Gerais:</div>
-      <p>Formas de pagamento: PIX, boleto banc&aacute;rio e transfer&ecirc;ncia.</p>
-      <p>Frete: FOB.</p>
+      <div class="section-label">{{secoes.condicoes_gerais.title}}</div>
+      <div class="section-copy">{{secoes.condicoes_gerais.body_html}}</div>
     </div>
+    {{/if}}
   </div>
   <div class="footer">
     <div class="footer-contacts">
@@ -256,77 +193,45 @@ const BRANDED_SOURCE = `<!doctype html>
         <div class="contact-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.84" fill="#ffffff"><path d="M3.36,0h.11c.5,0,1,.12,1.45.35.69.34,1.26.92,1.59,1.61.2.43.31.9.33,1.37v.18c-.02.54-.16,1.07-.41,1.54-.41.76-1.11,1.35-1.93,1.62-.32.11-.65.16-.98.17h-.19c-.54-.02-1.08-.16-1.56-.43-.74-.41-1.32-1.1-1.59-1.91-.11-.33-.17-.68-.18-1.03v-.1c0-.57.16-1.13.44-1.62.36-.65.95-1.17,1.63-1.47.41-.18.85-.27,1.29-.28M2.64.86c-.2.23-.34.51-.45.79.32.15.66.23,1.01.26,0-.48,0-.96,0-1.45-.22.07-.41.22-.56.39M3.64.47c0,.48,0,.96,0,1.44.35-.02.69-.11,1.02-.26-.09-.23-.2-.44-.34-.64-.17-.24-.39-.46-.68-.55M1.45,1.18c.11.09.23.18.35.26.11-.27.25-.52.42-.76-.28.12-.54.29-.77.49M4.62.69c.17.23.31.49.42.76.12-.08.24-.17.35-.27-.23-.2-.49-.37-.77-.49M.44,3.2c.33,0,.67,0,1,0,.02-.45.08-.9.21-1.33-.18-.11-.35-.24-.51-.38-.41.48-.66,1.09-.7,1.71M5.18,1.87c.13.43.19.88.21,1.33.33,0,.67,0,1,0-.04-.63-.29-1.23-.7-1.71-.16.14-.33.27-.51.38M1.88,3.2c.44,0,.88,0,1.32,0v-.85c-.4-.03-.79-.12-1.15-.28-.1.37-.15.75-.17,1.13M3.64,2.35c0,.28,0,.57,0,.85.44,0,.88,0,1.32,0-.02-.38-.07-.76-.17-1.13-.36.16-.76.25-1.15.28M.44,3.64c.04.63.29,1.24.7,1.71.16-.14.33-.27.51-.38-.13-.43-.19-.88-.21-1.33-.33,0-.67,0-1,0M1.88,3.64c.01.38.07.76.17,1.13.36-.16.75-.25,1.15-.28,0-.28,0-.57,0-.85h-1.32M3.64,3.64c0,.28,0,.57,0,.85.4.03.79.12,1.15.28.1-.37.15-.75.17-1.13-.44,0-.88,0-1.32,0M5.39,3.64c-.02.45-.08.9-.21,1.33.18.11.35.24.51.38.41-.48.66-1.09.7-1.71-.33,0-.67,0-1,0M2.19,5.18c.1.25.23.5.39.72.16.21.37.39.62.47,0-.48,0-.96,0-1.44-.35.02-.7.11-1.02.26M3.64,4.93c0,.48,0,.96,0,1.44.26-.07.46-.26.62-.47.17-.22.29-.46.39-.72-.32-.14-.66-.23-1.02-.26M1.45,5.66c.23.2.49.37.77.49-.17-.23-.31-.49-.42-.76-.12.08-.24.17-.35.27M5.04,5.39c-.11.27-.25.52-.42.76.28-.12.54-.29.77-.49-.11-.1-.23-.19-.35-.27Z" /></svg>
         </div>
-        <a href="https://www.aspenestamparia.com" style="color:#ffffff;text-decoration:none;">aspenestamparia.com</a>
+        {{#if company.contacts.website}}<span>{{company.contacts.website_label}}</span>{{/if}}
       </div>
       <div class="contact-item">
         <div class="contact-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.84" fill="#ffffff"><path d="M3.38,0h.18c.47.02.94.13,1.37.34.33.16.63.37.89.62.02.02.03.05.05.07.4.41.7.92.85,1.47.07.26.11.54.12.81v.2c-.02.31-.06.63-.16.93-.15.47-.4.9-.74,1.25-.62.67-1.51,1.07-2.42,1.09-.59.02-1.19-.13-1.71-.41-.6.16-1.2.31-1.8.47.16-.58.32-1.17.48-1.75-.19-.34-.33-.71-.4-1.09-.11-.63-.05-1.3.2-1.9.26-.65.75-1.2,1.34-1.57C2.15.2,2.76.02,3.38,0M1.91,1c-.5.32-.89.8-1.11,1.35-.21.53-.26,1.12-.13,1.67.08.34.23.67.43.96-.1.35-.19.69-.29,1.04.34-.09.68-.18,1.02-.27.02,0,.05-.02.07,0,.24.15.51.27.79.35.39.11.81.13,1.22.05.48-.08.94-.29,1.32-.6.36-.29.65-.67.82-1.1.24-.58.28-1.25.1-1.85-.2-.7-.69-1.31-1.32-1.67-.41-.23-.87-.36-1.34-.37-.56-.01-1.12.14-1.59.44Z" /><path d="M2.11,1.84c.11-.05.23-.02.34-.02.07,0,.1.07.13.12.1.22.18.45.28.67.02.04.02.08,0,.12-.06.12-.15.22-.24.33-.03.04-.05.09-.03.14.2.36.5.67.86.88.11.06.22.11.33.16.05.02.11.02.15-.02.1-.11.2-.23.29-.35.02-.03.06-.05.1-.05.09.01.18.06.26.1.13.06.26.13.39.19v-.02c.06.03.12.04.16.09.02.04.02.08.02.12,0,.11-.03.21-.07.31-.05.1-.14.18-.23.24-.1.07-.21.12-.33.15-.15.02-.3.02-.45,0-.08-.02-.15-.05-.23-.07-.19-.07-.38-.14-.56-.24-.26-.13-.48-.31-.68-.52-.2-.2-.38-.43-.56-.66-.17-.24-.32-.51-.34-.81-.02-.23.06-.47.2-.65.06-.07.11-.15.2-.19Z" /></svg>
         </div>
-        <a href="https://wa.me/5521969241265" style="color:#ffffff;text-decoration:none;">(21) 96924-1265</a>
+        {{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}
       </div>
       <div class="contact-item">
         <div class="contact-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 4.81" fill="#ffffff"><path d="M.42.03C.51,0,.62,0,.72,0c1.83,0,3.66,0,5.49,0,.15,0,.3.05.41.14.13.11.2.27.21.44v3.64c0,.16-.08.32-.2.43-.09.08-.21.14-.34.15-.08,0-.17,0-.25,0H.79c-.1,0-.2,0-.29-.01-.19-.03-.35-.16-.43-.33-.04-.08-.05-.16-.06-.24V.58c0-.06.01-.13.04-.19C.1.23.24.09.42.03M.69.4c.76.76,1.53,1.52,2.29,2.28.1.1.24.18.38.19.18.02.36-.05.49-.18.77-.76,1.53-1.52,2.3-2.29-1.82,0-3.64,0-5.47,0M.4.68c0,1.15,0,2.29,0,3.44.58-.57,1.15-1.15,1.73-1.72C1.55,1.83.98,1.26.4.68M4.71,2.4c.58.57,1.15,1.15,1.73,1.72,0-1.15,0-2.29,0-3.44-.58.57-1.15,1.15-1.73,1.72M.69,4.41c1.82,0,3.64,0,5.47,0-.58-.57-1.15-1.15-1.73-1.72-.07.07-.14.14-.21.21-.07.07-.14.15-.23.2-.2.14-.44.2-.68.17-.22-.02-.43-.12-.59-.27-.1-.1-.2-.2-.31-.3-.58.57-1.15,1.15-1.73,1.72Z" /></svg>
         </div>
-        <a href="mailto:contato@aspenestamparia.com" style="color:#ffffff;text-decoration:none;">contato@aspenestamparia.com</a>
+        {{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}
       </div>
       <div class="contact-item">
         <div class="contact-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.85" fill="#ffffff"><path d="M2.71,0h1.41c.29,0,.57,0,.86.03.39.03.79.14,1.1.38.21.16.39.36.51.59.14.28.21.59.23.9,0,.09,0,.17.01.26v2.48c-.01.3-.03.6-.12.89-.11.35-.32.67-.62.9-.21.16-.45.27-.7.33-.31.08-.63.08-.95.09-.11,0-.21,0-.32,0h-1.49c-.24,0-.48,0-.71-.03-.33-.02-.67-.1-.96-.26-.36-.2-.64-.53-.78-.92-.09-.25-.14-.51-.15-.78-.03-.53-.02-1.05-.02-1.58,0-.44,0-.88.02-1.31.01-.3.07-.59.18-.86.11-.26.28-.48.49-.66C1.01.2,1.4.08,1.8.04c.3-.03.61-.03.92-.04M2.08.64c-.24,0-.48.04-.69.13-.19.07-.35.21-.48.37-.1.13-.17.29-.21.46-.06.23-.06.47-.07.71-.01.49,0,.99,0,1.49,0,.37,0,.73.02,1.1.01.23.06.46.16.67.08.16.21.3.35.41.23.16.51.22.78.24.38.02.77.03,1.15.03.6,0,1.2,0,1.79-.02.27-.02.56-.07.79-.23.2-.14.36-.34.44-.58.1-.29.1-.59.11-.89.01-.39,0-.78,0-1.16,0-.43,0-.86-.02-1.29-.01-.27-.05-.54-.18-.78-.08-.15-.2-.29-.34-.39-.23-.16-.52-.22-.8-.24-.52-.03-1.03-.02-1.55-.03-.42,0-.84,0-1.26.02Z" /><path d="M5.17,1.19c.2-.05.42.08.48.28.07.19-.03.41-.21.5-.17.08-.38.03-.5-.11-.12-.15-.12-.38,0-.52.06-.07.14-.12.23-.13Z" /><path d="M3.25,1.67c.32-.03.66.03.95.17.37.18.68.5.84.89.16.36.18.78.08,1.16-.1.38-.34.72-.66.96-.28.21-.63.33-.98.34-.37.01-.75-.1-1.06-.31-.32-.22-.57-.56-.68-.94-.11-.38-.1-.79.05-1.15.14-.36.41-.67.74-.87.22-.13.47-.21.72-.24M3.31,2.29c-.38.04-.73.28-.9.61-.13.24-.16.53-.09.79.06.25.21.48.42.64.19.15.44.23.68.23.23,0,.46-.07.65-.2.2-.14.36-.34.44-.56.09-.25.09-.54-.01-.79-.09-.24-.26-.44-.48-.57-.21-.13-.46-.18-.71-.16Z" /></svg>
         </div>
-        <a href="https://www.instagram.com/aspenestamparia" style="color:#ffffff;text-decoration:none;">@aspenestamparia</a>
+        {{#if company.contacts.instagram}}<span>{{company.contacts.instagram_label}}</span>{{/if}}
       </div>
     </div>
   </div>
 </div>
 </body>
-</html>`;
+</html>$quotation_branded_visual_v3$, '8b4c3b6e2d2b4c75fede3cfc3c3aa30b00962420fc9ba31ea0cf643e9dba698a', 2
+FROM "quotation_templates" AS template
+LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
+WHERE template."key" = 'branded'
+  AND NOT EXISTS (
+    SELECT 1 FROM "quotation_template_versions" AS duplicate
+    WHERE duplicate."template_id" = template."id"
+      AND duplicate."source_hash" = '8b4c3b6e2d2b4c75fede3cfc3c3aa30b00962420fc9ba31ea0cf643e9dba698a'
+  )
+GROUP BY template."id"
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
 
-export type QuotationTemplateContractVersion = 1 | 2;
-
-export interface QuotationTemplateDefinition {
-  key: string;
-  name: string;
-  is_default: boolean;
-  contract_version: QuotationTemplateContractVersion;
-  source: string;
-}
-
-export interface QuotationTemplateMetadata {
-  key: string;
-  name: string;
-  is_default: boolean;
-  contract_version: QuotationTemplateContractVersion;
-  hash: string;
-}
-
-export interface QuotationTemplate extends QuotationTemplateMetadata {
-  source: string;
-}
-
-export class QuotationTemplateResolutionError extends Error {
-  readonly statusCode = 404;
-
-  constructor() {
-    super('Template do orçamento não encontrado.');
-    this.name = 'QuotationTemplateResolutionError';
-  }
-}
-
-export class QuotationTemplateContractError extends Error {
-  readonly statusCode = 400;
-
-  constructor(message = 'Contrato de template do orçamento inválido.') {
-    super(message);
-    this.name = 'QuotationTemplateContractError';
-  }
-}
-
-function sourceHash(source: string): string {
-  return createHash('sha256').update(Buffer.from(source, 'utf8')).digest('hex');
-}
-
-const COMPARATIVE_SOURCE = String.raw`<!doctype html>
+INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
+SELECT 'f3000000-0000-4000-8000-000000000004'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_comparativo_visual_v3$<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -682,6 +587,16 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
     margin-bottom: 6px;
     line-height: 1.65;
   }
+
+  .quotation-summary { width: 280px; margin: 20px 0 28px auto; font-variant-numeric: tabular-nums; }
+  .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
+  .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
+  .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
+  .company-data { margin-top: 10px; }
+  .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
+  .contact-item span { color: #ffffff; }
 </style>
 </head>
 <body>
@@ -807,7 +722,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
             d="M3.36,0h.11c.5,0,1,.12,1.45.35.69.34,1.26.92,1.59,1.61.2.43.31.9.33,1.37v.18c-.02.54-.16,1.07-.41,1.54-.41.76-1.11,1.35-1.93,1.62-.32.11-.65.16-.98.17h-.19c-.54-.02-1.08-.16-1.56-.43-.74-.41-1.32-1.1-1.59-1.91-.11-.33-.17-.68-.18-1.03v-.1c0-.57.16-1.13.44-1.62.36-.65.95-1.17,1.63-1.47.41-.18.85-.27,1.29-.28M2.64.86c-.2.23-.34.51-.45.79.32.15.66.23,1.01.26,0-.48,0-.96,0-1.45-.22.07-.41.22-.56.39M3.64.47c0,.48,0,.96,0,1.44.35-.02.69-.11,1.02-.26-.09-.23-.2-.44-.34-.64-.17-.24-.39-.46-.68-.55M1.45,1.18c.11.09.23.18.35.26.11-.27.25-.52.42-.76-.28.12-.54.29-.77.49M4.62.69c.17.23.31.49.42.76.12-.08.24-.17.35-.27-.23-.2-.49-.37-.77-.49M.44,3.2c.33,0,.67,0,1,0,.02-.45.08-.9.21-1.33-.18-.11-.35-.24-.51-.38-.41.48-.66,1.09-.7,1.71M5.18,1.87c.13.43.19.88.21,1.33.33,0,.67,0,1,0-.04-.63-.29-1.23-.7-1.71-.16.14-.33.27-.51.38M1.88,3.2c.44,0,.88,0,1.32,0v-.85c-.4-.03-.79-.12-1.15-.28-.1.37-.15.75-.17,1.13M3.64,2.35c0,.28,0,.57,0,.85.44,0,.88,0,1.32,0-.02-.38-.07-.76-.17-1.13-.36.16-.76.25-1.15.28M.44,3.64c.04.63.29,1.24.7,1.71.16-.14.33-.27.51-.38-.13-.43-.19-.88-.21-1.33-.33,0-.67,0-1,0M1.88,3.64c.01.38.07.76.17,1.13.36-.16.75-.25,1.15-.28,0-.28,0-.57,0-.85h-1.32M3.64,3.64c0,.28,0,.57,0,.85.4.03.79.12,1.15.28.1-.37.15-.75.17-1.13-.44,0-.88,0-1.32,0M5.39,3.64c-.02.45-.08.9-.21,1.33.18.11.35.24.51.38.41-.48.66-1.09.7-1.71-.33,0-.67,0-1,0M2.19,5.18c.1.25.23.5.39.72.16.21.37.39.62.47,0-.48,0-.96,0-1.44-.35.02-.7.11-1.02.26M3.64,4.93c0,.48,0,.96,0,1.44.26-.07.46-.26.62-.47.17-.22.29-.46.39-.72-.32-.14-.66-.23-1.02-.26M1.45,5.66c.23.2.49.37.77.49-.17-.23-.31-.49-.42-.76-.12.08-.24.17-.35.27M5.04,5.39c-.11.27-.25.52-.42.76.28-.12.54-.29.77-.49-.11-.1-.23-.19-.35-.27Z" />
         </svg>
       </div>
-      <a href="https://www.aspenestamparia.com" style="color:#ffffff;text-decoration:none;">aspenestamparia.com</a>
+      {{#if company.contacts.website}}<span>{{company.contacts.website_label}}</span>{{/if}}
     </div>
     <div class="contact-item">
       <div class="contact-icon">
@@ -818,7 +733,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
             d="M2.11,1.84c.11-.05.23-.02.34-.02.07,0,.1.07.13.12.1.22.18.45.28.67.02.04.02.08,0,.12-.06.12-.15.22-.24.33-.03.04-.05.09-.03.14.2.36.5.67.86.88.11.06.22.11.33.16.05.02.11.02.15-.02.1-.11.2-.23.29-.35.02-.03.06-.05.1-.05.09.01.18.06.26.1.13.06.26.13.39.19v-.02c.06.03.12.04.16.09.02.04.02.08.02.12,0,.11-.03.21-.07.31-.05.1-.14.18-.23.24-.1.07-.21.12-.33.15-.15.02-.3.02-.45,0-.08-.02-.15-.05-.23-.07-.19-.07-.38-.14-.56-.24-.26-.13-.48-.31-.68-.52-.2-.2-.38-.43-.56-.66-.17-.24-.32-.51-.34-.81-.02-.23.06-.47.2-.65.06-.07.11-.15.2-.19Z" />
         </svg>
       </div>
-      <a href="https://wa.me/5521969241265" style="color:#ffffff;text-decoration:none;">(21) 96924-1265</a>
+      {{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}
     </div>
     <div class="contact-item">
       <div class="contact-icon">
@@ -827,8 +742,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
             d="M.42.03C.51,0,.62,0,.72,0c1.83,0,3.66,0,5.49,0,.15,0,.3.05.41.14.13.11.2.27.21.44v3.64c0,.16-.08.32-.2.43-.09.08-.21.14-.34.15-.08,0-.17,0-.25,0H.79c-.1,0-.2,0-.29-.01-.19-.03-.35-.16-.43-.33-.04-.08-.05-.16-.06-.24V.58c0-.06.01-.13.04-.19C.1.23.24.09.42.03M.69.4c.76.76,1.53,1.52,2.29,2.28.1.1.24.18.38.19.18.02.36-.05.49-.18.77-.76,1.53-1.52,2.3-2.29-1.82,0-3.64,0-5.47,0M.4.68c0,1.15,0,2.29,0,3.44.58-.57,1.15-1.15,1.73-1.72C1.55,1.83.98,1.26.4.68M4.71,2.4c.58.57,1.15,1.15,1.73,1.72,0-1.15,0-2.29,0-3.44-.58.57-1.15,1.15-1.73,1.72M.69,4.41c1.82,0,3.64,0,5.47,0-.58-.57-1.15-1.15-1.73-1.72-.07.07-.14.14-.21.21-.07.07-.14.15-.23.2-.2.14-.44.2-.68.17-.22-.02-.43-.12-.59-.27-.1-.1-.2-.2-.31-.3-.58.57-1.15,1.15-1.73,1.72Z" />
         </svg>
       </div>
-      <a href="mailto:contato@aspenestamparia.com"
-        style="color:#ffffff;text-decoration:none;">contato@aspenestamparia.com</a>
+      {{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}
     </div>
     <div class="contact-item">
       <div class="contact-icon">
@@ -841,8 +755,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
             d="M3.25,1.67c.32-.03.66.03.95.17.37.18.68.5.84.89.16.36.18.78.08,1.16-.1.38-.34.72-.66.96-.28.21-.63.33-.98.34-.37.01-.75-.1-1.06-.31-.32-.22-.57-.56-.68-.94-.11-.38-.1-.79.05-1.15.14-.36.41-.67.74-.87.22-.13.47-.21.72-.24M3.31,2.29c-.38.04-.73.28-.9.61-.13.24-.16.53-.09.79.06.25.21.48.42.64.19.15.44.23.68.23.23,0,.46-.07.65-.2.2-.14.36-.34.44-.56.09-.25.09-.54-.01-.79-.09-.24-.26-.44-.48-.57-.21-.13-.46-.18-.71-.16Z" />
         </svg>
       </div>
-      <a href="https://www.instagram.com/aspenestamparia"
-        style="color:#ffffff;text-decoration:none;">@aspenestamparia</a>
+      {{#if company.contacts.instagram}}<span>{{company.contacts.instagram_label}}</span>{{/if}}
     </div>
   </div>
 </div>
@@ -892,34 +805,47 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
     </div>
   </div>
 
+    <div class="quotation-summary">
+      <div class="quotation-summary-row"><span>Subtotal</span><span>{{display.subtotal}}</span></div>
+      <div class="quotation-summary-row"><span>Frete</span><span>{{display.freight}}</span></div>
+      <div class="quotation-summary-row quotation-summary-total"><span>Total</span><span>{{display.total}}</span></div>
+    </div>
+
   <!-- QUEBRA DE PÁGINA FORÇADA -->
   <div class="page-break"></div>
 
   <!-- ══ PÁGINA 2: INFORMAÇÕES ADICIONAIS ══ -->
   <div class="page-2-content">
+    <div class="company-identity">
+      <p><strong>{{company.identity.legal_name}}</strong></p>
+      <p>CNPJ: {{company.identity.document}}</p>
+    </div>
     <div class="info-grid">
+      {{#if secoes.prazo_producao.enabled}}
       <div class="info-block">
-        <div class="section-label">Prazo de produção:</div>
-        <p>15 a 20 dias úteis após confirmação do pagamento e aprovação da arte.</p>
+        <div class="section-label">{{secoes.prazo_producao.title}}</div>
+        <p class="section-copy">{{secoes.prazo_producao.value}}</p>
       </div>
+      {{/if}}
+      {{#if secoes.pagamento.enabled}}
       <div class="info-block">
-        <div class="section-label">Dados para pagamento:</div>
-        <p><strong>ASPEN COMÉRCIO DE ARTIGOS PERSONALIZADOS LTDA</strong></p>
-        <p><strong>CNPJ:</strong> 55.458.072/0001-79</p>
-        <p><strong>Banco:</strong> Stone Pagamentos S.A. (197)</p>
-        <p><strong>Agência:</strong> 0001 &nbsp;|&nbsp; <strong>Conta:</strong> 35207618-6</p>
-        <p><strong>Pix:</strong> 55.458.072/0001-79</p>
+        <div class="section-label">{{secoes.pagamento.title}}</div>
+        <div class="section-copy">{{secoes.pagamento.body_html}}</div>
+        <div class="company-data">
+          {{#if company.banking.bank_name}}<p><strong>Banco:</strong> {{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}
+          {{#if company.banking.branch}}<p><strong>Agência:</strong> {{company.banking.branch}}</p>{{/if}}
+          {{#if company.banking.account}}<p><strong>Conta:</strong> {{company.banking.account}}</p>{{/if}}
+          {{#if company.banking.pix_key}}<p><strong>Pix:</strong> {{company.banking.pix_key}}</p>{{/if}}
+        </div>
       </div>
+      {{/if}}
     </div>
-
+    {{#if secoes.condicoes_gerais.enabled}}
     <div class="conditions">
-      <div class="section-label">Condições Gerais:</div>
-      <p>Frete: FOB.</p>
-      <p>Formas de pagamento: PIX, boleto bancário e cartão de crédito com acréscimo das taxas da operação.</p>
-      <p>É possível solicitar alterações no pedido antes do início da produção, após o início não será possível.</p>
-      <p>Pedidos que ainda não tenham iniciado a confecção podem ser cancelados em até 7 dias após o pagamento, após o
-        início da confecção não será possível.</p>
+      <div class="section-label">{{secoes.condicoes_gerais.title}}</div>
+      <div class="section-copy">{{secoes.condicoes_gerais.body_html}}</div>
     </div>
+    {{/if}}
   </div>
 
 </div>
@@ -929,9 +855,21 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
     <span>{{display.total}}</span>
   </div>
 </body>
-</html>`;
+</html>$quotation_comparativo_visual_v3$, '840aba835f4674cc128ada9ab479034d41e61fb51c74556bff6aa013c6882a12', 2
+FROM "quotation_templates" AS template
+LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
+WHERE template."key" = 'comparativo'
+  AND NOT EXISTS (
+    SELECT 1 FROM "quotation_template_versions" AS duplicate
+    WHERE duplicate."template_id" = template."id"
+      AND duplicate."source_hash" = '840aba835f4674cc128ada9ab479034d41e61fb51c74556bff6aa013c6882a12'
+  )
+GROUP BY template."id"
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
 
-const SIMPLE_SOURCE = String.raw`<!doctype html>
+INSERT INTO "quotation_template_versions" ("id", "template_id", "version", "source", "source_hash", "contract_version")
+SELECT 'f3000000-0000-4000-8000-000000000005'::uuid, template."id", COALESCE(MAX(existing."version"), 0) + 1, $quotation_simples_visual_v3$<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
@@ -1280,6 +1218,16 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
     height: 10px;
     fill: #1e3159;
   }
+
+  .quotation-summary { width: 280px; margin: 20px 0 28px auto; font-variant-numeric: tabular-nums; }
+  .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
+  .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
+  .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
+  .company-identity { margin-bottom: 18px; }
+  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
+  .company-data { margin-top: 10px; }
+  .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
+  .contact-item span { color: #ffffff; }
 </style>
 
 </head>
@@ -1435,218 +1383,12 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
       </table>
     </div>
 
-    <!-- Info Grid: Prazo + Pagamento -->
-    <div class="info-grid">
-      <div class="info-block">
-        <div class="section-label">Prazo de produção:</div>
-        <p>15 a 20 dias úteis após confirmação do pagamento e aprovação da arte.</p>
-      </div>
-      <div class="info-block">
-        <div class="section-label">Dados para pagamento:</div>
-        <p><strong>ASPEN COMÉRCIO DE ARTIGOS PERSONALIZADOS LTDA</strong></p>
-        <p><strong>CNPJ:</strong> 55.458.072/0001-79</p>
-        <p><strong>Banco:</strong> Stone Pagamentos S.A. (197)</p>
-        <p><strong>Agência:</strong> 0001 &nbsp;|&nbsp; <strong>Conta:</strong> 35207618-6</p>
-        <p><strong>Pix:</strong> 55.458.072/0001-79</p>
-      </div>
-    </div>
-
-    <!-- Conditions -->
-    <div class="conditions">
-      <div class="section-label">Condições Gerais:</div>
-      <p>Formas de pagamento: PIX, boleto bancário e transferência.</p>
-      <p>Frete: FOB.</p>
-    </div>
-
-  </div><!-- /body -->
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <div class="footer-contacts">
-      <div class="contact-item">
-        <div class="contact-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.84" fill="#ffffff">
-            <path
-              d="M3.36,0h.11c.5,0,1,.12,1.45.35.69.34,1.26.92,1.59,1.61.2.43.31.9.33,1.37v.18c-.02.54-.16,1.07-.41,1.54-.41.76-1.11,1.35-1.93,1.62-.32.11-.65.16-.98.17h-.19c-.54-.02-1.08-.16-1.56-.43-.74-.41-1.32-1.1-1.59-1.91-.11-.33-.17-.68-.18-1.03v-.1c0-.57.16-1.13.44-1.62.36-.65.95-1.17,1.63-1.47.41-.18.85-.27,1.29-.28M2.64.86c-.2.23-.34.51-.45.79.32.15.66.23,1.01.26,0-.48,0-.96,0-1.45-.22.07-.41.22-.56.39M3.64.47c0,.48,0,.96,0,1.44.35-.02.69-.11,1.02-.26-.09-.23-.2-.44-.34-.64-.17-.24-.39-.46-.68-.55M1.45,1.18c.11.09.23.18.35.26.11-.27.25-.52.42-.76-.28.12-.54.29-.77.49M4.62.69c.17.23.31.49.42.76.12-.08.24-.17.35-.27-.23-.2-.49-.37-.77-.49M.44,3.2c.33,0,.67,0,1,0,.02-.45.08-.9.21-1.33-.18-.11-.35-.24-.51-.38-.41.48-.66,1.09-.7,1.71M5.18,1.87c.13.43.19.88.21,1.33.33,0,.67,0,1,0-.04-.63-.29-1.23-.7-1.71-.16.14-.33.27-.51.38M1.88,3.2c.44,0,.88,0,1.32,0v-.85c-.4-.03-.79-.12-1.15-.28-.1.37-.15.75-.17,1.13M3.64,2.35c0,.28,0,.57,0,.85.44,0,.88,0,1.32,0-.02-.38,0-.57-.17-1.13-.36.16-.76.25-1.15.28M.44,3.64c.04.63.29,1.24.7,1.71.16-.14.33-.27.51-.38-.13-.43-.19-.88-.21-1.33-.33,0-.67,0-1,0M1.88,3.64c.01.38.07.76.17,1.13.36-.16.75-.25,1.15-.28,0-.28,0-.57,0-.85h-1.32M3.64,3.64c0,.28,0,.57,0,.85.4.03.79.12,1.15.28.1-.37.15-.76.17-1.13-.44,0-.88,0-1.32,0M5.39,3.64c-.02.45-.08.9-.21,1.33.18.11.35.24.51.38.41-.48.66-1.09.7-1.71-.33,0-.67,0-1,0M2.19,5.18c.1.25.23.5.39.72.16.21.37.39.62.47,0-.48,0-.96,0-1.44-.35.02-.7.11-1.02.26M3.64,4.93c0,.48,0,.96,0,1.44.26-.07.46-.26.62-.47.17-.22.29-.46.39-.72-.32-.14-.66-.23-1.02-.26M1.45,5.66c.23.2.49.37.77.49-.17-.23-.31-.49-.42-.76-.12.08-.24.17-.35.27M5.04,5.39c-.11.27-.25.52-.42.76.28-.12.54-.29.77-.49-.11-.1-.23-.19-.35-.27Z" />
-          </svg>
-        </div>
-        <a href="https://www.aspenestamparia.com" style="color:#ffffff;text-decoration:none;">aspenestamparia.com</a>
-      </div>
-      <div class="contact-item">
-        <div class="contact-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.84" fill="#ffffff">
-            <path
-              d="M3.38,0h.18c.47.02.94.13,1.37.34.33.16.63.37.89.62.02.02.03.05.05.07.4.41.7.92.85,1.47.07.26.11.54.12.81v.2c-.02.31-.06.63-.16.93-.15.47-.4.9-.74,1.25-.62.67-1.51,1.07-2.42,1.09-.59.02-1.19-.13-1.71-.41-.6.16-1.2.31-1.8.47.16-.58.32-1.17.48-1.75-.19-.34-.33-.71-.4-1.09-.11-.63-.05-1.3.2-1.9.26-.65.75-1.2,1.34-1.57C2.15.2,2.76.02,3.38,0M1.91,1c-.5.32-.89.8-1.11,1.35-.21.53-.26,1.12-.13,1.67.08.34.23.67.43.96-.1.35-.19.69-.29,1.04.34-.09.68-.18,1.02-.27.02,0,.05-.02.07,0,.24.15.51.27.79.35.39.11.81.13,1.22.05.48-.08.94-.29,1.32-.6.36-.29.65-.67.82-1.1.24-.58.28-1.25.1-1.85-.2-.7-.69-1.31-1.32-1.67-.41-.23-.87-.36-1.34-.37-.56-.01-1.12.14-1.59.44Z" />
-            <path
-              d="M2.11,1.84c.11-.05.23-.02.34-.02.07,0,.1.07.13.12.1.22.18.45.28.67.02.04.02.08,0,.12-.06.12-.15.22-.24.33-.03.04-.05.09-.03.14.2.36.5.67.86.88.11.06.22.11.33.16.05.02.11.02.15-.02.1-.11.2-.23.29-.35.02-.03.06-.05.1-.05.09.01.18.06.26.1.13.06.26.13.39.19v-.02c.06.03.12.04.16.09.02.04.02.08.02.12,0,.11-.03.21-.07.31-.05.1-.14.18-.23.24-.1.07-.21.12-.33.15-.15.02-.3.02-.45,0-.08-.02-.15-.05-.23-.07-.19-.07-.38-.14-.56-.24-.26-.13-.48-.31-.68-.52-.2-.2-.38-.43-.56-.66-.17-.24-.32-.51-.34-.81-.02-.23.06-.47.2-.65.06-.07.11-.15.2-.19Z" />
-          </svg>
-        </div>
-        <a href="https://wa.me/5521969241265" style="color:#ffffff;text-decoration:none;">(21) 96924-1265</a>
-      </div>
-      <div class="contact-item">
-        <div class="contact-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 4.81" fill="#ffffff">
-            <path
-              d="M.42.03C.51,0,.62,0,.72,0c1.83,0,3.66,0,5.49,0,.15,0,.3.05.41.14.13.11.2.27.21.44v3.64c0,.16-.08.32-.2.43-.09.08-.21.14-.34.15-.08,0-.17,0-.25,0H.79c-.1,0-.2,0-.29-.01-.19-.03-.35-.16-.43-.33-.04-.08-.05-.16-.06-.24V.58c0-.06.01-.13.04-.19C.1.23.24.09.42.03M.69.4c.76.76,1.53,1.52,2.29,2.28.1.1.24.18.38.19.18.02.36-.05.49-.18.77-.76,1.53-1.52,2.3-2.29-1.82,0-3.64,0-5.47,0M.4.68c0,1.15,0,2.29,0,3.44.58-.57,1.15-1.15,1.73-1.72C1.55,1.83.98,1.26.4.68M4.71,2.4c.58.57,1.15,1.15,1.73,1.72,0-1.15,0-2.29,0-3.44-.58.57-1.15,1.15-1.73,1.72M.69,4.41c1.82,0,3.64,0,5.47,0-.58-.57-1.15-1.15-1.73-1.72-.07.07-.14.14-.21.21-.07.07-.14.15-.23.2-.2.14-.44.2-.68.17-.22-.02-.43-.12-.59-.27-.1-.1-.2-.2-.31-.3-.58.57-1.15,1.15-1.73,1.72Z" />
-          </svg>
-        </div>
-        <a href="mailto:contato@aspenestamparia.com"
-          style="color:#ffffff;text-decoration:none;">contato@aspenestamparia.com</a>
-      </div>
-      <div class="contact-item">
-        <div class="contact-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.85" fill="#ffffff">
-            <path
-              d="M2.71,0h1.41c.29,0,.57,0,.86.03.39.03.79.14,1.1.38.21.16.39.36.51.59.14.28.21.59.23.9,0,.09,0,.17.01.26v2.48c-.01.3-.03.6-.12.89-.11.35-.32.67-.62.9-.21.16-.45.27-.7.33-.31.08-.63.08-.95.09-.11,0-.21,0-.32,0h-1.49c-.24,0-.48,0-.71-.03-.33-.02-.67-.1-.96-.26-.36-.2-.64-.53-.78-.92-.09-.25-.14-.51-.15-.78-.03-.53-.02-1.05-.02-1.58,0-.44,0-.88.02-1.31.01-.3.07-.59.18-.86.11-.26.28-.48.49-.66C1.01.2,1.4.08,1.8.04c.3-.03.61-.03.92-.04M2.08.64c-.24,0-.48.04-.69.13-.19.07-.35.21-.48.37-.1.13-.17.29-.21.46-.06.23-.06.47-.07.71-.01.49,0,.99,0,1.49,0,.37,0,.73.02,1.1.01.23.06.46.16.67.08.16.21.3.35.41.23.16.51.22.78.24.38.02.77.03,1.15.03.6,0,1.2,0,1.79-.02.27-.02.56-.07.79-.23.2-.14.36-.34.44-.58.1-.29.1-.59.11-.89.01-.39,0-.78,0-1.16,0-.43,0-.86-.02-1.29-.01-.27-.05-.54-.18-.78-.08-.15-.2-.29-.34-.39-.23-.16-.52-.22-.8-.24-.52-.03-1.03-.02-1.55-.03-.42,0-.84,0-1.26.02Z" />
-            <path
-              d="M5.17,1.19c.2-.05.42.08.48.28.07.19-.03.41-.21.5-.17.08-.38.03-.5-.11-.12-.15-.12-.38,0-.52.06-.07.14-.12.23-.13Z" />
-            <path
-              d="M3.25,1.67c.32-.03.66.03.95.17.37.18.68.5.84.89.16.36.18.78.08,1.16-.1.38-.34.72-.66.96-.28.21-.63.33-.98.34-.37.01-.75-.1-1.06-.31-.32-.22-.57-.56-.68-.94-.11-.38-.1-.79.05-1.15.14-.36.41-.67.74-.87.22-.13.47-.21.72-.24M3.31,2.29c-.38.04-.73.28-.9.61-.13.24-.16.53-.09.79.06.25.21.48.42.64.19.15.44.23.68.23.23,0,.46-.07.65-.2.2-.14.36-.34.44-.56.09-.25.09-.54-.01-.79-.09-.24-.26-.44-.48-.57-.21-.13-.46-.18-.71-.16Z" />
-          </svg>
-        </div>
-        <a href="https://www.instagram.com/aspenestamparia"
-          style="color:#ffffff;text-decoration:none;">@aspenestamparia</a>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<div class="template-contract" style="display:none">
-  {{#each items}}<span>{{name}} {{quantity}}</span>{{/each}}
-  <span>{{display.total}}</span>
-</div>
-</body>
-</html>`;
-
-const HISTORICAL_DEFINITIONS: readonly QuotationTemplateDefinition[] = [
-  {
-    key: 'padrao',
-    name: 'Padrão Aspen',
-    is_default: true,
-    contract_version: 1,
-    source: PADRAO_SOURCE,
-  },
-  {
-    key: 'minimalista',
-    name: 'Minimalista',
-    is_default: false,
-    contract_version: 1,
-    source: MINIMAL_SOURCE,
-  },
-  {
-    key: 'branded',
-    name: 'Aspen Original',
-    is_default: false,
-    contract_version: 1,
-    source: BRANDED_SOURCE,
-  },
-  {
-    key: 'comparativo',
-    name: 'Comparativo por faixa',
-    is_default: false,
-    contract_version: 1,
-    source: COMPARATIVE_SOURCE,
-  },
-  {
-    key: 'simples',
-    name: 'Simples',
-    is_default: false,
-    contract_version: 1,
-    source: SIMPLE_SOURCE,
-  },
-];
-
-interface OfficialV2Options {
-  pageTitle: string;
-  css: string;
-  comparison?: boolean;
-}
-
-function officialV2Source({ pageTitle, css, comparison = false }: OfficialV2Options): string {
-  const comparisonMarkup = comparison
-    ? String.raw`
-    {{#if comparison.brackets}}
-    <h2>Comparação por faixa</h2>
-    <table class="comparison"><thead><tr><th>Produto</th>{{#each comparison.brackets}}<th>{{label}}</th>{{/each}}</tr></thead><tbody>{{#each comparison.products}}<tr><td>{{name}}</td>{{#each prices}}<td>{{display}}</td>{{/each}}</tr>{{/each}}</tbody></table>
-    {{/if}}`
-    : '';
-  return String.raw`<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <title>${pageTitle} {{quote_number}}</title>
-  <style>${css}</style>
-</head>
-<body>
-  <header class="header">
-    <div>
-      <h1>${pageTitle}</h1>
-      <p class="muted">{{company.identity.legal_name}} · CNPJ {{company.identity.document}}</p>
-      <p class="muted">{{quote_number}} · Revisão {{revision}}</p>
-    </div>
-    <div class="meta">{{display.quote_date}}<br>Válido até {{display.validity_date}}</div>
-  </header>
-  <section class="client">
-    <h2>Cliente</h2>
-    <p>{{client.name}}</p>
-    {{#if client.document}}<p>{{client.document}}</p>{{/if}}
-    {{#if client.email}}<p>{{client.email}}</p>{{/if}}
-    {{#if client.phone}}<p>{{client.phone}}</p>{{/if}}
-    {{#if client.address}}<p>{{client.address}}</p>{{/if}}
-  </section>
-  <section class="items">
-    <h2>Itens</h2>
-    <table><thead><tr><th>SKU</th><th>Produto</th><th>Quantidade</th><th>Unitário</th><th>Total</th></tr></thead><tbody>
-      {{#each items}}<tr><td>{{sku}}</td><td>{{name}}{{#if description}}<div class="muted">{{description}}</div>{{/if}}</td><td>{{quantity}}</td><td>{{display.unit_price}}</td><td>{{display.line_total}}</td></tr>{{/each}}
-    </tbody></table>
-    <div class="totals"><div><span>Subtotal</span><span>{{display.subtotal}}</span></div><div><span>Frete</span><span>{{display.freight}}</span></div><div class="grand-total"><span>Total</span><span>{{display.total}}</span></div></div>
-  </section>${comparisonMarkup}
-  <div class="commercial">
-    {{#if terms.entrega}}<p>Entrega: {{terms.entrega}}</p>{{/if}}
-    {{#if secoes.prazo_producao.enabled}}<section><h2>{{secoes.prazo_producao.title}}</h2><p>{{secoes.prazo_producao.value}}</p></section>{{/if}}
-    {{#if secoes.pagamento.enabled}}<section><h2>{{secoes.pagamento.title}}</h2><div>{{secoes.pagamento.body_html}}</div><div class="banking">{{#if company.banking.bank_name}}<p>{{company.banking.bank_name}}{{#if company.banking.bank_code}} ({{company.banking.bank_code}}){{/if}}</p>{{/if}}{{#if company.banking.branch}}<p>Agência: {{company.banking.branch}}</p>{{/if}}{{#if company.banking.account}}<p>Conta: {{company.banking.account}}</p>{{/if}}{{#if company.banking.pix_key}}<p>Pix: {{company.banking.pix_key}}</p>{{/if}}</div></section>{{/if}}
-    {{#if secoes.condicoes_gerais.enabled}}<section><h2>{{secoes.condicoes_gerais.title}}</h2><div>{{secoes.condicoes_gerais.body_html}}</div></section>{{/if}}
-  </div>
-  <footer class="footer">
-    {{#if company.contacts.website}}<span>{{company.contacts.website}}</span>{{/if}}
-    {{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}
-    {{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}
-    {{#if company.contacts.instagram}}<span>{{company.contacts.instagram}}</span>{{/if}}
-  </footer>
-</body>
-</html>`;
-}
-
-const PADRAO_SOURCE_V2 = officialV2Source({
-  pageTitle: 'Orçamento',
-  css: `:root{font-family:Arial,sans-serif;color:#172033}body{margin:0;padding:32px}.header{display:flex;justify-content:space-between;border-bottom:2px solid #172033;padding-bottom:18px}.muted{color:#5c667a;font-size:13px}.meta{text-align:right}.client,.items,.commercial{margin-top:24px}.client{border:1px solid #d9deea;border-radius:8px;padding:14px}.client p{margin:4px 0}h1,h2,p{margin-top:0}h2{font-size:16px}table{width:100%;border-collapse:collapse}th,td{padding:9px 8px;border-bottom:1px solid #e5e8ef;text-align:left}.totals{display:flex;justify-content:flex-end;gap:18px;margin-top:16px}.totals strong{border-top:2px solid #172033;padding-top:8px}.commercial section{margin-top:18px}.commercial section div,.commercial section p{white-space:pre-line}.banking{margin-top:10px}.footer{display:flex;flex-wrap:wrap;gap:16px;border-top:1px solid #d9deea;margin-top:28px;padding-top:14px;font-size:12px}`,
-});
-const MINIMAL_SOURCE_V2 = officialV2Source({
-  pageTitle: 'Proposta comercial',
-  css: `body{margin:0;padding:28px;font:14px/1.5 Georgia,serif;color:#222}h1{font-weight:500}.header{display:flex;justify-content:space-between;border-bottom:1px solid #222;padding-bottom:12px}.meta{text-align:right;font-size:12px}.muted{font-size:12px;color:#555}.client,.items,.commercial{margin-top:22px}.client p{margin:3px 0}h2{font-size:15px;margin:0 0 7px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd;padding:7px 3px;text-align:left}.totals{display:flex;justify-content:flex-end;gap:14px;margin-top:14px}.totals strong{border-top:1px solid #222;padding-top:7px}.commercial section{margin-top:18px}.commercial section div,.commercial section p{white-space:pre-line}.footer{display:flex;flex-wrap:wrap;gap:14px;border-top:1px solid #ddd;margin-top:24px;padding-top:12px;font-size:12px}`,
-});
-const RESTORED_V2_STYLES = String.raw`
-  .quotation-summary { width: 280px; margin: 20px 0 28px auto; font-variant-numeric: tabular-nums; }
-  .quotation-summary-row { display: flex; justify-content: space-between; gap: 24px; padding: 3px 0; font-size: 12px; }
-  .quotation-summary-total { margin-top: 5px; padding-top: 8px; border-top: 2px solid #827059; color: var(--navy); font-size: 16px; font-weight: 700; }
-  .section-copy { color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-line; }
-  .company-identity { margin-bottom: 18px; }
-  .company-identity p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
-  .company-data { margin-top: 10px; }
-  .company-data p { color: var(--text); font-size: 12px; margin-bottom: 4px; }
-  .contact-item span { color: #ffffff; }
-`;
-
-const RESTORED_V2_TOTAL = String.raw`    <div class="quotation-summary">
+    <div class="quotation-summary">
       <div class="quotation-summary-row"><span>Subtotal</span><span>{{display.subtotal}}</span></div>
       <div class="quotation-summary-row"><span>Frete</span><span>{{display.freight}}</span></div>
       <div class="quotation-summary-row quotation-summary-total"><span>Total</span><span>{{display.total}}</span></div>
     </div>
-`;
-
-const RESTORED_V2_SECTIONS = String.raw`    <div class="company-identity">
+    <div class="company-identity">
       <p><strong>{{company.identity.legal_name}}</strong></p>
       <p>CNPJ: {{company.identity.document}}</p>
     </div>
@@ -1676,1493 +1418,72 @@ const RESTORED_V2_SECTIONS = String.raw`    <div class="company-identity">
       <div class="section-copy">{{secoes.condicoes_gerais.body_html}}</div>
     </div>
     {{/if}}
-`;
+  </div><!-- /body -->
 
-function replaceRequired(
-  source: string,
-  search: string | RegExp,
-  replacement: string,
-  templateKey: string,
-): string {
-  const replaced = source.replace(search, replacement);
-  if (replaced === source) throw new Error(`Trecho visual não encontrado no template: ${templateKey}`);
-  return replaced;
-}
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-contacts">
+      <div class="contact-item">
+        <div class="contact-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.84" fill="#ffffff">
+            <path
+              d="M3.36,0h.11c.5,0,1,.12,1.45.35.69.34,1.26.92,1.59,1.61.2.43.31.9.33,1.37v.18c-.02.54-.16,1.07-.41,1.54-.41.76-1.11,1.35-1.93,1.62-.32.11-.65.16-.98.17h-.19c-.54-.02-1.08-.16-1.56-.43-.74-.41-1.32-1.1-1.59-1.91-.11-.33-.17-.68-.18-1.03v-.1c0-.57.16-1.13.44-1.62.36-.65.95-1.17,1.63-1.47.41-.18.85-.27,1.29-.28M2.64.86c-.2.23-.34.51-.45.79.32.15.66.23,1.01.26,0-.48,0-.96,0-1.45-.22.07-.41.22-.56.39M3.64.47c0,.48,0,.96,0,1.44.35-.02.69-.11,1.02-.26-.09-.23-.2-.44-.34-.64-.17-.24-.39-.46-.68-.55M1.45,1.18c.11.09.23.18.35.26.11-.27.25-.52.42-.76-.28.12-.54.29-.77.49M4.62.69c.17.23.31.49.42.76.12-.08.24-.17.35-.27-.23-.2-.49-.37-.77-.49M.44,3.2c.33,0,.67,0,1,0,.02-.45.08-.9.21-1.33-.18-.11-.35-.24-.51-.38-.41.48-.66,1.09-.7,1.71M5.18,1.87c.13.43.19.88.21,1.33.33,0,.67,0,1,0-.04-.63-.29-1.23-.7-1.71-.16.14-.33.27-.51.38M1.88,3.2c.44,0,.88,0,1.32,0v-.85c-.4-.03-.79-.12-1.15-.28-.1.37-.15.75-.17,1.13M3.64,2.35c0,.28,0,.57,0,.85.44,0,.88,0,1.32,0-.02-.38,0-.57-.17-1.13-.36.16-.76.25-1.15.28M.44,3.64c.04.63.29,1.24.7,1.71.16-.14.33-.27.51-.38-.13-.43-.19-.88-.21-1.33-.33,0-.67,0-1,0M1.88,3.64c.01.38.07.76.17,1.13.36-.16.75-.25,1.15-.28,0-.28,0-.57,0-.85h-1.32M3.64,3.64c0,.28,0,.57,0,.85.4.03.79.12,1.15.28.1-.37.15-.76.17-1.13-.44,0-.88,0-1.32,0M5.39,3.64c-.02.45-.08.9-.21,1.33.18.11.35.24.51.38.41-.48.66-1.09.7-1.71-.33,0-.67,0-1,0M2.19,5.18c.1.25.23.5.39.72.16.21.37.39.62.47,0-.48,0-.96,0-1.44-.35.02-.7.11-1.02.26M3.64,4.93c0,.48,0,.96,0,1.44.26-.07.46-.26.62-.47.17-.22.29-.46.39-.72-.32-.14-.66-.23-1.02-.26M1.45,5.66c.23.2.49.37.77.49-.17-.23-.31-.49-.42-.76-.12.08-.24.17-.35.27M5.04,5.39c-.11.27-.25.52-.42.76.28-.12.54-.29.77-.49-.11-.1-.23-.19-.35-.27Z" />
+          </svg>
+        </div>
+        {{#if company.contacts.website}}<span>{{company.contacts.website_label}}</span>{{/if}}
+      </div>
+      <div class="contact-item">
+        <div class="contact-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.84" fill="#ffffff">
+            <path
+              d="M3.38,0h.18c.47.02.94.13,1.37.34.33.16.63.37.89.62.02.02.03.05.05.07.4.41.7.92.85,1.47.07.26.11.54.12.81v.2c-.02.31-.06.63-.16.93-.15.47-.4.9-.74,1.25-.62.67-1.51,1.07-2.42,1.09-.59.02-1.19-.13-1.71-.41-.6.16-1.2.31-1.8.47.16-.58.32-1.17.48-1.75-.19-.34-.33-.71-.4-1.09-.11-.63-.05-1.3.2-1.9.26-.65.75-1.2,1.34-1.57C2.15.2,2.76.02,3.38,0M1.91,1c-.5.32-.89.8-1.11,1.35-.21.53-.26,1.12-.13,1.67.08.34.23.67.43.96-.1.35-.19.69-.29,1.04.34-.09.68-.18,1.02-.27.02,0,.05-.02.07,0,.24.15.51.27.79.35.39.11.81.13,1.22.05.48-.08.94-.29,1.32-.6.36-.29.65-.67.82-1.1.24-.58.28-1.25.1-1.85-.2-.7-.69-1.31-1.32-1.67-.41-.23-.87-.36-1.34-.37-.56-.01-1.12.14-1.59.44Z" />
+            <path
+              d="M2.11,1.84c.11-.05.23-.02.34-.02.07,0,.1.07.13.12.1.22.18.45.28.67.02.04.02.08,0,.12-.06.12-.15.22-.24.33-.03.04-.05.09-.03.14.2.36.5.67.86.88.11.06.22.11.33.16.05.02.11.02.15-.02.1-.11.2-.23.29-.35.02-.03.06-.05.1-.05.09.01.18.06.26.1.13.06.26.13.39.19v-.02c.06.03.12.04.16.09.02.04.02.08.02.12,0,.11-.03.21-.07.31-.05.1-.14.18-.23.24-.1.07-.21.12-.33.15-.15.02-.3.02-.45,0-.08-.02-.15-.05-.23-.07-.19-.07-.38-.14-.56-.24-.26-.13-.48-.31-.68-.52-.2-.2-.38-.43-.56-.66-.17-.24-.32-.51-.34-.81-.02-.23.06-.47.2-.65.06-.07.11-.15.2-.19Z" />
+          </svg>
+        </div>
+        {{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}
+      </div>
+      <div class="contact-item">
+        <div class="contact-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 4.81" fill="#ffffff">
+            <path
+              d="M.42.03C.51,0,.62,0,.72,0c1.83,0,3.66,0,5.49,0,.15,0,.3.05.41.14.13.11.2.27.21.44v3.64c0,.16-.08.32-.2.43-.09.08-.21.14-.34.15-.08,0-.17,0-.25,0H.79c-.1,0-.2,0-.29-.01-.19-.03-.35-.16-.43-.33-.04-.08-.05-.16-.06-.24V.58c0-.06.01-.13.04-.19C.1.23.24.09.42.03M.69.4c.76.76,1.53,1.52,2.29,2.28.1.1.24.18.38.19.18.02.36-.05.49-.18.77-.76,1.53-1.52,2.3-2.29-1.82,0-3.64,0-5.47,0M.4.68c0,1.15,0,2.29,0,3.44.58-.57,1.15-1.15,1.73-1.72C1.55,1.83.98,1.26.4.68M4.71,2.4c.58.57,1.15,1.15,1.73,1.72,0-1.15,0-2.29,0-3.44-.58.57-1.15,1.15-1.73,1.72M.69,4.41c1.82,0,3.64,0,5.47,0-.58-.57-1.15-1.15-1.73-1.72-.07.07-.14.14-.21.21-.07.07-.14.15-.23.2-.2.14-.44.2-.68.17-.22-.02-.43-.12-.59-.27-.1-.1-.2-.2-.31-.3-.58.57-1.15,1.15-1.73,1.72Z" />
+          </svg>
+        </div>
+        {{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}
+      </div>
+      <div class="contact-item">
+        <div class="contact-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6.84 6.85" fill="#ffffff">
+            <path
+              d="M2.71,0h1.41c.29,0,.57,0,.86.03.39.03.79.14,1.1.38.21.16.39.36.51.59.14.28.21.59.23.9,0,.09,0,.17.01.26v2.48c-.01.3-.03.6-.12.89-.11.35-.32.67-.62.9-.21.16-.45.27-.7.33-.31.08-.63.08-.95.09-.11,0-.21,0-.32,0h-1.49c-.24,0-.48,0-.71-.03-.33-.02-.67-.1-.96-.26-.36-.2-.64-.53-.78-.92-.09-.25-.14-.51-.15-.78-.03-.53-.02-1.05-.02-1.58,0-.44,0-.88.02-1.31.01-.3.07-.59.18-.86.11-.26.28-.48.49-.66C1.01.2,1.4.08,1.8.04c.3-.03.61-.03.92-.04M2.08.64c-.24,0-.48.04-.69.13-.19.07-.35.21-.48.37-.1.13-.17.29-.21.46-.06.23-.06.47-.07.71-.01.49,0,.99,0,1.49,0,.37,0,.73.02,1.1.01.23.06.46.16.67.08.16.21.3.35.41.23.16.51.22.78.24.38.02.77.03,1.15.03.6,0,1.2,0,1.79-.02.27-.02.56-.07.79-.23.2-.14.36-.34.44-.58.1-.29.1-.59.11-.89.01-.39,0-.78,0-1.16,0-.43,0-.86-.02-1.29-.01-.27-.05-.54-.18-.78-.08-.15-.2-.29-.34-.39-.23-.16-.52-.22-.8-.24-.52-.03-1.03-.02-1.55-.03-.42,0-.84,0-1.26.02Z" />
+            <path
+              d="M5.17,1.19c.2-.05.42.08.48.28.07.19-.03.41-.21.5-.17.08-.38.03-.5-.11-.12-.15-.12-.38,0-.52.06-.07.14-.12.23-.13Z" />
+            <path
+              d="M3.25,1.67c.32-.03.66.03.95.17.37.18.68.5.84.89.16.36.18.78.08,1.16-.1.38-.34.72-.66.96-.28.21-.63.33-.98.34-.37.01-.75-.1-1.06-.31-.32-.22-.57-.56-.68-.94-.11-.38-.1-.79.05-1.15.14-.36.41-.67.74-.87.22-.13.47-.21.72-.24M3.31,2.29c-.38.04-.73.28-.9.61-.13.24-.16.53-.09.79.06.25.21.48.42.64.19.15.44.23.68.23.23,0,.46-.07.65-.2.2-.14.36-.34.44-.56.09-.25.09-.54-.01-.79-.09-.24-.26-.44-.48-.57-.21-.13-.46-.18-.71-.16Z" />
+          </svg>
+        </div>
+        {{#if company.contacts.instagram}}<span>{{company.contacts.instagram_label}}</span>{{/if}}
+      </div>
+    </div>
+  </div>
 
-function replaceRequiredRange(
-  source: string,
-  start: string,
-  end: string,
-  replacement: string,
-  templateKey: string,
-): string {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex + start.length);
-  if (startIndex < 0 || endIndex < 0) {
-    throw new Error(`Faixa visual não encontrada no template: ${templateKey}`);
-  }
-  return `${source.slice(0, startIndex)}${replacement}${source.slice(endIndex)}`;
-}
+</div>
 
-function withDynamicCompanyContacts(source: string, templateKey: string): string {
-  const contacts: Array<[RegExp, string]> = [
-    [
-      /<a href="https:\/\/www\.aspenestamparia\.com"[^>]*>\s*aspenestamparia\.com<\/a>/,
-      '{{#if company.contacts.website}}<span>{{company.contacts.website_label}}</span>{{/if}}',
-    ],
-    [
-      /<a href="https:\/\/wa\.me\/5521969241265"[^>]*>\s*\(21\) 96924-1265<\/a>/,
-      '{{#if company.contacts.phone}}<span>{{company.contacts.phone}}</span>{{/if}}',
-    ],
-    [
-      /<a href="mailto:contato@aspenestamparia\.com"[^>]*>\s*contato@aspenestamparia\.com<\/a>/,
-      '{{#if company.contacts.email}}<span>{{company.contacts.email}}</span>{{/if}}',
-    ],
-    [
-      /<a href="https:\/\/www\.instagram\.com\/aspenestamparia"[^>]*>\s*@aspenestamparia<\/a>/,
-      '{{#if company.contacts.instagram}}<span>{{company.contacts.instagram_label}}</span>{{/if}}',
-    ],
-  ];
-  return contacts.reduce(
-    (current, [pattern, replacement]) =>
-      replaceRequired(current, pattern, replacement, templateKey),
-    source,
-  );
-}
-
-function restoreSinglePageV2Source(
-  source: string,
-  templateKey: string,
-  commercialStart: string,
-  commercialEnd: string,
-): string {
-  const styled = replaceRequired(
-    source,
-    '</style>',
-    `${RESTORED_V2_STYLES}</style>`,
-    templateKey,
-  );
-  const canonical = replaceRequiredRange(
-    styled,
-    commercialStart,
-    commercialEnd,
-    `${RESTORED_V2_TOTAL}${RESTORED_V2_SECTIONS}`,
-    templateKey,
-  );
-  return withDynamicCompanyContacts(canonical, templateKey);
-}
-
-const BRANDED_SOURCE_V2 = restoreSinglePageV2Source(
-  BRANDED_SOURCE,
-  'branded',
-  '    <div class="info-grid">',
-  '  </div>\n  <div class="footer">',
-);
-
-let COMPARATIVE_SOURCE_V2 = replaceRequired(
-  COMPARATIVE_SOURCE,
-  '</style>',
-  `${RESTORED_V2_STYLES}</style>`,
-  'comparativo',
-);
-COMPARATIVE_SOURCE_V2 = replaceRequired(
-  COMPARATIVE_SOURCE_V2,
-  '  <!-- QUEBRA DE PÁGINA FORÇADA -->',
-  `${RESTORED_V2_TOTAL}\n  <!-- QUEBRA DE PÁGINA FORÇADA -->`,
-  'comparativo',
-);
-COMPARATIVE_SOURCE_V2 = replaceRequiredRange(
-  COMPARATIVE_SOURCE_V2,
-  '  <!-- ══ PÁGINA 2: INFORMAÇÕES ADICIONAIS ══ -->',
-  '  <div class="template-contract"',
-  `  <!-- ══ PÁGINA 2: INFORMAÇÕES ADICIONAIS ══ -->\n  <div class="page-2-content">\n${RESTORED_V2_SECTIONS}  </div>\n\n</div>\n\n`,
-  'comparativo',
-);
-COMPARATIVE_SOURCE_V2 = withDynamicCompanyContacts(COMPARATIVE_SOURCE_V2, 'comparativo');
-
-const SIMPLE_SOURCE_V2 = restoreSinglePageV2Source(
-  SIMPLE_SOURCE,
-  'simples',
-  '    <!-- Info Grid: Prazo + Pagamento -->',
-  '  </div><!-- /body -->',
-);
-
-const DEFINITIONS: readonly QuotationTemplateDefinition[] = [
-  {
-    key: 'padrao',
-    name: 'Padrão Aspen',
-    is_default: true,
-    contract_version: 2,
-    source: PADRAO_SOURCE_V2,
-  },
-  {
-    key: 'minimalista',
-    name: 'Minimalista',
-    is_default: false,
-    contract_version: 2,
-    source: MINIMAL_SOURCE_V2,
-  },
-  {
-    key: 'branded',
-    name: 'Aspen Original',
-    is_default: false,
-    contract_version: 2,
-    source: BRANDED_SOURCE_V2,
-  },
-  {
-    key: 'comparativo',
-    name: 'Comparativo por faixa',
-    is_default: false,
-    contract_version: 2,
-    source: COMPARATIVE_SOURCE_V2,
-  },
-  {
-    key: 'simples',
-    name: 'Simples',
-    is_default: false,
-    contract_version: 2,
-    source: SIMPLE_SOURCE_V2,
-  },
-];
-
-const ALLOWED_HELPERS = new Set(['if', 'each']);
-const DISALLOWED_BUILTIN_HELPERS = new Set([
-  'log',
-  'lookup',
-  'with',
-  'unless',
-  'helperMissing',
-  'blockHelperMissing',
-]);
-
-type AstRecord = Record<string, unknown> & { type?: string };
-
-function isAstRecord(value: unknown): value is AstRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function astPathName(value: unknown): string | null {
-  if (!isAstRecord(value) || value.type !== 'PathExpression') return null;
-  return typeof value.original === 'string' ? value.original : null;
-}
-
-function astArray(value: unknown): AstRecord[] {
-  return Array.isArray(value) ? value.filter(isAstRecord) : [];
-}
-
-function validateAstExpression(expression: unknown, templateKey: string): void {
-  if (!isAstRecord(expression)) throw new Error(`Expressão inválida no template: ${templateKey}`);
-  if (expression.type === 'SubExpression') {
-    throw new Error(`Subexpressões não são permitidas no template: ${templateKey}`);
-  }
-  if (
-    expression.type === 'PathExpression' ||
-    expression.type === 'StringLiteral' ||
-    expression.type === 'NumberLiteral' ||
-    expression.type === 'BooleanLiteral' ||
-    expression.type === 'UndefinedLiteral' ||
-    expression.type === 'NullLiteral'
+<div class="template-contract" style="display:none">
+  {{#each items}}<span>{{name}} {{quantity}}</span>{{/each}}
+  <span>{{display.total}}</span>
+</div>
+</body>
+</html>$quotation_simples_visual_v3$, '925af8f135b3f8831de2087052b865b905203654ad40c7f60c9848e5a7d2f9d8', 2
+FROM "quotation_templates" AS template
+LEFT JOIN "quotation_template_versions" AS existing ON existing."template_id" = template."id"
+WHERE template."key" = 'simples'
+  AND NOT EXISTS (
+    SELECT 1 FROM "quotation_template_versions" AS duplicate
+    WHERE duplicate."template_id" = template."id"
+      AND duplicate."source_hash" = '925af8f135b3f8831de2087052b865b905203654ad40c7f60c9848e5a7d2f9d8'
   )
-    return;
-  throw new Error(`Expressão não permitida no template: ${templateKey}`);
-}
-
-function validateAstHash(hash: unknown, templateKey: string): void {
-  if (!isAstRecord(hash)) return;
-  for (const pair of astArray(hash.pairs)) validateAstExpression(pair.value, templateKey);
-}
-
-function validateAstProgram(program: unknown, templateKey: string): void {
-  if (!isAstRecord(program)) throw new Error(`Bloco inválido no template: ${templateKey}`);
-  for (const node of astArray(program.body)) validateAstNode(node, templateKey);
-}
-
-function validateAstNode(node: AstRecord, templateKey: string): void {
-  switch (node.type) {
-    case 'Program':
-      validateAstProgram(node, templateKey);
-      return;
-    case 'MustacheStatement': {
-      if (node.escaped === false)
-        throw new Error(`Saída sem escape não é permitida no template: ${templateKey}`);
-      const params = astArray(node.params);
-      const hash = node.hash;
-      const hasHash = isAstRecord(hash) && astArray(hash.pairs).length > 0;
-      const pathName = astPathName(node.path);
-      if ((params.length > 0 || hasHash) && (!pathName || !ALLOWED_HELPERS.has(pathName))) {
-        throw new Error(`Helper não permitido no template: ${templateKey}`);
-      }
-      if (params.length === 0 && !hasHash && pathName && DISALLOWED_BUILTIN_HELPERS.has(pathName)) {
-        throw new Error(`Helper não permitido no template: ${templateKey}`);
-      }
-      for (const parameter of params) validateAstExpression(parameter, templateKey);
-      validateAstHash(hash, templateKey);
-      validateAstExpression(node.path, templateKey);
-      return;
-    }
-    case 'BlockStatement': {
-      const pathName = astPathName(node.path);
-      if (!pathName || !ALLOWED_HELPERS.has(pathName)) {
-        throw new Error(`Bloco helper não permitido no template: ${templateKey}`);
-      }
-      for (const parameter of astArray(node.params)) validateAstExpression(parameter, templateKey);
-      validateAstHash(node.hash, templateKey);
-      validateAstProgram(node.program, templateKey);
-      if (node.inverse) validateAstProgram(node.inverse, templateKey);
-      return;
-    }
-    case 'PartialStatement':
-    case 'PartialBlockStatement':
-    case 'Decorator':
-    case 'DecoratorBlock':
-      throw new Error(`Parciais e decorators não são permitidos no template: ${templateKey}`);
-    case 'ContentStatement':
-    case 'CommentStatement':
-      return;
-    default:
-      throw new Error(`Nó não permitido no template: ${templateKey}`);
-  }
-}
-
-export function validateQuotationTemplateSource(
-  source: string,
-  templateKey = 'desconhecido'
-): void {
-  const ast = Handlebars.parse(source) as unknown as AstRecord;
-  validateAstProgram(ast, templateKey);
-}
-
-function materializeTemplates(
-  definitions: readonly QuotationTemplateDefinition[],
-): readonly QuotationTemplate[] {
-  return Object.freeze(
-    definitions.map((definition) =>
-      Object.freeze({
-        ...definition,
-        hash: sourceHash(definition.source),
-      }),
-    ),
-  );
-}
-
-const TEMPLATES: readonly QuotationTemplate[] = materializeTemplates(DEFINITIONS);
-const HISTORICAL_TEMPLATES: readonly QuotationTemplate[] = materializeTemplates(HISTORICAL_DEFINITIONS);
-const BY_KEY = new Map(TEMPLATES.map((template) => [template.key, template]));
-const HISTORICAL_BY_KEY = new Map(HISTORICAL_TEMPLATES.map((template) => [template.key, template]));
-const HISTORICAL_BY_HASH = new Map(HISTORICAL_TEMPLATES.map((template) => [template.hash, template]));
-const DEFAULT_TEMPLATE = TEMPLATES.find((template) => template.is_default)!;
-const BRANDED_DEFINITION = HISTORICAL_DEFINITIONS.find((definition) => definition.key === 'branded')!;
-const BRANDED_TEMPLATE = HISTORICAL_TEMPLATES.find((template) => template.key === 'branded')!;
-
-export const QUOTATION_TEMPLATES = TEMPLATES;
-export const HISTORICAL_QUOTATION_TEMPLATES = HISTORICAL_TEMPLATES;
-export const DEFAULT_QUOTATION_TEMPLATE = DEFAULT_TEMPLATE;
-
-export function getQuotationTemplateManifest(): QuotationTemplateMetadata[] {
-  return TEMPLATES.map(({ key, name, is_default, contract_version, hash }) => ({
-    key,
-    name,
-    is_default,
-    contract_version,
-    hash,
-  }));
-}
-
-export function getQuotationTemplate(key: unknown): QuotationTemplate | null {
-  if (typeof key !== 'string') return null;
-  return BY_KEY.get(key.trim()) || null;
-}
-
-export function resolveQuotationTemplate(key: unknown, hash?: unknown): QuotationTemplate {
-  const normalizedKey = typeof key === 'string' ? key.trim() : '';
-  const normalizedHash = typeof hash === 'string' ? hash.trim() : '';
-  const template = BY_KEY.get(normalizedKey);
-  if (template && template.hash === normalizedHash) return template;
-  const historical = HISTORICAL_BY_KEY.get(normalizedKey);
-  if (historical && historical.hash === normalizedHash) return historical;
-  throw new QuotationTemplateResolutionError();
-}
-
-export function parseQuotationTemplateContractVersion(
-  value: unknown
-): QuotationTemplateContractVersion {
-  if (value === 1 || value === 2) return value;
-  throw new QuotationTemplateContractError();
-}
-
-export function quotationTemplateFromVersion(version: {
-  source: string;
-  sourceHash: string;
-  contractVersion?: unknown;
-  contract_version?: unknown;
-  template?: { key: string; name: string };
-}): QuotationTemplate {
-  const contractVersion = parseQuotationTemplateContractVersion(
-    version.contractVersion ?? version.contract_version
-  );
-  // Persisted copies retain compatibility by immutable source identity, including legacy keys.
-  // Every official historical source resolves to its frozen v1 object; arbitrary persisted
-  // v1 sources remain generic and never gain a v2 or name-based fallback.
-  if (contractVersion === 1) {
-    const historical = HISTORICAL_BY_HASH.get(version.sourceHash);
-    if (historical && historical.source === version.source) return historical;
-  }
-  return {
-    key: version.template?.key || 'persisted',
-    name: version.template?.name || 'Template persistido',
-    is_default: false,
-    contract_version: contractVersion,
-    source: version.source,
-    hash: version.sourceHash,
-  };
-}
-
-const HELPER_NAMES = Object.freeze({
-  if: true,
-  each: true,
-});
-
-function parseCents(value: unknown): bigint {
-  const raw = String(value ?? '0').trim();
-  const match = raw.match(/^(-?)(\d+)(?:\.(\d{1,2}))?$/);
-  if (!match) return 0n;
-  const cents = BigInt(match[2]) * 100n + BigInt((match[3] || '').padEnd(2, '0') || '0');
-  return match[1] ? -cents : cents;
-}
-
-function formatCurrency(value: unknown): string {
-  const cents = parseCents(value);
-  const sign = cents < 0n ? '-' : '';
-  const absolute = cents < 0n ? -cents : cents;
-  const integer = absolute / 100n;
-  const decimal = (absolute % 100n).toString().padStart(2, '0');
-  return `${sign}R$ ${integer.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} ,${decimal}`.replace(
-    ' ,',
-    ','
-  );
-}
-
-function formatDate(value: unknown): string {
-  const date = value instanceof Date ? value : new Date(String(value || ''));
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(date);
-}
-
-function formatClientName(value: unknown): string {
-  const raw = String(value ?? '').trim().replace(/\s+/g, ' ');
-  if (!raw || /[<>]/.test(raw)) return raw;
-  return raw
-    .toLocaleLowerCase('pt-BR')
-    .replace(/(^|[\s'’-])\p{L}/gu, (letter) => letter.toLocaleUpperCase('pt-BR'));
-}
-
-export function formatQuotationQuantity(value: unknown): string {
-  const raw = String(value ?? '');
-  const match = /^([+-]?\d+)(?:\.(\d+))?$/.exec(raw.trim());
-  if (!match) return raw;
-  const fraction = (match[2] || '').replace(/0+$/, '');
-  return fraction ? `${match[1]}.${fraction}` : match[1];
-}
-
-function formatPhone(value: unknown): string {
-  const raw = String(value ?? '').trim();
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  const local = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
-    ? digits.slice(2)
-    : digits;
-  if (local.length === 11) return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
-  if (local.length === 10) return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
-  return raw;
-}
-
-function createEnvironment(): typeof Handlebars {
-  const environment = Handlebars.create();
-  for (const helperName of Object.keys(environment.helpers)) {
-    if (!ALLOWED_HELPERS.has(helperName)) environment.unregisterHelper(helperName);
-  }
-  for (const decoratorName of Object.keys(environment.decorators)) {
-    environment.unregisterDecorator(decoratorName);
-  }
-  return environment;
-}
-
-export interface QuotationTemplateViewModel {
-  [key: string]: unknown;
-}
-
-/** Deterministic data used to validate and preview templates before persistence. */
-export const QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL: QuotationTemplateViewModel = {
-  quote_number: 'ORC-PREVIEW',
-  revision: 1,
-  validity: true,
-  client: {
-    name: 'Cliente de demonstração',
-    document: '00.000.000/0000-00',
-    email: 'cliente@example.com',
-    phone: '(11) 99999-9999',
-    address: 'Rua de demonstração, 100 - Centro',
-  },
-  items: [
-    {
-      position: 1,
-      sku: 'SKU-DEMO',
-      name: 'Produto de demonstração',
-      description: 'Descrição do produto de demonstração',
-      quantity: '1',
-      unit: 'Und',
-      display: { unit_price: 'R$ 10,00', line_total: 'R$ 10,00' },
-    },
-  ],
-  comparison: {
-    brackets: [
-      { minimum: 30, label: '30 - 99' },
-      { minimum: 100, label: '100 - 299' },
-    ],
-    products: [
-      {
-        position: 1,
-        name: 'Produto de demonstração',
-        description: 'Descrição do produto de demonstração',
-        prices: [
-          { display: 'R$ 10,00', available: true },
-          { display: '', available: false },
-        ],
-      },
-    ],
-  },
-  company: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
-  display: {
-    quote_date: '01/01/2026',
-    validity_date: '16/01/2026',
-    subtotal: 'R$ 10,00',
-    freight: 'R$ 0,00',
-    total: 'R$ 10,00',
-  },
-  terms: {
-    pagamento: 'À vista',
-    entrega: '15 dias',
-    production_deadline: '15 dias',
-    observations: 'Observação de demonstração',
-  },
-  secoes: {
-    prazo_producao: {
-      enabled: true,
-      title: 'Prazo de produção',
-      value: '15 dias úteis',
-    },
-    pagamento: {
-      enabled: true,
-      title: 'Pagamento',
-      body_html: new Handlebars.SafeString('À vista<br>Pix ou transferência'),
-    },
-    condicoes_gerais: {
-      enabled: true,
-      title: 'Condições Gerais',
-      body_html: new Handlebars.SafeString('Frete FOB<br>Arte aprovada pelo cliente'),
-    },
-  },
-};
-
-// ── HTML policy tokenizer ──────────────────────────────────────────────
-
-// All allowlists stored lowercase for case-insensitive matching
-const ALLOWED_TAGS = new Set([
-  'a',
-  'article',
-  'b',
-  'blockquote',
-  'body',
-  'br',
-  'caption',
-  'code',
-  'col',
-  'colgroup',
-  'dd',
-  'defs',
-  'div',
-  'dl',
-  'dt',
-  'em',
-  'footer',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'head',
-  'header',
-  'hr',
-  'html',
-  'img',
-  'li',
-  'link',
-  'main',
-  'meta',
-  'nav',
-  'ol',
-  'p',
-  'path',
-  'pre',
-  'section',
-  'small',
-  'span',
-  'strong',
-  'style',
-  'svg',
-  'table',
-  'tbody',
-  'td',
-  'tfoot',
-  'th',
-  'thead',
-  'title',
-  'tr',
-  'ul',
-]);
-
-// SVG-restricted tag subset (only these allowed inside <svg>)
-const SVG_ALLOWED_TAGS = new Set(['svg', 'g', 'path', 'defs', 'style']);
-
-// Tags that are ONLY valid inside SVG context
-const SVG_ONLY_TAGS = new Set(['g', 'path', 'defs']);
-
-// Only this built-in source may omit display.total; every new template/version must require it.
-// External/persisted templates with the same key or hash do NOT get this exception.
-const BRANDED_PROVENANCE_TOKEN = Symbol('branded-template');
-
-// Global attribute allowlist (applied to all tags that lack per-tag restrictions)
-// NOTE: href and src are NOT here — they are only allowed on specific tags via TAG_ATTRIBUTE_RESTRICTIONS
-const ALLOWED_ATTRIBUTES = new Set([
-  'class',
-  'id',
-  'style',
-  'rel',
-  'charset',
-  'width',
-  'height',
-  'viewbox',
-  'preserveaspectratio',
-  'xmlns',
-  'xmlns:xlink',
-  'fill',
-  'stroke',
-  'd',
-  'data-name',
-  'lang',
-]);
-
-// Per-tag attribute restrictions: ONLY these attributes allowed (replaces global check)
-const TAG_ATTRIBUTE_RESTRICTIONS: Record<string, Set<string>> = {
-  a: new Set(['href', 'class', 'id', 'style']),
-  meta: new Set(['charset']),
-  link: new Set(['href', 'rel']),
-  img: new Set(['src', 'width', 'height']),
-};
-
-// SVG-specific attribute allowlist (replaces global check inside SVG context)
-const SVG_ATTRIBUTES = new Set([
-  'class',
-  'id',
-  'style',
-  'fill',
-  'stroke',
-  'd',
-  'viewbox',
-  'preserveaspectratio',
-  'xmlns',
-  'xmlns:xlink',
-  'width',
-  'height',
-  'data-name',
-  'transform',
-  'opacity',
-  'clip-path',
-  'mask',
-]);
-
-const VOID_ELEMENTS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'param',
-  'source',
-  'track',
-  'wbr',
-]);
-
-const DANGEROUS_CSS_PATTERNS = ['@import', 'expression(', 'url(', 'behavior', '-moz-binding'];
-
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lpar;/g, '(')
-    .replace(/&rpar;/g, ')')
-    .replace(/&lbrace;/g, '{')
-    .replace(/&rbrace;/g, '}')
-    .replace(/&num;/g, '#')
-    .replace(/&percnt;/g, '%')
-    .replace(/&star;/g, '*')
-    .replace(/&plus;/g, '+')
-    .replace(/&comma;/g, ',')
-    .replace(/&period;/g, '.')
-    .replace(/&sol;/g, '/')
-    .replace(/&colon;/g, ':')
-    .replace(/&semi;/g, ';')
-    .replace(/&lt sign;/g, '<')
-    .replace(/&equals;/g, '=')
-    .replace(/&quest;/g, '?')
-    .replace(/&commat;/g, '@')
-    .replace(/&lsqb;/g, '[')
-    .replace(/&rsqb;/g, ']')
-    .replace(/&Hat;/g, '^')
-    .replace(/&lowbar;/g, '_')
-    .replace(/&grave;/g, '`')
-    .replace(/&lcub;/g, '{')
-    .replace(/&rcub;/g, '}')
-    .replace(/&vert;/g, '|')
-    .replace(/&tilde;/g, '~')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&ensp;/g, ' ')
-    .replace(/&emsp;/g, ' ')
-    .replace(/&thinsp;/g, ' ')
-    .replace(/&ndash;/g, '\u2013')
-    .replace(/&mdash;/g, '\u2014')
-    .replace(/&laquo;/g, '\u00AB')
-    .replace(/&raquo;/g, '\u00BB')
-    .replace(/&copy;/g, '\u00A9')
-    .replace(/&reg;/g, '\u00AE')
-    .replace(/&trade;/g, '\u2122')
-    .replace(/&euro;/g, '\u20AC')
-    .replace(/&pound;/g, '\u00A3')
-    .replace(/&yen;/g, '\u00A5')
-    .replace(/&cent;/g, '\u00A2')
-    .replace(/&curren;/g, '\u00A4')
-    .replace(/&sect;/g, '\u00A7')
-    .replace(/&para;/g, '\u00B6')
-    .replace(/&larr;/g, '\u2190')
-    .replace(/&uarr;/g, '\u2191')
-    .replace(/&rarr;/g, '\u2192')
-    .replace(/&darr;/g, '\u2193')
-    .replace(/&times;/g, '\u00D7')
-    .replace(/&divide;/g, '\u00F7')
-    .replace(/&plusmn;/g, '\u00B1')
-    .replace(/&micro;/g, '\u00B5')
-    .replace(/&para;/g, '\u00B6')
-    .replace(/&middot;/g, '\u00B7')
-    .replace(/&ordf;/g, '\u00AA')
-    .replace(/&ordm;/g, '\u00BA')
-    .replace(/&iquest;/g, '\u00BF')
-    .replace(/&Agrave;/g, '\u00C0')
-    .replace(/&Aacute;/g, '\u00C1')
-    .replace(/&Acirc;/g, '\u00C2')
-    .replace(/&Atilde;/g, '\u00C3')
-    .replace(/&Auml;/g, '\u00C4')
-    .replace(/&Aring;/g, '\u00C5')
-    .replace(/&AElig;/g, '\u00C6')
-    .replace(/&Ccedil;/g, '\u00C7')
-    .replace(/&Egrave;/g, '\u00C8')
-    .replace(/&Eacute;/g, '\u00C9')
-    .replace(/&Ecirc;/g, '\u00CA')
-    .replace(/&Euml;/g, '\u00CB')
-    .replace(/&Igrave;/g, '\u00CC')
-    .replace(/&Iacute;/g, '\u00CD')
-    .replace(/&Icirc;/g, '\u00CE')
-    .replace(/&Iuml;/g, '\u00CF')
-    .replace(/&ETH;/g, '\u00D0')
-    .replace(/&Ntilde;/g, '\u00D1')
-    .replace(/&Ograve;/g, '\u00D2')
-    .replace(/&Oacute;/g, '\u00D3')
-    .replace(/&Ocirc;/g, '\u00D4')
-    .replace(/&Otilde;/g, '\u00D5')
-    .replace(/&Ouml;/g, '\u00D6')
-    .replace(/&Oslash;/g, '\u00D8')
-    .replace(/&Ugrave;/g, '\u00D9')
-    .replace(/&Uacute;/g, '\u00DA')
-    .replace(/&Ucirc;/g, '\u00DB')
-    .replace(/&Uuml;/g, '\u00DC')
-    .replace(/&Yacute;/g, '\u00DD')
-    .replace(/&THORN;/g, '\u00DE')
-    .replace(/&szlig;/g, '\u00DF')
-    .replace(/&agrave;/g, '\u00E0')
-    .replace(/&aacute;/g, '\u00E1')
-    .replace(/&acirc;/g, '\u00E2')
-    .replace(/&atilde;/g, '\u00E3')
-    .replace(/&auml;/g, '\u00E4')
-    .replace(/&aring;/g, '\u00E5')
-    .replace(/&aelig;/g, '\u00E6')
-    .replace(/&ccedil;/g, '\u00E7')
-    .replace(/&egrave;/g, '\u00E8')
-    .replace(/&eacute;/g, '\u00E9')
-    .replace(/&ecirc;/g, '\u00EA')
-    .replace(/&euml;/g, '\u00EB')
-    .replace(/&igrave;/g, '\u00EC')
-    .replace(/&iacute;/g, '\u00ED')
-    .replace(/&icirc;/g, '\u00EE')
-    .replace(/&iuml;/g, '\u00EF')
-    .replace(/&eth;/g, '\u00F0')
-    .replace(/&ntilde;/g, '\u00F1')
-    .replace(/&ograve;/g, '\u00F2')
-    .replace(/&oacute;/g, '\u00F3')
-    .replace(/&ocirc;/g, '\u00F4')
-    .replace(/&otilde;/g, '\u00F5')
-    .replace(/&ouml;/g, '\u00F6')
-    .replace(/&oslash;/g, '\u00F8')
-    .replace(/&ugrave;/g, '\u00F9')
-    .replace(/&uacute;/g, '\u00FA')
-    .replace(/&ucirc;/g, '\u00FB')
-    .replace(/&uuml;/g, '\u00FC')
-    .replace(/&yacute;/g, '\u00FD')
-    .replace(/&thorn;/g, '\u00FE')
-    .replace(/&yuml;/g, '\u00FF')
-    .replace(/&fnof;/g, '\u0192')
-    .replace(/&circ;/g, '\u02C6')
-    .replace(/&tilde;/g, '\u02DC')
-    .replace(/&Alpha;/g, '\u0391')
-    .replace(/&Beta;/g, '\u0392')
-    .replace(/&Gamma;/g, '\u0393')
-    .replace(/&Delta;/g, '\u0394')
-    .replace(/&Epsilon;/g, '\u0395')
-    .replace(/&Zeta;/g, '\u0396')
-    .replace(/&Eta;/g, '\u0397')
-    .replace(/&Theta;/g, '\u0398')
-    .replace(/&Iota;/g, '\u0399')
-    .replace(/&Kappa;/g, '\u039A')
-    .replace(/&Lambda;/g, '\u039B')
-    .replace(/&Mu;/g, '\u039C')
-    .replace(/&Nu;/g, '\u039D')
-    .replace(/&Xi;/g, '\u039E')
-    .replace(/&Omicron;/g, '\u039F')
-    .replace(/&Pi;/g, '\u03A0')
-    .replace(/&Rho;/g, '\u03A1')
-    .replace(/&Sigma;/g, '\u03A3')
-    .replace(/&Tau;/g, '\u03A4')
-    .replace(/&Upsilon;/g, '\u03A5')
-    .replace(/&Phi;/g, '\u03A6')
-    .replace(/&Chi;/g, '\u03A7')
-    .replace(/&Psi;/g, '\u03A8')
-    .replace(/&Omega;/g, '\u03A9')
-    .replace(/&alpha;/g, '\u03B1')
-    .replace(/&beta;/g, '\u03B2')
-    .replace(/&gamma;/g, '\u03B3')
-    .replace(/&delta;/g, '\u03B4')
-    .replace(/&epsilon;/g, '\u03B5')
-    .replace(/&zeta;/g, '\u03B6')
-    .replace(/&eta;/g, '\u03B7')
-    .replace(/&theta;/g, '\u03B8')
-    .replace(/&iota;/g, '\u03B9')
-    .replace(/&kappa;/g, '\u03BA')
-    .replace(/&lambda;/g, '\u03BB')
-    .replace(/&mu;/g, '\u03BC')
-    .replace(/&nu;/g, '\u03BD')
-    .replace(/&xi;/g, '\u03BE')
-    .replace(/&omicron;/g, '\u03BF')
-    .replace(/&pi;/g, '\u03C0')
-    .replace(/&rho;/g, '\u03C1')
-    .replace(/&sigmaf;/g, '\u03C2')
-    .replace(/&sigma;/g, '\u03C3')
-    .replace(/&tau;/g, '\u03C4')
-    .replace(/&upsilon;/g, '\u03C5')
-    .replace(/&phi;/g, '\u03C6')
-    .replace(/&chi;/g, '\u03C7')
-    .replace(/&psi;/g, '\u03C8')
-    .replace(/&omega;/g, '\u03C9')
-    .replace(/&thetasym;/g, '\u03D1')
-    .replace(/&upsih;/g, '\u03D2')
-    .replace(/&piv;/g, '\u03D6')
-    .replace(/&OElig;/g, '\u0152')
-    .replace(/&oelig;/g, '\u0153')
-    .replace(/&Scaron;/g, '\u0160')
-    .replace(/&scaron;/g, '\u0161')
-    .replace(/&Yuml;/g, '\u0178')
-    .replace(/&ligature;/g, '\uFB01')
-    .replace(/&frasl;/g, '\u2044')
-    .replace(/&weierp;/g, '\u2118')
-    .replace(/&image;/g, '\u2111')
-    .replace(/&real;/g, '\u211C')
-    .replace(/&trade;/g, '\u2122')
-    .replace(/&alefsym;/g, '\u2135')
-    .replace(/&larr;/g, '\u2190')
-    .replace(/&uarr;/g, '\u2191')
-    .replace(/&rarr;/g, '\u2192')
-    .replace(/&darr;/g, '\u2193')
-    .replace(/&harr;/g, '\u2194')
-    .replace(/&crarr;/g, '\u21B5')
-    .replace(/&lArr;/g, '\u21D0')
-    .replace(/&uArr;/g, '\u21D1')
-    .replace(/&rArr;/g, '\u21D2')
-    .replace(/&dArr;/g, '\u21D3')
-    .replace(/&hArr;/g, '\u21D4')
-    .replace(/&forall;/g, '\u2200')
-    .replace(/&part;/g, '\u2202')
-    .replace(/&exist;/g, '\u2203')
-    .replace(/&empty;/g, '\u2205')
-    .replace(/&nabla;/g, '\u2207')
-    .replace(/&isin;/g, '\u2208')
-    .replace(/&notin;/g, '\u2209')
-    .replace(/&ni;/g, '\u220B')
-    .replace(/&prod;/g, '\u220F')
-    .replace(/&sum;/g, '\u2211')
-    .replace(/&minus;/g, '\u2212')
-    .replace(/&lowast;/g, '\u2217')
-    .replace(/&radic;/g, '\u221A')
-    .replace(/&prop;/g, '\u221D')
-    .replace(/&infin;/g, '\u221E')
-    .replace(/&ang;/g, '\u2220')
-    .replace(/&and;/g, '\u2227')
-    .replace(/&or;/g, '\u2228')
-    .replace(/&cap;/g, '\u2229')
-    .replace(/&cup;/g, '\u222A')
-    .replace(/&int;/g, '\u222B')
-    .replace(/&there4;/g, '\u2234')
-    .replace(/&sim;/g, '\u223C')
-    .replace(/&cong;/g, '\u2245')
-    .replace(/&asymp;/g, '\u2248')
-    .replace(/&ne;/g, '\u2260')
-    .replace(/&equiv;/g, '\u2261')
-    .replace(/&le;/g, '\u2264')
-    .replace(/&ge;/g, '\u2265')
-    .replace(/&sub;/g, '\u2282')
-    .replace(/&sup;/g, '\u2283')
-    .replace(/&nsub;/g, '\u2284')
-    .replace(/&sube;/g, '\u2286')
-    .replace(/&supe;/g, '\u2287')
-    .replace(/&oplus;/g, '\u2295')
-    .replace(/&otimes;/g, '\u2297')
-    .replace(/&perp;/g, '\u22A5')
-    .replace(/&sdot;/g, '\u22C5')
-    .replace(/&lceil;/g, '\u2308')
-    .replace(/&rceil;/g, '\u2309')
-    .replace(/&lfloor;/g, '\u230A')
-    .replace(/&rfloor;/g, '\u230B')
-    .replace(/&lang;/g, '\u2329')
-    .replace(/&rang;/g, '\u232A')
-    .replace(/&loz;/g, '\u25CA')
-    .replace(/&spades;/g, '\u2660')
-    .replace(/&clubs;/g, '\u2663')
-    .replace(/&hearts;/g, '\u2665')
-    .replace(/&diams;/g, '\u2666');
-}
-
-function normalizeCssForCheck(css: string): string {
-  // Decode HTML entities (comprehensive set)
-  let s = decodeHtmlEntities(css);
-  // Normalize control whitespace (tab/newline/carriage-return → space, collapse runs)
-  s = s.replace(/[\t\n\r]+/g, ' ').replace(/\s{2,}/g, ' ');
-  // Decode CSS escapes: \\HHHHHH → char
-  s = s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) =>
-    String.fromCharCode(parseInt(hex, 16))
-  );
-  // Remove CSS comments
-  s = s.replace(/\/\*[\s\S]*?\*\//g, '');
-  return s;
-}
-
-function checkCssSafety(css: string, context: string, templateKey: string): void {
-  const lower = normalizeCssForCheck(css).toLowerCase();
-  for (const pattern of DANGEROUS_CSS_PATTERNS) {
-    if (lower.includes(pattern)) {
-      throw new Error(`CSS perigoso "${pattern}" em ${context}: ${templateKey}`);
-    }
-  }
-  if (/(?:^|[;{ ])on\w+\s*:/.test(lower)) {
-    throw new Error(`Propriedade de evento em CSS não permitida em ${context}: ${templateKey}`);
-  }
-}
-
-type HtmlTokenType = 'doctype' | 'start-tag' | 'end-tag' | 'comment' | 'text' | 'raw-text';
-
-interface HtmlToken {
-  type: HtmlTokenType;
-  name?: string;
-  attributes?: Array<{ name: string; value: string }>;
-  selfClosing?: boolean;
-  content?: string;
-}
-
-function tokenizeHtml(source: string): HtmlToken[] {
-  const tokens: HtmlToken[] = [];
-  let i = 0;
-
-  while (i < source.length) {
-    if (source[i] !== '<') {
-      const end = source.indexOf('<', i);
-      const text = end === -1 ? source.slice(i) : source.slice(i, end);
-      if (text) tokens.push({ type: 'text', content: text });
-      i = end === -1 ? source.length : end;
-      continue;
-    }
-
-    if (source.startsWith('<!--', i)) {
-      const end = source.indexOf('-->', i + 4);
-      if (end === -1) throw new Error('Comentário HTML não terminado');
-      tokens.push({ type: 'comment', content: source.slice(i, end + 3) });
-      i = end + 3;
-      continue;
-    }
-
-    if (source.startsWith('<!', i)) {
-      const end = source.indexOf('>', i);
-      if (end === -1) throw new Error('Declaração HTML não terminada');
-      tokens.push({ type: 'doctype', content: source.slice(i, end + 1) });
-      i = end + 1;
-      continue;
-    }
-
-    if (source[i + 1] === '/') {
-      i += 2;
-      let name = '';
-      while (i < source.length && /[a-zA-Z0-9]/.test(source[i])) name += source[i++];
-      if (!name) throw new Error('Nome de tag de fechamento inválido');
-      // Reject trailing junk between tag name and >
-      while (i < source.length && /\s/.test(source[i])) i++;
-      if (i >= source.length || source[i] !== '>') {
-        throw new Error(`Lixo após nome de tag de fechamento </${name}>`);
-      }
-      tokens.push({ type: 'end-tag', name: name.toLowerCase() });
-      i++;
-      continue;
-    }
-
-    i++;
-    let name = '';
-    while (i < source.length && /[a-zA-Z0-9]/.test(source[i])) name += source[i++];
-    if (!name) throw new Error('Nome de tag inválido');
-
-    const attributes: Array<{ name: string; value: string }> = [];
-    let selfClosing = false;
-
-    while (i < source.length && source[i] !== '>') {
-      while (i < source.length && /\s/.test(source[i])) i++;
-      if (source[i] === '/') {
-        selfClosing = true;
-        i++;
-        while (i < source.length && /\s/.test(source[i])) i++;
-        if (source[i] === '>') break;
-      }
-      if (source[i] === '>') break;
-      if (i >= source.length) throw new Error(`Tag <${name}> não terminada`);
-
-      let attrName = '';
-      while (i < source.length && /[a-zA-Z0-9_:.-]/.test(source[i])) attrName += source[i++];
-      if (!attrName) throw new Error(`Atributo inválido na tag <${name}>`);
-
-      while (i < source.length && /\s/.test(source[i])) i++;
-
-      let attrValue = '';
-      if (source[i] === '=') {
-        i++;
-        while (i < source.length && /\s/.test(source[i])) i++;
-        if (source[i] === '"') {
-          i++;
-          const end = source.indexOf('"', i);
-          if (end === -1) throw new Error(`Valor de atributo não terminado na tag <${name}>`);
-          attrValue = source.slice(i, end);
-          i = end + 1;
-        } else if (source[i] === "'") {
-          i++;
-          const end = source.indexOf("'", i);
-          if (end === -1) throw new Error(`Valor de atributo não terminado na tag <${name}>`);
-          attrValue = source.slice(i, end);
-          i = end + 1;
-        } else {
-          // Reject unquoted attribute values
-          throw new Error(`Valor de atributo não aspas na tag <${name}>`);
-        }
-      }
-      attributes.push({ name: attrName.toLowerCase(), value: attrValue });
-    }
-
-    const tagName = name.toLowerCase();
-    // After attribute parsing, the loop ended because i >= source.length or source[i] === '>'.
-    // If EOF was reached before >, reject the unterminated tag.
-    if (i >= source.length || source[i] !== '>') {
-      throw new Error(`Tag <${name}> não terminada`);
-    }
-    tokens.push({ type: 'start-tag', name: tagName, attributes, selfClosing });
-    i++; // skip the >
-
-    if ((tagName === 'style' || tagName === 'script') && !selfClosing) {
-      const closeTag = `</${tagName}>`;
-      const closeIdx = source.toLowerCase().indexOf(closeTag, i);
-      if (closeIdx === -1) throw new Error(`Tag <${tagName}> não terminada`);
-      tokens.push({ type: 'raw-text', content: source.slice(i, closeIdx) });
-      i = closeIdx + closeTag.length;
-    }
-  }
-  return tokens;
-}
-
-function hasHandlebarsExpression(value: string): boolean {
-  return /\{\{/.test(value);
-}
-
-function checkHtmlPolicy(tokens: HtmlToken[], templateKey: string): void {
-  const stack: string[] = [];
-  let inSvg = false;
-  for (const token of tokens) {
-    if (token.type === 'start-tag') {
-      const tagLower = token.name!;
-
-      // SVG context tracking
-      if (tagLower === 'svg') inSvg = true;
-
-      // Tag allowlist (SVG context uses restricted set, reject SVG-only tags outside SVG)
-      if (!inSvg && SVG_ONLY_TAGS.has(tagLower)) {
-        throw new Error(`Tag "<${token.name}>" não permitida fora de contexto SVG: ${templateKey}`);
-      }
-      const tagSet = inSvg ? SVG_ALLOWED_TAGS : ALLOWED_TAGS;
-      if (!tagSet.has(tagLower)) {
-        throw new Error(`Tag "<${token.name}>" não permitida no template: ${templateKey}`);
-      }
-
-      // Reject self-closing on non-void tags (except SVG void elements)
-      if (token.selfClosing && !VOID_ELEMENTS.has(tagLower) && tagLower !== 'path') {
-        throw new Error(`Tag "<${token.name}>" não-void não pode ser auto-fechada: ${templateKey}`);
-      }
-
-      // Push non-void, non-self-closing, non-style/script tags
-      if (
-        !token.selfClosing &&
-        !VOID_ELEMENTS.has(tagLower) &&
-        tagLower !== 'style' &&
-        tagLower !== 'script'
-      ) {
-        stack.push(tagLower);
-      }
-
-      for (const attr of token.attributes || []) {
-        const attrLower = attr.name;
-
-        // Reject Handlebars expressions in URL/style contexts
-        if (
-          (attrLower === 'href' || attrLower === 'src' || attrLower === 'style') &&
-          hasHandlebarsExpression(attr.value)
-        ) {
-          throw new Error(
-            `Expressão dinâmica não permitida no atributo "${attrLower}" da tag <${token.name}>: ${templateKey}`
-          );
-        }
-
-        // Attribute policy: SVG context uses SVG allowlist,
-        // restricted tags use their specific set, all others use global
-        if (inSvg) {
-          if (!SVG_ATTRIBUTES.has(attrLower)) {
-            throw new Error(
-              `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
-            );
-          }
-        } else {
-          const tagRestricted = TAG_ATTRIBUTE_RESTRICTIONS[tagLower];
-          if (tagRestricted) {
-            if (!tagRestricted.has(attrLower)) {
-              throw new Error(
-                `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
-              );
-            }
-          } else if (!ALLOWED_ATTRIBUTES.has(attrLower)) {
-            throw new Error(
-              `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
-            );
-          }
-        }
-
-        // URL protocol checks
-        if (attrLower === 'href' || attrLower === 'src') {
-          const decoded = decodeHtmlEntities(attr.value).toLowerCase().trim();
-          if (
-            attrLower === 'src' &&
-            !decoded.startsWith('https:') &&
-            !decoded.startsWith('data:image/')
-          ) {
-            throw new Error(`Protocolo não permitido em src: ${decoded}: ${templateKey}`);
-          }
-          if (
-            attrLower === 'href' &&
-            !decoded.startsWith('https:') &&
-            !decoded.startsWith('mailto:')
-          ) {
-            throw new Error(`Protocolo não permitido em href: ${decoded}: ${templateKey}`);
-          }
-        }
-
-        // CSS safety in style attributes
-        if (attrLower === 'style') {
-          checkCssSafety(attr.value, `atributo style na tag <${token.name}>`, templateKey);
-        }
-      }
-
-      // Exit SVG context on self-closing or closing svg
-      if (tagLower === 'svg' && token.selfClosing) inSvg = false;
-    } else if (token.type === 'end-tag') {
-      if (token.name === 'svg') inSvg = false;
-      if (stack.length === 0 || stack[stack.length - 1] !== token.name) {
-        throw new Error(`Tag de fechamento </${token.name}> inesperada: ${templateKey}`);
-      }
-      stack.pop();
-    } else if (token.type === 'raw-text') {
-      checkCssSafety(token.content || '', 'bloco <style>', templateKey);
-    }
-  }
-  if (stack.length > 0) {
-    throw new Error(`Tag <${stack[stack.length - 1]}> não fechada: ${templateKey}`);
-  }
-}
-
-function stripHandlebars(source: string): string {
-  return source.replace(/\{\{\{[\s\S]*?\}\}\}/g, '').replace(/\{\{[\s\S]*?\}\}/g, '');
-}
-
-type AstWalk = Record<string, unknown> & { type?: string };
-
-export interface QuotationTemplateValidationReport {
-  contract_version: QuotationTemplateContractVersion;
-  warnings: string[];
-  missing_sections: string[];
-}
-
-function findRequiredFields(
-  source: string,
-  contractVersion: QuotationTemplateContractVersion,
-  provenance?: symbol
-): { missing: string[]; report: QuotationTemplateValidationReport } {
-  const ast = Handlebars.parse(source) as unknown as AstWalk;
-  const found = {
-    quote_number: false,
-    client_name: false,
-    each_items: false,
-    display_total: false,
-  };
-  const secoesFound = new Set<string>();
-
-  function walk(node: AstWalk): void {
-    if (!node || typeof node !== 'object') return;
-    if (node.type === 'PathExpression' && typeof node.original === 'string') {
-      const n = node.original;
-      if (n === 'quote_number') found.quote_number = true;
-      if (n === 'client.name') found.client_name = true;
-      if (n === 'display.total') found.display_total = true;
-      if (n.startsWith('secoes.')) {
-        const parts = n.split('.');
-        if (parts.length >= 2) secoesFound.add(parts[1]);
-      }
-    }
-    if (node.type === 'BlockStatement') {
-      const p = node.path as AstWalk | undefined;
-      if (p?.original === 'each' && Array.isArray(node.params)) {
-        const first = node.params[0] as AstWalk | undefined;
-        if (first?.original === 'items') found.each_items = true;
-      }
-    }
-    if (Array.isArray(node.body)) for (const c of node.body) walk(c as AstWalk);
-    if (node.program) walk(node.program as AstWalk);
-    if (node.inverse) walk(node.inverse as AstWalk);
-    if (Array.isArray(node.params)) for (const p of node.params) walk(p as AstWalk);
-    if (node.path && node.type !== 'PathExpression') walk(node.path as AstWalk);
-    if (node.hash && typeof node.hash === 'object') {
-      const h = node.hash as AstWalk;
-      if (Array.isArray(h.pairs)) for (const pr of h.pairs) walk(pr as AstWalk);
-    }
-  }
-  walk(ast);
-
-  const missing: string[] = [];
-  if (!found.quote_number) missing.push('quote_number');
-  if (!found.client_name) missing.push('client.name');
-  if (!found.each_items) missing.push('#each items');
-
-  // Only the exact historical branded source may omit display.total. Public
-  // validation of persisted or new sources always requires it.
-  const isTrustedBuiltin = source === BRANDED_SOURCE && provenance === BRANDED_PROVENANCE_TOKEN;
-  if (!found.display_total && !isTrustedBuiltin) missing.push('display.total');
-
-  const allSections = ['prazo_producao', 'pagamento', 'condicoes_gerais'];
-  const missingSections = allSections.filter((section) => !secoesFound.has(section));
-  const warnings =
-    contractVersion === 2
-      ? missingSections.map((section) => `A seção ${section} não é usada pelo template.`)
-      : [];
-
-  return {
-    missing,
-    report: {
-      contract_version: contractVersion,
-      warnings,
-      missing_sections: missingSections,
-    },
-  };
-}
-
-function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
-  // Check the ORIGINAL source (not stripped) for Handlebars expressions in
-  // href, src, or style attribute values. These would bypass static URL/CSS
-  // policy checks because the expressions are stripped before tokenization.
-  const attrRegex = /<(\w+)[^>]*\b(href|src|style)\s*=\s*["']([^"']*\{\{[^"']*)["']/gi;
-  let match;
-  while ((match = attrRegex.exec(source)) !== null) {
-    const attrValue = match[3];
-    if (/\{\{/.test(attrValue)) {
-      throw new Error(
-        `Expressão dinâmica não permitida no atributo "${match[2]}" da tag <${match[1]}>: ${templateKey}`
-      );
-    }
-  }
-}
-
-/**
- * Combined validation entry point for persistence callers.
- * Performs HTML policy validation (tokenizer + attribute/tag allowlists + required fields)
- * then AST validation (Handlebars helper/expression restrictions).
- */
-export function validateQuotationSource(
-  source: string,
-  templateKey: string
-): QuotationTemplateValidationReport {
-  return validateQuotationSourceInternal(source, templateKey, 2);
-}
-
-export function validateQuotationHtmlSource(
-  source: string,
-  templateKey = 'desconhecido'
-): QuotationTemplateValidationReport {
-  return validateQuotationHtmlSourceInternal(source, templateKey, 2);
-}
-
-function validateQuotationSourceInternal(
-  source: string,
-  templateKey: string,
-  contractVersion: QuotationTemplateContractVersion,
-  provenance?: symbol,
-  allowRenderFragments = false
-): QuotationTemplateValidationReport {
-  // Keep AST errors ahead of contract-field errors for fragment callers while
-  // still validating every v2 source in persistence validation. Rendering
-  // retains support for internal snippets used by existing document helpers.
-  validateQuotationHtmlSourceInternal(source, templateKey, contractVersion, provenance, true);
-  validateQuotationTemplateSource(source, templateKey);
-  return validateQuotationRequiredFields(
-    source,
-    templateKey,
-    contractVersion,
-    provenance,
-    allowRenderFragments
-  );
-}
-
-function validateQuotationRequiredFields(
-  source: string,
-  templateKey: string,
-  contractVersion: QuotationTemplateContractVersion,
-  provenance?: symbol,
-  allowFragments = false
-): QuotationTemplateValidationReport {
-  const isHtmlDocument = /<html[\s>]/i.test(stripHandlebars(source)) || /<!doctype/i.test(source);
-  if (!isHtmlDocument && (contractVersion === 1 || allowFragments)) {
-    return { contract_version: contractVersion, warnings: [], missing_sections: [] };
-  }
-
-  const { missing, report } = findRequiredFields(source, contractVersion, provenance);
-  if (missing.length > 0) {
-    throw new Error(`Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`);
-  }
-  return report;
-}
-
-function validateQuotationHtmlSourceInternal(
-  source: string,
-  templateKey = 'desconhecido',
-  contractVersion: QuotationTemplateContractVersion = 2,
-  provenance?: symbol,
-  skipRequiredFields = false
-): QuotationTemplateValidationReport {
-  // Reject Handlebars expressions in URL/style contexts on the ORIGINAL source
-  // (before stripping, since stripping removes them and bypasses the check)
-  checkDynamicUrlStyleBypass(source, templateKey);
-
-  const stripped = stripHandlebars(source);
-
-  // HTML policy check first (catches dangerous markup before field validation)
-  const tokens = tokenizeHtml(stripped);
-  checkHtmlPolicy(tokens, templateKey);
-
-  if (skipRequiredFields) {
-    return { contract_version: contractVersion, warnings: [], missing_sections: [] };
-  }
-  return validateQuotationRequiredFields(source, templateKey, contractVersion, provenance);
-}
-
-function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]): void {
-  const keys = new Set<string>();
-  let defaults = 0;
-  for (const definition of definitions) {
-    if (!/^[a-z0-9][a-z0-9_-]{0,119}$/.test(definition.key)) {
-      throw new Error(`Chave de template inválida: ${definition.key}`);
-    }
-    if (keys.has(definition.key)) throw new Error(`Chave de template duplicada: ${definition.key}`);
-    keys.add(definition.key);
-    if (!definition.name.trim() || !definition.source.trim())
-      throw new Error(`Template incompleto: ${definition.key}`);
-    const provenance =
-      definition === BRANDED_DEFINITION ? BRANDED_PROVENANCE_TOKEN : undefined;
-    parseQuotationTemplateContractVersion(definition.contract_version);
-    validateQuotationSourceInternal(
-      definition.source,
-      definition.key,
-      definition.contract_version,
-      provenance
-    );
-    if (definition.is_default) defaults += 1;
-  }
-  if (defaults !== 1)
-    throw new Error(
-      `Manifesto de templates deve ter exatamente um padrão (encontrados ${defaults}).`
-    );
-}
-
-validateDefinitions(HISTORICAL_DEFINITIONS);
-validateDefinitions(DEFINITIONS);
-
-const GOOGLE_QUOTATION_FONT_LINK = /<link\b[^>]*href=["']https:\/\/fonts\.googleapis\.com\/css2\?[^"']*(?:Cormorant\+Garamond|DM\+Sans)[^"']*["'][^>]*>/i;
-const STABLE_QUOTATION_FONT_STYLE = String.raw`<style data-aspen-quotation-fonts>
-@font-face {
-  font-family: 'Cormorant Garamond';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/cormorantgaramond/v21/co3bmX5slCNuHLi8bLeY9MK7whWMhyjYqXtK.woff2) format('woff2');
-}
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 300 700;
-  font-display: swap;
-  src: url(https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K6z9mXg.woff2) format('woff2');
-}
-</style>`;
-
-function withStableQuotationFonts(html: string): string {
-  if (!GOOGLE_QUOTATION_FONT_LINK.test(html) || !html.includes('</head>')) return html;
-  const withoutUnstableLink = html.replace(GOOGLE_QUOTATION_FONT_LINK, '');
-  return withoutUnstableLink.replace('</head>', `${STABLE_QUOTATION_FONT_STYLE}</head>`);
-}
-
-function contactUrlLabel(value: unknown): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  try {
-    const url = new URL(raw);
-    const hostname = url.hostname.replace(/^www\./, '');
-    const pathname = url.pathname.replace(/^\/+|\/+$/g, '');
-    if (hostname === 'instagram.com' && pathname) return `@${pathname.split('/')[0]}`;
-    return `${hostname}${pathname ? `/${pathname}` : ''}`;
-  } catch {
-    return raw;
-  }
-}
-
-function companyTemplateView(value: unknown): Record<string, unknown> {
-  const company = value && typeof value === 'object'
-    ? value as Record<string, unknown>
-    : DEFAULT_QUOTATION_COMPANY_CONFIGURATION;
-  const contacts = company.contacts && typeof company.contacts === 'object'
-    ? company.contacts as Record<string, unknown>
-    : DEFAULT_QUOTATION_COMPANY_CONFIGURATION.contacts;
-  return {
-    ...company,
-    contacts: {
-      ...contacts,
-      website_label: contactUrlLabel(contacts.website),
-      instagram_label: contactUrlLabel(contacts.instagram),
-    },
-  };
-}
-
-function quotationDocumentTitle(viewModel: QuotationTemplateViewModel): string {
-  const quoteNumber = String(viewModel.quote_number || '').trim();
-  const client = viewModel.client;
-  const clientName = client && typeof client === 'object'
-    ? String((client as Record<string, unknown>).name || '').trim()
-    : '';
-  return [quoteNumber, clientName].filter(Boolean).join(' - ');
-}
-
-function withQuotationDocumentTitle(html: string, viewModel: QuotationTemplateViewModel): string {
-  const title = quotationDocumentTitle(viewModel);
-  if (!title) return html;
-  const titleTag = `<title>${Handlebars.escapeExpression(title)}</title>`;
-  const titlePattern = /<title\b[^>]*>[\s\S]*?<\/title>/i;
-  if (titlePattern.test(html)) return html.replace(titlePattern, () => titleTag);
-  return html.replace(/<head\b[^>]*>/i, (head) => `${head}${titleTag}`);
-}
-
-export function renderQuotationTemplate(
-  template: QuotationTemplate,
-  viewModel: QuotationTemplateViewModel
-): string {
-  const environment = createEnvironment();
-  let compiled: TemplateDelegate;
-  try {
-    // Only the exact frozen built-in objects qualify for trusted exceptions.
-    // Forged objects with matching key/hash metadata are rejected.
-    const provenance =
-      template === BRANDED_TEMPLATE ? BRANDED_PROVENANCE_TOKEN : undefined;
-    validateQuotationSourceInternal(
-      template.source,
-      template.key,
-      template.contract_version,
-      provenance,
-      true
-    );
-    compiled = environment.compile(template.source, {
-      knownHelpers: HELPER_NAMES,
-      knownHelpersOnly: true,
-      noEscape: false,
-      strict: true,
-    });
-  } catch (error) {
-    console.error(
-      `[quotation-templates] compile failed (${template.key})`,
-      error instanceof Error ? error.message : error
-    );
-    throw new Error('Não foi possível preparar o template do orçamento.', { cause: error });
-  }
-  try {
-    const renderModel = {
-      ...viewModel,
-      company: companyTemplateView(viewModel.company),
-    };
-    const html = compiled(renderModel, {
-      allowProtoMethodsByDefault: false,
-      allowProtoPropertiesByDefault: false,
-      allowCallsToHelperMissing: false,
-    });
-    return withQuotationDocumentTitle(withStableQuotationFonts(html), renderModel);
-  } catch (error) {
-    console.error(
-      `[quotation-templates] render failed (${template.key})`,
-      error instanceof Error ? error.message : error
-    );
-    throw new Error('Não foi possível renderizar o orçamento.', { cause: error });
-  }
-}
-
-export {
-  formatClientName as formatQuotationClientName,
-  formatCurrency as formatQuotationCurrency,
-  formatDate as formatQuotationDate,
-  formatPhone as formatQuotationPhone,
-};
+GROUP BY template."id"
+ON CONFLICT DO NOTHING;
+--> statement-breakpoint
