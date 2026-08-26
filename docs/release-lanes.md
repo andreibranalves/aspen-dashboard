@@ -47,12 +47,11 @@ CI (checks estáticos + PostgreSQL descartável)
 -> Production
 ```
 
-Fluxo de staging controlado e opt-in (fora do CI padrão), quando houver migration:
+Fluxo padrão de migration aditiva em staging, controlado e opt-in (fora do CI padrão):
 
 ```bash
 npm run verify:full
 npm run check:db-migrations
-node scripts/cutover-env-status.mjs
 npm run db:migration:preflight
 TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
 npm run test:e2e:staging
@@ -64,8 +63,8 @@ alvos operacionais continuam fora do CI padrão.
 `STAGING_DATABASE_URL` e `STAGING_PG_SERVICE` precisam representar o mesmo staging.
 A identidade staging não pode igualar produção. Stdout redigido fica fora do checkout.
 
-Qualquer falha interrompe o fluxo. Antes da migration,
-`node scripts/cutover-env-status.mjs` deve retornar sucesso.
+Qualquer falha interrompe o fluxo. `db:migration:preflight` permanece o gate de identidade e segurança do alvo de banco.
+`cutover-env-status` é um gate de release/cutover, não um pré-requisito geral de migration de banco. Ele continua obrigatório quando o procedimento aplicável envolver canário Production, deploy/promoção, rollback, cleanup, cutover de e-mail ou outro cutover explicitamente declarado. Migrations destrutivas, de cleanup e de transição da fonte de verdade não seguem automaticamente a lane aditiva e podem exigir esses gates operacionais adicionais.
 A configuração do Drizzle prioriza `TEST_DATABASE_URL`, por isso o comando copia o
 alvo staging para `TEST_DATABASE_URL` e esvazia `DATABASE_URL`.
 Nunca execute `npm run db:migrate` usando somente `DATABASE_URL` ou apontando para produção.

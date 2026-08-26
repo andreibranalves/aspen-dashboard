@@ -23,9 +23,9 @@ migration destrutiva.
 
 Toda migration nova começa com `-- migration-risk: additive` ou `-- migration-risk: destructive`.
 
-Additive acrescenta estrutura compatível.
+Additive acrescenta estrutura ou dados compatíveis e normalmente segue o fluxo padrão de migration.
 
-Destructive remove, renomeia ou torna estrutura ou dados incompatíveis.
+Destructive remove, renomeia ou torna estrutura ou dados incompatíveis. Migrations destrutivas, de cleanup, de transição da fonte de verdade ou parte explícita de um cutover de produção exigem também os gates operacionais definidos pelo procedimento correspondente.
 
 O cabeçalho declara risco, mas não substitui review humano.
 
@@ -51,13 +51,14 @@ Execute, nesta ordem:
 
 ```bash
 npm run check:db-migrations
-node scripts/cutover-env-status.mjs
 npm run db:migration:preflight
 TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
 npm run test:e2e:staging
 ```
 
 Pare na primeira falha.
+
+`cutover-env-status` é um gate de release/cutover, não um pré-requisito geral de migration de banco. Execute-o quando a operação também envolver canário Production, deploy/promoção, rollback, cleanup, cutover de e-mail ou outra etapa de cutover explicitamente declarada.
 
 Nunca execute o apply usando somente `DATABASE_URL`.
 
