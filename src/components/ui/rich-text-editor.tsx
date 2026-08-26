@@ -21,19 +21,45 @@ interface RichTextEditorProps {
   placeholder?: string;
 }
 
-function SynchronizePlugin({ value, lastEditorValue }: { value: string; lastEditorValue: MutableRefObject<string> }) {
+function SynchronizePlugin({
+  value,
+  lastEditorValue,
+  editorVersion,
+  container,
+}: {
+  value: string;
+  lastEditorValue: MutableRefObject<string>;
+  editorVersion: MutableRefObject<number>;
+  container: MutableRefObject<HTMLDivElement | null>;
+}) {
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
     if (value === lastEditorValue.current) return;
-    lastEditorValue.current = value;
-    editor.update(() => {
-      const root = $getRoot();
-      root.clear();
-      const document = new DOMParser().parseFromString(value || '<p></p>', 'text/html');
-      root.select();
-      $insertNodes($generateNodesFromDOM(editor, document));
-    });
-  }, [editor, lastEditorValue, value]);
+    const scheduledVersion = editorVersion.current;
+    const synchronize = () => {
+      if (editorVersion.current !== scheduledVersion || value === lastEditorValue.current) return;
+      lastEditorValue.current = value;
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const document = new DOMParser().parseFromString(value || '<p></p>', 'text/html');
+        root.select();
+        $insertNodes($generateNodesFromDOM(editor, document));
+      });
+    };
+    const containerElement = container.current;
+    if (!containerElement?.contains(document.activeElement)) {
+      synchronize();
+      return;
+    }
+    const synchronizeAfterBlur = (event: FocusEvent) => {
+      if (containerElement.contains(event.relatedTarget as Node | null)) return;
+      containerElement.removeEventListener('focusout', synchronizeAfterBlur);
+      synchronize();
+    };
+    containerElement.addEventListener('focusout', synchronizeAfterBlur);
+    return () => containerElement.removeEventListener('focusout', synchronizeAfterBlur);
+  }, [container, editor, editorVersion, lastEditorValue, value]);
   return null;
 }
 
@@ -64,9 +90,11 @@ function Toolbar({ disabled }: { disabled: boolean }) {
 
 export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, placeholder = 'Digite o conteúdo…' }: RichTextEditorProps) {
   const lastEditorValue = useRef('');
+  const editorVersion = useRef(0);
+  const container = useRef<HTMLDivElement | null>(null);
   return (
     <LexicalComposer initialConfig={{ namespace: ariaLabel, nodes: [ListNode, ListItemNode], editable: !disabled, onError: (error) => { throw error; }, theme: { paragraph: 'mb-2 last:mb-0', list: { ul: 'ml-5 list-disc', ol: 'ml-5 list-decimal', listitem: 'my-1' }, text: { bold: 'font-semibold', italic: 'italic' } } }}>
-      <div className={cn('overflow-hidden rounded-md border border-line bg-surface focus-within:ring-2 focus-within:ring-primary', disabled && 'opacity-50')}>
+      <div ref={container} className={cn('overflow-hidden rounded-md border border-line bg-surface focus-within:ring-2 focus-within:ring-primary', disabled && 'opacity-50')}>
         <Toolbar disabled={disabled} />
         <RichTextPlugin
           contentEditable={<ContentEditable aria-label={ariaLabel} aria-placeholder={placeholder} placeholder={<span className="pointer-events-none absolute left-3 top-3 text-sm text-fg-muted">{placeholder}</span>} className="relative min-h-28 px-3 py-2.5 text-sm leading-6 text-fg outline-none" />}
@@ -74,10 +102,11 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
         />
         <HistoryPlugin />
         <ListPlugin />
-        <SynchronizePlugin value={value} lastEditorValue={lastEditorValue} />
+        <SynchronizePlugin value={value} lastEditorValue={lastEditorValue} editorVersion={editorVersion} container={container} />
         <EditablePlugin editable={!disabled} />
         <OnChangePlugin ignoreSelectionChange onChange={(_, editor) => editor.read(() => {
           const html = $getRoot().getTextContent().trim() ? $generateHtmlFromNodes(editor) : '';
+          editorVersion.current += 1;
           lastEditorValue.current = html;
           onChange(html);
         })} />
