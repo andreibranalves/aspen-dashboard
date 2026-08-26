@@ -1047,7 +1047,7 @@ test('restored v2 templates keep the Aspen visual shell with dynamic company dat
     assert.match(template.source, /secoes\.pagamento/);
     assert.match(template.source, /secoes\.condicoes_gerais/);
     assert.doesNotMatch(template.source, /15 a 20 dias úteis|Formas de pagamento: PIX/);
-    assert.match(html, /EMPRESA VISUAL LTDA/);
+    assert.doesNotMatch(html, /EMPRESA VISUAL LTDA|11\.222\.333\/0001-81/);
     assert.match(html, /Banco Dinâmico/);
     assert.match(html, /empresa-visual\.example\/propostas/);
     assert.match(html, /@empresa_visual/);

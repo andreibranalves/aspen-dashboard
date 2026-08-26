@@ -1,4 +1,5 @@
 import Handlebars from 'handlebars';
+import sanitizeHtml from 'sanitize-html';
 
 export const QUOTATION_SECTION_SCHEMA_VERSION = 1 as const;
 export const MAX_SECTION_TITLE_LENGTH = 120;
@@ -21,6 +22,8 @@ export interface QuotationSectionSettings {
 
 export interface QuotationSectionsSettings {
   schema_version: typeof QUOTATION_SECTION_SCHEMA_VERSION;
+  show_summary?: boolean;
+  rich_text?: boolean;
   prazo_producao: QuotationSectionSettings;
   pagamento: QuotationSectionSettings & { body: string };
   condicoes_gerais: QuotationSectionSettings & { body: string };
@@ -33,6 +36,8 @@ export interface QuotationProductionDeadlineSnapshotSection extends QuotationSec
 
 export interface QuotationSectionsSnapshot {
   schema_version: typeof QUOTATION_SECTION_SCHEMA_VERSION;
+  show_summary?: boolean;
+  rich_text?: boolean;
   prazo_producao: {
     base: QuotationProductionDeadlineSnapshotSection;
     current: QuotationProductionDeadlineSnapshotSection;
@@ -49,6 +54,8 @@ export interface QuotationSectionsSnapshot {
 
 export const DEFAULT_QUOTATION_SECTIONS: Readonly<QuotationSectionsSettings> = Object.freeze({
   schema_version: 1,
+  show_summary: true,
+  rich_text: true,
   prazo_producao: Object.freeze({ enabled: true, title: 'Prazo de produção' }),
   pagamento: Object.freeze({ enabled: true, title: 'Pagamento', body: '' }),
   condicoes_gerais: Object.freeze({ enabled: true, title: 'Condições Gerais', body: '' }),
@@ -62,6 +69,22 @@ export function toSafeMultilineHtml(value: string): Handlebars.SafeString {
   if (!value) return new Handlebars.SafeString('');
   const lines = value.split('\n').map((line) => Handlebars.Utils.escapeExpression(line));
   return new Handlebars.SafeString(lines.join('<br>'));
+}
+
+export function sanitizeQuotationRichText(value: string): string {
+  if (!value) return '';
+  if (!/<\/?(?:p|br|strong|b|em|i|ul|ol|li)\b/i.test(value)) return value;
+  return sanitizeHtml(value, {
+    allowedTags: ['p', 'br', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li'],
+    allowedAttributes: {},
+  });
+}
+
+export function toSafeRichTextHtml(value: string): Handlebars.SafeString {
+  const sanitized = sanitizeQuotationRichText(value);
+  return /<\/?(?:p|br|strong|b|em|i|ul|ol|li)\b/i.test(sanitized)
+    ? new Handlebars.SafeString(sanitized)
+    : toSafeMultilineHtml(sanitized);
 }
 
 /**
@@ -129,10 +152,12 @@ function validateAndNormalizeSection(
     title: obj.title,
   };
   if (key === 'prazo_producao' && typeof obj.value === 'string') {
-    result.value = obj.value;
+    result.value = sanitizeQuotationRichText(obj.value);
   }
   if (key !== 'prazo_producao') {
-    result.body = typeof obj.body === 'string' ? obj.body : (defaults.body ?? '');
+    result.body = sanitizeQuotationRichText(
+      typeof obj.body === 'string' ? obj.body : (defaults.body ?? '')
+    );
   }
   return result as unknown as QuotationSectionSettings & { body?: string };
 }
@@ -150,7 +175,7 @@ export function normalizeQuotationSections(input: unknown): QuotationSectionsSet
   const obj = input as Record<string, unknown>;
 
   // Reject unknown top-level keys
-  const knownKeys = new Set<string>(['schema_version', ...SECTION_KEYS]);
+  const knownKeys = new Set<string>(['schema_version', 'show_summary', 'rich_text', ...SECTION_KEYS]);
   for (const k of Object.keys(obj)) {
     if (!knownKeys.has(k)) {
       throw new Error(`Campo desconhecido "${k}" nas seções.`);
@@ -168,8 +193,17 @@ export function normalizeQuotationSections(input: unknown): QuotationSectionsSet
     DEFAULT_QUOTATION_SECTIONS.condicoes_gerais
   );
 
+  if (obj.show_summary !== undefined && typeof obj.show_summary !== 'boolean') {
+    throw new Error('show_summary deve ser booleano.');
+  }
+  if (obj.rich_text !== undefined && typeof obj.rich_text !== 'boolean') {
+    throw new Error('rich_text deve ser booleano.');
+  }
+
   const result: QuotationSectionsSettings = {
     schema_version: QUOTATION_SECTION_SCHEMA_VERSION,
+    show_summary: obj.show_summary !== false,
+    rich_text: obj.rich_text === true,
     prazo_producao: validateAndNormalizeSection(
       'prazo_producao',
       obj.prazo_producao,
@@ -204,6 +238,8 @@ export function createQuotationSectionsSnapshot(
   };
   return {
     schema_version: settings.schema_version,
+    show_summary: settings.show_summary,
+    rich_text: settings.rich_text,
     prazo_producao: {
       base: deepCopy(production),
       current: deepCopy(production),
@@ -226,11 +262,18 @@ export function validateQuotationSections(input: unknown): void {
   const obj = input as Record<string, unknown>;
 
   // Reject unknown keys
-  const knownKeys = new Set<string>(['schema_version', ...SECTION_KEYS]);
+  const knownKeys = new Set<string>(['schema_version', 'show_summary', 'rich_text', ...SECTION_KEYS]);
   for (const k of Object.keys(obj)) {
     if (!knownKeys.has(k)) {
       throw new Error(`Campo desconhecido "${k}" nas seções.`);
     }
+  }
+
+  if (obj.show_summary !== undefined && typeof obj.show_summary !== 'boolean') {
+    throw new Error('show_summary deve ser booleano.');
+  }
+  if (obj.rich_text !== undefined && typeof obj.rich_text !== 'boolean') {
+    throw new Error('rich_text deve ser booleano.');
   }
 
   // Reject schema_version if present and not exactly 1

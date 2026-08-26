@@ -1,10 +1,13 @@
 import type { QuotationSectionsSettings } from '@/lib/api/settingsApi';
 import { Button } from '@/components/ui/button';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 
 type ProductionDeadlineSection = QuotationSectionsSettings['prazo_producao'] & { value: string };
 
 export interface QuotationSectionsSnapshot {
   schema_version: 1;
+  show_summary?: boolean;
+  rich_text?: boolean;
   prazo_producao: { base: ProductionDeadlineSection; current: ProductionDeadlineSection };
   pagamento: { base: QuotationSectionsSettings['pagamento']; current: QuotationSectionsSettings['pagamento'] };
   condicoes_gerais: { base: QuotationSectionsSettings['condicoes_gerais']; current: QuotationSectionsSettings['condicoes_gerais'] };
@@ -20,9 +23,6 @@ export interface QuotationSectionsEditorProps<T extends EditorSections = EditorS
   onChange: (sections: T) => void;
   onRestore?: (key?: SectionKey) => void;
 }
-
-const TEXTAREA_CLASS =
-  'w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50';
 
 export function QuotationSectionsEditor<T extends EditorSections>({
   mode,
@@ -97,36 +97,26 @@ export function QuotationSectionsEditor<T extends EditorSections>({
             </label>
             {body && (
               <label className="block space-y-1.5 text-sm text-fg">
-                <span className="font-medium">Conteúdo</span>
-                <textarea
-                  aria-label={key === 'pagamento' ? 'Condição de pagamento' : 'Observações padrão'}
-                  value={section.body}
-                  onChange={(event) => update(key, 'body', event.target.value)}
+                <span className="font-medium">{key === 'pagamento' ? 'Texto adicional' : 'Conteúdo'}</span>
+                <RichTextEditor
+                  ariaLabel={key === 'pagamento' ? 'Condição de pagamento' : 'Observações padrão'}
+                  value={section.body || ''}
+                  onChange={(value) => update(key, 'body', value)}
                   disabled={!editable}
-                  maxLength={4000}
-                  rows={5}
-                  className={TEXTAREA_CLASS}
                 />
               </label>
             )}
             {key === 'prazo_producao' && (
-              <>
-                <p className="text-xs text-fg-muted">
-                  O prazo de produção é salvo nesta seção.
-                </p>
-                {mode === 'revision' && (
-                  <label className="block space-y-1.5 text-sm text-fg">
-                    <span className="font-medium">Prazo desta revisão</span>
-                    <input
-                      aria-label="Prazo de produção do orçamento"
-                      value={key === 'prazo_producao' && 'value' in section ? String(section.value || '') : ''}
-                      onChange={(event) => update(key, 'value', event.target.value)}
-                      disabled={!editable}
-                      className="w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                  </label>
-                )}
-              </>
+              <label className="block space-y-1.5 text-sm text-fg">
+                <span className="font-medium">{mode === 'revision' ? 'Prazo desta revisão' : 'Conteúdo padrão'}</span>
+                <RichTextEditor
+                  ariaLabel="Prazo de produção do orçamento"
+                  value={'value' in section ? String(section.value || '') : ''}
+                  onChange={(value) => update(key, 'value', value)}
+                  disabled={!editable}
+                  placeholder="Ex.: 15 a 20 dias úteis após a aprovação"
+                />
+              </label>
             )}
             {mode === 'revision' && onRestore && (
               <Button

@@ -230,7 +230,12 @@ function normalizeDraftSections(
           return [key, section.current];
         })
       );
-      settings = { schema_version: source.schema_version, ...current };
+      settings = {
+        schema_version: source.schema_version,
+        show_summary: source.show_summary,
+        rich_text: source.rich_text,
+        ...current,
+      };
     }
   }
   try {
