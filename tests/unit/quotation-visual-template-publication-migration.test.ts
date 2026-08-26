@@ -36,6 +36,15 @@ function hash(source: string): string {
   return createHash('sha256').update(source, 'utf8').digest('hex');
 }
 
+function embeddedSource(key: (typeof templateKeys)[number]): string {
+  const delimiter = `$quotation_${key}_visual_v3$`;
+  const start = migrationSql.indexOf(delimiter);
+  const end = migrationSql.indexOf(`${delimiter}, '`, start + delimiter.length);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  return migrationSql.slice(start + delimiter.length, end);
+}
+
 test('0027 embeds the exact restored catalog sources without mutating historical versions', () => {
   assert.equal(migrationStatements.length, templateKeys.length);
   assert.doesNotMatch(migrationSql, /\b(?:UPDATE|DELETE)\b/i);
@@ -95,13 +104,12 @@ test(
 
           for (let index = 0; index < templateKeys.length; index += 1) {
             const key = templateKeys[index];
-            const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === key)!;
             const templateId = `a1000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
             const versionId = `a2000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
             const oldSource = `<html><body>generic-${key}</body></html>`;
             await tx`
               INSERT INTO quotation_templates (id, key, name)
-              VALUES (${templateId}::uuid, ${key}, ${template.name})
+              VALUES (${templateId}::uuid, ${key}, ${key})
             `;
             await tx`
               INSERT INTO quotation_template_versions
@@ -130,11 +138,10 @@ test(
           assert.equal(rows.length, templateKeys.length * 2);
           for (const key of templateKeys) {
             const versions = rows.filter((row) => row.key === key);
-            const template = QUOTATION_TEMPLATES.find((candidate) => candidate.key === key)!;
             assert.deepEqual(versions.map((row) => row.version), [1, 2]);
             assert.match(versions[0].source, new RegExp(`generic-${key}`));
-            assert.equal(versions[1].source, template.source);
-            assert.equal(versions[1].source_hash, template.hash);
+            assert.equal(versions[1].source, embeddedSource(key));
+            assert.equal(versions[1].source_hash, publishedHashes[key]);
             assert.equal(versions[1].contract_version, 2);
           }
 

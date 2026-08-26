@@ -114,6 +114,25 @@ test('accepts a classified untracked migration and redacts SQL contents', () => 
   });
 });
 
+test('treats a similar new migration as additive instead of a historical copy', () => {
+  withRepository((root) => {
+    const repeated = 'SELECT 1;\n'.repeat(100);
+    writeFileSync(path.join(root, 'drizzle/0000_history.sql'), repeated);
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'expand historical migration');
+    writeFileSync(
+      path.join(root, 'drizzle/0001_similar.sql'),
+      `-- migration-risk: additive\n${repeated}SELECT 2;\n`
+    );
+    git(root, 'add', '.');
+    git(root, 'commit', '-qm', 'add similar migration');
+
+    const result = check(root, 'HEAD^');
+    assert.deepEqual(result.violations, []);
+    assert.equal(result.changes[0]?.status, 'A');
+  });
+});
+
 test('rejects new migrations with missing, unknown or duplicate headers', () => {
   withRepository((root) => {
     for (const [name, content] of [

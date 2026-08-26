@@ -11,20 +11,19 @@ describe('quotation Aspen v2 surfaces', () => {
     const page = read('src/features/quotations/pages/AutoQuotePage.tsx');
     const card = read('src/features/quotations/components/SplitResultCard.tsx');
 
-    assert.match(page, /1 · O que foi entendido/);
-    assert.match(page, /2 · Precisa de revisão/);
-    assert.match(card, /3 · Será criado/);
+    assert.match(page, />Pedido do cliente</);
+    assert.match(page, />Resultado</);
+    assert.match(card, /Confirme cliente, itens, quantidades e preços/);
     assert.match(page, /aria-label="Mensagem do cliente para extração"/);
   });
 
   it('keeps manual quotation entry visibly editable and staged', () => {
     const page = read('src/features/quotations/pages/ManualOrcamentoPage.tsx');
 
-    assert.match(page, /Documento comercial/);
-    assert.match(page, /Etapas do orçamento/);
-    assert.match(page, /1 · Cliente/);
-    assert.match(page, /2 · Itens/);
-    assert.match(page, /3 · Condições e fechamento/);
+    assert.match(page, /aria-label="Seleção de cliente"/);
+    assert.match(page, /1\. Cliente/);
+    assert.match(page, /2\. Itens do orçamento/);
+    assert.match(page, /3\. Condições e fechamento/);
     assert.doesNotMatch(page, /section[^>]+shadow-sm/);
   });
 
