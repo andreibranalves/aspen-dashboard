@@ -2,10 +2,16 @@ import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/type
 import {
   DEFAULT_SETTINGS,
   createPostgresSettingsRepository,
+  SettingsConflictError,
   type Settings,
   type SettingsInput,
   type SettingsRepository,
 } from '../_infrastructure/db/repositories/settings-repository.js';
+import {
+  normalizeCompleteQuotationCompanyConfiguration,
+  QuotationCompanyConfigurationError,
+  type QuotationCompanyConfiguration,
+} from './quotation-company.js';
 import {
   normalizeQuotationSections,
   validateQuotationSections,
@@ -113,21 +119,45 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     fields.validade_dias = 'Informe uma validade em dias entre 1 e 365.';
   }
 
-  const pagamento = payload.pagamento === undefined
-    ? ''
-    : validateText(payload.pagamento, 'pagamento', MAX_PAYMENT_LENGTH, fields);
-  const entrega = payload.entrega === undefined
-    ? undefined
-    : validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
+  const pagamento =
+    payload.pagamento === undefined
+      ? ''
+      : validateText(payload.pagamento, 'pagamento', MAX_PAYMENT_LENGTH, fields);
+  const entrega =
+    payload.entrega === undefined
+      ? undefined
+      : validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
   const fretePadrao = validateFreight(payload.frete_padrao, fields);
-  const observacoes = payload.observacoes === undefined
-    ? ''
-    : validateText(payload.observacoes, 'observacoes', MAX_NOTES_LENGTH, fields);
-  const templatePadrao = payload.template_padrao === undefined
-    ? undefined
-    : validateText(payload.template_padrao, 'template_padrao', MAX_TEMPLATE_KEY_LENGTH, fields);
+  const observacoes =
+    payload.observacoes === undefined
+      ? ''
+      : validateText(payload.observacoes, 'observacoes', MAX_NOTES_LENGTH, fields);
+  const templatePadrao =
+    payload.template_padrao === undefined
+      ? undefined
+      : validateText(payload.template_padrao, 'template_padrao', MAX_TEMPLATE_KEY_LENGTH, fields);
+  const settingsVersion =
+    payload.settings_version === undefined
+      ? undefined
+      : typeof payload.settings_version === 'number' &&
+          Number.isInteger(payload.settings_version) &&
+          payload.settings_version >= 1
+        ? payload.settings_version
+        : ((fields.settings_version = 'Informe uma versão de configurações válida.'), undefined);
   if (templatePadrao !== null && templatePadrao !== undefined && !templatePadrao.trim()) {
     fields.template_padrao = 'Informe a chave do template padrão.';
+  }
+
+  let empresa: QuotationCompanyConfiguration | undefined;
+  if (payload.empresa !== undefined) {
+    try {
+      empresa = normalizeCompleteQuotationCompanyConfiguration(payload.empresa);
+    } catch (error) {
+      fields.empresa =
+        error instanceof QuotationCompanyConfigurationError
+          ? error.message
+          : 'Informe uma configuração empresarial válida.';
+    }
   }
 
   let secoes: QuotationSectionsSettings;
@@ -146,12 +176,18 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
       fields[`secoes.${sectionKey}${fieldKey ? `.${fieldKey}` : ''}`] = message;
       secoes = normalizeQuotationSections(undefined);
     }
+  } else if (pagamento !== null || observacoes !== null) {
+    // Top-level section bodies remain accepted as the settings save contract;
+    // they fold into the canonical sections instead of separate columns.
+    const base = normalizeQuotationSections(undefined);
+    base.pagamento.body = pagamento ?? '';
+    const parts = [];
+    if (entrega) parts.push(`Prazo de entrega:\n${entrega}`);
+    if (observacoes) parts.push(`Observações:\n${observacoes}`);
+    base.condicoes_gerais.body = parts.join('\n\n');
+    secoes = base;
   } else {
-    secoes = normalizeQuotationSections(undefined, {
-      pagamento: pagamento ?? '',
-      entrega: entrega ?? '',
-      observacoes: observacoes ?? '',
-    });
+    secoes = normalizeQuotationSections(undefined);
   }
 
   if (Object.keys(fields).length > 0) {
@@ -165,11 +201,15 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     frete_padrao: fretePadrao as string,
     observacoes: secoes.condicoes_gerais.body,
     secoes,
+    ...(empresa ? { empresa } : {}),
     ...(typeof templatePadrao === 'string' ? { template_padrao: templatePadrao.trim() } : {}),
+    ...(settingsVersion === undefined ? {} : { settings_version: settingsVersion }),
   };
 }
 
-function isValidationFailure(result: Settings | SettingsInput | ValidationFailure): result is ValidationFailure {
+function isValidationFailure(
+  result: Settings | SettingsInput | ValidationFailure
+): result is ValidationFailure {
   return 'fields' in result;
 }
 
@@ -217,6 +257,9 @@ export function createHandler(
         const saved = await dependencies.repository.save(settings);
         return jsonResponse(200, saved);
       } catch (error) {
+        if (error instanceof SettingsConflictError) {
+          return jsonResponse(error.statusCode, { error: error.message });
+        }
         logDatabaseError('save', error);
         return jsonResponse(500, {
           error: 'Não foi possível salvar as configurações. Tente novamente.',

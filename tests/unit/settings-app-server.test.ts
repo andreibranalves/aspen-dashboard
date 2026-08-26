@@ -34,8 +34,11 @@ async function getAvailablePort(): Promise<number> {
 type AppServerProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 async function waitForServer(url: string, appServer: AppServerProcess): Promise<Response> {
+  // Sob concorrência de suítes paralelas, o app-server pode demorar mais que ~2s para
+  // abrir a porta em runners lentos; o orçamento de readiness é por tempo, não por tentativas.
+  const deadline = Date.now() + 15_000;
   let lastError: unknown;
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  while (Date.now() < deadline) {
     if (appServer.exitCode !== null) {
       throw new Error(`app-server encerrou antes de iniciar (código ${appServer.exitCode}).`);
     }

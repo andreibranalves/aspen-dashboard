@@ -8,6 +8,10 @@ import test from 'node:test';
 import { inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
@@ -17,6 +21,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/sales-orders-repository.js';
 import { createSalesDashboardHandler } from '../../api/_modules/sales-dashboard.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -77,6 +82,7 @@ test(
 
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       const handler = createSalesDashboardHandler({ repository });
       const response = await handler(event('GET', undefined, { period: '30d' }));
       assert.equal(response.statusCode, 200);
@@ -139,6 +145,7 @@ test(
 
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       migrated = true;
       await db.insert(schema.clients).values([
         { id: clientIds[0]!, nome: 'Cliente Dashboard A' },
@@ -181,33 +188,39 @@ test(
       ]);
       await db.insert(schema.quoteRevisions).values([
         {
+          ...fixtureFields,
           id: revisionIds[0]!,
           quotationId: quotationIds[0]!,
           version: 1,
           status: 'emitido',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Cliente Dashboard A',
           subtotal: '100.00',
           total: '100.00',
           createdAt: new Date('2098-08-01T12:00:00.000Z'),
         },
         {
+          ...fixtureFields,
           id: revisionIds[1]!,
           quotationId: quotationIds[1]!,
           version: 1,
           status: 'emitido',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Cliente Dashboard B',
           subtotal: '50.00',
           total: '50.00',
           createdAt: new Date('2098-08-05T12:00:00.000Z'),
         },
         {
+          ...fixtureFields,
           id: revisionIds[2]!,
           quotationId: quotationIds[2]!,
           version: 1,
           status: 'emitido',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Cliente Dashboard B',
           subtotal: '75.00',
           total: '75.00',

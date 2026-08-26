@@ -93,6 +93,16 @@ async function routeCommonAuto(page) {
     success: true,
     items: [{ rate: 9, item_name: 'Canga' }],
   }));
+  await page.route('**/api/orcamento**', (route) => json(route, {
+    success: true,
+    quotation_id: quotationId,
+    quotation_name: quotationId,
+    quotation_uuid: quotationUuid,
+    revision_id: revisionId,
+    quote_revision_id: revisionId,
+    revision_number: 1,
+    concurrency_token: '2026-08-13T00:00:00.000Z',
+  }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
     quotation_id: quotationUuid,
     business_number: quotationId,

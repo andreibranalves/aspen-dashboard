@@ -1,6 +1,9 @@
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { getDatabase } from '../_infrastructure/db/client.js';
-import { readCurrentQuotationTemplateVersion } from '../_infrastructure/db/repositories/quotation-template-library-repository.js';
+import {
+  readCurrentQuotationTemplateVersion,
+  readQuotationTemplateVersion,
+} from '../_infrastructure/db/repositories/quotation-template-library-repository.js';
 import {
   createQuotationTemplateRepository,
   QuotationTemplateSnapshotRepositoryError,
@@ -56,9 +59,14 @@ function parsePostPayload(event: FunctionEvent): unknown {
   }
 }
 
-async function resolveCurrentDraftTemplate(key: string): Promise<QuotationTemplate | null> {
-  const selected = await readCurrentQuotationTemplateVersion(getDatabase(), key);
-  if (!selected) return null;
+async function resolveCurrentDraftTemplate(
+  key: string,
+  versionId?: string,
+): Promise<QuotationTemplate | null> {
+  const selected = versionId
+    ? await readQuotationTemplateVersion(getDatabase(), versionId)
+    : await readCurrentQuotationTemplateVersion(getDatabase(), key);
+  if (!selected || selected.model.archived || selected.model.key !== key) return null;
   return quotationTemplateFromVersion({
     source: selected.version.source,
     sourceHash: selected.version.sourceHash,

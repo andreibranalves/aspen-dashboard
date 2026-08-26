@@ -22,16 +22,11 @@ import {
   type QuotationSectionsSnapshot,
 } from '../../_modules/quotation-content.js';
 import type { RenderedQuotationEmail } from '../../_modules/quotation-email-renderer.js';
+import {
+  DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  type QuotationCompanyConfiguration,
+} from '../../_modules/quotation-company.js';
 import type { QuotationStatus } from '../../_modules/quotation-status.js';
-
-// Database default retained for the legacy column until its approved cleanup migration.
-const LEGACY_QUOTATION_EMAIL_TEMPLATE_DEFAULT = {
-  subject: 'Orçamento {{numero_orcamento}} - Aspen',
-  greeting: 'Olá, {{nome_cliente}}.',
-  message: 'Segue o orçamento {{numero_orcamento}} em anexo.',
-  button_label: 'Ver orçamento',
-  signature: 'Atenciosamente,\nAspen',
-};
 
 /**
  * Global dashboard settings live in one deliberate singleton row. Keeping the
@@ -43,22 +38,21 @@ export const appSettings = pgTable(
   {
     singletonId: integer('singleton_id').primaryKey().default(1),
     validadeDias: integer('validade_dias').notNull().default(15),
-    pagamento: varchar('pagamento', { length: 4000 }).notNull().default(''),
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
+    // Canonical source for the payment/general-conditions sections.
     quotationSections: jsonb('quotation_sections')
       .$type<QuotationSectionsSettings>()
       .notNull()
       .default(DEFAULT_QUOTATION_SECTIONS),
-    // Legacy column retained until an explicitly approved cleanup migration.
-    quotationEmailTemplate: jsonb('quotation_email_template')
-      .$type<Record<string, unknown>>()
+    companyConfiguration: jsonb('company_configuration')
+      .$type<QuotationCompanyConfiguration>()
       .notNull()
-      .default(LEGACY_QUOTATION_EMAIL_TEMPLATE_DEFAULT),
+      .default(DEFAULT_QUOTATION_COMPANY_CONFIGURATION),
     // Keep currency exact all the way through PostgreSQL. Drizzle's default
     // numeric mode maps this column to a string instead of a JavaScript float.
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
-    observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),
     templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
+    settingsVersion: integer('settings_version').notNull().default(1),
   },
   (table) => [
     check('app_settings_singleton_id_check', sql`${table.singletonId} = 1`),
@@ -68,6 +62,7 @@ export const appSettings = pgTable(
       'app_settings_template_padrao_not_blank_check',
       sql`char_length(btrim(${table.templatePadrao})) > 0`
     ),
+    check('app_settings_settings_version_positive_check', sql`${table.settingsVersion} > 0`),
   ]
 );
 
@@ -346,14 +341,17 @@ export const quoteRevisions = pgTable(
     orderLinkage: varchar('order_linkage', { length: 32 }),
     orderPending: boolean('order_pending').notNull().default(false),
     validadeDias: integer('validade_dias').notNull(),
-    pagamento: varchar('pagamento', { length: 4000 }).notNull().default(''),
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
-    templateVersionId: uuid('template_version_id').references(() => quotationTemplateVersions.id),
-    sectionsSnapshot: jsonb('sections_snapshot').$type<QuotationSectionsSnapshot>(),
+    templateVersionId: uuid('template_version_id')
+      .notNull()
+      .references(() => quotationTemplateVersions.id),
+    // Canonical commercial sections; sole authority after the legacy cutover.
+    sectionsSnapshot: jsonb('sections_snapshot').$type<QuotationSectionsSnapshot>().notNull(),
+    companySnapshot: jsonb('company_snapshot')
+      .$type<QuotationCompanyConfiguration>()
+      .notNull(),
     fretePadrao: numeric('frete_padrao', { precision: 20, scale: 2 }).notNull().default('0.00'),
     frete: numeric('frete', { precision: 20, scale: 2 }).notNull().default('0.00'),
-    observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),
-    prazoProducao: varchar('prazo_producao', { length: 500 }).notNull().default(''),
     templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
     templateHash: varchar('template_hash', { length: 64 })
       .notNull()

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
+  Building2,
   CheckCircle2,
   ChevronDown,
   Loader2,
@@ -22,6 +23,8 @@ interface SettingsForm {
   frete_padrao: string;
   observacoes: string;
   secoes: DashboardSettings['secoes'];
+  empresa: DashboardSettings['empresa'];
+  settings_version: number;
 }
 
 const EMPTY_SECTIONS: DashboardSettings['secoes'] = {
@@ -38,6 +41,13 @@ const EMPTY_FORM: SettingsForm = {
   frete_padrao: '0.00',
   observacoes: '',
   secoes: EMPTY_SECTIONS,
+  empresa: {
+    schema_version: 1,
+    identity: { legal_name: '', document: '' },
+    banking: { bank_name: '', bank_code: '', branch: '', account: '', pix_key: '' },
+    contacts: { website: '', phone: '', email: '', instagram: '' },
+  },
+  settings_version: 1,
 };
 
 function toForm(settings: DashboardSettings): SettingsForm {
@@ -48,6 +58,8 @@ function toForm(settings: DashboardSettings): SettingsForm {
     frete_padrao: settings.frete_padrao,
     observacoes: settings.secoes.condicoes_gerais.body,
     secoes: settings.secoes,
+    empresa: settings.empresa || EMPTY_FORM.empresa,
+    settings_version: settings.settings_version || 1,
   };
 }
 
@@ -105,6 +117,22 @@ export default function SettingsPage() {
     setSavedMessage(null);
   }
 
+  function updateCompanyField(
+    group: 'identity' | 'banking' | 'contacts',
+    field: string,
+    value: string,
+  ) {
+    setForm((current) => ({
+      ...current,
+      empresa: {
+        ...current.empresa,
+        [group]: { ...current.empresa[group], [field]: value },
+      },
+    }));
+    setSaveError(null);
+    setSavedMessage(null);
+  }
+
   async function handleSave() {
     const validadeDias = Number(form.validade_dias);
     if (!Number.isInteger(validadeDias) || validadeDias < 1 || validadeDias > 365) {
@@ -121,6 +149,8 @@ export default function SettingsPage() {
         entrega: form.entrega,
         frete_padrao: form.frete_padrao,
         secoes: form.secoes,
+        empresa: form.empresa,
+        settings_version: form.settings_version,
       });
       setForm(toForm(saved));
       setSavedMessage('Configurações salvas com sucesso.');
@@ -261,6 +291,133 @@ export default function SettingsPage() {
                 onChange={updateSections}
               />
             </fieldset>
+
+            <section className="space-y-4 rounded-lg border border-line bg-page/40 p-4">
+              <div className="flex items-start gap-3">
+                <Building2 size={20} className="mt-0.5 text-primary" />
+                <div>
+                  <h3 className="text-sm font-semibold text-fg">Dados empresariais</h3>
+                  <p className="mt-1 text-xs text-fg-muted">
+                    Estes dados são capturados em novos orçamentos e não alteram revisões já emitidas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Razão social</span>
+                  <Input
+                    value={form.empresa.identity.legal_name}
+                    onChange={(event) => updateCompanyField('identity', 'legal_name', event.target.value)}
+                    disabled={saving}
+                    maxLength={255}
+                    required
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">CNPJ</span>
+                  <Input
+                    value={form.empresa.identity.document}
+                    onChange={(event) => updateCompanyField('identity', 'document', event.target.value)}
+                    disabled={saving}
+                    maxLength={18}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Banco</span>
+                  <Input
+                    value={form.empresa.banking.bank_name}
+                    onChange={(event) => updateCompanyField('banking', 'bank_name', event.target.value)}
+                    disabled={saving}
+                    maxLength={255}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Código</span>
+                  <Input
+                    value={form.empresa.banking.bank_code}
+                    onChange={(event) => updateCompanyField('banking', 'bank_code', event.target.value)}
+                    disabled={saving}
+                    maxLength={255}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Agência</span>
+                  <Input
+                    value={form.empresa.banking.branch}
+                    onChange={(event) => updateCompanyField('banking', 'branch', event.target.value)}
+                    disabled={saving}
+                    maxLength={255}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Conta</span>
+                  <Input
+                    value={form.empresa.banking.account}
+                    onChange={(event) => updateCompanyField('banking', 'account', event.target.value)}
+                    disabled={saving}
+                    maxLength={255}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Pix</span>
+                  <Input
+                    value={form.empresa.banking.pix_key}
+                    onChange={(event) => updateCompanyField('banking', 'pix_key', event.target.value)}
+                    disabled={saving}
+                    maxLength={255}
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Site</span>
+                  <Input
+                    type="url"
+                    value={form.empresa.contacts.website}
+                    onChange={(event) => updateCompanyField('contacts', 'website', event.target.value)}
+                    disabled={saving}
+                    maxLength={500}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Telefone</span>
+                  <Input
+                    value={form.empresa.contacts.phone}
+                    onChange={(event) => updateCompanyField('contacts', 'phone', event.target.value)}
+                    disabled={saving}
+                    maxLength={500}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">E-mail</span>
+                  <Input
+                    type="email"
+                    value={form.empresa.contacts.email}
+                    onChange={(event) => updateCompanyField('contacts', 'email', event.target.value)}
+                    disabled={saving}
+                    maxLength={500}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Instagram</span>
+                  <Input
+                    type="url"
+                    value={form.empresa.contacts.instagram}
+                    onChange={(event) => updateCompanyField('contacts', 'instagram', event.target.value)}
+                    disabled={saving}
+                    maxLength={500}
+                  />
+                </label>
+              </div>
+            </section>
+
+
 
             {saveError && (
               <div

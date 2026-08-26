@@ -17,6 +17,7 @@ import {
   toSafeMultilineHtml,
   type QuotationSectionsSettings,
 } from './quotation-content.js';
+import { normalizeQuotationCompanyConfiguration } from './quotation-company.js';
 import { canonicalQuotationStatus } from './quotation-status.js';
 
 export type QuotationDocumentSnapshot = QuotationTemplateSnapshot;
@@ -144,22 +145,19 @@ export function buildComparison(items: ComparisonItem[]) {
 
 export function applyQuotationSectionPolicy(
   viewModel: QuotationTemplateViewModel,
-  sections: QuotationSectionsSettings,
-  legacy: {
-    entrega?: string;
-    prazoProducao?: string;
-  }
+  sections: QuotationSectionsSettings
 ): QuotationTemplateViewModel {
   const prazoVisible = sections.prazo_producao.enabled;
   const pagamentoVisible = sections.pagamento.enabled;
   const condicoesVisible = sections.condicoes_gerais.enabled;
+  const productionDeadline = sections.prazo_producao.value ?? '';
   return {
     ...viewModel,
     secoes: {
       prazo_producao: {
         enabled: prazoVisible,
         title: prazoVisible ? sections.prazo_producao.title : '',
-        value: prazoVisible ? legacy.prazoProducao || '' : '',
+        value: prazoVisible ? productionDeadline : '',
       },
       pagamento: {
         enabled: pagamentoVisible,
@@ -178,17 +176,24 @@ export function applyQuotationSectionPolicy(
     },
     terms: {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
-      entrega: condicoesVisible ? legacy.entrega || '' : '',
-      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      // Entrega remains a first-class revision field; it flows in through the
+      // incoming view model rather than a section snapshot.
+      entrega: condicoesVisible ? entregaFromViewModel(viewModel) : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     },
     terms_snapshot: {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
-      entrega: condicoesVisible ? legacy.entrega || '' : '',
-      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      entrega: condicoesVisible ? entregaFromViewModel(viewModel) : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     },
   };
+}
+
+function entregaFromViewModel(viewModel: QuotationTemplateViewModel): string {
+  const terms = viewModel.terms as { entrega?: string } | undefined;
+  return terms?.entrega || '';
 }
 
 /** Convert the immutable snapshot into the only template-facing model. */
@@ -280,6 +285,9 @@ export function quotationSnapshotViewModel(
     uf: revision.clienteUf || '',
     cep: revision.clienteCep || '',
   };
+  const company = normalizeQuotationCompanyConfiguration(
+    snapshot.companySnapshot || revision.companySnapshot,
+  );
   const result: QuotationTemplateViewModel = {
     quote_number: quotation.businessNumber,
     quotation_name: quotation.businessNumber,
@@ -296,20 +304,21 @@ export function quotationSnapshotViewModel(
     validity_days: revision.validadeDias,
     client,
     client_snapshot: client,
+    company,
     items,
     items_snapshot: items,
     comparison: buildComparison(items),
     terms: {
-      pagamento: revision.pagamento,
+      pagamento: '',
       entrega: revision.entrega,
-      production_deadline: revision.prazoProducao,
-      observations: revision.observacoes,
+      production_deadline: '',
+      observations: '',
     },
     terms_snapshot: {
-      pagamento: revision.pagamento,
+      pagamento: '',
       entrega: revision.entrega,
-      production_deadline: revision.prazoProducao,
-      observations: revision.observacoes,
+      production_deadline: '',
+      observations: '',
     },
     subtotal,
     freight,
@@ -327,59 +336,34 @@ export function quotationSnapshotViewModel(
   const sectionsSnapshot = (snapshot.sectionsSnapshot || revision.sectionsSnapshot) as unknown as
     | Record<string, unknown>
     | undefined;
-  const hasCanonicalSections = Boolean(sectionsSnapshot && typeof sectionsSnapshot === 'object');
-  const prazo = (sectionsSnapshot?.prazo_producao || {}) as Record<string, unknown>;
-  const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
-  const productionDeadline = nullable(
-    prazoCurrent.value === undefined ? revision.prazoProducao : prazoCurrent.value
-  );
-  const sections = hasCanonicalSections
-    ? (() => {
-        const pagto = (sectionsSnapshot!.pagamento || {}) as Record<string, unknown>;
-        const condicoes = (sectionsSnapshot!.condicoes_gerais || {}) as Record<string, unknown>;
-        const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
-        const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
-        return normalizeQuotationSections({
-          prazo_producao: {
-            enabled: prazoCurrent.enabled === true,
-            title: String(prazoCurrent.title || 'Prazo de produção'),
-          },
-          pagamento: {
-            enabled: pagtoCurrent.enabled === true,
-            title: String(pagtoCurrent.title || 'Pagamento'),
-            body: String(pagtoCurrent.body || ''),
-          },
-          condicoes_gerais: {
-            enabled: condicoesCurrent.enabled === true,
-            title: String(condicoesCurrent.title || 'Condições Gerais'),
-            body: String(condicoesCurrent.body || ''),
-          },
-        });
-      })()
-    : normalizeQuotationSections(undefined, {
-        pagamento: nullable(revision.pagamento),
-        entrega: nullable(revision.entrega),
-        observacoes: nullable(revision.observacoes),
-      });
-  const policySections = hasCanonicalSections
-    ? sections
-    : {
-        ...sections,
-        prazo_producao: {
-          ...sections.prazo_producao,
-          enabled: Boolean(revision.prazoProducao),
-        },
-      };
-  const rendered = applyQuotationSectionPolicy(result, policySections, {
-    entrega: revision.entrega,
-    prazoProducao: productionDeadline,
-  });
-  if (!hasCanonicalSections) {
-    // Legacy revisions keep their historical mirror terms; only the section
-    // projection is synthesized for templates that understand the v2 shape.
-    return { ...rendered, terms: result.terms, terms_snapshot: result.terms_snapshot };
+  if (!sectionsSnapshot || typeof sectionsSnapshot !== 'object') {
+    throw new Error('Revisão do orçamento sem snapshot canônico de seções.');
   }
-  return rendered;
+  const prazo = (sectionsSnapshot.prazo_producao || {}) as Record<string, unknown>;
+  const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
+  const productionDeadline = nullable(prazoCurrent.value);
+  const pagto = (sectionsSnapshot.pagamento || {}) as Record<string, unknown>;
+  const condicoes = (sectionsSnapshot.condicoes_gerais || {}) as Record<string, unknown>;
+  const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
+  const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
+  const sections = normalizeQuotationSections({
+    prazo_producao: {
+      enabled: prazoCurrent.enabled === true,
+      title: String(prazoCurrent.title || 'Prazo de produção'),
+      value: productionDeadline,
+    },
+    pagamento: {
+      enabled: pagtoCurrent.enabled === true,
+      title: String(pagtoCurrent.title || 'Pagamento'),
+      body: String(pagtoCurrent.body || ''),
+    },
+    condicoes_gerais: {
+      enabled: condicoesCurrent.enabled === true,
+      title: String(condicoesCurrent.title || 'Condições Gerais'),
+      body: String(condicoesCurrent.body || ''),
+    },
+  });
+  return applyQuotationSectionPolicy(result, sections);
 }
 
 /**

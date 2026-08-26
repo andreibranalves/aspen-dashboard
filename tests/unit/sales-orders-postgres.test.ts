@@ -8,6 +8,10 @@ import test from 'node:test';
 import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
@@ -21,6 +25,7 @@ import {
 import { createSalesOrderFromQuotationHandler } from '../../api/_modules/sales-order-from-quotation.js';
 import { createSalesOrdersHandler } from '../../api/_modules/sales-orders.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -258,6 +263,7 @@ test(
 
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       migrated = true;
       [initialSequence] = await db
         .select()
@@ -287,32 +293,38 @@ test(
       });
       await db.insert(schema.quoteRevisions).values([
         {
+          ...fixtureFields,
           id: revisionId,
           quotationId,
           version: 1,
           status: 'aprovado',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '123.45',
           total: '130.00',
           createdAt: NOW,
         },
         {
+          ...fixtureFields,
           id: latestRevisionId,
           quotationId,
           version: 2,
           status: 'aprovado',
           validadeDias: 30,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '222.22',
           total: '230.00',
           createdAt: NOW,
         },
         {
+          ...fixtureFields,
           id: draftRevisionId,
           quotationId,
           version: 3,
           status: 'rascunho',
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           validadeDias: 30,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '999.99',
@@ -374,11 +386,13 @@ test(
         updatedAt: NOW,
       });
       await db.insert(schema.quoteRevisions).values({
+        ...fixtureFields,
         id: secondRevisionId,
         quotationId: secondQuotationId,
         version: 1,
         status: 'aprovado',
         validadeDias: 30,
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: `Cliente pedido local ${fixtureTag}`,
         subtotal: '10.00',
         total: '10.00',
@@ -393,11 +407,13 @@ test(
         updatedAt: NOW,
       });
       await db.insert(schema.quoteRevisions).values({
+        ...fixtureFields,
         id: concurrentRevisionId,
         quotationId: concurrentQuotationId,
         version: 1,
         status: 'aprovado',
         validadeDias: 30,
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: `Cliente pedido local ${fixtureTag}`,
         subtotal: '20.00',
         total: '20.00',
@@ -603,6 +619,7 @@ test(
     const sku = `LIST-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       await db.insert(schema.clients).values({ id: clientId, nome: 'Busca Case Cliente' });
       await db.insert(schema.products).values({ sku, nome: 'Lista', unidade: 'Und' });
       await db.insert(schema.quotations).values({

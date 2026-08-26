@@ -8,6 +8,13 @@ const INITIAL_SETTINGS = {
   frete_padrao: '0.00',
   observacoes: '',
   template_padrao: 'padrao',
+  settings_version: 1,
+  empresa: {
+    schema_version: 1,
+    identity: { legal_name: 'ASPEN COMÉRCIO DE ARTIGOS PERSONALIZADOS LTDA', document: '55.458.072/0001-79' },
+    banking: { bank_name: 'Stone Pagamentos S.A.', bank_code: '197', branch: '0001', account: '35207618-6', pix_key: '55.458.072/0001-79' },
+    contacts: { website: 'https://www.aspenestamparia.com', phone: '(21) 96924-1265', email: 'contato@aspenestamparia.com', instagram: 'https://www.instagram.com/aspenestamparia' },
+  },
   secoes: {
     schema_version: 1,
     prazo_producao: { enabled: true, title: 'Prazo de produção' },
@@ -73,6 +80,8 @@ test.describe('Configurações de orçamento @quotations', () => {
       validade_dias: 30,
       entrega: '7 dias úteis',
       frete_padrao: '12.5',
+      empresa: INITIAL_SETTINGS.empresa,
+      settings_version: 1,
       secoes: {
         schema_version: 1,
         prazo_producao: { enabled: false, title: 'Produção customizada' },

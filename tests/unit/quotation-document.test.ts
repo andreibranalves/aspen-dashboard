@@ -49,8 +49,8 @@ const snapshot = {
     sectionsSnapshot: {
       schema_version: 1,
       prazo_producao: {
-        base: { enabled: true, title: 'Prazo' },
-        current: { enabled: true, title: 'Prazo' },
+        base: { enabled: true, title: 'Prazo', value: '5 dias' },
+        current: { enabled: true, title: 'Prazo', value: '5 dias' },
       },
       pagamento: {
         base: { enabled: true, title: 'Pagamento', body: 'Base' },
@@ -149,33 +149,32 @@ test('canonical production deadline feeds section and legacy mirrors', () => {
   assert.equal(document.viewModel.terms_snapshot.production_deadline, '10 dias úteis');
 });
 
-test('legacy production deadline controls section visibility without altering canonical snapshots', () => {
-  for (const deadline of ['', '5 dias']) {
-    const legacySnapshot = {
-      ...snapshot,
-      revision: {
-        ...snapshot.revision,
-        prazoProducao: deadline,
-        sectionsSnapshot: null,
-      },
-      sectionsSnapshot: null,
-    } as any;
-    const document = renderQuotationDocument(legacySnapshot, template);
-    const visible = Boolean(deadline);
-
-    assert.equal(document.viewModel.secoes.prazo_producao.enabled, visible);
-    assert.equal(document.viewModel.secoes.prazo_producao.title, visible ? 'Prazo de produção' : '');
-    assert.equal(document.viewModel.secoes.prazo_producao.value, visible ? deadline : '');
-    assert.equal(document.viewModel.terms.production_deadline, deadline);
-  }
-
-  const canonicalSnapshot = {
+test('canonical production deadline is the sole source for section visibility and value', () => {
+  const hiddenDeadline = {
     ...snapshot,
-    revision: { ...snapshot.revision, prazoProducao: '' },
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        ...snapshot.revision.sectionsSnapshot,
+        prazo_producao: {
+          ...snapshot.revision.sectionsSnapshot.prazo_producao,
+          current: { ...snapshot.revision.sectionsSnapshot.prazo_producao.current, enabled: false },
+        },
+      },
+    },
   } as any;
-  assert.equal(
-    renderQuotationDocument(canonicalSnapshot, template).viewModel.secoes.prazo_producao.enabled,
-    true,
+  const hidden = renderQuotationDocument(hiddenDeadline, template);
+  assert.equal(hidden.viewModel.secoes.prazo_producao.enabled, false);
+  assert.equal(hidden.viewModel.secoes.prazo_producao.value, '');
+
+  // Revisions without a canonical snapshot no longer render at all.
+  assert.throws(
+    () =>
+      renderQuotationDocument(
+        { ...snapshot, revision: { ...snapshot.revision, sectionsSnapshot: null } } as any,
+        template
+      ),
+    /sem snapshot canônico/
   );
 });
 

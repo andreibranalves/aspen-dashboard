@@ -24,8 +24,7 @@ import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/storage/autoQuot
 import {
   buildQuotePayload,
   getQuotationIssue,
-  issueQuotation,
-  isPriceAuthoritativeConflict,
+  issuePersistedDraft,
   QuotationIssueApiError,
 } from '@/lib/api/quotationIssueApi';
 import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
@@ -35,11 +34,6 @@ import {
 } from '@/hooks/useQuotationDeliveries';
 import type { DeliveryView } from '@/lib/api/quotationDeliveryApi';
 import { isSendableQuotationStatus, sendContextKey, type SendContext } from '@/lib/api/communicationSend';
-
-function moneyCents(value: unknown): number | null {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? Math.round(numeric * 100) : null;
-}
 
 function loadInitialAutoQuoteDrafts() {
   try {
@@ -104,7 +98,7 @@ export default function AutoQuotePage() {
   const [mention, setMention] = useState<{ start: number; end: number; query: string } | null>(null);
   const [extracting, setExtracting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [pricingConflictByDraft, setPricingConflictByDraft] = useState<Record<number, string[]>>({});
+  const [pricingConflictByDraft] = useState<Record<number, string[]>>({});
   const [savingDraftByIndex, setSavingDraftByIndex] = useState<Record<number, boolean>>({});
   const issueInFlight = useRef(new Set<number>());
   const extractionGenerationRef = useRef(0);
@@ -410,10 +404,25 @@ export default function AutoQuotePage() {
         ? ({ ...requestDraft, status: 'processing' as const, result: undefined } as StoredAutoQuoteDraft)
         : candidate));
       try {
-        const issue = await issueQuotation(buildQuotePayload(requestDraft), key, {
-          sourceQuotationId: draft.sourceQuotationId || draft.saved?.quotationId,
-          sourceRevisionId: draft.sourceRevisionId || draft.saved?.revisionId,
-        });
+        // Same transition as every other flow: create or reuse the persisted
+        // draft, then issue it by reference so the server owns the content.
+        let savedDraft = draft.saved;
+        if (!savedDraft) {
+          const created = await apiPost<OrcamentoResponse>('/orcamento', buildQuotePayload(requestDraft));
+          const quotationId = String(created.quotation_uuid || created.quote_id || '');
+          const revisionId = String(created.revision_id || created.quote_revision_id || '');
+          const businessNumber = String(created.quotation_name || created.quotation_id || '');
+          const concurrencyToken = String(created.concurrency_token || '');
+          if (!quotationId || !revisionId || !businessNumber || !concurrencyToken) {
+            throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
+          }
+          savedDraft = { quotationId, revisionId, businessNumber, concurrencyToken };
+          setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+            ? ({ ...candidate, saved: savedDraft } as StoredAutoQuoteDraft)
+            : candidate));
+        }
+        if (!savedDraft.concurrencyToken) throw new Error('Recarregue a página antes de emitir este rascunho.');
+        const issue = await issuePersistedDraft(savedDraft.revisionId, savedDraft.concurrencyToken, key);
         const data = {
           quotation_id: issue.businessNumber,
           quotation_uuid: issue.quotationId,
@@ -427,11 +436,8 @@ export default function AutoQuotePage() {
           : candidate));
       } catch (err) {
         const apiError = err instanceof QuotationIssueApiError ? err : null;
-        const priceConflict = Boolean(apiError && isPriceAuthoritativeConflict(apiError));
         const message = apiError?.status === 409
-          ? priceConflict
-            ? 'Os preços dos produtos foram atualizados. Atualize os preços e tente novamente.'
-            : 'O orçamento mudou ou já está em processamento. Tente novamente.'
+          ? 'O orçamento mudou ou já está em processamento. Tente novamente.'
           : 'Não foi possível emitir o orçamento. Tente novamente.';
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, status: undefined, result: { success: false, error: message } } as StoredAutoQuoteDraft)
@@ -444,51 +450,13 @@ export default function AutoQuotePage() {
                 ? ({ ...candidate, issue: recovered, result: { success: true, data: { quotation_id: recovered.businessNumber, quotation_uuid: recovered.quotationId, revision_id: recovered.revisionId, revision_number: recovered.revisionNumber, status: 'emitido', status_canonical: 'emitido' } }, status: 'done' } as StoredAutoQuoteDraft)
                 : candidate));
             }
-          } else if (isPriceAuthoritativeConflict(err)) {
-            const before = new Map(draft.edited.items.map((item) => [item.item_code, moneyCents(item.rate)]));
-            const data = err.data && typeof err.data === 'object' ? err.data as Record<string, unknown> : {};
-            const authoritative = data.authoritative && typeof data.authoritative === 'object'
-              ? data.authoritative as Record<string, unknown> : data;
-            const corrected = Array.isArray(authoritative.items) ? authoritative.items : [];
-            let changedItems: string[] = [];
-            if (corrected.length) {
-              const corrections = new Map(corrected.map((value) => {
-                const correction = value as Record<string, unknown>;
-                return [String(correction.item_code || correction.sku || ''), correction] as const;
-              }));
-              const changed = corrected.map((value) => {
-                const correction = value as Record<string, unknown>;
-                const sku = String(correction.item_code || correction.sku || '');
-                const rate = correction.rate ?? correction.authoritative_rate;
-                const beforeRate = before.get(sku);
-                return sku && moneyCents(rate) !== null && moneyCents(rate) !== beforeRate ? sku : '';
-              }).filter(Boolean);
-              changedItems = changed;
-              setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
-                ? ({ ...candidate, edited: { ...candidate.edited, items: candidate.edited.items.map((item) => {
-                  const correction = corrections.get(item.item_code);
-                  const rate = correction?.rate ?? correction?.authoritative_rate;
-                  return correction && moneyCents(rate) !== null && moneyCents(rate) !== moneyCents(item.rate)
-                    ? { ...item, rate: Number(rate) } : item;
-                }) }, issueIdempotencyKey: undefined } as StoredAutoQuoteDraft)
-                : candidate));
-            } else {
-              const refreshed = await refetchDraftPricing(draftIndex);
-              changedItems = (refreshed?.edited.items || []).filter((item) =>
-                item.item_code && before.get(item.item_code) !== moneyCents(item.rate)
-              ).map((item) => item.item_code);
-            }
-            setPricingConflictByDraft((prev) => ({ ...prev, [draftIndex]: changedItems }));
-            setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
-              ? ({ ...candidate, issueIdempotencyKey: undefined } as StoredAutoQuoteDraft)
-              : candidate));
           }
         }
       } finally {
         issueInFlight.current.delete(draftIndex);
       }
     },
-    [drafts, refetchDraftPricing]
+    [drafts]
   );
 
   const saveSingleDraft = useCallback(async (draftIndex: number) => {
@@ -500,9 +468,10 @@ export default function AutoQuotePage() {
       const quotationId = String(result.quote_id || result.quotation_uuid || '');
       const revisionId = String(result.revision_id || result.quote_revision_id || '');
       const businessNumber = String(result.quotation_name || result.quotation_id || '');
-      if (!quotationId || !revisionId || !businessNumber) throw new Error('Resposta inválida ao salvar o rascunho.');
+      const concurrencyToken = String(result.concurrency_token || '');
+      if (!quotationId || !revisionId || !businessNumber || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho.');
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
-        ? ({ ...candidate, saved: { quotationId, revisionId, businessNumber } } as StoredAutoQuoteDraft)
+        ? ({ ...candidate, saved: { quotationId, revisionId, businessNumber, concurrencyToken } } as StoredAutoQuoteDraft)
         : candidate));
     } catch {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex

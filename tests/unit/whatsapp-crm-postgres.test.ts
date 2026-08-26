@@ -7,6 +7,10 @@ import test from 'node:test';
 import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
@@ -14,6 +18,7 @@ import { createPostgresQuoteLeadRepository } from '../../api/_infrastructure/db/
 import { createHandler as createWhatsappHandler } from '../../api/_modules/whatsapp-conversations.js';
 import { createPostgresWhatsappCrmRepository, resolveWhatsappCrmMatch } from '../../api/_modules/whatsapp-crm-match.js';
 import type { WhatsappConversation } from '../../api/_modules/whatsapp-conversations-store.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -66,6 +71,7 @@ test(
     const businessNumbers = quotationIds.map((_, index) => `ORC-2099${String(index + 1000).slice(-4)}`);
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       await db.insert(schema.clients).values([
         { id: clientIds[0], nome: 'Cliente antigo' },
         { id: clientIds[1], nome: 'Cliente novo' },
@@ -86,36 +92,44 @@ test(
       );
       await db.insert(schema.quoteRevisions).values([
         {
+          ...fixtureFields,
           id: revisionIds[0], quotationId: quotationIds[0], version: 1, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Ana Latest', subtotal: '10.00', total: '10.00', createdAt: oldDate,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Ana Latest', subtotal: '10.00', total: '10.00', createdAt: oldDate,
         },
         {
+          ...fixtureFields,
           id: revisionIds[1], quotationId: quotationIds[0], version: 2, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Outro nome', subtotal: '11.00', total: '11.00', createdAt: now,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Outro nome', subtotal: '11.00', total: '11.00', createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[2], quotationId: quotationIds[1], version: 1, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Outro antigo', subtotal: '12.00', total: '12.00', createdAt: oldDate,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Outro antigo', subtotal: '12.00', total: '12.00', createdAt: oldDate,
         },
         {
+          ...fixtureFields,
           id: revisionIds[3], quotationId: quotationIds[1], version: 2, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Ana Latest', subtotal: '13.00', total: '13.00', createdAt: now,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Ana Latest', subtotal: '13.00', total: '13.00', createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[4], quotationId: quotationIds[2], version: 1, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Literal% Name', subtotal: '14.00', total: '14.00', createdAt: now,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Literal% Name', subtotal: '14.00', total: '14.00', createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[5], quotationId: quotationIds[3], version: 1, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Literal_ Name', subtotal: '15.00', total: '15.00', createdAt: now,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Literal_ Name', subtotal: '15.00', total: '15.00', createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[6], quotationId: quotationIds[4], version: 1, status: 'emitido',
-          validadeDias: 15, clienteNome: 'Literal\\ Name', subtotal: '16.00', total: '16.00', createdAt: now,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'Literal\\ Name', subtotal: '16.00', total: '16.00', createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[7], quotationId: quotationIds[5], version: 1, status: 'emitido',
-          validadeDias: 15, clienteNome: 'LiteralX Name', subtotal: '17.00', total: '17.00', createdAt: now,
+          validadeDias: 15, companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION, clienteNome: 'LiteralX Name', subtotal: '17.00', total: '17.00', createdAt: now,
         },
       ]);
 
@@ -182,6 +196,7 @@ test(
     const targetRevisionlessPhone = '5511666777888';
     try {
       await migrate(db, { migrationsFolder });
+      const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       await db.insert(schema.clients).values([
         { id: clientIds[0], nome: 'Deal Client A' },
         { id: clientIds[1], nome: 'Deal Client B' },
@@ -242,11 +257,13 @@ test(
       ]);
       await db.insert(schema.quoteRevisions).values([
         {
+          ...fixtureFields,
           id: revisionIds[0],
           quotationId: quotationIds[0],
           version: 1,
           status: 'emitido',
           validadeDias: 15,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Deal Client A',
           clienteEmail: 'a-only@example.com',
           clienteTelefone: targetQuotesPhone,
@@ -255,11 +272,13 @@ test(
           createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[1],
           quotationId: quotationIds[1],
           version: 1,
           status: 'emitido',
           validadeDias: 15,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Deal Client A',
           clienteEmail: 'a-only@example.com',
           clienteTelefone: targetQuotesPhone,
@@ -268,10 +287,12 @@ test(
           createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[2],
           quotationId: quotationIds[3],
           version: 1,
           status: 'emitido',
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           validadeDias: 15,
           clienteNome: 'Repeated Name Literal%',
           subtotal: '12.00',
@@ -279,10 +300,12 @@ test(
           createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[3],
           quotationId: quotationIds[4],
           version: 1,
           status: 'emitido',
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           validadeDias: 15,
           clienteNome: 'Repeated Name Literal%',
           subtotal: '13.00',
@@ -290,11 +313,13 @@ test(
           createdAt: now,
         },
         {
+          ...fixtureFields,
           id: revisionIds[4],
           quotationId: quotationIds[5],
           version: 1,
           status: 'emitido',
           validadeDias: 15,
+          companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: 'Deal Client B',
           clienteEmail: 'b-only@example.com',
           clienteTelefone: targetQuotesPhone,
@@ -539,6 +564,7 @@ test(
     const db = drizzle(client, { schema });
     // This test is standalone: migrate its disposable schema before creating repository state.
     await migrate(db, { migrationsFolder });
+    const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
     const conversationId = `retry-postgres-${randomUUID()}`;
     const now = new Date('2026-08-10T12:00:00.000Z');
     let conversations: WhatsappConversation[] = [

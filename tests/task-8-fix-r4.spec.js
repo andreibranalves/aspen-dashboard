@@ -98,6 +98,16 @@ async function setupAuto(page) {
     success: true,
     items: [{ rate: 9, item_name: 'Canga' }],
   }));
+  await page.route('**/api/orcamento**', (route) => json(route, {
+    success: true,
+    quotation_id: quotationId,
+    quotation_name: quotationId,
+    quotation_uuid: quotationUuid,
+    revision_id: revisionId,
+    quote_revision_id: revisionId,
+    revision_number: 1,
+    concurrency_token: '2026-08-13T00:00:00.000Z',
+  }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
     quotation_id: quotationUuid,
     business_number: quotationId,
@@ -138,6 +148,11 @@ async function setupAuto(page) {
     ],
     selectedFlowId: 'flow-1',
   }));
+  // Safety net: delivery lookups fire as soon as the issued card renders,
+  // possibly before a test registers its own delivery routes. Answer them
+  // immediately so the send button is enabled once the lookup settles.
+  await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
+  await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
   await page.goto('/#/auto');
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
@@ -250,6 +265,7 @@ test('same component double click sends one backend request and failure cleanup 
   });
   await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
   await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
+  // The send button stays disabled while the delivery-status lookup settles.
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await expect(send).toBeEnabled();
   await send.evaluate((button) => {

@@ -64,6 +64,7 @@ export interface OrcamentoResponse {
   observacoes?: string;
   prazo_producao?: string;
   template_padrao?: string;
+  concurrency_token?: string;
   deal_id?: string;
   pdf_url?: string;
   public_url?: string | null;
@@ -133,6 +134,7 @@ export interface StoredAutoQuoteDraft extends Draft {
     quotationId: string;
     businessNumber: string;
     revisionId: string;
+    concurrencyToken: string;
   };
 }
 

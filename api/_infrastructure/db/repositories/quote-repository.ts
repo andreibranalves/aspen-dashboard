@@ -40,13 +40,18 @@ import {
   type PricingResolution,
 } from '../../../_modules/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
+import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import {
   normalizeQuotationSections,
+  withQuotationProductionDeadline,
   type QuotationSectionsSnapshot,
 } from '../../../_modules/quotation-content.js';
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
-import { getQuotationTemplate } from '../../../_modules/quotation-template-catalog.js';
-import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
+import {
+  getQuotationTemplate,
+  HISTORICAL_QUOTATION_TEMPLATES,
+} from '../../../_modules/quotation-template-catalog.js';
+import { quotationConcurrencyToken } from './quote-draft-management-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -206,6 +211,7 @@ export interface QuoteDraftResult {
   template_hash: string;
   template_version_id: string;
   secoes: QuotationSectionsSnapshot;
+  concurrency_token: string;
   created_at: string;
 }
 
@@ -546,7 +552,7 @@ function safeErrorKind(error: unknown): string {
 async function readSettings(tx: QuoteTransaction): Promise<Settings> {
   const [row] = await tx.select().from(appSettings).where(eq(appSettings.singletonId, 1)).limit(1);
   if (!row) return { ...DEFAULT_SETTINGS };
-  const secoes = normalizeQuotationSections(row.quotationSections, row);
+  const secoes = normalizeQuotationSections(row.quotationSections);
   return {
     validade_dias: row.validadeDias,
     pagamento: secoes.pagamento.body,
@@ -555,6 +561,8 @@ async function readSettings(tx: QuoteTransaction): Promise<Settings> {
     observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
     secoes,
+    empresa: normalizeQuotationCompanyConfiguration(row.companyConfiguration),
+    settings_version: row.settingsVersion,
   };
 }
 
@@ -745,7 +753,13 @@ function resolutionSource(resolution: PricingResolution): 'base' | 'tier' {
 
 interface SelectedTemplate {
   model: { id: string; key: string; name: string; archived: boolean };
-  version: { id: string; version: number; source: string; sourceHash: string };
+  version: {
+    id: string;
+    version: number;
+    source: string;
+    sourceHash: string;
+    contractVersion?: number;
+  };
 }
 
 export interface TemplateSelectionLookup {
@@ -772,6 +786,7 @@ export async function readSelectedTemplate(
           version: quotationTemplateVersions.version,
           source: quotationTemplateVersions.source,
           sourceHash: quotationTemplateVersions.sourceHash,
+          contractVersion: quotationTemplateVersions.contractVersion,
         })
         .from(quotationTemplateVersions)
         .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
@@ -779,7 +794,13 @@ export async function readSelectedTemplate(
         .limit(1);
       return row && {
         model: { id: row.modelId, key: row.modelKey, name: row.modelName, archived: row.archived },
-        version: { id: row.versionId, version: row.version, source: row.source, sourceHash: row.sourceHash },
+        version: {
+          id: row.versionId,
+          version: row.version,
+          source: row.source,
+          sourceHash: row.sourceHash,
+          contractVersion: row.contractVersion === 2 ? 2 : 1,
+        },
       };
     },
     current: (selection: string | { id: string }) => readCurrentQuotationTemplateVersion(tx, selection),
@@ -798,7 +819,14 @@ export async function readSelectedTemplate(
       if (!model || model.archived) return null;
       await tx
         .insert(quotationTemplateVersions)
-        .values({ id: versionId, templateId: model.id, version: 1, source: legacy.source, sourceHash: legacy.hash })
+        .values({
+          id: versionId,
+          templateId: model.id,
+          version: 2,
+          source: legacy.source,
+          sourceHash: legacy.hash,
+          contractVersion: 2,
+        })
         .onConflictDoNothing({ target: [quotationTemplateVersions.templateId, quotationTemplateVersions.version] });
       return readCurrentQuotationTemplateVersion(tx, { id: model.id });
     },
@@ -813,12 +841,28 @@ export async function readSelectedTemplate(
   }
 
   const selected = await lookup.current(key || settings.template_padrao);
-  if (selected && !selected.model.archived) return selected;
+  const currentBuiltin = getQuotationTemplate(key || settings.template_padrao);
+  if (selected && !selected.model.archived) {
+    // Existing official rows created before the v2 publication remain immutable
+    // v1 history. New drafts select the current v2 source and persist it as a
+    // separate version instead of mutating the historical row. Custom versions
+    // under an official key remain selected and are never replaced silently.
+    const historicalBuiltin = currentBuiltin
+      ? HISTORICAL_QUOTATION_TEMPLATES.find((template) => template.key === currentBuiltin.key)
+      : undefined;
+    const isHistoricalBuiltin = Boolean(
+      historicalBuiltin &&
+        selected.version.contractVersion === 1 &&
+        selected.version.source === historicalBuiltin.source &&
+        selected.version.sourceHash === historicalBuiltin.hash,
+    );
+    if (!isHistoricalBuiltin) return selected;
+    return lookup.seedLegacy(currentBuiltin!);
+  }
   // Seed a missing static template so the revision FK and historical resolver
   // have persisted identity, even when another static template already exists.
-  const legacy = getQuotationTemplate(key || settings.template_padrao);
-  if (!legacy) return null;
-  return lookup.seedLegacy(legacy);
+  if (!currentBuiltin) return null;
+  return lookup.seedLegacy(currentBuiltin);
 }
 
 /** PostgreSQL quote-draft writer. Every mutation is intentionally kept in one
@@ -941,6 +985,7 @@ export function createPostgresQuoteDraftRepository(
         const template = await readSelectedTemplate(tx, settings, input);
         if (!template) throw new QuoteDraftInputError('Template do orçamento inválido.');
         const baseSections = normalizeQuotationSections(settings.secoes);
+        const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
         let currentSections = baseSections;
         if (input.secoes !== undefined || requestObservations !== undefined || requestPayment !== undefined) {
           try {
@@ -972,18 +1017,12 @@ export function createPostgresQuoteDraftRepository(
                     body: inputText(requestPayment, 'Pagamento', 4000),
                   }
                 : undefined;
-            currentSections = normalizeQuotationSections(
-              {
-                schema_version: baseSections.schema_version,
-                prazo_producao: mergeSection('prazo_producao'),
-                pagamento: paymentOverride || mergeSection('pagamento'),
-                condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
-              },
-              {
-                pagamento: baseSections.pagamento.body,
-                observacoes: baseSections.condicoes_gerais.body,
-              }
-            );
+            currentSections = normalizeQuotationSections({
+              schema_version: baseSections.schema_version,
+              prazo_producao: mergeSection('prazo_producao'),
+              pagamento: paymentOverride || mergeSection('pagamento'),
+              condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
+            });
             if (requestObservations !== undefined && input.secoes !== undefined) {
               inputText(requestObservations, 'Observações', 4000);
             }
@@ -994,11 +1033,23 @@ export function createPostgresQuoteDraftRepository(
             throw new QuoteDraftInputError(error instanceof Error ? error.message : 'Seções inválidas.');
           }
         }
+        const canonicalDeadline =
+          currentSections.prazo_producao.value === undefined
+            ? deadline
+            : currentSections.prazo_producao.value;
+        const baseSectionsWithDeadline = withQuotationProductionDeadline(
+          baseSections,
+          canonicalDeadline
+        );
+        const currentSectionsWithDeadline = withQuotationProductionDeadline(
+          currentSections,
+          canonicalDeadline
+        );
         const sectionsSnapshot: QuotationSectionsSnapshot = {
           schema_version: baseSections.schema_version,
           prazo_producao: {
-            base: copy(baseSections.prazo_producao),
-            current: copy(currentSections.prazo_producao),
+            base: copy(baseSectionsWithDeadline.prazo_producao),
+            current: copy(currentSectionsWithDeadline.prazo_producao),
           },
           pagamento: {
             base: copy(baseSections.pagamento),
@@ -1013,7 +1064,6 @@ export function createPostgresQuoteDraftRepository(
           requestFreight === undefined
             ? parseNonNegativeMoney(settings.frete_padrao, 'Frete')
             : parseNonNegativeMoney(requestFreight, 'Frete');
-        const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
         const resolvedItems: Array<{
           id: string;
           position: number;
@@ -1093,38 +1143,23 @@ export function createPostgresQuoteDraftRepository(
           updatedAt: createdAt,
         });
 
-        const revisionMetadata =
-          template.version.id && template.version.id.length > 0
-            ? { templateVersionId: template.version.id, sectionsSnapshot }
-            : await resolveQuotationRevisionMetadata(tx, {
-                templatePadrao: template.model.key,
-                templateHash: template.version.sourceHash,
-                pagamento: sectionsSnapshot.pagamento.current.body,
-                entrega: input.entrega !== undefined
-                  ? inputText(input.entrega, 'Entrega', 500)
-                  : settings.entrega,
-                observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-                prazoProducao: deadline,
-              });
         await tx.insert(quoteRevisions).values({
           id: revisionId,
           quotationId,
           version: 1,
           status: 'rascunho',
           validadeDias: validityDays,
-          pagamento: sectionsSnapshot.pagamento.current.body,
           entrega:
             input.entrega !== undefined
               ? inputText(input.entrega, 'Entrega', 500)
               : settings.entrega,
           fretePadrao: settings.frete_padrao,
           frete: formatMoneyCents(freightCents),
-          observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-          prazoProducao: deadline,
           templatePadrao: template.model.key,
           templateHash: template.version.sourceHash,
-          templateVersionId: template.version.id || revisionMetadata.templateVersionId,
+          templateVersionId: template.version.id,
           sectionsSnapshot,
+          companySnapshot: settings.empresa,
           ...clientSnapshotToRow(client),
           subtotal: formatMoneyCents(subtotalCents),
           total: formatMoneyCents(totalCents),
@@ -1219,12 +1254,14 @@ export function createPostgresQuoteDraftRepository(
             ? inputText(input.entrega, 'Entrega', 500)
             : settings.entrega,
           observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-          prazo_producao: deadline,
+          prazo_producao: canonicalDeadline,
           template_padrao: template.model.key,
           template_key: template.model.key,
           template_hash: template.version.sourceHash,
-          template_version_id: template.version.id || revisionMetadata.templateVersionId,
+          template_version_id: template.version.id,
           secoes: sectionsSnapshot,
+          // Optimistic-concurrency token for issuing this draft by reference.
+          concurrency_token: quotationConcurrencyToken(createdAt),
           created_at: createdAt.toISOString(),
         } satisfies QuoteDraftResult;
       });
@@ -1286,12 +1323,11 @@ export function createPostgresQuoteDraftRepository(
           throw new QuoteDraftInputError('Orçamento sem itens não pode ser duplicado.');
         }
 
-        const revisionMetadata = sourceRevision.sectionsSnapshot
-          ? {
-              templateVersionId: sourceRevision.templateVersionId,
-              sectionsSnapshot: copy(sourceRevision.sectionsSnapshot),
-            }
-          : await resolveQuotationRevisionMetadata(tx, sourceRevision);
+        if (!sourceRevision.sectionsSnapshot) {
+          throw new QuoteDraftNotFoundError('Revisão do orçamento não encontrada.');
+        }
+
+        const settings = await readSettings(tx);
         const clientSnapshot = clientSnapshotFromRevision(sourceRevision, sourceQuotation.clientId);
         const businessNumber = await reserveBusinessNumber(tx, createdAt.getUTCFullYear());
         const quotationId = idFactory();
@@ -1322,16 +1358,14 @@ export function createPostgresQuoteDraftRepository(
           version: 1,
           status: 'rascunho',
           validadeDias: sourceRevision.validadeDias,
-          pagamento: sourceRevision.pagamento,
           entrega: sourceRevision.entrega,
           fretePadrao: sourceRevision.fretePadrao,
           frete: sourceRevision.frete,
-          observacoes: sourceRevision.observacoes,
-          prazoProducao: sourceRevision.prazoProducao,
           templatePadrao: sourceRevision.templatePadrao,
           templateHash: sourceRevision.templateHash,
-          templateVersionId: revisionMetadata.templateVersionId,
-          sectionsSnapshot: copy(revisionMetadata.sectionsSnapshot),
+          templateVersionId: sourceRevision.templateVersionId,
+          sectionsSnapshot: copy(sourceRevision.sectionsSnapshot),
+          companySnapshot: settings.empresa,
           ...clientSnapshotToRow(clientSnapshot),
           subtotal: sourceRevision.subtotal,
           total: sourceRevision.total,
@@ -1432,15 +1466,15 @@ export function createPostgresQuoteDraftRepository(
           frete: String(sourceRevision.frete),
           total: String(sourceRevision.total),
           validade_dias: sourceRevision.validadeDias,
-          pagamento: sourceRevision.pagamento,
+          pagamento: sourceRevision.sectionsSnapshot.pagamento.current.body,
           entrega: sourceRevision.entrega,
-          observacoes: sourceRevision.observacoes,
-          prazo_producao: sourceRevision.prazoProducao,
+          observacoes: sourceRevision.sectionsSnapshot.condicoes_gerais.current.body,
+          prazo_producao: sourceRevision.sectionsSnapshot.prazo_producao.current.value ?? '',
           template_padrao: sourceRevision.templatePadrao,
           template_key: sourceRevision.templatePadrao,
           template_hash: sourceRevision.templateHash,
-          template_version_id: revisionMetadata.templateVersionId,
-          secoes: copy(revisionMetadata.sectionsSnapshot),
+          template_version_id: sourceRevision.templateVersionId,
+          secoes: copy(sourceRevision.sectionsSnapshot),
           created_at: createdAt.toISOString(),
           crm_deal_id: linkedDealId,
         } satisfies QuoteDuplicateResult;

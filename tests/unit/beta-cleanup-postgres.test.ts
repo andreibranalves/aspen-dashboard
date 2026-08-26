@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 
 import {
@@ -31,6 +35,7 @@ import {
   salesOrders,
 } from '../../api/_infrastructure/db/schema.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
@@ -45,6 +50,7 @@ test('beta cleanup plans exact graphs, preserves shared data, blocks orders and 
     emails: new Set<string>(), issues: new Set<string>(), activities: new Set<string>(), orders: new Set<string>(),
   };
   let sequence = 9000;
+  let fixtureFields: FixtureRevisionFields;
 
   async function insertGraph(options: { clientId?: string; createClient?: boolean; order?: boolean } = {}) {
     const clientId = options.clientId || randomUUID();
@@ -78,7 +84,9 @@ test('beta cleanup plans exact graphs, preserves shared data, blocks orders and 
     if (options.createClient !== false) await db.insert(clients).values({ id: clientId, nome: 'Cliente beta cleanup' });
     await db.insert(quotations).values({ id: quotationId, businessNumber: `ORC-2099${sequence}`, clientId });
     await db.insert(quoteRevisions).values({
+      ...fixtureFields,
       id: revisionId, quotationId, version: 1, validadeDias: 15, clienteNome: 'Cliente beta cleanup',
+      companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
     });
     await db.insert(quoteRevisionItems).values({
       id: itemId, revisionId, position: 0, productSku: sku, quantidade: '1.000', produtoSku: sku,
@@ -120,6 +128,7 @@ test('beta cleanup plans exact graphs, preserves shared data, blocks orders and 
 
   try {
     await migrate(db, { migrationsFolder });
+    fixtureFields = await ensureFixtureTemplateVersion(db as any);
     await db.insert(products).values({ sku, nome: 'Produto beta cleanup', precoBase: '10.00' });
     const repository = createPostgresBetaCleanupRepository(() => db);
 

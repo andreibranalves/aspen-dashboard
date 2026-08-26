@@ -24,7 +24,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
-import { issueQuotation } from '@/lib/api/quotationIssueApi';
+import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import {
   isUnpricedProduct,
@@ -574,7 +574,13 @@ export default function ManualOrcamentoPage() {
     setSending(true);
     setError(null);
     try {
-      const issue = await issueQuotation(payload, key);
+      // Same transition as every other flow: persist the draft first, then
+      // issue it by reference so the server owns the commercial content.
+      const created = await apiPost<OrcamentoResponse>('/orcamento', payload);
+      const revisionId = String(created.revision_id || created.quote_revision_id || '');
+      const concurrencyToken = String(created.concurrency_token || '');
+      if (!revisionId || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
+      const issue = await issuePersistedDraft(revisionId, concurrencyToken, key);
       clearManualDraft();
       setResult({ success: true, quotation_id: issue.businessNumber, quotation_name: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision_number: issue.revisionNumber, status: issue.status });
     } catch {

@@ -27,7 +27,13 @@ import {
   QuotationDeliveryRepositoryError,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
-import type { QuotationSectionsSnapshot } from '../../api/_modules/quotation-content.js';
+import {
+  createQuotationSectionsSnapshot,
+  normalizeQuotationSections,
+  withQuotationProductionDeadline,
+  type QuotationSectionsSnapshot,
+} from '../../api/_modules/quotation-content.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
@@ -55,15 +61,18 @@ function fakePreparationDatabase(options: {
   const quotationId = '00000000-0000-4000-8000-000000000002';
   const templateVersionId = '00000000-0000-4000-8000-000000000003';
   const revisionTotal = options.total ?? '10.00';
+  const canonicalSections = options.sectionsSnapshot ?? createQuotationSectionsSnapshot(
+    withQuotationProductionDeadline(normalizeQuotationSections(undefined), '')
+  );
   const revision = {
     id: revisionId, quotationId, version: 1, status: 'emitido', issuedAt: now, createdAt: now,
-    validadeDias: 15, pagamento: 'Pix', entrega: '', fretePadrao: '0.00', frete: '0.00',
-    observacoes: '', prazoProducao: '', templatePadrao: templateKey, templateHash,
+    validadeDias: 15, entrega: '', fretePadrao: '0.00', frete: '0.00',
+    templatePadrao: templateKey, templateHash,
     templateVersionId, clienteNome: 'ANDREI ALVES', clienteTelefone: '21999999999',
     clienteEmail: null, clienteDocumento: null, clienteEndereco: null, clienteNumero: null,
     clienteBairro: null, clienteComplemento: null, clienteMunicipio: null, clienteUf: null,
     clienteCep: null, clienteNotas: null, subtotal: revisionTotal, total: revisionTotal,
-    sectionsSnapshot: options.sectionsSnapshot || null,
+    sectionsSnapshot: canonicalSections,
   } as any;
   const delivery = {
     id: '00000000-0000-4000-8000-000000000004', revisionId, phone: '5511999990000', flowId: 'flow',
@@ -349,13 +358,10 @@ test(
         status: 'emitido',
         issuedAt: now,
         validadeDias: 15,
-        pagamento: 'À vista',
         entrega: '10 dias',
         templateVersionId: ids.templateVersion,
         fretePadrao: '0.00',
         frete: '0.00',
-        observacoes: 'Resumo',
-        prazoProducao: '',
         templatePadrao: templateKey,
         templateHash: SECTION_TEMPLATE_HASH,
         sectionsSnapshot: ({
@@ -365,6 +371,7 @@ test(
           condicoes_gerais: { base: { enabled: true, title: 'Condições', body: 'old' }, current: { enabled: true, title: 'Condições', body: 'FROZEN-CONDICOES' } },
         } as unknown) as QuotationSectionsSnapshot,
         clienteNome: 'Cliente entrega',
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteTelefone: '5521995419741',
         subtotal: '10.00',
         total: '10.00',
@@ -481,14 +488,16 @@ test(
         version: 2,
         status: 'rascunho',
         validadeDias: 15,
-        pagamento: 'À vista',
         entrega: '',
         fretePadrao: '0.00',
         frete: '0.00',
-        observacoes: '',
-        prazoProducao: '',
+        templateVersionId: ids.templateVersion,
         templatePadrao: templateKey,
         templateHash: SECTION_TEMPLATE_HASH,
+        sectionsSnapshot: createQuotationSectionsSnapshot(
+          withQuotationProductionDeadline(normalizeQuotationSections(undefined), '')
+        ),
+        companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         clienteNome: 'Rascunho',
         subtotal: '0.00',
         total: '0.00',

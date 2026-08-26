@@ -7,6 +7,10 @@ import {
   type QuotationTemplateViewModel,
 } from './quotation-template-catalog.js';
 import {
+  normalizeQuotationCompanyConfiguration,
+  type QuotationCompanyConfiguration,
+} from './quotation-company.js';
+import {
   formatMoneyCents,
   parseScaledInteger,
   QUANTITY_SCALE,
@@ -14,7 +18,12 @@ import {
   URGENT_NUMERATOR,
 } from './pricing-core.js';
 import { applyQuotationSectionPolicy } from './quotation-document.js';
-import { normalizeQuotationSections, type QuotationSectionsSettings } from './quotation-content.js';
+import {
+  normalizeQuotationSections,
+  withQuotationProductionDeadline,
+  QUOTATION_SECTION_SCHEMA_VERSION,
+  type QuotationSectionsSettings,
+} from './quotation-content.js';
 
 export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (
@@ -31,6 +40,7 @@ export interface DraftSnapshotSettings {
   observacoes?: string;
   template_padrao?: string;
   secoes?: QuotationSectionsSettings;
+  empresa?: QuotationCompanyConfiguration;
 }
 
 export interface DraftSnapshotDependencies {
@@ -64,6 +74,7 @@ export interface DraftPreviewInput {
   cnpj?: string;
   endereco?: Record<string, unknown>;
   template_key?: string;
+  template_version_id?: string;
   business_number?: string;
   prazo_producao?: string;
   pagamento?: string;
@@ -170,6 +181,10 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
     endereco: isRecord(extracted.endereco) ? extracted.endereco : undefined,
     template_key:
       typeof extracted.template_key === 'string' ? extracted.template_key.trim() : undefined,
+    template_version_id:
+      typeof extracted.template_version_id === 'string'
+        ? extracted.template_version_id.trim()
+        : undefined,
     business_number:
       extracted.business_number == null ? undefined : String(extracted.business_number).trim(),
     prazo_producao:
@@ -194,27 +209,9 @@ function addressValue(address: Record<string, unknown> | undefined, ...keys: str
   return '';
 }
 
-function draftSettingsWithLegacyOverrides(
-  source: QuotationSectionsSettings | undefined,
-  legacy: { pagamento?: string; observacoes?: string }
-): QuotationSectionsSettings | undefined {
-  if (!source) return undefined;
-  return {
-    ...source,
-    pagamento: {
-      ...source.pagamento,
-      ...(legacy.pagamento === undefined ? {} : { body: legacy.pagamento }),
-    },
-    condicoes_gerais: {
-      ...source.condicoes_gerais,
-      ...(legacy.observacoes === undefined ? {} : { body: legacy.observacoes }),
-    },
-  };
-}
-
 function normalizeDraftSections(
   source: unknown,
-  legacy: { pagamento?: string; entrega?: string; observacoes?: string }
+  payloadDeadline?: string
 ): QuotationSectionsSettings {
   let settings = source;
   if (isRecord(source)) {
@@ -237,7 +234,10 @@ function normalizeDraftSections(
     }
   }
   try {
-    return normalizeQuotationSections(settings, legacy);
+    const normalized = normalizeQuotationSections(settings);
+    return normalized.prazo_producao.value === undefined
+      ? withQuotationProductionDeadline(normalized, payloadDeadline)
+      : normalized;
   } catch (error) {
     throw new DraftPreviewInputError(
       error instanceof Error ? error.message : 'Seções do orçamento inválidas.'
@@ -247,7 +247,8 @@ function normalizeDraftSections(
 
 function draftPreviewViewModel(
   extracted: DraftPreviewInput,
-  now: Date
+  now: Date,
+  company: QuotationCompanyConfiguration | undefined,
 ): QuotationTemplateViewModel {
   const current = Number.isNaN(now.getTime()) ? new Date() : now;
   const validityDays = extracted.validade_dias || 15;
@@ -353,6 +354,7 @@ function draftPreviewViewModel(
     validity_days: validityDays,
     client,
     client_snapshot: client,
+    company: normalizeQuotationCompanyConfiguration(company),
     items,
     items_snapshot: items,
     comparison: { brackets: [], products: [] },
@@ -413,26 +415,48 @@ export async function buildDraftQuotationSnapshot(
       item.rate = Number(expected) / 100;
     }
   }
-  const template = await dependencies.resolveTemplate(extracted.template_key || 'padrao');
+  const template = await dependencies.resolveTemplate(
+    extracted.template_key || 'padrao',
+    extracted.template_version_id,
+  );
   if (!template) throw new DraftPreviewInputError('Template do orçamento inválido.');
   const sections = normalizeDraftSections(
     extracted.secoes !== undefined
       ? extracted.secoes
-      : draftSettingsWithLegacyOverrides(settings?.secoes, {
-          pagamento: extracted.pagamento,
-          observacoes: extracted.observacoes,
-        }),
-    {
-      pagamento: extracted.pagamento,
-      entrega: extracted.entrega,
-      observacoes: extracted.observacoes,
-    }
+      : settings?.secoes !== undefined
+        ? {
+            ...settings.secoes,
+            ...(extracted.pagamento === undefined
+              ? {}
+              : { pagamento: { ...settings.secoes.pagamento, body: extracted.pagamento } }),
+            ...(extracted.observacoes === undefined
+              ? {}
+              : {
+                  condicoes_gerais: {
+                    ...settings.secoes.condicoes_gerais,
+                    body: extracted.observacoes,
+                  },
+                }),
+          }
+        : extracted.pagamento === undefined && extracted.observacoes === undefined
+          ? undefined
+          : {
+              schema_version: QUOTATION_SECTION_SCHEMA_VERSION,
+              prazo_producao: { enabled: true, title: 'Prazo de produção' },
+              pagamento: { enabled: true, title: 'Pagamento', body: extracted.pagamento || '' },
+              condicoes_gerais: {
+                enabled: true,
+                title: 'Condições Gerais',
+                body: extracted.observacoes || '',
+              },
+            },
+    extracted.prazo_producao
   );
   const now = dependencies.now || (() => new Date());
-  const viewModel = applyQuotationSectionPolicy(draftPreviewViewModel(extracted, now()), sections, {
-    entrega: extracted.entrega,
-    prazoProducao: extracted.prazo_producao,
-  });
+  const viewModel = applyQuotationSectionPolicy(
+    draftPreviewViewModel(extracted, now(), settings?.empresa),
+    sections,
+  );
   return {
     template,
     viewModel,

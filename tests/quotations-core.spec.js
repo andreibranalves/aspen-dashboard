@@ -186,6 +186,13 @@ test('detalhe mantém conteúdo longo legível em modo somente leitura @quotatio
         status: 'Enviado',
         status_canonical: 'emitido',
         observacoes: longText,
+        secoes: {
+          ...detail().secoes,
+          condicoes_gerais: {
+            ...detail().secoes.condicoes_gerais,
+            current: { ...detail().secoes.condicoes_gerais.current, body: longText },
+          },
+        },
         items: [{
           id: '44444444-4444-4444-8444-444444444444',
           sku: 'SKU-LONGO',
@@ -259,10 +266,14 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
       if (putCount === 2) {
         await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'O orçamento foi alterado por outro usuário. Recarregue antes de salvar.' }) });
       } else {
+        const authoritativeSections = globalThis.structuredClone(lastPutPayload.secoes);
+        authoritativeSections.pagamento.current.body = '30 dias';
+        authoritativeSections.condicoes_gerais.current.body = 'Alteração local';
         authoritative = detail({
-          pagamento: lastPutPayload.pagamento,
+          pagamento: authoritativeSections.pagamento.current.body,
           frete: '1.25',
-          observacoes: 'Salvo pelo servidor',
+          observacoes: authoritativeSections.condicoes_gerais.current.body,
+          secoes: authoritativeSections,
           subtotal: '100.00',
           total: '101.25',
           valor: '101.25',
@@ -291,24 +302,26 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByRole('cell', { name: id, exact: true }).click();
   await expect(page.getByText('Produto local')).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
-  await page.getByLabel('Pagamento do orçamento').fill('Não persistir');
+  await page.getByLabel('Condição de pagamento').fill('Não persistir');
   await page.getByRole('button', { name: 'Cancelar' }).click();
   // cancelar com edições sujas pede confirmação
   await page.getByRole('dialog').getByRole('button', { name: 'Descartar' }).click();
   await page.getByRole('button', { name: /Editar/ }).click();
-  await expect(page.getByLabel('Pagamento do orçamento')).toHaveValue('À vista');
+  await expect(page.getByLabel('Condição de pagamento')).toHaveValue('À vista');
   await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
-  await page.getByLabel('Pagamento do orçamento').fill('30 dias');
+  await page.getByLabel('Condição de pagamento').fill('30 dias');
   await page.getByLabel('Frete do orçamento').fill('1.25');
-  await page.getByLabel('Observações do orçamento').fill('Alteração local');
+  await page.getByLabel('Observações padrão').fill('Alteração local');
   await page.getByLabel('Preço aplicado SKU-1').fill('10.00');
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText('Orçamento salvo.')).toBeVisible();
   expect(putCount).toBe(1);
   expect(lastPutPayload.concurrency_token).toBe(token);
-  expect(lastPutPayload.pagamento).toBe('30 dias');
+  expect(lastPutPayload.pagamento).toBeUndefined();
   expect(lastPutPayload.frete).toBe('1.25');
-  expect(lastPutPayload.observacoes).toBe('Alteração local');
+  expect(lastPutPayload.observacoes).toBeUndefined();
+  expect(lastPutPayload.secoes.pagamento.current.body).toBe('30 dias');
+  expect(lastPutPayload.secoes.condicoes_gerais.current.body).toBe('Alteração local');
   expect(lastPutPayload.items[0].manual_rate).toBe(true);
   expect(lastPutPayload.items[0].rate).toBe('10.00');
   expect(lastPutPayload.items[0].item_name).toBe(customItemName);

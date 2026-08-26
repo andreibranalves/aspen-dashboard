@@ -9,6 +9,16 @@ contra um PostgreSQL service container descartável, nunca contra staging ou pro
 
 `npm run db:migrate` continua sendo o único apply e deve ser invocado explicitamente.
 
+O job `postgres` cria um fixture determinístico descartável antes de `verify:quotation-company`.
+O fixture exige ao menos uma revisão e uma linha de configurações, portanto a verificação
+agregada nunca passa com corpus vazio; ele só é usado no service container efêmero do CI.
+
+A migration de publicação dos templates oficiais é forward-only: ela mantém versões
+históricas e acrescenta as versões v2 de forma idempotente. Em caso de rollback de
+código, mantenha as colunas e versões aplicadas; restaure somente o código compatível
+e valide novamente em um alvo descartável antes de qualquer novo apply. Não há down
+migration destrutiva.
+
 ## Classificação
 
 Toda migration nova começa com `-- migration-risk: additive` ou `-- migration-risk: destructive`.

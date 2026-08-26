@@ -169,6 +169,27 @@
       "when": 1787641660453,
       "tag": "0023_quotation_template_contracts",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787663816272,
+      "tag": "0024_quotation_company_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787672084424,
+      "tag": "0025_quotation_company_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787694291591,
+      "tag": "0026_quotation_legacy_cutover",
+      "breakpoints": true
     }
   ]
 }

@@ -1,22 +1,4 @@
 import type { Draft, QuotationIssueProjection } from '@/types/domain';
-import type { QuotationSectionsSnapshot } from '../../../api/_modules/quotation-content';
-
-type BuiltQuotationDraft = ReturnType<typeof buildQuotePayload>;
-type BuiltQuotationExtracted = BuiltQuotationDraft['extracted'];
-type OptionalDraftMetadata = 'urgente' | 'origem' | 'cnpj' | 'endereco' | 'pagamento' | 'entrega' | 'frete' | 'observacoes' | 'validade_dias';
-
-export type QuotationDraftInput = {
-  extracted: Omit<BuiltQuotationExtracted, OptionalDraftMetadata> &
-    Partial<Pick<BuiltQuotationExtracted, OptionalDraftMetadata>> & {
-      frete?: string;
-      pagamento?: string;
-      entrega?: string;
-      observacoes?: string;
-      validade_dias?: number;
-      template_version_id?: string;
-      secoes?: QuotationSectionsSnapshot;
-    };
-};
 
 export function buildQuotePayload(draft: Draft) {
   return {
@@ -53,17 +35,6 @@ export type QuotationIssueStatus =
   | { state: 'processing'; retryAfterMs: number }
   | { state: 'retryable'; error: string }
   | ({ state: 'completed' } & QuotationIssueResult);
-
-export function isPriceAuthoritativeConflict(error: unknown): error is QuotationIssueApiError {
-  if (!(error instanceof QuotationIssueApiError) || error.status !== 409) return false;
-  const data = error.data && typeof error.data === 'object' ? error.data as Record<string, unknown> : {};
-  const marker = [data.code, data.category, data.conflict_type, data.conflictType]
-    .filter((value): value is string => typeof value === 'string')
-    .join(' ').toLowerCase();
-  if (/price|pre[cç]o|pricing/.test(marker)) return true;
-  const message = error.message.toLowerCase();
-  return /pre[cç]o\s+(?:do\s+produto\s+)?(?:foi\s+)?atualizad|pre[cç]o\s+indispon[ií]vel|pricing/.test(message);
-}
 
 export class QuotationIssueApiError extends Error {
   readonly status: number;
@@ -134,15 +105,18 @@ async function requestIssue(path: string, options: RequestInit = {}): Promise<Qu
   return 'state' in data && state === 'completed' ? { state: 'completed', ...result } : result;
 }
 
-export async function issueQuotation(
-  draft: QuotationDraftInput,
+/** Issue an existing persisted draft by reference: revision identity plus
+ * concurrency token identify the whole operation; no commercial fields are
+ * sent or accepted. */
+export async function issuePersistedDraft(
+  revisionId: string,
+  concurrencyToken: string,
   idempotencyKey: string,
-  source?: { sourceLeadId?: string; sourceQuotationId?: string; sourceRevisionId?: string },
 ): Promise<QuotationIssueResult> {
   const result = await requestIssue('/api/quotation-issues', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify({ draft, ...source }),
+    body: JSON.stringify({ revision_id: revisionId, concurrency_token: concurrencyToken }),
   });
   if ('state' in result) {
     if (result.state === 'completed') return result;

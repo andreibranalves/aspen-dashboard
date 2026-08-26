@@ -15,6 +15,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/products-repository.js';
 import { createPostgresClientRepository } from '../../api/_infrastructure/db/repositories/client-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { createHandler } from '../../api/_modules/settings.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -88,6 +89,8 @@ test(
         frete_padrao: '0.00',
         observacoes: '',
         template_padrao: 'padrao',
+        empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+        settings_version: 1,
 
         secoes: {
           schema_version: 1,
@@ -97,30 +100,28 @@ test(
         },
       });
 
-      // Migration-created rows can have the empty JSON default alongside legacy mirrors.
+      // After the cutover (#79) quotation_sections is the sole source for the
+      // payment/general-condition bodies; no mirror columns remain.
       await client`
         INSERT INTO app_settings (
-          singleton_id, validade_dias, pagamento, entrega,
-          quotation_sections, frete_padrao, observacoes, template_padrao
+          singleton_id, validade_dias, entrega,
+          quotation_sections, frete_padrao, template_padrao
         ) VALUES (
-          1, 15, ${'Pagamento legado'}, ${'Entrega legada'},
+          1, 15, ${'Entrega legada'},
           ${JSON.stringify({
             schema_version: 1,
             prazo_producao: { enabled: true, title: 'Prazo de produção' },
-            pagamento: { enabled: true, title: 'Pagamento', body: '' },
-            condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+            pagamento: { enabled: true, title: 'Pagamento', body: 'Pagamento da seção' },
+            condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Condição da seção' },
           })}::jsonb,
-          ${'0.00'}, ${'Observações legadas'}, ${'padrao'}
+          ${'0.00'}, ${'padrao'}
         )
       `;
       const migrated = await handler(event('GET'));
       assert.equal(migrated.statusCode, 200);
-      assert.equal(parse(migrated).pagamento, 'Pagamento legado');
+      assert.equal(parse(migrated).pagamento, 'Pagamento da seção');
       assert.equal(parse(migrated).entrega, 'Entrega legada');
-      assert.equal(
-        parse(migrated).observacoes,
-        'Prazo de entrega:\nEntrega legada\n\nObservações:\nObservações legadas'
-      );
+      assert.equal(parse(migrated).observacoes, 'Condição da seção');
 
       const saved = await handler(
         event('PUT', {
@@ -140,6 +141,8 @@ test(
         frete_padrao: '129.90',
         observacoes: 'Prazo de entrega:\n15 dias úteis\n\nObservações:\nEnviar prova digital para aprovação.',
         template_padrao: 'comercial-2026',
+        empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+        settings_version: 2,
         secoes: {
           schema_version: 1,
           prazo_producao: { enabled: true, title: 'Prazo de produção' },
@@ -182,6 +185,40 @@ test(
       const reloadedBody = parse(reloaded);
       const sectionFirstBody = parse(sectionFirst);
       assert.deepEqual(reloadedBody, sectionFirstBody);
+      assert.equal(reloadedBody.settings_version, 3);
+
+      const companyA = {
+        ...DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+        identity: {
+          ...DEFAULT_QUOTATION_COMPANY_CONFIGURATION.identity,
+          legal_name: 'Empresa vencedora LTDA',
+        },
+      };
+      const companyB = {
+        ...DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+        identity: {
+          ...DEFAULT_QUOTATION_COMPANY_CONFIGURATION.identity,
+          legal_name: 'Empresa obsoleta LTDA',
+        },
+      };
+      const concurrentPayload = (empresa: typeof companyA) => ({
+        validade_dias: 45,
+        frete_padrao: '130.00',
+        settings_version: reloadedBody.settings_version,
+        empresa,
+        secoes: reloadedBody.secoes,
+      });
+      const concurrent = await Promise.all([
+        handler(event('PUT', concurrentPayload(companyA))),
+        handler(event('PUT', concurrentPayload(companyB))),
+      ]);
+      assert.equal(concurrent.filter((result) => result.statusCode === 200).length, 1);
+      assert.equal(concurrent.filter((result) => result.statusCode === 409).length, 1);
+      const conflict = concurrent.find((result) => result.statusCode === 409);
+      assert.match(parse(conflict!).error, /alteradas por outro usuário|versão/i);
+      const winner = concurrent.find((result) => result.statusCode === 200);
+      const afterConcurrent = parse(await handler(event('GET')));
+      assert.equal(afterConcurrent.empresa.identity.legal_name, parse(winner!).empresa.identity.legal_name);
 
       const invalid = await handler(
         event('PUT', {
@@ -200,9 +237,9 @@ test(
         () =>
           client`
             INSERT INTO app_settings (
-              singleton_id, validade_dias, pagamento, entrega,
-              frete_padrao, observacoes, template_padrao
-            ) VALUES (${2}, ${15}, ${''}, ${''}, ${'0.00'}, ${''}, ${'padrao'})
+              singleton_id, validade_dias, entrega,
+              frete_padrao, template_padrao
+            ) VALUES (${2}, ${15}, ${''}, ${'0.00'}, ${'padrao'})
           `,
         /app_settings_singleton_id_check/
       );

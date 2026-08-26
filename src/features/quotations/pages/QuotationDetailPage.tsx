@@ -21,7 +21,7 @@ import {
   Search,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
-import { issueQuotation } from '@/lib/api/quotationIssueApi';
+import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
 import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import { useQuotationDeliveries, deliveryIdentityKey } from '@/hooks/useQuotationDeliveries';
@@ -148,7 +148,20 @@ function parseSections(value: unknown): QuotationSectionsSnapshot | null {
 function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
   const existing = parseSections(data.secoes) || parseSections(data.sections_snapshot);
   if (!existing) throw new Error('Resposta inválida: seções do orçamento ausentes.');
-  return cloneSections(existing);
+  const normalized = cloneSections(existing);
+  const legacyDeadline = data.prazo_producao || '';
+  const currentValue = normalized.prazo_producao.current.value;
+  const baseValue =
+    typeof normalized.prazo_producao.base.value === 'string'
+      ? normalized.prazo_producao.base.value
+      : typeof currentValue === 'string'
+        ? currentValue
+        : legacyDeadline;
+  normalized.prazo_producao.base.value = baseValue;
+  if (typeof normalized.prazo_producao.current.value !== 'string') {
+    normalized.prazo_producao.current.value = baseValue;
+  }
+  return normalized;
 }
 
 // Comparação determinística de itens: ignora _key (ID de UI gerado aleatoriamente).
@@ -220,19 +233,27 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
   const [clientId, setClientId] = useState(data.client_id || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
+  const [clientEmail, setClientEmail] = useState(data.email || '');
+  const [clientTelefone, setClientTelefone] = useState(data.telefone || '');
   const [clientResults, setClientResults] = useState<CoreClientResult[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
   const [validadeDias, setValidadeDias] = useState(String(data.validade_dias ?? ''));
-  const [pagamento, setPagamento] = useState(data.pagamento || '');
   const [entrega, setEntrega] = useState(data.entrega || '');
   const [frete, setFrete] = useState(String(data.frete));
-  const [observacoes, setObservacoes] = useState(data.observacoes || '');
-  const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
   const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState(data.template_version_id || '');
   const [selectedTemplate, setSelectedTemplate] = useState(
     data.template_key || 'padrao'
+  );
+  const clientSnapshot = useMemo(
+    () => ({
+      id: clientId || undefined,
+      nome: clientSearch.trim(),
+      email: clientEmail.trim() || null,
+      telefone: clientTelefone.trim() || null,
+    }),
+    [clientEmail, clientId, clientSearch, clientTelefone]
   );
   const [templateError, setTemplateError] = useState('');
   const [productTerms, setProductTerms] = useState<Record<string, string>>({});
@@ -273,12 +294,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setItems(asCoreItems(initialData.items));
     setClientId(initialData.client_id || '');
     setClientSearch(initialData.cliente || '');
+    setClientEmail(initialData.email || '');
+    setClientTelefone(initialData.telefone || '');
     setValidadeDias(String(initialData.validade_dias ?? ''));
-    setPagamento(initialData.pagamento || '');
     setEntrega(initialData.entrega || '');
     setFrete(String(initialData.frete));
-    setObservacoes(initialData.observacoes || '');
-    setPrazoProducao(initialData.prazo_producao || '');
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.template_key || 'padrao');
     setSelectedVersionId(initialData.template_version_id || '');
@@ -408,6 +428,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       const value = event.target.value;
       setClientSearch(value);
       setClientId('');
+      setClientEmail('');
+      setClientTelefone('');
       if (clientTimer.current) clearTimeout(clientTimer.current);
       clientTimer.current = setTimeout(() => searchClients(value), 250);
     },
@@ -579,6 +601,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setItems(asCoreItems(authoritative.items));
       setClientId(authoritative.client_id || '');
       setClientSearch(authoritative.cliente || '');
+      setClientEmail(authoritative.email || '');
+      setClientTelefone(authoritative.telefone || '');
       setClientResults([]);
       setClientSearching(false);
       if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -588,11 +612,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       Object.values(productTimers.current).forEach((timer) => clearTimeout(timer));
       productTimers.current = {};
       setValidadeDias(String(authoritative.validade_dias ?? ''));
-      setPagamento(authoritative.pagamento || '');
       setEntrega(authoritative.entrega || '');
       setFrete(String(authoritative.frete));
-      setObservacoes(authoritative.observacoes || '');
-      setPrazoProducao(authoritative.prazo_producao || '');
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.template_key || 'padrao');
       setSelectedVersionId(authoritative.template_version_id || '');
@@ -609,16 +630,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     if (JSON.stringify(comparableItems(items)) !== JSON.stringify(comparableItems(asCoreItems(data.items)))) return true;
     if (clientId !== (data.client_id || '')) return true;
     if (validadeDias !== String(data.validade_dias ?? '')) return true;
-    if (pagamento !== (data.pagamento || '')) return true;
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
-    if (observacoes !== (data.observacoes || '')) return true;
-    if (prazoProducao !== (data.prazo_producao || '')) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
     if (selectedTemplate !== (data.template_key || 'padrao')) return true;
     if (selectedVersionId !== (data.template_version_id || '')) return true;
     return false;
-  }, [editing, items, data, clientId, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate, selectedVersionId]);
+  }, [editing, items, data, clientId, validadeDias, entrega, frete, sections, selectedTemplate, selectedVersionId]);
 
   useEffect(() => {
     if (!isDirty) {
@@ -658,11 +676,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             manual_rate: item.manual_rate,
           })),
           validade_dias: Number(validadeDias),
-          pagamento,
           entrega,
           frete,
-          observacoes,
-          prazo_producao: prazoProducao,
+          prazo_producao: sections.prazo_producao.current.enabled
+            ? sections.prazo_producao.current.value
+            : '',
           template_key: selectedTemplate,
           template_version_id: selectedVersionId || undefined,
           secoes: sections,
@@ -695,9 +713,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     entrega,
     frete,
     items,
-    observacoes,
-    pagamento,
-    prazoProducao,
     resetEditor,
     selectedTemplate,
     selectedVersionId,
@@ -739,6 +754,44 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     (template) => !template.archived || template.key === selectedTemplate
   );
   const openPreview = useCallback(() => {
+    if (draftEditable && isDirty) {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = '/api/quotation-preview?format=html';
+      form.target = '_blank';
+      form.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify({
+        extracted: {
+          nome: clientSnapshot.nome,
+          email: clientSnapshot.email,
+          telefone: clientSnapshot.telefone,
+          cliente_snapshot: clientSnapshot,
+          urgente: false,
+          items: items.map((item) => ({
+            item_code: item.sku || item.item_code,
+            item_name: item.item_name,
+            qty: Number(item.qty),
+            rate: Number(item.applied_unit_price),
+            manual_rate: item.manual_rate,
+          })),
+          prazo_producao: sections.prazo_producao.current.value || undefined,
+          entrega: entrega || undefined,
+          frete: frete || undefined,
+          validade_dias: validadeDias ? Number(validadeDias) : undefined,
+          template_key: selectedTemplate,
+          template_version_id: selectedVersionId || undefined,
+          secoes: sections,
+        },
+      });
+      form.append(input);
+      document.body.append(form);
+      form.submit();
+      form.remove();
+      return;
+    }
     const params = new URLSearchParams({ id: data.revision_id || data.id });
     if (draftEditable && selectedVersionId) params.set('template_version_id', selectedVersionId);
     window.open(
@@ -746,34 +799,43 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       '_blank',
       'noopener,noreferrer'
     );
-  }, [data.id, data.revision_id, draftEditable, selectedVersionId]);
+  }, [clientSnapshot, data.id, data.revision_id, draftEditable, entrega, frete, isDirty, items, sections, selectedTemplate, selectedVersionId, validadeDias]);
   const runIssue = useCallback(async () => {
     setConfirmIssueOpen(false);
     setIssuing(true);
     showMessage('');
     setConflict('');
     try {
+      const token = concurrencyTokenRef.current;
+      if (!token) {
+        setConflict('Token de concorrência ausente. Recarregue o orçamento antes de emitir.');
+        return;
+      }
+      const revisionId = data.revision_id || '';
+      if (!revisionId) throw new Error('Recarregue o orçamento antes de emitir.');
+      // Emission is by reference: the server loads commercial content, items,
+      // client and template from the persisted revision. Unsaved editor state
+      // is deliberately NOT sent — save first to include it.
       const key = globalThis.crypto.randomUUID();
-      const issue = await issueQuotation({ extracted: {
-        nome: data.cliente || '', email: data.email || null, telefone: data.telefone || null,
-        items: items.map((item) => ({ item_code: item.sku, item_name: item.item_name, qty: Number(item.qty), rate: Number(item.applied_unit_price), manual_rate: item.manual_rate })),
-        prazo_producao: prazoProducao || undefined, frete: frete || undefined,
-        pagamento,
-        entrega,
-        validade_dias: Number(validadeDias),
-        observacoes,
-        template_key: selectedTemplate,
-        template_version_id: selectedVersionId || undefined,
-        secoes: sections,
-      } }, key, { sourceQuotationId: data.quotation_uuid || undefined, sourceRevisionId: data.revision_id || undefined });
+      const issue = await issuePersistedDraft(revisionId, token, key);
       toast(`Orçamento ${issue.businessNumber} emitido.`, 'success');
       await onReload();
-    } catch {
-      showMessage('Não foi possível emitir o orçamento. Tente novamente.', 'error');
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 409) {
+        const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+          ? error.message
+          : 'O orçamento mudou ou não pode mais ser emitido. Recarregue para conferir.';
+        setConflict(safeMessage);
+        showMessage('');
+      } else {
+        showMessage('Não foi possível emitir o orçamento. Tente novamente.', 'error');
+      }
+
     } finally {
       setIssuing(false);
     }
-  }, [data.cliente, data.email, data.id, data.quotation_uuid, data.revision_id, entrega, frete, items, observacoes, onReload, pagamento, prazoProducao, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
+  }, [concurrencyTokenRef, data.revision_id, onReload, showMessage, toast]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido', lossReason?: string) => {
@@ -1080,6 +1142,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           event.preventDefault();
                           setClientId(client.id);
                           setClientSearch(client.nome);
+                          setClientEmail(client.email || '');
+                          setClientTelefone(client.telefone || '');
                           setClientResults([]);
                         }}
                       >
@@ -1115,18 +1179,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         </section>
 
         <section aria-label="Condições comerciais" className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-line px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
-          <label className="min-w-0 text-sm">
-            <span className="text-xs font-medium text-fg-muted">Pagamento</span>
-            {editing ? (
-              <Input
-                aria-label="Pagamento do orçamento"
-                value={pagamento}
-                onChange={(event) => setPagamento(event.target.value)}
-              />
-            ) : (
-              <p className="mt-1 break-words whitespace-pre-wrap">{pagamento || '—'}</p>
-            )}
-          </label>
           <label className="min-w-0 text-sm">
             <span className="text-xs font-medium text-fg-muted">Entrega</span>
             {editing ? (
@@ -1167,31 +1219,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               />
             ) : (
               <p className="mt-1 whitespace-nowrap tabular-nums">{formatBRL(data.frete)}</p>
-            )}
-          </label>
-          <label className="min-w-0 text-sm sm:col-span-2 lg:col-span-4">
-            <span className="text-xs font-medium text-fg-muted">Prazo de produção</span>
-            {editing ? (
-              <Input
-                aria-label="Prazo de produção do orçamento"
-                value={prazoProducao}
-                onChange={(event) => setPrazoProducao(event.target.value)}
-              />
-            ) : (
-              <p className="mt-1 break-words whitespace-pre-wrap">{prazoProducao || '—'}</p>
-            )}
-          </label>
-          <label className="min-w-0 text-sm sm:col-span-2 lg:col-span-4">
-            <span className="text-xs font-medium text-fg-muted">Observações</span>
-            {editing ? (
-              <textarea
-                aria-label="Observações do orçamento"
-                className="mt-1 min-h-24 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm"
-                value={observacoes}
-                onChange={(event) => setObservacoes(event.target.value)}
-              />
-            ) : (
-              <p className="mt-1 break-words whitespace-pre-wrap">{observacoes || '—'}</p>
             )}
           </label>
         </section>

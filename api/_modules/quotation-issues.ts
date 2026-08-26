@@ -44,7 +44,11 @@ export function createQuotationIssuesHandler(options: QuotationIssuesHandlerDepe
       const idempotencyKey = header(event, 'Idempotency-Key').trim();
       if (!idempotencyKey) return json(400, { error: 'Idempotency-Key é obrigatório.' });
       const payload = body(event);
-      const result = await issue({ idempotencyKey, draft: payload.draft ?? payload, sourceLeadId: typeof payload.sourceLeadId === 'string' ? payload.sourceLeadId : undefined, sourceQuotationId: typeof payload.sourceQuotationId === 'string' ? payload.sourceQuotationId : undefined, sourceRevisionId: typeof payload.sourceRevisionId === 'string' ? payload.sourceRevisionId : undefined });
+      const revisionId = typeof payload.revisionId === 'string' ? payload.revisionId : typeof payload.revision_id === 'string' ? payload.revision_id : '';
+      const concurrencyToken = typeof payload.concurrencyToken === 'string' ? payload.concurrencyToken : typeof payload.concurrency_token === 'string' ? payload.concurrency_token : '';
+      if (!revisionId.trim()) return json(400, { error: 'Identificador da revisão é obrigatório para emitir o orçamento.' });
+      if (!concurrencyToken.trim()) return json(400, { error: 'Token de concorrência é obrigatório para emitir o orçamento.' });
+      const result = await issue({ idempotencyKey, revisionId, concurrencyToken });
       return json(200, result);
     } catch (error) { return safe(error); }
   };

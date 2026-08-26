@@ -12,9 +12,8 @@ import {
   type QuoteDatabase,
   type QuoteDraftManagementDetail,
 } from './quote-draft-management-repository.js';
-import { quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';
+import { appSettings, quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
-import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 import {
   assertQuotationTransition,
   canonicalQuotationStatus,
@@ -259,22 +258,27 @@ export function createPostgresQuotationLifecycleRepository(
           const revisionId = randomId();
           if (!UUID_PATTERN.test(revisionId)) throw new QuoteManagementRepositoryError('Não foi possível gerar a revisão do orçamento.');
 
+          const [settings] = await tx
+            .select({ companyConfiguration: appSettings.companyConfiguration })
+            .from(appSettings)
+            .where(eq(appSettings.singletonId, 1))
+            .limit(1);
+          const companySnapshot = normalizeQuotationCompanyConfiguration(settings?.companyConfiguration);
+
           await tx.insert(quoteRevisions).values({
             id: revisionId,
             quotationId: quotation.id,
             version,
             status: 'rascunho',
             validadeDias: source.validadeDias,
-            pagamento: source.pagamento,
             entrega: source.entrega,
             fretePadrao: source.fretePadrao,
             frete: source.frete,
-            observacoes: source.observacoes,
-            prazoProducao: source.prazoProducao,
             templatePadrao: source.templatePadrao,
             templateHash: source.templateHash,
-            templateVersionId: source.templateVersionId || (await resolveQuotationRevisionMetadata(tx, source)).templateVersionId,
-            sectionsSnapshot: revisionSectionsSnapshot(source),
+            templateVersionId: source.templateVersionId,
+            sectionsSnapshot: structuredClone(source.sectionsSnapshot),
+            companySnapshot,
             clienteNome: source.clienteNome,
             clienteDocumento: source.clienteDocumento,
             clienteEmail: source.clienteEmail,

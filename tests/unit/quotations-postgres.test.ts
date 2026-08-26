@@ -48,6 +48,12 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       pagamento: { enabled: false, title: 'Título de pagamento configurado', body: 'Pagamento da configuração' },
       condicoes_gerais: { enabled: false, title: 'Título de condições configurado', body: 'Observações da configuração' },
     },
+    companyConfiguration: {
+      schema_version: 1 as const,
+      identity: { legal_name: 'Empresa capturada LTDA', document: '12.345.678/0001-95' },
+      banking: { bank_name: 'Banco capturado', bank_code: '001', branch: '0001', account: '123-4', pix_key: 'pix@capturada.example' },
+      contacts: { website: 'https://capturada.example', phone: '(11) 99999-0000', email: 'contato@capturada.example', instagram: 'https://instagram.com/capturada' },
+    },
     templatePadrao: 'padrao',
   };
   let previousSettings: typeof appSettings.$inferSelect | undefined;
@@ -85,7 +91,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       .where(eq(productActivityEvents.productSku, sku));
     assert.equal(draftActivity.filter((row) => row.tipo === 'orcamento').length, 1);
     const createLater = createPostgresQuoteDraftRepository(() => db, { now: () => new Date('2026-07-02T12:00:00.000Z') });
-    const laterDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
+    const laterDraft = await createLater.createDraft({
+      client_id: clientId,
+      prazo_producao: '5 dias',
+      items: [{ item_code: sku, qty: '30.000' }],
+    });
     const terminalDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     const pendingDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     assert.equal(draft.validade_dias, explicitSettings.validadeDias);
@@ -119,12 +129,30 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(overrideDraft.secoes.pagamento.current.enabled, false);
     assert.equal(overrideDraft.secoes.pagamento.current.title, 'Título de pagamento configurado');
     assert.deepEqual(overrideDraft.secoes.condicoes_gerais.current, explicitSettings.quotationSections.condicoes_gerais);
-    assert.deepEqual(overrideDraft.secoes.prazo_producao.current, explicitSettings.quotationSections.prazo_producao);
+    assert.deepEqual(overrideDraft.secoes.prazo_producao.current, {
+      ...explicitSettings.quotationSections.prazo_producao,
+      value: '',
+    });
+    const conflictingDeadlineDraft = await create.createDraft({
+      client_id: clientId,
+      prazo_producao: '5 dias',
+      secoes: { prazo_producao: { value: '7 dias' } },
+      items: [{ item_code: sku, qty: '30.000' }],
+    });
+    assert.equal(conflictingDeadlineDraft.prazo_producao, '7 dias');
+    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.base.value, '7 dias');
+    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.current.value, '7 dias');
+    const [conflictingDeadlineRevision] = await db
+      .select({ sectionsSnapshot: quoteRevisions.sectionsSnapshot })
+      .from(quoteRevisions)
+      .where(eq(quoteRevisions.id, conflictingDeadlineDraft.revision_id));
+    assert.equal(conflictingDeadlineRevision?.sectionsSnapshot?.prazo_producao.current.value, '7 dias');
     overrideDraft.secoes.pagamento.current.body = 'Mutado';
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
     assert.equal(createdRevision?.templatePadrao, defaultTemplate.key);
     assert.equal(createdRevision?.templateHash, defaultTemplate.hash);
+    assert.equal(createdRevision?.companySnapshot?.identity.legal_name, 'Empresa capturada LTDA');
     const management = createPostgresQuoteDraftManagementRepository(() => db, { now: () => new Date('2026-07-04T12:01:00.000Z') });
     const managementGet = management.get!;
     const managementUpdate = management.update!;
@@ -186,24 +214,6 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     } finally {
       await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
     }
-    await db
-      .update(quoteRevisions)
-      .set({ templateVersionId: null })
-      .where(eq(quoteRevisions.id, alternateDraft.revision_id));
-    const legacyFallbackBefore = await managementGet(alternateDraft.quotation_name);
-    assert.ok(legacyFallbackBefore);
-    await db.update(quotationTemplates).set({ archived: true }).where(eq(quotationTemplates.key, 'minimalista'));
-    try {
-      await assert.rejects(
-        () => managementUpdate(alternateDraft.quotation_name, {
-          concurrency_token: legacyFallbackBefore.concurrency_token,
-          items: [{ item_code: sku, qty: '30.000' }],
-        }),
-        (error: unknown) => error instanceof QuoteManagementInputError,
-      );
-    } finally {
-      await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
-    }
     assert.ok(laterBefore);
     const pendingBefore = await managementGet(pendingDraft.quotation_name);
     assert.ok(pendingBefore?.secoes);
@@ -247,34 +257,54 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       secoes: {
         pagamento: { enabled: true, title: 'Pagamento', body: 'Seção pagamento' },
         condicoes_gerais: { enabled: true, title: 'Condições', body: 'Seção condição' },
-        prazo_producao: { enabled: false, title: 'Prazo de produção' },
+        prazo_producao: { enabled: false, title: 'Prazo de produção', value: '5 dias' },
       },
     });
-    assert.equal(sectionOverride.pagamento, longPagamento);
-    assert.equal(sectionOverride.observacoes, 'Legacy observações');
+    assert.equal(sectionOverride.pagamento, 'Seção pagamento');
+    assert.equal(sectionOverride.observacoes, 'Seção condição');
     assert.equal(sectionOverride.entrega, 'Legacy entrega');
-    assert.equal(sectionOverride.secoes?.pagamento.current.body, longPagamento);
-    assert.equal(sectionOverride.secoes?.condicoes_gerais.current.body, 'Legacy observações');
+    assert.equal(sectionOverride.secoes?.pagamento.current.body, 'Seção pagamento');
+    assert.equal(sectionOverride.secoes?.condicoes_gerais.current.body, 'Seção condição');
     assert.equal(sectionOverride.prazo_producao, '');
     assert.ok(sectionOverride.secoes);
     assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);
     assert.deepEqual(sectionOverride.secoes.pagamento.base, storedBase.pagamento.base);
     assert.equal(sectionOverride.secoes.prazo_producao.current.enabled, false);
+    assert.equal(sectionOverride.secoes.prazo_producao.current.value, '');
     assert.ok(sectionOverride.secoes);
-    const restored = await managementUpdate(laterDraft.quotation_name, {
+    const reenabled = await managementUpdate(laterDraft.quotation_name, {
       concurrency_token: sectionOverride.concurrency_token,
       items: [{ item_code: sku, qty: '30.000' }],
       secoes: {
         current: {
-          pagamento: sectionOverride.secoes.pagamento.base,
-          condicoes_gerais: sectionOverride.secoes.condicoes_gerais.base,
-          prazo_producao: sectionOverride.secoes.prazo_producao.base,
+          pagamento: sectionOverride.secoes.pagamento.current,
+          condicoes_gerais: sectionOverride.secoes.condicoes_gerais.current,
+          prazo_producao: {
+            ...sectionOverride.secoes.prazo_producao.current,
+            enabled: true,
+            value: storedBase.prazo_producao.base.value ?? '',
+          },
+        },
+      },
+    });
+    assert.ok(reenabled.secoes);
+    assert.equal(reenabled.secoes.prazo_producao.current.value, '5 dias');
+    assert.equal(reenabled.prazo_producao, '5 dias');
+    const restored = await managementUpdate(laterDraft.quotation_name, {
+      concurrency_token: reenabled.concurrency_token,
+      items: [{ item_code: sku, qty: '30.000' }],
+      secoes: {
+        current: {
+          pagamento: reenabled.secoes.pagamento.base,
+          condicoes_gerais: reenabled.secoes.condicoes_gerais.base,
+          prazo_producao: reenabled.secoes.prazo_producao.base,
         },
       },
     });
     assert.ok(restored.secoes);
     assert.deepEqual(restored.secoes.pagamento.current, restored.secoes.pagamento.base);
     assert.deepEqual(restored.secoes.condicoes_gerais.current, restored.secoes.condicoes_gerais.base);
+    assert.equal(restored.secoes.prazo_producao.current.value, '5 dias');
     const currentBeforeUpdate = await managementGet(draft.quotation_name);
     assert.ok(currentBeforeUpdate);
     const customItemName = 'Lenço 100 x 100 cm';
@@ -283,11 +313,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       client_id: secondClientId,
       items: [{ item_code: sku, item_name: customItemName, qty: '30.000', rate: '10.00', manual_rate: true }],
       validade_dias: 1,
-      pagamento: '30 dias',
-      entrega: '10 dias',
       frete: '1.25',
-      observacoes: 'Alterado',
-      prazo_producao: '5 dias',
+      // Canonical sections are the only accepted source for section content.
+      secoes: {
+        pagamento: { enabled: true, title: 'Pagamento', body: '30 dias' },
+        condicoes_gerais: { enabled: true, title: 'Condições', body: 'Alterado' },
+        prazo_producao: { enabled: true, title: 'Prazo de produção', value: '5 dias' },
+      },
       template_key: 'minimalista',
     });
     assert.equal(updated.validade_dias, 1);
@@ -438,6 +470,14 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(sentDetail.email_sent, true);
     assert.equal(sentDetail.email_sent_at, '2026-08-17T12:05:00.000Z');
 
+    const nextCompanyConfiguration = {
+      ...explicitSettings.companyConfiguration,
+      identity: {
+        ...explicitSettings.companyConfiguration.identity,
+        legal_name: 'Empresa da revisão 2 LTDA',
+      },
+    };
+    await db.update(appSettings).set({ companyConfiguration: nextCompanyConfiguration }).where(eq(appSettings.singletonId, 1));
     const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
       now: () => new Date('2026-08-17T12:01:00.000Z'),
     });
@@ -445,6 +485,10 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       source_revision_id: updated.revision_id,
       concurrency_token: sentDetail.concurrency_token,
     });
+    const [createdNextRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, nextRevision.revision_id));
+    assert.equal(createdNextRevision?.companySnapshot?.identity.legal_name, 'Empresa da revisão 2 LTDA');
+    const [unchangedFirstRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, updated.revision_id));
+    assert.equal(unchangedFirstRevision?.companySnapshot?.identity.legal_name, 'Empresa capturada LTDA');
     const currentList = await managementList({ page: 1, limit: 50 });
     const currentRow = currentList.rows.find((row) => row.id === updated.quotation_name);
     assert.equal(currentRow?.revision_id, nextRevision.revision_id);
@@ -461,33 +505,41 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(product?.precoBase, '12.00');
     assert.equal(tier?.unitPrice, '9.00');
     assert.equal(settingsAfter?.validadeDias, explicitSettings.validadeDias);
-    assert.equal(settingsAfter?.pagamento, explicitSettings.pagamento);
     assert.equal(settingsAfter?.entrega, explicitSettings.entrega);
     assert.equal(settingsAfter?.fretePadrao, explicitSettings.fretePadrao);
-    assert.equal(settingsAfter?.observacoes, explicitSettings.observacoes);
+    assert.equal(settingsAfter?.quotationSections.pagamento.body, explicitSettings.quotationSections.pagamento.body);
     assert.equal(settingsAfter?.templatePadrao, explicitSettings.templatePadrao);
     const [quotation] = await db.select().from(quotations).where(eq(quotations.id, updated.quotation_uuid));
     assert.equal(quotation?.clientId, secondClientId);
     const [revision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, updated.revision_id));
     const [item] = await db.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, updated.revision_id));
-    assert.equal(revision?.observacoes, 'Alterado');
+    const revisionSectionsAfter = revision?.sectionsSnapshot as Record<string, any> | undefined;
+    assert.equal(revisionSectionsAfter?.condicoes_gerais.current.body, 'Alterado');
     assert.equal(revision?.clienteNome, 'Segundo cliente de gerenciamento');
     assert.equal(revision?.clienteEmail, 'management-second@example.com');
     assert.equal(item?.precoAplicado, '10.00');
     assert.equal(item?.produtoNome, customItemName);
 
     const snapshotRepository = createQuotationTemplateRepository(() => db);
-    const beforeSnapshot = await snapshotRepository.get(updated.quotation_name);
+    const beforeSnapshot = await snapshotRepository.get(nextRevision.revision_id);
     assert.ok(beforeSnapshot);
     const beforeHtml = renderQuotationDocument(beforeSnapshot, alternateTemplate).html;
     assert.match(beforeHtml, /Lenço 100 x 100 cm/);
     await db.update(products).set({ nome: 'Produto alterado depois' }).where(eq(products.sku, sku));
     await db.update(clients).set({ nome: 'Cliente alterado depois' }).where(eq(clients.id, secondClientId));
-    await db.update(appSettings).set({ templatePadrao: 'minimalista' }).where(eq(appSettings.singletonId, 1));
-    const afterSnapshot = await snapshotRepository.get(updated.quotation_name);
+    await db.update(appSettings).set({
+      templatePadrao: 'minimalista',
+      companyConfiguration: {
+        ...explicitSettings.companyConfiguration,
+        identity: { ...explicitSettings.companyConfiguration.identity, legal_name: 'Empresa alterada LTDA' },
+      },
+    }).where(eq(appSettings.singletonId, 1));
+    const afterSnapshot = await snapshotRepository.get(nextRevision.revision_id);
     assert.ok(afterSnapshot);
     const afterHtml = renderQuotationDocument(afterSnapshot, alternateTemplate).html;
     assert.equal(afterHtml, beforeHtml);
+    assert.match(afterHtml, /Empresa da revisão 2 LTDA/);
+    assert.doesNotMatch(afterHtml, /Empresa alterada LTDA/);
   } finally {
     const rows = await db.select({ id: quotations.id }).from(quotations).where(inArray(quotations.clientId, [clientId, secondClientId]));
     if (rows.length) await db.delete(quotations).where(inArray(quotations.id, rows.map((row) => row.id)));
@@ -503,6 +555,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         fretePadrao: previousSettings.fretePadrao,
         observacoes: previousSettings.observacoes,
         quotationSections: previousSettings.quotationSections,
+        companyConfiguration: previousSettings.companyConfiguration,
         templatePadrao: previousSettings.templatePadrao,
       }).where(eq(appSettings.singletonId, 1));
     } else {

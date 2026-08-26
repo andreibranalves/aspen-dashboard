@@ -13,6 +13,27 @@ export interface QuotationSectionsSettings {
   condicoes_gerais: QuotationSectionSettings & { body: string };
 }
 
+export interface QuotationCompanyConfiguration {
+  schema_version: 1;
+  identity: {
+    legal_name: string;
+    document: string;
+  };
+  banking: {
+    bank_name: string;
+    bank_code: string;
+    branch: string;
+    account: string;
+    pix_key: string;
+  };
+  contacts: {
+    website: string;
+    phone: string;
+    email: string;
+    instagram: string;
+  };
+}
+
 export interface DashboardSettings {
   validade_dias: number;
   pagamento: string;
@@ -21,6 +42,8 @@ export interface DashboardSettings {
   observacoes: string;
   template_padrao: string;
   secoes: QuotationSectionsSettings;
+  empresa: QuotationCompanyConfiguration;
+  settings_version: number;
 }
 
 export function getSettings(): Promise<DashboardSettings> {
