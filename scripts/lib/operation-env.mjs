@@ -75,8 +75,8 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
     paths: {},
   },
   cleanup: {
-    description: 'Limpeza de dados; baseline em produção permanece gate do próprio comando.',
-    keys: ['DATABASE_URL'],
+    description: 'Limpeza de dados; identidade positiva do alvo e evidências de recuperação permanecem gates do próprio comando.',
+    keys: ['DATABASE_URL', 'CLEANUP_TARGET_IDENTITY'],
     anyOf: [],
     paths: {},
   },
