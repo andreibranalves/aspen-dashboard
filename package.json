@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/vite-dev.mjs",
     "dev:vercel": "vercel dev",
-    "build:api": "tsc -p api/tsconfig.api.json",
+    "build:api": "node scripts/build-api.mjs",
     "clean:web": "rm -f public/assets/index-*.js public/assets/index-*.css public/assets/index-*.js.map public/assets/index-*.css.map",
     "build:web": "npm run clean:web && vite build",
     "build": "npm run build:api && npm run build:web",

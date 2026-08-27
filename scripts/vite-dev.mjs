@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import net from 'node:net';
+import { isApiBuildStale } from './build-api.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const viteBin = path.resolve(__dirname, '../node_modules/vite/bin/vite.js');
@@ -39,7 +40,28 @@ function getFreePort() {
   });
 }
 
+// Compiled API output lives next to the TS sources and is git-ignored, so a
+// clean checkout has no node-adapter.js, and stale output can survive source
+// deletions or moves. Rebuild whenever output is missing or not fresher than
+// the sources so any local E2E entry point (npm run test:e2e, npx playwright
+// test) is self-contained against the CURRENT code.
+const BUILD_API_SCRIPT = path.resolve(__dirname, './build-api.mjs');
+
+async function ensureApiBuilt() {
+  if (!isApiBuildStale()) return;
+  console.log('[vite-dev] API compilada ausente ou desatualizada; recompilando...');
+  const code = await runProcess(process.execPath, [BUILD_API_SCRIPT], process.env);
+  if (code !== 0) {
+    console.error(
+      `[vite-dev] Falha ao compilar a API (exit ${code}). Corrija o erro de compilação antes de executar o E2E.`
+    );
+    process.exit(code);
+  }
+}
+
 async function main() {
+  await ensureApiBuilt();
+
   const port = process.env.PORT || '5173';
   const isVercelDev = Boolean(process.env.PORT && process.env.VERCEL);
 
@@ -81,7 +103,13 @@ async function main() {
     env: { ...process.env, VITE_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` },
   });
 
+  // Fail-fast guard: once we start shutting down normally, API termination is
+  // expected. Any earlier API death must kill the whole bootstrap instead of
+  // leaving E2E to fail later with confusing timeout errors.
+  let shuttingDown = false;
+
   function cleanup() {
+    shuttingDown = true;
     try {
       apiServer.kill();
     } catch {}
@@ -100,6 +128,7 @@ async function main() {
   });
 
   child.on('exit', (code, signal) => {
+    shuttingDown = true;
     cleanup();
     if (signal) {
       process.kill(process.pid, signal);
@@ -108,10 +137,15 @@ async function main() {
     process.exit(code ?? 0);
   });
 
-  apiServer.on('exit', (code) => {
-    if (code !== 0 && code !== null) {
-      console.error('[vite-dev] API server exited with code', code);
-    }
+  apiServer.on('exit', (code, signal) => {
+    if (shuttingDown || child.exitCode !== null) return;
+    console.error(
+      `[vite-dev] Servidor API terminou inesperadamente (${signal ? `sinal ${signal}` : `código ${code}`}); encerrando o bootstrap do E2E imediatamente.`
+    );
+    try {
+      child.kill();
+    } catch {}
+    process.exit(1);
   });
 }
 
