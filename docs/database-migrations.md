@@ -4,10 +4,11 @@
 
 Migrations pertencem à lane CRITICAL e nunca executam implicitamente no startup, build ou CI padrão.
 
-Exceção explícita: o job `postgres` do CI de pull request invoca `npm run db:migrate`
+Exceção explícita: o job `postgres` do CI de pull request invoca o apply raw (`npm run db:migrate`)
 contra um PostgreSQL service container descartável, nunca contra staging ou produção.
 
-`npm run db:migrate` continua sendo o único apply e deve ser invocado explicitamente.
+`npm run migrate:apply` é o apply operacional (preflight completo + apply em um comando único);
+o apply raw `npm run db:migrate` só é aceito com alvo explicitamente descartável (loopback).
 
 O job `postgres` cria um fixture determinístico descartável antes de `verify:quotation-company`.
 O fixture exige ao menos uma revisão e uma linha de configurações, portanto a verificação
@@ -51,8 +52,7 @@ Execute, nesta ordem:
 
 ```bash
 npm run check:db-migrations
-npm run db:migration:preflight
-TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
+npm run migrate:apply
 npm run test:e2e:staging
 ```
 

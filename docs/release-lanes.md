@@ -54,8 +54,7 @@ Fluxo padrão de migration aditiva em staging, controlado e opt-in (fora do CI p
 ```bash
 npm run verify:full
 npm run check:db-migrations
-npm run db:migration:preflight
-TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
+npm run migrate:apply
 npm run test:e2e:staging
 ```
 
@@ -65,11 +64,12 @@ alvos operacionais continuam fora do CI padrão.
 `STAGING_DATABASE_URL` e `STAGING_PG_SERVICE` precisam representar o mesmo staging.
 A identidade staging não pode igualar produção. Stdout redigido fica fora do checkout.
 
-Qualquer falha interrompe o fluxo. `db:migration:preflight` permanece o gate de identidade e segurança do alvo de banco.
+Qualquer falha interrompe o fluxo. O preflight de identidade e segurança do alvo de banco
+é executado dentro de `npm run migrate:apply` (preflight aprovado é pré-condição do apply).
 `cutover-env-status` é um gate de release/cutover, não um pré-requisito geral de migration de banco. Ele continua obrigatório quando o procedimento aplicável envolver canário Production, deploy/promoção, rollback, cleanup, cutover de e-mail ou outro cutover explicitamente declarado. Migrations destrutivas, de cleanup e de transição da fonte de verdade não seguem automaticamente a lane aditiva e podem exigir esses gates operacionais adicionais.
-A configuração do Drizzle prioriza `TEST_DATABASE_URL`, por isso o comando copia o
-alvo staging para `TEST_DATABASE_URL` e esvazia `DATABASE_URL`.
-Nunca execute `npm run db:migrate` usando somente `DATABASE_URL` ou apontando para produção.
+O alvo staging entra no processo apenas após preflight aprovado (via MIGRATION_TARGET_DATABASE_URL).
+Nunca execute applies apontando para produção usando somente `DATABASE_URL`.
+O apply raw `npm run db:migrate` aceita exclusivamente alvos explicitamente descartáveis (loopback).
 Execute os comandos operacionais somente com o ambiente aprovado e sem imprimir
 credenciais, dados de produção ou PII.
 
