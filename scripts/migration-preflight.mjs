@@ -4,27 +4,18 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  assertProtectedFile,
   assertSamePostgresTarget,
   parsePostgresUrl,
   postgresIdentity,
   postgresServiceEnvironment,
   readPostgresServiceTarget,
 } from './postgres-target.mjs';
+import { checkOperationEnv, loadOperationEnv, missingOperationKeys } from './lib/operation-env.mjs';
 
-const REQUIRED_KEYS = [
-  'STAGING_DATABASE_URL',
-  'STAGING_PG_SERVICE',
-  'PRODUCTION_DATABASE_URL',
-  'PGSERVICEFILE',
-  'PGPASSFILE',
-];
-
-function requiredEnvironment(env) {
-  for (const key of REQUIRED_KEYS) {
-    if (!String(env[key] || '').trim()) {
-      throw new Error(`${key} é obrigatória para o preflight de migration.`);
-    }
+function assertMigrationEnvironment(env) {
+  const result = checkOperationEnv('migration', env);
+  if (!result.ok) {
+    throw new Error(`Ambiente incompleto para a operação migration: ${missingOperationKeys(result).join(', ')}.`);
   }
 }
 
@@ -42,9 +33,7 @@ export function runMigrationPreflight({
   execute = execFileSync,
   now = () => new Date(),
 } = {}) {
-  requiredEnvironment(env);
-  assertProtectedFile(env.PGSERVICEFILE, 'PGSERVICEFILE');
-  assertProtectedFile(env.PGPASSFILE, 'PGPASSFILE');
+  assertMigrationEnvironment(env);
 
   const staging = parseMigrationPostgresUrl(env.STAGING_DATABASE_URL, 'STAGING_DATABASE_URL');
   const production = parseMigrationPostgresUrl(
@@ -126,6 +115,9 @@ function isCli() {
 
 if (isCli()) {
   try {
+    // Origem externa única: preenche variáveis ausentes e valida o contrato
+    // da operação antes de qualquer acesso a Postgres.
+    loadOperationEnv('migration');
     process.stdout.write(formatMigrationPreflight(runMigrationPreflight()));
   } catch (error) {
     process.stderr.write(formatMigrationPreflightFailure(error));

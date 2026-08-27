@@ -72,7 +72,7 @@ test('rejects insecure PostgreSQL files', () => {
           execute: () => 'aspen_stage\n',
           now: fixedNow,
         }),
-      /PGPASSFILE.*0600/
+      /Ambiente incompleto para a operação migration: PGPASSFILE \(invalid-permission\)/
     );
   });
 });

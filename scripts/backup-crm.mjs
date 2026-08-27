@@ -20,7 +20,6 @@ import {
   unlinkSync,
   mkdirSync,
   existsSync,
-  readFileSync,
   chmodSync,
   closeSync,
   openSync,
@@ -36,6 +35,7 @@ import {
   postgresServiceEnvironment,
   readPostgresServiceTarget,
 } from './postgres-target.mjs';
+import { fillFromExternalConfig } from './lib/operation-env.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
@@ -126,27 +126,6 @@ function stderr(message) {
 
 function stdout(message) {
   process.stdout.write(`${message}\n`);
-}
-
-function loadDotEnv() {
-  const envPath = resolve(PROJECT_ROOT, '.env');
-  if (!existsSync(envPath)) return;
-  const lines = readFileSync(envPath, 'utf8').split(/\r?\n/);
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!process.env[key]) process.env[key] = value;
-  }
 }
 
 export function parseArgs(argv) {
@@ -589,8 +568,9 @@ async function main(args) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
-  loadDotEnv();
   try {
+    // Origem externa única de configuração — arquivos do checkout nunca selecionam alvo.
+    fillFromExternalConfig();
     await main(parseArgs(process.argv.slice(2)));
   } catch (error) {
     stderr(error instanceof Error ? error.message : String(error));

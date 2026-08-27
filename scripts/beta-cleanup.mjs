@@ -2,9 +2,7 @@
 
 import { lstatSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadLocalEnv } from './load-env.mjs';
-
-loadLocalEnv();
+import { loadOperationEnv } from './lib/operation-env.mjs';
 
 function parseArgs(argv) {
   const args = { ids: '', apply: false };
@@ -58,6 +56,8 @@ export { parseArgs, readCandidates, assertProductionBaseline, safePlan };
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
   try {
+    // Origem externa única de configuração — arquivos do checkout nunca selecionam alvo.
+    loadOperationEnv('cleanup');
     const args = parseArgs(process.argv.slice(2));
     assertProductionBaseline();
     const { parseBetaCleanupCandidates, createPostgresBetaCleanupRepository } = await import('../api/_infrastructure/db/repositories/beta-cleanup-repository.js');
