@@ -73,6 +73,13 @@ O apply raw `npm run db:migrate` aceita exclusivamente alvos explicitamente desc
 Execute os comandos operacionais somente com o ambiente aprovado e sem imprimir
 credenciais, dados de produção ou PII.
 
+## Utilitários operacionais suportados
+
+Estes comandos são invocados manualmente pelo operador e fazem parte do runtime de operações do projeto:
+
+- `node scripts/hash-app-password.mjs` — gera `APP_PASSWORD_HASH` sem imprimir a senha digitada (setup/rotação de acesso).
+- `node scripts/whatsapp-identity-audit.mjs` — auditoria somente-leitura de identidades WhatsApp persistidas (diagnóstico de provider; usa credenciais do ambiente aprovado, nunca imprime PII).
+
 Migrations não executam no startup ou implicitamente durante o build. O único apply
 no CI é a exceção explícita do banco descartável do job `postgres`; alvos operacionais
 continuam fora do CI padrão.
