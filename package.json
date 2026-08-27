@@ -63,7 +63,6 @@
     "@sparticuz/chromium": "^149.0.0",
     "@vercel/blob": "^2.6.1",
     "@vercel/kv": "^3.0.0",
-    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
