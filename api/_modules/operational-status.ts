@@ -3,6 +3,9 @@ import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { getDatabase } from '../_infrastructure/db/client.js';
 import { appSettings } from '../_infrastructure/db/schema.js';
 import { normalizeQuotationSections } from './quotation-content.js';
+import { isExternalWritesAllowed } from '../_shared/external-writes.js';
+
+export type OperationalStatusEnv = typeof process.env;
 import { sql } from 'drizzle-orm';
 
 function jsonResponse(statusCode: number, body: unknown): FunctionResult {
@@ -38,7 +41,10 @@ async function checkMandatorySettings(): Promise<{ configured: boolean; missing:
   }
 }
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+export async function handler(
+  event: FunctionEvent,
+  env: OperationalStatusEnv = process.env,
+): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') return jsonResponse(405, { error: 'Método não permitido.' });
 
   const databaseConnected = await checkDatabaseConnected();
@@ -51,6 +57,13 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     },
     details: {
       settings_missing: settings.missing,
+    },
+    // Identidade do deployment (ticket #118): evidência read-only usada pelo
+    // E2E de staging antes da primeira mutação. Somente valores não sensíveis.
+    deployment_identity: {
+      app_env: String(env.APP_ENV || '').trim().toLowerCase(),
+      external_writes_enabled: isExternalWritesAllowed(env),
+      persistence: 'postgres',
     },
   });
 }
