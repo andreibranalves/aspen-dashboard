@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertSafeApiPath, getStagingConfig } from '../support/staging-auth.js';
+import { assertDeploymentIdentity, assertSafeApiPath, getStagingConfig } from '../support/staging-auth.js';
 
 function validEnv(overrides = {}) {
   return {
@@ -88,4 +88,118 @@ test('restringe requests à origem Preview', () => {
       else process.env[key] = value;
     }
   }
+});
+
+// ── Prova de identidade do deployment (#118) ──────────────────────────────
+
+function fakePage(responses) {
+  const calls = [];
+  return {
+    calls,
+    request: {
+      get: async (url) => {
+        calls.push(String(url));
+        const [status, body] = responses[Math.min(calls.length - 1, responses.length - 1)];
+        return { status: () => status, json: () => Promise.resolve(body) };
+      },
+    },
+  };
+}
+
+const proofConfig = {
+  baseUrl: 'https://preview.example.test',
+  username: 'preview-operator',
+  password: 'test-password',
+  postgresQuotationId: 'ORC-20260001',
+  scratchQuotationId: 'ORC-20269999',
+};
+
+function identityBody(overrides = {}) {
+  return {
+    ready: true,
+    checks: { database_connected: true, mandatory_settings: true },
+    details: { settings_missing: [] },
+    deployment_identity: {
+      app_env: 'preview',
+      external_writes_enabled: false,
+      persistence: 'postgres',
+    },
+    ...overrides,
+  };
+}
+
+async function withPreviewEnv(run) {
+  const previous = {
+    APP_ENV: process.env.APP_ENV,
+    STAGING_BASE_URL: process.env.STAGING_BASE_URL,
+    BASE_URL: process.env.BASE_URL,
+  };
+  Object.assign(process.env, {
+    APP_ENV: 'preview',
+    STAGING_BASE_URL: 'https://preview.example.test',
+    BASE_URL: 'https://preview.example.test',
+  });
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test('prova do deployment passa com ambiente, writes-off e persistência aprovada', async () => {
+  await withPreviewEnv(async () => {
+    const page = fakePage([
+      [200, identityBody()],
+      [200, { revision_id: 'rev-1' }],
+    ]);
+    const identity = await assertDeploymentIdentity(page, proofConfig);
+    assert.equal(identity.app_env, 'preview');
+    assert.deepEqual(page.calls, [
+      'https://preview.example.test/api/operational-status',
+      'https://preview.example.test/api/quotations?id=ORC-20260001',
+    ]);
+  });
+});
+
+test('falha fechada quando o deployment não é Preview', async () => {
+  await withPreviewEnv(async () => {
+    const page = fakePage([[200, identityBody({ deployment_identity: { app_env: 'production', external_writes_enabled: false, persistence: 'postgres' } })]]);
+    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /não está no ambiente de staging esperado/);
+    assert.equal(page.calls.length, 1);
+  });
+});
+
+test('falha fechada quando o deployment reporta escritas externas habilitadas', async () => {
+  await withPreviewEnv(async () => {
+    const page = fakePage([[200, identityBody({ deployment_identity: { app_env: 'preview', external_writes_enabled: true, persistence: 'postgres' } })]]);
+    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /external writes enabled/);
+  });
+});
+
+test('falha fechada sem persistência PostgreSQL conectada', async () => {
+  await withPreviewEnv(async () => {
+    const page = fakePage([[200, identityBody({ checks: { database_connected: false, mandatory_settings: false } })]]);
+    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /persistência PostgreSQL/);
+  });
+});
+
+test('falha fechada sem HTTP 200 na prova', async () => {
+  await withPreviewEnv(async () => {
+    const page = fakePage([[503, {}]]);
+    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /HTTP 503/);
+  });
+});
+
+test('falha fechada se o deployment não serve a cotação atestada (persistência não aprovada)', async () => {
+  await withPreviewEnv(async () => {
+    const page = fakePage([
+      [200, identityBody()],
+      [404, {}],
+    ]);
+    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /persistência não aprovada/);
+    assert.equal(page.calls.length, 2);
+  });
 });
