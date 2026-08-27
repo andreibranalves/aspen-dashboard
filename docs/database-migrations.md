@@ -2,7 +2,7 @@
 
 ## Regra principal
 
-Migrations são mudanças HIGH e nunca executam implicitamente no startup, build ou CI padrão.
+Migrations pertencem à lane CRITICAL e nunca executam implicitamente no startup, build ou CI padrão.
 
 Exceção explícita: o job `postgres` do CI de pull request invoca `npm run db:migrate`
 contra um PostgreSQL service container descartável, nunca contra staging ou produção.

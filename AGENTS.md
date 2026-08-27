@@ -63,7 +63,7 @@ Classifique no início do trabalho. `FAST` é o padrão; promova para `CRITICAL`
 - **FAST** — mudanças reversíveis: UI, copy, navegação, filtros, CRUD comum, refactors locais, cálculos em rascunho experimental. Validação: `verify:fast`, testes focados quando houver comportamento relevante (`npm run test:unit:focused -- tests/unit/<arquivo>.test.ts`), smoke da jornada alterada quando aplicável. Mudança puramente visual ou de copy não exige teste automatizado novo. Revisão única leve; sem E2E completo nem PostgreSQL real.
 - **CRITICAL** — perda destrutiva ou irreversível de dados; envio real de WhatsApp/e-mail/documento ao cliente; valores oficialmente emitidos (orçamento emitido, totais, pedidos); autenticação, autorização ou isolamento de tenant; idempotência, locks e invariantes de concorrência. Validação: checks FAST + testes das invariantes e caminhos de erro + PostgreSQL descartável quando persistência for afetada + E2E das jornadas afetadas + revisão independente.
 
-Pertencer a domínio comercial não torna uma issue CRITICAL por si só; o gatilho é o efeito possível. O detalhamento operacional de cada fluxo fica em `docs/release-lanes.md`.
+Pertencer a domínio comercial não torna uma issue CRITICAL por si só; o gatilho é o efeito possível. A fonte normativa das lanes e o detalhamento operacional de cada fluxo ficam em `docs/release-lanes.md`.
 
 **RELEASE** é um gate periódico do conjunto integrado (antes de deploy importante, milestone ou beta), não um tipo de issue: `verify:full` (FAST + corpus unitário completo + build de produção + Playwright completo), PostgreSQL/migrations aplicáveis e smoke das jornadas principais.
 

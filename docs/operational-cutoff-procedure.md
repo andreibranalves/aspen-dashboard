@@ -4,13 +4,14 @@ O dashboard usa PostgreSQL como fonte de verdade para produtos, clientes, orçam
 
 ## Pré-condições
 
-- `npm run build:api` concluído.
-- `npm run test:unit` concluído.
-- `npm run lint` concluído.
-- `npm run type-check` concluído.
-- `npm run build` concluído.
-- `node scripts/check-no-legacy-provider.mjs` concluído.
-- Backup e restore são operações controladas fora deste repositório.
+Os checks locais exigidos são os da lane da mudança, definidos na fonte normativa [release-lanes.md](./release-lanes.md):
+
+```bash
+npm run verify:fast                              # lane FAST
+npm run verify:full                              # RELEASE ou mudanças CRITICAL, quando aplicável
+```
+
+Nenhuma sequência ad-hoc de checks individuais substitui a lane canônica. Backup e restore são operações controladas fora deste repositório.
 
 ## Readiness
 
