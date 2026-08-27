@@ -22,8 +22,8 @@ const payload = {
 };
 
 const validIssue = {
-  quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1,
-  status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
+  quotationId: 'q-1', businessNumber: 'ORC-20260001', revisionId: 'r-1', revisionNumber: 1,
+  status: 'emitido', issuedAt: '2026-08-13T00:00:00.000Z', validUntil: '2026-08-28', pdfUrl: '/api/quotation-preview?id=q-1&format=pdf',
 };
 
 const validResponse = {
