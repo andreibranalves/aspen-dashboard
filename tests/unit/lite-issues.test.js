@@ -3,7 +3,7 @@ import test from 'node:test';
 import { parseBetaCleanupCandidates } from '../../api/_infrastructure/db/repositories/beta-cleanup-repository.js';
 import { createWhatsappContextHandler } from '../../api/_modules/whatsapp-context.js';
 import { sendQuotationEmailViaResend } from '../../api/_modules/quotation-email.js';
-import { assertProductionBaseline } from '../../scripts/beta-cleanup.mjs';
+import { assertCleanupRecoveryEvidence } from '../../scripts/beta-cleanup.mjs';
 import { parseBaselineArgs as parseLiteBaselineArgs } from '../../scripts/lite-baseline.mjs';
 import { runPreviewPreflight } from '../../scripts/preview-preflight.mjs';
 
@@ -52,7 +52,7 @@ test('baseline and cleanup inputs require explicit typed stable IDs', () => {
   ] });
   assert.deepEqual(candidates, [{ type: 'quotation', id }, { type: 'client', id: id2 }]);
   assert.throws(() => parseBetaCleanupCandidates({ ids: [id] }), /type e id/);
-  assert.throws(() => assertProductionBaseline({ APP_ENV: 'production', LITE_BASELINE_TAG: 'aspen-lite-baseline-20260821', LITE_BASELINE_RESTORE_CONFIRMED: '1' }), /Baseline #41/);
+  assert.throws(() => assertCleanupRecoveryEvidence({ LITE_BASELINE_TAG: 'aspen-lite-baseline-20260821', LITE_BASELINE_RESTORE_CONFIRMED: '1' }), /Baseline #41/);
 });
 
 test('WhatsApp context never matches by name and projects safe empty history', async () => {
