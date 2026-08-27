@@ -318,13 +318,14 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   };
 
   const actionButtons = (row: QuotationRow) => {
+    const label = row.businessNumber;
     return (
       <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Editar orçamento ${row.id}`}
-          title={`Editar orçamento ${row.id}`}
+          aria-label={`Editar orçamento ${label}`}
+          title={`Editar orçamento ${label}`}
           onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
         >
           <Pencil />
@@ -332,8 +333,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Excluir orçamento ${row.id}`}
-          title={`Excluir orçamento ${row.id}`}
+          aria-label={`Excluir orçamento ${label}`}
+          title={`Excluir orçamento ${label}`}
           className="text-destructive hover:bg-destructive/10"
           onClick={() => setDeleteTarget(row.id)}
         >
@@ -345,8 +346,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               href={buildQuotationPreviewUrl(row.revisionId)}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`Abrir PDF do orçamento ${row.id}`}
-              title={`Abrir PDF do orçamento ${row.id}`}
+              aria-label={`Abrir PDF do orçamento ${label}`}
+              title={`Abrir PDF do orçamento ${label}`}
               onClick={(e) => e.stopPropagation()}
             >
               <FileText />
@@ -356,8 +357,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Duplicar orçamento ${row.id}`}
-          title={`Duplicar orçamento ${row.id}`}
+          aria-label={`Duplicar orçamento ${label}`}
+          title={`Duplicar orçamento ${label}`}
           onClick={() => setDuplicateTarget(row.id)}
         >
           <Copy />
@@ -550,7 +551,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
-                      aria-label={`Selecionar orçamento ${row.id}`}
+                      aria-label={`Selecionar orçamento ${row.businessNumber}`}
                       className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                   </TableCell>
@@ -559,10 +560,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       variant="link"
                       size="sm"
                       className="h-auto max-w-[160px] justify-start truncate p-0 font-mono font-semibold"
-                      title={row.id}
+                      title={row.businessNumber}
                       onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                     >
-                      {row.id}
+                      {row.businessNumber}
                     </Button>
                   </TableCell>
                   <TableCell className="max-w-[260px] py-2" title={row.cliente}>
@@ -604,20 +605,20 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     type="checkbox"
                     checked={selectedIds.includes(row.id)}
                     onChange={() => toggleSelected(row.id)}
-                    aria-label={`Selecionar orçamento ${row.id}`}
+                    aria-label={`Selecionar orçamento ${row.businessNumber}`}
                     className="h-4 w-4 shrink-0 rounded border-line text-primary focus:ring-primary"
                   />
                   <Button
                     variant="link"
                     size="sm"
                     className="h-auto min-w-0 justify-start truncate p-0 font-mono text-sm font-semibold"
-                    title={row.id}
+                    title={row.businessNumber}
                     onClick={(event) => {
                       event.stopPropagation();
                       navigate(`/quotations/${encodeURIComponent(row.id)}`);
                     }}
                   >
-                    {row.id}
+                    {row.businessNumber}
                   </Button>
                 </div>
                 {statusBadge(row)}
@@ -637,8 +638,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={`Editar orçamento ${row.id}`}
-                    title={`Editar orçamento ${row.id}`}
+                    aria-label={`Editar orçamento ${row.businessNumber}`}
+                    title={`Editar orçamento ${row.businessNumber}`}
                     onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                   >
                     <Pencil />
@@ -649,8 +650,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                         href={buildQuotationPreviewUrl(row.revisionId)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        aria-label={`Abrir PDF do orçamento ${row.id}`}
-                        title={`Abrir PDF do orçamento ${row.id}`}
+                        aria-label={`Abrir PDF do orçamento ${row.businessNumber}`}
+                        title={`Abrir PDF do orçamento ${row.businessNumber}`}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <FileText />
@@ -660,8 +661,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={`Duplicar orçamento ${row.id}`}
-                    title={`Duplicar orçamento ${row.id}`}
+                    aria-label={`Duplicar orçamento ${row.businessNumber}`}
+                    title={`Duplicar orçamento ${row.businessNumber}`}
                     onClick={() => setDuplicateTarget(row.id)}
                   >
                     <Copy />
@@ -669,8 +670,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={`Excluir orçamento ${row.id}`}
-                    title={`Excluir orçamento ${row.id}`}
+                    aria-label={`Excluir orçamento ${row.businessNumber}`}
+                    title={`Excluir orçamento ${row.businessNumber}`}
                     className="text-destructive hover:bg-destructive/10"
                     onClick={() => setDeleteTarget(row.id)}
                   >

@@ -3,8 +3,69 @@ import { expect, test } from '@playwright/test';
 const id = 'ORC-20260001';
 const token = '2026-07-01T12:00:00.000Z';
 
-function detail(overrides = {}) {
+function withCanonicalDetail(value) {
   return {
+    ...value,
+    canonical: {
+      id: value.quotation_uuid,
+      businessNumber: value.quotation_id,
+      name: value.quotation_name || value.quotation_id,
+      revisionId: value.revision_id,
+      revision: value.revision_number ?? value.revision,
+      status: value.status_canonical,
+      clienteId: value.client_id,
+      cliente: value.cliente,
+      data: value.data,
+      validade: value.validade,
+      validadeDias: value.validade_dias,
+      subtotal: value.subtotal,
+      total: value.total,
+      frete: value.frete,
+      expired: value.derived_expired,
+      concurrencyToken: value.concurrency_token,
+      updatedAt: value.updated_at,
+      emailSent: value.email_sent,
+      emailSentAt: value.email_sent_at,
+      pagamento: value.pagamento,
+      entrega: value.entrega,
+      observacoes: value.observacoes,
+      prazoProducao: value.prazo_producao,
+      templateKey: value.template_key,
+      templateHash: value.template_hash,
+      items: [],
+      revisionHistory: [],
+    },
+  };
+}
+
+function withCanonicalListRow(value, quotationUuid) {
+  return {
+    ...value,
+    canonical: {
+      id: quotationUuid,
+      businessNumber: value.id,
+      name: value.cliente,
+      revisionId: value.revision_id,
+      revision: value.revision_number ?? value.revision ?? 1,
+      status: value.status_canonical || 'rascunho',
+      clienteId: value.client_id || '33333333-3333-4333-8333-333333333333',
+      cliente: value.cliente,
+      data: value.data,
+      validade: value.validade || '2026-09-04',
+      validadeDias: value.validade_dias ?? 15,
+      subtotal: value.subtotal ?? value.valor ?? '0.00',
+      total: value.total ?? value.valor ?? '0.00',
+      frete: value.frete ?? '0.00',
+      expired: false,
+      concurrencyToken: value.concurrency_token || token,
+      updatedAt: value.updated_at || token,
+      emailSent: value.email_sent || false,
+    },
+  };
+}
+
+function detail(overrides = {}) {
+  return withCanonicalDetail({
     id,
     quotation_id: id,
     quotation_uuid: '11111111-1111-4111-8111-111111111111',
@@ -45,12 +106,12 @@ function detail(overrides = {}) {
     items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto local', item_name: 'Produto local', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '90.00', manual_rate: false }],
     revision_history: [], derived_expired: false, expiration_derived: false, is_expired: false, expirada: false,
     ...overrides,
-  };
+  });
 }
 
 test('email markers render on desktop and mobile', async ({ page }) => {
   const rows = [
-    {
+    withCanonicalListRow({
       id: 'ORC-EMAIL-1',
       data: '2026-08-17',
       cliente: 'Cliente Enviado',
@@ -60,8 +121,8 @@ test('email markers render on desktop and mobile', async ({ page }) => {
       revision_id: '11111111-1111-4111-8111-111111111111',
       email_sent: true,
       email_sent_at: '2026-08-17T12:00:00.000Z',
-    },
-    {
+    }, '11111111-1111-4111-8111-111111111101'),
+    withCanonicalListRow({
       id: 'ORC-EMAIL-2',
       data: '2026-08-17',
       cliente: 'Cliente Pendente',
@@ -71,7 +132,7 @@ test('email markers render on desktop and mobile', async ({ page }) => {
       revision_id: '22222222-2222-4222-8222-222222222222',
       email_sent: false,
       email_sent_at: null,
-    },
+    }, '22222222-2222-4222-8222-222222222202'),
   ];
   await page.route('**/api/quotations**', async (route) => {
     await route.fulfill({
@@ -112,7 +173,7 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: [{
+        data: [withCanonicalListRow({
           id: 'ORC-RETRY-1',
           data: '2026-08-20',
           cliente: 'Cliente de recuperação',
@@ -122,7 +183,7 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
           revision_id: '11111111-1111-4111-8111-111111111111',
           email_sent: false,
           email_sent_at: null,
-        }],
+        }, '11111111-1111-4111-8111-111111111102')],
         pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
         status_summary: { Rascunho: 1 },
       }),
@@ -138,17 +199,17 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
 });
 
 test('lista distingue filtro sem resultado, preserva paginação e destaca o orçamento como ação primária @quotations @smoke', async ({ page }) => {
-  const row = {
+  const row = withCanonicalListRow({
     id: 'ORC-PRIMARY-1',
     data: '2026-08-20',
     cliente: 'Cliente com nome longo para uma proposta comercial',
     valor: '1250.00',
     status: 'Aprovado',
     status_canonical: 'aprovado',
-    revision_id: '11111111-1111-4111-8111-111111111111',
+    revision_id: '11111111-1111-4222-8222-222222222222',
     email_sent: false,
     email_sent_at: null,
-  };
+  }, '11111111-1111-4111-8111-111111111103');
   await page.route('**/api/quotations**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     const filtered = url.searchParams.get('search') === 'sem-resultado';
@@ -234,7 +295,7 @@ test('cancelar edição sem alterações não abre confirmação de descarte @qu
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [{ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
+      body: JSON.stringify({ data: [withCanonicalListRow({ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }, '11111111-1111-4111-8111-111111111111')], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
     });
   });
 
@@ -288,7 +349,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [{ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
+      body: JSON.stringify({ data: [withCanonicalListRow({ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }, '11111111-1111-4111-8111-111111111111')], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
     });
   });
   await page.route('**/api/leads-clients**', async (route) => {

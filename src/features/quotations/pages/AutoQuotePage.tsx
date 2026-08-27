@@ -649,17 +649,12 @@ export default function AutoQuotePage() {
       }
       const issue = (draft as StoredAutoQuoteDraft).issue;
       const resultData = draft.result?.data || (issue ? {
-        quotation_id: issue.businessNumber,
-        revision_id: issue.revisionId,
+        businessNumber: issue.businessNumber,
+        revisionId: issue.revisionId,
+        status: issue.status,
       } : undefined);
-      const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
-      if (!quotationId) {
-        console.warn('[sendWhatsApp] missing quotation_id — draft not processed yet:', {
-          draftIndex,
-          hasResult: !!draft.result,
-          hasData: !!draft.result?.data,
-          status: draft.status,
-        });
+      const businessNumber = typeof resultData?.businessNumber === 'string' ? resultData.businessNumber : '';
+      if (!businessNumber) {
         setError('Crie o orçamento antes de enviar WhatsApp.');
         return;
       }
@@ -937,16 +932,15 @@ export default function AutoQuotePage() {
                 const isProcessing = draft.status === 'processing';
                 const issueProjection = (draft as StoredAutoQuoteDraft).issue;
                 const resultData = draft.result?.data || (issueProjection ? {
-                  quotation_id: issueProjection.businessNumber,
-                  quotation_uuid: issueProjection.quotationId,
-                  revision_id: issueProjection.revisionId,
-                  revision_number: issueProjection.revisionNumber,
-                  status: 'emitido',
-                  status_canonical: 'emitido',
+                  businessNumber: issueProjection.businessNumber,
+                  quotationId: issueProjection.quotationId,
+                  revisionId: issueProjection.revisionId,
+                  revisionNumber: issueProjection.revisionNumber,
+                  status: issueProjection.status,
                 } : undefined);
-                const quotationId = resultData?.quotation_id ? String(resultData.quotation_id) : '';
-                const relativeViewUrl = quotationId
-                  ? `/#/quotations/${encodeURIComponent(quotationId)}`
+                const businessNumber = typeof resultData?.businessNumber === 'string' ? resultData.businessNumber : '';
+                const relativeViewUrl = businessNumber
+                  ? `/#/quotations/${encodeURIComponent(businessNumber)}`
                   : '';
 
                 if (isError) {
@@ -969,10 +963,10 @@ export default function AutoQuotePage() {
                 }
 
                 const selectedFlowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
-                const revisionId = (resultData?.revision_id as string | null) || (resultData?.quote_revision_id as string | null) || '';
-                const quotationSendable = isSendableQuotationStatus(resultData?.status_canonical || resultData?.status);
-                const sendContext = quotationSendable && quotationId && revisionId && selectedFlowId
-                  ? { quotationId, revisionId, flowId: selectedFlowId }
+                const revisionId = typeof resultData?.revisionId === 'string' ? resultData.revisionId : '';
+                const quotationSendable = isSendableQuotationStatus(resultData?.status);
+                const sendContext = quotationSendable && businessNumber && revisionId && selectedFlowId
+                  ? { quotationId: businessNumber, revisionId, flowId: selectedFlowId }
                   : null;
                 const delivery = deliveryForContext(sendContext);
                 const deliveryPending = deliveryPendingForContext(sendContext);
