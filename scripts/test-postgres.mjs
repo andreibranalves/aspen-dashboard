@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const PROJECT_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '..');
-const TEST_ROOT = path.join(PROJECT_ROOT, 'tests', 'unit');
 
 const DISPOSABLE_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const OPERATIONAL_DATABASE_URLS = /^(?:STAGING|PRODUCTION|RESTORE)_DATABASE_URL$/;
@@ -79,13 +78,81 @@ export function evaluatePostgresRun({ status, output }) {
   return { ok: true, skipped };
 }
 
-// Run the complete unit corpus so every database-gated test is enabled; the
-// strict skipped-count check prevents this lane from silently shrinking.
-function testFiles() {
-  return readdirSync(TEST_ROOT)
+export const PG_LANE_MANIFEST_PATH = 'scripts/test-postgres-manifest.json';
+const DISPOSABLE_SEAM_PATTERN = /from\s+['"][^'"]*disposable-postgres\.js['"]|require\(['"][^'"]*disposable-postgres\.js['"]\)/;
+
+// Database-gated tests are exactly the files that resolve their PostgreSQL
+// target through the disposable-postgres seam. The manifest pins that set;
+// drift in either direction fails closed so coverage cannot change silently.
+function scanDbGatedTestFiles({ root = PROJECT_ROOT } = {}) {
+  const dir = path.join(root, 'tests', 'unit');
+  return readdirSync(dir)
     .filter((file) => /\.test\.(?:js|ts)$/.test(file))
+    .filter((file) => DISPOSABLE_SEAM_PATTERN.test(readFileSync(path.join(dir, file), 'utf8')))
     .sort()
-    .map((file) => path.join('tests', 'unit', file));
+    .map((file) => `tests/unit/${file}`);
+}
+
+function readManifest() {
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(PROJECT_ROOT, PG_LANE_MANIFEST_PATH), 'utf8'));
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
+    return [...parsed].sort();
+  } catch {
+    return null;
+  }
+}
+
+export function selectPostgresTestFiles({ manifest = readManifest(), discovered = scanDbGatedTestFiles() } = {}) {
+  if (!manifest || manifest.length === 0) {
+    return {
+      ok: false,
+      reason:
+        `FAIL testes PostgreSQL: manifesto vazio ou ausente (${PG_LANE_MANIFEST_PATH}). ` +
+        'Gere-o intencionalmente com: node scripts/test-postgres.mjs --sync-manifest\n',
+    };
+  }
+  if (discovered.length === 0) {
+    return {
+      ok: false,
+      reason:
+        'FAIL testes PostgreSQL: nenhum teste dependente de banco foi encontrado no corpus. ' +
+        'A lane não pode executar uma seleção vazia.\n',
+    };
+  }
+  const missingInManifest = discovered.filter((file) => !manifest.includes(file));
+  const staleManifestEntries = manifest.filter((file) => !discovered.includes(file));
+  if (missingInManifest.length > 0) {
+    return {
+      ok: false,
+      reason:
+        `FAIL testes PostgreSQL: testes DB-gated fora do manifesto: ${missingInManifest.join(', ')}. ` +
+        `Atualize ${PG_LANE_MANIFEST_PATH} intencionalmente com: node scripts/test-postgres.mjs --sync-manifest\n`,
+    };
+  }
+  if (staleManifestEntries.length > 0) {
+    return {
+      ok: false,
+      reason:
+        `FAIL testes PostgreSQL: entradas sem teste DB-gated correspondente no manifesto: ${staleManifestEntries.join(', ')}. ` +
+        `Atualize ${PG_LANE_MANIFEST_PATH} intencionalmente com: node scripts/test-postgres.mjs --sync-manifest\n`,
+    };
+  }
+  return { ok: true, files: [...manifest].sort() };
+}
+
+export function syncPostgresManifest() {
+  const discovered = scanDbGatedTestFiles();
+  if (discovered.length === 0) {
+    process.stderr.write('FAIL testes PostgreSQL: seleção vazia; manifesto não gerado.\n');
+    return 1;
+  }
+  writeFileSync(
+    path.join(PROJECT_ROOT, PG_LANE_MANIFEST_PATH),
+    `${JSON.stringify(discovered, null, 2)}\n`
+  );
+  process.stdout.write(`OK manifest: ${discovered.length} arquivo(s) DB-gated registrados em ${PG_LANE_MANIFEST_PATH}.\n`);
+  return 0;
 }
 
 export function runPostgresTests({ env = process.env, execute = spawnSync } = {}) {
@@ -100,9 +167,15 @@ export function runPostgresTests({ env = process.env, execute = spawnSync } = {}
     return 1;
   }
 
+  const selection = selectPostgresTestFiles();
+  if (!selection.ok) {
+    process.stderr.write(selection.reason);
+    return 1;
+  }
+
   const result = execute(
     process.execPath,
-    ['--test', '--test-concurrency=1', '--test-reporter=tap', ...testFiles()],
+    ['--test', '--test-concurrency=1', '--test-reporter=tap', ...selection.files],
     {
       cwd: PROJECT_ROOT,
       env: createDisposableTestEnvironment(env, env.TEST_DATABASE_URL),
@@ -139,5 +212,9 @@ export function runPostgresTests({ env = process.env, execute = spawnSync } = {}
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === SCRIPT_PATH) {
-  process.exitCode = runPostgresTests();
+  if (process.argv.includes('--sync-manifest')) {
+    process.exitCode = syncPostgresManifest();
+  } else {
+    process.exitCode = runPostgresTests();
+  }
 }
