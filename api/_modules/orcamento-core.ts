@@ -71,7 +71,13 @@ export function createCoreHandler(
         return json(503, { error: 'Não foi possível salvar o rascunho do orçamento. Tente novamente.' });
       }
       const result = await createDraft(extracted as QuoteDraftCreateInput);
-      return json(201, result as unknown as Record<string, unknown>);
+      // #126: nomes duplicados do resultado de criação não são emitidos.
+      const payload = { ...(result as unknown as Record<string, unknown>) };
+      delete payload.quote_id;
+      delete payload.quote_revision_id;
+      delete payload.revision_number;
+      delete payload.quotation_name;
+      return json(201, payload);
     } catch (error) {
       return errorResponse(error);
     }

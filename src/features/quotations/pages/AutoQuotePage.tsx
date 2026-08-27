@@ -402,9 +402,9 @@ export default function AutoQuotePage() {
         let savedDraft = draft.saved;
         if (!savedDraft) {
           const created = await apiPost<OrcamentoResponse>('/orcamento', buildQuotePayload(requestDraft));
-          const quotationId = String(created.quotation_uuid || created.quote_id || '');
-          const revisionId = String(created.revision_id || created.quote_revision_id || '');
-          const businessNumber = String(created.quotation_name || created.quotation_id || '');
+          const quotationId = String(created.quotation_uuid || '');
+          const revisionId = String(created.revision_id || '');
+          const businessNumber = String(created.quotation_id || '');
           const concurrencyToken = String(created.concurrency_token || '');
           if (!quotationId || !revisionId || !businessNumber || !concurrencyToken) {
             throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
@@ -457,9 +457,9 @@ export default function AutoQuotePage() {
     setSavingDraftByIndex((current) => ({ ...current, [draftIndex]: true }));
     try {
       const result = await apiPost<OrcamentoResponse>('/orcamento', buildQuotePayload(draft));
-      const quotationId = String(result.quote_id || result.quotation_uuid || '');
-      const revisionId = String(result.revision_id || result.quote_revision_id || '');
-      const businessNumber = String(result.quotation_name || result.quotation_id || '');
+      const quotationId = String(result.quotation_uuid || '');
+      const revisionId = String(result.revision_id || '');
+      const businessNumber = String(result.quotation_id || '');
       const concurrencyToken = String(result.concurrency_token || '');
       if (!quotationId || !revisionId || !businessNumber || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho.');
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex

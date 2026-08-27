@@ -61,6 +61,34 @@ function sanitizeQuotationOutput<T>(value: T): T {
   return sanitized as T;
 }
 
+// #126: nomes duplicados de conceitos canônicos (#124). Somente chaves cujo valor
+// é construído igual ao campo canônico no repositório são removidas da borda HTTP;
+// status/valor/validity_date carregam valores distintos e permanecem.
+const QUOTATION_OUTPUT_ALIAS_KEYS = [
+  'quotation_name',
+  'quote_id',
+  'quote_revision_id',
+  'revision_number',
+  'client_id',
+  'cliente_id',
+  'validity_date',
+  'derived_expired',
+  'expiration_derived',
+  'is_expired',
+  'expirada',
+  'updatedAt',
+  'version_token',
+  'optimistic_concurrency_token',
+  'concurrencyToken',
+] as const;
+
+function stripQuotationAliases<T>(value: T): T {
+  if (!isRecord(value)) return value;
+  const stripped = { ...value };
+  for (const key of QUOTATION_OUTPUT_ALIAS_KEYS) delete stripped[key];
+  return stripped as T;
+}
+
 function parseJsonBody(event: FunctionEvent): Record<string, unknown> {
   let value: unknown;
   try {
@@ -142,10 +170,10 @@ export function createCoreHandler(
         if (query.id) {
           const detail = await repositoryGet(dependencies.repository, query.id);
           if (!detail) throw new QuoteManagementNotFoundError();
-          return json(200, {
+          return json(200, stripQuotationAliases({
             ...sanitizeQuotationOutput(detail),
             canonical: toCanonicalQuotationDetail(detail as typeof detail),
-          });
+          }));
         }
         const status = (query.status || '').trim();
         if (status && normalizeQuotationListStatus(status) === undefined) {
@@ -178,7 +206,7 @@ export function createCoreHandler(
         return json(200, {
           data: rows.map((rawRow) => {
             const row = sanitizeQuotationOutput(rawRow as QuoteDraftManagementListRow);
-            return { ...row, canonical: toCanonicalQuotationListRow(row) };
+            return { ...stripQuotationAliases(row), canonical: toCanonicalQuotationListRow(row) };
           }),
           pagination: {
             page: resultPage,
@@ -194,10 +222,10 @@ export function createCoreHandler(
         if (!query.id) throw new QuoteManagementInputError('ID do orçamento não informado.');
         const payload = parseJsonBody(event);
         const detail = await repositoryUpdate(dependencies.repository, query.id, payload as QuoteDraftManagementUpdateInput);
-        return json(200, {
+        return json(200, stripQuotationAliases({
           ...sanitizeQuotationOutput(detail),
           canonical: toCanonicalQuotationDetail(detail as typeof detail),
-        });
+        }));
       }
 
       if (event.httpMethod === 'POST') {
@@ -211,14 +239,14 @@ export function createCoreHandler(
             throw new QuoteManagementInputError('Status inválido. Use "emitido", "aprovado" ou "perdido".');
           }
           const detail = await lifecycle.setStatus(query.id, payload as unknown as SetQuotationStatusInput);
-          return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
+          return json(200, stripQuotationAliases(sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>));
         }
         if (action === 'create_revision') {
           if (typeof payload.source_revision_id !== 'string' || !payload.source_revision_id.trim()) {
             throw new QuoteManagementInputError('Revisão de origem obrigatória.');
           }
           const detail = await lifecycle.createRevision(query.id, payload as unknown as CreateQuotationRevisionInput);
-          return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
+          return json(200, stripQuotationAliases(sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>));
         }
         throw new QuoteManagementInputError('Ação de orçamento inválida.');
       }

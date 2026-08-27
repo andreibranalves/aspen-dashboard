@@ -108,7 +108,13 @@ test('quote core validates the envelope and annotates successful drafts', async 
     },
   }));
   assert.equal(result.statusCode, 201);
-  assert.equal(parse(result).quotation_name, 'ORC-20260001');
+  assert.equal(parse(result).quotation_id, 'ORC-20260001');
+  assert.equal(parse(result).quotation_uuid, '11111111-1111-4111-8111-111111111111');
+  assert.equal(parse(result).revision_id, '22222222-2222-4222-8222-222222222222');
+  // #126: nomes duplicados não são emitidos na resposta.
+  for (const alias of ['quote_id', 'quote_revision_id', 'revision_number', 'quotation_name']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(parse(result), alias), false, `alias ${alias} removido da resposta`);
+  }
   assert.equal(Object.prototype.hasOwnProperty.call(parse(result), 'source'), false);
   assert.equal(received?.client_id, '33333333-3333-4333-8333-333333333333');
   assert.equal(received?.template_key, 'minimalista');
