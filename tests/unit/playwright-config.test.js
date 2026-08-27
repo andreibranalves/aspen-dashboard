@@ -35,8 +35,8 @@ test('APP_ENV=development mantém servidor local e ignora specs staging', () => 
   assert.equal(config.workers, 2);
   assert.equal(config.webServer, true);
   assert.deepEqual(config.testIgnore, [
-    '**/postgres-only-cutover.spec.js',
-    '**/quotation-cutover-staging.spec.js',
+    'tests/postgres-only-cutover.spec.js',
+    'tests/quotation-cutover-staging.spec.js',
   ]);
   assert.equal(config.baseURL, 'http://127.0.0.1:5173');
 });
