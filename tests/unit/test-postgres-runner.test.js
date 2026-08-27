@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   createDisposableTestEnvironment,
   evaluatePostgresRun,
   isDisposablePostgresUrl,
   parseTapSkippedCount,
+  runPostgresTests,
+  selectPostgresTestFiles,
 } from '../../scripts/test-postgres.mjs';
 
 test('accepts only loopback PostgreSQL URLs for disposable runs', () => {
@@ -76,4 +79,72 @@ test('rejects a run with test failures before checking skips', () => {
   });
 
   assert.deepEqual(result, { ok: false, reason: 'test-failure' });
+});
+
+test('selectPostgresTestFiles fails closed on empty or missing manifest', () => {
+  const empty = selectPostgresTestFiles({ manifest: [], discovered: ['tests/unit/a-postgres.test.ts'] });
+  assert.equal(empty.ok, false);
+  assert.match(empty.reason, /manifesto vazio ou ausente/);
+
+  const missing = selectPostgresTestFiles({ manifest: null, discovered: ['tests/unit/a-postgres.test.ts'] });
+  assert.equal(missing.ok, false);
+});
+
+test('selectPostgresTestFiles refuses a vacuous discovered set', () => {
+  const result = selectPostgresTestFiles({ manifest: ['tests/unit/a-postgres.test.ts'], discovered: [] });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /seleção vazia/);
+});
+
+test('selectPostgresTestFiles detects DB-gated files outside the manifest', () => {
+  const result = selectPostgresTestFiles({
+    manifest: ['tests/unit/a-postgres.test.ts'],
+    discovered: [
+      'tests/unit/a-postgres.test.ts',
+      'tests/unit/b-new-db-gated.test.ts',
+    ],
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /fora do manifesto/);
+  assert.match(result.reason, /b-new-db-gated\.test\.ts/);
+});
+
+test('selectPostgresTestFiles rejects stale manifest entries', () => {
+  const result = selectPostgresTestFiles({
+    manifest: [
+      'tests/unit/a-postgres.test.ts',
+      'tests/unit/removed-postgres.test.ts',
+    ],
+    discovered: ['tests/unit/a-postgres.test.ts'],
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /sem teste DB-gated correspondente/);
+});
+
+test('selectPostgresTestFiles returns the deterministic sorted selection', () => {
+  const result = selectPostgresTestFiles({
+    manifest: ['tests/unit/b-postgres.test.ts', 'tests/unit/a-postgres.test.ts'],
+    discovered: ['tests/unit/a-postgres.test.ts', 'tests/unit/b-postgres.test.ts'],
+  });
+  assert.deepEqual(result, {
+    ok: true,
+    files: ['tests/unit/a-postgres.test.ts', 'tests/unit/b-postgres.test.ts'],
+  });
+});
+
+test('runPostgresTests executes only the selected DB-gated files', () => {
+  const calls = [];
+  const tap = '# tests 1\n# pass 1\n# fail 0\n# skipped 0\n';
+  const exitCode = runPostgresTests({
+    env: { TEST_DATABASE_URL: 'postgresql://postgres@127.0.0.1/test' },
+    execute: (command, args) => {
+      calls.push(args.filter((arg) => arg.startsWith('tests/')));
+      return { status: 0, stdout: tap, stderr: '' };
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  const manifest = JSON.parse(readFileSync('scripts/test-postgres-manifest.json', 'utf8'));
+  assert.deepEqual([...calls[0]].sort(), [...manifest].sort());
+  assert.ok(manifest.length > 0);
 });
