@@ -281,10 +281,6 @@ function readAlias<T>(
 }
 
 const QUOTATION_STATUSES = new Set(['rascunho', 'emitido', 'aprovado', 'perdido']);
-const QUOTATION_STATUS_LABELS = new Set([
-  'Rascunho', 'Emitido', 'Enviado', 'Aprovado', 'Perdido',
-  'Draft', 'Issued', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled',
-]);
 const SALES_ORDER_STATUSES = new Set([
   'Draft',
   'To Deliver and Bill',
@@ -683,7 +679,6 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
   const templateVersion = hasTemplateVersion && source.template_version !== null
     ? readPositiveVersion(source.template_version)
     : (hasTemplateVersion ? null : undefined);
-  const strings = ['pagamento', 'entrega', 'observacoes', 'prazoProducao'] as const;
   if (
     !id || !businessNumber || !name ||
     revision === undefined || !statusRaw || !QUOTATION_STATUSES.has(statusRaw) ||

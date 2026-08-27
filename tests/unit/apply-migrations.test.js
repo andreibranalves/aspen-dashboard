@@ -90,16 +90,14 @@ test('preflight failure prevents the apply executor from ever running', () => {
 test('successful preflight opens the apply path exactly once with proven target and redacted output', () => {
   withProtectedFiles(({ serviceFile, passFile }) => {
     let calls = 0;
-    let seenCmd;
     let seenArgs;
     let seenChildEnv;
     const rawStaging = `postgresql://operator:${secret}@staging.test:5433/aspen_stage`;
     const result = runMigrationApplyPipeline({
       env: completeEnv(serviceFile, passFile),
       executePreflightProbe: passingProbe,
-      executeApply: (cmd, args, opts) => {
+      executeApply: (_cmd, args, opts) => {
         calls += 1;
-        seenCmd = cmd;
         seenArgs = args;
         seenChildEnv = opts.env;
         return `applied\nsome query against ${rawStaging}\n`;
