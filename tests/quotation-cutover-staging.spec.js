@@ -164,7 +164,7 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       assert.ok(Array.isArray(revisedDetail.items) && revisedDetail.items.length > 0);
 
       await page.getByRole('button', { name: 'Editar' }).click();
-      await page.getByLabel('Observações do orçamento').fill('staging cutover Playwright');
+      await page.getByLabel('Observações padrão').fill('staging cutover Playwright');
       const saveResponsePromise = page.waitForResponse(
         (response) => response.url().includes('/api/quotations') && response.request().method() === 'PUT',
       );
@@ -174,7 +174,7 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       const edited = await saveResponse.json();
       expect(edited.revision_id).toBe(revisedDetail.revision_id);
       expect(edited.status_canonical).toBe('rascunho');
-      expect(edited.observacoes).toBe('staging cutover Playwright');
+      expect(edited.observacoes).toBe('<p>staging cutover Playwright</p>');
     } catch (error) {
       mainError = error;
     }
