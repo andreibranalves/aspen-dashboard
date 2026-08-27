@@ -1,5 +1,7 @@
 # 02 - Configuração das três seções comerciais
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 **What to build:** Em Configurações, permitir editar os padrões globais de prazo de produção, dados para pagamento e condições gerais.
 
 **Blocked by:** 01 - Biblioteca de modelos HTML versionados.

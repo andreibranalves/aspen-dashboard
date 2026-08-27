@@ -1,5 +1,7 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-08-08-fechamento-migracao-cutover.md
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 ## Setup
 
 - Workspace: `.superpowers/sdd/2026-08-08-fechamento-migracao-cutover`

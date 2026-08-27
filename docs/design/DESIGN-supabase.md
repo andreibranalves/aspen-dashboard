@@ -223,6 +223,8 @@ components:
     padding: 64px 24px
 ---
 
+> **Documento histórico (não-normativo).** Análise de design de plataforma anterior (Supabase); não descreve o design atual do Aspen. Fonte canônica vigente: [`docs/design/DESIGN-aspen.md`](./DESIGN-aspen.md).
+
 ## Overview
 
 Supabaze's design language is engineered for clarity above all else. The marketing surfaces sit on `{colors.canvas}` (pure white), with text rendered in `{colors.ink}` (`#171717` — near-black, never pure black). Across the entire system the only consistent chromatic event is the **emerald green primary** (`{colors.primary}` — `#3ecf8e`) — used as the filled CTA, occasional accent dot, and the signature highlight color in the wordmark. Everything else is a calibrated grey ladder from `#ededed` hairline-cool to `#171717` ink, with thin black-on-white typography doing most of the visual work.

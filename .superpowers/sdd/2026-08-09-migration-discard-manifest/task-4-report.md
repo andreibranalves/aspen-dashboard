@@ -1,5 +1,7 @@
 # Task 4 Report: Reconciliation closure proof
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 STATUS: DONE
 
 ## Initial implementation

@@ -1,5 +1,7 @@
 # Resume closure counts fix
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 Updated migration manifests to derive product, pricing, client, and quotation exclusion counts from the validated discard plan.
 
 Historical document counts remain report-derived.
