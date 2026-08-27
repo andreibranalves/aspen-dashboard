@@ -73,7 +73,8 @@ export default defineConfig({
           url: BASE_URL,
           // Own isolated stack: never reuse another worktree's Vite/API ports.
           reuseExistingServer: false,
-          timeout: 20_000,
+          // Covers a clean-checkout API compilation (~5s) plus normal startup.
+          timeout: 60_000,
           cwd: '.',
           env: {
             NODE_ENV: 'test',
