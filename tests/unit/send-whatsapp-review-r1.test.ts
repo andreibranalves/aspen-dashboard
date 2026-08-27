@@ -12,7 +12,6 @@ import {
   normalizeQuotationSections,
   withQuotationProductionDeadline,
 } from '../../api/_modules/quotation-content.js';
-import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = '00000000-0000-4000-8000-000000000001';
@@ -109,10 +108,6 @@ function store() {
     set: async (key: string, value: unknown) => { values.set(key, value); return 'OK'; },
     del: async (key: string) => values.delete(key),
   };
-}
-
-function reservationStore() {
-  return createFakeWhatsappReservationStore() as any;
 }
 
 function deliveryBoundary(initialState?: string) {
@@ -438,7 +433,6 @@ test('unresolved requested flow media fails before any text transport', async ()
       repository: repository(),
       store: store(),
       token: () => publicToken,
-      reservationStore: reservationStore(),
       mediaRecords: [],
       deliveryModule: durableDeliveryModule({
         resolveFlow: async () => ({
@@ -501,7 +495,6 @@ test('flow sends an active uploaded MP4 as Evolution video with a safe filename'
       repository: repository(),
       store: store(),
       token: () => publicToken,
-      reservationStore: reservationStore(),
       mediaRecords: [{
         id: 'video-1',
         product_group: 'canga',
@@ -651,7 +644,6 @@ test('flow rejects unsupported active media before sending preceding text', asyn
       repository: repository(),
       store: store(),
       token: () => publicToken,
-      reservationStore: reservationStore(),
       mediaRecords: [{
         id: 'invalid-1',
         product_group: 'canga',
