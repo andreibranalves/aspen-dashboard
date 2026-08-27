@@ -30,10 +30,10 @@ export async function sendQuotationEmailViaResend(
   input: SendQuotationEmailTransportInput,
   dependencies: ResendTransportDependencies = {}
 ): Promise<{ id: string }> {
+  // Fail-closed em toda tentativa: ambiente ausente, Preview ou contraditório
+  // nunca chega ao provider. Somente Production com flag explícita envia.
   const env = dependencies.env || process.env;
-  if (String(env.APP_ENV || env.VERCEL_ENV || '').trim()) {
-    assertExternalWritesAllowed('email', env);
-  }
+  assertExternalWritesAllowed('email', env);
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const from = String(env.RESEND_FROM_EMAIL || '').trim();
   const replyTo = String(env.RESEND_REPLY_TO || '').trim();

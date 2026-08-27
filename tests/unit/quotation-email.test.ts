@@ -24,6 +24,8 @@ test('Resend request contains rendered content, sender, attachment and idempoten
   let capturedInit: RequestInit | undefined;
   const result = await sendQuotationEmailViaResend(input, {
     env: {
+      APP_ENV: 'production',
+      EXTERNAL_WRITES_ENABLED: '1',
       RESEND_API_KEY: 'secret-test-key',
       RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
       RESEND_REPLY_TO: 'vendas@example.com',
@@ -59,7 +61,7 @@ test('missing Resend configuration is rejected without a provider call', async (
   let fetchCalls = 0;
   await assert.rejects(
     sendQuotationEmailViaResend(input, {
-      env: { RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
       fetchFn: async () => {
         fetchCalls += 1;
         return new Response('{}', { status: 200 });
@@ -73,7 +75,7 @@ test('missing Resend configuration is rejected without a provider call', async (
 test('HTTP 422 from Resend is rejected', async () => {
   await assert.rejects(
     sendQuotationEmailViaResend(input, {
-      env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
       fetchFn: async () => new Response('{}', { status: 422 }),
     }),
     (error: unknown) => expectTransportError(error, 'rejected'),
@@ -84,7 +86,7 @@ test('HTTP 5xx from Resend is uncertain without exposing provider details', asyn
   const providerBody = 'provider-secret-body';
   await assert.rejects(
     sendQuotationEmailViaResend(input, {
-      env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
       fetchFn: async () => new Response(JSON.stringify({ error: providerBody }), { status: 503 }),
     }),
     (error: unknown) => {
@@ -101,7 +103,7 @@ test('HTTP 5xx from Resend is uncertain without exposing provider details', asyn
 test('network failures are uncertain', async () => {
   await assert.rejects(
     sendQuotationEmailViaResend(input, {
-      env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
       fetchFn: async () => { throw new Error('network secret'); },
     }),
     (error: unknown) => expectTransportError(error, 'uncertain'),
@@ -111,7 +113,7 @@ test('network failures are uncertain', async () => {
 test('successful responses without an identifier are uncertain', async () => {
   await assert.rejects(
     sendQuotationEmailViaResend(input, {
-      env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
       fetchFn: async () => new Response(JSON.stringify({}), { status: 200 }),
     }),
     (error: unknown) => expectTransportError(error, 'uncertain'),
@@ -124,7 +126,7 @@ test('non-HTTPS attachment URLs are rejected before transport', async () => {
     sendQuotationEmailViaResend(
       { ...input, attachmentUrl: 'http://app.example.com/api/public-quotation?token=abc&format=pdf' },
       {
-        env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+        env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
         fetchFn: async () => {
           fetchCalls += 1;
           return new Response('{}', { status: 200 });
@@ -134,4 +136,80 @@ test('non-HTTPS attachment URLs are rejected before transport', async () => {
     (error: unknown) => expectTransportError(error, 'rejected'),
   );
   assert.equal(fetchCalls, 0);
+});
+
+test('fail-closed: ambiente sem rótulos nunca chama o provider', async () => {
+  let fetchCalls = 0;
+  await assert.rejects(
+    sendQuotationEmailViaResend(input, {
+      env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      fetchFn: async () => {
+        fetchCalls += 1;
+        return new Response(JSON.stringify({ id: 'x' }), { status: 200 });
+      },
+    }),
+    (error: unknown) =>
+      typeof error === 'object' && error !== null && (error as { statusCode?: number }).statusCode === 503,
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test('fail-closed: Preview (VERCEL_ENV) é bloqueado mesmo com flag ligada', async () => {
+  let fetchCalls = 0;
+  await assert.rejects(
+    sendQuotationEmailViaResend(input, {
+      env: {
+        APP_ENV: 'preview',
+        VERCEL_ENV: 'preview',
+        EXTERNAL_WRITES_ENABLED: '1',
+        RESEND_API_KEY: 'secret-test-key',
+        RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
+      },
+      fetchFn: async () => {
+        fetchCalls += 1;
+        return new Response('{}', { status: 200 });
+      },
+    }),
+    { statusCode: 503 },
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test('fail-closed: configuração contraditória é bloqueada antes do provider', async () => {
+  for (const env of [
+    { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '0' },
+    { APP_ENV: 'production' },
+    { APP_ENV: 'development', EXTERNAL_WRITES_ENABLED: '1' },
+  ] as const) {
+    let fetchCalls = 0;
+    await assert.rejects(
+      sendQuotationEmailViaResend(input, {
+        env: { ...env, RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+        fetchFn: async () => {
+          fetchCalls += 1;
+          return new Response('{}', { status: 200 });
+        },
+      }),
+      { statusCode: 503 },
+    );
+    assert.equal(fetchCalls, 0);
+  }
+});
+
+test('somente Production com EXTERNAL_WRITES_ENABLED=1 chega ao provider', async () => {
+  let fetchCalls = 0;
+  const result = await sendQuotationEmailViaResend(input, {
+    env: {
+      APP_ENV: 'production',
+      EXTERNAL_WRITES_ENABLED: '1',
+      RESEND_API_KEY: 'secret-test-key',
+      RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
+    },
+    fetchFn: async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify({ id: 'resend-email-authorized' }), { status: 200 });
+    },
+  });
+  assert.equal(fetchCalls, 1);
+  assert.equal(result.id, 'resend-email-authorized');
 });

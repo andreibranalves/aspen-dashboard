@@ -17,7 +17,7 @@ import {
 } from '../_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import { normalizeClientEmail } from './client-schema.js';
-import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
+import { isExternalWritesAllowed } from '../_shared/external-writes.js';
 import { issuePublicQuotationToken } from './public-quotation.js';
 import {
   ResendTransportError,
@@ -186,6 +186,10 @@ function logFailure(attemptId: string, revisionId: string, category: string): vo
   );
 }
 
+function logFailureBlock(): void {
+  console.error('[send-quotation-email] external writes blocked: email');
+}
+
 function repositoryErrorResponse(error: unknown): FunctionResult | null {
   if (error instanceof QuotationEmailDeliveryInputError) {
     return json(error.statusCode, { error: error.message });
@@ -263,8 +267,11 @@ export async function handler(
     const normalizedRecipient = recipient(input.recipient);
     const now = dependencies.now || (() => new Date());
     const environment = dependencies.env || process.env;
-    if (String(environment.APP_ENV || environment.VERCEL_ENV || '').trim()) {
-      assertExternalWritesAllowed('email', environment);
+    // Fail-closed em toda tentativa: a ausência total de rótulos de ambiente
+    // não autoriza writes. Nenhum reservation/transport ocorre quando bloqueado.
+    if (!isExternalWritesAllowed(environment)) {
+      logFailureBlock();
+      return json(503, { error: 'Integrações externas desativadas neste ambiente.' });
     }
     const deliveries = dependencies.deliveries || createPostgresQuotationEmailDeliveryRepository(undefined, { now });
     const snapshots = dependencies.snapshots || createQuotationTemplateRepository();
