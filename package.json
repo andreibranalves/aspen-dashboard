@@ -52,7 +52,7 @@
     "db:test:down": "docker compose -f docker-compose.test.yml down --volumes --remove-orphans",
     "test:e2e": "npx playwright test",
     "test:e2e:smoke": "npm run build:api && npx playwright test --grep \"@smoke\"",
-    "test:e2e:staging": "node scripts/cutover-env-status.mjs staging-e2e && DOTENV_CONFIG_PATH=$HOME/.config/aspen-dashboard/.env.local APP_ENV=preview EXTERNAL_WRITES_ENABLED=0 npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js",
+    "test:e2e:staging": "node scripts/run-staging-e2e.mjs",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report"
   },

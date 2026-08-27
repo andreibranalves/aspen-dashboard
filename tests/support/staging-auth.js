@@ -55,6 +55,47 @@ export function assertStagingConfig(env = process.env) {
   return getStagingConfig(env);
 }
 
+/**
+ * Prova read-only do DEPLOYMENT remoto (ticket #118), exigida antes da primeira
+ * mutação. Executada logo após o login, antes de qualquer outro request:
+ * - ambiente: deployment se declara preview;
+ * - writes-off: deployment reporta escritas externas desativadas;
+ * - identidade de persistência aprovada: a cotação atestada pelo operador
+ *   (KNOWN_POSTGRES_QUOTATION_ID) existe na persistência servida por este
+ *   deployment — prova de conexão ao staging aprovado, não apenas flags locais.
+ * Falha fechada: qualquer divergência lança antes dos cenários mutáveis.
+ */
+export async function assertDeploymentIdentity(page, config = getStagingConfig()) {
+  const statusResponse = await apiRequest(page, 'GET', '/api/operational-status');
+  if (statusResponse.status() !== 200) {
+    throw new Error(`Prova do deployment falhou: operational-status HTTP ${statusResponse.status()}`);
+  }
+  const body = await statusResponse.json();
+  const identity = body?.deployment_identity;
+  if (identity?.app_env !== 'preview') {
+    throw new Error('Deployment não está no ambiente de staging esperado (app_env != preview).');
+  }
+  if (identity?.external_writes_enabled !== false) {
+    throw new Error('Deployment remoto reports external writes enabled; mutable scenarios are blocked.');
+  }
+  if (identity?.persistence !== 'postgres' || body?.checks?.database_connected !== true) {
+    throw new Error('Deployment não comprova persistência PostgreSQL conectada.');
+  }
+
+  // Identidade de persistência aprovada: linha atestada existe neste backend.
+  const quotationResponse = await apiRequest(
+    page,
+    'GET',
+    `/api/quotations?id=${encodeURIComponent(config.postgresQuotationId)}`,
+  );
+  if (quotationResponse.status() !== 200) {
+    throw new Error(
+      `Deployment não serve a cotação atestada (HTTP ${quotationResponse.status()}): persistência não aprovada.`
+    );
+  }
+  return identity;
+}
+
 function effectiveStagingOrigin(env = process.env) {
   if (String(env.APP_ENV || '').trim().toLowerCase() !== 'preview') return null;
   const stagingOrigin = safeStagingOrigin(env.STAGING_BASE_URL);
@@ -135,5 +176,7 @@ export async function loginToStaging(page) {
   const response = await loginResponse;
   assert.equal(response.status(), 200, 'staging login must return HTTP 200');
   await page.waitForURL(/#\/quotations(?:$|\/)/);
+  // Prova do deployment ANTES de qualquer cenário mutável rodar.
+  await assertDeploymentIdentity(page);
   return config;
 }

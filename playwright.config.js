@@ -1,43 +1,17 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 import { loadLocalEnv } from './scripts/load-env.mjs';
+import { STAGING_E2E_SPECS } from './scripts/lib/staging-e2e-specs.mjs';
+import { isStagingMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
 loadLocalEnv();
 
 const PORT = 5173;
-const IS_STAGING =
-  String(process.env.APP_ENV || '')
-    .trim()
-    .toLowerCase() === 'preview';
-const STAGING_SPEC_FILES = [
-  '**/postgres-only-cutover.spec.js',
-  '**/quotation-cutover-staging.spec.js',
-];
-
-function parseOrigin(value, label) {
-  let parsed;
-  try {
-    parsed = new globalThis.URL(String(value || '').trim());
-  } catch {
-    throw new Error(`${label} must be a valid HTTP(S) origin without credentials`);
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new Error(`${label} must be a valid HTTP(S) origin without credentials`);
-  }
-  return parsed.origin;
-}
-
-function resolveBaseUrl() {
-  if (!IS_STAGING) return process.env.BASE_URL || process.env.STAGING_BASE_URL || `http://localhost:${PORT}`;
-  const stagingOrigin = parseOrigin(process.env.STAGING_BASE_URL, 'STAGING_BASE_URL');
-  const configuredBaseOrigin = parseOrigin(process.env.BASE_URL || stagingOrigin, 'BASE_URL');
-  if (configuredBaseOrigin !== stagingOrigin) {
-    throw new Error('BASE_URL must match STAGING_BASE_URL during staging E2E');
-  }
-  return stagingOrigin;
-}
-
-const BASE_URL = resolveBaseUrl();
+// Modos mutuamente exclusivos (fonte única: scripts/lib/e2e-mode.mjs).
+// Configurações contraditórias falham no carregamento deste arquivo —
+// antes do primeiro request HTTP de qualquer suite.
+const IS_STAGING = isStagingMode();
+const BASE_URL = resolveE2eBaseUrl();
 
 export default defineConfig({
   testDir: './tests',
@@ -63,11 +37,14 @@ export default defineConfig({
     },
   ],
 
-  // Auto-start Vite only for local suites; staging runs against STAGING_BASE_URL.
+  // Seleção mutuamente exclusiva definida pela fonte única
+  // scripts/lib/staging-e2e-specs.mjs:
+  // - Preview roda SOMENTE a suíte controlada de staging contra STAGING_BASE_URL.
+  // - Modo local nunca seleciona specs de staging (mesmo por filtros explícitos).
   ...(IS_STAGING
-    ? {}
+    ? { testMatch: [...STAGING_E2E_SPECS] }
     : {
-        testIgnore: STAGING_SPEC_FILES,
+        testIgnore: [...STAGING_E2E_SPECS],
         webServer: {
           command: 'node scripts/vite-dev.mjs',
           url: BASE_URL,
