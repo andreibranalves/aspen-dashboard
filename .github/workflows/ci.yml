@@ -11,8 +11,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Detects whether a PR can affect code invariants at all. Docs-only changes
+  # keep the light structural jobs green while skipping the heavy database and
+  # browser lanes (AC #3). Scoping is conservative: anything outside the listed
+  # non-source roots runs every lane, never fewer.
+  #
+  # NOTE: branch protection for master could NOT be confirmed remotely (GitHub
+  # REST returns 403 on this plan/repository visibility — see ticket evidence).
+  # If any of these lanes later become REQUIRED checks, remove the `if` guards
+  # below BEFORE relying on merge gating; a skipped job reports success only
+  # when it is not a required check.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: filter
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          FILES="$(git diff --name-only "$BASE"...HEAD)"
+          echo "changed files:"
+          echo "$FILES"
+          if echo "$FILES" | grep -qE '^(src/|api/|drizzle/|scripts/|tests/|extension/|\.github/workflows/ci\.yml|package\.json|package-lock\.json|playwright\.config\.js|vite\.config\..*|tsconfig.*\.json|index\.html|public/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -26,6 +59,7 @@ jobs:
 
   types:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -39,6 +73,7 @@ jobs:
 
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -52,6 +87,7 @@ jobs:
 
   boundary:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -64,10 +100,14 @@ jobs:
       - run: npm run check:tailwind
       - run: npm run check:db-boundary
       - run: npm run check:integration-boundary
+      - run: npm run check:whatsapp-extension
       - run: npm run check:vercel-functions
 
   postgres:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/aspen_test
     services:
@@ -103,6 +143,7 @@ jobs:
 
   migrations:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -117,8 +158,10 @@ jobs:
           MIGRATION_BASE_REF: ${{ github.event.pull_request.base.sha }}
 
   build:
-    needs: [lint, types, unit, boundary, migrations, postgres]
+    needs: [changes, lint, types, unit, boundary, migrations, postgres]
+    if: '!cancelled() && needs.lint.result == ''success'' && needs.types.result == ''success'' && needs.unit.result == ''success'' && needs.boundary.result == ''success'' && needs.migrations.result == ''success'' && (needs.postgres.result == ''success'' || needs.postgres.result == ''skipped'')'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -131,8 +174,13 @@ jobs:
       - run: npm run build
 
   smoke:
-    needs: [build]
+    needs: [build, changes]
+    if: >-
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
