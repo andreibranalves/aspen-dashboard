@@ -1,4 +1,5 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { toCanonicalQuotationDetail, toCanonicalQuotationListRow } from './quotation-contract.js';
 import {
   createPostgresQuoteDraftManagementRepository,
   normalizeQuotationListStatus,
@@ -7,6 +8,7 @@ import {
   QuoteManagementNotFoundError,
   QuoteManagementRepositoryError,
   type QuoteDraftManagementListOptions,
+  type QuoteDraftManagementListRow,
   type QuoteDraftManagementRepository,
   type QuoteDraftManagementUpdateInput,
 } from '../_infrastructure/db/repositories/quote-draft-management-repository.js';
@@ -140,7 +142,10 @@ export function createCoreHandler(
         if (query.id) {
           const detail = await repositoryGet(dependencies.repository, query.id);
           if (!detail) throw new QuoteManagementNotFoundError();
-          return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
+          return json(200, {
+            ...sanitizeQuotationOutput(detail),
+            canonical: toCanonicalQuotationDetail(detail as typeof detail),
+          });
         }
         const status = (query.status || '').trim();
         if (status && normalizeQuotationListStatus(status) === undefined) {
@@ -171,7 +176,10 @@ export function createCoreHandler(
         const resultLimit = compatibleResult.limit || limit;
         const resultTotal = Number(compatibleResult.total || 0);
         return json(200, {
-          data: rows.map((row) => sanitizeQuotationOutput(row)),
+          data: rows.map((rawRow) => {
+            const row = sanitizeQuotationOutput(rawRow as QuoteDraftManagementListRow);
+            return { ...row, canonical: toCanonicalQuotationListRow(row) };
+          }),
           pagination: {
             page: resultPage,
             limit: resultLimit,
@@ -186,7 +194,10 @@ export function createCoreHandler(
         if (!query.id) throw new QuoteManagementInputError('ID do orçamento não informado.');
         const payload = parseJsonBody(event);
         const detail = await repositoryUpdate(dependencies.repository, query.id, payload as QuoteDraftManagementUpdateInput);
-        return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
+        return json(200, {
+          ...sanitizeQuotationOutput(detail),
+          canonical: toCanonicalQuotationDetail(detail as typeof detail),
+        });
       }
 
       if (event.httpMethod === 'POST') {
