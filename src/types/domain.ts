@@ -44,13 +44,9 @@ export interface OrcamentoResponse {
   success?: boolean;
   cliente?: string;
   quotation_id?: string;
-  quotation_name?: string;
-  quote_id?: string;
   quotation_uuid?: string;
   revision_id?: string;
-  quote_revision_id?: string;
   revision?: number;
-  revision_number?: number;
   status?: string;
   cliente_id?: string;
   cliente_snapshot?: Record<string, unknown>;

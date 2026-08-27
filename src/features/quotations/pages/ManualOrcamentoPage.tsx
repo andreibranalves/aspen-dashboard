@@ -577,12 +577,12 @@ export default function ManualOrcamentoPage() {
       // Same transition as every other flow: persist the draft first, then
       // issue it by reference so the server owns the commercial content.
       const created = await apiPost<OrcamentoResponse>('/orcamento', payload);
-      const revisionId = String(created.revision_id || created.quote_revision_id || '');
+      const revisionId = String(created.revision_id || '');
       const concurrencyToken = String(created.concurrency_token || '');
       if (!revisionId || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
       const issue = await issuePersistedDraft(revisionId, concurrencyToken, key);
       clearManualDraft();
-      setResult({ success: true, quotation_id: issue.businessNumber, quotation_name: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision_number: issue.revisionNumber, status: issue.status });
+      setResult({ success: true, quotation_id: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision: issue.revisionNumber, status: issue.status });
     } catch {
       setError('Não foi possível enviar o orçamento. Tente novamente.');
     } finally {
@@ -706,7 +706,7 @@ export default function ManualOrcamentoPage() {
       {result && (
         <div className="bg-success/10 border border-success/30 rounded-lg p-5 space-y-4" role="status" aria-live="polite">
           {(() => {
-            const businessNumber = result.quotation_name || result.quotation_id || '';
+            const businessNumber = result.quotation_id || '';
             return (
               <>
           <div className="flex items-center gap-3">
@@ -717,7 +717,7 @@ export default function ManualOrcamentoPage() {
               <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento enviado com sucesso' : 'Rascunho persistido com sucesso'}</p>
               <p className="text-sm text-success">
                 {capitalize(result.cliente || '')} · {businessNumber}
-                {result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
+                {result.revision ? ` · Revisão ${result.revision}` : ''}
               </p>
             </div>
           </div>
