@@ -164,10 +164,6 @@ const retainedLegacyImportBaselines = new Map([
     sourceHash: '0fc894999f7a5659ecb624dd137525279aaee67cf9ee1cd1729320c337172da8',
     label: 'retired quotation delivery module',
   }],
-  ['d1441eda171b9911317a415212621431fd3d5d576f5beac090e6330140c2915c', {
-    sourceHash: 'a24e402802822fcd2c2cc5fb31676a04b363b8eebab71d3bcc0f4d0353f38909',
-    label: 'retired reservation module',
-  }],
 ]);
 
 function activeRetiredModuleLabels(paths) {
