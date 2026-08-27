@@ -29,6 +29,15 @@ const MOCK_TEMPLATES = {
   default_key: 'padrao',
 };
 
+const EMAIL_LIKE_ORDER_TEMPLATE = {
+  id: 'gmail-template',
+  name: 'Gmail',
+  archived: false,
+  items: [{ sku: 'GMAIL-001', name: 'Template Gmail', position: 0 }],
+  created_at: '2026-08-27T00:00:00.000Z',
+  updated_at: '2026-08-27T00:00:00.000Z',
+};
+
 const MOCK_ORCAMENTO = {
   success: true,
   quotation_id: 'ORC-20260001',
@@ -133,7 +142,7 @@ const MOCK_WHATSAPP_LEADS = {
 
 // ── Helpers ──
 
-async function setupApiMocks(page) {
+async function setupApiMocks(page, orderTemplates = []) {
   await page.route('**/api/settings**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -154,7 +163,7 @@ async function setupApiMocks(page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify({ data: orderTemplates }),
     });
   });
 
@@ -293,6 +302,26 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     // Botão "Extrair"
     await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
+  });
+
+  test('e-mail com parte local numérica não é tratado como template', async ({ page }) => {
+    await setupApiMocks(page, [EMAIL_LIKE_ORDER_TEMPLATE]);
+    const extractRequests = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/extract') && request.method() === 'POST') {
+        extractRequests.push(request.postDataJSON());
+      }
+    });
+    await page.goto('/#/auto');
+    await page.waitForSelector('textarea', { timeout: 10000 });
+
+    await page.locator('textarea').first().fill('Cliente: Andrei9@gmail.com pediu 30 lenços.');
+    await page.getByRole('button', { name: /Extrair/i }).click();
+
+    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText(/Template não encontrado/i)).toHaveCount(0);
+    expect(extractRequests).toHaveLength(1);
+    expect(extractRequests[0].orderTemplateSelections).toBeUndefined();
   });
 
   test('não exibe a fila de pré-orçamentos no CRM', async ({ page }) => {

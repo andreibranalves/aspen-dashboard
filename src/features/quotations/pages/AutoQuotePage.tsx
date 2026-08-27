@@ -80,7 +80,7 @@ function inlineTemplateSelections(text: string, templates: OrderTemplate[]) {
   const bySlug = new Map(templates.map((template) => [templateSlug(template.name), template]));
   const selections: Array<{ id: string; quantity: number }> = [];
   const unknown: string[] = [];
-  for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*@([\p{L}\p{N}_-]+)/gu)) {
+  for (const match of text.matchAll(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*@([\p{L}\p{N}_-]+)(?!\.[\p{L}\p{N}_-]+)/gu)) {
     const template = bySlug.get(templateSlug(match[2]));
     if (!template) unknown.push(`@${match[2]}`);
     else selections.push({ id: template.id, quantity: Number(match[1].replace(',', '.')) });
