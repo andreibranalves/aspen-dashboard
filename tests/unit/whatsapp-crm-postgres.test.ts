@@ -20,7 +20,9 @@ import { createPostgresWhatsappCrmRepository, resolveWhatsappCrmMatch } from '..
 import type { WhatsappConversation } from '../../api/_modules/whatsapp-conversations-store.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

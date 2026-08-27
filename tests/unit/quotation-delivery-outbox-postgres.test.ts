@@ -27,7 +27,9 @@ import { EvolutionTransportError } from '../../api/_modules/evolution-transport.
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

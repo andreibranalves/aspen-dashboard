@@ -16,7 +16,9 @@ import {
   type QuoteLeadRecord,
 } from '../../api/_infrastructure/db/repositories/quote-leads-repository.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

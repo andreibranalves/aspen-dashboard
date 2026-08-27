@@ -24,7 +24,9 @@ import { createPostgresQuoteDraftManagementRepository } from '../../api/_infrast
 import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 
-const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_QUOTE_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

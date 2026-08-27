@@ -23,7 +23,9 @@ import { createSalesDashboardHandler } from '../../api/_modules/sales-dashboard.
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
-const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_SALES_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -32,18 +34,6 @@ const migrationsFolder = path.resolve(
 );
 const NOW = new Date('2098-08-10T12:00:00.000Z');
 
-function isLocalDatabaseUrl(value: string | undefined): boolean {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    return (
-      (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') &&
-      ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsed.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
 
 function event(
   httpMethod: string,
@@ -58,17 +48,9 @@ function event(
   };
 }
 
-test('PostgreSQL integration guard accepts loopback URL forms only', () => {
-  assert.equal(isLocalDatabaseUrl('postgres://localhost:5432/test'), true);
-  assert.equal(isLocalDatabaseUrl('postgres://127.0.0.1:5432/test'), true);
-  assert.equal(isLocalDatabaseUrl('postgres://[::1]:5432/test'), true);
-  assert.equal(isLocalDatabaseUrl('postgres://database.example/test'), false);
-  assert.equal(isLocalDatabaseUrl('mysql://localhost:5432/test'), false);
-});
-
 test(
   'returns a zero-valued dashboard when no local orders exist',
-  { skip: !isLocalDatabaseUrl(TEST_DATABASE_URL) },
+  { skip: !TEST_DATABASE_URL },
   async () => {
     const client = postgres(TEST_DATABASE_URL!, {
       max: 2,
@@ -110,7 +92,7 @@ test(
 
 test(
   'aggregates local orders and quotes with inclusive period boundaries',
-  { skip: !isLocalDatabaseUrl(TEST_DATABASE_URL) },
+  { skip: !TEST_DATABASE_URL },
   async () => {
     let queryCount = 0;
     const client = postgres(TEST_DATABASE_URL!, {

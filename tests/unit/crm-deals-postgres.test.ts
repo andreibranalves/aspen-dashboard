@@ -27,7 +27,9 @@ import {
 } from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

@@ -278,7 +278,9 @@ test('retenção ignora arquivos que não são backups', () => {
 
 // ─── Dump generation (requires TEST_DATABASE_URL) ────────────────────────
 
-const TEST_DATABASE_URL: string | undefined = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL: string | undefined = resolveDisposableTestDatabaseUrl(process.env);
 
 test('geração de dump cria arquivo .sql válido', { skip: !TEST_DATABASE_URL }, async () => {
   const { execSync } = await import('node:child_process');

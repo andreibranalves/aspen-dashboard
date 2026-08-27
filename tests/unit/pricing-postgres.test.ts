@@ -17,7 +17,9 @@ import * as schema from '../../api/_infrastructure/db/schema.js';
 import { createCoreHandler as createProductsCoreHandler } from '../../api/_modules/products-core.js';
 import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/_modules/product-update-core.js';
 
-const TEST_DATABASE_URL = process.env.TEST_PRICING_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_PRICING_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

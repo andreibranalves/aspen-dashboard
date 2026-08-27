@@ -28,7 +28,9 @@ import {
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { createHandler } from '../../api/_modules/duplicate-quotation.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DUPLICATE_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_DUPLICATE_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -36,18 +38,6 @@ const migrationsFolder = path.resolve(
   'drizzle',
 );
 
-function isLocalDatabaseUrl(value: string | undefined): boolean {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    return (
-      (parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:') &&
-      ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
 
 function event(body: unknown) {
   return {
@@ -79,7 +69,7 @@ test('maps number reservation conflicts to the defined Portuguese 409 response',
 
 test(
   'duplicates a local quotation atomically without provider calls or copied external effects',
-  { skip: !isLocalDatabaseUrl(TEST_DATABASE_URL) },
+  { skip: !TEST_DATABASE_URL },
   async () => {
     const client = postgres(TEST_DATABASE_URL!, {
       max: 4,

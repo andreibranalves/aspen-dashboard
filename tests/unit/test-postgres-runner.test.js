@@ -27,6 +27,9 @@ test('isolates child database environment from operational targets', () => {
       STAGING_DATABASE_URL: 'postgresql://staging.example/stage',
       PGPASSFILE: '/secret/.pgpass',
       OTHER_FLAG: 'preserved',
+      PRODUCTION_PG_SERVICE: 'aspen-prod',
+      OPENROUTER_API_KEY: 'sk-or-secret',
+      KV_REST_API_TOKEN: 'kv-secret',
     },
     'postgresql://postgres:postgres@127.0.0.1:5432/test'
   );
@@ -36,6 +39,9 @@ test('isolates child database environment from operational targets', () => {
   assert.equal(environment.TEST_QUOTE_DATABASE_URL, environment.TEST_DATABASE_URL);
   assert.equal(environment.STAGING_DATABASE_URL, undefined);
   assert.equal(environment.PGPASSFILE, undefined);
+  assert.equal(environment.PRODUCTION_PG_SERVICE, undefined);
+  assert.equal(environment.OPENROUTER_API_KEY, undefined);
+  assert.equal(environment.KV_REST_API_TOKEN, undefined);
   assert.equal(environment.OTHER_FLAG, 'preserved');
 });
 

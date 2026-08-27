@@ -13,6 +13,26 @@ const DISPOSABLE_DATABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const OPERATIONAL_DATABASE_URLS = /^(?:STAGING|PRODUCTION|RESTORE)_DATABASE_URL$/;
 const TEST_DATABASE_URLS = /^TEST_.*DATABASE_URL$/;
 const POSTGRES_CONNECTION_ENVIRONMENT = /^PG[A-Z0-9_]*$/;
+// Operational secrets/identifiers that unit tests must never observe, even in
+// environments where only TEST_DATABASE_URL was expected to be relevant.
+const OPERATIONAL_ENVIRONMENT_KEYS = new Set([
+  'RESTORE_PG_SERVICE',
+  'STAGING_PG_SERVICE',
+  'PRODUCTION_PG_SERVICE',
+  'CUTOVER_PG_SERVICE',
+  'OPENROUTER_API_KEY',
+  'SMTP_PASSWORD',
+  'EVOLUTION_BASE_URL',
+  'EVOLUTION_API_KEY',
+  'EVOLUTION_INSTANCE',
+  'BLOB_READ_WRITE_TOKEN',
+  'QUOTATION_BLOB_READ_WRITE_TOKEN',
+  'QUOTATION_BLOB_STORE_ID',
+  'KV_REST_API_URL',
+  'KV_REST_API_TOKEN',
+  'LITE_BASELINE_TAG',
+  'LITE_BASELINE_BACKUP_FILE',
+]);
 
 export function isDisposablePostgresUrl(raw) {
   try {
@@ -41,7 +61,8 @@ export function createDisposableTestEnvironment(env, databaseUrl) {
     if (
       key === 'DATABASE_URL' ||
       OPERATIONAL_DATABASE_URLS.test(key) ||
-      POSTGRES_CONNECTION_ENVIRONMENT.test(key)
+      POSTGRES_CONNECTION_ENVIRONMENT.test(key) ||
+      OPERATIONAL_ENVIRONMENT_KEYS.has(key)
     ) {
       delete isolated[key];
     }

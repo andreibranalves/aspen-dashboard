@@ -14,7 +14,9 @@ import {
   verifyQuotationCompanyBackfill,
 } from '../../api/_modules/quotation-company.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
