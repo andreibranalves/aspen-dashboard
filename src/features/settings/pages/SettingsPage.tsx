@@ -290,12 +290,12 @@ export default function SettingsPage() {
                 <input
                   type="checkbox"
                   className="mt-0.5"
-                  aria-label="Exibir subtotal e frete"
+                  aria-label="Exibir resumo financeiro"
                   checked={form.secoes.show_summary}
                   onChange={(event) => updateSections({ ...form.secoes, show_summary: event.target.checked })}
                   disabled={saving}
                 />
-                <span><span className="block font-medium">Exibir subtotal e frete</span><span className="mt-1 block text-xs text-fg-muted">O total final continua visível. Esta preferência vale para novos orçamentos.</span></span>
+                <span><span className="block font-medium">Exibir resumo financeiro</span><span className="mt-1 block text-xs text-fg-muted">Subtotal, frete e total serão exibidos nos novos orçamentos.</span></span>
               </label>
               </fieldset>
             </details>

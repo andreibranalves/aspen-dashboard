@@ -68,7 +68,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.getByText('Conteúdo do documento', { exact: true }).first().click();
     await expect(page.getByText('Dados para pagamento', { exact: true })).toHaveCount(0);
     await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
-    await page.getByLabel('Exibir subtotal e frete').uncheck();
+    await page.getByLabel('Exibir resumo financeiro').uncheck();
     await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
     await page.getByLabel('Título - Prazo de produção').fill('Produção customizada');
     await page.getByLabel('Exibir seção - Pagamento').uncheck();

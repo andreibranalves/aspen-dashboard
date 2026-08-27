@@ -1081,7 +1081,8 @@ test('all official templates honor summary visibility and rich-text deadline', (
     const html = renderQuotationTemplate(template, model);
     assert.doesNotMatch(html, /<span>Subtotal<\/span>/);
     assert.doesNotMatch(html, /<span>Frete<\/span>/);
-    assert.match(html, /<span>Total<\/span>/);
+    assert.doesNotMatch(html, /<span>Total<\/span>/);
+    assert.doesNotMatch(html, /<div class="(?:totals|summary|quotation-summary)">/);
     assert.match(html, /<strong>10 dias úteis<\/strong>/);
     assert.doesNotMatch(html, /ASPEN COMÉRCIO|55\.458\.072|Stone Pagamentos|Dados para pagamento/);
   }
@@ -1095,7 +1096,8 @@ test('historical official templates apply the current quotation display policy',
   for (const template of HISTORICAL_QUOTATION_TEMPLATES) {
     const html = renderQuotationTemplate(template, model);
     assert.doesNotMatch(html, /ASPEN COMÉRCIO|55\.458\.072|Stone Pagamentos|Dados para pagamento/);
-    assert.doesNotMatch(html, /<span>Subtotal<\/span>|<span>Frete<\/span>/);
+    assert.doesNotMatch(html, /<span>Subtotal<\/span>|<span>Frete<\/span>|<span>Total<\/span>/);
+    assert.doesNotMatch(html, /<div class="(?:totals|summary|quotation-summary)">/);
   }
 });
 

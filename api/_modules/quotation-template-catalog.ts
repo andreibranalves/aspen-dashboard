@@ -3133,12 +3133,20 @@ function officialTemplateRenderSource(template: QuotationTemplate): string {
 
   source = source
     .replace(
-      /(<div class="totals">)(\s*<div><span>Subtotal<\/span><span>\{\{display\.subtotal\}\}<\/span><\/div>\s*<div><span>Frete<\/span><span>\{\{display\.freight\}\}<\/span><\/div>)(\s*<div class="grand-total">)/,
-      '$1{{#if display.show_summary}}$2{{/if}}$3',
+      /(<div class="totals">)\s*\{\{#if display\.show_summary\}\}([\s\S]*?)\{\{\/if\}\}(\s*<div class="grand-total">[\s\S]*?<\/div>)(\s*<\/div>)/,
+      '{{#if display.show_summary}}$1$2$3$4{{/if}}',
     )
     .replace(
-      /(<div class="summary">)(\s*<p><span>Subtotal<\/span><span>\{\{display\.subtotal\}\}<\/span><\/p>\s*<p><span>Frete<\/span><span>\{\{display\.freight\}\}<\/span><\/p>)/,
-      '$1{{#if display.show_summary}}$2{{/if}}',
+      /(<div class="quotation-summary">)\s*\{\{#if display\.show_summary\}\}([\s\S]*?)\{\{\/if\}\}(\s*<div class="quotation-summary-row quotation-summary-total">[\s\S]*?<\/div>)(\s*<\/div>)/,
+      '{{#if display.show_summary}}$1$2$3$4{{/if}}',
+    )
+    .replace(
+      /(<div class="totals">)(\s*<div><span>Subtotal<\/span><span>\{\{display\.subtotal\}\}<\/span><\/div>\s*<div><span>Frete<\/span><span>\{\{display\.freight\}\}<\/span><\/div>)(\s*<div class="grand-total">[\s\S]*?<\/div>)(\s*<\/div>)/,
+      '{{#if display.show_summary}}$1$2$3$4{{/if}}',
+    )
+    .replace(
+      /(<div class="summary">)(\s*<p><span>Subtotal<\/span><span>\{\{display\.subtotal\}\}<\/span><\/p>\s*<p><span>Frete<\/span><span>\{\{display\.freight\}\}<\/span><\/p>)(\s*<p class="total">[\s\S]*?<\/p>)(\s*<\/div>)/,
+      '{{#if display.show_summary}}$1$2$3$4{{/if}}',
     );
 
   return source;
