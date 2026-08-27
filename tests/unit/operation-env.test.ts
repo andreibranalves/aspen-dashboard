@@ -187,7 +187,7 @@ test('anyOf de tokens: basta um membro presente; o irmão fica not-needed', () =
 
 test('loadOperationEnv preenche ausentes da origem externa e falha fechada sem origem', () => {
   withTempDir((root) => {
-    const filePath = externalFileFixture(root, contractValues('cleanup', { DATABASE_URL: secret }));
+    const filePath = externalFileFixture(root, contractValues('cleanup', root, { DATABASE_URL: secret }));
     const env = { CUTOVER_ENV_FILE: filePath };
     const result = loadOperationEnv('cleanup', { env });
     assert.equal(result.ok, true);
