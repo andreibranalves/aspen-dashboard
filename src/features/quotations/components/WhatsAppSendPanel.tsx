@@ -6,9 +6,11 @@ import { useId } from 'react';
 import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { flowToSequencePayload, getFlowSummary, normalizeFlow } from '@/lib/api/whatsappFlows';
-import type { Flow } from '@/lib/api/whatsappFlows';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
+import {
+  communicationFlowSummary,
+  renderableFlowStepCount,
+} from '@/lib/api/communicationApi';
 import { projectDelivery, type DeliveryView } from '@/lib/api/quotationDeliveryApi';
 
 export interface WhatsAppSendPanelProps {
@@ -47,12 +49,9 @@ export default function WhatsAppSendPanel({
 }: WhatsAppSendPanelProps) {
   const flowSelectId = useId();
   const selectedFlow = flows.length > 0
-    ? normalizeFlow(
-        (flows.find((f) => f.id === selectedFlowId) || flows[0]) as unknown as Partial<Flow>
-      )
+    ? flows.find((f) => f.id === selectedFlowId) || flows[0]
     : null;
-  const sequence = selectedFlow ? flowToSequencePayload(selectedFlow) : null;
-  const hasValidSteps = sequence && sequence.steps.length > 0;
+  const hasValidSteps = renderableFlowStepCount(selectedFlow) > 0;
   const deliveryProjection = delivery ? projectDelivery(delivery) : null;
   const isPending = pending || status?.state === 'sending';
   const deliveryBlocksSend = Boolean(delivery);
@@ -85,7 +84,7 @@ export default function WhatsAppSendPanel({
         </select>
         {selectedFlow && (
           <span className="block text-xs leading-5 text-fg-muted">
-            {getFlowSummary(selectedFlow)}
+            {communicationFlowSummary(selectedFlow)}
           </span>
         )}
 
