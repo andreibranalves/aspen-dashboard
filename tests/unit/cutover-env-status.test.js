@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, URL } from 'node:url';
 import { join } from 'node:path';
 import test from 'node:test';
-import {
-  formatCutoverEnvStatus,
-  inspectCutoverEnv,
-  readEnvKeys,
-  requiredCutoverKeys,
-  resolveCutoverEnvFiles,
-} from '../../scripts/cutover-env-status.mjs';
+
+import { OPERATION_ENV_CONTRACTS } from '../../scripts/lib/operation-env.mjs';
 
 const scriptPath = fileURLToPath(new URL('../../scripts/cutover-env-status.mjs', import.meta.url));
 const secret = 'sentinel-secret-value';
+const OPERATIONS = Object.keys(OPERATION_ENV_CONTRACTS);
 
 function withTempDir(callback) {
   const root = mkdtempSync(join(tmpdir(), 'cutover-env-status-'));
@@ -25,240 +21,94 @@ function withTempDir(callback) {
   }
 }
 
-function writeCompleteEnvFile(path, extra = '', values = {}) {
-  writeFileSync(
-    path,
-    `${requiredCutoverKeys.map((key) => `${key}=${values[key] ?? 'present'}`).join('\n')}\n${extra}`,
-  );
+function writeCompleteFixture(root) {
+  const protectedIndex = { n: 0 };
+  const lines = [];
+  for (const [operation, contract] of Object.entries(OPERATION_ENV_CONTRACTS)) {
+    void operation;
+    for (const key of [...contract.keys, ...contract.anyOf.slice(0, 1).flat()]) {
+      if (lines.some((line) => line.startsWith(`${key}=`))) continue;
+      if (contract.paths[key]) {
+        const filePath = join(root, `protected-${protectedIndex.n++}.conf`);
+        writeFileSync(filePath, '# protegido\n');
+        chmodSync(filePath, 0o600);
+        lines.push(`${key}=${filePath}`);
+      } else {
+        lines.push(`${key}=valor-operacional`);
+      }
+    }
+  }
+  const path = join(root, 'external.env');
+  writeFileSync(path, `${lines.join('\n')}\n`);
   return path;
 }
 
-function completeEnvFile(root, extra = '') {
-  return writeCompleteEnvFile(join(root, '.env'), extra);
+function runCli(args, env) {
+  return spawnSync(process.execPath, [scriptPath, ...args], {
+    env: { ...process.env, ...env },
+    encoding: 'utf8',
+  });
 }
 
-function defaultEnvFile(root) {
-  const configDir = join(root, 'aspen-dashboard');
-  mkdirSync(configDir, { recursive: true });
-  return join(configDir, '.env');
-}
-
-function defaultCliEnv(root) {
-  const env = { ...process.env, XDG_CONFIG_HOME: root };
-  delete env.CUTOVER_ENV_FILE;
-  return env;
-}
-
-test('parses dotenv assignment names without exposing values', () => {
+test('CLI sem argumento lista todas as operações e sai limpo quando completo', () => {
   withTempDir((root) => {
-    const path = join(root, '.env');
-    writeFileSync(path, `# comment\nFIRST=${secret}\nexport SECOND=two\nBLANK=\nmalformed\n\n`);
-
-    assert.deepEqual([...readEnvKeys(path)], ['FIRST', 'SECOND']);
-    assert.doesNotMatch(JSON.stringify([...readEnvKeys(path)]), new RegExp(secret));
-  });
-});
-
-test('resolves external defaults and an explicit protected file override', () => {
-  assert.deepEqual(
-    resolveCutoverEnvFiles({ XDG_CONFIG_HOME: '/tmp/operator-config' }),
-    ['/tmp/operator-config/aspen-dashboard/.env.local', '/tmp/operator-config/aspen-dashboard/.env'],
-  );
-  assert.deepEqual(
-    resolveCutoverEnvFiles({ CUTOVER_ENV_FILE: '/protected/cutover.env' }),
-    ['/protected/cutover.env'],
-  );
-});
-
-test('reports key presence without returning environment values', () => {
-  withTempDir((root) => {
-    const path = join(root, '.env');
-    writeFileSync(path, `${requiredCutoverKeys[0]}=${secret}\n`);
-    const result = inspectCutoverEnv({
-      env: { CUTOVER_ENV_FILE: path },
-    });
-
-    assert.deepEqual(result.files, [{ path, status: 'present' }]);
-    assert.deepEqual(result.keys[0], { name: requiredCutoverKeys[0], status: 'present' });
-    assert.deepEqual(result.keys[1], { name: requiredCutoverKeys[1], status: 'missing' });
-    assert.equal(result.ok, false);
-    assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
-  });
-});
-
-test('preflight requires Resend key and verified sender without printing values', () => {
-  assert.ok(requiredCutoverKeys.includes('RESEND_API_KEY'));
-  assert.ok(requiredCutoverKeys.includes('RESEND_FROM_EMAIL'));
-  assert.ok(!requiredCutoverKeys.includes('RESEND_REPLY_TO'));
-
-  const secret = 're_secret_must_not_leak';
-  const sender = 'Aspen <orcamentos@example.com>';
-  withTempDir((root) => {
-    const path = join(root, '.env');
-    const inspect = (values) => {
-      writeCompleteEnvFile(path, '', values);
-      return inspectCutoverEnv({ env: { CUTOVER_ENV_FILE: path } });
-    };
-    const assertSecretSafeOutput = (result) => {
-      const output = formatCutoverEnvStatus(result);
-      assert.doesNotMatch(output, new RegExp(secret));
-      assert.doesNotMatch(output, new RegExp(sender));
-    };
-
-    const completeResult = inspect({ RESEND_API_KEY: secret, RESEND_FROM_EMAIL: sender });
-    assert.equal(completeResult.ok, true);
-    assert.match(formatCutoverEnvStatus(completeResult), /RESEND_API_KEY: present/);
-    assert.match(formatCutoverEnvStatus(completeResult), /RESEND_FROM_EMAIL: present/);
-    assertSecretSafeOutput(completeResult);
-
-    for (const [missingKey, values, presentKey] of [
-      ['RESEND_API_KEY', { RESEND_API_KEY: '', RESEND_FROM_EMAIL: sender }, 'RESEND_FROM_EMAIL'],
-      ['RESEND_FROM_EMAIL', { RESEND_API_KEY: secret, RESEND_FROM_EMAIL: '' }, 'RESEND_API_KEY'],
-    ]) {
-      const result = inspect(values);
-      assert.equal(result.ok, false);
-      assert.deepEqual(result.keys.find(({ name }) => name === missingKey), {
-        name: missingKey,
-        status: 'missing',
-      });
-      assert.deepEqual(result.keys.find(({ name }) => name === presentKey), {
-        name: presentKey,
-        status: 'present',
-      });
-      assertSecretSafeOutput(result);
-    }
-  });
-});
-
-test('CLI reports statuses only and succeeds for a complete temporary file', () => {
-  withTempDir((root) => {
-    const path = completeEnvFile(root, `NOT_REQUIRED=${secret}\n`);
-    const result = spawnSync(process.execPath, [scriptPath], {
-      env: { ...process.env, CUTOVER_ENV_FILE: path },
-      encoding: 'utf8',
-    });
+    const fixture = writeCompleteFixture(root);
+    const result = runCli([], { CUTOVER_ENV_FILE: fixture });
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /config files:/);
-    assert.match(result.stdout, new RegExp(`${requiredCutoverKeys[0]}: present`));
-    assert.doesNotMatch(result.stdout, new RegExp(secret));
-    assert.equal(result.stderr, '');
-  });
-});
-
-test('CLI fails when a required key is missing', () => {
-  withTempDir((root) => {
-    const path = join(root, '.env');
-    writeFileSync(path, `${requiredCutoverKeys[0]}=present\n`);
-    const result = spawnSync(process.execPath, [scriptPath], {
-      env: { ...process.env, CUTOVER_ENV_FILE: path },
-      encoding: 'utf8',
-    });
-
-    assert.equal(result.status, 1);
-    assert.match(result.stdout, new RegExp(`${requiredCutoverKeys[1]}: missing`));
-    assert.doesNotMatch(result.stdout, new RegExp(secret));
-    assert.equal(result.stderr, '');
-  });
-});
-
-test('CLI treats blank and quote-only required values as missing', () => {
-  withTempDir((root) => {
-    const path = join(root, '.env');
-    writeFileSync(
-      path,
-      requiredCutoverKeys
-        .map((key, index) => `${key}=${['   ', "''", '"   "'][index % 3]}`)
-        .join('\n'),
-    );
-    const result = spawnSync(process.execPath, [scriptPath], {
-      env: { ...process.env, CUTOVER_ENV_FILE: path },
-      encoding: 'utf8',
-    });
-
-    assert.equal(result.status, 1);
-    for (const key of requiredCutoverKeys) {
-      assert.match(result.stdout, new RegExp(`${key}: missing`));
+    for (const operation of OPERATIONS) {
+      assert.match(result.stdout, new RegExp(`operacao: ${operation}`));
     }
-    assert.doesNotMatch(result.stdout, /unreadable/);
+    assert.doesNotMatch(result.stdout, /valor-operacional|sentinel/);
     assert.equal(result.stderr, '');
   });
 });
 
-test('CLI accepts one complete default environment alternative', () => {
+test('CLI falha quando uma chave obrigatória está ausente e sugere o detalhamento', () => {
   withTempDir((root) => {
-    const path = defaultEnvFile(root);
-    writeCompleteEnvFile(path);
-    const result = spawnSync(process.execPath, [scriptPath], {
-      env: defaultCliEnv(root),
-      encoding: 'utf8',
-    });
+    const fixture = writeCompleteFixture(root);
+    const content = readFileSync(fixture, 'utf8')
+      .split('\n')
+      .filter((line) => !line.startsWith('RESEND_FROM_EMAIL='))
+      .join('\n');
+    writeFileSync(fixture, content);
+
+    const result = runCli([], { CUTOVER_ENV_FILE: fixture });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /RESEND_FROM_EMAIL: missing/);
+    assert.doesNotMatch(result.stdout, new RegExp(secret));
+    assert.match(result.stderr, /use <operacao> para detalhes/);
+  });
+});
+
+test('CLI filtra por operação solicitada', () => {
+  withTempDir((root) => {
+    const fixture = writeCompleteFixture(root);
+    const result = runCli(['migration'], { CUTOVER_ENV_FILE: fixture });
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /\.env: present/);
-    assert.equal(result.stderr, '');
+    assert.match(result.stdout, /operacao: migration/);
+    assert.doesNotMatch(result.stdout, /operacao: canary/);
   });
 });
 
-test('CLI fails closed when neither default environment file exists', () => {
+test('CLI falha fechada para operação desconhecida', () => {
+  const result = runCli(['nao-existe'], {});
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Operação desconhecida/);
+});
+
+test('saída nunca contém valores das variáveis', () => {
   withTempDir((root) => {
-    const result = spawnSync(process.execPath, [scriptPath], {
-      env: defaultCliEnv(root),
-      encoding: 'utf8',
-    });
+    const filePath = join(root, 'external.env');
+    const contract = OPERATION_ENV_CONTRACTS.cleanup;
+    const lines = contract.keys.map((key) => `${key}=${secret}`);
+    writeFileSync(filePath, `${lines.join('\n')}\n`);
 
-    assert.equal(result.status, 1);
-    assert.match(result.stdout, /\.env\.local: missing/);
-    assert.match(result.stdout, /\.env: missing/);
-    assert.doesNotMatch(result.stdout, /unreadable/);
-    assert.equal(result.stderr, '');
+    const result = runCli(['cleanup'], { CUTOVER_ENV_FILE: filePath });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, new RegExp(secret));
+    assert.match(result.stdout, /DATABASE_URL: present/);
   });
 });
-
-test('CLI reports an unreadable selected file as missing', () => {
-  withTempDir((root) => {
-    const path = defaultEnvFile(root);
-    mkdirSync(path);
-    const result = spawnSync(process.execPath, [scriptPath], {
-      env: defaultCliEnv(root),
-      encoding: 'utf8',
-    });
-
-    assert.equal(result.status, 1);
-    assert.match(result.stdout, new RegExp(`${path}: missing`));
-    assert.doesNotMatch(result.stdout, /unreadable/);
-    assert.equal(result.stderr, '');
-  });
-});
-
-test('manifesto usa somente o contrato operacional canônico', () => {
-  assert.deepEqual(requiredCutoverKeys, [
-    'APP_ENV',
-    'EXTERNAL_WRITES_ENABLED',
-    'STAGING_BASE_URL',
-    'STAGING_DATABASE_URL',
-    'STAGING_PG_SERVICE',
-    'E2E_USERNAME',
-    'E2E_PASSWORD',
-    'STAGING_E2E_USERNAME',
-    'KNOWN_POSTGRES_QUOTATION_ID',
-    'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
-    'STAGING_EGRESS_BLOCKED',
-    'STAGING_FIXTURE_RESET',
-    'RESEND_API_KEY',
-    'RESEND_FROM_EMAIL',
-    'CANARY_BASE_URL',
-    'CANARY_PASSWORD',
-    'CANARY_QUOTATION_ID',
-    'CANARY_PUBLIC_QUOTATION_URL',
-    'PRODUCTION_DATABASE_URL',
-    'PRODUCTION_PG_SERVICE',
-    'PRODUCTION_CANARY_PASSWORD',
-    'KNOWN_PRODUCTION_POSTGRES_QUOTATION_ID',
-    'KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL',
-    'PREVIEW_DEPLOYMENT_URL',
-    'PREVIOUS_PRODUCTION_DEPLOYMENT_URL',
-    'POST_CLEANUP_PREVIEW_URL',
-  ]);
-});
-

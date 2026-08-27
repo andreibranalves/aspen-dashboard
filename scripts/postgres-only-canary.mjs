@@ -1,5 +1,6 @@
 import { TextDecoder } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { fillFromExternalConfig } from './lib/operation-env.mjs';
 
 function combineParts(parts) {
   return parts.slice(0, 2).join('');
@@ -227,6 +228,8 @@ export async function runCanary({ env = process.env, fetchImpl = globalThis.fetc
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Origem externa única: preenche CANARY_* ausentes antes da validação interna.
+  fillFromExternalConfig();
   runCanary()
     .then((result) => console.log(JSON.stringify(result)))
     .catch((error) => {

@@ -1,117 +1,50 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+#!/usr/bin/env node
+
+// Status de configuração operacional por operação (fonte normativa: scripts/lib/operation-env.mjs).
+//
+// Uso:
+//   node scripts/cutover-env-status.mjs                 — todas as operações
+//   node scripts/cutover-env-status.mjs migration       — uma operação específica
+//
+// Saída contém somente nomes e estados (present|missing|invalid-permission|
+// unreadable|not-needed), nunca valores. Exit 1 quando alguma exigência falha.
+
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-export const requiredCutoverKeys = Object.freeze([
-  'APP_ENV',
-  'EXTERNAL_WRITES_ENABLED',
-  'STAGING_BASE_URL',
-  'STAGING_DATABASE_URL',
-  'STAGING_PG_SERVICE',
-  'E2E_USERNAME',
-  'E2E_PASSWORD',
-  'STAGING_E2E_USERNAME',
-  'KNOWN_POSTGRES_QUOTATION_ID',
-  'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
-  'STAGING_EGRESS_BLOCKED',
-  'STAGING_FIXTURE_RESET',
-  'RESEND_API_KEY',
-  'RESEND_FROM_EMAIL',
-  'CANARY_BASE_URL',
-  'CANARY_PASSWORD',
-  'CANARY_QUOTATION_ID',
-  'CANARY_PUBLIC_QUOTATION_URL',
-  'PRODUCTION_DATABASE_URL',
-  'PRODUCTION_PG_SERVICE',
-  'PRODUCTION_CANARY_PASSWORD',
-  'KNOWN_PRODUCTION_POSTGRES_QUOTATION_ID',
-  'KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL',
-  'PREVIEW_DEPLOYMENT_URL',
-  'PREVIOUS_PRODUCTION_DEPLOYMENT_URL',
-  'POST_CLEANUP_PREVIEW_URL',
-]);
-
-export function resolveCutoverEnvFiles(env = process.env) {
-  const override = String(env.CUTOVER_ENV_FILE || '').trim();
-  if (override) return [override];
-
-  const configHome = String(env.XDG_CONFIG_HOME || '').trim() || join(env.HOME || homedir(), '.config');
-  const configDir = join(configHome, 'aspen-dashboard');
-  return [join(configDir, '.env.local'), join(configDir, '.env')];
-}
-
-function hasNonEmptyValue(rawValue) {
-  let value = rawValue.trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    value = value.slice(1, -1).trim();
-  }
-  return value.length > 0;
-}
-
-export function readEnvKeys(filePath) {
-  const keys = new Set();
-  for (const rawLine of readFileSync(filePath, 'utf8').split(/\r?\n/)) {
-    const match = rawLine.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
-    if (match && hasNonEmptyValue(rawLine.slice(rawLine.indexOf('=') + 1))) keys.add(match[1]);
-  }
-  return keys;
-}
-
-export function inspectCutoverEnv({ env = process.env, exists = existsSync, readKeys = readEnvKeys } = {}) {
-  const paths = resolveCutoverEnvFiles(env);
-  const explicitPath = String(env.CUTOVER_ENV_FILE || '').trim();
-  const pathExists = (path) => {
-    try {
-      return Boolean(exists(path));
-    } catch {
-      return false;
-    }
-  };
-  const selectedPath = explicitPath ? paths[0] : paths.find(pathExists);
-  const availableKeys = new Set();
-  let selectedStatus = 'missing';
-
-  if (selectedPath && pathExists(selectedPath)) {
-    try {
-      for (const key of readKeys(selectedPath)) availableKeys.add(key);
-      selectedStatus = 'present';
-    } catch {
-      selectedStatus = 'missing';
-    }
-  }
-
-  const files = paths.map((path) => {
-    let status = 'missing';
-    if (path === selectedPath) status = selectedStatus;
-    else if (pathExists(path)) status = 'present';
-    return { path, status };
-  });
-  const keys = requiredCutoverKeys.map((name) => ({
-    name,
-    status: availableKeys.has(name) ? 'present' : 'missing',
-  }));
-  const ok = selectedStatus === 'present' && keys.every(({ status }) => status === 'present');
-  return { files, keys, ok };
-}
-
-export function formatCutoverEnvStatus(result) {
-  const lines = ['config files:'];
-  for (const file of result.files) lines.push(`  ${file.path}: ${file.status}`);
-  lines.push('keys:');
-  for (const key of result.keys) lines.push(`  ${key.name}: ${key.status}`);
-  return `${lines.join('\n')}\n`;
-}
+import {
+  formatOperationEnvStatus,
+  inspectOperationEnv,
+  operationNames,
+} from './lib/operation-env.mjs';
 
 function isCli() {
-  return process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  return Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }
 
 if (isCli()) {
-  const result = inspectCutoverEnv();
-  process.stdout.write(formatCutoverEnvStatus(result));
-  if (!result.ok) process.exitCode = 1;
+  const requested = process.argv.slice(2).map((value) => value.trim()).filter(Boolean);
+  let exitCode = 0;
+
+  try {
+    const targets = requested.length > 0 ? requested : operationNames();
+    for (const operation of targets) {
+      let result;
+      try {
+        result = inspectOperationEnv(operation);
+      } catch {
+        // Operação desconhecida falha fechada antes de qualquer decisão.
+        throw new Error(`Operação desconhecida: ${operation}. Use uma de ${operationNames().join(', ')}.`);
+      }
+      process.stdout.write(formatOperationEnvStatus(result));
+      if (!result.ok) exitCode = 1;
+    }
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  }
+
+  if (requested.length === 0 && exitCode !== 0) {
+    process.stderr.write('\nAlgumas operações estão sem variáveis obrigatórias; use <operacao> para detalhes.\n');
+  }
+  if (exitCode !== 0) process.exitCode = exitCode;
 }

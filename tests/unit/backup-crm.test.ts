@@ -24,7 +24,9 @@ const backupSource = readFileSync(script, 'utf8');
 function run(args: string[], env: NodeJS.ProcessEnv) {
   return spawnSync(process.execPath, [script, ...args], {
     cwd: root,
-    env,
+    // Origem externa de configuração fixada no vazio: o teste prova os guardas
+    // nativos do comando sem depender do arquivo real do operador.
+    env: { CUTOVER_ENV_FILE: '/tmp/aspen-test-sem-origem-externa.env', ...env },
     encoding: 'utf8',
   });
 }
