@@ -1,5 +1,7 @@
 # 04 - Personalizar conteúdo no rascunho
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 **What to build:** Na página individual de um orçamento em rascunho, permitir trocar o modelo e personalizar as três seções comerciais antes do envio.
 
 **Blocked by:** 03 - Criar orçamento com modelo e snapshot.

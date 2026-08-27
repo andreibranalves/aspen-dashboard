@@ -1,5 +1,7 @@
 # 01 - Biblioteca de modelos HTML versionados
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 **What to build:** Em Configurações, permitir gerenciar modelos HTML completos colados manualmente, com validação, preview, versionamento e arquivamento.
 
 **Blocked by:** None - can start immediately.

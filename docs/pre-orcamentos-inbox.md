@@ -1,5 +1,7 @@
 # Dados históricos de pré-orçamentos
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../AGENTS.md) e [`docs/release-lanes.md`](./release-lanes.md).
+
 A tela de Pré-orçamentos e os endpoints de ingestão e fila foram removidos do dashboard.
 
 A tabela `quote_leads` permanece para preservar histórico, vínculos de CRM, conversas WhatsApp e conversão de orçamentos já existentes.

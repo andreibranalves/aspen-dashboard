@@ -1,5 +1,7 @@
 # Auditoria de UI/UX — Aspen Orçamento
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../AGENTS.md) e [`docs/release-lanes.md`](./release-lanes.md).
+
 **Data:** 2026-08-21 · **Branch:** `feat/ui-improvements` · **Escopo:** frontend (`src/`)
 
 Método: 5 auditorias paralelas por subagentes (UI/design system, UX de fluxos,

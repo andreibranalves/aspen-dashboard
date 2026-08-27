@@ -1,5 +1,7 @@
 # Migration lease idle-timeout fix
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 Implemented a migration-only PostgreSQL connection with `idle_timeout: 0` for session advisory leases.
 
 The normal application connection remains configured with `idle_timeout: 20`.

@@ -1,5 +1,7 @@
 # Final-review fix report
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 ## Scope
 
 Applied only the three accepted final-review corrections on top of `a8602df`:

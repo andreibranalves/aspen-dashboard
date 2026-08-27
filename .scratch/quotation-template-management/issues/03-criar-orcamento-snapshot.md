@@ -1,5 +1,7 @@
 # 03 - Criar orçamento com modelo e snapshot
 
+> **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../../../AGENTS.md) e [`docs/release-lanes.md`](../../../docs/release-lanes.md).
+
 **What to build:** Na criação manual e automática, permitir escolher o modelo HTML e salvar na revisão a versão exata do modelo e uma cópia das seções padrão.
 
 **Blocked by:** 01 - Biblioteca de modelos HTML versionados; 02 - Configuração das três seções comerciais.
