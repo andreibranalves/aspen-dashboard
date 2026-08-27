@@ -185,20 +185,13 @@ export default function AutoQuotePage() {
   const activeDrafts = drafts.filter((draft) => !draft.discarded);
   const deliveryIdentities = useMemo(() => activeDrafts.flatMap((draft) => {
     const issue = (draft as StoredAutoQuoteDraft).issue;
-    const resultData = draft.result?.data || (issue ? {
-      quotation_id: issue.businessNumber,
-      revision_id: issue.revisionId,
-      status_canonical: 'emitido',
-    } : undefined);
-    const status = resultData?.status_canonical || resultData?.status;
-    const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
-    const revisionId = typeof resultData?.revision_id === 'string'
-      ? resultData.revision_id
-      : typeof resultData?.quote_revision_id === 'string'
-        ? resultData.quote_revision_id
-        : '';
+    const resultData = draft.result?.data || (issue
+      ? { businessNumber: issue.businessNumber, revisionId: issue.revisionId, status: issue.status }
+      : undefined);
+    const status = typeof resultData?.status === 'string' ? resultData.status : undefined;
+    const revisionId = typeof resultData?.revisionId === 'string' ? resultData.revisionId : '';
     const flowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
-    return quotationId && revisionId && flowId && isSendableQuotationStatus(status)
+    return revisionId && flowId && isSendableQuotationStatus(status)
       ? [{ revisionId, flowId }]
       : [];
   }), [activeDrafts, defaultWaFlowId, waFlowByDraft, waFlows]);
@@ -424,12 +417,11 @@ export default function AutoQuotePage() {
         if (!savedDraft.concurrencyToken) throw new Error('Recarregue a página antes de emitir este rascunho.');
         const issue = await issuePersistedDraft(savedDraft.revisionId, savedDraft.concurrencyToken, key);
         const data = {
-          quotation_id: issue.businessNumber,
-          quotation_uuid: issue.quotationId,
-          revision_id: issue.revisionId,
-          revision_number: issue.revisionNumber,
-          status: 'emitido',
-          status_canonical: 'emitido',
+          businessNumber: issue.businessNumber,
+          quotationId: issue.quotationId,
+          revisionId: issue.revisionId,
+          revisionNumber: issue.revisionNumber,
+          status: issue.status,
         };
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, issue, result: { success: true, data }, status: 'done' } as StoredAutoQuoteDraft)
@@ -447,7 +439,7 @@ export default function AutoQuotePage() {
             const recovered = await getQuotationIssue(key);
             if (recovered.state === 'completed') {
               setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
-                ? ({ ...candidate, issue: recovered, result: { success: true, data: { quotation_id: recovered.businessNumber, quotation_uuid: recovered.quotationId, revision_id: recovered.revisionId, revision_number: recovered.revisionNumber, status: 'emitido', status_canonical: 'emitido' } }, status: 'done' } as StoredAutoQuoteDraft)
+                ? ({ ...candidate, issue: recovered, result: { success: true, data: { businessNumber: recovered.businessNumber, quotationId: recovered.quotationId, revisionId: recovered.revisionId, revisionNumber: recovered.revisionNumber, status: recovered.status } }, status: 'done' } as StoredAutoQuoteDraft)
                 : candidate));
             }
           }
@@ -528,7 +520,7 @@ export default function AutoQuotePage() {
       if (timer) clearTimeout(timer);
       recoveryTimers.current.delete(draft.index);
       if (state.state === 'completed') {
-        const data = { quotation_id: state.businessNumber, quotation_uuid: state.quotationId, revision_id: state.revisionId, revision_number: state.revisionNumber, status: 'emitido', status_canonical: 'emitido' };
+        const data = { businessNumber: state.businessNumber, quotationId: state.quotationId, revisionId: state.revisionId, revisionNumber: state.revisionNumber, status: state.status };
         setDrafts((prev) => prev.map((candidate) => candidate.index === draft.index
           ? ({ ...candidate, issue: state, result: { success: true, data }, status: 'done' } as StoredAutoQuoteDraft)
           : candidate));
@@ -611,18 +603,13 @@ export default function AutoQuotePage() {
   // ── WhatsApp handlers ──
   const sendContextForDraft = useCallback((draft: Draft, flowId: string): SendContext | null => {
     const issue = (draft as StoredAutoQuoteDraft).issue;
-    const resultData = draft.result?.data || (issue ? {
-      quotation_id: issue.businessNumber,
-      revision_id: issue.revisionId,
-    } : undefined);
-    const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
-    const revisionId = typeof resultData?.revision_id === 'string'
-      ? resultData.revision_id
-      : typeof resultData?.quote_revision_id === 'string'
-        ? resultData.quote_revision_id
-        : '';
-    if (!quotationId || !revisionId || !flowId) return null;
-    return { quotationId, revisionId, flowId };
+    const resultData = draft.result?.data;
+    // O transporte de entrega segue identificando o orçamento pelo número comercial;
+    // contração dos nomes legados na resposta é escopo do ticket #126.
+    const businessNumber = typeof resultData?.businessNumber === 'string' ? resultData.businessNumber : issue?.businessNumber;
+    const revisionId = typeof resultData?.revisionId === 'string' ? resultData.revisionId : issue?.revisionId;
+    if (!businessNumber || !revisionId || !flowId) return null;
+    return { quotationId: businessNumber, revisionId, flowId };
   }, []);
 
   const deliveryForContext = useCallback((context: SendContext | null): DeliveryView | null => {

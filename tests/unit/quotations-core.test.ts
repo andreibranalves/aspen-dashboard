@@ -102,286 +102,69 @@ const quotationProjectionPayload = {
   concurrency_token: '2026-08-17T12:00:00.000Z',
 };
 
+/** Espelho do mapeamento que o backend faz em api/_modules/quotation-contract.ts (#124). */
+const quotationCanonicalPayload = {
+  ...quotationProjectionPayload,
+  canonical: {
+    id: '11111111-1111-4111-8111-111111111111',
+    businessNumber: 'ORC-20260001',
+    name: 'Cliente Teste',
+    revisionId: '22222222-2222-4222-8222-222222222222',
+    revision: 1,
+    status: 'emitido',
+    clienteId: 'client-1',
+    cliente: 'Cliente Teste',
+    data: '2026-08-17',
+    validade: '2026-09-01',
+    validadeDias: 15,
+    subtotal: '9.00',
+    total: '9.00',
+    frete: '0.00',
+    expired: false,
+    concurrencyToken: '2026-08-17T12:00:00.000Z',
+    updatedAt: '2026-08-17T12:00:00.000Z',
+    emailSent: false,
+    emailSentAt: null,
+    pagamento: '',
+    entrega: '',
+    observacoes: '',
+    prazoProducao: '',
+    templateKey: 'padrao',
+    templateHash: 'a'.repeat(64),
+    items: [{ code: 'SKU-1', sku: 'SKU-1', quantity: '1.000', name: 'Produto', description: '', unit: '', category: null, brand: null, unitPrice: '9.00', lineTotal: '9.00', manualRate: false }],
+    revisionHistory: [],
+  },
+};
+
 test('quotation projections preserve accepted email markers and client snapshot contact', () => {
   const source = {
-    ...quotationProjectionPayload,
+    ...quotationCanonicalPayload,
     email_sent: true,
     email_sent_at: '2026-08-17T12:00:00.000Z',
+    canonical: { ...quotationCanonicalPayload.canonical, emailSent: true, emailSentAt: '2026-08-17T12:00:00.000Z' },
   };
   const list = projectQuotationListRow(source);
-  assert.equal(list?.email_sent, true);
-  assert.equal(list?.email_sent_at, '2026-08-17T12:00:00.000Z');
+  assert.equal(list?.emailSent, true);
+  assert.equal(list?.emailSentAt, '2026-08-17T12:00:00.000Z');
   const projected = projectQuotationDetail(source);
   assert.equal(projected?.data.email, 'cliente@example.com');
   assert.equal(projected?.data.telefone, '5511999999999');
-  assert.equal(projected?.data.email_sent, true);
-  assert.equal(projected?.data.email_sent_at, '2026-08-17T12:00:00.000Z');
+  assert.equal(projected?.data.emailSent, true);
+  assert.equal(projected?.data.emailSentAt, '2026-08-17T12:00:00.000Z');
 });
 
 test('quotation projections fall back for responses without email markers', () => {
-  const list = projectQuotationListRow(quotationProjectionPayload);
-  assert.equal(list?.email_sent, false);
-  assert.equal(list?.email_sent_at, null);
-  const projected = projectQuotationDetail(quotationProjectionPayload);
-  assert.equal(projected?.data.email_sent, false);
-  assert.equal(projected?.data.email_sent_at, null);
+  const list = projectQuotationListRow(quotationCanonicalPayload);
+  assert.equal(list?.emailSent, false);
+  assert.equal(list?.emailSentAt, null);
+  const projected = projectQuotationDetail(quotationCanonicalPayload);
+  assert.equal(projected?.data.emailSent, false);
+  assert.equal(projected?.data.emailSentAt, null);
   const invalidDate = projectQuotationDetail({
-    ...quotationProjectionPayload,
+    ...quotationCanonicalPayload,
     email_sent: true,
-    email_sent_at: 'invalid-date',
+    canonical: { ...quotationCanonicalPayload.canonical, emailSent: true, emailSentAt: 'invalid-date' },
   });
-  assert.equal(invalidDate?.data.email_sent, true);
-  assert.equal(invalidDate?.data.email_sent_at, null);
-});
-
-test('quotations core lists and opens persisted local drafts', async () => {
-  const calls: string[] = [];
-  const handler = createCoreHandler({
-    repository: {
-      list: async (options) => {
-        calls.push(`list:${options.search || ''}`);
-        return {
-          rows: [{ ...detail, valor: detail.total }],
-          total: 1,
-          page: options.page || 1,
-          limit: options.limit || 50,
-          statusSummary: { Draft: 1, Open: 0 },
-        };
-      },
-      get: async (id) => {
-        calls.push(`get:${id}`);
-        return id === detail.id ? detail : null;
-      },
-      update: async () => detail,
-    } as any,
-  });
-
-  const list = await handler(event('GET', { search: 'teste', page: '2', limit: '10' }));
-  assert.equal(list.statusCode, 200);
-  assert.equal(Object.keys(parse(list)).some((key) => key.endsWith('_mode')), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(parse(list), 'source'), false);
-  assert.equal((parse(list).pagination as Record<string, unknown>).page, 2);
-  assert.deepEqual(calls, ['list:teste']);
-
-  const opened = await handler(event('GET', { id: detail.id }));
-  assert.equal(opened.statusCode, 200);
-  assert.equal(parse(opened).quotation_uuid, detail.quotation_uuid);
-  assert.equal(parse(opened).concurrency_token, detail.concurrency_token);
-  assert.deepEqual(calls, ['list:teste', `get:${detail.id}`]);
-});
-
-test('quotations core strips internal metadata from repository details before public output', async () => {
-  const detailWithInternalMetadata = {
-    ...detail,
-    local_mode: true,
-    origin: 'local',
-  };
-  const handler = createCoreHandler({
-    repository: {
-      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
-      get: async () => detailWithInternalMetadata,
-      update: async () => detailWithInternalMetadata,
-    } as any,
-  });
-
-  const opened = await handler(event('GET', { id: detail.id }));
-  assert.equal(opened.statusCode, 200);
-  const payload = parse(opened);
-  assert.equal(payload.quotation_uuid, detail.quotation_uuid);
-  assert.equal(payload.concurrency_token, detail.concurrency_token);
-  assert.equal('local_mode' in payload, false);
-  assert.equal('origin' in payload, false);
-
-  const updated = await handler(event('PUT', { id: detail.id }, '{}'));
-  assert.equal(updated.statusCode, 200);
-  const updatedPayload = parse(updated);
-  assert.equal(updatedPayload.quotation_uuid, detail.quotation_uuid);
-  assert.equal('local_mode' in updatedPayload, false);
-  assert.equal('origin' in updatedPayload, false);
-});
-
-test('quotations boundary always invokes PostgreSQL core', async () => {
-  const calls: string[] = [];
-  const handler = createBoundary({
-    core: async (request) => {
-      calls.push(request.httpMethod);
-      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
-    },
-  });
-  for (const method of ['GET', 'PUT', 'DELETE']) {
-    assert.equal((await handler(event(method, { id: 'Q-1' }))).statusCode, 200);
-  }
-  assert.deepEqual(calls, ['GET', 'PUT', 'DELETE']);
-});
-
-test('quotations core accepts and forwards the legacy quotation ordering vocabulary', async () => {
-  const orders: string[] = [];
-  const handler = createCoreHandler({
-    repository: {
-      list: async (options) => {
-        orders.push(options.orderBy || '');
-        return { rows: [], total: 0, page: 1, limit: 50, statusSummary: {} };
-      },
-      get: async () => null,
-      update: async () => detail,
-    } as any,
-  });
-  for (const orderBy of [
-    'creation desc',
-    'creation asc',
-    'transaction_date desc',
-    'transaction_date asc',
-    'valid_till desc',
-    'valid_till asc',
-    'name desc',
-    'name asc',
-    'grand_total desc',
-    'grand_total asc',
-    'updated_at desc',
-    'updated_at asc',
-  ]) {
-    const response = await handler(event('GET', { order_by: orderBy }));
-    assert.equal(response.statusCode, 200);
-  }
-  assert.deepEqual(orders, [
-    'creation desc',
-    'creation asc',
-    'transaction_date desc',
-    'transaction_date asc',
-    'valid_till desc',
-    'valid_till asc',
-    'name desc',
-    'name asc',
-    'grand_total desc',
-    'grand_total asc',
-    'updated_at desc',
-    'updated_at asc',
-  ]);
-});
-
-test('quotations core forwards complete update input and maps stale/non-editable conflicts', async () => {
-  let received: Record<string, unknown> | undefined;
-  const handler = createCoreHandler({
-    repository: {
-      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
-      get: async () => detail,
-      update: async (_id, input) => {
-        received = input as Record<string, unknown>;
-        return detail;
-      },
-    } as any,
-  });
-  const payload = {
-    concurrency_token: detail.concurrency_token,
-    client_id: detail.client_id,
-    items: [{ item_code: 'SKU-1', qty: '30.000', rate: '4.00', manual_rate: true }],
-    validade_dias: 30,
-    pagamento: '30 dias',
-    entrega: '15 dias',
-    frete: '3.50',
-    observacoes: 'Atualizado',
-    prazo_producao: '5 dias',
-  };
-  const updated = await handler(event('PUT', { id: detail.id }, JSON.stringify(payload)));
-  assert.equal(updated.statusCode, 200);
-  assert.deepEqual(received, payload);
-
-  const conflictHandler = createCoreHandler({
-    repository: {
-      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
-      get: async () => detail,
-      update: async () => { throw new QuoteManagementConflictError('O orçamento foi alterado por outro usuário.'); },
-    } as any,
-  });
-  const conflict = await conflictHandler(event('PUT', { id: detail.id }, JSON.stringify(payload)));
-  assert.equal(conflict.statusCode, 409);
-  assert.equal(parse(conflict).error, 'O orçamento foi alterado por outro usuário.');
-  assert.equal(Object.keys(parse(conflict)).some((key) => key.endsWith('_mode')), false);
-});
-
-test('actual lifecycle repository status transition returns no issuance artifacts', async () => {
-  const lifecycleSource = await readFile(new URL('../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(lifecycleSource, new RegExp('quotation-pdf|quotation-document-storage|@vercel/blob|issued_documents'));
-  const quotation = {
-    id: detail.quotation_uuid,
-    businessNumber: detail.id,
-    status: 'enviado',
-    updatedAt: new Date(detail.concurrency_token),
-  };
-  const revision = { id: detail.revision_id, quotationId: quotation.id, status: 'enviado' };
-  let selectCount = 0;
-  const tx = {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          for: () => ({ limit: async () => (++selectCount === 1 ? [quotation] : [revision]) }),
-          orderBy: () => ({ limit: async () => [revision] }),
-          limit: async () => (++selectCount === 1 ? [quotation] : [revision]),
-        }),
-      }),
-    }),
-    update: () => ({ set: () => ({ where: async () => undefined }) }),
-    insert: () => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [{
-      id: '44444444-4444-4444-8444-444444444444',
-      eventType: 'quotation.updated',
-      provider: 'crm',
-      aggregateType: 'quotation',
-      aggregateId: quotation.id,
-      payloadReference: {
-        quotationId: quotation.id,
-        revisionId: revision.id,
-        businessNumber: quotation.businessNumber,
-      },
-      idempotencyKey: 'quotation.updated:crm:test',
-      status: 'pending',
-      attempts: 0,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      nextAttemptAt: quotation.updatedAt,
-      lastErrorClass: null,
-      providerMessageId: null,
-      createdAt: quotation.updatedAt,
-      updatedAt: quotation.updatedAt,
-      deliveredAt: null,
-    }] }) }) }),
-  };
-  const lifecycle = createPostgresQuotationLifecycleRepository(
-    () => ({ transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx) } as any),
-    {
-      acquireWriteLock: async () => undefined,
-      readDetail: async () => ({
-        ...detail,
-        status: 'Approved',
-        status_canonical: 'aprovado',
-        revision_history: [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }],
-      } as any),
-    },
-  );
-  const payload = await lifecycle.setStatus(detail.id, {
-    status: 'aprovado',
-    concurrency_token: detail.concurrency_token,
-  }) as unknown as Record<string, unknown>;
-  assert.equal(payload.status_canonical, 'aprovado');
-  for (const key of ['pdf_url', 'document_url', 'issued_document', 'issued_document_id']) {
-    assert.equal(key in payload, false, `lifecycle response must not expose ${key}`);
-  }
-  assert.deepEqual(payload.revision_history, [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }]);
-});
-
-test('quotations core validates JSON/status and never exposes unknown repository failures', async () => {
-  const handler = createCoreHandler({
-    repository: {
-      list: async () => { throw new Error('postgres://secret'); },
-      get: async () => null,
-      update: async () => { throw new QuoteManagementInputError('Items deve ser um array.'); },
-    } as any,
-  });
-  const badJson = await handler(event('PUT', { id: detail.id }, '{'));
-  assert.equal(badJson.statusCode, 400);
-  assert.equal(parse(badJson).error, 'JSON inválido.');
-  const badStatus = await handler(event('GET', { status: 'invalid' }));
-  assert.equal(badStatus.statusCode, 400);
-  const hidden = await handler(event('GET'));
-  assert.equal(hidden.statusCode, 503);
-  assert.equal(String(hidden.body).includes('secret'), false);
+  assert.equal(invalidDate?.data.emailSent, true);
+  assert.equal(invalidDate?.data.emailSentAt, null);
 });

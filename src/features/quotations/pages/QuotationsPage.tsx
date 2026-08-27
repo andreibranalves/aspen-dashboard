@@ -286,13 +286,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   }, [data, selectedIds, page, search, status, limit, fetchData, toast]);
 
   const totalsQty = data.length;
-  const totalsSum = data.reduce((s, r) => s + (Number(r.valor) || 0), 0);
+  const totalsSum = data.reduce((s, r) => s + (Number(r.total) || 0), 0);
   const selectedRows = data.filter((row) => selectedIds.includes(row.id));
   const selectedCount = selectedRows.length;
-  const selectedTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+  const selectedTotal = selectedRows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
   const allSelected = data.length > 0 && selectedCount === data.length;
   const someSelected = selectedCount > 0 && !allSelected;
-  const bulkDeleteTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+  const bulkDeleteTotal = selectedRows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
   const hasActiveFilters = Boolean(search.trim()) || Boolean(status);
   const clearFilters = useCallback(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -339,10 +339,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         >
           <Trash2 />
         </Button>
-        {row.revision_id && (
+        {row.revisionId && (
           <Button variant="ghost" size="icon" asChild>
             <a
-              href={buildQuotationPreviewUrl(row.revision_id)}
+              href={buildQuotationPreviewUrl(row.revisionId)}
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`Abrir PDF do orçamento ${row.id}`}
@@ -370,22 +370,22 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     <div
       className="flex items-center gap-1.5"
       aria-label={
-        row.email_sent
-          ? `E-mail enviado${row.email_sent_at ? ` em ${formatDate(row.email_sent_at)}` : ''}`
+        row.emailSent
+          ? `E-mail enviado${row.emailSentAt ? ` em ${formatDate(row.emailSentAt)}` : ''}`
           : 'E-mail ainda não enviado'
       }
       title={
-        row.email_sent
-          ? `Último e-mail enviado em ${formatDate(row.email_sent_at)}`
+        row.emailSent
+          ? `Último e-mail enviado em ${formatDate(row.emailSentAt)}`
           : 'Nenhum e-mail enviado para este orçamento ainda'
       }
     >
-      {row.email_sent ? (
+      {row.emailSent ? (
         <>
           <MailCheck size={14} className="shrink-0 text-success" aria-hidden="true" />
-          {row.email_sent_at && (
+          {row.emailSentAt && (
             <span className="whitespace-nowrap text-[11px] text-fg-muted">
-              {formatDate(row.email_sent_at)}
+              {formatDate(row.emailSentAt)}
             </span>
           )}
         </>
@@ -400,8 +400,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   const statusBadge = (row: QuotationRow) => (
     <StatusBadge
-      status={quotationStatusBadgeKey(row.status_canonical)}
-      label={quotationStatusLabel(row.status_canonical)}
+      status={quotationStatusBadgeKey(row.status)}
+      label={quotationStatusLabel(row.status)}
     />
   );
 
@@ -573,7 +573,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     {formatDate(row.data) || '—'}
                   </TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
-                    {formatBRL(row.valor)}
+                    {formatBRL(row.total)}
                   </TableCell>
                   <TableCell className="whitespace-nowrap py-2">
                     <EmailMarker row={row} />
@@ -631,7 +631,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <div>
                   <p className="text-xs text-fg-muted">Data · Total</p>
                   <p className="text-sm text-fg-muted">{formatDate(row.data) || '—'}</p>
-                  <p className="font-mono font-semibold">{formatBRL(row.valor)}</p>
+                  <p className="font-mono font-semibold">{formatBRL(row.total)}</p>
                 </div>
                 <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                   <Button
@@ -643,10 +643,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   >
                     <Pencil />
                   </Button>
-                  {row.revision_id && (
+                  {row.revisionId && (
                     <Button variant="ghost" size="icon" asChild>
                       <a
-                        href={buildQuotationPreviewUrl(row.revision_id)}
+                        href={buildQuotationPreviewUrl(row.revisionId)}
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={`Abrir PDF do orçamento ${row.id}`}

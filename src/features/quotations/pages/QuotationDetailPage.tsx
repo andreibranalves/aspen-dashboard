@@ -146,10 +146,10 @@ function parseSections(value: unknown): QuotationSectionsSnapshot | null {
 }
 
 function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
-  const existing = parseSections(data.secoes) || parseSections(data.sections_snapshot);
+  const existing = parseSections(data.secoes);
   if (!existing) throw new Error('Resposta inválida: seções do orçamento ausentes.');
   const normalized = cloneSections(existing);
-  const legacyDeadline = data.prazo_producao || '';
+  const legacyDeadline = data.prazoProducao || '';
   const currentValue = normalized.prazo_producao.current.value;
   const baseValue =
     typeof normalized.prazo_producao.base.value === 'string'
@@ -195,7 +195,7 @@ function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
 
 function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrencyTokenRef }: CoreQuotationDetailProps) {
   const [data, setData] = useState<QuotationData>(initialData);
-  const draftEditable = data.status_canonical === 'rascunho';
+  const draftEditable = data.status === 'rascunho';
   const [editing, setEditing] = useState(false);
   const [confirmDiscardEdits, setConfirmDiscardEdits] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
@@ -231,20 +231,20 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setMessageTone(tone);
   }, []);
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
-  const [clientId, setClientId] = useState(data.client_id || '');
+  const [clientId, setClientId] = useState(data.clienteId || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
   const [clientEmail, setClientEmail] = useState(data.email || '');
   const [clientTelefone, setClientTelefone] = useState(data.telefone || '');
   const [clientResults, setClientResults] = useState<CoreClientResult[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
-  const [validadeDias, setValidadeDias] = useState(String(data.validade_dias ?? ''));
+  const [validadeDias, setValidadeDias] = useState(String(data.validadeDias ?? ''));
   const [entrega, setEntrega] = useState(data.entrega || '');
   const [frete, setFrete] = useState(String(data.frete));
   const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
-  const [selectedVersionId, setSelectedVersionId] = useState(data.template_version_id || '');
+  const [selectedVersionId, setSelectedVersionId] = useState(data.templateVersionId || '');
   const [selectedTemplate, setSelectedTemplate] = useState(
-    data.template_key || 'padrao'
+    data.templateKey || 'padrao'
   );
   const clientSnapshot = useMemo(
     () => ({
@@ -266,8 +266,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     pricingVersionsRef.current[key] = version;
     return version;
   }, []);
-  const deliveryIdentity = data.status_canonical !== 'rascunho' && data.revision_id && deliveryFlowId
-    ? { revisionId: data.revision_id, flowId: deliveryFlowId }
+  const deliveryIdentity = data.status !== 'rascunho' && data.revisionId && deliveryFlowId
+    ? { revisionId: data.revisionId, flowId: deliveryFlowId }
     : null;
   const {
     deliveriesByKey,
@@ -292,16 +292,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   useEffect(() => {
     setData(initialData);
     setItems(asCoreItems(initialData.items));
-    setClientId(initialData.client_id || '');
+    setClientId(initialData.clienteId || '');
     setClientSearch(initialData.cliente || '');
     setClientEmail(initialData.email || '');
     setClientTelefone(initialData.telefone || '');
-    setValidadeDias(String(initialData.validade_dias ?? ''));
+    setValidadeDias(String(initialData.validadeDias ?? ''));
     setEntrega(initialData.entrega || '');
     setFrete(String(initialData.frete));
     setSections(normalizeSections(initialData));
-    setSelectedTemplate(initialData.template_key || 'padrao');
-    setSelectedVersionId(initialData.template_version_id || '');
+    setSelectedTemplate(initialData.templateKey || 'padrao');
+    setSelectedVersionId(initialData.templateVersionId || '');
     setClientResults([]);
     setClientSearching(false);
     if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -317,14 +317,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
   useEffect(() => {
     setConfirmedEmailAcceptedKey((current) =>
-      current === `${data.id}:${data.revision_id}` ? current : ''
+      current === `${data.id}:${data.revisionId}` ? current : ''
     );
     setEmailDialogOpen(false);
     setEmailError('');
     setEmailSuccess('');
     setEmailAttemptId('');
     setEmailAttemptRecipient('');
-  }, [data.id, data.revision_id]);
+  }, [data.id, data.revisionId]);
 
   useEffect(() => {
     let active = true;
@@ -369,21 +369,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           available.find((template) => template.is_default && !template.archived) ||
           available.find((template) => !template.archived) ||
           available[0];
-        const persisted = initialData.template_key || '';
+        const persisted = initialData.templateKey || '';
         const persistedTemplate = available.find((template) => template.key === persisted);
         setTemplates(available);
         if (persistedTemplate?.archived) {
           setSelectedTemplate(persisted);
           setSelectedVersionId(
-            initialData.template_version_id || persistedTemplate.current_version_id || ''
+            initialData.templateVersionId || persistedTemplate.current_version_id || ''
           );
-        } else if (initialData.status_canonical === 'rascunho' && fallback) {
+        } else if (initialData.status === 'rascunho' && fallback) {
           setSelectedTemplate(fallback.key);
           setSelectedVersionId(fallback.current_version_id || '');
         } else if (persistedTemplate) {
           setSelectedTemplate(persisted);
           setSelectedVersionId(
-            initialData.template_version_id || persistedTemplate.current_version_id || ''
+            initialData.templateVersionId || persistedTemplate.current_version_id || ''
           );
         } else if (fallback) {
           setSelectedTemplate(fallback.key);
@@ -397,7 +397,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     return () => {
       active = false;
     };
-  }, [initialData.id, initialData.status_canonical, initialData.template_key]);
+  }, [initialData.id, initialData.status, initialData.templateKey]);
 
   const searchClients = useCallback(async (term: string) => {
     if (term.trim().length < 2) {
@@ -599,7 +599,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const resetEditor = useCallback(
     (authoritative: QuotationData = data) => {
       setItems(asCoreItems(authoritative.items));
-      setClientId(authoritative.client_id || '');
+      setClientId(authoritative.clienteId || '');
       setClientSearch(authoritative.cliente || '');
       setClientEmail(authoritative.email || '');
       setClientTelefone(authoritative.telefone || '');
@@ -611,12 +611,12 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setProductResults({});
       Object.values(productTimers.current).forEach((timer) => clearTimeout(timer));
       productTimers.current = {};
-      setValidadeDias(String(authoritative.validade_dias ?? ''));
+      setValidadeDias(String(authoritative.validadeDias ?? ''));
       setEntrega(authoritative.entrega || '');
       setFrete(String(authoritative.frete));
       setSections(normalizeSections(authoritative));
-      setSelectedTemplate(authoritative.template_key || 'padrao');
-      setSelectedVersionId(authoritative.template_version_id || '');
+      setSelectedTemplate(authoritative.templateKey || 'padrao');
+      setSelectedVersionId(authoritative.templateVersionId || '');
       showMessage('');
       setConflict('');
       setEditing(false);
@@ -628,13 +628,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const isDirty = useMemo(() => {
     if (!editing) return false;
     if (JSON.stringify(comparableItems(items)) !== JSON.stringify(comparableItems(asCoreItems(data.items)))) return true;
-    if (clientId !== (data.client_id || '')) return true;
-    if (validadeDias !== String(data.validade_dias ?? '')) return true;
+    if (clientId !== (data.clienteId || '')) return true;
+    if (validadeDias !== String(data.validadeDias ?? '')) return true;
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
-    if (selectedTemplate !== (data.template_key || 'padrao')) return true;
-    if (selectedVersionId !== (data.template_version_id || '')) return true;
+    if (selectedTemplate !== (data.templateKey || 'padrao')) return true;
+    if (selectedVersionId !== (data.templateVersionId || '')) return true;
     return false;
   }, [editing, items, data, clientId, validadeDias, entrega, frete, sections, selectedTemplate, selectedVersionId]);
 
@@ -727,7 +727,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
   const handleDelete = useCallback(async () => {
     setConfirmDeleteOpen(false);
-    if (data.status_canonical !== 'rascunho') {
+    if (data.status !== 'rascunho') {
       toast('Somente rascunhos podem ser excluídos.', 'info');
       return;
     }
@@ -738,7 +738,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch {
       showMessage('Não foi possível excluir o orçamento. Tente novamente.', 'error');
     }
-  }, [data.id, data.status_canonical, navigate, showMessage, toast]);
+  }, [data.id, data.status, navigate, showMessage, toast]);
 
   const displayItems = items;
   const editingSubtotal = items.reduce(
@@ -792,14 +792,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       form.remove();
       return;
     }
-    const params = new URLSearchParams({ id: data.revision_id || data.id });
+    const params = new URLSearchParams({ id: data.revisionId || data.id });
     if (draftEditable && selectedVersionId) params.set('template_version_id', selectedVersionId);
     window.open(
       `/api/quotation-preview?${params.toString()}`,
       '_blank',
       'noopener,noreferrer'
     );
-  }, [clientSnapshot, data.id, data.revision_id, draftEditable, entrega, frete, isDirty, items, sections, selectedTemplate, selectedVersionId, validadeDias]);
+  }, [clientSnapshot, data.id, data.revisionId, draftEditable, entrega, frete, isDirty, items, sections, selectedTemplate, selectedVersionId, validadeDias]);
   const runIssue = useCallback(async () => {
     setConfirmIssueOpen(false);
     setIssuing(true);
@@ -811,7 +811,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         setConflict('Token de concorrência ausente. Recarregue o orçamento antes de emitir.');
         return;
       }
-      const revisionId = data.revision_id || '';
+      const revisionId = data.revisionId || '';
       if (!revisionId) throw new Error('Recarregue o orçamento antes de emitir.');
       // Emission is by reference: the server loads commercial content, items,
       // client and template from the persisted revision. Unsaved editor state
@@ -835,7 +835,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } finally {
       setIssuing(false);
     }
-  }, [concurrencyTokenRef, data.revision_id, onReload, showMessage, toast]);
+  }, [concurrencyTokenRef, data.revisionId, onReload, showMessage, toast]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido', lossReason?: string) => {
@@ -1005,29 +1005,29 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [closeLossReasonDialog, lossReasonOpen]);
 
   const openIssuedDocument = useCallback(() => {
-    const params = new URLSearchParams({ id: data.revision_id || data.id || '', format: 'pdf' });
+    const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
-  }, [data.id, data.revision_id]);
+  }, [data.id, data.revisionId]);
   const sendIssuedQuotation = useCallback(async () => {
     if (
-      !data.revision_id ||
+      !data.revisionId ||
       !deliveryFlowId ||
       deliveryPending ||
       Boolean(delivery) ||
-      Boolean(data.expirada || data.is_expired || data.derived_expired)
+      Boolean(data.expired)
     ) return;
     try {
       await enqueue({
-        quotationId: data.quotation_id || data.id,
-        revisionId: data.revision_id,
+        quotationId: data.businessNumber,
+        revisionId: data.revisionId,
         flowId: deliveryFlowId,
       });
     } catch {
       console.error('[QuotationDetailPage] failed to enqueue WhatsApp delivery');
     }
-  }, [data.derived_expired, data.expirada, data.id, data.is_expired, data.quotation_id, data.revision_id, delivery, deliveryFlowId, deliveryPending, enqueue]);
+  }, [data.expired, data.expired, data.id, data.expired, data.businessNumber, data.revisionId, delivery, deliveryFlowId, deliveryPending, enqueue]);
   const sendQuotationEmail = useCallback(async (recipient: string) => {
-    if (!data.revision_id) return;
+    if (!data.revisionId) return;
     const recipientValue = recipient.trim();
     const sameRecipient =
       emailAttemptId &&
@@ -1041,11 +1041,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setEmailSuccess('');
     try {
       await apiPost('/send-quotation-email', {
-        revision_id: data.revision_id,
+        revision_id: data.revisionId,
         recipient: recipientValue,
         attempt_id: attemptId,
       });
-      setConfirmedEmailAcceptedKey(`${data.id}:${data.revision_id}`);
+      setConfirmedEmailAcceptedKey(`${data.id}:${data.revisionId}`);
       setEmailSuccess('E-mail aceito para envio.');
       setEmailDialogOpen(false);
       setEmailAttemptId('');
@@ -1063,13 +1063,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } finally {
       setEmailSending(false);
     }
-  }, [data.id, data.revision_id, emailAttemptId, emailAttemptRecipient, onReload]);
+  }, [data.id, data.revisionId, emailAttemptId, emailAttemptRecipient, onReload]);
   const cancelEmailDialog = useCallback(() => {
     setEmailError('');
     setEmailDialogOpen(false);
   }, []);
 
-  const emailSent = data.email_sent || confirmedEmailAcceptedKey === `${data.id}:${data.revision_id}`;
+  const emailSent = data.emailSent || confirmedEmailAcceptedKey === `${data.id}:${data.revisionId}`;
 
   return (
     <div className="mx-auto w-full max-w-[1120px] space-y-4">
@@ -1079,8 +1079,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 title={data.id} className="truncate font-mono text-xl font-semibold tracking-[-0.2px]">{data.id}</h1>
               <StatusBadge {...statusBadgeProps(data.status)} />
-              {data.revision_number && (
-                <span className="text-xs text-fg-muted">Revisão {data.revision_number}</span>
+              {data.revision && (
+                <span className="text-xs text-fg-muted">Revisão {data.revision}</span>
               )}
             </div>
             <p className="mt-1 break-words text-sm text-fg-muted">
@@ -1167,12 +1167,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           <div className="min-w-0">
             <span className="text-xs font-medium text-fg-muted">Validade</span>
             <p className="mt-1 break-words">
-              {formatDate(data.validade) || '—'} ({data.validade_dias ?? '—'} dias)
+              {formatDate(data.validade) || '—'} ({data.validadeDias ?? '—'} dias)
             </p>
-            {(data.derived_expired ||
-              data.expiration_derived ||
-              data.is_expired ||
-              data.expirada) && (
+            {(data.expired) && (
               <span className="mt-1 block text-xs text-warning">Validade expirada (indicador derivado)</span>
             )}
           </div>
@@ -1203,7 +1200,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setValidadeDias(event.target.value)}
               />
             ) : (
-              <p className="mt-1 tabular-nums">{data.validade_dias ?? '—'}</p>
+              <p className="mt-1 tabular-nums">{data.validadeDias ?? '—'}</p>
             )}
           </label>
           <label className="min-w-0 text-sm">
@@ -1279,7 +1276,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                     className="text-xs text-fg-muted pb-2"
                     title={selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || ''}
                   >
-                    {selectedTemplateMetadata.archived ? 'Arquivado · ' : ''}Versão {selectedTemplateMetadata.current_version || data.template_version || '—'} · Hash: {(selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || '').slice(0, 12)}…
+                    {selectedTemplateMetadata.archived ? 'Arquivado · ' : ''}Versão {selectedTemplateMetadata.current_version || data.templateVersion || '—'} · Hash: {(selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || '').slice(0, 12)}…
                   </span>
                 )}
                 <Button type="button" variant="outline" size="sm" onClick={openPreview}>
@@ -1294,7 +1291,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             )}
           </section>
         )}
-        {(data.status_canonical === 'emitido' || data.status_canonical === 'enviado') && !editing && (
+        {data.status === 'emitido' && !editing && (
           <div
             className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6"
             role="group"
@@ -1535,7 +1532,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               </Button>
             </>
           )}
-          {data.status_canonical !== 'rascunho' && (
+          {data.status !== 'rascunho' && (
             <>
               <Button variant="outline" size="sm" onClick={openIssuedDocument}>
                 <FileText size={14} /> Visualizar
@@ -1592,11 +1589,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           ? 'Não foi possível verificar o envio. Tente novamente mais tarde.'
                           : !deliveryFlowId
                             ? 'Selecione um fluxo de WhatsApp para enviar.'
-                            : (data.expirada || data.is_expired || data.derived_expired)
+                            : (data.expired)
                             ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
                             : undefined
                   }
-                  disabled={deliveryPending || Boolean(deliveryError) || !deliveryFlowId || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
+                  disabled={deliveryPending || Boolean(deliveryError) || !deliveryFlowId || Boolean(delivery) || Boolean(data.expired)}
                   onClick={sendIssuedQuotation}
                 >
                   <Phone size={14} /> Enviar WhatsApp
@@ -1604,7 +1601,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 {delivery && !deliveryPending && (
                   <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
                 )}
-                {(data.expirada || data.is_expired || data.derived_expired) && (
+                {(data.expired) && (
                   <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
                 )}
               </div>
@@ -1637,7 +1634,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </div>
         </section>
 
-        {(data.revision_history || []).length > 0 && (
+        {(data.revisionHistory || []).length > 0 && (
           <section className="space-y-3 border-t border-line px-4 py-4 sm:px-6" aria-label="Histórico de revisões">
             <h2 className="text-base font-semibold">Histórico de revisões</h2>
             <Table className="min-w-[860px] text-sm">
@@ -1655,19 +1652,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(data.revision_history || []).map((entry) => {
+                  {(data.revisionHistory || []).map((entry) => {
                     const expired =
-                      entry.derived_expired ||
-                      entry.expiration_derived ||
-                      entry.is_expired ||
-                      entry.expirada;
-                    const eligible = entry.status_canonical !== 'rascunho' && !draftEditable;
+                      entry.expired;
+                    const eligible = entry.status !== 'rascunho' && !draftEditable;
                     return (
-                      <TableRow key={entry.revision_id || entry.id}>
-                        <TableCell className="whitespace-nowrap py-2 font-medium">R{entry.revision_number}</TableCell>
-                        <TableCell className="whitespace-nowrap py-2">{formatDate(entry.created_at || entry.createdAt) || '—'}</TableCell>
+                      <TableRow key={entry.revisionId}>
+                        <TableCell className="whitespace-nowrap py-2 font-medium">R{entry.revision}</TableCell>
+                        <TableCell className="whitespace-nowrap py-2">{formatDate(entry.createdAt) || '—'}</TableCell>
                         <TableCell className="whitespace-nowrap py-2">
-                          {formatDate(entry.validity_date || entry.validade) || '—'}
+                          {formatDate(entry.validade) || '—'}
                           {expired && <span className="block text-xs text-warning">Expirada</span>}
                         </TableCell>
                         <TableCell>
@@ -1675,19 +1669,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                             {...statusBadgeProps(entry.status)}
                           />
                         </TableCell>
-                        <TableCell className="max-w-[180px] break-words py-2">{entry.template_key || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap py-2">{entry.template_version ?? '—'}</TableCell>
+                        <TableCell className="max-w-[180px] break-words py-2">{entry.templateKey || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap py-2">{entry.templateVersion ?? '—'}</TableCell>
                         <TableCell className="whitespace-nowrap py-2 text-right font-mono">
-                          {formatBRL(entry.total || entry.valor)}
+                          {formatBRL(entry.total)}
                         </TableCell>
                         <TableCell>
-                          {entry.status_canonical !== 'rascunho' ? (
+                          {entry.status !== 'rascunho' ? (
                             <button
                               type="button"
                               className="text-primary hover:underline text-xs"
                               onClick={() => {
                                 window.open(
-                                  `/api/quotation-preview?id=${encodeURIComponent(entry.revision_id)}&format=pdf`,
+                                  `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
                                   '_blank',
                                   'noopener,noreferrer'
                                 );
@@ -1705,7 +1699,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                               variant="outline"
                               size="sm"
                               disabled={lifecycleAction !== null}
-                              onClick={() => createRevision(entry.revision_id)}
+                              onClick={() => createRevision(entry.revisionId)}
                             >
                               Nova revisão
                             </Button>
