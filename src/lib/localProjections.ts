@@ -1,5 +1,11 @@
 import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import type { Product } from '@/types/domain';
+import type {
+  CanonicalQuotationDetail,
+  CanonicalQuotationListRow,
+  CanonicalQuotationRevisionEntry,
+  QuotationStatus,
+} from '@/types/quotation-contract';
 
 export interface ProjectedAddress {
   endereco?: string;
@@ -69,16 +75,9 @@ export interface ProjectedQuotationItem {
   manual_rate: boolean;
 }
 
-export interface ProjectedQuotationListRow {
-  id: string;
-  data: string;
-  cliente: string;
-  valor: number | string;
-  status: string;
-  status_canonical: 'rascunho' | 'emitido' | 'aprovado' | 'perdido';
-  revision_id: string;
-  email_sent: boolean;
-  email_sent_at: string | null;
+export interface ProjectedQuotationListRow extends CanonicalQuotationListRow {
+  /** Timestamp do último e-mail, ainda lido do payload raiz até virar contrato canônico (#126). */
+  emailSentAt?: string | null;
 }
 
 export interface ProjectedSalesOrderListRow {
@@ -126,70 +125,35 @@ export interface ProjectedDashboardData {
   stale_quotations: Array<{ id: string; customer: string; age: number; value: number; status: string }>;
 }
 
-export interface ProjectedQuotationRevisionHistoryEntry {
-  id: string;
-  revision_id: string;
-  revision: number;
-  revision_number: number;
-  created_at?: string;
-  createdAt?: string;
-  validade_dias?: number;
-  validity_date?: string;
+/** Entrada do histórico com extras de template ainda transportados fora do contrato canônico (#124). */
+export interface ProjectedQuotationRevisionHistoryEntry extends CanonicalQuotationRevisionEntry {
+  templateKey?: string | null;
+  templateVersion?: number | null;
+  /** Data de validade da revisão; ainda lida do payload raiz até virar canônica (#126). */
   validade?: string;
-  subtotal?: number | string;
-  total?: number | string;
-  valor?: number | string;
-  status: string;
-  status_canonical?: string;
-  derived_expired: boolean;
-  expiration_derived: boolean;
-  is_expired: boolean;
-  expirada: boolean;
-  template_key?: string | null;
-  template_version?: number | null;
-  template_hash?: string | null;
 }
 
-export interface ProjectedQuotationData {
+/** Cliente embutido para pré-preencher e-mail/telefone na edição. */
+interface EmbeddedClientSnapshot {
   id: string;
-  quotation_id?: string;
-  quotation_uuid?: string;
-  status: string;
-  cliente?: string;
+  nome: string;
+  email?: string | null;
+  telefone?: string | null;
+}
+
+export interface ProjectedQuotationData extends
+    Omit<CanonicalQuotationDetail, 'items' | 'revisionHistory'> {
+  clienteSnapshot?: EmbeddedClientSnapshot;
+  revisionHistory: ProjectedQuotationRevisionHistoryEntry[];
+  /** Extras de template ainda fora do contrato canônico (#126). */
+  templateVersionId?: string | null;
+  templateVersion?: number | null;
+  /** Campos derivados de e-mail/telefone para conveniência da página de detalhe. */
   email?: string;
   telefone?: string;
-  email_sent: boolean;
-  email_sent_at: string | null;
-  data?: string;
-  validade?: string;
-  validity_date?: string;
-  items?: ProjectedQuotationItem[];
-  status_canonical?: string;
-  revision_id?: string;
-  revision?: number;
-  revision_number?: number;
-  client_id?: string;
-  validade_dias?: number;
-  pagamento?: string;
-  entrega?: string;
-  frete_padrao?: number | string;
-  frete?: number | string;
-  observacoes?: string;
-  prazo_producao?: string;
-  template_key?: string;
-  template_hash?: string;
-  template_version_id?: string | null;
-  template_version?: number | null;
+  /** Bridge de itens para o editor — permanece no shape legado (#125 batch 2). */
+  items: ProjectedQuotationItem[];
   secoes?: QuotationSectionsSnapshot | null;
-  sections_snapshot?: QuotationSectionsSnapshot | null;
-  subtotal?: number | string;
-  total?: number | string;
-  valor?: number | string;
-  revision_history?: ProjectedQuotationRevisionHistoryEntry[];
-  derived_expired: boolean;
-  expiration_derived: boolean;
-  is_expired: boolean;
-  expirada: boolean;
 }
 
 export interface ProjectedQuotationDetail {
@@ -538,76 +502,54 @@ export function projectQuotationItem(value: unknown): ProjectedQuotationItem | n
   return result;
 }
 
-function projectRevisionHistory(value: unknown): ProjectedQuotationRevisionHistoryEntry[] | null {
-  if (!Array.isArray(value)) return null;
+function parseTemplateExtras(source: RecordValue | null): Partial<Pick<ProjectedQuotationRevisionHistoryEntry, 'templateKey' | 'templateVersion' | 'validade'>> {
+  if (!source) return {};
+  const result: Partial<Pick<ProjectedQuotationRevisionHistoryEntry, 'templateKey' | 'templateVersion' | 'validade'>> = {};
+  const templateKey = source.template_key === null ? null : readIdentifier(source.template_key);
+  if (templateKey !== undefined) result.templateKey = templateKey;
+  if (Object.prototype.hasOwnProperty.call(source, 'template_version')) {
+    const version = source.template_version === null ? null : readPositiveVersion(source.template_version);
+    if (version !== undefined) result.templateVersion = version;
+  }
+  const validade = readDate(source.validity_date ?? source.validade);
+  if (validade !== undefined) result.validade = validade;
+  return result;
+}
+
+function projectRevisionHistory(
+  canonicalEntries: unknown,
+  legacyExtras: unknown,
+): ProjectedQuotationRevisionHistoryEntry[] | null {
+  if (!Array.isArray(canonicalEntries)) return null;
+  const extrasSource = Array.isArray(legacyExtras) ? legacyExtras : [];
   const entries: ProjectedQuotationRevisionHistoryEntry[] = [];
-  for (const item of value) {
-    const source = asRecord(item);
-    if (!source) return null;
-    const id = readIdentifier(source.id);
-    const revisionId = readIdentifier(source.revision_id);
-    const revision = readPositiveVersion(source.revision);
-    const revisionNumber = readPositiveVersion(source.revision_number);
-    const createdAt = readDate(source.created_at) || readDate(source.createdAt);
-    const validityDate = readDate(source.validity_date) || readDate(source.validade);
-    const validityDays = readPositiveVersion(source.validade_dias);
-    const subtotal = readMoney(source.subtotal);
-    const total = readMoney(source.total);
-    const valueTotal = readMoney(source.valor);
-    const status = readString(source.status);
-    const rawStatusCanonical = readString(source.status_canonical);
-    const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
-    const hasTemplateKey = Object.prototype.hasOwnProperty.call(source, 'template_key');
-    const hasTemplateVersion = Object.prototype.hasOwnProperty.call(source, 'template_version');
-    const hasTemplateHash = Object.prototype.hasOwnProperty.call(source, 'template_hash');
-    const templateKey = hasTemplateKey
-      ? source.template_key === null ? null : readIdentifier(source.template_key)
-      : undefined;
-    const templateVersion = hasTemplateVersion
-      ? source.template_version === null ? null : readPositiveVersion(source.template_version)
-      : undefined;
-    const templateHash = hasTemplateHash
-      ? source.template_hash === null ? null : readString(source.template_hash)
-      : undefined;
-    const derivedExpired = readBoolean(source.derived_expired);
-    const expirationDerived = readBoolean(source.expiration_derived);
-    const isExpired = readBoolean(source.is_expired);
-    const expired = readBoolean(source.expirada);
+  for (let index = 0; index < canonicalEntries.length; index += 1) {
+    const entry = asRecord(canonicalEntries[index]);
+    if (!entry) return null;
+    const revisionId = readIdentifier(entry.revisionId);
+    const revision = readPositiveVersion(entry.revision);
+    const createdAt = readDate(entry.createdAt);
+    const validadeDias = readPositiveVersion(entry.validadeDias);
+    const subtotal = readMoney(entry.subtotal);
+    const total = readMoney(entry.total);
+    const statusRaw = readString(entry.status) as QuotationStatus | undefined;
+    const expired = readBoolean(entry.expired);
     if (
-      !id || !revisionId || !revision || !revisionNumber || revision !== revisionNumber ||
-      !createdAt || !validityDate || validityDays === undefined || validityDays < 1 || validityDays > 365 ||
-      subtotal === undefined || total === undefined || valueTotal === undefined ||
-      !status || !QUOTATION_STATUS_LABELS.has(status) || !statusCanonical || !QUOTATION_STATUSES.has(statusCanonical) ||
-      derivedExpired === undefined || expirationDerived === undefined || isExpired === undefined || expired === undefined ||
-      (hasTemplateKey && templateKey === undefined) ||
-      (hasTemplateVersion && templateVersion === undefined) ||
-      (hasTemplateHash && templateHash === undefined) ||
-      (templateHash !== undefined && templateHash !== null && !/^[0-9a-f]{64}$/i.test(templateHash))
+      !revisionId || !revision || !createdAt || validadeDias === undefined ||
+      subtotal === undefined || total === undefined || expired === undefined ||
+      !statusRaw || !QUOTATION_STATUSES.has(statusRaw)
     ) return null;
-    const result: ProjectedQuotationRevisionHistoryEntry = {
-      id,
-      revision_id: revisionId,
+    entries.push({
+      ...parseTemplateExtras(asRecord(extrasSource[index])),
+      revisionId,
       revision,
-      revision_number: revisionNumber,
-      created_at: createdAt,
-      createdAt: createdAt,
-      validade_dias: validityDays,
-      validity_date: validityDate,
-      validade: validityDate,
-      subtotal,
-      total,
-      valor: valueTotal,
-      status,
-      status_canonical: statusCanonical,
-      derived_expired: derivedExpired,
-      expiration_derived: expirationDerived,
-      is_expired: isExpired,
-      expirada: expired,
-    };
-    if (hasTemplateKey) result.template_key = templateKey!;
-    if (hasTemplateVersion) result.template_version = templateVersion!;
-    if (hasTemplateHash) result.template_hash = templateHash!;
-    entries.push(result);
+      createdAt,
+      validadeDias,
+      subtotal: String(subtotal),
+      total: String(total),
+      status: statusRaw,
+      expired,
+    });
   }
   return entries;
 }
@@ -681,28 +623,52 @@ export function projectQuotationTemplate(value: unknown): ProjectedQuotationTemp
   return result;
 }
 
+function parseEmbeddedClientSnapshot(source: RecordValue): EmbeddedClientSnapshot | null {
+  const row = projectClientRow(source);
+  if (!row || !row.nome) return null;
+  return {
+    id: row.id,
+    nome: row.nome,
+    ...(row.email === undefined ? {} : { email: row.email }),
+    ...(row.telefone === undefined ? {} : { telefone: row.telefone }),
+  };
+}
+
+/** Data/hora ISO de atualização; aceita datetime completo. */
+function readUpdatedAt(value: unknown): string | undefined {
+  return readDate(value);
+}
+
 export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail | null {
   const source = asRecord(value);
   if (!source) return null;
-  const id = readIdentifier(source.id);
-  const status = readString(source.status);
-  const rawStatusCanonical = readString(source.status_canonical);
-  const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
-  const cliente = readIdentifier(source.cliente);
-  const dataDate = readDate(source.data);
-  const validade = readDate(source.validade) || readDate(source.validity_date);
-  const validityDays = readPositiveVersion(source.validade_dias);
-  const revision = readPositiveVersion(source.revision);
-  const revisionNumber = readPositiveVersion(source.revision_number);
-  const revisionId = readIdentifier(source.revision_id);
-  const quotationId = readIdentifier(source.quotation_id);
-  const quotationUuid = readIdentifier(source.quotation_uuid);
-  const clientId = readIdentifier(source.client_id);
-  const clientSnapshot = projectClientRow(source.cliente_snapshot);
-  const emailSent = readBoolean(source.email_sent) ?? false;
-  const emailSentAt = source.email_sent_at === null || source.email_sent_at === undefined
+  const canonical = asRecord(source.canonical);
+  if (!canonical) return null;
+  const id = readIdentifier(canonical.id);
+  const businessNumber = readIdentifier(canonical.businessNumber);
+  const name = readIdentifier(canonical.name);
+  const revisionId = readIdentifier(canonical.revisionId);
+  const revision = readPositiveVersion(canonical.revision);
+  const statusRaw = readString(canonical.status) as QuotationStatus | undefined;
+  const clienteId = readIdentifier(canonical.clienteId);
+  const cliente = readIdentifier(canonical.cliente);
+  const dataDate = readDate(canonical.data);
+  const validade = readDate(canonical.validade);
+  const validadeDias = readPositiveVersion(canonical.validadeDias);
+  const subtotal = readMoney(canonical.subtotal);
+  const total = readMoney(canonical.total);
+  const frete = readMoney(canonical.frete);
+  const expired = readBoolean(canonical.expired);
+  const concurrencyToken = readIdentifier(canonical.concurrencyToken);
+  const updatedAt = readUpdatedAt(canonical.updatedAt);
+  const emailSent = readBoolean(canonical.emailSent) ?? false;
+  const emailSentAt = canonical.emailSentAt === null || canonical.emailSentAt === undefined
     ? null
-    : readDate(source.email_sent_at) || null;
+    : readDate(canonical.emailSentAt) || null;
+  const clienteSnapshotSource = asRecord(source.cliente_snapshot);
+  const clienteSnapshot = clienteSnapshotSource ? parseEmbeddedClientSnapshot(clienteSnapshotSource) : null;
+  const email = clienteSnapshot?.email || undefined;
+  const telefone = clienteSnapshot?.telefone || undefined;
   const sectionsValue = Object.prototype.hasOwnProperty.call(source, 'secoes')
     ? source.secoes
     : source.sections_snapshot;
@@ -710,119 +676,125 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
   const items = Array.isArray(source.items)
     ? source.items.map(projectQuotationItem)
     : null;
-  const revisionHistory = Object.prototype.hasOwnProperty.call(source, 'revision_history')
-    ? projectRevisionHistory(source.revision_history)
-    : [];
-  const templateKey = readAlias(source, ['template_key', 'template_padrao'], readIdentifier);
-  const templateHash = readString(source.template_hash);
+  const templateKey = readIdentifier(canonical.templateKey);
+  const templateHash = readString(canonical.templateHash);
   const templateVersionId = readNullableString(source.template_version_id);
-  const templateVersion = source.template_version === null
-    ? null
-    : readPositiveVersion(source.template_version);
-  const moneyKeys = ['frete_padrao', 'frete', 'subtotal', 'total', 'valor'] as const;
-  const money = Object.fromEntries(
-    moneyKeys.map((key) => [key, readMoney(source[key])]),
-  ) as Record<(typeof moneyKeys)[number], number | string | undefined>;
-  const strings = ['pagamento', 'entrega', 'observacoes', 'prazo_producao'] as const;
-  const expirationKeys = ['derived_expired', 'expiration_derived', 'is_expired', 'expirada'] as const;
-  const expiration = Object.fromEntries(
-    expirationKeys.map((key) => [key, readBoolean(source[key])]),
-  ) as Record<(typeof expirationKeys)[number], boolean | undefined>;
-  const token = readAlias(
-    source,
-    ['concurrency_token', 'version_token', 'updated_at', 'updatedAt'],
-    readIdentifier,
-  );
+  const hasTemplateVersion = Object.prototype.hasOwnProperty.call(source, 'template_version');
+  const templateVersion = hasTemplateVersion && source.template_version !== null
+    ? readPositiveVersion(source.template_version)
+    : (hasTemplateVersion ? null : undefined);
+  const strings = ['pagamento', 'entrega', 'observacoes', 'prazoProducao'] as const;
   if (
-    !id || !status || !QUOTATION_STATUS_LABELS.has(status) ||
-    !statusCanonical || !QUOTATION_STATUSES.has(statusCanonical) ||
-    !cliente || !dataDate || !validade || validityDays === undefined ||
-    revision === undefined || revisionNumber === undefined || revision !== revisionNumber ||
-    !revisionId || !clientId || !clientSnapshot || !sections || !items || items.some((item) => item === null) ||
-    !revisionHistory || templateKey === undefined ||
-    !templateHash || !/^[0-9a-f]{64}$/i.test(templateHash) ||
+    !id || !businessNumber || !name ||
+    revision === undefined || !statusRaw || !QUOTATION_STATUSES.has(statusRaw) ||
+    !revisionId || !clienteId || !cliente || !dataDate || !validade || validadeDias === undefined ||
+    subtotal === undefined || total === undefined || frete === undefined || expired === undefined ||
+    !clienteSnapshot || !sections || !items || items.some((item) => item === null) ||
+    typeof canonical.pagamento !== 'string' || typeof canonical.entrega !== 'string' ||
+    typeof canonical.observacoes !== 'string' || typeof canonical.prazoProducao !== 'string' ||
+    !templateKey || !templateHash || !/^[0-9a-f]{64}$/i.test(templateHash) ||
     (source.template_version_id !== null && templateVersionId === undefined) ||
-    (source.template_version !== null && templateVersion === undefined) ||
-    Object.values(money).some((field) => field === undefined) ||
-    strings.some((key) => typeof source[key] !== 'string') ||
-    Object.values(expiration).some((field) => field === undefined) ||
-    token === undefined
+    !concurrencyToken || !updatedAt
   ) return null;
+
+  const projectedRevisionHistory = Object.prototype.hasOwnProperty.call(canonical, 'revisionHistory')
+    ? projectRevisionHistory(canonical.revisionHistory, source.revision_history)
+    : [];
+  if (projectedRevisionHistory === null) return null;
 
   const data: ProjectedQuotationData = {
     id,
-    ...(quotationId ? { quotation_id: quotationId } : {}),
-    ...(quotationUuid ? { quotation_uuid: quotationUuid } : {}),
-    status,
+    businessNumber,
+    name,
+    revisionId,
+    revision: revision!,
+    status: statusRaw!,
+    clienteId,
     cliente,
-    email: clientSnapshot.email || undefined,
-    telefone: clientSnapshot.telefone || undefined,
-    email_sent: emailSent,
-    email_sent_at: emailSentAt,
+    ...(clienteSnapshot ? { clienteSnapshot } : {}),
+    ...(email === undefined ? {} : { email }),
+    ...(telefone === undefined ? {} : { telefone }),
+    email,
+    telefone,
     data: dataDate,
     validade,
-    validity_date: validade,
-    status_canonical: statusCanonical,
-    revision_id: revisionId,
-    revision,
-    revision_number: revisionNumber,
-    client_id: clientId,
-    validade_dias: validityDays,
-    pagamento: source.pagamento as string,
-    entrega: source.entrega as string,
-    observacoes: source.observacoes as string,
-    prazo_producao: source.prazo_producao as string,
-    template_key: templateKey,
-    template_hash: templateHash,
-    template_version_id: templateVersionId,
-    template_version: source.template_version === null ? null : templateVersion!,
+    validadeDias,
+    subtotal: String(subtotal),
+    total: String(total),
+    frete: String(frete),
+    expired,
+    updatedAt: updatedAt!,
+    emailSent,
+    emailSentAt,
+    pagamento: canonical.pagamento as string,
+    entrega: canonical.entrega as string,
+    observacoes: canonical.observacoes as string,
+    prazoProducao: canonical.prazoProducao as string,
+    templateKey,
+    templateHash,
+    ...(templateVersionId === undefined ? {} : { templateVersionId: templateVersionId }),
+    ...(hasTemplateVersion ? { templateVersion: templateVersion! } : {}),
+    concurrencyToken: concurrencyToken!,
     secoes: sections,
-    sections_snapshot: sections,
-    subtotal: money.subtotal!,
-    total: money.total!,
-    valor: money.valor!,
     items: items as ProjectedQuotationItem[],
-    revision_history: revisionHistory,
-    derived_expired: expiration.derived_expired!,
-    expiration_derived: expiration.expiration_derived!,
-    is_expired: expiration.is_expired!,
-    expirada: expiration.expirada!,
+    revisionHistory: Object.prototype.hasOwnProperty.call(canonical, 'revisionHistory') ? projectedRevisionHistory : [],
   };
-  data.frete_padrao = money.frete_padrao!;
-  data.frete = money.frete!;
-  return { data, concurrencyToken: token };
+  return { data, concurrencyToken: concurrencyToken! };
 }
 
 export function projectQuotationListRow(value: unknown): ProjectedQuotationListRow | null {
   const source = asRecord(value);
   if (!source) return null;
-  const id = readIdentifier(source.id);
-  const data = readDate(source.data);
-  const cliente = readIdentifier(source.cliente);
-  const valor = readMoney(source.valor);
-  const status = readString(source.status);
-  const rawStatusCanonical = readString(source.status_canonical);
-  const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
-  const revisionId = readIdentifier(source.revision_id);
-  const emailSent = readBoolean(source.email_sent) ?? false;
+  const canonical = asRecord(source.canonical);
+  if (!canonical) return null;
+  const id = readIdentifier(canonical.id);
+  const businessNumber = readIdentifier(canonical.businessNumber);
+  const name = readIdentifier(canonical.name);
+  const revisionId = readIdentifier(canonical.revisionId);
+  const revision = readPositiveVersion(canonical.revision);
+  const statusRaw = readString(canonical.status) as QuotationStatus | undefined;
+  const clienteId = readIdentifier(canonical.clienteId);
+  const cliente = readIdentifier(canonical.cliente);
+  const dataDate = readDate(canonical.data);
+  const validade = readDate(canonical.validade);
+  const validadeDias = readPositiveVersion(canonical.validadeDias);
+  const subtotal = readMoney(canonical.subtotal);
+  const total = readMoney(canonical.total);
+  const frete = readMoney(canonical.frete);
+  const expired = readBoolean(canonical.expired);
+  const concurrencyToken = readIdentifier(canonical.concurrencyToken);
+  const updatedAt = readUpdatedAt(canonical.updatedAt);
+  const emailSent = readBoolean(canonical.emailSent) ?? false;
   const emailSentAt = source.email_sent_at === null || source.email_sent_at === undefined
     ? null
     : readDate(source.email_sent_at) || null;
   if (
-    !id || !data || !cliente || valor === undefined ||
-    !status || !QUOTATION_STATUS_LABELS.has(status) ||
-    !statusCanonical || !QUOTATION_STATUSES.has(statusCanonical) || !revisionId
+    !id || !businessNumber || !name || !dataDate || !cliente || !clienteId ||
+    revision === undefined || !statusRaw || !QUOTATION_STATUSES.has(statusRaw) || !revisionId ||
+    validade === undefined || validadeDias === undefined ||
+    subtotal === undefined || total === undefined || frete === undefined ||
+    expired === undefined || !concurrencyToken || !updatedAt
   ) return null;
   return {
     id,
-    data,
+    businessNumber,
+    name,
+    revisionId,
+    revision,
+    status: statusRaw!,
+    clienteId,
     cliente,
-    valor,
-    status,
-    status_canonical: statusCanonical as ProjectedQuotationListRow['status_canonical'],
-    revision_id: revisionId,
-    email_sent: emailSent,
-    email_sent_at: emailSentAt,
+    data: dataDate,
+    validade,
+    validadeDias,
+    subtotal: String(subtotal),
+    total: String(total),
+    frete: String(frete),
+    expired,
+    concurrencyToken,
+    updatedAt: updatedAt!,
+    emailSent,
+    emailSentAt,
   };
 }
 

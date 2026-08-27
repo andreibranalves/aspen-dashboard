@@ -54,14 +54,14 @@ function projection(value: unknown): QuotationIssueResult {
   }
   const input = value as Record<string, unknown>;
   const result = {
-    quotationId: input.quotationId ?? input.quotation_id,
-    businessNumber: input.businessNumber ?? input.business_number ?? input.quotation_id,
-    revisionId: input.revisionId ?? input.revision_id,
-    revisionNumber: input.revisionNumber ?? input.revision_number,
+    quotationId: input.quotationId,
+    businessNumber: input.businessNumber,
+    revisionId: input.revisionId,
+    revisionNumber: input.revisionNumber,
     status: input.status,
-    issuedAt: input.issuedAt ?? input.issued_at,
-    validUntil: input.validUntil ?? input.valid_until,
-    pdfUrl: input.pdfUrl ?? input.pdf_url,
+    issuedAt: input.issuedAt,
+    validUntil: input.validUntil,
+    pdfUrl: input.pdfUrl,
   };
   if (
     typeof result.quotationId !== 'string' ||

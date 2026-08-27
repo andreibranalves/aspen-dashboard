@@ -52,14 +52,14 @@ const MOCK_ORCAMENTO = {
 };
 
 const MOCK_ISSUE = {
-  quotation_id: MOCK_ORCAMENTO.quotation_uuid,
-  business_number: MOCK_ORCAMENTO.quotation_id,
-  revision_id: MOCK_ORCAMENTO.revision_id,
-  revision_number: MOCK_ORCAMENTO.revision_number,
+  quotationId: MOCK_ORCAMENTO.quotation_uuid,
+  businessNumber: MOCK_ORCAMENTO.quotation_id,
+  revisionId: MOCK_ORCAMENTO.revision_id,
+  revisionNumber: MOCK_ORCAMENTO.revision_number,
   status: 'emitido',
-  issued_at: '2026-08-13T00:00:00.000Z',
-  valid_until: '2026-08-28',
-  pdf_url: `/api/quotation-preview?id=${MOCK_ORCAMENTO.quotation_uuid}&format=pdf`,
+  issuedAt: '2026-08-13T00:00:00.000Z',
+  validUntil: '2026-08-28',
+  pdfUrl: `/api/quotation-preview?id=${MOCK_ORCAMENTO.quotation_uuid}&format=pdf`,
 };
 
 const MOCK_LEADS_LIST = {
@@ -214,6 +214,10 @@ async function setupApiMocks(page, orderTemplates = []) {
       contentType: 'application/json',
       body: JSON.stringify({ success: true, data: [] }),
     });
+  });
+
+  await page.route('**/api/whatsapp-send-status**', async (route) => {
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({}) });
   });
 
   await page.route('**/api/whatsapp-leads**', async (route) => {
@@ -389,9 +393,9 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect.poll(() => orcamentoRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
     const pdfLink = page.getByRole('link', { name: 'Abrir PDF' });
     await expect(pdfLink).toBeVisible();
-    await expect(pdfLink).toHaveAttribute('href', MOCK_ISSUE.pdf_url);
+    await expect(pdfLink).toHaveAttribute('href', MOCK_ISSUE.pdfUrl);
     await expect(pdfLink).toHaveAttribute('target', '_blank');
-    await expect(page.getByText(MOCK_ISSUE.business_number, { exact: true })).toBeVisible();
+    await expect(page.getByText(MOCK_ISSUE.businessNumber, { exact: true })).toBeVisible();
   });
 
   test('ação atual de WhatsApp envia somente referências exatas da cotação e revisão', async ({ page }) => {
