@@ -1,0 +1,230 @@
+import assert from 'node:assert/strict';
+import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+
+import {
+  OPERATION_ENV_CONTRACTS,
+  checkOperationEnv,
+  fillFromExternalConfig,
+  inspectOperationEnv,
+  loadOperationEnv,
+  operationNames,
+  assertOperationEnv,
+} from '../../scripts/lib/operation-env.mjs';
+
+const secret = 'sentinel-secret-value';
+
+function withTempDir(callback) {
+  const root = mkdtempSync(join(tmpdir(), 'operation-env-'));
+  try {
+    return callback(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function externalFileFixture(root, values) {
+  const filePath = join(root, 'external.env');
+  writeFileSync(filePath, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n');
+  return filePath;
+}
+
+function contractValues(operation, root, overrides = {}) {
+  const contract = OPERATION_ENV_CONTRACTS[operation];
+  const values = {};
+  const protectedPaths = {};
+  let index = 0;
+  for (const key of [...contract.keys, ...contract.anyOf.flat()]) {
+    if (contract.paths[key]) {
+      const filePath = join(root, `protected-${index++}.conf`);
+      writeFileSync(filePath, `# arquivo protegido para ${key}\n`);
+      chmodSync(filePath, 0o600);
+      values[key] = filePath;
+      protectedPaths[key] = filePath;
+    } else {
+      values[key] = `valor-de-${key}`;
+    }
+  }
+  return { ...values, ...overrides };
+}
+
+const OPERATIONS = operationNames();
+
+test('contratos existem para as seis operações e são distintos entre si', () => {
+  assert.deepEqual([...OPERATIONS].sort(), ['backup-restore', 'canary', 'cleanup', 'migration', 'runtime', 'staging-e2e']);
+});
+
+test('operações não exigem credenciais de workflows não relacionados', () => {
+  const separations = [
+    ['migration', ['CANARY_PASSWORD', 'RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
+    ['staging-e2e', ['RESEND_API_KEY', 'CANARY_PASSWORD', 'BLOB_READ_WRITE_TOKEN']],
+    ['cleanup', ['STAGING_DATABASE_URL', 'CANARY_BASE_URL', 'E2E_PASSWORD', 'RESEND_API_KEY']],
+    ['backup-restore', ['RESEND_API_KEY', 'CANARY_PASSWORD', 'STAGING_DATABASE_URL']],
+    ['canary', ['DATABASE_URL', 'RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
+  ] as const;
+
+  for (const [operation, unrelated] of separations) {
+    const contract = OPERATION_ENV_CONTRACTS[operation];
+    for (const key of unrelated) {
+      assert.ok(!contract.keys.includes(key), `${operation} não deve exigir ${key} em keys`);
+      assert.ok(!contract.anyOf.some((group) => group.includes(key)), `${operation} não deve exigir ${key} em anyOf`);
+    }
+  }
+});
+
+for (const operation of OPERATIONS) {
+  test(`[${operation}] origem externa completa -> ok sem expor valores`, () => {
+    withTempDir((root) => {
+      const filePath = externalFileFixture(root, contractValues(operation, root));
+      const result = inspectOperationEnv(operation, { env: { CUTOVER_ENV_FILE: filePath } });
+
+      assert.equal(result.ok, true);
+      assert.equal(result.files[0].status, 'present');
+      assert.doesNotMatch(JSON.stringify(result), /valor-de-/);
+    });
+  });
+
+  test(`[${operation}] sem origem carregável falha fechada apenas com nomes`, () => {
+    const result = inspectOperationEnv(operation, { env: { CUTOVER_ENV_FILE: '/nao/existe.env', CUTOVER_EXPECTED_DATABASE: undefined } as NodeJS.ProcessEnv });
+    assert.equal(result.ok, false);
+    const firstRequired = OPERATION_ENV_CONTRACTS[operation].keys[0];
+    assert.deepEqual(result.keys.find(({ name }) => name === firstRequired), { name: firstRequired, status: 'missing' });
+    assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
+  });
+}
+
+test('valores vazios ou somente aspas contam como ausentes', () => {
+  withTempDir((root) => {
+    const filePath = externalFileFixture(root, {
+      DATABASE_URL: '   ',
+      APP_ENV: "''",
+      EXTERNAL_WRITES_ENABLED: '"  "',
+      RESEND_API_KEY: secret,
+      RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
+    });
+    assert.throws(
+      () => loadOperationEnv('runtime', { env: { CUTOVER_ENV_FILE: filePath } }),
+      /Ambiente incompleto para a operação runtime/,
+    );
+  });
+});
+
+test('checkOperationEnv valida o ambiente fornecido e protege arquivos 0600', () => {
+  withTempDir((root) => {
+    const insecure = join(root, 'pgpass-insecure');
+    writeFileSync(insecure, '# pass');
+    chmodSync(insecure, 0o644);
+    const secure = join(root, 'pgpass-secure');
+    writeFileSync(secure, '# pass');
+    chmodSync(secure, 0o600);
+
+    const env = {
+      STAGING_DATABASE_URL: 'postgresql://staging.test/aspen_stage',
+      STAGING_PG_SERVICE: 'staging',
+      PRODUCTION_DATABASE_URL: 'postgresql://prod.test/aspen',
+      PGSERVICEFILE: secure,
+      PGPASSFILE: insecure,
+    };
+    const result = checkOperationEnv('migration', env);
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.keys.find(({ name }) => name === 'PGPASSFILE'), { name: 'PGPASSFILE', status: 'invalid-permission' });
+    assert.doesNotMatch(String(env.PGPASSFILE), new RegExp(secret));
+
+    chmodSync(insecure, 0o600);
+    assert.equal(checkOperationEnv('migration', env).ok, true);
+
+    try {
+      assertOperationEnv('migration', { env: { ...env, STAGING_DATABASE_URL: '' }, exists: () => false });
+      assert.fail('deveria lançar');
+    } catch (error) {
+      assert.match(String((error as Error).message), /Ambiente incompleto para a operação migration/);
+    }
+  });
+});
+
+test('symlink não é aceito como arquivo protegido', () => {
+  withTempDir((root) => {
+    const target = join(root, 'real');
+    writeFileSync(target, '# pass');
+    chmodSync(target, 0o600);
+    const link = join(root, 'link');
+    try {
+      symlinkSync(target, link);
+    } catch {
+      return; // plataforma sem suporte
+    }
+    const result = checkOperationEnv('migration', {
+      STAGING_DATABASE_URL: 'x',
+      STAGING_PG_SERVICE: 'y',
+      PRODUCTION_DATABASE_URL: 'z',
+      PGSERVICEFILE: link,
+      PGPASSFILE: link,
+    });
+    assert.equal(result.ok, false);
+  });
+});
+
+test('anyOf de tokens: basta um membro presente; o irmão fica not-needed', () => {
+  withTempDir((root) => {
+    const filePath = externalFileFixture(root, {
+      DATABASE_URL: 'postgresql://prod.test/aspen',
+      BLOB_READ_WRITE_TOKEN: secret,
+      CUTOVER_PG_SERVICE: 'svc',
+      CUTOVER_EXPECTED_DATABASE: 'aspen',
+    });
+    const result = inspectOperationEnv('backup-restore', { env: { CUTOVER_ENV_FILE: filePath } });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.keys.find(({ name }) => name === 'QUOTATION_BLOB_READ_WRITE_TOKEN'), {
+      name: 'QUOTATION_BLOB_READ_WRITE_TOKEN',
+      status: 'not-needed',
+    });
+    assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
+  });
+});
+
+test('loadOperationEnv preenche ausentes da origem externa e falha fechada sem origem', () => {
+  withTempDir((root) => {
+    const filePath = externalFileFixture(root, contractValues('cleanup', { DATABASE_URL: secret }));
+    const env = { CUTOVER_ENV_FILE: filePath };
+    const result = loadOperationEnv('cleanup', { env });
+    assert.equal(result.ok, true);
+    assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
+
+    assert.throws(
+      () => loadOperationEnv('cleanup', { env: { CUTOVER_ENV_FILE: '/nao/existe.env' } }),
+      /Ambiente incompleto para a operação cleanup: DATABASE_URL \(missing\)/,
+    );
+  });
+});
+
+test('fillFromExternalConfig nunca sobrescreve variáveis presentes no processo', () => {
+  withTempDir((root) => {
+    const secure = join(root, 'pg_service.conf');
+    writeFileSync(secure, '[staging]\nhost=from-file\nport=5433\ndbname=aspen_test\n');
+    chmodSync(secure, 0o600);
+    const insecure = join(root, 'pgpass-inseguro');
+    writeFileSync(insecure, '# pass');
+    chmodSync(insecure, 0o644);
+
+    const filePath = externalFileFixture(root, {
+      STAGING_DATABASE_URL: 'x',
+      STAGING_PG_SERVICE: 'y',
+      PRODUCTION_DATABASE_URL: 'z',
+      PGSERVICEFILE: secure,
+      PGPASSFILE: secure,
+    });
+    fillFromExternalConfig({ CUTOVER_ENV_FILE: filePath, PGPASSFILE: insecure } as NodeJS.ProcessEnv);
+    // prova de precedência: o valor do processo venceu e rejeita modo 0644
+    assert.equal(checkOperationEnv('migration', {
+      STAGING_DATABASE_URL: 'x',
+      STAGING_PG_SERVICE: 'y',
+      PRODUCTION_DATABASE_URL: 'z',
+      PGSERVICEFILE: secure,
+      PGPASSFILE: insecure,
+    }).ok, false);
+    assert.match(readFileSync(filePath, 'utf8'), /PGPASSFILE=/);
+  });
+});
