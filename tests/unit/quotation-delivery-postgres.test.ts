@@ -35,7 +35,9 @@ import {
 } from '../../api/_modules/quotation-content.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
-const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_QUOTE_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
 
 function pdfWithEof(): Buffer {

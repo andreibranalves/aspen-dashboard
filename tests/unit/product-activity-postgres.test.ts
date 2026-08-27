@@ -19,7 +19,9 @@ import { products, productActivityEvents } from '../../api/_infrastructure/db/sc
 import { createHandler } from '../../api/_modules/product-activity.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 
-const TEST_DATABASE_URL = process.env.TEST_ACTIVITY_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_ACTIVITY_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

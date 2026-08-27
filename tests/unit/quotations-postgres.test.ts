@@ -25,7 +25,9 @@ import {
 import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotationEmailDeliveries, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_infrastructure/db/schema.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 
-const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_QUOTE_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
 
 test('PostgreSQL draft management persists terms/manual prices atomically and protects stale/non-draft revisions', { skip: !TEST_DATABASE_URL }, async () => {

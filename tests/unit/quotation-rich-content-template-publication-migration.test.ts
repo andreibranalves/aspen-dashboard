@@ -9,7 +9,9 @@ import postgres from 'postgres';
 
 import { QUOTATION_TEMPLATES } from '../../api/_modules/quotation-template-catalog.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

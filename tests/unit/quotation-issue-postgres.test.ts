@@ -24,7 +24,9 @@ import { createPostgresQuoteDraftManagementRepository, QuoteManagementConflictEr
 import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
 import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 
-const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, ['TEST_QUOTE_DATABASE_URL', 'TEST_DATABASE_URL']);
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 const VALID_PDF = Buffer.from('%PDF-1.4\n% task4\n%%EOF', 'utf8');

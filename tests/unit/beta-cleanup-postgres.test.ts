@@ -37,7 +37,9 @@ import {
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
+
+const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
 
 test('beta cleanup plans exact graphs, preserves shared data, blocks orders and rolls back', { skip: !TEST_DATABASE_URL }, async () => {
