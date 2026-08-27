@@ -1,5 +1,7 @@
 # Baseline de refatoração
 
+> **Registro histórico de evidência (não-normativo).** Snapshot de estado observado em 2026-08-18; os comandos e tempos aqui não são procedimento executável atual. Fonte normativa: [`release-lanes.md`](./release-lanes.md).
+
 **Data:** 2026-08-18.
 
 **Commit de referência:** `7dbca51`.

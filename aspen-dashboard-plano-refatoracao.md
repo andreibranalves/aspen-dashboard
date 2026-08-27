@@ -1,5 +1,7 @@
 # Plano de Refatoração — Aspen Dashboard
 
+> **Documento histórico (não-normativo).** Plano de execução de fases concluídas; mantido como evidência, não como política atual. A fonte normativa das lanes operacionais é [`docs/release-lanes.md`](docs/release-lanes.md).
+
 ## 1. Objetivo
 
 Refatorar o `aspen-dashboard` de forma **incremental**, sem reescrita e sem trocar as tecnologias principais.

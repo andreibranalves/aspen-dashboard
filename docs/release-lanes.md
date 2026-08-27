@@ -1,5 +1,7 @@
 # Classificação de risco: FAST, CRITICAL e RELEASE
 
+Este documento é a **fonte normativa única** das lanes operacionais. Outros documentos e runbooks referenciam as lanes e os comandos canônicos definidos aqui em vez de reproduzir sequências divergentes.
+
 Escolha a classificação pela consequência possível da mudança, não pelo domínio.
 `FAST` é o padrão; promova apenas com critério objetivo (ver `AGENTS.md`).
 

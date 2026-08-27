@@ -1,5 +1,7 @@
 # Screenshot Analysis: WhatsApp Conversations Page
 
+> **Nota não-normativa.** Análise pontual de screenshot registrada apenas como evidência visual; não descreve comportamento, política ou contrato atuais. A documentação operacional vigente é [`docs/release-lanes.md`](docs/release-lanes.md).
+
 **Screenshot:** `/home/andrei/temp/Captura de tela 2026-07-01 172254.png`
 
 ## 1. Left Column — "Conversas" (Conversations)
