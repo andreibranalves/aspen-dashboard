@@ -28,7 +28,7 @@ function errorDetails(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
-// ── Default flows (matching DEFAULT_WA_FLOWS but with product_media) ────────
+// ── Default flows ──────────────────────────────────────────────────────────
 
 const DEFAULT_FLOWS = [
   {

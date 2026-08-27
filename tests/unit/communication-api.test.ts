@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   CommunicationSendError,
+  communicationFlowSummary,
   createMedia,
   executeFlow,
   fetchDeliveryStatus,
@@ -10,6 +11,7 @@ import {
   mediaGroupPathSegment,
   projectDeliveryFailure,
   projectDeliveryState,
+  renderableFlowStepCount,
 } from '../../src/lib/api/communicationApi.ts';
 import { getQuotationIssue, issuePersistedDraft, QuotationIssueApiError } from '../../src/lib/api/quotationIssueApi.ts';
 
@@ -315,4 +317,36 @@ test('executeFlow rejects 2xx provider markers without success contract', async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('renderableFlowStepCount mirrors the backend delivery plan step semantics', () => {
+  assert.equal(renderableFlowStepCount(null), 0);
+  assert.equal(
+    renderableFlowStepCount({
+      steps: [
+        { id: 't1', type: 'text', template: '   ' },
+        { id: 't2', type: 'text', template: 'Olá!' },
+        { id: 'd1', type: 'document', source: 'quotation_pdf' },
+        { id: 'd2', type: 'document', source: 'arquivo_invalido' } as never,
+        { id: 'm1', type: 'product_media' },
+      ],
+    } as never),
+    3
+  );
+});
+
+test('communicationFlowSummary summarizes messages, documents and product media in PT-BR', () => {
+  const flow = {
+    steps: [
+      { id: 'a', type: 'text', template: '(Saudacao), (primeiro_nome)!' },
+      { id: 'b', type: 'text', template: '' },
+      { id: 'c', type: 'document', source: 'quotation_pdf' },
+      { id: 'd', type: 'document', source: 'quotation_webp' },
+      { id: 'e', type: 'product_media' },
+    ],
+  } as never;
+  assert.equal(communicationFlowSummary(flow), '1 mensagem + PDF + WebP + mídia da biblioteca');
+  const textOnly = { steps: [{ id: 'x', type: 'text', template: 'oi' }, { id: 'y', type: 'text', template: 'tchau' }] } as never;
+  assert.equal(communicationFlowSummary(textOnly), '2 mensagens');
+  assert.equal(communicationFlowSummary({ steps: [] }), 'vazio');
 });

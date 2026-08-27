@@ -160,6 +160,61 @@ export interface FlowsResponse {
   selectedFlowId: string | null;
 }
 
+// ── Flow rendering semantics (mirrors the backend delivery plan) ───────────
+
+function isRenderableStep(step: CommunicationFlowStep): boolean {
+  switch (step.type) {
+    case 'text':
+      return Boolean(step.template?.trim());
+    case 'document':
+      return step.source === 'quotation_pdf' || step.source === 'quotation_webp';
+    case 'product_media':
+      return true;
+  }
+}
+
+/** Number of steps the backend delivery plan would render as messages/media. */
+export function renderableFlowStepCount(flow: Pick<CommunicationFlow, 'steps'> | null | undefined): number {
+  if (!flow || !Array.isArray(flow.steps)) return 0;
+  return flow.steps.filter(isRenderableStep).length;
+}
+
+/** Operator-facing one-line summary of what a flow sends. */
+export function communicationFlowSummary(flow: Pick<CommunicationFlow, 'steps'> | null | undefined): string {
+  if (!flow || !Array.isArray(flow.steps)) return '';
+
+  const textCount = flow.steps.filter(
+    (step) => step.type === 'text' && Boolean(step.template?.trim())
+  ).length;
+  const pdfCount = flow.steps.filter(
+    (step) => step.type === 'document' && step.source === 'quotation_pdf'
+  ).length;
+  const webpCount = flow.steps.filter(
+    (step) => step.type === 'document' && step.source === 'quotation_webp'
+  ).length;
+  const hasProductMedia = flow.steps.some((step) => step.type === 'product_media');
+
+  const parts: string[] = [];
+
+  if (textCount > 0) {
+    parts.push(`${textCount} ${textCount === 1 ? 'mensagem' : 'mensagens'}`);
+  }
+
+  if (pdfCount > 0) {
+    parts.push('PDF');
+  }
+
+  if (webpCount > 0) {
+    parts.push('WebP');
+  }
+
+  if (hasProductMedia) {
+    parts.push('mídia da biblioteca');
+  }
+
+  return parts.join(' + ') || 'vazio';
+}
+
 export interface SaveFlowsPayload {
   flows: CommunicationFlow[];
   selectedFlowId?: string | null;
