@@ -15,6 +15,11 @@ import {
   sendQuotationEmailViaResend,
 } from '../../api/_modules/quotation-email.js';
 
+// Os testes exercitam o caminho autorizado (Production + flag explícita).
+// node --test roda cada arquivo em processo próprio, sem vazar para outros arquivos.
+process.env.APP_ENV = 'production';
+process.env.EXTERNAL_WRITES_ENABLED = '1';
+
 const quotationId = '11111111-1111-4111-8111-111111111111';
 const revisionId = '22222222-2222-4222-8222-222222222222';
 const otherRevisionId = '55555555-5555-4555-8555-555555555555';
@@ -266,7 +271,7 @@ test('pending retry keeps the original quotation URL for the PDF attachment', as
       secondInput = input as unknown as Record<string, unknown>;
       return { id: 'email_123' };
     },
-    env: { VERCEL_PROJECT_PRODUCTION_URL: 'changed.example.com' },
+    env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', VERCEL_PROJECT_PRODUCTION_URL: 'changed.example.com' },
     token: () => 'discarded-token',
     now: () => NOW,
   });
@@ -337,7 +342,7 @@ test('uses the trusted deployment origin instead of request host or body origin'
       sentHtml = input.html;
       return { id: 'resend-email-1' };
     },
-    env: { VERCEL_PROJECT_PRODUCTION_URL: 'trusted.example.com' },
+    env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', VERCEL_PROJECT_PRODUCTION_URL: 'trusted.example.com' },
     token: () => 'stable-public-token',
     now: () => NOW,
   });
@@ -360,7 +365,7 @@ test('rejects an untrusted production request host without sending', async () =>
       transportCalls += 1;
       return { id: 'resend-email-1' };
     },
-    env: {},
+    env: { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1' },
     token: () => 'stable-public-token',
     now: () => NOW,
   });
@@ -383,6 +388,8 @@ test('classifies a provider HTTP 5xx as uncertain and keeps the attempt pending'
       fetchFn: async () => new Response(JSON.stringify({ error: providerBody }), { status: 503 }),
     }),
     env: {
+      APP_ENV: 'production',
+      EXTERNAL_WRITES_ENABLED: '1',
       RESEND_API_KEY: 'secret-test-key',
       RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
     },
@@ -697,5 +704,32 @@ test('uses safe internal 500 responses for unrelated pre-provider failures', asy
     assert.equal(result.statusCode, 500, failure);
     assert.deepEqual(parse(result), { error: 'Erro interno. Tente novamente.' }, failure);
     assert.doesNotMatch(result.body || '', /secret|stack trace|Error/, failure);
+  }
+});
+
+test('fail-closed: ambiente não autorizado não reserva nem chama o provider', async () => {
+  for (const env of [
+    {},
+    { APP_ENV: 'preview', EXTERNAL_WRITES_ENABLED: '1' },
+    { APP_ENV: 'production' },
+  ] as const) {
+    const calls: string[] = [];
+    let providerCalled = false;
+    const result = await handler(event('POST', payload()), {
+      deliveries: fakeDeliveries(calls),
+      snapshots: snapshots(snapshot()),
+      transport: async () => {
+        providerCalled = true;
+        return { id: 'email_123' };
+      },
+      token: () => 'stable-public-token',
+      now: () => NOW,
+      env: { ...env },
+    });
+
+    assert.equal(result.statusCode, 503);
+    assert.deepEqual(parse(result), { error: 'Integrações externas desativadas neste ambiente.' });
+    assert.deepEqual(calls, []);
+    assert.equal(providerCalled, false);
   }
 });
