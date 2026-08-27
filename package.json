@@ -12,6 +12,8 @@
     "dev:api": "tsc -p api/tsconfig.api.json --watch",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:operational": "drizzle-kit migrate --config=scripts/drizzle.staging.config.ts",
+    "migrate:apply": "node scripts/apply-migrations.mjs",
     "check:db-migrations": "node scripts/check-db-migrations.mjs",
     "db:migration:preflight": "node scripts/migration-preflight.mjs",
     "verify:quotation-template-contracts": "npm run build:api && node scripts/verify-quotation-template-contract-backfill.mjs",
