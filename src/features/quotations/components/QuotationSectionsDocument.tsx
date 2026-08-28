@@ -1,20 +1,44 @@
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
+import { quotationContentHasText } from '@/lib/quotationDisplay';
 
 interface SectionCard {
   key: keyof Pick<QuotationSectionsSnapshot, 'prazo_producao' | 'pagamento' | 'condicoes_gerais'>;
   bodyKey: 'value' | 'body';
+  label: string;
+  aliases: string[];
 }
 
 const SECTION_CARDS: SectionCard[] = [
-  { key: 'prazo_producao', bodyKey: 'value' },
-  { key: 'pagamento', bodyKey: 'body' },
-  { key: 'condicoes_gerais', bodyKey: 'body' },
+  {
+    key: 'prazo_producao',
+    bodyKey: 'value',
+    label: 'Prazo de produção',
+    aliases: ['prazo', 'prazo de produção', 'produção e entrega'],
+  },
+  {
+    key: 'pagamento',
+    bodyKey: 'body',
+    label: 'Dados para pagamento',
+    aliases: ['pagamento', 'dados para pagamento'],
+  },
+  {
+    key: 'condicoes_gerais',
+    bodyKey: 'body',
+    label: 'Condições gerais',
+    aliases: ['condições', 'condições gerais'],
+  },
 ];
+
+function displayTitle(label: string, aliases: string[], value: string): string {
+  const clean = value.trim().replace(/:+$/, '');
+  return aliases.includes(clean.toLocaleLowerCase('pt-BR')) ? label : clean || label;
+}
 
 export interface QuotationSectionsDocumentProps {
   sections: QuotationSectionsSnapshot;
   editable: boolean;
+  hideProductionDeadline?: boolean;
   onChange: (sections: QuotationSectionsSnapshot) => void;
 }
 
@@ -26,6 +50,7 @@ export interface QuotationSectionsDocumentProps {
 export function QuotationSectionsDocument({
   sections,
   editable,
+  hideProductionDeadline = false,
   onChange,
 }: QuotationSectionsDocumentProps) {
   const update = (key: SectionCard['key'], field: 'enabled' | 'title' | 'body' | 'value', value: string | boolean) => {
@@ -41,24 +66,28 @@ export function QuotationSectionsDocument({
   if (!editable) {
     return (
       <>
-        {SECTION_CARDS.map(({ key, bodyKey }) => {
+        {SECTION_CARDS.map(({ key, bodyKey, label, aliases }) => {
           const section = sections[key].current;
           const html = String((section as { value?: string; body?: string })[bodyKey] || '');
-          if (!section.enabled || !html.trim()) return null;
+          if (
+            !section.enabled ||
+            !quotationContentHasText(html) ||
+            (key === 'prazo_producao' && hideProductionDeadline)
+          ) return null;
           return (
             <section
               key={key}
               aria-labelledby={`quote-section-${key}-title`}
-              className="border-t border-line py-7"
+              className="border-t border-line py-5"
             >
               <h2
                 id={`quote-section-${key}-title`}
-                className="text-xs font-semibold uppercase tracking-wide text-fg-muted"
+                className="text-sm font-semibold text-fg"
               >
-                {section.title}
+                {displayTitle(label, aliases, section.title)}
               </h2>
               <div
-                className="rich-text-read mt-3 max-w-[68ch] text-sm text-fg [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-1 [&_ul]:list-disc"
+                className="rich-text-read mt-2 max-w-[68ch] text-sm leading-6 text-fg [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-1 [&_ul]:list-disc"
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             </section>
@@ -69,23 +98,25 @@ export function QuotationSectionsDocument({
   }
 
   return (
-    <div className="space-y-8">
-      {SECTION_CARDS.map(({ key, bodyKey }) => {
+    <div className="space-y-6">
+      {SECTION_CARDS.map(({ key, bodyKey, label, aliases }) => {
         const section = sections[key].current;
-        const isEmpty = !String((section as { value?: string; body?: string })[bodyKey] || '').trim();
+        const isEmpty = !quotationContentHasText(
+          String((section as { value?: string; body?: string })[bodyKey] || '')
+        );
         return (
           <section
             key={key}
             aria-labelledby={`quote-section-edit-${key}-title`}
-            className="border-t border-line pt-6"
+            className="border-t border-line pt-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id={`quote-section-edit-${key}-title`} className="flex items-center gap-2 text-sm font-semibold text-fg">
                 {section.enabled ? (
-                  section.title || (key === 'prazo_producao' ? 'Produção e entrega' : key === 'pagamento' ? 'Pagamento' : 'Condições gerais')
+                  displayTitle(label, aliases, section.title)
                 ) : (
                   <span className="text-fg-muted">
-                    {key === 'prazo_producao' ? 'Produção e entrega' : key === 'pagamento' ? 'Pagamento' : 'Condições gerais'}
+                    {displayTitle(label, aliases, section.title)}
                     <span className="ml-2 text-xs font-normal text-warning">— oculto no orçamento</span>
                   </span>
                 )}
@@ -94,16 +125,15 @@ export function QuotationSectionsDocument({
                 <input
                   type="checkbox"
                   role="switch"
-                  aria-label={`Exibir seção ${key === 'prazo_producao' ? 'Produção e entrega' : key === 'pagamento' ? 'Pagamento' : 'Condições gerais'}`}
                   checked={section.enabled}
                   onChange={(event) => update(key, 'enabled', event.target.checked)}
                   className="h-4 w-4 accent-[rgb(var(--primary))]"
                 />
-                Visível
+                <span>Visível<span className="sr-only">: {label}</span></span>
               </label>
             </div>
             <input
-              aria-label="Título da seção"
+              aria-label={`Título da seção ${label}`}
               value={section.title}
               onChange={(event) => update(key, 'title', event.target.value)}
               placeholder="Título"

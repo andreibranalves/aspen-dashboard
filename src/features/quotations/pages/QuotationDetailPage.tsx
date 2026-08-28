@@ -20,6 +20,7 @@ import {
   Loader2,
   Mail,
   Search,
+  CheckCircle2,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
 import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
@@ -29,7 +30,7 @@ import { useQuotationDeliveries, deliveryIdentityKey } from '@/hooks/useQuotatio
 import type { DeliveryResolution } from '@/lib/api/quotationDeliveryApi';
 import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
-import { formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
@@ -46,6 +47,11 @@ import {
 import { QuotationSectionsDocument } from '@/features/quotations/components/QuotationSectionsDocument';
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
+import {
+  quotationContentsMatch,
+  quotationDisplayTitle,
+  quotationItemCountLabel,
+} from '@/lib/quotationDisplay';
 import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
@@ -1030,7 +1036,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch {
       console.error('[QuotationDetailPage] failed to enqueue WhatsApp delivery');
     }
-  }, [data.expired, data.expired, data.id, data.expired, data.businessNumber, data.revisionId, delivery, deliveryFlowId, deliveryPending, enqueue]);
+  }, [data.businessNumber, data.expired, data.revisionId, delivery, deliveryFlowId, deliveryPending, enqueue]);
   const sendQuotationEmail = useCallback(async (recipient: string) => {
     if (!data.revisionId) return;
     const recipientValue = recipient.trim();
@@ -1075,205 +1081,171 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, []);
 
   const emailSent = data.emailSent || confirmedEmailAcceptedKey === `${data.id}:${data.revisionId}`;
+  const currentRevision = (data.revisionHistory || []).find(
+    (entry) => entry.revision === data.revision
+  );
+  const displayTitle = quotationDisplayTitle(data.businessNumber);
+  const productionDeadline = sections.prazo_producao.current.value || '';
+  const hideDuplicateProductionDeadline = quotationContentsMatch(entrega, productionDeadline);
+  const whatsappDisabledReason = deliveryPending
+    ? 'Envio em andamento.'
+    : delivery
+      ? 'Este orçamento já foi enviado pelo WhatsApp.'
+      : deliveryError
+        ? deliveryError
+        : !deliveryFlowId
+          ? 'Selecione um fluxo para enviar pelo WhatsApp.'
+          : data.expired
+            ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+            : '';
 
-return (
-    <div className="mx-auto w-full max-w-[1240px]">
-      {/* Barra de ações sticky */}
-      <div className="sticky top-0 z-20 -mx-4 flex min-h-[52px] flex-wrap items-center gap-2 border-b border-line bg-page/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
-        {editing ? (
-          <>
-            <span
-              className={
-                isDirty ? 'mr-auto text-xs font-medium text-warning' : 'mr-auto text-xs text-fg-muted'
-              }
-              role="status"
-              aria-live="polite"
-            >
-              {saving ? 'Salvando…' : isDirty ? 'Alterações não salvas' : ''}
-            </span>
-            <Button variant="outline" size="sm" disabled={saving} onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}>
-              Cancelar
-            </Button>
-            <Button variant="outline" size="sm" disabled={saving} onClick={openPreview}>
-              Pré-visualizar documento
-            </Button>
-            <Button variant="success" size="sm" disabled={saving} onClick={save}>
-              <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
-            </Button>
-          </>
-        ) : (
-          <>
-            {(message || emailSuccess) && (
-              <span
+  return (
+    <div className="mx-auto w-full max-w-[1180px] pb-4">
+      <fieldset disabled={saving} className="contents">
+        <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-[1.55rem] font-semibold tracking-[-0.025em] text-fg">
+              {displayTitle}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
+              <StatusBadge {...statusBadgeProps(data.status)} />
+              <span>Revisão {data.revision}</span>
+              {currentRevision?.createdAt && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>criada em {formatDate(currentRevision.createdAt)}</span>
+                </>
+              )}
+              {data.expired && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="font-medium text-warning">Expirado</span>
+                </>
+              )}
+            </div>
+            {editing && (
+              <p
                 role="status"
                 aria-live="polite"
-                className={`mr-auto min-w-0 break-words text-xs ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
+                className={isDirty ? 'mt-2 text-xs font-medium text-warning' : 'mt-2 text-xs text-fg-muted'}
               >
-                {message || emailSuccess}
-              </span>
+                {saving ? 'Salvando…' : isDirty ? 'Alterações não salvas' : 'Nenhuma alteração pendente'}
+              </p>
             )}
-            <div className="ml-auto flex items-center gap-2">
-              {draftEditable && !editing && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      showMessage('');
-                      setEditing(true);
-                    }}
-                  >
-                    <Pencil size={14} /> Editar
-                  </Button>
-                  <Button
-                    variant="success"
-                    size="sm"
-                    disabled={issuing || lifecycleAction !== null}
-                    onClick={() => setConfirmIssueOpen(true)}
-                  >
-                    {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
-                    {issuing ? 'Emitindo…' : 'Emitir orçamento'}
-                  </Button>
-                </>
-              )}
-              {data.status !== 'rascunho' && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setEmailError('');
-                      setEmailDialogOpen(true);
-                    }}
-                  >
-                    <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={
-                      deliveryPending
-                        ? 'Envio em andamento'
-                        : delivery
-                          ? 'Este orçamento já foi enviado pelo WhatsApp.'
-                          : deliveryError
-                            ? 'Não foi possível verificar o envio. Tente novamente mais tarde.'
-                            : !deliveryFlowId
-                              ? 'Selecione um fluxo de WhatsApp para enviar.'
-                              : data.expired
-                                ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
-                                : undefined
-                    }
-                    disabled={deliveryPending || Boolean(deliveryError) || !deliveryFlowId || Boolean(delivery) || Boolean(data.expired)}
-                    onClick={sendIssuedQuotation}
-                  >
-                    <Phone size={14} /> Enviar WhatsApp
-                  </Button>
-                </>
-              )}
-              <div className="relative">
-                <button
-                  type="button"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  aria-label="Mais ações"
-                  className="flex h-9 w-9 items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  onClick={() => setMenuOpen((current) => !current)}
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+            {editing ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={saving}
+                  onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}
                 >
-                  <MoreHorizontal size={18} />
-                </button>
-                {menuOpen && (
-                  <div
-                    role="menu"
-                    aria-label="Ações do orçamento"
-                    className="absolute right-0 top-10 z-40 w-56 rounded-md border border-line bg-surface py-1 shadow-lg"
+                  Cancelar
+                </Button>
+                <Button variant="outline" size="sm" disabled={saving} onClick={openPreview}>
+                  Pré-visualizar
+                </Button>
+                <Button size="sm" disabled={saving} onClick={save}>
+                  <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
+                </Button>
+              </>
+            ) : (
+              <>
+                {draftEditable ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        showMessage('');
+                        setEditing(true);
+                      }}
+                    >
+                      <Pencil size={14} /> Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={issuing || lifecycleAction !== null}
+                      onClick={() => setConfirmIssueOpen(true)}
+                    >
+                      {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
+                      {issuing ? 'Emitindo…' : 'Emitir orçamento'}
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={openIssuedDocument}>
+                    <FileText size={14} /> Visualizar PDF
+                  </Button>
+                )}
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    aria-label="Mais ações"
+                    className="flex h-8 w-8 items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => setMenuOpen((current) => !current)}
                   >
-                    {data.status !== 'rascunho' && (
+                    <MoreHorizontal size={18} />
+                  </button>
+                  {menuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Ações do orçamento"
+                      className="absolute right-0 top-9 z-40 w-52 rounded-md border border-line bg-surface py-1 shadow-lg"
+                    >
                       <button
                         type="button"
                         role="menuitem"
                         className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
                         onClick={() => {
                           setMenuOpen(false);
-                          openIssuedDocument();
+                          setTechDetailsOpen(true);
                         }}
                       >
-                        Visualizar PDF
+                        Detalhes técnicos
                       </button>
-                    )}
-                    {data.status === 'emitido' && (
-                      <>
+                      {draftEditable && (
                         <button
                           type="button"
-                          className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
-                          disabled={lifecycleAction !== null}
+                          role="menuitem"
+                          className="block w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
                           onClick={() => {
                             setMenuOpen(false);
-                            void markCommercialStatus('aprovado');
+                            setConfirmDeleteOpen(true);
                           }}
                         >
-                          Marcar como aprovado
+                          <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
                         </button>
-                        <button
-                          type="button"
-                          className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
-                          disabled={lifecycleAction !== null}
-                          onClick={() => {
-                            setMenuOpen(false);
-                            openLossReasonDialog();
-                          }}
-                        >
-                          Marcar como perdido
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setTechDetailsOpen(true);
-                      }}
-                    >
-                      Detalhes técnicos
-                    </button>
-                    {draftEditable && (
-                      <button
-                        type="button"
-                        className="block w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setConfirmDeleteOpen(true);
-                        }}
-                      >
-                        <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
-                      </button>
-                    )}
-                  </div>
-                )}
-                {menuOpen && <div aria-hidden="true" className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />}
-              </div>
-            </div>
-          </>
+                      )}
+                    </div>
+                  )}
+                  {menuOpen && (
+                    <div
+                      aria-hidden="true"
+                      className="fixed inset-0 z-30"
+                      onClick={() => setMenuOpen(false)}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </header>
+
+        {(message || emailSuccess) && (
+          <p
+            role="status"
+            aria-live="polite"
+            className={`mb-4 text-sm ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
+          >
+            {message || emailSuccess}
+          </p>
         )}
-      </div>
-
-      <fieldset disabled={saving} className="contents">
-      {/* Cabeçalho da página */}
-      <header className="pt-5">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="text-2xl font-semibold tracking-[-0.3px]">Orçamento #{data.businessNumber || data.id}</h1>
-          <StatusBadge {...statusBadgeProps(data.status)} />
-          {data.revision && (
-            <span className="rounded-sm border border-line px-2 py-0.5 text-xs text-fg-muted">
-              Revisão {data.revision}
-            </span>
-          )}
-          {data.expired && <span className="text-xs font-medium text-warning">Expirado</span>}
-        </div>
-        <p className="mt-1 break-words text-sm text-fg-muted">{data.cliente || 'Cliente não informado'}</p>
-      </header>
-
       {!draftEditable && !editing && (
         <p className="mt-4 rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
           Este orçamento está somente para leitura porque já foi emitido. Alterações criam uma nova revisão.
@@ -1289,12 +1261,124 @@ return (
         </div>
       )}
 
+      {data.status !== 'rascunho' && !editing && (
+        <section
+          aria-labelledby="delivery-outcome-title"
+          className="mt-5 border-y border-line bg-surface-subtle/60 py-4"
+        >
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <div className="min-w-0">
+              <h2 id="delivery-outcome-title" className="text-sm font-semibold text-fg">
+                Entrega e resultado
+              </h2>
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <label className="min-w-52 text-xs font-medium text-fg-muted">
+                  <span className="mb-1 block">Fluxo do WhatsApp</span>
+                  <select
+                    aria-label="Fluxo de WhatsApp"
+                    className="h-8 w-full rounded-sm border border-line bg-surface px-2 text-sm font-normal text-fg"
+                    value={deliveryFlowId}
+                    onChange={(event) => setDeliveryFlowId(event.target.value)}
+                    disabled={deliveryPending}
+                  >
+                    {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
+                    {deliveryFlows.map((flow) => (
+                      <option key={flow.id} value={flow.id}>
+                        {flow.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  size="sm"
+                  title={whatsappDisabledReason || undefined}
+                  disabled={Boolean(whatsappDisabledReason)}
+                  onClick={sendIssuedQuotation}
+                >
+                  <Phone size={14} /> Enviar WhatsApp
+                </Button>
+                {data.expired && data.revisionId && (
+                  <Button
+                    size="sm"
+                    disabled={lifecycleAction !== null}
+                    onClick={() => createRevision(data.revisionId)}
+                  >
+                    Nova revisão
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEmailError('');
+                    setEmailDialogOpen(true);
+                  }}
+                >
+                  <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+                </Button>
+              </div>
+              {whatsappDisabledReason && (
+                <p role="status" className="mt-2 text-xs text-fg-muted">
+                  {whatsappDisabledReason}
+                </p>
+              )}
+              {deliveryFlows.length === 0 && !deliveryError && (
+                <p role="status" className="mt-2 text-xs text-fg-muted">
+                  Não foi possível carregar os fluxos. Tente novamente mais tarde.
+                </p>
+              )}
+              <QuotationDeliveryStatus
+                delivery={delivery}
+                pending={deliveryPending}
+                onResolve={handleResolveDelivery}
+                className="mt-3"
+              />
+            </div>
+
+            <div className="lg:min-w-56 lg:border-l lg:border-line lg:pl-5">
+              <p className="text-xs font-medium text-fg-muted">Resultado comercial</p>
+              {data.status === 'emitido' ? (
+                <div className="mt-2 flex flex-wrap gap-2 lg:flex-col">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-start text-success"
+                    disabled={lifecycleAction !== null}
+                    onClick={() => void markCommercialStatus('aprovado')}
+                  >
+                    {lifecycleAction === 'aprovado' ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={14} />
+                    )}
+                    Marcar como aprovado
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-start text-destructive"
+                    disabled={lifecycleAction !== null}
+                    onClick={openLossReasonDialog}
+                  >
+                    Marcar como perdido
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <StatusBadge {...statusBadgeProps(data.status)} />
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Cliente */}
-      <section aria-labelledby="cliente-title" className="border-t border-line py-7">
-        <h2 id="cliente-title" className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+      <section aria-labelledby="cliente-title" className="border-t border-line py-5">
+        <h2 id="cliente-title" className="text-sm font-semibold text-fg">
           Cliente
         </h2>
-        <div className="mt-3">
+        <div className="mt-2">
           {editing ? (
             <div className="relative max-w-md">
               <span className="text-xs font-medium text-fg-muted">Cliente</span>
@@ -1341,7 +1425,7 @@ return (
               <p className="text-base font-semibold">{data.cliente || 'Cliente não informado'}</p>
               {(data.email || data.telefone) && (
                 <p className="mt-1 break-words text-sm text-fg-muted">
-                  {[data.email, data.telefone].filter(Boolean).join(' · ')}
+                  {[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}
                 </p>
               )}
               {data.clienteId && (
@@ -1375,17 +1459,17 @@ return (
       </section>
 
       {/* Dados do orçamento */}
-      <section aria-labelledby="dados-title" className="border-t border-line py-7">
-        <h2 id="dados-title" className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+      <section aria-labelledby="dados-title" className="border-t border-line py-5">
+        <h2 id="dados-title" className="text-sm font-semibold text-fg">
           Dados do orçamento
         </h2>
-        <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Data</span>
+            <span className="text-xs font-medium text-fg-muted">Data do orçamento</span>
             <p className="mt-1 whitespace-nowrap tabular-nums">{formatDate(data.data) || '—'}</p>
           </div>
           <div className="min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Validade</span>
+            <span className="text-xs font-medium text-fg-muted">Validade da revisão</span>
             {editing ? (
               <>
                 <Input
@@ -1398,8 +1482,8 @@ return (
                   className="mt-1 w-28"
                 />
                 <p className="mt-1 text-xs text-fg-tertiary">
-                  {data.validadeDias && Number(validadeDias) !== Number(data.validadeDias) && formatDate(data.validade)
-                    ? `Válida até ${formatDate(data.validade)} (antes de salvar)`
+                  {Number(validadeDias) !== Number(data.validadeDias)
+                    ? 'A data final será recalculada ao salvar.'
                     : formatDate(data.validade)
                       ? `Válida até ${formatDate(data.validade)}`
                       : undefined}
@@ -1407,9 +1491,9 @@ return (
               </>
             ) : (
               <p className="mt-1 break-words">
-                {data.validadeDias ?? '—'} dias
+                {data.validadeDias ?? '—'} dias configurados
                 {formatDate(data.validade) && (
-                  <span className="text-fg-tertiary"> · até {formatDate(data.validade)}</span>
+                  <span className="block text-xs text-fg-tertiary">Válida até {formatDate(data.validade)}</span>
                 )}
               </p>
             )}
@@ -1458,19 +1542,21 @@ return (
               <p className="mt-1 whitespace-nowrap tabular-nums">{formatBRL(data.frete)}</p>
             )}
           </div>
-          <div className="min-w-0 sm:col-span-2 lg:col-span-4">
-            <span className="text-xs font-medium text-fg-muted">Previsão de entrega</span>
-            {editing ? (
-              <Input
-                aria-label="Entrega do orçamento"
-                value={entrega}
-                onChange={(event) => setEntrega(event.target.value)}
-                className="mt-1"
-              />
-            ) : (
-              <p className="mt-1 max-w-[68ch] break-words whitespace-pre-wrap">{entrega || '—'}</p>
-            )}
-          </div>
+          {(editing || entrega) && (
+            <div className="min-w-0 sm:col-span-2 lg:col-span-4">
+              <span className="text-xs font-medium text-fg-muted">Previsão de entrega</span>
+              {editing ? (
+                <Input
+                  aria-label="Entrega do orçamento"
+                  value={entrega}
+                  onChange={(event) => setEntrega(event.target.value)}
+                  className="mt-1"
+                />
+              ) : (
+                <p className="mt-1 max-w-[68ch] break-words whitespace-pre-wrap">{entrega}</p>
+              )}
+            </div>
+          )}
         </div>
         {data.expired && (
           <p className="mt-3 text-xs text-warning">Validade expirada — crie uma nova revisão para reenviar.</p>
@@ -1478,20 +1564,20 @@ return (
       </section>
 
       {/* Itens */}
-      <section aria-labelledby="quotation-items-title" className="border-t border-line py-7">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="quotation-items-title" className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+      <section aria-labelledby="quotation-items-title" className="border-t border-line py-5">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 id="quotation-items-title" className="text-sm font-semibold text-fg">
             Itens
           </h2>
           <span className="text-xs text-fg-muted">
-            {displayItems.length} item{displayItems.length === 1 ? '' : 'ns'}
+            {quotationItemCountLabel(displayItems.length)}
           </span>
         </div>
         {displayItems.length > 0 ? (
-          <Table className="mt-2 min-w-[640px] text-sm">
+          <Table className="mt-3 min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3">
             <TableHeader>
               <TableRow>
-                <TableHead className="h-9 min-w-[220px]">Produto</TableHead>
+                <TableHead className="h-8 w-full min-w-[280px]">Produto</TableHead>
                 {editing && <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>}
                 <TableHead className="h-9 whitespace-nowrap text-center">Qtd</TableHead>
                 {editing && <TableHead className="h-9 whitespace-nowrap text-right">Sugerido</TableHead>}
@@ -1506,7 +1592,7 @@ return (
                 const results = productResults[item._key] || [];
                 return (
                   <TableRow key={item._key}>
-                    <TableCell className="max-w-[320px] break-words py-2">
+                    <TableCell className="max-w-[480px] break-words leading-5">
                       {editing ? (
                         <label className="block space-y-1">
                           <Input
@@ -1609,7 +1695,7 @@ return (
                         {formatBRL(item.price_difference)}
                       </TableCell>
                     )}
-                    <TableCell className="whitespace-nowrap py-2 text-right font-mono">
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
                       {formatBRL(
                         editing
                           ? Number(item.qty) * Number(item.applied_unit_price)
@@ -1651,19 +1737,19 @@ return (
             <Plus size={14} /> Item
           </Button>
         )}
-        <div className="mt-6 flex justify-end">
-          <dl className="w-full max-w-xs text-sm">
-            <div className="flex items-center justify-between gap-6">
+        <div className="mt-4 flex justify-end">
+          <dl className="w-full max-w-[300px] text-sm tabular-nums">
+            <div className="flex items-center justify-between gap-6 py-0.5">
               <dt className="text-fg-muted">Subtotal</dt>
-              <dd className="font-mono tabular-nums">{formatBRL(displayedSubtotal)}</dd>
+              <dd>{formatBRL(displayedSubtotal)}</dd>
             </div>
-            <div className="flex items-center justify-between gap-6">
+            <div className="flex items-center justify-between gap-6 py-0.5">
               <dt className="text-fg-muted">Frete</dt>
-              <dd className="font-mono tabular-nums">{formatBRL(editing ? frete : data.frete)}</dd>
+              <dd>{formatBRL(editing ? frete : data.frete)}</dd>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-6 border-t border-line pt-3 text-base font-semibold">
+            <div className="mt-2 flex items-center justify-between gap-6 border-t border-line pt-2.5 text-base font-semibold">
               <dt>Total</dt>
-              <dd className="font-mono tabular-nums">{formatBRL(displayedTotal)}</dd>
+              <dd>{formatBRL(displayedTotal)}</dd>
             </div>
           </dl>
         </div>
@@ -1673,58 +1759,15 @@ return (
       <QuotationSectionsDocument
         sections={sections}
         editable={editing && draftEditable}
+        hideProductionDeadline={!editing && hideDuplicateProductionDeadline}
         onChange={setSections}
       />
 
-      {/* Entrega (WhatsApp) — somente orçamentos emitidos */}
-      {data.status !== 'rascunho' && !editing && (
-        <section aria-label="Entrega" className="border-t border-line py-7">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Envio</h2>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="min-w-0 text-xs font-medium text-fg-muted">
-              <span className="mb-1 block">Fluxo de WhatsApp</span>
-              <select
-                aria-label="Fluxo de WhatsApp"
-                className="h-9 max-w-full rounded-sm border border-line bg-surface px-2 text-sm font-normal text-fg"
-                value={deliveryFlowId}
-                onChange={(event) => setDeliveryFlowId(event.target.value)}
-                disabled={deliveryPending}
-              >
-                {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
-                {deliveryFlows.map((flow) => (
-                  <option key={flow.id} value={flow.id}>
-                    {flow.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {deliveryFlows.length === 0 && (
-              <span role="status" className="text-xs text-fg-muted">
-                Não foi possível carregar os fluxos. Tente novamente mais tarde.
-              </span>
-            )}
-            <QuotationDeliveryStatus
-              delivery={delivery}
-              pending={deliveryPending}
-              onResolve={handleResolveDelivery}
-            />
-            {deliveryError && (
-              <span role="status" className="w-full break-words text-xs text-warning">
-                {deliveryError}
-              </span>
-            )}
-            {delivery && !deliveryPending && (
-              <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
-            )}
-          </div>
-        </section>
-      )}
-
       {/* Revisões */}
       {(data.revisionHistory || []).length > 0 && (
-        <section className="border-t border-line py-7" aria-label="Revisões">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Revisões</h2>
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+        <section className="border-t border-line py-5" aria-label="Revisões">
+          <h2 className="text-sm font-semibold text-fg">Revisões</h2>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
             <span>
               Revisão atual: <b className="font-semibold">R{data.revision}</b>
             </span>
@@ -1771,7 +1814,7 @@ return (
                       <TableCell>
                         <StatusBadge {...statusBadgeProps(entry.status)} />
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-2 text-right font-mono">
+                      <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
                         {formatBRL(entry.total)}
                       </TableCell>
                       <TableCell>
@@ -1853,7 +1896,7 @@ return (
       />
       <ConfirmDialog
         open={confirmIssueOpen}
-        title={`Emitir orçamento #${data.businessNumber || data.id}?`}
+        title={`Emitir ${data.businessNumber || 'orçamento'}?`}
         message={`A revisão R${data.revision} será registrada e o PDF será gerado. Alterações futuras criarão uma nova revisão.`}
         confirmLabel="Emitir"
         cancelLabel="Cancelar"
@@ -1864,7 +1907,7 @@ return (
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Excluir orçamento?"
-        message={`Tem certeza que deseja excluir o orçamento #${data.businessNumber || data.id}? Esta ação não pode ser desfeita.`}
+        message={`Tem certeza que deseja excluir ${data.businessNumber ? `o orçamento ${data.businessNumber}` : 'este orçamento'}? Esta ação não pode ser desfeita.`}
         confirmLabel="Excluir"
         cancelLabel="Cancelar"
         variant="destructive"
@@ -1940,7 +1983,7 @@ return (
               Motivo da perda
             </h3>
             <p id="loss-reason-description" className="mt-2 text-sm text-fg-muted">
-              Informe por que o orçamento #{data.businessNumber || data.id} foi perdido. O motivo fica
+              Informe por que o orçamento {data.businessNumber || ''} foi perdido. O motivo fica
               registrado no histórico.
             </p>
             <label className="mt-4 block text-sm">
