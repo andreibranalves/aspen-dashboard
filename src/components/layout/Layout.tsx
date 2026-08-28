@@ -48,11 +48,10 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     ];
 
   if (path.startsWith('/quotations/')) {
-    const id = path.slice('/quotations/'.length);
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Orçamentos', hash: getParentRoute('/quotations') },
-      { label: decodeLabel(id), hash: null },
+      { label: 'Orçamento', hash: null },
     ];
   }
   if (path.startsWith('/sales-orders/')) {

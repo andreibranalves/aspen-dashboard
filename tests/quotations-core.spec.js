@@ -372,7 +372,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
   await page.getByLabel('Condição de pagamento').fill('30 dias');
   await page.getByLabel('Frete do orçamento').fill('1.25');
-  await page.getByLabel('Observações padrão').fill('Alteração local');
+  await page.getByRole('textbox', { name: 'Condições gerais' }).fill('Alteração local');
   await page.getByLabel('Preço aplicado SKU-1').fill('10.00');
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText('Orçamento salvo.')).toBeVisible();
@@ -387,10 +387,11 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   expect(lastPutPayload.items[0].rate).toBe('10.00');
   expect(lastPutPayload.items[0].item_name).toBe(customItemName);
   await expect(page.getByText('R$ 101,25')).toBeVisible();
-  await expect(page.getByText('R$ 1,00')).toBeVisible();
   await expect(page.getByText('30 dias').first()).toBeVisible();
   await expect(page.getByText(customItemName)).toBeVisible();
+  // análise de preço (diferença) agora é visível apenas no modo de edição
   await page.getByRole('button', { name: /Editar/ }).click();
+  await expect(page.getByText('R$ 1,00')).toBeVisible();
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText(/O orçamento (foi alterado por outro usuário|mudou ou não pode mais ser editado)/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Recarregar' })).toBeVisible();
@@ -426,5 +427,6 @@ test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smo
   });
 
   await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: /Editar/ }).click();
   await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('simples');
 });

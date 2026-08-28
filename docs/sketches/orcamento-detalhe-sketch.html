@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch — Orçamento #1048 (redesign)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
+
+  :root {
+    --page: #ffffff;
+    --surface: #ffffff;
+    --surface-subtle: #fafafa;
+    --border-subtle: #ededed;
+    --border-default: #e2e2e5;
+    --fg: #18181b;
+    --fg-muted: #52525b;
+    --fg-tertiary: #71717a;
+    --primary: #165cd8;
+    --success: #1a7a4c;
+    --warning: #9a5b13;
+    --destructive: #b83a39;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; border-color: var(--border-default); }
+  body {
+    background: var(--page);
+    color: var(--fg);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; cursor: pointer; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ===== barra superior (breadcrumb + ações) ===== */
+  .topbar {
+    position: sticky; top: 0; z-index: 30;
+    background: rgb(255 255 255 / .92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border-default);
+    padding: 10px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-tertiary); }
+  .breadcrumb b { color: var(--fg); font-weight: 500; }
+  .breadcrumb a { color: var(--fg-muted); text-decoration: none; }
+  .breadcrumb a:hover { color: var(--primary); }
+  .topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+  /* ===== botões ===== */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border-default); border-radius: var(--radius);
+    background: var(--surface); color: var(--fg);
+    padding: 6px 14px; font-size: 13.5px; font-weight: 500;
+    transition: background .12s;
+  }
+  .btn:hover { background: var(--surface-subtle); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger-ghost { border-color: transparent; color: var(--destructive); }
+  .btn.danger-ghost:hover { background: rgb(184 58 57 / .08); }
+  .btn.ghost { border-color: transparent; }
+  .btn.ghost:hover { background: var(--surface-subtle); }
+  .btn.sm { padding: 4px 10px; font-size: 12.5px; }
+  .btn.save { background: var(--success); border-color: var(--success); color: #fff; }
+
+  /* ===== badge / status ===== */
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 500;
+    background: rgb(22 92 216 / .08); color: var(--primary);
+  }
+  .badge.neutral { background: #f4f4f5; color: var(--fg-muted); }
+  .badge .dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+  /* ===== container ===== */
+  .page { max-width: 1240px; margin: 0 auto; padding: 0 24px 64px; }
+
+  /* ===== header da página ===== */
+  .pageheader {
+    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding: 28px 0 20px;
+  }
+  .pageheader h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.3px; }
+  .pageheader .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .pageheader .cliente { margin-top: 6px; font-size: 14px; color: var(--fg-muted); }
+  .revision-chip {
+    font-size: 12px; color: var(--fg-muted);
+    border: 1px solid var(--border-default); border-radius: 6px; padding: 1px 8px;
+  }
+  .unsaved { display: none; align-items: center; gap: 6px; font-size: 12.5px; color: var(--warning); }
+  .unsaved::before { content: ''; width: 7px; height: 7px; border-radius: 99px; background: var(--warning); }
+  body[data-mode="edit"] .unsaved { display: inline-flex; }
+
+  /* ===== seções (documento, sem cards) ===== */
+  section.doc { border-top: 1px solid var(--border-default); padding: 28px 0 30px; }
+  section.doc h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--fg-tertiary); margin-bottom: 16px;
+  }
+  section.doc h2 .head-right { float: right; font-weight: 400; letter-spacing: 0; text-transform: none; display: flex; align-items: center; gap: 12px; }
+
+  /* labels + valores */
+  .field .label { font-size: 12px; font-weight: 500; color: var(--fg-tertiary); }
+  .field .value { margin-top: 3px; font-size: 14px; }
+
+  /* ===== cliente ===== */
+  .cliente-nome { font-size: 16px; font-weight: 600; }
+  .cliente-sub { font-size: 13.5px; color: var(--fg-muted); margin-top: 2px; }
+  .cliente-grid {
+    margin-top: 18px; display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 18px 24px;
+  }
+  .inline-links { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 16px; font-size: 13.5px; }
+  .inline-links a { color: var(--primary); text-decoration: none; font-weight: 500; }
+  .inline-links a:hover { text-decoration: underline; }
+
+  /* ===== dados do orçamento ===== */
+  .meta-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 18px 24px; }
+  .hint { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px; }
+
+  /* ===== tabela de itens ===== */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; font-size: 12px; font-weight: 500; color: var(--fg-tertiary);
+    padding: 8px 12px; border-bottom: 1px solid var(--border-default); white-space: nowrap;
+  }
+  td { padding: 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+  th.right, td.right { text-align: right; }
+  td.right { font-variant-numeric: tabular-nums; }
+  td .sku { display: block; font-size: 12px; color: var(--fg-tertiary); margin-top: 2px; }
+  tfoot td { border-bottom: none; }
+
+  /* ===== totais ===== */
+  .totals { display: flex; justify-content: flex-end; margin-top: 20px; }
+  .totals dl { width: 320px; font-size: 14px; }
+  .totals .row { display: flex; justify-content: space-between; padding: 5px 0; }
+  .totals .row dt { color: var(--fg-muted); }
+  .totals .row.grand {
+    border-top: 1px solid var(--border-default); margin-top: 8px; padding-top: 12px;
+    font-size: 17px; font-weight: 700;
+  }
+  .totals .row.grand dt { color: var(--fg); }
+
+  /* ===== seções textuais ===== */
+  .text-section p { max-width: 68ch; font-size: 14px; white-space: pre-line; }
+  .text-section .sublabel { font-size: 12px; font-weight: 500; color: var(--fg-tertiary); margin: 14px 0 4px; }
+  .bank { font-size: 13.5px; color: var(--fg-muted); white-space: pre-line; }
+
+  /* ===== revisões ===== */
+  .rev-atual { display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px; font-size: 14px; }
+  .rev-atual b { font-weight: 600; }
+
+  /* ===== edit mode ===== */
+  body[data-mode="read"] .edit-only { display: none !important; }
+  body[data-mode="edit"] .read-only { display: none !important; }
+  .edit-note { font-size: 12.5px; color: var(--warning); }
+
+  input.fake, select.fake, textarea.fake {
+    font: inherit; font-size: 14px; color: var(--fg);
+    border: 1px solid var(--border-default); border-radius: 6px;
+    padding: 6px 10px; background: var(--surface); width: 100%;
+  }
+  textarea.fake { min-height: 96px; resize: vertical; }
+  .field .fake { margin-top: 4px; }
+  .fake-row { display: flex; gap: 8px; }
+  .switch {
+    position: relative; width: 32px; height: 18px; border-radius: 999px;
+    background: var(--primary); display: inline-block; vertical-align: middle;
+  }
+  .switch.off { background: #d4d4d8; }
+  .switch::after {
+    content: ''; position: absolute; top: 2px; width: 14px; height: 14px;
+    border-radius: 99px; background: #fff;
+  }
+  .switch:not(.off)::after { right: 2px; }
+  .switch.off::after { left: 2px; }
+
+  /* anotações do sketch */
+  .sketch-note {
+    font-size: 11.5px; color: var(--primary); background: rgb(22 92 216 / .05);
+    border: 1px dashed rgb(22 92 216 / .35); border-radius: 6px;
+    padding: 6px 10px; display: inline-block; margin-top: 10px;
+  }
+  .mode-banner {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 50; display: flex; gap: 0; border: 1px solid var(--border-default);
+    border-radius: 999px; overflow: hidden; background: var(--surface);
+    box-shadow: 0 4px 16px rgb(0 0 0 / .08); font-size: 13px;
+  }
+  .mode-banner button { border: none; background: none; padding: 8px 20px; font-weight: 500; color: var(--fg-muted); }
+  .mode-banner button.active { background: var(--primary); color: #fff; }
+</style>
+</head>
+<body data-mode="read">
+
+<!-- ============ TOPBAR ============ -->
+<div class="topbar">
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="#">Início</a> <span>›</span> <a href="#">Orçamentos</a> <span>›</span> <b>#1048</b>
+  </nav>
+  <div class="topbar-actions">
+    <!-- READ -->
+    <div class="read-only" style="display:flex;gap:8px">
+      <button class="btn" onclick="setMode('edit')">✏️ Editar</button>
+      <button class="btn primary">Emitir orçamento</button>
+      <button class="btn ghost" title="Mais ações">•••</button>
+    </div>
+    <!-- EDIT -->
+    <div class="edit-only" style="display:flex;align-items:center;gap:12px">
+      <span class="unsaved">Alterações não salvas</span>
+      <button class="btn" onclick="setMode('read')">Cancelar</button>
+      <button class="btn save" onclick="setMode('read')">Salvar alterações</button>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- ============ HEADER ============ -->
+  <header class="pageheader">
+    <div>
+      <h1>Orçamento #1048</h1>
+      <div class="meta">
+        <span class="badge"><span class="dot"></span>Rascunho</span>
+        <span class="revision-chip">Revisão 1</span>
+      </div>
+      <p class="cliente">Melissa Ferreira · Aspen Eventos Ltda.</p>
+    </div>
+  </header>
+
+  <!-- ============ CLIENTE ============ -->
+  <section class="doc">
+    <h2>Cliente</h2>
+    <div class="cliente-nome">Melissa Ferreira</div>
+    <div class="cliente-sub">Aspen Eventos Ltda. · CNPJ 00.000.000/0001-00</div>
+    <div class="cliente-grid">
+      <div class="field"><div class="label">Telefone</div><div class="value">(21) 99999-9999</div></div>
+      <div class="field"><div class="label">E-mail</div><div class="value">melissa@empresa.com</div></div>
+      <div class="field"><div class="label">Contato</div><div class="value">Melissa F.</div></div>
+      <div class="field"><div class="label">Vendedor</div><div class="value">Andrei</div></div>
+    </div>
+    <div class="inline-links">
+      <a href="#">Ver cliente</a>
+      <a href="#">Abrir no CRM</a>
+      <a href="#">Ver orçamentos anteriores</a>
+    </div>
+  </section>
+
+  <!-- ============ DADOS DO ORÇAMENTO ============ -->
+  <section class="doc">
+    <h2>Dados do orçamento</h2>
+    <div class="meta-grid">
+      <div class="field">
+        <div class="label">Data</div>
+        <!-- READ -->
+        <div class="value read-only">26/08/2026</div>
+        <!-- EDIT -->
+        <div class="edit-only"><input class="fake" type="date" value="2026-08-26"></div>
+      </div>
+      <div class="field">
+        <div class="label">Validade</div>
+        <div class="value read-only">15 dias <span class="hint">· até 10/09/2026</span></div>
+        <div class="edit-only">
+          <input class="fake" type="number" value="15" style="width:110px">
+          <div class="hint">Válida até 10/09/2026</div>
+        </div>
+      </div>
+      <div class="field">
+        <div class="label">Vendedor</div>
+        <div class="value read-only">Andrei</div>
+        <div class="edit-only"><select class="fake"><option>Andrei</option></select></div>
+      </div>
+      <div class="field">
+        <div class="label">Modelo</div>
+        <div class="value read-only">Simples <span class="hint">· detalhes em •••</span></div>
+        <div class="edit-only"><select class="fake"><option>Simples</option><option>Completo</option></select></div>
+      </div>
+      <div class="field">
+        <div class="label">Frete</div>
+        <div class="value read-only">R$ 0,00</div>
+        <div class="edit-only"><input class="fake" type="number" value="0" style="width:130px"></div>
+      </div>
+    </div>
+    <div style="margin-top:18px" class="field">
+      <div class="label">Previsão de entrega</div>
+      <p class="value read-only">15 a 20 dias úteis após confirmação do pagamento e aprovação da arte.</p>
+      <div class="edit-only"><input class="fake" value="15 a 20 dias úteis após confirmação do pagamento e aprovação da arte."></div>
+    </div>
+  </section>
+
+  <!-- ============ ITENS ============ -->
+  <section class="doc">
+    <h2>Itens <span class="head-right" style="font-size:12px;color:var(--fg-tertiary);text-transform:none;letter-spacing:0">3 itens</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:45%">Produto</th>
+          <th class="right" style="width:10%">Qtd.</th>
+          <th class="right" style="width:20%">Preço un.</th>
+          <th class="right" style="width:25%">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Bolsa em juta, personalizada <span class="sku">BOL-JUT-001 ·Logo bordado 1 cor</span></td>
+          <td class="right">30</td>
+          <td class="right">R$ 62,33</td>
+          <td class="right">R$ 1.869,90</td>
+        </tr>
+        <tr>
+          <td>Kit cushion para embalagem <span class="sku">KIT-CSH-002</span></td>
+          <td class="right">10</td>
+          <td class="right">R$ 12,50</td>
+          <td class="right">R$ 125,00</td>
+        </tr>
+        <tr>
+          <td>Etiqueta tecida personalizada <span class="sku">ETQ-TEC-010 · Personalização cliente</span></td>
+          <td class="right">200</td>
+          <td class="right">R$ 1,85</td>
+          <td class="right">R$ 370,00</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <dl>
+        <div class="row"><dt>Subtotal</dt><dd class="num">R$ 2.164,90</dd></div>
+        <div class="row"><dt>Frete</dt><dd class="num">R$ 0,00</dd></div>
+        <div class="row"><dt>Desconto</dt><dd class="num">R$ 0,00</dd></div>
+        <div class="row grand"><dt>Total</dt><dd class="num">R$ 2.164,90</dd></div>
+      </dl>
+    </div>
+    <span class="sketch-note">Análise de preço (sugerido / aplicado / diferença) existirá só no modo de edição — opção C da spec.</span>
+  </section>
+
+  <!-- ============ PAGAMENTO ============ -->
+  <section class="doc text-section">
+    <h2>Pagamento <span class="head-right edit-only"><span class="switch" title="Visível"></span> Visível</span></h2>
+    <p class="read-only">PIX, boleto bancário ou transferência.</p>
+    <div class="edit-only"><textarea class="fake">PIX, boleto bancário ou transferência.</textarea></div>
+    <div class="sublabel read-only">Dados bancários</div>
+    <p class="bank read-only">Aspen Comércio de Artigos
+Banco Stone Pagamentos S.A.
+Agência 0001 · Conta 35207618-6
+PIX: 55.458.072/0001-79</p>
+  </section>
+
+  <!-- ============ PRODUÇÃO E ENTREGA ============ -->
+  <section class="doc text-section">
+    <h2>Produção e entrega <span class="head-right edit-only"><span class="switch" title="Visível"></span> Visível</span></h2>
+    <p class="read-only">15 a 20 dias úteis após confirmação do pagamento e aprovação da arte.</p>
+    <div class="edit-only"><textarea class="fake">15 a 20 dias úteis após confirmação do pagamento e aprovação da arte.</textarea></div>
+  </section>
+
+  <!-- ============ CONDIÇÕES GERAIS ============ -->
+  <section class="doc text-section">
+    <h2>Condições gerais <span class="head-right edit-only"><span class="switch" title="Visível"></span> Visível</span></h2>
+    <p class="read-only">Formas de pagamento: PIX ou boleto.
+A produção será iniciada após confirmação do pagamento e aprovação da arte.
+Prazos contam a partir da aprovação final da arte.</p>
+    <div class="edit-only"><textarea class="fake">Formas de pagamento: PIX ou boleto.
+A produção será iniciada após confirmação do pagamento e aprovação da arte.</textarea></div>
+  </section>
+
+  <!-- ============ OBSERVAÇÕES (vazio no read) ============ -->
+  <section class="doc text-section" id="obs">
+    <h2>Observações</h2>
+    <div class="read-only" style="color:var(--fg-tertiary);font-size:14px">—</div>
+    <div class="edit-only">
+      <p style="font-size:13px;color:var(--fg-tertiary);margin-bottom:8px">Nenhuma observação adicionada.</p>
+      <button class="btn sm">+ Adicionar observação</button>
+    </div>
+  </section>
+
+  <!-- ============ REVISÕES ============ -->
+  <section class="doc">
+    <h2>Revisões</h2>
+    <div class="rev-atual">
+      <span><b>Revisão atual: R1</b></span>
+      <span style="color:var(--fg-muted)">Criada em 26/08/2026 por Andrei</span>
+      <a href="#" style="color:var(--primary);font-size:13.5px;text-decoration:none">Ver histórico completo →</a>
+    </div>
+    <span class="sketch-note">Detalhes técnicos (ID interno, snapshot, versão do modelo) ficam em ••• › Detalhes técnicos. Histórico completo expande a tabela abaixo.</span>
+    <!-- histórico expandido (exemplo) -->
+    <table style="margin-top:18px;font-size:13.5px">
+      <thead>
+        <tr><th>Revisão</th><th>Criada em</th><th>Criado por</th><th>Estado</th><th class="right">Total</th><th>PDF</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>R1</b></td><td>26/08/2026</td><td>Andrei</td><td><span class="badge neutral"><span class="dot"></span>Rascunho</span></td><td class="right">R$ 2.164,90</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+<!-- ============ alternador de modo (apenas do sketch) ============ -->
+<div class="mode-banner">
+  <button id="btn-read" class="active" onclick="setMode('read')">👁 Visualização</button>
+  <button id="btn-edit" onclick="setMode('edit')">✏️ Modo de edição</button>
+</div>
+
+<script>
+  function setMode(mode) {
+    document.body.dataset.mode = mode;
+    document.getElementById('btn-read').classList.toggle('active', mode === 'read');
+    document.getElementById('btn-edit').classList.toggle('active', mode === 'edit');
+    window.scrollTo({ top: 0 });
+  }
+</script>
+</body>
+</html>
