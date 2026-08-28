@@ -1247,7 +1247,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </p>
         )}
       {!draftEditable && !editing && (
-        <p className="mt-4 rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
+        <p className="mt-4 max-w-prose rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
           Este orçamento está somente para leitura porque já foi emitido. Alterações criam uma nova revisão.
         </p>
       )}
@@ -1262,113 +1262,104 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       )}
 
       {data.status !== 'rascunho' && !editing && (
-        <section
-          aria-labelledby="delivery-outcome-title"
-          className="mt-5 border-y border-line bg-surface-subtle/60 py-4"
-        >
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-            <div className="min-w-0">
-              <h2 id="delivery-outcome-title" className="text-sm font-semibold text-fg">
-                Entrega e resultado
-              </h2>
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <label className="min-w-52 text-xs font-medium text-fg-muted">
-                  <span className="mb-1 block">Fluxo do WhatsApp</span>
-                  <select
-                    aria-label="Fluxo de WhatsApp"
-                    className="h-8 w-full rounded-sm border border-line bg-surface px-2 text-sm font-normal text-fg"
-                    value={deliveryFlowId}
-                    onChange={(event) => setDeliveryFlowId(event.target.value)}
-                    disabled={deliveryPending}
-                  >
-                    {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
-                    {deliveryFlows.map((flow) => (
-                      <option key={flow.id} value={flow.id}>
-                        {flow.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+        <section aria-labelledby="delivery-outcome-title" className="border-t border-line py-5">
+          <h2 id="delivery-outcome-title" className="text-sm font-semibold text-fg">
+            Entrega e resultado
+          </h2>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="min-w-52 text-xs font-medium text-fg-muted">
+              <span className="mb-1 block">Fluxo do WhatsApp</span>
+              <Select
+                className="w-full"
+                value={deliveryFlowId}
+                onChange={(event) => setDeliveryFlowId(event.target.value)}
+                disabled={deliveryPending}
+              >
+                {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
+                {deliveryFlows.map((flow) => (
+                  <option key={flow.id} value={flow.id}>
+                    {flow.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <Button
+              size="sm"
+              title={whatsappDisabledReason || undefined}
+              disabled={Boolean(whatsappDisabledReason)}
+              onClick={sendIssuedQuotation}
+            >
+              <Phone size={14} /> Enviar WhatsApp
+            </Button>
+            {data.expired && data.revisionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={lifecycleAction !== null}
+                onClick={() => createRevision(data.revisionId)}
+              >
+                Nova revisão
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEmailError('');
+                setEmailDialogOpen(true);
+              }}
+            >
+              <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+            </Button>
+          </div>
+          {whatsappDisabledReason && (
+            <p role="status" className="mt-2 text-xs text-fg-muted">
+              {whatsappDisabledReason}
+            </p>
+          )}
+          {deliveryFlows.length === 0 && !deliveryError && (
+            <p role="status" className="mt-2 text-xs text-fg-muted">
+              Não foi possível carregar os fluxos. Tente novamente mais tarde.
+            </p>
+          )}
+          <QuotationDeliveryStatus
+            delivery={delivery}
+            pending={deliveryPending}
+            onResolve={handleResolveDelivery}
+            className="mt-3"
+          />
+
+          <div className="mt-5">
+            <p className="text-xs font-medium text-fg-muted">Resultado comercial</p>
+            {data.status === 'emitido' ? (
+              <div className="mt-2 flex flex-wrap gap-2">
                 <Button
+                  variant="success"
                   size="sm"
-                  title={whatsappDisabledReason || undefined}
-                  disabled={Boolean(whatsappDisabledReason)}
-                  onClick={sendIssuedQuotation}
+                  disabled={lifecycleAction !== null}
+                  onClick={() => void markCommercialStatus('aprovado')}
                 >
-                  <Phone size={14} /> Enviar WhatsApp
+                  {lifecycleAction === 'aprovado' ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={14} />
+                  )}
+                  Marcar como aprovado
                 </Button>
-                {data.expired && data.revisionId && (
-                  <Button
-                    size="sm"
-                    disabled={lifecycleAction !== null}
-                    onClick={() => createRevision(data.revisionId)}
-                  >
-                    Nova revisão
-                  </Button>
-                )}
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setEmailError('');
-                    setEmailDialogOpen(true);
-                  }}
+                  disabled={lifecycleAction !== null}
+                  onClick={openLossReasonDialog}
                 >
-                  <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+                  Marcar como perdido
                 </Button>
               </div>
-              {whatsappDisabledReason && (
-                <p role="status" className="mt-2 text-xs text-fg-muted">
-                  {whatsappDisabledReason}
-                </p>
-              )}
-              {deliveryFlows.length === 0 && !deliveryError && (
-                <p role="status" className="mt-2 text-xs text-fg-muted">
-                  Não foi possível carregar os fluxos. Tente novamente mais tarde.
-                </p>
-              )}
-              <QuotationDeliveryStatus
-                delivery={delivery}
-                pending={deliveryPending}
-                onResolve={handleResolveDelivery}
-                className="mt-3"
-              />
-            </div>
-
-            <div className="lg:min-w-56 lg:border-l lg:border-line lg:pl-5">
-              <p className="text-xs font-medium text-fg-muted">Resultado comercial</p>
-              {data.status === 'emitido' ? (
-                <div className="mt-2 flex flex-wrap gap-2 lg:flex-col">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="justify-start text-success"
-                    disabled={lifecycleAction !== null}
-                    onClick={() => void markCommercialStatus('aprovado')}
-                  >
-                    {lifecycleAction === 'aprovado' ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <CheckCircle2 size={14} />
-                    )}
-                    Marcar como aprovado
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="justify-start text-destructive"
-                    disabled={lifecycleAction !== null}
-                    onClick={openLossReasonDialog}
-                  >
-                    Marcar como perdido
-                  </Button>
-                </div>
-              ) : (
-                <div className="mt-2">
-                  <StatusBadge {...statusBadgeProps(data.status)} />
-                </div>
-              )}
-            </div>
+            ) : (
+              <div className="mt-2">
+                <StatusBadge {...statusBadgeProps(data.status)} />
+              </div>
+            )}
           </div>
         </section>
       )}
