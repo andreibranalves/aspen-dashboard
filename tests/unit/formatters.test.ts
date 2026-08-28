@@ -37,7 +37,15 @@ describe('capitalize', () => {
 });
 
 describe('formatDate', () => {
-  it('formats ISO date to pt-BR', () => {
+  it('formats a civil ISO date without shifting it by timezone', () => {
     assert.equal(formatDate('2024-05-20'), '20/05/2024');
+  });
+
+  it('formats timestamps in America/Sao_Paulo', () => {
+    assert.equal(formatDate('2024-05-20T02:00:00.000Z'), '19/05/2024');
+  });
+
+  it('keeps invalid civil dates unchanged', () => {
+    assert.equal(formatDate('2024-02-31'), '2024-02-31');
   });
 });

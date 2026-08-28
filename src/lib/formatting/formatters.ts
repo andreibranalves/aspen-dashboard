@@ -61,12 +61,20 @@ export function capitalize(str: unknown): string {
     .join(' ');
 }
 
-/** ISO date → DD/MM/YYYY */
+/** ISO date → DD/MM/YYYY, sem deslocar datas civis por timezone. */
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return String(dateStr);
-  return d.toLocaleDateString('pt-BR');
+  const calendarDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (calendarDate) {
+    const [, year, month, day] = calendarDate;
+    const date = new Date(`${dateStr}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === dateStr
+      ? `${day}/${month}/${year}`
+      : dateStr;
+  }
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return String(dateStr);
+  return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
 /** Bom dia / Boa tarde / Boa noite */
