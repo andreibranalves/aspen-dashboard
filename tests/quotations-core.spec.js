@@ -285,6 +285,66 @@ test('detalhe mantém conteúdo longo legível em modo somente leitura @quotatio
   await expect(page.getByRole('heading', { name: 'Itens' })).toBeVisible();
 });
 
+test('detalhe mantém um único scroll vertical no shell @quotations @smoke', async ({ page }) => {
+  await page.route('**/api/quotations?id=*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(detail({
+        items: Array.from({ length: 30 }, (_, index) => ({
+          id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+          sku: `SKU-${index}`,
+          item_code: `SKU-${index}`,
+          nome: `Produto local ${index}`,
+          item_name: `Produto local ${index}`,
+          qty: '10.000',
+          suggested_unit_price: '9.00',
+          applied_unit_price: '9.00',
+          price_difference: '0.00',
+          line_total: '90.00',
+          manual_rate: false,
+        })),
+      })),
+    });
+  });
+  await page.route('**/api/communication-flows', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }) });
+  });
+  await page.route('**/api/quotation-templates', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [] }) });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByRole('heading', { name: 'Itens' })).toBeVisible();
+
+  const readScrollState = () => page.evaluate(() => {
+    const main = globalThis.document.querySelector('main');
+    const topBar = main?.previousElementSibling;
+    return {
+      windowY: globalThis.scrollY,
+      documentHeight: globalThis.document.documentElement.scrollHeight,
+      viewportHeight: globalThis.innerHeight,
+      mainTop: main?.getBoundingClientRect().top,
+      mainBottom: main?.getBoundingClientRect().bottom,
+      mainScrollHeight: main?.scrollHeight,
+      mainClientHeight: main?.clientHeight,
+      topBarTop: topBar?.getBoundingClientRect().top,
+    };
+  });
+
+  const initial = await readScrollState();
+  expect(initial.documentHeight).toBeLessThanOrEqual(initial.viewportHeight);
+  await page.locator('main').evaluate((main) => { main.scrollTop = main.scrollHeight; });
+  await expect(page.getByRole('navigation', { name: 'Trilha de navegação' })).toBeVisible();
+  const scrolled = await readScrollState();
+  expect(scrolled.windowY).toBe(0);
+  expect(scrolled.documentHeight).toBeLessThanOrEqual(scrolled.viewportHeight);
+  expect(scrolled.mainBottom).toBe(scrolled.viewportHeight);
+  expect(scrolled.topBarTop).toBe(0);
+  expect(scrolled.mainScrollHeight).toBeGreaterThan(scrolled.mainClientHeight);
+});
+
 test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({ page }) => {
   let authoritative = detail();
   await page.route('**/api/quotations**', async (route) => {

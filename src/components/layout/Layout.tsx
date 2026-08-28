@@ -124,7 +124,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   }, [isMobile, route]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-page">
+    <div className="flex h-dvh min-h-0 overflow-hidden bg-page">
       <Sidebar
         collapsed={sidebarCollapsed}
         mobile={isMobile}
@@ -134,7 +134,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
       />
       <div
         className={cn(
-          'flex min-w-0 flex-1 flex-col transition-[margin] duration-200',
+          'flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-200',
           'md:ml-16',
           !sidebarCollapsed && 'md:ml-64'
         )}
@@ -150,7 +150,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           toggleDarkMode={toggleDarkMode}
         />
         <main
-          className="flex-1 overflow-auto p-4 md:p-6"
+          className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
           inert={isMobile && !sidebarCollapsed ? true : undefined}
         >
           {children}
