@@ -1556,7 +1556,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
       {/* Itens */}
       <section aria-labelledby="quotation-items-title" className="border-t border-line py-5">
-        <div className="flex flex-wrap items-baseline gap-2">
+        <div className="mb-3 flex flex-wrap items-baseline gap-2">
           <h2 id="quotation-items-title" className="text-sm font-semibold text-fg">
             Itens
           </h2>
@@ -1565,7 +1565,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </span>
         </div>
         {displayItems.length > 0 ? (
-          <Table className="mt-3 min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3">
+          <Table className="min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3">
             <TableHeader>
               <TableRow>
                 <TableHead className="h-8 w-full min-w-[280px]">Produto</TableHead>
@@ -1711,7 +1711,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             </TableBody>
           </Table>
         ) : (
-          <div className="mt-3">
+          <div>
             <EmptyState
               icon={FileText}
               title="Nenhum item neste orçamento"
@@ -1775,10 +1775,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             )}
           </div>
           <details className="mt-3">
-            <summary className="cursor-pointer text-sm font-medium text-primary hover:underline">
+            <summary className="mb-3 cursor-pointer text-sm font-medium text-primary hover:underline">
               Ver histórico completo
             </summary>
-            <Table className="mt-3 min-w-[720px] text-sm">
+            <Table className="min-w-[720px] text-sm">
               <TableHeader>
                 <TableRow>
                   <TableHead className="h-9">Revisão</TableHead>
