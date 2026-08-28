@@ -1100,7 +1100,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             : '';
 
   return (
-    <div className="mx-auto w-full max-w-[1180px] pb-4">
+    <div className="mx-auto w-full max-w-[1060px] pb-4">
       <fieldset disabled={saving} className="contents">
         <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
