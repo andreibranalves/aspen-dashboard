@@ -103,21 +103,15 @@ e regressões conhecidas documentadas.
 
 A integração Vercel + Neon cria uma branch PostgreSQL `preview/<git-branch>` para cada nova branch implantada em Preview. O projeto Neon Free comporta 10 branches; `main` ocupa uma delas.
 
-Mantenha somente:
+A integração só remove a branch Neon quando o deployment Vercel correspondente é deletado (retention de preview default de meses), então o prune garantido é automático: ao fechar um PR — merged ou não — o workflow `.github/workflows/neon-preview-prune.yml` deleta `preview/<head-branch>` via `neondatabase/delete-branch-action` com o secret `NEON_API_KEY`. A remoção é best-effort e não bloqueia o PR.
 
-- `main`;
-- branches de Preview vinculadas a PRs abertos;
-- branches usadas por uma validação de release em andamento.
+A limpeza manual permanece para os casos fora do fluxo automático:
 
-Uma branch de Preview torna-se candidata a remoção quando o PR correspondente foi merged ou fechado e nenhuma validação ativa depende dela. A branch Git e deployments históricos não justificam reter indefinidamente o banco de Preview.
+1. branches `preview/*` sem PR associado (deploy falhou antes de criar branch, PR convertido em draft abandonado fora do GitHub, etc.);
+2. branches usadas por uma validação de release em andamento que precise liberar capacidade;
+3. auditoria semanal de segurança.
 
-Faça a limpeza:
-
-1. após merge ou fechamento de PR;
-2. antes de abrir ou reimplantar Previews quando houver 8 ou mais branches Neon;
-3. semanalmente, como auditoria de segurança.
-
-Antes de remover qualquer branch:
+Antes de remover qualquer branch manualmente:
 
 1. liste as branches Neon sem alterar recursos;
 2. compare cada `preview/*` com os PRs abertos no GitHub;
@@ -125,7 +119,7 @@ Antes de remover qualquer branch:
 4. apresente a lista de candidatas e obtenha aprovação humana explícita;
 5. remova somente as candidatas aprovadas e confirme a capacidade liberada.
 
-A remoção é destrutiva para o banco daquela Preview. Nunca automatize a exclusão sem a comparação com PRs abertos e nunca remova `main`.
+A remoção é destrutiva para o banco daquela Preview. `main` nunca é removida; branches `backup-*` só saem com aprovação humana explícita.
 
 ## Regras comuns
 

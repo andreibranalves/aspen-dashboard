@@ -1,0 +1,29 @@
+name: Neon preview prune
+
+# Integração Vercel + Neon cria uma branch Postgres `preview/<git-branch>` por
+# deploy de Preview. A remoção só acontece quando o deployment Vercel é
+# deletado (retention default de meses), estourando o limite de 10 branches do
+# plano Neon Free. Este workflow é o prune garantido: apaga a branch Neon assim
+# que o PR correspondente fecha (merge ou não). Ver docs/release-lanes.md.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  delete-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Best-effort: a branch pode não existir se o deploy de preview nunca
+      # chegou a criá-la; uma falha aqui não deve poluir o PR fechado.
+      - name: Delete Neon preview branch
+        uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
+        continue-on-error: true
+        with:
+          project_id: dawn-art-45435232
+          branch: preview/${{ github.event.pull_request.head.ref }}
+          api_key: ${{ secrets.NEON_API_KEY }}
