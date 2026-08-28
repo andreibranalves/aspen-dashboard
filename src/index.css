@@ -75,8 +75,10 @@
     --text-secondary: 180 191 208;
     --text-tertiary: 142 157 181;
     --text-disabled: 102 116 138;
-    --primary: 47 111 219;
-    --on-primary: 255 255 255;
+    /* #4A82E0 atinge ≥4.5:1 como texto sobre page/surface no dark; o tinta
+       escura de --on-primary mantém botões sólidos ≥4.5:1 (tinta sobre azul). */
+    --primary: 74 130 224;
+    --on-primary: 15 20 32;
     --success: 52 199 126;
     --warning: 240 168 87;
     --destructive: 226 105 106;

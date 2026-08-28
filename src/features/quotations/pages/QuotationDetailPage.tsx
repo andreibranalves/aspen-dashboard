@@ -15,7 +15,6 @@ import {
   MoreHorizontal,
   X,
   Plus,
-  Phone,
   AlertTriangle,
   Loader2,
   Mail,
@@ -26,6 +25,7 @@ import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api
 import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
 import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
+import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPanel';
 import { useQuotationDeliveries, deliveryIdentityKey } from '@/hooks/useQuotationDeliveries';
 import type { DeliveryResolution } from '@/lib/api/quotationDeliveryApi';
 import { searchProducts } from '@/lib/api/productCache';
@@ -343,7 +343,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       if (!active) return;
       const flows = Array.isArray(result.flows) ? result.flows : [];
       setDeliveryFlows(flows);
-      const preferred = flows.find((flow) => flow.context === 'already_talking');
+      const preferred =
+        flows.find((flow) => flow.context === 'already_talking') ||
+        flows.find((flow) => flow.id === 'already-talking');
       const fallbackFlowId = preferred?.id || result.selectedFlowId || flows[0]?.id || '';
       setDeliveryFlowId((current) =>
         current && flows.some((flow) => flow.id === current) ? current : fallbackFlowId
@@ -1087,17 +1089,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const displayTitle = quotationDisplayTitle(data.businessNumber);
   const productionDeadline = sections.prazo_producao.current.value || '';
   const hideDuplicateProductionDeadline = quotationContentsMatch(entrega, productionDeadline);
-  const whatsappDisabledReason = deliveryPending
-    ? 'Envio em andamento.'
-    : delivery
-      ? 'Este orçamento já foi enviado pelo WhatsApp.'
-      : deliveryError
-        ? deliveryError
-        : !deliveryFlowId
-          ? 'Selecione um fluxo para enviar pelo WhatsApp.'
-          : data.expired
-            ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
-            : '';
+  const whatsappDisabledReason = deliveryError
+    ? deliveryError
+    : !deliveryFlowId
+      ? 'Selecione um fluxo para enviar pelo WhatsApp.'
+      : data.expired
+        ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+        : '';
 
   return (
     <div className="mx-auto w-full max-w-[1060px] pb-4">
@@ -1209,6 +1207,32 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                       >
                         Detalhes técnicos
                       </button>
+                      {data.clienteId && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            navigate('/crm');
+                          }}
+                        >
+                          Abrir no CRM
+                        </button>
+                      )}
+                      {data.clienteId && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            navigate('/quotations');
+                          }}
+                        >
+                          Ver orçamentos anteriores
+                        </button>
+                      )}
                       {draftEditable && (
                         <button
                           type="button"
@@ -1266,57 +1290,44 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           <h2 id="delivery-outcome-title" className="text-sm font-semibold text-fg">
             Entrega e resultado
           </h2>
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <label className="min-w-52 text-xs font-medium text-fg-muted">
-              <span className="mb-1 block">Fluxo do WhatsApp</span>
-              <Select
-                className="w-full"
-                value={deliveryFlowId}
-                onChange={(event) => setDeliveryFlowId(event.target.value)}
-                disabled={deliveryPending}
-              >
-                {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
-                {deliveryFlows.map((flow) => (
-                  <option key={flow.id} value={flow.id}>
-                    {flow.name}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <Button
-              size="sm"
-              title={whatsappDisabledReason || undefined}
-              disabled={Boolean(whatsappDisabledReason)}
-              onClick={sendIssuedQuotation}
-            >
-              <Phone size={14} /> Enviar WhatsApp
-            </Button>
-            {data.expired && data.revisionId && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={lifecycleAction !== null}
-                onClick={() => createRevision(data.revisionId)}
-              >
-                Nova revisão
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setEmailError('');
-                setEmailDialogOpen(true);
-              }}
-            >
-              <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
-            </Button>
-          </div>
-          {whatsappDisabledReason && (
-            <p role="status" className="mt-2 text-xs text-fg-muted">
-              {whatsappDisabledReason}
-            </p>
-          )}
+          <WhatsAppSendPanel
+            orientation="inline"
+            selectedFlowId={deliveryFlowId}
+            flows={deliveryFlows}
+            delivery={delivery}
+            pending={deliveryPending}
+            onSelectFlow={setDeliveryFlowId}
+            onSend={sendIssuedQuotation}
+            recipient={{
+              name: data.cliente || '',
+              phone: fmtPhone(data.telefone) || data.telefone || '',
+            }}
+            disabledReason={whatsappDisabledReason}
+            actions={
+              <>
+                {data.expired && data.revisionId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={lifecycleAction !== null}
+                    onClick={() => createRevision(data.revisionId)}
+                  >
+                    Nova revisão
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEmailError('');
+                    setEmailDialogOpen(true);
+                  }}
+                >
+                  <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+                </Button>
+              </>
+            }
+          />
           {deliveryFlows.length === 0 && !deliveryError && (
             <p role="status" className="mt-2 text-xs text-fg-muted">
               Não foi possível carregar os fluxos. Tente novamente mais tarde.
@@ -1413,14 +1424,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             </div>
           ) : (
             <>
-              <p className="text-base font-semibold">{data.cliente || 'Cliente não informado'}</p>
-              {(data.email || data.telefone) && (
-                <p className="mt-1 break-words text-sm text-fg-muted">
-                  {[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}
-                </p>
-              )}
-              {data.clienteId && (
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <p className="text-base font-semibold">{data.cliente || 'Cliente não informado'}</p>
+                {(data.email || data.telefone) && (
+                  <p className="break-words text-sm text-fg-muted">
+                    {[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+                {data.clienteId && (
                   <button
                     type="button"
                     className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -1428,22 +1439,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   >
                     Ver cliente
                   </button>
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => navigate('/crm')}
-                  >
-                    Abrir no CRM
-                  </button>
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => navigate('/quotations')}
-                  >
-                    Ver orçamentos anteriores
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </div>

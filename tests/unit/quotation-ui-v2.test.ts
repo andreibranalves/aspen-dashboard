@@ -40,6 +40,8 @@ describe('quotation Aspen v2 surfaces', () => {
     assert.match(status, /Etapas entregues: \$\{delivered\} de \$\{total\}/);
     assert.match(status, /aria-busy=\{pending\}/);
     assert.match(sendPanel, /Nenhum fluxo de WhatsApp disponível/);
-    assert.match(sendPanel, /focus-visible:ring-2 focus-visible:ring-primary/);
+    // O foco visível do seletor vem da primitiva Select (anel padrão Aspen).
+    assert.match(sendPanel, /import \{ Select \} from '@\/components\/ui\/select'/);
+    assert.match(sendPanel, /<Select/);
   });
 });

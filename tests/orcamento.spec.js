@@ -450,6 +450,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
+    await page.getByRole('button', { name: 'Confirmar envio' }).click();
     await expect.poll(() => sendRequest, { timeout: 10000 }).toBeTruthy();
     expect(sendRequest).toEqual({
       quotation_id: 'ORC-20260001',

@@ -22,7 +22,9 @@ import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPanel';
+import WhatsAppSendPanel, {
+  WhatsAppSendConfirm,
+} from '@/features/quotations/components/WhatsAppSendPanel';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection, StoredAutoQuoteDraft } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
@@ -97,6 +99,7 @@ export default function SplitResultCard({
   onResolveDelivery,
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(false);
+  const [confirmingSend, setConfirmingSend] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -665,14 +668,26 @@ export default function SplitResultCard({
               </Button>
             )}
             {waSendEnabled ? (
-              <Button
-                size="sm"
-                disabled={deliveryPending || deliveryBlocksSend}
-                onClick={() => onSendWhatsApp?.(draft.index)}
-              >
-                <Phone size={13} />
-                Enviar WhatsApp
-              </Button>
+              confirmingSend ? (
+                <WhatsAppSendConfirm
+                  recipient={{ name: displayName || '', phone: draft.edited.telefone || '' }}
+                  flow={waFlows.find((f) => f.id === waSelectedFlowId) || waFlows[0] || null}
+                  onConfirm={() => {
+                    setConfirmingSend(false);
+                    onSendWhatsApp?.(draft.index);
+                  }}
+                  onCancel={() => setConfirmingSend(false)}
+                />
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={deliveryPending || deliveryBlocksSend}
+                  onClick={() => setConfirmingSend(true)}
+                >
+                  <Phone size={13} />
+                  Enviar WhatsApp
+                </Button>
+              )
             ) : (
               <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>
             )}
