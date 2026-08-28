@@ -12,6 +12,7 @@ import {
   FileText,
   Trash2,
   Save,
+  MoreHorizontal,
   X,
   Plus,
   Phone,
@@ -40,9 +41,9 @@ import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabel
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import {
-  QuotationSectionsEditor,
   type QuotationSectionsSnapshot,
 } from '@/features/quotations/components/QuotationSectionsEditor';
+import { QuotationSectionsDocument } from '@/features/quotations/components/QuotationSectionsDocument';
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
@@ -218,6 +219,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [lossReasonOpen, setLossReasonOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [techDetailsOpen, setTechDetailsOpen] = useState(false);
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
   const lossReasonDialogRef = useRef<HTMLDivElement>(null);
@@ -313,6 +316,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     showMessage('');
     setEditing(false);
     setConflict('');
+    setMenuOpen(false);
+    setTechDetailsOpen(false);
   }, [initialData]);
 
   useEffect(() => {
@@ -1071,139 +1076,373 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
   const emailSent = data.emailSent || confirmedEmailAcceptedKey === `${data.id}:${data.revisionId}`;
 
-  return (
-    <div className="mx-auto w-full max-w-[1120px] space-y-4">
-      <div className="overflow-hidden rounded-md border border-line bg-surface">
-        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-4 py-4 sm:px-6">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <h1 title={data.id} className="truncate font-mono text-xl font-semibold tracking-[-0.2px]">{data.id}</h1>
-              <StatusBadge {...statusBadgeProps(data.status)} />
-              {data.revision && (
-                <span className="text-xs text-fg-muted">Revisão {data.revision}</span>
-              )}
-            </div>
-            <p className="mt-1 break-words text-sm text-fg-muted">
-              {data.cliente || 'Cliente não informado'}
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/quotations')}
-            className="shrink-0 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-          >
-            ← Voltar
-          </button>
-        </header>
-
-        {!draftEditable && (
-          <div className="border-b border-line bg-surface-subtle px-4 py-3 text-sm text-fg-muted sm:px-6">
-            Este orçamento está somente para leitura porque já foi emitido.
-          </div>
-        )}
-        {conflict && (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-destructive/10 px-4 py-3 text-sm text-destructive sm:px-6">
-            <span className="min-w-0 break-words">{conflict}</span>
-            <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
-              Recarregar
+return (
+    <div className="mx-auto w-full max-w-[1240px]">
+      {/* Barra de ações sticky */}
+      <div className="sticky top-0 z-20 -mx-4 flex min-h-[52px] flex-wrap items-center gap-2 border-b border-line bg-page/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+        {editing ? (
+          <>
+            <span
+              className={
+                isDirty ? 'mr-auto text-xs font-medium text-warning' : 'mr-auto text-xs text-fg-muted'
+              }
+              role="status"
+              aria-live="polite"
+            >
+              {saving ? 'Salvando…' : isDirty ? 'Alterações não salvas' : ''}
+            </span>
+            <Button variant="outline" size="sm" disabled={saving} onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}>
+              Cancelar
             </Button>
-          </div>
-        )}
-
-        <fieldset disabled={saving} className="contents">
-        <section aria-label="Dados principais" className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-line px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
-          <div className="relative min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Cliente</span>
-            {editing ? (
-              <>
-                <div className="relative mt-1">
-                  <Search size={14} className="absolute left-2 top-2 text-fg-muted" />
-                  <Input
-                    aria-label="Cliente do orçamento"
-                    value={clientSearch}
-                    onChange={onClientSearch}
-                    className="pl-7"
-                    placeholder="Buscar cliente…"
-                  />
-                  {clientSearching && (
-                    <Loader2
-                      size={14}
-                      className="absolute right-2 top-2 animate-spin text-fg-muted"
-                    />
-                  )}
-                </div>
-                {clientResults.length > 0 && (
-                  <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
-                    {clientResults.map((client) => (
+            <Button variant="outline" size="sm" disabled={saving} onClick={openPreview}>
+              Pré-visualizar documento
+            </Button>
+            <Button variant="success" size="sm" disabled={saving} onClick={save}>
+              <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
+            </Button>
+          </>
+        ) : (
+          <>
+            {(message || emailSuccess) && (
+              <span
+                role="status"
+                aria-live="polite"
+                className={`mr-auto min-w-0 break-words text-xs ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
+              >
+                {message || emailSuccess}
+              </span>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              {draftEditable && !editing && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      showMessage('');
+                      setEditing(true);
+                    }}
+                  >
+                    <Pencil size={14} /> Editar
+                  </Button>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    disabled={issuing || lifecycleAction !== null}
+                    onClick={() => setConfirmIssueOpen(true)}
+                  >
+                    {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
+                    {issuing ? 'Emitindo…' : 'Emitir orçamento'}
+                  </Button>
+                </>
+              )}
+              {data.status !== 'rascunho' && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEmailError('');
+                      setEmailDialogOpen(true);
+                    }}
+                  >
+                    <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title={
+                      deliveryPending
+                        ? 'Envio em andamento'
+                        : delivery
+                          ? 'Este orçamento já foi enviado pelo WhatsApp.'
+                          : deliveryError
+                            ? 'Não foi possível verificar o envio. Tente novamente mais tarde.'
+                            : !deliveryFlowId
+                              ? 'Selecione um fluxo de WhatsApp para enviar.'
+                              : data.expired
+                                ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+                                : undefined
+                    }
+                    disabled={deliveryPending || Boolean(deliveryError) || !deliveryFlowId || Boolean(delivery) || Boolean(data.expired)}
+                    onClick={sendIssuedQuotation}
+                  >
+                    <Phone size={14} /> Enviar WhatsApp
+                  </Button>
+                </>
+              )}
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  aria-label="Mais ações"
+                  className="flex h-9 w-9 items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  onClick={() => setMenuOpen((current) => !current)}
+                >
+                  <MoreHorizontal size={18} />
+                </button>
+                {menuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Ações do orçamento"
+                    className="absolute right-0 top-10 z-40 w-56 rounded-md border border-line bg-surface py-1 shadow-lg"
+                  >
+                    {data.status !== 'rascunho' && (
                       <button
-                        key={client.id}
                         type="button"
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          setClientId(client.id);
-                          setClientSearch(client.nome);
-                          setClientEmail(client.email || '');
-                          setClientTelefone(client.telefone || '');
-                          setClientResults([]);
+                        role="menuitem"
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          openIssuedDocument();
                         }}
                       >
-                        <span className="font-medium">{client.nome}</span>
-                        <span className="block text-xs text-fg-muted">
-                          {client.email || client.telefone || client.id}
-                        </span>
+                        Visualizar PDF
                       </button>
-                    ))}
+                    )}
+                    {data.status === 'emitido' && (
+                      <>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                          disabled={lifecycleAction !== null}
+                          onClick={() => {
+                            setMenuOpen(false);
+                            void markCommercialStatus('aprovado');
+                          }}
+                        >
+                          Marcar como aprovado
+                        </button>
+                        <button
+                          type="button"
+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                          disabled={lifecycleAction !== null}
+                          onClick={() => {
+                            setMenuOpen(false);
+                            openLossReasonDialog();
+                          }}
+                        >
+                          Marcar como perdido
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setTechDetailsOpen(true);
+                      }}
+                    >
+                      Detalhes técnicos
+                    </button>
+                    {draftEditable && (
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setConfirmDeleteOpen(true);
+                        }}
+                      >
+                        <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
+                      </button>
+                    )}
                   </div>
                 )}
-              </>
-            ) : (
-              <p className="mt-1 break-words font-medium">{data.cliente || 'Cliente não informado'}</p>
-            )}
-          </div>
+                {menuOpen && <div aria-hidden="true" className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <fieldset disabled={saving} className="contents">
+      {/* Cabeçalho da página */}
+      <header className="pt-5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="text-2xl font-semibold tracking-[-0.3px]">Orçamento #{data.businessNumber || data.id}</h1>
+          <StatusBadge {...statusBadgeProps(data.status)} />
+          {data.revision && (
+            <span className="rounded-sm border border-line px-2 py-0.5 text-xs text-fg-muted">
+              Revisão {data.revision}
+            </span>
+          )}
+          {data.expired && <span className="text-xs font-medium text-warning">Expirado</span>}
+        </div>
+        <p className="mt-1 break-words text-sm text-fg-muted">{data.cliente || 'Cliente não informado'}</p>
+      </header>
+
+      {!draftEditable && !editing && (
+        <p className="mt-4 rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
+          Este orçamento está somente para leitura porque já foi emitido. Alterações criam uma nova revisão.
+        </p>
+      )}
+
+      {conflict && (
+        <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span className="min-w-0 break-words">{conflict}</span>
+          <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
+            Recarregar
+          </Button>
+        </div>
+      )}
+
+      {/* Cliente */}
+      <section aria-labelledby="cliente-title" className="border-t border-line py-7">
+        <h2 id="cliente-title" className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+          Cliente
+        </h2>
+        <div className="mt-3">
+          {editing ? (
+            <div className="relative max-w-md">
+              <span className="text-xs font-medium text-fg-muted">Cliente</span>
+              <div className="relative mt-1">
+                <Search size={14} className="absolute left-2 top-2 text-fg-muted" />
+                <Input
+                  aria-label="Cliente do orçamento"
+                  value={clientSearch}
+                  onChange={onClientSearch}
+                  className="pl-7"
+                  placeholder="Buscar cliente…"
+                />
+                {clientSearching && (
+                  <Loader2 size={14} className="absolute right-2 top-2 animate-spin text-fg-muted" />
+                )}
+              </div>
+              {clientResults.length > 0 && (
+                <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
+                  {clientResults.map((client) => (
+                    <button
+                      key={client.id}
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-primary/10"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setClientId(client.id);
+                        setClientSearch(client.nome);
+                        setClientEmail(client.email || '');
+                        setClientTelefone(client.telefone || '');
+                        setClientResults([]);
+                      }}
+                    >
+                      <span className="font-medium">{client.nome}</span>
+                      <span className="block text-xs text-fg-muted">
+                        {client.email || client.telefone || client.id}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <p className="text-base font-semibold">{data.cliente || 'Cliente não informado'}</p>
+              {(data.email || data.telefone) && (
+                <p className="mt-1 break-words text-sm text-fg-muted">
+                  {[data.email, data.telefone].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              {data.clienteId && (
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
+                  >
+                    Ver cliente
+                  </button>
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => navigate('/crm')}
+                  >
+                    Abrir no CRM
+                  </button>
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => navigate('/quotations')}
+                  >
+                    Ver orçamentos anteriores
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Dados do orçamento */}
+      <section aria-labelledby="dados-title" className="border-t border-line py-7">
+        <h2 id="dados-title" className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+          Dados do orçamento
+        </h2>
+        <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
           <div className="min-w-0">
             <span className="text-xs font-medium text-fg-muted">Data</span>
             <p className="mt-1 whitespace-nowrap tabular-nums">{formatDate(data.data) || '—'}</p>
           </div>
           <div className="min-w-0">
             <span className="text-xs font-medium text-fg-muted">Validade</span>
-            <p className="mt-1 break-words">
-              {formatDate(data.validade) || '—'} ({data.validadeDias ?? '—'} dias)
-            </p>
-            {(data.expired) && (
-              <span className="mt-1 block text-xs text-warning">Validade expirada (indicador derivado)</span>
+            {editing ? (
+              <>
+                <Input
+                  aria-label="Validade do orçamento em dias"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={validadeDias}
+                  onChange={(event) => setValidadeDias(event.target.value)}
+                  className="mt-1 w-28"
+                />
+                <p className="mt-1 text-xs text-fg-tertiary">
+                  {data.validadeDias && Number(validadeDias) !== Number(data.validadeDias) && formatDate(data.validade)
+                    ? `Válida até ${formatDate(data.validade)} (antes de salvar)`
+                    : formatDate(data.validade)
+                      ? `Válida até ${formatDate(data.validade)}`
+                      : undefined}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 break-words">
+                {data.validadeDias ?? '—'} dias
+                {formatDate(data.validade) && (
+                  <span className="text-fg-tertiary"> · até {formatDate(data.validade)}</span>
+                )}
+              </p>
             )}
           </div>
-        </section>
-
-        <section aria-label="Condições comerciais" className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-line px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
-          <label className="min-w-0 text-sm">
-            <span className="text-xs font-medium text-fg-muted">Entrega</span>
-            {editing ? (
-              <Input
-                aria-label="Entrega do orçamento"
-                value={entrega}
-                onChange={(event) => setEntrega(event.target.value)}
-              />
+          <div className="min-w-0">
+            <span className="text-xs font-medium text-fg-muted">Modelo</span>
+            {editing && draftEditable && templates.length > 0 ? (
+              <select
+                aria-label="Modelo do orçamento"
+                className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
+                value={selectedTemplate}
+                onChange={(event) => {
+                  const key = event.target.value;
+                  const template = templates.find((item) => item.key === key);
+                  setSelectedTemplate(key);
+                  setSelectedVersionId(template?.current_version_id || '');
+                }}
+              >
+                {visibleTemplates.map((template) => (
+                  <option key={template.key} value={template.key}>
+                    {template.name}
+                    {template.archived ? ' (arquivado)' : ''}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <p className="mt-1 break-words whitespace-pre-wrap">{entrega || '—'}</p>
+              <p className="mt-1 break-words">
+                {selectedTemplateMetadata?.name || selectedTemplate || '—'}
+              </p>
             )}
-          </label>
-          <label className="min-w-0 text-sm">
-            <span className="text-xs font-medium text-fg-muted">Validade (dias)</span>
-            {editing ? (
-              <Input
-                aria-label="Validade do orçamento"
-                type="number"
-                min="1"
-                max="365"
-                value={validadeDias}
-                onChange={(event) => setValidadeDias(event.target.value)}
-              />
-            ) : (
-              <p className="mt-1 tabular-nums">{data.validadeDias ?? '—'}</p>
-            )}
-          </label>
-          <label className="min-w-0 text-sm">
+            {templateError && <p className="mt-1 text-xs text-destructive">{templateError}</p>}
+          </div>
+          <div className="min-w-0">
             <span className="text-xs font-medium text-fg-muted">Frete</span>
             {editing ? (
               <Input
@@ -1213,129 +1452,51 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 step="0.01"
                 value={frete}
                 onChange={(event) => setFrete(event.target.value)}
+                className="mt-1 w-32"
               />
             ) : (
               <p className="mt-1 whitespace-nowrap tabular-nums">{formatBRL(data.frete)}</p>
             )}
-          </label>
-        </section>
-
-        <section aria-labelledby="quotation-sections-title" className="space-y-3 border-b border-line px-4 py-4 sm:px-6">
-          <div>
-            <h2 id="quotation-sections-title" className="text-base font-semibold">Seções do orçamento</h2>
-            <p className="text-xs text-fg-muted">Conteúdo capturado nesta revisão.</p>
           </div>
-          <QuotationSectionsEditor
-            mode="revision"
-            sections={sections}
-            editable={editing && draftEditable}
-            onChange={setSections}
-            onRestore={(key) => {
-              if (!key) return;
-              setSections((current) => ({
-                ...current,
-                [key]: { ...current[key], current: cloneSections(current[key].base) },
-              }));
-            }}
-          />
-        </section>
-
-        {(templates.length > 0 || templateError) && (
-          <section className="flex flex-wrap items-end gap-3 border-b border-line bg-surface-subtle px-4 py-4 sm:px-6">
-            <h2 id="quotation-template-title" className="sr-only">Modelo do orçamento</h2>
-            {templates.length > 0 && (
-              <>
-                <label className="min-w-0 flex-1 text-sm sm:min-w-64">
-                  <span className="text-xs font-medium text-fg-muted">Modelo do orçamento</span>
-                  {draftEditable ? (
-                    <select
-                      aria-label="Modelo do orçamento"
-                      className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
-                      value={selectedTemplate}
-                      onChange={(event) => {
-                        const key = event.target.value;
-                        const template = templates.find((item) => item.key === key);
-                        setSelectedTemplate(key);
-                        setSelectedVersionId(template?.current_version_id || '');
-                      }}
-                    >
-                      {visibleTemplates.map((template) => (
-                        <option key={template.key} value={template.key}>
-                          {template.name}{template.archived ? ' (arquivado)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p aria-label="Modelo do orçamento" className="mt-2 break-words font-medium">
-                      {selectedTemplateMetadata?.name || selectedTemplate || 'Modelo não informado'}
-                    </p>
-                  )}
-                </label>
-                {selectedTemplateMetadata && (
-                  <span
-                    className="text-xs text-fg-muted pb-2"
-                    title={selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || ''}
-                  >
-                    {selectedTemplateMetadata.archived ? 'Arquivado · ' : ''}Versão {selectedTemplateMetadata.current_version || data.templateVersion || '—'} · Hash: {(selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || '').slice(0, 12)}…
-                  </span>
-                )}
-                <Button type="button" variant="outline" size="sm" onClick={openPreview}>
-                  Visualizar modelo
-                </Button>
-              </>
+          <div className="min-w-0 sm:col-span-2 lg:col-span-4">
+            <span className="text-xs font-medium text-fg-muted">Previsão de entrega</span>
+            {editing ? (
+              <Input
+                aria-label="Entrega do orçamento"
+                value={entrega}
+                onChange={(event) => setEntrega(event.target.value)}
+                className="mt-1"
+              />
+            ) : (
+              <p className="mt-1 max-w-[68ch] break-words whitespace-pre-wrap">{entrega || '—'}</p>
             )}
-            {templateError && (
-              <span className="text-xs text-destructive">
-                Não foi possível carregar os modelos. Tente novamente mais tarde.
-              </span>
-            )}
-          </section>
-        )}
-        {data.status === 'emitido' && !editing && (
-          <div
-            className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6"
-            role="group"
-            aria-label="Estado comercial"
-          >
-            <span className="text-xs text-fg-muted mr-1">Estado comercial:</span>
-            <Button
-              variant="success"
-              size="sm"
-              disabled={lifecycleAction !== null}
-              onClick={() => markCommercialStatus('aprovado')}
-            >
-              {lifecycleAction === 'aprovado' && <Loader2 size={14} className="animate-spin" />}
-              Marcar como aprovado
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={lifecycleAction !== null}
-              onClick={openLossReasonDialog}
-            >
-              {lifecycleAction === 'perdido' && <Loader2 size={14} className="animate-spin" />}
-              Marcar como perdido
-            </Button>
           </div>
+        </div>
+        {data.expired && (
+          <p className="mt-3 text-xs text-warning">Validade expirada — crie uma nova revisão para reenviar.</p>
         )}
+      </section>
 
-        <section aria-labelledby="quotation-items-title" className="space-y-3 px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="quotation-items-title" className="text-base font-semibold">Itens</h2>
-            <span className="text-xs text-fg-muted">
-              {displayItems.length} item{displayItems.length === 1 ? '' : 'ns'}
-            </span>
-          </div>
-          {displayItems.length > 0 ? (
-            <Table className="min-w-[760px] text-sm">
+      {/* Itens */}
+      <section aria-labelledby="quotation-items-title" className="border-t border-line py-7">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="quotation-items-title" className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+            Itens
+          </h2>
+          <span className="text-xs text-fg-muted">
+            {displayItems.length} item{displayItems.length === 1 ? '' : 'ns'}
+          </span>
+        </div>
+        {displayItems.length > 0 ? (
+          <Table className="mt-2 min-w-[640px] text-sm">
             <TableHeader>
               <TableRow>
-                <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>
                 <TableHead className="h-9 min-w-[220px]">Produto</TableHead>
+                {editing && <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>}
                 <TableHead className="h-9 whitespace-nowrap text-center">Qtd</TableHead>
-                <TableHead className="h-9 whitespace-nowrap text-right">Sugerido</TableHead>
-                <TableHead className="h-9 whitespace-nowrap text-right">Aplicado</TableHead>
-                <TableHead className="h-9 whitespace-nowrap text-right">Diferença</TableHead>
+                {editing && <TableHead className="h-9 whitespace-nowrap text-right">Sugerido</TableHead>}
+                <TableHead className="h-9 whitespace-nowrap text-right">Preço un.</TableHead>
+                {editing && <TableHead className="h-9 whitespace-nowrap text-right">Diferença</TableHead>}
                 <TableHead className="h-9 whitespace-nowrap text-right">Total</TableHead>
                 {editing && <TableHead />}
               </TableRow>
@@ -1345,37 +1506,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 const results = productResults[item._key] || [];
                 return (
                   <TableRow key={item._key}>
-                    <TableCell className="relative whitespace-nowrap py-2 font-mono">
-                      {editing ? (
-                        <>
-                          <Input
-                            value={productTerms[item._key] ?? item.sku}
-                            onChange={(event) => onProductTerm(item._key, event.target.value)}
-                            className="h-8 w-32"
-                          />
-                          {results.length > 0 && (
-                            <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
-                              {results.map((product) => (
-                                <button
-                                  type="button"
-                                  key={product.sku}
-                                  className="block w-full text-left px-2 py-1.5 hover:bg-primary/10"
-                                  onMouseDown={(event) => {
-                                    event.preventDefault();
-                                    selectProduct(item._key, product);
-                                  }}
-                                >
-                                  <span className="font-mono text-xs">{product.sku}</span>{' '}
-                                  {product.nome}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        item.sku || '—'
-                      )}
-                    </TableCell>
                     <TableCell className="max-w-[320px] break-words py-2">
                       {editing ? (
                         <label className="block space-y-1">
@@ -1392,14 +1522,44 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           />
                         </label>
                       ) : (
-                        item.nome || item.item_name || item.sku || 'Produto não informado'
+                        <>
+                          {item.nome || item.item_name || item.sku || 'Produto não informado'}
+                          {item.sku && <span className="block font-mono text-xs text-fg-tertiary">{item.sku}</span>}
+                        </>
                       )}
                     </TableCell>
+                    {editing && (
+                      <TableCell className="relative whitespace-nowrap py-2 font-mono">
+                        <Input
+                          value={productTerms[item._key] ?? item.sku}
+                          onChange={(event) => onProductTerm(item._key, event.target.value)}
+                          className="h-8 w-32"
+                          aria-label={`SKU do item ${item.item_name}`}
+                        />
+                        {results.length > 0 && (
+                          <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
+                            {results.map((product) => (
+                              <button
+                                type="button"
+                                key={product.sku}
+                                className="block w-full px-2 py-1.5 text-left hover:bg-primary/10"
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                  selectProduct(item._key, product);
+                                }}
+                              >
+                                <span className="font-mono text-xs">{product.sku}</span> {product.nome}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell className="whitespace-nowrap py-2 text-center">
                       {editing ? (
                         <Input
                           aria-label={`Quantidade de ${item.sku}`}
-                          className="h-8 w-20 mx-auto"
+                          className="mx-auto h-8 w-20"
                           type="number"
                           min="1"
                           step="1"
@@ -1415,14 +1575,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                         Number(item.qty)
                       )}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap py-2 text-right">
-                      {formatBRL(item.suggested_unit_price)}
-                    </TableCell>
+                    {editing && (
+                      <TableCell className="whitespace-nowrap py-2 text-right">
+                        {formatBRL(item.suggested_unit_price)}
+                      </TableCell>
+                    )}
                     <TableCell className="whitespace-nowrap py-2 text-right">
                       {editing ? (
                         <Input
                           aria-label={`Preço aplicado ${item.sku}`}
-                          className="h-8 w-28 ml-auto"
+                          className="ml-auto h-8 w-28"
                           type="number"
                           min="0.01"
                           step="0.01"
@@ -1438,11 +1600,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                         formatBRL(item.applied_unit_price)
                       )}
                     </TableCell>
-                    <TableCell
-                      className={`whitespace-nowrap py-2 text-right ${Number(item.price_difference) > 0 ? 'text-destructive' : ''}`}
-                    >
-                      {formatBRL(item.price_difference)}
-                    </TableCell>
+                    {editing && (
+                      <TableCell
+                        className={`whitespace-nowrap py-2 text-right ${
+                          Number(item.price_difference) > 0 ? 'text-destructive' : ''
+                        }`}
+                      >
+                        {formatBRL(item.price_difference)}
+                      </TableCell>
+                    )}
                     <TableCell className="whitespace-nowrap py-2 text-right font-mono">
                       {formatBRL(
                         editing
@@ -1456,7 +1622,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           type="button"
                           className="text-fg-muted hover:text-destructive"
                           onClick={() => removeItem(item._key)}
-                          aria-label="Remover item"
+                          aria-label={`Remover item ${item.item_name || item.sku}`}
                         >
                           <X size={15} />
                         </button>
@@ -1466,23 +1632,27 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 );
               })}
             </TableBody>
-            </Table>
-          ) : (
+          </Table>
+        ) : (
+          <div className="mt-3">
             <EmptyState
               icon={FileText}
               title="Nenhum item neste orçamento"
-              description={editing ? 'Adicione um item para compor a proposta.' : 'Não há itens registrados nesta revisão.'}
+              description={
+                editing
+                  ? 'Adicione um item para compor a proposta.'
+                  : 'Não há itens registrados nesta revisão.'
+              }
             />
-          )}
-          {editing && (
-            <Button variant="outline" size="sm" onClick={addItem}>
-              <Plus size={14} /> Item
-            </Button>
-          )}
-        </section>
-
-        <section aria-label="Resumo financeiro" className="flex justify-end border-t border-line bg-surface-subtle px-4 py-4 sm:px-6">
-          <dl className="grid w-full max-w-xs gap-2 text-right text-sm">
+          </div>
+        )}
+        {editing && (
+          <Button variant="outline" size="sm" className="mt-3" onClick={addItem}>
+            <Plus size={14} /> Item
+          </Button>
+        )}
+        <div className="mt-6 flex justify-end">
+          <dl className="w-full max-w-xs text-sm">
             <div className="flex items-center justify-between gap-6">
               <dt className="text-fg-muted">Subtotal</dt>
               <dd className="font-mono tabular-nums">{formatBRL(displayedSubtotal)}</dd>
@@ -1491,229 +1661,160 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <dt className="text-fg-muted">Frete</dt>
               <dd className="font-mono tabular-nums">{formatBRL(editing ? frete : data.frete)}</dd>
             </div>
-            <div className="flex items-center justify-between gap-6 border-t border-line pt-2 text-base font-semibold">
+            <div className="mt-2 flex items-center justify-between gap-6 border-t border-line pt-3 text-base font-semibold">
               <dt>Total</dt>
               <dd className="font-mono tabular-nums">{formatBRL(displayedTotal)}</dd>
             </div>
           </dl>
-        </section>
-        <section aria-label="Ações do orçamento" className="space-y-3 border-t border-line px-4 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center gap-2">
-          {draftEditable && !editing && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                showMessage('');
-                setEditing(true);
-              }}
-            >
-              <Pencil size={14} /> Editar
-            </Button>
-          )}
-          {draftEditable && !editing && (
-            <Button
-              variant="success"
-              size="sm"
-              disabled={issuing || lifecycleAction !== null}
-              onClick={() => setConfirmIssueOpen(true)}
-            >
-              {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
-              {issuing ? 'Emitindo…' : 'Emitir orçamento'}
-            </Button>
-          )}
-          {editing && (
-            <>
-              <Button variant="success" size="sm" disabled={saving} onClick={save}>
-                <Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}
-              </Button>
-              <Button variant="outline" size="sm" disabled={saving} onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}>
-                Cancelar
-              </Button>
-            </>
-          )}
-          {data.status !== 'rascunho' && (
-            <>
-              <Button variant="outline" size="sm" onClick={openIssuedDocument}>
-                <FileText size={14} /> Visualizar
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setEmailError('');
-                  setEmailDialogOpen(true);
-                }}
+        </div>
+      </section>
+
+      {/* Seções textuais em documento */}
+      <QuotationSectionsDocument
+        sections={sections}
+        editable={editing && draftEditable}
+        onChange={setSections}
+      />
+
+      {/* Entrega (WhatsApp) — somente orçamentos emitidos */}
+      {data.status !== 'rascunho' && !editing && (
+        <section aria-label="Entrega" className="border-t border-line py-7">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Envio</h2>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="min-w-0 text-xs font-medium text-fg-muted">
+              <span className="mb-1 block">Fluxo de WhatsApp</span>
+              <select
+                aria-label="Fluxo de WhatsApp"
+                className="h-9 max-w-full rounded-sm border border-line bg-surface px-2 text-sm font-normal text-fg"
+                value={deliveryFlowId}
+                onChange={(event) => setDeliveryFlowId(event.target.value)}
+                disabled={deliveryPending}
               >
-                <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
-              </Button>
-              <div className="flex min-w-0 basis-full flex-wrap items-end gap-2 border-t border-line pt-3 sm:basis-auto sm:border-0 sm:pt-0">
-                <label className="min-w-0 text-xs font-medium text-fg-muted">
-                  <span className="mb-1 block">Fluxo de WhatsApp</span>
-                  <select
-                    aria-label="Fluxo de WhatsApp"
-                    className="h-9 max-w-full rounded-sm border border-line bg-surface px-2 text-sm font-normal text-fg"
-                    value={deliveryFlowId}
-                    onChange={(event) => setDeliveryFlowId(event.target.value)}
-                    disabled={deliveryPending}
-                  >
-                    {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
-                    {deliveryFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
-                  </select>
-                </label>
-                {deliveryFlows.length === 0 && (
-                  <span role="status" className="text-xs text-fg-muted">
-                    Não foi possível carregar os fluxos. Tente novamente mais tarde.
-                  </span>
-                )}
-                <QuotationDeliveryStatus
-                  delivery={delivery}
-                  pending={deliveryPending}
-                  onResolve={handleResolveDelivery}
-                  className="basis-full"
-                />
-                {deliveryError && (
-                  <span role="status" className="basis-full break-words text-xs text-warning">
-                    {deliveryError}
-                  </span>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  title={
-                    deliveryPending
-                      ? 'Envio em andamento'
-                      : delivery
-                        ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status ao lado.'
-                        : deliveryError
-                          ? 'Não foi possível verificar o envio. Tente novamente mais tarde.'
-                          : !deliveryFlowId
-                            ? 'Selecione um fluxo de WhatsApp para enviar.'
-                            : (data.expired)
-                            ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
-                            : undefined
-                  }
-                  disabled={deliveryPending || Boolean(deliveryError) || !deliveryFlowId || Boolean(delivery) || Boolean(data.expired)}
-                  onClick={sendIssuedQuotation}
-                >
-                  <Phone size={14} /> Enviar WhatsApp
-                </Button>
-                {delivery && !deliveryPending && (
-                  <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
-                )}
-                {(data.expired) && (
-                  <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
-                )}
-              </div>
-            </>
-          )}
-          {draftEditable && !editing && (
-            <Button
-              onClick={() => setConfirmDeleteOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 size={14} /> Excluir
-            </Button>
-          )}
-          {emailSuccess && (
-            <span role="status" aria-live="polite" className="text-xs text-fg-muted">
-              {emailSuccess}
-            </span>
-          )}
-          {message && (
-            <span
-              role="status"
-              aria-live="polite"
-              className={`basis-full break-words text-xs ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
-            >
-              {message}
-            </span>
-          )}
+                {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
+                {deliveryFlows.map((flow) => (
+                  <option key={flow.id} value={flow.id}>
+                    {flow.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {deliveryFlows.length === 0 && (
+              <span role="status" className="text-xs text-fg-muted">
+                Não foi possível carregar os fluxos. Tente novamente mais tarde.
+              </span>
+            )}
+            <QuotationDeliveryStatus
+              delivery={delivery}
+              pending={deliveryPending}
+              onResolve={handleResolveDelivery}
+            />
+            {deliveryError && (
+              <span role="status" className="w-full break-words text-xs text-warning">
+                {deliveryError}
+              </span>
+            )}
+            {delivery && !deliveryPending && (
+              <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
+            )}
           </div>
         </section>
+      )}
 
-        {(data.revisionHistory || []).length > 0 && (
-          <section className="space-y-3 border-t border-line px-4 py-4 sm:px-6" aria-label="Histórico de revisões">
-            <h2 className="text-base font-semibold">Histórico de revisões</h2>
-            <Table className="min-w-[860px] text-sm">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="h-9">Versão</TableHead>
-                    <TableHead className="h-9">Criada em</TableHead>
-                    <TableHead className="h-9">Validade</TableHead>
-                    <TableHead className="h-9">Estado</TableHead>
-                    <TableHead className="h-9">Modelo</TableHead>
-                    <TableHead className="h-9">Versão do modelo</TableHead>
-                    <TableHead className="h-9 text-right">Total</TableHead>
-                    <TableHead className="h-9">PDF</TableHead>
-                    <TableHead className="h-9" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(data.revisionHistory || []).map((entry) => {
-                    const expired =
-                      entry.expired;
-                    const eligible = entry.status !== 'rascunho' && !draftEditable;
-                    return (
-                      <TableRow key={entry.revisionId}>
-                        <TableCell className="whitespace-nowrap py-2 font-medium">R{entry.revision}</TableCell>
-                        <TableCell className="whitespace-nowrap py-2">{formatDate(entry.createdAt) || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap py-2">
-                          {formatDate(entry.validade) || '—'}
-                          {expired && <span className="block text-xs text-warning">Expirada</span>}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge
-                            {...statusBadgeProps(entry.status)}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-[180px] break-words py-2">{entry.templateKey || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap py-2">{entry.templateVersion ?? '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap py-2 text-right font-mono">
-                          {formatBRL(entry.total)}
-                        </TableCell>
-                        <TableCell>
-                          {entry.status !== 'rascunho' ? (
-                            <button
-                              type="button"
-                              className="text-primary hover:underline text-xs"
-                              onClick={() => {
-                                window.open(
-                                  `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
-                                  '_blank',
-                                  'noopener,noreferrer'
-                                );
-                              }}
-                            >
-                              Visualizar
-                            </button>
-                          ) : (
-                            <span className="text-xs text-fg-muted">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {eligible && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={lifecycleAction !== null}
-                              onClick={() => createRevision(entry.revisionId)}
-                            >
-                              Nova revisão
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
+      {/* Revisões */}
+      {(data.revisionHistory || []).length > 0 && (
+        <section className="border-t border-line py-7" aria-label="Revisões">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Revisões</h2>
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+            <span>
+              Revisão atual: <b className="font-semibold">R{data.revision}</b>
+            </span>
+            {(data.revisionHistory || []).find((entry) => entry.revision === data.revision)?.createdAt && (
+              <span className="text-fg-muted">
+                Criada em{' '}
+                {
+                  formatDate(
+                    (data.revisionHistory || []).find((entry) => entry.revision === data.revision)
+                      ?.createdAt
+                  ) || '—'
+                }
+              </span>
+            )}
+          </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-medium text-primary hover:underline">
+              Ver histórico completo
+            </summary>
+            <Table className="mt-3 min-w-[720px] text-sm">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-9">Revisão</TableHead>
+                  <TableHead className="h-9">Criada em</TableHead>
+                  <TableHead className="h-9">Validade</TableHead>
+                  <TableHead className="h-9">Estado</TableHead>
+                  <TableHead className="h-9 text-right">Total</TableHead>
+                  <TableHead className="h-9">PDF</TableHead>
+                  <TableHead className="h-9" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data.revisionHistory || []).map((entry) => {
+                  const expired = entry.expired;
+                  const eligible = entry.status !== 'rascunho' && !draftEditable;
+                  return (
+                    <TableRow key={entry.revisionId}>
+                      <TableCell className="whitespace-nowrap py-2 font-medium">R{entry.revision}</TableCell>
+                      <TableCell className="whitespace-nowrap py-2">{formatDate(entry.createdAt) || '—'}</TableCell>
+                      <TableCell className="whitespace-nowrap py-2">
+                        {formatDate(entry.validade) || '—'}
+                        {expired && <span className="block text-xs text-warning">Expirada</span>}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge {...statusBadgeProps(entry.status)} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-2 text-right font-mono">
+                        {formatBRL(entry.total)}
+                      </TableCell>
+                      <TableCell>
+                        {entry.status !== 'rascunho' ? (
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() => {
+                              window.open(
+                                `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
+                                '_blank',
+                                'noopener,noreferrer'
+                              );
+                            }}
+                          >
+                            Visualizar
+                          </button>
+                        ) : (
+                          <span className="text-xs text-fg-muted">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {eligible && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={lifecycleAction !== null}
+                            onClick={() => createRevision(entry.revisionId)}
+                          >
+                            Nova revisão
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
             </Table>
-          </section>
-        )}
-        </fieldset>
-      </div>
+          </details>
+        </section>
+      )}
+      </fieldset>
+
       <QuotationEmailDialog
         open={emailDialogOpen}
         initialEmail={emailAttemptRecipient || data.email || ''}
@@ -1752,8 +1853,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       />
       <ConfirmDialog
         open={confirmIssueOpen}
-        title={`Emitir orçamento ${data.id}?`}
-        message="Após a emissão este orçamento não poderá mais ser editado."
+        title={`Emitir orçamento #${data.businessNumber || data.id}?`}
+        message={`A revisão R${data.revision} será registrada e o PDF será gerado. Alterações futuras criarão uma nova revisão.`}
         confirmLabel="Emitir"
         cancelLabel="Cancelar"
         variant="default"
@@ -1763,13 +1864,62 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Excluir orçamento?"
-        message={`Tem certeza que deseja excluir o orçamento ${data.id}? Esta ação não pode ser desfeita.`}
+        message={`Tem certeza que deseja excluir o orçamento #${data.businessNumber || data.id}? Esta ação não pode ser desfeita.`}
         confirmLabel="Excluir"
         cancelLabel="Cancelar"
         variant="destructive"
         onConfirm={handleDelete}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
+      {techDetailsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setTechDetailsOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tech-details-title"
+            tabIndex={-1}
+            className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
+          >
+            <h3 id="tech-details-title" className="text-lg font-semibold text-fg">
+              Detalhes técnicos
+            </h3>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div>
+                <dt className="text-xs text-fg-muted">Modelo</dt>
+                <dd className="mt-0.5 break-words">{selectedTemplateMetadata?.name || selectedTemplate || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-fg-muted">Versão do modelo</dt>
+                <dd className="mt-0.5 break-words">{selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-fg-muted">Snapshot</dt>
+                <dd className="mt-0.5 break-all font-mono text-xs">
+                  {data.templateHash || selectedTemplateMetadata?.hash || selectedTemplateMetadata?.current_hash || '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-fg-muted">Revisão</dt>
+                <dd className="mt-0.5 break-all font-mono text-xs">{data.revisionId || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-fg-muted">ID interno</dt>
+                <dd className="mt-0.5 break-all font-mono text-xs">{data.id}</dd>
+              </div>
+            </dl>
+            <div className="mt-5 flex justify-end">
+              <Button variant="outline" onClick={() => setTechDetailsOpen(false)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {lossReasonOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -1790,8 +1940,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               Motivo da perda
             </h3>
             <p id="loss-reason-description" className="mt-2 text-sm text-fg-muted">
-              Informe por que o orçamento {data.id} foi perdido. O motivo fica registrado no
-              histórico.
+              Informe por que o orçamento #{data.businessNumber || data.id} foi perdido. O motivo fica
+              registrado no histórico.
             </p>
             <label className="mt-4 block text-sm">
               <span className="text-xs text-fg-muted">Motivo</span>
@@ -1846,7 +1996,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     </div>
   );
 }
-
 export default function QuotationDetailPage({ id, navigate }: QuotationDetailPageProps) {
   const [data, setData] = useState<QuotationData | null>(null);
   const [loading, setLoading] = useState(true);
