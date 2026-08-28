@@ -66,7 +66,12 @@ test('core lifecycle actions forward canonical status and revision payloads', as
     concurrency_token: detail.concurrency_token,
   }));
   assert.equal(revisionResponse.statusCode, 200);
-  assert.equal(JSON.parse(revisionResponse.body || '{}').revision, 2);
+  const revisionPayload = JSON.parse(revisionResponse.body || '{}') as {
+    revision?: number;
+    canonical?: { revisionId?: string };
+  };
+  assert.equal(revisionPayload.revision, 2);
+  assert.equal(revisionPayload.canonical?.revisionId, detail.revision_id);
   assert.deepEqual(calls.map((call) => call[0]), ['set_status', 'create_revision']);
 });
 

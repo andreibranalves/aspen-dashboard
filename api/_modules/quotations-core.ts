@@ -239,14 +239,20 @@ export function createCoreHandler(
             throw new QuoteManagementInputError('Status inválido. Use "emitido", "aprovado" ou "perdido".');
           }
           const detail = await lifecycle.setStatus(query.id, payload as unknown as SetQuotationStatusInput);
-          return json(200, stripQuotationAliases(sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>));
+          return json(200, stripQuotationAliases({
+            ...sanitizeQuotationOutput(detail),
+            canonical: toCanonicalQuotationDetail(detail as typeof detail),
+          }));
         }
         if (action === 'create_revision') {
           if (typeof payload.source_revision_id !== 'string' || !payload.source_revision_id.trim()) {
             throw new QuoteManagementInputError('Revisão de origem obrigatória.');
           }
           const detail = await lifecycle.createRevision(query.id, payload as unknown as CreateQuotationRevisionInput);
-          return json(200, stripQuotationAliases(sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>));
+          return json(200, stripQuotationAliases({
+            ...sanitizeQuotationOutput(detail),
+            canonical: toCanonicalQuotationDetail(detail as typeof detail),
+          }));
         }
         throw new QuoteManagementInputError('Ação de orçamento inválida.');
       }
