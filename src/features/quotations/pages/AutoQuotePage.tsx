@@ -12,6 +12,7 @@ import { apiPost } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
+import { inlineTemplateSelections, templateSlug } from '@/features/quotations/orderTemplateSelections';
 import { capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -43,10 +44,6 @@ function loadInitialAutoQuoteDrafts() {
   }
 }
 
-function templateSlug(name: string): string {
-  return name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
 function renderTemplateText(text: string, templates: OrderTemplate[]): ReactNode[] {
   const bySlug = new Map(templates.map((template) => [templateSlug(template.name), template]));
   const nodes: ReactNode[] = [];
@@ -74,18 +71,6 @@ function renderTemplateText(text: string, templates: OrderTemplate[]): ReactNode
 
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
   return nodes;
-}
-
-function inlineTemplateSelections(text: string, templates: OrderTemplate[]) {
-  const bySlug = new Map(templates.map((template) => [templateSlug(template.name), template]));
-  const selections: Array<{ id: string; quantity: number }> = [];
-  const unknown: string[] = [];
-  for (const match of text.matchAll(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*@([\p{L}\p{N}_-]+)(?!\.[\p{L}\p{N}_-]+)/gu)) {
-    const template = bySlug.get(templateSlug(match[2]));
-    if (!template) unknown.push(`@${match[2]}`);
-    else selections.push({ id: template.id, quantity: Number(match[1].replace(',', '.')) });
-  }
-  return { selections, unknown };
 }
 
 export default function AutoQuotePage() {
