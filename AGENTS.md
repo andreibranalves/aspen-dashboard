@@ -28,6 +28,13 @@
 - Prefira estado local ou contexto; não adicione biblioteca de estado global sem aprovação.
 - PostgreSQL é a fonte de verdade para produtos, clientes, orçamentos, CRM, pedidos e atividades.
 - Evolution API é o único transporte de WhatsApp.
+## Fluxo de git
+
+- Mudança trivial (CSS, copy, navegação, ajuste pequeno de UI; ~1–3 arquivos, sem dados/auth/infra/dependências): commit direto na `master` e push. Sem issue, branch, worktree, PR nem CI.
+- Na dúvida entre trivial e estrutural (ex.: mudança simples tocando mais de ~3 arquivos), pergunte antes com `ask_user_question`: commit direto na master vs branch + PR.
+- CRITICAL, multi-arquivo estrutural ou mudança em infraestrutura: branch dedicada + PR como de costume.
+
+- Após o merge do PR, rode `sh scripts/post-merge-cleanup.sh` para remover worktrees e branches locais cujo remote foi apagado (branches não merged ficam de fora).
 - Não edite arquivos gerados pelo Vite em `public/`.
 
 ## Segurança e dados
