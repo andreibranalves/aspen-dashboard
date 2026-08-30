@@ -2,7 +2,7 @@ import { and, asc, desc, eq, ilike, inArray, lte, ne, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import { crmDeals, quoteRevisions, quotations, salesOrders } from '../schema.js';
+import { crmDeals, quoteLeads, quoteRevisions, quotations, salesOrders } from '../schema.js';
 
 export const CRM_PIPELINE = [
   'Novo Lead',
@@ -135,9 +135,15 @@ export interface CrmDealRepositoryOptions {
 }
 
 type DatabaseProvider = () => AppDatabase;
-type CrmTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
-type CrmDatabase = AppDatabase | CrmTransaction;
+export type CrmTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
+export type CrmDatabase = AppDatabase | CrmTransaction;
 type CrmDealRow = typeof crmDeals.$inferSelect;
+type QuoteLeadRow = typeof quoteLeads.$inferSelect;
+
+export interface UpsertCrmDealForQuotationOptions {
+  now?: Date;
+  idFactory?: () => string;
+}
 
 function parseTimestamp(value: unknown): Date | null {
   const candidate = value instanceof Date ? new Date(value.getTime()) : new Date(String(value));
@@ -382,6 +388,218 @@ async function pruneEligibility(
   return null;
 }
 
+
+const ISSUED_STAGE_INDEX = CRM_PIPELINE.indexOf(CRM_PRUNE_TARGET_STATUS);
+
+function nextIssuanceStatus(
+  existingStatus: string,
+  statusValue: CrmDealStatus | undefined
+): CrmDealStatus | undefined {
+  if (existingStatus === CRM_PRUNE_LOST_STATUS) return undefined;
+  if (statusValue !== undefined) return statusValue;
+  const currentIndex = CRM_PIPELINE.indexOf(existingStatus as CrmDealStatus);
+  if (currentIndex >= 0 && currentIndex < ISSUED_STAGE_INDEX) return CRM_PRUNE_TARGET_STATUS;
+  return undefined;
+}
+
+async function selectLeadForQuotation(
+  database: CrmDatabase,
+  quotationId: string
+): Promise<QuoteLeadRow | null> {
+  const [lead] = await database
+    .select()
+    .from(quoteLeads)
+    .where(eq(quoteLeads.quotationId, quotationId))
+    .orderBy(asc(quoteLeads.id))
+    .for('update')
+    .limit(1);
+  return lead || null;
+}
+
+async function selectDealForLead(
+  database: CrmDatabase,
+  lead: QuoteLeadRow
+): Promise<CrmDealRow | null> {
+  if (lead.crmDealId) {
+    const [linked] = await database
+      .select()
+      .from(crmDeals)
+      .where(eq(crmDeals.id, lead.crmDealId))
+      .for('update')
+      .limit(1);
+    if (linked) return linked;
+  }
+  const [byLead] = await database
+    .select()
+    .from(crmDeals)
+    .where(eq(crmDeals.quoteLeadId, lead.id))
+    .orderBy(desc(crmDeals.updatedAt), asc(crmDeals.id))
+    .for('update')
+    .limit(1);
+  return byLead || null;
+}
+
+async function resolveExistingDeal(
+  database: CrmDatabase,
+  quotationId: string,
+  lead: QuoteLeadRow | null
+): Promise<CrmDealRow | null> {
+  const [active] = await database
+    .select()
+    .from(crmDeals)
+    .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_PRUNE_LOST_STATUS)))
+    .for('update')
+    .limit(1);
+  if (active) return active;
+
+  const [lost] = await database
+    .select()
+    .from(crmDeals)
+    .where(and(eq(crmDeals.quotationId, quotationId), eq(crmDeals.status, CRM_PRUNE_LOST_STATUS)))
+    .orderBy(desc(crmDeals.updatedAt), desc(crmDeals.createdAt), asc(crmDeals.id))
+    .for('update')
+    .limit(1);
+  if (lost) return lost;
+
+  if (!lead) return null;
+  const leadDeal = await selectDealForLead(database, lead);
+  if (!leadDeal) return null;
+  if (leadDeal.quotationId && leadDeal.quotationId !== quotationId) return null;
+  return leadDeal;
+}
+
+async function syncLeadDealLink(
+  database: CrmDatabase,
+  lead: QuoteLeadRow | null,
+  dealId: string,
+  timestamp: Date
+): Promise<void> {
+  if (!lead) return;
+  if (lead.crmDealId && lead.crmDealId !== dealId) return;
+  if (lead.crmDealId === dealId) return;
+  await database
+    .update(quoteLeads)
+    .set({ crmDealId: dealId, updatedAt: strictlyAfter(timestamp, lead.updatedAt) })
+    .where(eq(quoteLeads.id, lead.id));
+}
+
+/** Persist a CRM deal using an already-open database/transaction. */
+export async function upsertCrmDealForQuotation(
+  database: CrmDatabase,
+  input: CrmDealUpsertInput,
+  options: UpsertCrmDealForQuotationOptions = {}
+): Promise<CrmDealRecord> {
+  const quotationId = normalizedId(input?.quotationId ?? input?.quotation_id, 'quotation_id');
+  const nameValue = input?.nome ?? input?.lead_name;
+  const emailValue = normalizedEmail(input?.email);
+  const phoneValue = normalizedPhone(input?.telefone);
+  const clientId = input?.clientId ?? input?.client_id;
+  const quoteLeadId = input?.quoteLeadId ?? input?.quote_lead_id;
+  const statusValue = input?.status === undefined ? undefined : normalizedStatus(input.status);
+  const followUpStage = normalizedFollowUpStage(input?.followUpStage ?? input?.follow_up_stage);
+  const nextStep = optionalText(input?.nextStep ?? input?.next_step, 'Próxima ação', 500);
+  const lostReason = optionalText(input?.lostReason ?? input?.lost_reason, 'Motivo da perda', 500);
+  const normalizedClientId =
+    clientId === undefined || clientId === null ? null : normalizedId(clientId, 'client_id');
+  const normalizedQuoteLeadId =
+    quoteLeadId === undefined || quoteLeadId === null
+      ? null
+      : normalizedId(quoteLeadId, 'quote_lead_id');
+  const timestamp = asValidDate(options.now);
+  const makeId = options.idFactory || randomUUID;
+
+  const lead = await selectLeadForQuotation(database, quotationId);
+  const existing = await resolveExistingDeal(database, quotationId, lead);
+  const quoteLeadPatch =
+    quoteLeadId !== undefined
+      ? { quoteLeadId: normalizedQuoteLeadId }
+      : existing?.quoteLeadId
+        ? {}
+        : lead?.id
+          ? { quoteLeadId: lead.id }
+          : {};
+
+  if (existing) {
+    const nextStatus = nextIssuanceStatus(existing.status, statusValue);
+    const updatedAt = strictlyAfter(timestamp, existing.updatedAt);
+    const identityPatch = {
+      ...(nameValue === undefined ? {} : { nome: requiredName(nameValue) }),
+      ...(emailValue === undefined ? {} : { email: emailValue }),
+      ...(phoneValue === undefined ? {} : { telefone: phoneValue }),
+      ...(normalizedClientId === null && clientId === undefined
+        ? {}
+        : { clientId: normalizedClientId }),
+      ...quoteLeadPatch,
+      quotationId,
+      updatedAt,
+    };
+    if (existing.status === CRM_PRUNE_LOST_STATUS) {
+      await database.update(crmDeals).set(identityPatch).where(eq(crmDeals.id, existing.id));
+    } else {
+      const status = nextStatus ?? existing.status;
+      await database
+        .update(crmDeals)
+        .set({
+          ...identityPatch,
+          ...(nextStatus === undefined ? {} : { status: nextStatus }),
+          ...(followUpStage === undefined ? {} : { followUpStage }),
+          ...(nextStep === undefined ? {} : { nextStep }),
+          lostReason: status === CRM_PRUNE_LOST_STATUS ? lostReason || CRM_PRUNE_LOST_REASON : null,
+        })
+        .where(eq(crmDeals.id, existing.id));
+    }
+    await syncLeadDealLink(database, lead, existing.id, timestamp);
+    const updated = await dealWithQuotation(database, existing.id);
+    if (!updated) throw new CrmDealRepositoryError();
+    return updated;
+  }
+
+  const nome = requiredName(nameValue);
+  const status = statusValue || CRM_PRUNE_TARGET_STATUS;
+  const id = normalizedId(input?.id === undefined ? makeId() : input.id, 'id');
+  const insertQuoteLeadId = quoteLeadId !== undefined ? normalizedQuoteLeadId : lead?.id || null;
+  const [created] = await database
+    .insert(crmDeals)
+    .values({
+      id,
+      quoteLeadId: insertQuoteLeadId,
+      clientId: normalizedClientId,
+      quotationId,
+      nome,
+      email: emailValue === undefined ? null : emailValue,
+      telefone: phoneValue === undefined ? null : phoneValue,
+      status,
+      followUpStage: followUpStage ?? 0,
+      nextStep: nextStep === undefined ? null : nextStep,
+      lostReason:
+        status === CRM_PRUNE_LOST_STATUS
+          ? lostReason || CRM_PRUNE_LOST_REASON
+          : lostReason === undefined
+            ? null
+            : lostReason,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .onConflictDoNothing()
+    .returning();
+  const winner =
+    created ||
+    (
+      await database
+        .select()
+        .from(crmDeals)
+        .where(
+          and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_PRUNE_LOST_STATUS))
+        )
+        .limit(1)
+    )[0];
+  if (!winner) throw new CrmDealRepositoryError();
+  await syncLeadDealLink(database, lead, winner.id, timestamp);
+  const saved = await dealWithQuotation(database, winner.id);
+  if (!saved) throw new CrmDealRepositoryError();
+  return saved;
+}
+
 export function createPostgresCrmDealRepository(
   getDb: DatabaseProvider = getDatabase,
   options: CrmDealRepositoryOptions = {}
@@ -486,111 +704,14 @@ export function createPostgresCrmDealRepository(
     },
 
     async upsertForQuotation(input: CrmDealUpsertInput): Promise<CrmDealRecord> {
-      const quotationId = normalizedId(input?.quotationId ?? input?.quotation_id, 'quotation_id');
-      const nameValue = input?.nome ?? input?.lead_name;
-      const emailValue = normalizedEmail(input?.email);
-      const phoneValue = normalizedPhone(input?.telefone);
-      const clientId = input?.clientId ?? input?.client_id;
-      const quoteLeadId = input?.quoteLeadId ?? input?.quote_lead_id;
-      const statusValue = input?.status === undefined ? undefined : normalizedStatus(input.status);
-      const followUpStage = normalizedFollowUpStage(input?.followUpStage ?? input?.follow_up_stage);
-      const nextStep = optionalText(input?.nextStep ?? input?.next_step, 'Próxima ação', 500);
-      const lostReason = optionalText(
-        input?.lostReason ?? input?.lost_reason,
-        'Motivo da perda',
-        500
-      );
-      const normalizedClientId =
-        clientId === undefined || clientId === null ? null : normalizedId(clientId, 'client_id');
-      const normalizedQuoteLeadId =
-        quoteLeadId === undefined || quoteLeadId === null
-          ? null
-          : normalizedId(quoteLeadId, 'quote_lead_id');
       try {
         const database = getDb();
-        return await database.transaction(async (transaction) => {
-          const [existing] = await transaction
-            .select()
-            .from(crmDeals)
-            .where(
-              and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_PRUNE_LOST_STATUS))
-            )
-            .for('update')
-            .limit(1);
-          const timestamp = nowFrom(now);
-          if (existing) {
-            const status = statusValue || existing.status;
-            const updatedAt = strictlyAfter(timestamp, existing.updatedAt);
-            await transaction
-              .update(crmDeals)
-              .set({
-                ...(nameValue === undefined ? {} : { nome: requiredName(nameValue) }),
-                ...(emailValue === undefined ? {} : { email: emailValue }),
-                ...(phoneValue === undefined ? {} : { telefone: phoneValue }),
-                ...(normalizedClientId === null && clientId === undefined
-                  ? {}
-                  : { clientId: normalizedClientId }),
-                ...(normalizedQuoteLeadId === null && quoteLeadId === undefined
-                  ? {}
-                  : { quoteLeadId: normalizedQuoteLeadId }),
-                ...(statusValue === undefined ? {} : { status }),
-                ...(followUpStage === undefined ? {} : { followUpStage }),
-                ...(nextStep === undefined ? {} : { nextStep }),
-                ...(lostReason === undefined ? {} : { lostReason }),
-                lostReason:
-                  status === CRM_PRUNE_LOST_STATUS ? lostReason || CRM_PRUNE_LOST_REASON : null,
-                updatedAt,
-              })
-              .where(eq(crmDeals.id, existing.id));
-            const updated = await dealWithQuotation(transaction, existing.id);
-            if (!updated) throw new CrmDealRepositoryError();
-            return updated;
-          }
-
-          const nome = requiredName(nameValue);
-          const status = statusValue || CRM_PRUNE_TARGET_STATUS;
-          const createdAt = timestamp;
-          const id = normalizedId(input?.id === undefined ? idFactory() : input.id, 'id');
-          const [created] = await transaction
-            .insert(crmDeals)
-            .values({
-              id,
-              quoteLeadId: normalizedQuoteLeadId,
-              clientId: normalizedClientId,
-              quotationId,
-              nome,
-              email: emailValue === undefined ? null : emailValue,
-              telefone: phoneValue === undefined ? null : phoneValue,
-              status,
-              followUpStage: followUpStage ?? 0,
-              nextStep: nextStep === undefined ? null : nextStep,
-              lostReason:
-                status === CRM_PRUNE_LOST_STATUS
-                  ? lostReason || CRM_PRUNE_LOST_REASON
-                  : lostReason === undefined
-                    ? null
-                    : lostReason,
-              createdAt,
-              updatedAt: createdAt,
-            })
-            .onConflictDoNothing()
-            .returning();
-          const winner =
-            created ||
-            (
-              await transaction
-                .select()
-                .from(crmDeals)
-                .where(
-                  and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_PRUNE_LOST_STATUS))
-                )
-                .limit(1)
-            )[0];
-          if (!winner) throw new CrmDealRepositoryError();
-          const saved = await dealWithQuotation(transaction, winner.id);
-          if (!saved) throw new CrmDealRepositoryError();
-          return saved;
-        });
+        return await database.transaction((transaction) =>
+          upsertCrmDealForQuotation(transaction, input, {
+            now: nowFrom(now),
+            idFactory,
+          })
+        );
       } catch (error) {
         return safeRepositoryError(error);
       }
