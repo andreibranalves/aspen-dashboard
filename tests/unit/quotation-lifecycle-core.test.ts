@@ -36,7 +36,7 @@ test('core lifecycle actions forward canonical status and revision payloads', as
   const lifecycle = {
     setStatus: async (id: string, input: unknown) => {
       calls.push(['set_status', id, input]);
-      return { ...detail, status: 'Aprovado', status_canonical: 'aprovado' };
+      return { ...detail, status: 'Aprovado', status_canonical: 'aprovado', sales_order_id: 'PED-2026-0001' };
     },
     createRevision: async (id: string, input: unknown) => {
       calls.push(['create_revision', id, input]);
@@ -59,6 +59,7 @@ test('core lifecycle actions forward canonical status and revision payloads', as
   }));
   assert.equal(statusResponse.statusCode, 200);
   assert.equal(JSON.parse(statusResponse.body || '{}').status_canonical, 'aprovado');
+  assert.equal(JSON.parse(statusResponse.body || '{}').sales_order_id, 'PED-2026-0001');
 
   const revisionResponse = await handler(event('POST', detail.id, {
     action: 'create_revision',
@@ -138,7 +139,7 @@ test('core list accepts trimmed/case-insensitive legacy aliases and rejects unkn
   const calls: string[] = [];
   const handler = createCoreHandler({
     repository: {
-      list: async (options) => {
+      list: async (options?: { status?: string }) => {
         calls.push(options?.status || '');
         return { rows: [], total: 0, page: 1, limit: 50, statusSummary: {} };
       },

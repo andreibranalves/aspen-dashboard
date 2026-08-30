@@ -12,7 +12,15 @@ import {
   type QuoteDatabase,
   type QuoteDraftManagementDetail,
 } from './quote-draft-management-repository.js';
-import { appSettings, quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
+import {
+  createSalesOrderFromApprovedQuotation,
+  SalesOrderConflictError,
+  SalesOrderInputError,
+  SalesOrderNotFoundError,
+  SalesOrderRepositoryError,
+} from './sales-orders-repository.js';
+import { appSettings, quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';
+import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import {
   assertQuotationTransition,
@@ -43,8 +51,12 @@ export interface CreateQuotationRevisionInput {
   concurrencyToken?: unknown;
 }
 
+export type SetQuotationStatusResult = QuoteDraftManagementDetail & {
+  sales_order_id?: string;
+};
+
 export interface QuotationLifecycleRepository {
-  setStatus(id: string, input: SetQuotationStatusInput): Promise<QuoteDraftManagementDetail>;
+  setStatus(id: string, input: SetQuotationStatusInput): Promise<SetQuotationStatusResult>;
   createRevision(id: string, input: CreateQuotationRevisionInput): Promise<QuoteDraftManagementDetail>;
 }
 
@@ -111,6 +123,19 @@ function known(error: unknown): boolean {
     || error instanceof QuoteManagementRepositoryError;
 }
 
+function mapSalesOrderError(error: unknown): never {
+  if (error instanceof SalesOrderInputError || error instanceof SalesOrderConflictError) {
+    throw new QuoteManagementConflictError(error.message);
+  }
+  if (error instanceof SalesOrderNotFoundError) {
+    throw new QuoteManagementNotFoundError(error.message);
+  }
+  if (error instanceof SalesOrderRepositoryError) {
+    throw new QuoteManagementRepositoryError(error.message);
+  }
+  throw error;
+}
+
 async function lockedQuotation(tx: QuoteTransaction, id: string) {
   const normalized = String(id || '').trim();
   if (!normalized) throw new QuoteManagementInputError('ID do orçamento não informado.');
@@ -168,7 +193,7 @@ export function createPostgresQuotationLifecycleRepository(
   const readDetail = options.readDetail || readPostgresQuotationDetail;
 
   const repository: QuotationLifecycleRepository = {
-    async setStatus(id: string, rawInput: SetQuotationStatusInput): Promise<QuoteDraftManagementDetail> {
+    async setStatus(id: string, rawInput: SetQuotationStatusInput): Promise<SetQuotationStatusResult> {
       if (!rawInput || typeof rawInput !== 'object') throw new QuoteManagementInputError('Envie um payload válido.');
       const input = rawInput as unknown as Record<string, unknown>;
       const status = input.status;
@@ -206,12 +231,33 @@ export function createPostgresQuotationLifecycleRepository(
           const lossReason = status === 'perdido' ? String(input.loss_reason).trim() : null;
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
           await tx.update(quotations).set({ status, lossReason, updatedAt }).where(eq(quotations.id, quotation.id));
+          let salesOrderId: string | undefined;
+          if (status === 'aprovado') {
+            try {
+              const order = await createSalesOrderFromApprovedQuotation(
+                tx,
+                { id: quotation.id, clientId: quotation.clientId, status: 'aprovado' },
+                { now: updatedAt, idFactory: randomId },
+              );
+              salesOrderId = order.id;
+            } catch (error) {
+              mapSalesOrderError(error);
+            }
+          }
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
-          return refreshed;
+          return salesOrderId ? { ...refreshed, sales_order_id: salesOrderId } : refreshed;
         });
         return detail;
       } catch (error) {
+        if (
+          error instanceof SalesOrderInputError
+          || error instanceof SalesOrderConflictError
+          || error instanceof SalesOrderNotFoundError
+          || error instanceof SalesOrderRepositoryError
+        ) {
+          mapSalesOrderError(error);
+        }
         if (known(error)) throw error;
         console.error(`[quotation-lifecycle] set status failed (${error instanceof Error ? error.name : typeof error})`);
         throw new QuoteManagementRepositoryError('Não foi possível atualizar o estado comercial. Tente novamente.');

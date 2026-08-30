@@ -792,6 +792,118 @@ async function reserveOrderNumber(
   return `PED-${year}-${String(nextNumber).padStart(4, '0')}`;
 }
 
+export async function createSalesOrderFromApprovedQuotation(
+  transaction: SalesOrderTransaction,
+  quotation: { id: string; clientId: string; status: string },
+  options: { now: Date; idFactory: () => string }
+): Promise<CreateSalesOrderResult> {
+  try {
+    return await insertSalesOrderFromApprovedQuotation(transaction, quotation, options);
+  } catch (error) {
+    return safeRepositoryError(error);
+  }
+}
+
+async function insertSalesOrderFromApprovedQuotation(
+  transaction: SalesOrderTransaction,
+  quotation: { id: string; clientId: string; status: string },
+  options: { now: Date; idFactory: () => string }
+): Promise<CreateSalesOrderResult> {
+  const [existing] = await transaction
+    .select()
+    .from(salesOrders)
+    .where(
+      and(
+        eq(salesOrders.quotationId, quotation.id),
+        ne(salesOrders.status, ACTIVE_ORDER_STATUS)
+      )
+    )
+    .for('update')
+    .limit(1);
+  if (existing) {
+    const crmUpdated = await updateDealForQuotation(transaction, quotation.id, options.now);
+    return mapCreateResult(existing, true, crmUpdated);
+  }
+
+  if (quotation.status !== 'aprovado') {
+    throw new SalesOrderInputError(
+      'Este orçamento não pode ser convertido em pedido de venda.'
+    );
+  }
+  const [revision] = await transaction
+    .select()
+    .from(quoteRevisions)
+    .where(
+      and(
+        eq(quoteRevisions.quotationId, quotation.id),
+        eq(quoteRevisions.status, 'aprovado')
+      )
+    )
+    .orderBy(desc(quoteRevisions.version))
+    .limit(1);
+  if (!revision) {
+    throw new SalesOrderInputError('A revisão aprovada do orçamento não está disponível.');
+  }
+  const revisionItems = await transaction
+    .select()
+    .from(quoteRevisionItems)
+    .where(eq(quoteRevisionItems.revisionId, revision.id))
+    .orderBy(asc(quoteRevisionItems.position));
+  const current = asDate(options.now);
+  const orderNumber = await reserveOrderNumber(transaction, current.getUTCFullYear());
+  const orderId = options.idFactory();
+  const createdAt = current;
+  const [order] = await transaction
+    .insert(salesOrders)
+    .values({
+      id: orderId,
+      orderNumber,
+      quotationId: quotation.id,
+      quotationRevisionId: revision.id,
+      clientId: quotation.clientId,
+      status: CREATED_ORDER_STATUS,
+      transactionDate: dateOnly(current),
+      deliveryDate: addDays(current, 30),
+      subtotal: revision.subtotal,
+      grandTotal: revision.total,
+      createdAt,
+      updatedAt: createdAt,
+    })
+    .returning();
+  if (!order) throw new SalesOrderRepositoryError('Não foi possível criar o pedido local.');
+  if (revisionItems.length > 0) {
+    await transaction.insert(salesOrderItems).values(
+      revisionItems.map((item) => ({
+        id: options.idFactory(),
+        salesOrderId: order.id,
+        position: item.position,
+        productSku: item.produtoSku || item.productSku,
+        productName: item.produtoNome,
+        unit: item.produtoUnidade,
+        quantity: item.quantidade,
+        unitPrice: item.precoAplicado,
+        lineTotal: item.totalLinha,
+      }))
+    );
+  }
+  await appendProductActivityEvents(
+    transaction,
+    [...new Set(revisionItems.map((item) => item.produtoSku || item.productSku))].map((sku) => ({
+      sku,
+      tipo: 'pedido' as const,
+      texto: `Pedido ${order.orderNumber} criado`,
+      reference_id: `pedido:${order.id}:${sku}`,
+      created_at: createdAt,
+    })),
+  );
+  await transaction
+    .update(quoteRevisions)
+    .set({ orderLinkage: 'ordered', orderPending: false })
+    .where(eq(quoteRevisions.id, revision.id));
+  const crmUpdated = await updateDealForQuotation(transaction, quotation.id, createdAt);
+  return mapCreateResult(order, false, crmUpdated);
+}
+
 export function createPostgresSalesOrdersRepository(
   getDb: DatabaseProvider = getDatabase,
   options: SalesOrdersRepositoryOptions = {}
@@ -916,103 +1028,10 @@ export function createPostgresSalesOrdersRepository(
             .limit(1);
           if (!quotation) throw new SalesOrderNotFoundError('Orçamento não encontrado.');
 
-          const [existing] = await transaction
-            .select()
-            .from(salesOrders)
-            .where(
-              and(
-                eq(salesOrders.quotationId, quotation.id),
-                ne(salesOrders.status, ACTIVE_ORDER_STATUS)
-              )
-            )
-            .for('update')
-            .limit(1);
-          if (existing) {
-            const crmUpdated = await updateDealForQuotation(
-              transaction,
-              quotation.id,
-              asDate(nowFactory())
-            );
-            return mapCreateResult(existing, true, crmUpdated);
-          }
-
-          if (quotation.status !== 'aprovado') {
-            throw new SalesOrderInputError(
-              'Este orçamento não pode ser convertido em pedido de venda.'
-            );
-          }
-          const [revision] = await transaction
-            .select()
-            .from(quoteRevisions)
-            .where(
-              and(
-                eq(quoteRevisions.quotationId, quotation.id),
-                eq(quoteRevisions.status, 'aprovado')
-              )
-            )
-            .orderBy(desc(quoteRevisions.version))
-            .limit(1);
-          if (!revision) {
-            throw new SalesOrderInputError('A revisão aprovada do orçamento não está disponível.');
-          }
-          const revisionItems = await transaction
-            .select()
-            .from(quoteRevisionItems)
-            .where(eq(quoteRevisionItems.revisionId, revision.id))
-            .orderBy(asc(quoteRevisionItems.position));
-          const current = asDate(nowFactory());
-          const orderNumber = await reserveOrderNumber(transaction, current.getUTCFullYear());
-          const orderId = idFactory();
-          const createdAt = current;
-          const [order] = await transaction
-            .insert(salesOrders)
-            .values({
-              id: orderId,
-              orderNumber,
-              quotationId: quotation.id,
-              quotationRevisionId: revision.id,
-              clientId: quotation.clientId,
-              status: CREATED_ORDER_STATUS,
-              transactionDate: dateOnly(current),
-              deliveryDate: addDays(current, 30),
-              subtotal: revision.subtotal,
-              grandTotal: revision.total,
-              createdAt,
-              updatedAt: createdAt,
-            })
-            .returning();
-          if (!order) throw new SalesOrderRepositoryError('Não foi possível criar o pedido local.');
-          if (revisionItems.length > 0) {
-            await transaction.insert(salesOrderItems).values(
-              revisionItems.map((item) => ({
-                id: idFactory(),
-                salesOrderId: order.id,
-                position: item.position,
-                productSku: item.produtoSku || item.productSku,
-                productName: item.produtoNome,
-                unit: item.produtoUnidade,
-                quantity: item.quantidade,
-                unitPrice: item.precoAplicado,
-                lineTotal: item.totalLinha,
-              }))
-            );
-          }
-          await appendProductActivityEvents(
-            transaction,
-            [...new Set(revisionItems.map((item) => item.produtoSku || item.productSku))].map((sku) => ({
-              sku,
-              tipo: 'pedido' as const,
-              texto: `Pedido ${order.orderNumber} criado`,
-              reference_id: `pedido:${order.id}:${sku}`,
-              created_at: createdAt,
-            })),
-          );
-          await transaction
-            .update(quoteRevisions)
-            .set({ orderLinkage: 'ordered', orderPending: false })
-            .where(eq(quoteRevisions.id, revision.id));
-          const crmUpdated = await updateDealForQuotation(transaction, quotation.id, createdAt);
-          return mapCreateResult(order, false, crmUpdated);
+          return createSalesOrderFromApprovedQuotation(transaction, quotation, {
+            now: asDate(nowFactory()),
+            idFactory,
+          });
         });
       } catch (error) {
         return safeRepositoryError(error);
