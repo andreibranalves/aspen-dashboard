@@ -447,7 +447,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
 
   return (
     <PageShell className="space-y-5">
-      <fieldset disabled={saving} className="contents">
+      <fieldset disabled={saving} className="space-y-5">
       <PageHeader
         title={title}
         description={isNewClient ? undefined : 'Cadastro e contexto comercial do cliente.'}
