@@ -126,6 +126,11 @@ function formatActivityDate(value: string): string {
     timeStyle: 'short',
   }).format(date);
 }
+function formatQuantity(value: number | string | undefined): string {
+  if (value == null) return '—';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? String(numeric) : String(value);
+}
 
 function buildEditedState(
   produto?: Produto | null,
@@ -1059,7 +1064,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                         className="rounded-lg border border-line bg-surface/50 p-3"
                       >
                         <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                          A partir de {String(quantity)} un.
+                          A partir de {formatQuantity(quantity)} un.
                         </p>
                         <p className="mt-2 text-sm font-medium text-fg font-mono">
                           {rate != null ? formatBRL(rate) : '—'}
