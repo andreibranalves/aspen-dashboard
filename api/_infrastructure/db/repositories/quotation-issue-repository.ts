@@ -9,6 +9,12 @@ import { renderQuotationPdf } from '../../../_modules/quotation-pdf-renderer.js'
 import { isValidPdfBuffer } from '../../../_modules/quotation-document-storage.js';
 import type { QuotationTemplateSnapshot } from './quotation-template-repository.js';
 import { quotationConcurrencyToken } from './quote-draft-management-repository.js';
+import {
+  upsertCrmDealForQuotation,
+  type UpsertCrmDealForQuotationOptions,
+  type CrmDealUpsertInput,
+  type CrmDatabase,
+} from './crm-deals-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 export type QuotationIssueDatabase = AppDatabase;
@@ -86,6 +92,11 @@ export interface QuotationIssueRepositoryOptions {
   leaseMs?: number;
   renderPdf?: (html: string) => Promise<Buffer>;
   database?: DatabaseProvider;
+  upsertCrmDeal?: (
+    database: CrmDatabase,
+    input: CrmDealUpsertInput,
+    options?: UpsertCrmDealForQuotationOptions
+  ) => Promise<unknown>;
 }
 
 export type QuotationIssueLeaseDecision = 'claim' | 'replay' | 'active' | 'conflict';
@@ -124,6 +135,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
   const renderPdf = options.renderPdf || renderQuotationPdf;
   const leaseMs = options.leaseMs || LEASE_MS;
   const database = options.database || getDb;
+  const upsertCrmDeal = options.upsertCrmDeal || upsertCrmDealForQuotation;
 
   async function read(idempotencyKey: string): Promise<QuotationIssueStatus | null> {
     const key = requiredUuid(idempotencyKey, 'Chave Idempotency-Key inválida.');
@@ -214,6 +226,13 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         const issuedRevision = { ...revision, status: 'emitido' as const, issuedAt };
         await tx.update(quotations).set({ status: 'emitido', issuedAt, updatedAt: issuedAt }).where(eq(quotations.id, quotation.id));
         await tx.update(quoteRevisions).set({ status: 'emitido', issuedAt }).where(eq(quoteRevisions.id, revision.id));
+        await upsertCrmDeal(tx, {
+          quotationId: quotation.id,
+          clientId: quotation.clientId,
+          nome: revision.clienteNome,
+          email: revision.clienteEmail,
+          telefone: revision.clienteTelefone,
+        }, { now: issuedAt, idFactory });
         const html = renderQuotationDocument({ quotation: issuedQuotation, revision: issuedRevision, companySnapshot: revision.companySnapshot, templateVersion, sectionsSnapshot: revision.sectionsSnapshot, items }).html;
         let pdf: Buffer;
         try { pdf = await renderPdf(html); } catch {

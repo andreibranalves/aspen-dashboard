@@ -42,6 +42,9 @@ async function withDatabase<T>(callback: (db: AppDatabase) => Promise<T>): Promi
   } finally { await client.end({ timeout: 5 }); }
 }
 async function seed(db: AppDatabase) {
+  await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
+  await db.delete(schema.crmDeals);
+  await db.delete(schema.quoteLeads);
   await db.delete(schema.quotationIssueRequests);
   await db.delete(schema.quotations);
   await db.delete(schema.clients).where(eq(schema.clients.email, 'cliente@teste.com'));
@@ -155,6 +158,9 @@ gated('repeating the same idempotency key returns one single issuance result', a
   const replay = await repository.issue(issueInput(key, draft));
   assert.deepEqual(replay, first);
   assert.equal((await db.select().from(schema.quoteRevisions)).length, 1);
+  const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid));
+  assert.equal(deals.length, 1);
+  assert.equal(deals[0]?.status, 'Orcamento Enviado');
 
   // A different key against the same already-issued revision is refused.
   await assert.rejects(
@@ -198,6 +204,7 @@ gated('PDF failure rolls back the status flip and leaves a retryable request', a
   assert.equal(revision?.status, 'rascunho');
   const [quotation] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, draft.quotationUuid));
   assert.equal(quotation?.status, 'rascunho');
+  assert.equal((await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid))).length, 0);
   assert.equal((await repository.read(key))?.state, 'retryable');
 
   // The same key can be reclaimed after the failure and succeeds.
@@ -243,6 +250,129 @@ gated('repository active and stale leases are enforced by issue', async () => wi
   const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
   await assert.rejects(repository.issue(issueInput(activeKey, draft)), /processamento/i);
   assert.equal((await repository.read(activeKey))?.state, 'processing');
+}));
+
+
+gated('issuing a draft without a deal creates one opportunity in Orcamento Enviado', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+  await repository.issue(issueInput(randomUUID(), draft));
+  const [quotation] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, draft.quotationUuid));
+  const [revision] = await db.select().from(schema.quoteRevisions).where(eq(schema.quoteRevisions.id, draft.revisionId));
+  const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid));
+  assert.equal(deals.length, 1);
+  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  assert.equal(deals[0]?.quotationId, draft.quotationUuid);
+  assert.equal(deals[0]?.clientId, quotation?.clientId);
+  assert.equal(deals[0]?.nome, revision?.clienteNome);
+  assert.equal(deals[0]?.email, revision?.clienteEmail);
+}));
+
+gated('issuing reuses the quote lead deal and advances Novo Lead to Orcamento Enviado', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const leadId = randomUUID();
+  const dealId = randomUUID();
+  await db.insert(schema.quoteLeads).values({
+    id: leadId,
+    identityKey: `issue-lead-${leadId}`,
+    nome: 'Cliente emissão',
+    email: 'cliente@teste.com',
+    telefone: '5511999990000',
+    source: 'typebot',
+    status: 'converted',
+    quotationId: draft.quotationUuid,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  await db.insert(schema.crmDeals).values({
+    id: dealId,
+    quoteLeadId: leadId,
+    nome: 'Cliente emissão',
+    email: 'cliente@teste.com',
+    telefone: '5511999990000',
+    status: 'Novo Lead',
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  await db.update(schema.quoteLeads).set({ crmDealId: dealId }).where(eq(schema.quoteLeads.id, leadId));
+  const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+  await repository.issue(issueInput(randomUUID(), draft));
+  const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
+  assert.equal(deals.length, 1);
+  assert.equal(deals[0]?.id, dealId);
+  assert.equal(deals[0]?.quotationId, draft.quotationUuid);
+  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  const [lead] = await db.select().from(schema.quoteLeads).where(eq(schema.quoteLeads.id, leadId));
+  assert.equal(lead?.crmDealId, dealId);
+}));
+
+gated('issuing preserves an already advanced CRM stage', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const [quotation] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, draft.quotationUuid));
+  const dealId = randomUUID();
+  await db.insert(schema.crmDeals).values({
+    id: dealId,
+    clientId: quotation!.clientId,
+    quotationId: draft.quotationUuid,
+    nome: 'Cliente emissão',
+    email: 'cliente@teste.com',
+    telefone: '5511999990000',
+    status: 'Em Negociacao',
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+  await repository.issue(issueInput(randomUUID(), draft));
+  const [deal] = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
+  assert.equal(deal?.status, 'Em Negociacao');
+  assert.equal((await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid))).length, 1);
+}));
+
+gated('CRM upsert failure rolls back issuance and leaves no deal', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const key = randomUUID();
+  const repository = createQuotationIssueRepository(() => db, {
+    now: () => NOW,
+    renderPdf: async () => VALID_PDF,
+    upsertCrmDeal: async () => { throw new Error('crm down'); },
+  });
+  await assert.rejects(repository.issue(issueInput(key, draft)), /emitir o orçamento/i);
+  const [quotation] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, draft.quotationUuid));
+  const [revision] = await db.select().from(schema.quoteRevisions).where(eq(schema.quoteRevisions.id, draft.revisionId));
+  assert.equal(quotation?.status, 'rascunho');
+  assert.equal(revision?.status, 'rascunho');
+  assert.equal((await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid))).length, 0);
+  assert.equal((await repository.read(key))?.state, 'retryable');
+}));
+
+gated('issuing does not reopen a lost deal or create a second active opportunity', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const [quotation] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, draft.quotationUuid));
+  const dealId = randomUUID();
+  await db.insert(schema.crmDeals).values({
+    id: dealId,
+    clientId: quotation!.clientId,
+    quotationId: draft.quotationUuid,
+    nome: 'Cliente emissão',
+    email: 'cliente@teste.com',
+    telefone: '5511999990000',
+    status: 'Perdido',
+    lostReason: 'Sem resposta após 30 dias.',
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+  const result = await repository.issue(issueInput(randomUUID(), draft));
+  assert.equal(result.status, 'emitido');
+  const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid));
+  assert.equal(deals.length, 1);
+  assert.equal(deals[0]?.id, dealId);
+  assert.equal(deals[0]?.status, 'Perdido');
 }));
 
 test('fingerprint binds the idempotency key to the revision reference', () => {

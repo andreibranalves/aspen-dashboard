@@ -440,3 +440,167 @@ test(
     }
   }
 );
+
+test(
+  'upsert for quotation reuses lead deals, preserves advanced stages and does not reopen Perdido',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const db = drizzle(client, { schema });
+    const clientId = randomUUID();
+    const quotationId = randomUUID();
+    const advancedQuotationId = randomUUID();
+    const lostQuotationId = randomUUID();
+    const leadId = randomUUID();
+    const leadDealId = randomUUID();
+    const advancedDealId = randomUUID();
+    const lostDealId = randomUUID();
+    try {
+      await migrate(db, { migrationsFolder });
+      await db.insert(schema.clients).values({
+        id: clientId,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+        telefone: '5511999990000',
+      });
+      const businessBase = Date.now() % 100000000;
+      await db.insert(schema.quotations).values([
+        {
+          id: quotationId,
+          clientId,
+          businessNumber: `ORC-${String(businessBase).padStart(8, '0')}`,
+          status: 'rascunho',
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+        {
+          id: advancedQuotationId,
+          clientId,
+          businessNumber: `ORC-${String((businessBase + 1) % 100000000).padStart(8, '0')}`,
+          status: 'rascunho',
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+        {
+          id: lostQuotationId,
+          clientId,
+          businessNumber: `ORC-${String((businessBase + 2) % 100000000).padStart(8, '0')}`,
+          status: 'rascunho',
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      ]);
+
+      await db.insert(schema.quoteLeads).values({
+        id: leadId,
+        identityKey: `crm-upsert-${leadId}`,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+        telefone: '5511999990000',
+        source: 'typebot',
+        status: 'converted',
+        quotationId,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await db.insert(schema.crmDeals).values({
+        id: leadDealId,
+        quoteLeadId: leadId,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+        telefone: '5511999990000',
+        status: 'Novo Lead',
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await db.update(schema.quoteLeads).set({ crmDealId: leadDealId }).where(eq(schema.quoteLeads.id, leadId));
+      await db.insert(schema.crmDeals).values({
+        id: advancedDealId,
+        clientId,
+        quotationId: advancedQuotationId,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+        telefone: '5511999990000',
+        status: 'Em Negociacao',
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await db.insert(schema.crmDeals).values({
+        id: lostDealId,
+        clientId,
+        quotationId: lostQuotationId,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+        telefone: '5511999990000',
+        status: 'Perdido',
+        lostReason: 'Sem resposta após 30 dias.',
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+
+      const repository = createPostgresCrmDealRepository(() => db, { now: () => NOW });
+      const reattached = await repository.upsertForQuotation({
+        quotationId,
+        clientId,
+        nome: 'Ana Upsert Emitida',
+        email: 'ANA.UPSERT@EXAMPLE.COM',
+        telefone: '5511999990000',
+      });
+      assert.equal(reattached.id, leadDealId);
+      assert.equal(reattached.quotationId, quotationId);
+      assert.equal(reattached.status, 'Orcamento Enviado');
+      assert.equal(reattached.nome, 'Ana Upsert Emitida');
+      const [lead] = await db.select().from(schema.quoteLeads).where(eq(schema.quoteLeads.id, leadId));
+      assert.equal(lead?.crmDealId, leadDealId);
+
+      const preserved = await repository.upsertForQuotation({
+        quotationId: advancedQuotationId,
+        clientId,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+      });
+      assert.equal(preserved.id, advancedDealId);
+      assert.equal(preserved.status, 'Em Negociacao');
+
+      const lost = await repository.upsertForQuotation({
+        quotationId: lostQuotationId,
+        clientId,
+        nome: 'Ana Upsert',
+        email: 'ana.upsert@example.com',
+      });
+      assert.equal(lost.id, lostDealId);
+      assert.equal(lost.status, 'Perdido');
+      const lostRows = await db
+        .select()
+        .from(schema.crmDeals)
+        .where(eq(schema.crmDeals.quotationId, lostQuotationId));
+      assert.equal(lostRows.length, 1);
+
+      const created = await repository.upsertForQuotation({
+        quotationId: quotationId,
+        clientId,
+        nome: 'Ana Upsert Emitida',
+        email: 'ana.upsert@example.com',
+      });
+      assert.equal(created.id, leadDealId);
+    } finally {
+      await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null }).where(eq(schema.quoteLeads.id, leadId));
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, leadDealId));
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, advancedDealId));
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, lostDealId));
+      await db.delete(schema.quoteLeads).where(eq(schema.quoteLeads.id, leadId));
+      await db.delete(schema.quotations).where(eq(schema.quotations.id, quotationId));
+      await db.delete(schema.quotations).where(eq(schema.quotations.id, advancedQuotationId));
+      await db.delete(schema.quotations).where(eq(schema.quotations.id, lostQuotationId));
+      await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
+      await client.end({ timeout: 5 });
+    }
+  }
+);
+
