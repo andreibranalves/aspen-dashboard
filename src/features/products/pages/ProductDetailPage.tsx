@@ -727,7 +727,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
   return (
     <PageShell className="space-y-6">
-      <fieldset disabled={saving} className="contents">
+      <fieldset disabled={saving} className="space-y-6">
       <PageHeader
         title={isNewProduct ? 'Novo produto' : displayName}
         description={produto.descricao?.trim() || 'Cadastro e precificação do produto.'}
