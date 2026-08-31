@@ -9,6 +9,7 @@ import {
 import {
   normalizeProductCreateInput,
   normalizeProductUpdateInput,
+  ProductRepositoryError,
   toProductRecord,
   type ProductCreateInput,
   type ProductRecord,
@@ -131,6 +132,10 @@ export function createPostgresProductCatalogRepository(
             categoria: normalizedProduct.categoria,
             marca: normalizedProduct.marca,
             precoBase: normalizedPricing?.preco_base ?? null,
+            custoUnitario:
+              normalizedProduct.custo_unitario == null
+                ? null
+                : String(normalizedProduct.custo_unitario),
             ativo: true,
             arquivadoEm: null,
           }).returning();
@@ -163,7 +168,13 @@ export function createPostgresProductCatalogRepository(
           pricing: normalizedPricing ? pricingRecordFromNormalized(normalizedProduct.sku, normalizedPricing) : null,
         };
       } catch (error) {
+        if (error instanceof ProductRepositoryError) throw error;
+        if (error instanceof ProductCatalogRepositoryError) throw error;
         if (isDuplicate(error)) throw new ProductCatalogRepositoryError(409, 'SKU ou quantidade mínima já cadastrada.');
+        console.error(
+          '[product-catalog-repository] create failed',
+          error instanceof Error ? error.message : typeof error
+        );
         throw new ProductCatalogRepositoryError(503, 'Não foi possível salvar o produto. Tente novamente.', false);
       }
     },
@@ -270,7 +281,13 @@ export function createPostgresProductCatalogRepository(
           pricing: normalizedPricing ? pricingRecordFromNormalized(normalizedSku, normalizedPricing) : null,
         };
       } catch (error) {
+        if (error instanceof ProductRepositoryError) throw error;
+        if (error instanceof ProductCatalogRepositoryError) throw error;
         if (isDuplicate(error)) throw new ProductCatalogRepositoryError(409, 'SKU ou quantidade mínima já cadastrada.');
+        console.error(
+          '[product-catalog-repository] update failed',
+          error instanceof Error ? error.message : typeof error
+        );
         throw new ProductCatalogRepositoryError(503, 'Não foi possível atualizar o produto. Tente novamente.', false);
       }
     },

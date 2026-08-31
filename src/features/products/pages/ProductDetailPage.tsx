@@ -162,6 +162,10 @@ const SAFE_PRODUCT_ERROR_MESSAGES = new Set(['SKU já cadastrado.']);
 
 function selectContextualErrorMessage(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message.trim() : '';
+  const status = typeof (error as { status?: unknown })?.status === 'number'
+    ? (error as { status: number }).status
+    : 0;
+  if (status >= 400 && status < 500 && message) return message;
   return SAFE_PRODUCT_ERROR_MESSAGES.has(message) ? message : fallback;
 }
 
@@ -907,10 +911,10 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                     setEdited((prev) => ({ ...prev, custoUnitario: e.target.value }))
                   }
                   className="mt-1 text-sm font-mono"
-                  placeholder="0.00"
+                  placeholder="0,00"
                 />
                 <p className="mt-1 text-xs text-fg-muted">
-                  Pedidos novos gravam este custo. Linhas antigas sem custo recebem o valor na primeira vez.
+                  Aceita 12,50 ou 12.50. Pedidos novos gravam este custo. Linhas antigas sem custo recebem o valor na primeira vez.
                 </p>
               </div>
             ) : (
