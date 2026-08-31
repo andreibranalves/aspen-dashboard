@@ -846,8 +846,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
+              <div className="flex min-w-0 flex-col">
+                <label className="block text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
                 <Select
                   value={edited.ativo ? 'ativo' : 'inativo'}
                   onChange={(event) =>
