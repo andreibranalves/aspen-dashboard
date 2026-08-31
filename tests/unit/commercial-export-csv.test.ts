@@ -22,6 +22,7 @@ describe('commercial export CSV', () => {
       [
         { name: '=SOMA(1;1)', note: 'Linha 1\n"Linha 2"' },
         { name: '  @comando', note: null },
+        { name: '\n=HYPERLINK("https://example.test")', note: null },
       ]
     );
 
@@ -29,7 +30,8 @@ describe('commercial export CSV', () => {
       csv,
       '\uFEFF"Nome";"Descrição"\r\n' +
         '"\'=SOMA(1;1)";"Linha 1\n""Linha 2"""\r\n' +
-        '"\'  @comando";""\r\n'
+        '"\'  @comando";""\r\n' +
+        '"\'\n=HYPERLINK(""https://example.test"")";""\r\n'
     );
   });
 

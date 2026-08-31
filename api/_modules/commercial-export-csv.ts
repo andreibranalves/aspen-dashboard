@@ -13,7 +13,7 @@ export interface CsvColumn<Row> {
 function csvCell(value: CsvCell): string {
   if (value === null || value === undefined) return '""';
   const text = String(value);
-  const safe = typeof value === 'string' && /^[\t\r ]*[=+\-@]/.test(text) ? `'${text}` : text;
+  const safe = typeof value === 'string' && /^\s*[=+\-@]/.test(text) ? `'${text}` : text;
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
