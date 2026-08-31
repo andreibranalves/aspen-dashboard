@@ -46,6 +46,15 @@ describe('resolveNamedPeriod', () => {
       end: '2026-08-10',
     });
   });
+
+  it('keeps last-30-days on 30/08 while UTC already rolled to 31/08', () => {
+    const lateEveningInBrazil = new Date('2026-08-31T02:31:00.000Z');
+    assert.equal(calendarDateInSaoPaulo(lateEveningInBrazil), '2026-08-30');
+    assert.deepEqual(resolveNamedPeriod('30d', lateEveningInBrazil), {
+      start: '2026-07-31',
+      end: '2026-08-30',
+    });
+  });
 });
 
 describe('isCalendarMonthPeriod', () => {
