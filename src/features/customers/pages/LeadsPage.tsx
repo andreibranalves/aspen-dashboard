@@ -618,7 +618,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     <PageShell className="pb-28">
       <PageHeader
         title="Clientes"
-        description="Contatos da carteira — transforme um contato em venda com um novo orçamento."
         actions={
           <>
             <ExportCsvButton resource="clients" filters={{ search, status }}>

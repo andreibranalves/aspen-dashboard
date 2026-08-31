@@ -176,7 +176,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   if (loading) {
     return (
       <PageShell>
-        <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
+        <PageHeader title="Dashboard" />
         <div className="flex flex-wrap gap-2" aria-hidden="true">
           {PERIODS.map((option) => (
             <div key={option.key} className="h-8 w-20 animate-pulse rounded-sm bg-surface-muted" />
@@ -220,7 +220,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   if (error) {
     return (
       <PageShell>
-        <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
+        <PageHeader title="Dashboard" />
         <div
           className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
           role="alert"
@@ -273,7 +273,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
 
   return (
     <PageShell>
-      <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
+      <PageHeader title="Dashboard" />
 
       <div className="flex flex-wrap items-center gap-2" aria-label="Período do dashboard">
         {PERIODS.map((option) => (

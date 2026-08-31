@@ -52,8 +52,9 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 1. O orçamento rápido é o trabalho central: qualquer tela compete com isso.
 2. WhatsApp é o canal do negócio; integrações valem mais que interfaces novas.
 3. Um operador só: simplicidade e densidade valem mais que recursos de equipe.
-4. Desktop-first: atalhos, tabelas densas e fluxos de poucos cliques primeiro.
-5. O comercial (CRM/pedidos) deve evoluir sem complicar o fluxo principal.
+4. O rótulo basta. Não explicar o óbvio em helpers de campo, subtítulos de página ou descrições de seção.
+5. Desktop-first: atalhos, tabelas densas e fluxos de poucos cliques primeiro.
+6. O comercial (CRM/pedidos) deve evoluir sem complicar o fluxo principal.
 
 ## Accessibility & Inclusion
 

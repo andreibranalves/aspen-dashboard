@@ -170,10 +170,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
-      <PageHeader
-        title="Configurações"
-        description="Defina os padrões usados na criação de novos orçamentos."
-      />
+      <PageHeader title="Configurações" />
 
       <section
         className="space-y-6 rounded-lg border border-line bg-surface p-4 sm:p-6"
@@ -187,9 +184,6 @@ export default function SettingsPage() {
             <h2 id="quotation-settings-title" className="text-base font-semibold text-fg">
               Padrões de orçamento
             </h2>
-            <p className="mt-1 max-w-2xl text-sm text-fg-muted">
-              Estes valores e textos serão usados como ponto de partida nos novos orçamentos.
-            </p>
           </div>
         </div>
 
@@ -269,9 +263,6 @@ export default function SettingsPage() {
                     disabled={saving}
                     required
                   />
-                  <span className="block text-xs text-fg-muted">
-                    Use ponto e até duas casas decimais.
-                  </span>
                 </label>
 
                 <label className="space-y-1.5 text-sm text-fg">
@@ -285,9 +276,6 @@ export default function SettingsPage() {
                     required
                     aria-label="Alíquota de imposto (%)"
                   />
-                  <span className="block text-xs text-fg-muted">
-                    Percentual sobre o faturamento no Lucro do dashboard. Padrão 4%.
-                  </span>
                 </label>
               </div>
               </fieldset>
@@ -315,7 +303,7 @@ export default function SettingsPage() {
                   onChange={(event) => updateSections({ ...form.secoes, show_summary: event.target.checked })}
                   disabled={saving}
                 />
-                <span><span className="block font-medium">Exibir resumo financeiro</span><span className="mt-1 block text-xs text-fg-muted">Subtotal, frete e total serão exibidos nos novos orçamentos.</span></span>
+                <span className="block font-medium">Exibir resumo financeiro</span>
               </label>
               </fieldset>
             </details>
@@ -419,17 +407,11 @@ export default function SettingsPage() {
           <h2 id="advanced-settings-title" className="text-base font-semibold text-fg">
             Configurações avançadas
           </h2>
-          <p className="mt-1 text-sm text-fg-muted">
-            Modelos HTML e versões ficam separados dos padrões usados no dia a dia.
-          </p>
         </div>
         <details open className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg border border-line bg-surface p-4 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&::-webkit-details-marker]:hidden">
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-fg">Modelos de orçamento</span>
-              <span className="mt-1 block text-sm text-fg-muted">
-                Edite o HTML somente quando precisar ajustar o documento.
-              </span>
             </span>
             <ChevronDown
               size={18}

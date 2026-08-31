@@ -375,7 +375,6 @@ export default function WhatsAppDeliveriesPage() {
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
       <PageHeader
         title="Envios WhatsApp"
-        description="Fila de mensagens disparadas pelo funil de orçamentos."
         actions={
           <>
             <Button

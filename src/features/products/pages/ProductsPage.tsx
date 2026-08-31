@@ -373,7 +373,6 @@ export default function ProductsPage() {
       <PageHeader
         className="[&_h1]:text-xl [&_h1]:tracking-[-0.2px]"
         title="Produtos"
-        description="Catálogo de produtos, SKUs e preços para seus orçamentos."
         actions={
           <>
             <ExportCsvButton resource="products" filters={{ search, status, order_by: sort }}>

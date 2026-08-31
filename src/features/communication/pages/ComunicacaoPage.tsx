@@ -70,10 +70,7 @@ export default function ComunicacaoPage() {
 
   return (
     <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
-      <PageHeader
-        title="Comunicação"
-        description="Fluxos, mídias e histórico das mensagens de WhatsApp."
-      />
+      <PageHeader title="Comunicação" />
 
       <div
         role="tablist"

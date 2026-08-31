@@ -892,14 +892,9 @@ export default function AutoQuotePage() {
           ) : (
             <div className="space-y-3">
               <div className="flex flex-wrap items-end justify-between gap-3">
-                <div className="space-y-1">
-                  <h2 className="text-lg font-semibold tracking-tight text-fg">
-                    Resultados ({activeDrafts.length})
-                  </h2>
-                  <p className="text-sm text-fg-muted">
-                    Confira os dados, itens e preços antes de criar o documento.
-                  </p>
-                </div>
+                <h2 className="text-lg font-semibold tracking-tight text-fg">
+                  Resultados ({activeDrafts.length})
+                </h2>
                 <Button
                   variant="ghost"
                   size="sm"
