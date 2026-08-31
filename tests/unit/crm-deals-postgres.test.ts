@@ -115,9 +115,33 @@ function event(
 
 test('groups local deals into canonical Kanban columns without external fetches', async () => {
   const repository = memoryRepository([
-    deal({ id: 'ana', nome: 'Ana', status: 'Novo Lead' }),
-    deal({ id: 'bruno', nome: 'Bruno', email: 'bruno@example.com', status: 'Status Extra' }),
-    deal({ id: 'carla', nome: 'Carla', email: 'carla@example.com', status: 'Outro Extra' }),
+    deal({
+      id: 'ana',
+      nome: 'Ana',
+      clientId: 'client-ana',
+      quoteLeadId: null,
+      quotationId: '11111111-1111-4111-8111-111111111101',
+      status: 'Novo Lead',
+    }),
+    deal({
+      id: 'bruno',
+      nome: 'Bruno',
+      email: 'bruno@example.com',
+      clientId: null,
+      quoteLeadId: 'lead-bruno',
+      quotationId: '22222222-2222-4222-8222-222222222202',
+      status: 'Status Extra',
+    }),
+    deal({
+      id: 'carla',
+      nome: 'Carla',
+      email: 'carla@example.com',
+      clientId: null,
+      quoteLeadId: null,
+      quotationId: null,
+      quotation: null,
+      status: 'Outro Extra',
+    }),
   ]);
   const handler = createCrmDealsHandler({ repository });
 
@@ -130,9 +154,42 @@ test('groups local deals into canonical Kanban columns without external fetches'
     CRM_PIPELINE
   );
   assert.equal(body.columns[0].deals[0].lead_name, 'Ana');
+  assert.equal(body.columns[0].deals[0].client_id, 'client-ana');
+  assert.equal(body.columns[0].deals[0].quote_lead_id, null);
+  assert.equal(body.columns[0].deals[0].quotation_id, '11111111-1111-4111-8111-111111111101');
   assert.equal(body.columns[0].deals[0].quotation, 'ORC-20260001');
   assert.equal(body.meta.total_deals, 1);
   assert.equal(body.meta.stages, 1);
+
+  const allResult = await handler(event('GET'));
+  const allBody = JSON.parse(allResult.body || '');
+  const allDeals: Array<Record<string, unknown>> = allBody.columns.flatMap(
+    (column: { deals: Array<Record<string, unknown>> }) => column.deals
+  );
+  const allDealsById = Object.fromEntries(allDeals.map((candidate) => [candidate.id, candidate]));
+  assert.deepEqual(Object.keys(allDealsById).sort(), ['ana', 'bruno', 'carla']);
+  assert.deepEqual(allDealsById.ana, {
+    id: 'ana',
+    client_id: 'client-ana',
+    quote_lead_id: null,
+    quotation_id: '11111111-1111-4111-8111-111111111101',
+    lead_name: 'Ana',
+    email: 'ana@example.com',
+    telefone: '5511999990000',
+    status: 'Novo Lead',
+    quotation: 'ORC-20260001',
+    follow_up_stage: 0,
+    next_step: null,
+    criado_em: NOW.toISOString(),
+    modificado_em: NOW.toISOString(),
+  });
+  assert.equal(allDealsById.bruno?.client_id, null);
+  assert.equal(allDealsById.bruno?.quote_lead_id, 'lead-bruno');
+  assert.equal(allDealsById.bruno?.quotation_id, '22222222-2222-4222-8222-222222222202');
+  assert.equal(allDealsById.carla?.client_id, null);
+  assert.equal(allDealsById.carla?.quote_lead_id, null);
+  assert.equal(allDealsById.carla?.quotation_id, null);
+  assert.equal(allDealsById.carla?.quotation, null);
 });
 
 test('keeps unknown local statuses after canonical columns in alphabetical order', async () => {
