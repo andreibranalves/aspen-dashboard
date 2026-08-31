@@ -450,7 +450,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       <fieldset disabled={saving} className="space-y-5">
       <PageHeader
         title={title}
-        description={isNewClient ? undefined : 'Cadastro e contexto comercial do cliente.'}
         actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
       />
 
@@ -495,7 +494,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         <>
           <SectionCard
             title="Dados do cliente"
-            description="Contato e identificação comercial."
             icon={UserRound}
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -555,7 +553,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
           </SectionCard>
           <SectionCard
             title="Endereço"
-            description="Dados de entrega e localização, quando disponíveis."
             icon={MapPin}
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -612,7 +609,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         <>
           <SectionCard
             title="Dados gerais"
-            description="Contato e identificação comercial."
             icon={UserRound}
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -659,7 +655,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
           {current.latest_quotation && (
             <SectionCard
               title="Atividade recente"
-              description="Último orçamento retornado para este cliente."
               icon={FileText}
             >
               <div className="space-y-2">

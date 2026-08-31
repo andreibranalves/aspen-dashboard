@@ -344,7 +344,6 @@ export default function CrmKanbanPage() {
     <PageShell>
       <PageHeader
         title="CRM"
-        description="Acompanhe cada negócio pelo funil de vendas."
         actions={
           <Button
             onClick={(): void => {

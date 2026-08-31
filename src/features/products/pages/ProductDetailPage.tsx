@@ -745,7 +745,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       <fieldset disabled={saving} className="space-y-6">
       <PageHeader
         title={isNewProduct ? 'Novo produto' : displayName}
-        description={produto.descricao?.trim() || 'Cadastro e precificação do produto.'}
         actions={pageActions}
       />
       {isDuplicateDraft && (
@@ -794,7 +793,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       </header>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <SectionCard title="Dados gerais" description="Cadastro básico do produto." icon={Package}>
+        <SectionCard title="Dados gerais" icon={Package}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {editing ? (
               <div className="md:col-span-2">
@@ -945,7 +944,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
         <SectionCard
           title="Preços do catálogo"
-          description="Configure um preço base opcional e faixas dinâmicas por quantidade."
           icon={Tag}
         >
           {editing ? (
@@ -1125,7 +1123,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           description={
             produto.modificado_em
               ? `Última atualização: ${formatDate(produto.modificado_em)}`
-              : 'Contexto recente do produto.'
+              : undefined
           }
           icon={FileText}
         >

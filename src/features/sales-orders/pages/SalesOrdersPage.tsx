@@ -310,18 +310,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   return (
     <PageShell>
       {/* PageHeader */}
-      <PageHeader
-        title="Pedidos"
-        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM — ${
-          {
-            today: 'hoje',
-            '7d': 'últimos 7 dias',
-            '30d': 'últimos 30 dias',
-            '90d': 'últimos 90 dias',
-            month: 'mês atual',
-          }[period] ?? 'período selecionado'
-        }.`}
-      />
+      <PageHeader title="Pedidos" />
 
       {/* Summary cards */}
       {summaryError && (
