@@ -21,6 +21,7 @@ import {
   Mail,
   Search,
   CheckCircle2,
+  ShoppingCart,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
 import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
@@ -71,12 +72,24 @@ function statusBadgeProps(status: unknown): { status: string; label: string } {
 }
 
 const LOSS_REASONS = ['Preço', 'Prazo', 'Sem retorno do cliente', 'Outro'] as const;
+const SALES_ORDER_ID_PATTERN = /^PED-\d{4}-\d{4}$/;
 const SAFE_CONFLICT_MESSAGES = new Set([
   'O orçamento foi alterado por outro usuário. Recarregue antes de salvar.',
   'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.',
   'O orçamento mudou. Recarregue para conferir o estado atual.',
   'A revisão mudou ou já existe um rascunho. Recarregue para conferir.',
+  'Já existe um pedido ativo para este orçamento. Atualize a página e tente novamente.',
+  'Este orçamento não pode ser convertido em pedido de venda.',
+  'A revisão aprovada do orçamento não está disponível.',
 ]);
+
+function readCreatedSalesOrderId(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const candidate = (value as { sales_order_id?: unknown }).sales_order_id;
+  if (typeof candidate !== 'string') return '';
+  const id = candidate.trim();
+  return SALES_ORDER_ID_PATTERN.test(id) ? id : '';
+}
 const DIALOG_FOCUSABLE_SELECTOR =
   'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -220,6 +233,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [lifecycleAction, setLifecycleAction] = useState<
     'aprovado' | 'perdido' | 'create_revision' | null
   >(null);
+  const [createdSalesOrderId, setCreatedSalesOrderId] = useState('');
   const [message, setMessage] = useState('');
   const [messageTone, setMessageTone] = useState<'info' | 'error'>('info');
   const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
@@ -862,7 +876,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         return;
       }
       setLifecycleAction(status);
-      showMessage(status === 'aprovado' ? 'Marcando como aprovado…' : 'Marcando como perdido…');
+      showMessage(status === 'aprovado' ? 'Aprovando e criando pedido…' : 'Marcando como perdido…');
       setConflict('');
       try {
         const refreshed = await apiPost<QuotationData>(
@@ -878,8 +892,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         if (!projection) throw new Error('Resposta inválida ao atualizar o estado do orçamento.');
         concurrencyTokenRef.current = projection.concurrencyToken;
         setData(projection.data);
+        const salesOrderId = status === 'aprovado' ? readCreatedSalesOrderId(refreshed) : '';
+        setCreatedSalesOrderId(salesOrderId);
         toast(
-          status === 'aprovado' ? 'Orçamento aprovado.' : 'Orçamento marcado como perdido.',
+          status === 'aprovado'
+            ? salesOrderId
+              ? `Pedido ${salesOrderId} criado.`
+              : 'Orçamento aprovado.'
+            : 'Orçamento marcado como perdido.',
           'success'
         );
         showMessage('');
@@ -1344,7 +1364,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   ) : (
                     <CheckCircle2 size={14} />
                   )}
-                  Marcar como aprovado
+                  Aprovar e criar pedido
                 </Button>
                 <Button
                   variant="outline"
@@ -1356,8 +1376,18 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 </Button>
               </div>
             ) : (
-              <div className="mt-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusBadge {...statusBadgeProps(data.status)} />
+                {createdSalesOrderId ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/sales-orders/${encodeURIComponent(createdSalesOrderId)}`)}
+                  >
+                    <ShoppingCart size={14} />
+                    Ver pedido {createdSalesOrderId}
+                  </Button>
+                ) : null}
               </div>
             )}
           </div>

@@ -18,6 +18,7 @@ import {
   quoteRevisionItems,
   quoteRevisions,
   productActivityEvents,
+  salesOrders,
 } from '../../api/_infrastructure/db/schema.js';
 import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
 import { createPostgresQuoteDraftManagementRepository } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
@@ -75,10 +76,8 @@ test(
         .values({
           singletonId: 1,
           validadeDias: 15,
-          pagamento: 'À vista',
           entrega: '10 dias',
           fretePadrao: '0.00',
-          observacoes: 'snapshot',
           templatePadrao: DEFAULT_QUOTATION_TEMPLATE.key,
         })
         .onConflictDoUpdate({
@@ -176,6 +175,13 @@ test(
       });
       assert.equal(approved.status_canonical, 'aprovado');
       assert.equal(approved.revision_history[0].status_canonical, 'aprovado');
+      assert.match(approved.sales_order_id || '', /^PED-\d{4}-\d{4}$/);
+      const [createdOrder] = await db
+        .select()
+        .from(salesOrders)
+        .where(eq(salesOrders.quotationId, draft.quotation_uuid));
+      assert.equal(createdOrder?.orderNumber, approved.sales_order_id);
+      assert.equal(createdOrder?.status, 'To Deliver and Bill');
 
       const [sourceRevision] = await db
         .select()
@@ -186,6 +192,7 @@ test(
         .from(quoteRevisionItems)
         .where(eq(quoteRevisionItems.revisionId, draft.revision_id));
       assert.ok(sourceRevision);
+      assert.equal(sourceRevision.orderLinkage, 'ordered');
       const activityBeforeRevision = await db
         .select()
         .from(productActivityEvents)
@@ -281,7 +288,10 @@ test(
           .from(quotations)
           .where(eq(quotations.clientId, clientId));
         const ids = [...new Set([...quotationIds, ...owned.map((row) => row.id)])];
-        if (ids.length) await db.delete(quotations).where(inArray(quotations.id, ids));
+        if (ids.length) {
+          await db.delete(salesOrders).where(inArray(salesOrders.quotationId, ids));
+          await db.delete(quotations).where(inArray(quotations.id, ids));
+        }
         await db.delete(clients).where(eq(clients.id, clientId));
         await db.delete(productActivityEvents).where(inArray(productActivityEvents.productSku, [sku, secondSku]));
         await db.delete(products).where(inArray(products.sku, [sku, secondSku]));
@@ -290,11 +300,12 @@ test(
             .update(appSettings)
             .set({
               validadeDias: previousSettings.validadeDias,
-              pagamento: previousSettings.pagamento,
               entrega: previousSettings.entrega,
+              quotationSections: previousSettings.quotationSections,
+              companyConfiguration: previousSettings.companyConfiguration,
               fretePadrao: previousSettings.fretePadrao,
-              observacoes: previousSettings.observacoes,
               templatePadrao: previousSettings.templatePadrao,
+              settingsVersion: previousSettings.settingsVersion,
             })
             .where(eq(appSettings.singletonId, 1));
         } else {
