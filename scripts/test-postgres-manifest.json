@@ -11,6 +11,8 @@
   "tests/unit/quotation-delivery-outbox-postgres.test.ts",
   "tests/unit/quotation-delivery-postgres.test.ts",
   "tests/unit/quotation-email-delivery-postgres.test.ts",
+  "tests/unit/quotation-follow-up-migration.test.ts",
+  "tests/unit/quotation-follow-up-postgres.test.ts",
   "tests/unit/quotation-issue-postgres.test.ts",
   "tests/unit/quotation-lifecycle-postgres.test.ts",
   "tests/unit/quotation-rich-content-template-publication-migration.test.ts",
@@ -22,5 +24,6 @@
   "tests/unit/sales-dashboard-postgres.test.ts",
   "tests/unit/sales-orders-postgres.test.ts",
   "tests/unit/settings-postgres.test.ts",
+  "tests/unit/whatsapp-contact-activity-postgres.test.ts",
   "tests/unit/whatsapp-crm-postgres.test.ts"
 ]

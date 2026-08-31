@@ -82,7 +82,7 @@ test('transport accepts newline and tab in outbound text', async () => {
     { phone: '5511999990000', step: { ...textStep, payload: { text: 'Olá\nCliente\t1' } } },
     {
       ...config,
-      fetch: async (_url, init) => {
+      fetch: async (_url: RequestInfo | URL, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body || '{}')));
         return response(200, { key: { id: 'provider-1' } });
       },
@@ -169,7 +169,7 @@ test('transport sends a prepared quotation WebP as image media', async () => {
     },
     {
       ...config,
-      fetch: async (input, init) => {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         request = {
           path: String(input),
           body: JSON.parse(String(init?.body || '{}')) as Record<string, unknown>,

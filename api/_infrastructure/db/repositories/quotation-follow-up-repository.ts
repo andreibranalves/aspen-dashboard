@@ -371,8 +371,9 @@ function evaluate(row: Record<string, unknown>, now: Date, started: Date): Follo
   const phone = digits(row.canonical_phone || row.delivery_phone);
   const identityStatus = String(row.identity_status || '');
   const identityResolved =
-    (['verified', 'derived'].includes(identityStatus) && phone.length >= 10) ||
-    (!identityStatus && /^[0-9]{10,15}$/.test(phone));
+    (identityStatus === 'verified' || identityStatus === 'derived') &&
+    phone.length >= 10 &&
+    phone.length <= 15;
   return evaluateFollowUp({
     now,
     trackingStartedAt: started,
