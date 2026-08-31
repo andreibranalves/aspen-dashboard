@@ -913,9 +913,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   className="mt-1 text-sm font-mono"
                   placeholder="0,00"
                 />
-                <p className="mt-1 text-xs text-fg-muted">
-                  Aceita 12,50 ou 12.50. Pedidos novos gravam este custo. Linhas antigas sem custo recebem o valor na primeira vez.
-                </p>
               </div>
             ) : (
               <InfoField
