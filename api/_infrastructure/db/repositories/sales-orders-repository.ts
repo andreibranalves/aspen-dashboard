@@ -12,6 +12,7 @@ import {
   ne,
   or,
   sql,
+  type SQL,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
@@ -369,6 +370,45 @@ function periodDates(
     throw new SalesOrderInputError('O período informado é inválido.');
   }
   return { start, end };
+}
+
+function salesOrderListWhere(rawOptions: SalesOrderListOptions, now: Date): SQL {
+  const status = normalizeStatus(rawOptions.status);
+  const search = normalizedSearch(rawOptions.search);
+  const { start, end } = periodDates(
+    rawOptions.period,
+    rawOptions.from,
+    rawOptions.to,
+    now
+  );
+  const filters: SQL[] = [
+    status ? eq(salesOrders.status, status) : ne(salesOrders.status, ACTIVE_ORDER_STATUS),
+  ];
+  if (start) filters.push(gte(salesOrders.transactionDate, start));
+  if (end) filters.push(lte(salesOrders.transactionDate, end));
+  if (search) {
+    const needle = `%${escapeLike(search)}%`;
+    filters.push(
+      or(
+        ilike(salesOrders.orderNumber, needle),
+        ilike(clients.nome, needle),
+        ilike(clients.email, needle),
+        ilike(clients.telefone, needle),
+        ilike(clients.documento, needle),
+        ilike(quotations.businessNumber, needle),
+        sql`${salesOrders.clientId}::text ILIKE ${needle}`
+      )!
+    );
+  }
+  return and(...filters)!;
+}
+
+function salesOrderListOrder(): SQL[] {
+  return [
+    desc(salesOrders.transactionDate),
+    desc(salesOrders.createdAt),
+    desc(salesOrders.orderNumber),
+  ];
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -921,6 +961,79 @@ async function insertSalesOrderFromApprovedQuotation(
   return mapCreateResult(order, false, crmUpdated);
 }
 
+export async function listSalesOrdersForExport(
+  options: SalesOrderListOptions,
+  limit: number,
+  now: Date,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      id: salesOrders.id,
+      orderNumber: salesOrders.orderNumber,
+      quotationId: salesOrders.quotationId,
+      quotationNumber: quotations.businessNumber,
+      quotationRevisionId: salesOrders.quotationRevisionId,
+      clientId: salesOrders.clientId,
+      clientName: quoteRevisions.clienteNome,
+      clientDocument: quoteRevisions.clienteDocumento,
+      clientEmail: quoteRevisions.clienteEmail,
+      clientPhone: quoteRevisions.clienteTelefone,
+      clientAddress: quoteRevisions.clienteEndereco,
+      clientAddressNumber: quoteRevisions.clienteNumero,
+      clientDistrict: quoteRevisions.clienteBairro,
+      clientAddressExtra: quoteRevisions.clienteComplemento,
+      clientCity: quoteRevisions.clienteMunicipio,
+      clientState: quoteRevisions.clienteUf,
+      clientPostalCode: quoteRevisions.clienteCep,
+      status: salesOrders.status,
+      transactionDate: salesOrders.transactionDate,
+      deliveryDate: salesOrders.deliveryDate,
+      perDelivered: salesOrders.perDelivered,
+      perBilled: salesOrders.perBilled,
+      subtotal: salesOrders.subtotal,
+      grandTotal: salesOrders.grandTotal,
+      createdAt: salesOrders.createdAt,
+      updatedAt: salesOrders.updatedAt,
+    })
+    .from(salesOrders)
+    .innerJoin(clients, eq(salesOrders.clientId, clients.id))
+    .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
+    .leftJoin(quoteRevisions, eq(salesOrders.quotationRevisionId, quoteRevisions.id))
+    .where(salesOrderListWhere(options, now))
+    .orderBy(...salesOrderListOrder())
+    .limit(limit);
+}
+
+export async function listSalesOrderItemsForExport(
+  options: SalesOrderListOptions,
+  limit: number,
+  now: Date,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      id: salesOrderItems.id,
+      salesOrderId: salesOrderItems.salesOrderId,
+      orderNumber: salesOrders.orderNumber,
+      position: salesOrderItems.position,
+      productSku: salesOrderItems.productSku,
+      productName: salesOrderItems.productName,
+      unit: salesOrderItems.unit,
+      quantity: salesOrderItems.quantity,
+      unitPrice: salesOrderItems.unitPrice,
+      lineTotal: salesOrderItems.lineTotal,
+      custoUnitario: salesOrderItems.custoUnitario,
+    })
+    .from(salesOrderItems)
+    .innerJoin(salesOrders, eq(salesOrderItems.salesOrderId, salesOrders.id))
+    .innerJoin(clients, eq(salesOrders.clientId, clients.id))
+    .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
+    .where(salesOrderListWhere(options, now))
+    .orderBy(...salesOrderListOrder(), asc(salesOrderItems.position))
+    .limit(limit);
+}
+
 export function createPostgresSalesOrdersRepository(
   getDb: DatabaseProvider = getDatabase,
   options: SalesOrdersRepositoryOptions = {}
@@ -937,36 +1050,9 @@ export function createPostgresSalesOrdersRepository(
       if (limit > MAX_LIMIT) {
         throw new SalesOrderInputError('Limite máximo é 200 registros por página.');
       }
-      const status = normalizeStatus(rawOptions.status);
-      const search = normalizedSearch(rawOptions.search);
-      const { start, end } = periodDates(
-        rawOptions.period,
-        rawOptions.from,
-        rawOptions.to,
-        asDate(nowFactory())
-      );
+      const where = salesOrderListWhere(rawOptions, asDate(nowFactory()));
       try {
         const database = getDb();
-        const filters = [
-          status ? eq(salesOrders.status, status) : ne(salesOrders.status, ACTIVE_ORDER_STATUS),
-        ];
-        if (start) filters.push(gte(salesOrders.transactionDate, start));
-        if (end) filters.push(lte(salesOrders.transactionDate, end));
-        if (search) {
-          const needle = `%${escapeLike(search)}%`;
-          filters.push(
-            or(
-              ilike(salesOrders.orderNumber, needle),
-              ilike(clients.nome, needle),
-              ilike(clients.email, needle),
-              ilike(clients.telefone, needle),
-              ilike(clients.documento, needle),
-              ilike(quotations.businessNumber, needle),
-              sql`${salesOrders.clientId}::text ILIKE ${needle}`
-            )!
-          );
-        }
-        const where = and(...filters);
         const [{ total }] = await database
           .select({ total: sql<number>`count(*)::int` })
           .from(salesOrders)
@@ -994,11 +1080,7 @@ export function createPostgresSalesOrdersRepository(
           .innerJoin(clients, eq(salesOrders.clientId, clients.id))
           .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
           .where(where)
-          .orderBy(
-            desc(salesOrders.transactionDate),
-            desc(salesOrders.createdAt),
-            desc(salesOrders.orderNumber)
-          )
+          .orderBy(...salesOrderListOrder())
           .limit(limit)
           .offset(offset);
         const numericTotal = Number(total) || 0;

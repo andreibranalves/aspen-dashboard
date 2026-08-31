@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, ilike, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import { products, salesOrderItems } from '../schema.js';
+import { productPricingTiers, products, salesOrderItems } from '../schema.js';
 import { canonicalizeNonNegativeDecimal } from '../../../_shared/decimal-money.js';
 
 export type ProductStatus = 'active' | 'archived' | 'all';
@@ -285,6 +285,53 @@ function buildWhere(options: ProductListOptions): SQL | undefined {
   }
   if (conditions.length === 0) return undefined;
   return and(...conditions);
+}
+
+export async function listProductsForExport(
+  options: ProductListOptions,
+  limit: number,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      sku: products.sku,
+      nome: products.nome,
+      descricao: products.descricao,
+      unidade: products.unidade,
+      categoria: products.categoria,
+      marca: products.marca,
+      precoBase: products.precoBase,
+      custoUnitario: products.custoUnitario,
+      ativo: products.ativo,
+      criadoEm: products.criadoEm,
+      atualizadoEm: products.atualizadoEm,
+      arquivadoEm: products.arquivadoEm,
+    })
+    .from(products)
+    .where(buildWhere(options))
+    .orderBy(mapOrderBy(options.orderBy))
+    .limit(limit);
+}
+
+export async function listProductPricingForExport(
+  options: ProductListOptions,
+  limit: number,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      productSku: productPricingTiers.productSku,
+      productName: products.nome,
+      minimumQuantity: productPricingTiers.minimumQuantity,
+      unitPrice: productPricingTiers.unitPrice,
+      criadoEm: productPricingTiers.criadoEm,
+      atualizadoEm: productPricingTiers.atualizadoEm,
+    })
+    .from(productPricingTiers)
+    .innerJoin(products, eq(productPricingTiers.productSku, products.sku))
+    .where(buildWhere(options))
+    .orderBy(mapOrderBy(options.orderBy), asc(productPricingTiers.minimumQuantity))
+    .limit(limit);
 }
 
 /**
