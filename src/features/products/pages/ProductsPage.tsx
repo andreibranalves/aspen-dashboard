@@ -31,6 +31,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import { useToast } from '@/components/shared/toast';
 import {
@@ -367,10 +368,24 @@ export default function ProductsPage() {
         title="Produtos"
         description="Catálogo de produtos, SKUs e preços para seus orçamentos."
         actions={
-          <Button size="md" onClick={() => navigate('/products/new')}>
-            <PlusCircle />
-            Novo produto
-          </Button>
+          <>
+            <ExportCsvButton
+              resource="products"
+              filters={{ search, status, order_by: sort }}
+            >
+              Exportar produtos
+            </ExportCsvButton>
+            <ExportCsvButton
+              resource="product-pricing"
+              filters={{ search, status, order_by: sort }}
+            >
+              Exportar faixas de preço
+            </ExportCsvButton>
+            <Button size="md" onClick={() => navigate('/products/new')}>
+              <PlusCircle />
+              Novo produto
+            </Button>
+          </>
         }
       />
 

@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
@@ -614,10 +615,15 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         title="Clientes"
         description="Contatos da carteira — transforme um contato em venda com um novo orçamento."
         actions={
-          <Button onClick={() => navigate?.('/leads/cliente/new')}>
-            <UserPlus />
-            Novo contato
-          </Button>
+          <>
+            <ExportCsvButton resource="clients" filters={{ search, status }}>
+              Exportar clientes
+            </ExportCsvButton>
+            <Button onClick={() => navigate?.('/leads/cliente/new')}>
+              <UserPlus />
+              Novo contato
+            </Button>
+          </>
         }
       />
 
