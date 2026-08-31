@@ -40,6 +40,13 @@ export interface ProjectedClientRow {
   status?: 'active' | 'archived' | string;
 }
 
+export interface ProjectedClientOrder {
+  name: string;
+  status?: string;
+  date?: string;
+  grand_total?: number | string;
+}
+
 export interface ProjectedClientDetail extends ProjectedClientRow {
   display_name?: string;
   notes?: string | null;
@@ -49,6 +56,7 @@ export interface ProjectedClientDetail extends ProjectedClientRow {
   address?: ProjectedAddress | null;
   latest_quotation?: ProjectedLatestQuotation | null;
   deal?: ProjectedDeal | null;
+  orders?: ProjectedClientOrder[];
   quality_flags?: string[];
   creation?: string;
   modified?: string;
@@ -329,6 +337,20 @@ function projectDeal(value: unknown): ProjectedDeal | null {
   return result;
 }
 
+function projectClientOrder(value: unknown): ProjectedClientOrder | null {
+  const source = asRecord(value);
+  const name = readString(source?.name);
+  if (!source || !name) return null;
+  const result: ProjectedClientOrder = { name };
+  const status = readString(source.status);
+  const date = readString(source.date);
+  const grandTotal = readNumberOrString(source.grand_total);
+  if (status !== undefined) result.status = status;
+  if (date !== undefined) result.date = date;
+  if (grandTotal !== undefined) result.grand_total = grandTotal;
+  return result;
+}
+
 export function projectClientRow(value: unknown): ProjectedClientRow | null {
   const source = asRecord(value);
   const id = readIdentifier(source?.id);
@@ -366,6 +388,9 @@ export function projectClientDetail(value: unknown): ProjectedClientDetail | nul
   const address = projectAddress(source.address);
   const latestQuotation = projectLatestQuotation(source.latest_quotation);
   const deal = projectDeal(source.deal);
+  const orders = Array.isArray(source.orders)
+    ? source.orders.map(projectClientOrder).filter((order): order is ProjectedClientOrder => order !== null)
+    : undefined;
   const creation = readString(source.creation);
   const modified = readString(source.modified);
   const qualityFlags = Array.isArray(source.quality_flags)
@@ -379,6 +404,7 @@ export function projectClientDetail(value: unknown): ProjectedClientDetail | nul
   if (address !== null) result.address = address;
   if (latestQuotation) result.latest_quotation = latestQuotation;
   if (deal) result.deal = deal;
+  if (orders) result.orders = orders;
   if (creation !== undefined) result.creation = creation;
   if (modified !== undefined) result.modified = modified;
   if (qualityFlags) result.quality_flags = qualityFlags;

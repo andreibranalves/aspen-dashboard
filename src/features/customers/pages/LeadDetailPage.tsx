@@ -7,6 +7,7 @@ import {
   MapPin,
   Phone,
   Save,
+  ShoppingCart,
   Sparkles,
   UserRound,
   X,
@@ -678,6 +679,52 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 >
                   Abrir orçamento
                 </Button>
+              </div>
+            </SectionCard>
+          )}
+          {current.deal && (
+            <SectionCard title="Deal ativo" icon={UserRound}>
+              <div className="space-y-1">
+                <p className="break-words font-medium">{current.deal.name}</p>
+                {current.deal.status && (
+                  <p className="text-xs text-fg-muted">{current.deal.status}</p>
+                )}
+                {current.deal.next_step && (
+                  <p className="text-sm">
+                    <span className="text-fg-muted">Próximo passo: </span>
+                    {current.deal.next_step}
+                  </p>
+                )}
+              </div>
+            </SectionCard>
+          )}
+          {current.orders && current.orders.length > 0 && (
+            <SectionCard title="Pedidos recentes" icon={ShoppingCart}>
+              <div className="space-y-2">
+                {current.orders.map((order) => (
+                  <div
+                    key={order.name}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-line p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="break-words font-medium">{order.name}</p>
+                      <p className="text-xs text-fg-muted">
+                        {order.status || '—'}
+                        {order.date ? ` · ${formatDate(order.date)}` : ''}
+                      </p>
+                      {order.grand_total != null && (
+                        <p className="mt-1 text-sm">{formatBRL(order.grand_total)}</p>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/sales-orders/${encodeURIComponent(order.name)}`)}
+                    >
+                      Abrir pedido
+                    </Button>
+                  </div>
+                ))}
               </div>
             </SectionCard>
           )}

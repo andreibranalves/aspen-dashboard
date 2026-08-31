@@ -5,6 +5,7 @@ import {
   createPostgresSalesOrdersRepository,
   SALES_ORDER_STATUSES,
   type SalesOrderListOptions,
+  type SalesOrderProgressInput,
   type SalesOrdersRepository,
 } from '../_infrastructure/db/repositories/sales-orders-repository.js';
 
@@ -63,6 +64,41 @@ function listOptions(query: Record<string, string | undefined>): SalesOrderListO
     to: (query.to || '').trim() || undefined,
   };
 }
+function parseProgressBody(body: string): SalesOrderProgressInput {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body || '');
+  } catch {
+    throw createHttpError(400, 'JSON inválido.');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw createHttpError(400, 'Envie um payload válido.');
+  }
+  const input = parsed as Record<string, unknown>;
+  const keys = Object.keys(input);
+  if (
+    keys.length === 0 ||
+    keys.some((key) => key !== 'per_billed' && key !== 'per_delivered')
+  ) {
+    throw createHttpError(
+      400,
+      'Informe per_billed ou per_delivered com um percentual inteiro de 0 a 100.'
+    );
+  }
+  for (const key of ['per_billed', 'per_delivered'] as const) {
+    if (input[key] === undefined) continue;
+    if (!Number.isInteger(input[key]) || Number(input[key]) < 0 || Number(input[key]) > 100) {
+      throw createHttpError(400, `${key} deve ser um percentual inteiro entre 0 e 100.`);
+    }
+  }
+  return {
+    ...(input.per_billed === undefined ? {} : { per_billed: input.per_billed as number }),
+    ...(input.per_delivered === undefined
+      ? {}
+      : { per_delivered: input.per_delivered as number }),
+  };
+}
+
 
 function logError(error: unknown): void {
   const value = error as { logMessage?: string; message?: string };
@@ -74,15 +110,26 @@ export function createSalesOrdersHandler(
 ): (event: FunctionEvent) => Promise<FunctionResult> {
   const repository = dependencies.repository || createPostgresSalesOrdersRepository();
   return async (event: FunctionEvent): Promise<FunctionResult> => {
-    if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
+    if (event.httpMethod !== 'GET' && event.httpMethod !== 'PATCH') {
+      return {
+        ...json(405, { error: 'Método não permitido.' }),
+        headers: { 'Content-Type': 'application/json', Allow: 'GET, PATCH' },
+      };
+    }
     try {
       const query = event.queryStringParameters || {};
-      if (query.id) {
-        const detail = await repository.get(query.id);
-        if (!detail) throw createHttpError(404, 'Pedido de Venda não encontrado.');
-        return json(200, detail);
+      if (!query.id) {
+        if (event.httpMethod === 'PATCH') {
+          throw createHttpError(400, 'ID do pedido é obrigatório.');
+        }
+        return json(200, await repository.list(listOptions(query)));
       }
-      return json(200, await repository.list(listOptions(query)));
+      if (event.httpMethod === 'PATCH') {
+        return json(200, await repository.update(query.id, parseProgressBody(event.body)));
+      }
+      const detail = await repository.get(query.id);
+      if (!detail) throw createHttpError(404, 'Pedido de Venda não encontrado.');
+      return json(200, detail);
     } catch (error) {
       logError(error);
       const statusCode = Number.isInteger((error as { statusCode?: unknown })?.statusCode)

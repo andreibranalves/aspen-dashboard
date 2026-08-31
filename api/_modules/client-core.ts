@@ -230,7 +230,36 @@ function qualityFlags(record: ClientRecord): string[] {
   return flags;
 }
 
-export function mapClientDetail(record: ClientRecord): Record<string, unknown> {
+export interface ClientQuotationSummary {
+  name: string;
+  status?: string;
+  date?: string;
+  grand_total?: number | string;
+}
+
+export interface ClientDealSummary {
+  name: string;
+  status?: string;
+  next_step?: string;
+}
+
+export interface ClientOrderSummary {
+  name: string;
+  status?: string;
+  date?: string;
+  grand_total?: number | string;
+}
+
+export interface ClientCommercialContext {
+  latestQuotation?: ClientQuotationSummary | null;
+  deal?: ClientDealSummary | null;
+  orders?: ClientOrderSummary[];
+}
+
+export function mapClientDetail(
+  record: ClientRecord,
+  commercial: ClientCommercialContext = {}
+): Record<string, unknown> {
   const personType = record.documento ? (record.documento.length === 11 ? 'pf' : 'pj') : null;
   const address = record.address
     ? {
@@ -268,9 +297,9 @@ export function mapClientDetail(record: ClientRecord): Record<string, unknown> {
     modified: record.updatedAt,
     created_at: record.createdAt,
     updated_at: record.updatedAt,
-    latest_quotation: null,
-    quote: null,
-    deal: null,
+    latest_quotation: commercial.latestQuotation ?? null,
+    deal: commercial.deal ?? null,
+    orders: commercial.orders ?? [],
     quality_flags: qualityFlags(record),
   };
 }

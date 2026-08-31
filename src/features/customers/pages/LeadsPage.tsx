@@ -17,8 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { apiDelete, apiGet, apiPatch, apiPut } from '@/lib/api/api';
+import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
-import { fmtPhone } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/shared/PageHeader';
@@ -1154,6 +1154,21 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 <p className="whitespace-pre-wrap break-words">
                   {detail.notes || detail.observacoes}
                 </p>
+              </div>
+            )}
+            {detail.latest_quotation && (
+              <div className="rounded-sm border border-line p-3">
+                <p className="text-xs uppercase tracking-wide text-fg-muted">Orçamento recente</p>
+                <p className="mt-1 break-words font-medium">{detail.latest_quotation.name}</p>
+                <p className="text-xs text-fg-muted">
+                  {detail.latest_quotation.status || '—'}
+                  {detail.latest_quotation.date
+                    ? ` · ${formatDate(detail.latest_quotation.date)}`
+                    : ''}
+                </p>
+                {detail.latest_quotation.grand_total != null && (
+                  <p className="mt-1 text-sm">{formatBRL(detail.latest_quotation.grand_total)}</p>
+                )}
               </div>
             )}
             {detail.latest_quotation && (
