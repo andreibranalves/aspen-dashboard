@@ -51,6 +51,7 @@ export const appSettings = pgTable(
     // Keep currency exact all the way through PostgreSQL. Drizzle's default
     // numeric mode maps this column to a string instead of a JavaScript float.
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
+    aliquota: numeric('aliquota', { precision: 5, scale: 2 }).notNull().default('4.00'),
     templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
     settingsVersion: integer('settings_version').notNull().default(1),
   },
@@ -58,6 +59,10 @@ export const appSettings = pgTable(
     check('app_settings_singleton_id_check', sql`${table.singletonId} = 1`),
     check('app_settings_validade_dias_check', sql`${table.validadeDias} BETWEEN 1 AND 365`),
     check('app_settings_frete_padrao_check', sql`${table.fretePadrao} >= 0`),
+    check(
+      'app_settings_aliquota_check',
+      sql`${table.aliquota} >= 0 AND ${table.aliquota} <= 100`
+    ),
     check(
       'app_settings_template_padrao_not_blank_check',
       sql`char_length(btrim(${table.templatePadrao})) > 0`
@@ -126,6 +131,7 @@ export const products = pgTable(
     // Currency is kept as PostgreSQL numeric (and therefore a Drizzle string)
     // so the pricing resolver never has to trust a binary floating point value.
     precoBase: numeric('preco_base', { precision: 14, scale: 2 }),
+    custoUnitario: numeric('custo_unitario', { precision: 14, scale: 2 }),
     ativo: boolean('ativo').notNull().default(true),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
@@ -141,6 +147,10 @@ export const products = pgTable(
     check(
       'products_preco_base_positive_check',
       sql`${table.precoBase} IS NULL OR ${table.precoBase} > 0`
+    ),
+    check(
+      'products_custo_unitario_nonnegative_check',
+      sql`${table.custoUnitario} IS NULL OR ${table.custoUnitario} >= 0`
     ),
   ]
 );
@@ -743,6 +753,7 @@ export const salesOrderItems = pgTable(
     quantity: numeric('quantity', { precision: 14, scale: 3 }).notNull(),
     unitPrice: numeric('unit_price', { precision: 20, scale: 2 }).notNull(),
     lineTotal: numeric('line_total', { precision: 20, scale: 2 }).notNull(),
+    custoUnitario: numeric('custo_unitario', { precision: 14, scale: 2 }),
   },
   (table) => [
     uniqueIndex('sales_order_items_order_position_unique').on(table.salesOrderId, table.position),
@@ -751,6 +762,26 @@ export const salesOrderItems = pgTable(
     check('sales_order_items_quantity_check', sql`${table.quantity} > 0`),
     check('sales_order_items_unit_price_check', sql`${table.unitPrice} >= 0`),
     check('sales_order_items_line_total_check', sql`${table.lineTotal} >= 0`),
+    check(
+      'sales_order_items_custo_unitario_nonnegative_check',
+      sql`${table.custoUnitario} IS NULL OR ${table.custoUnitario} >= 0`
+    ),
+  ]
+);
+
+export const adSpendMonths = pgTable(
+  'ad_spend_months',
+  {
+    yearMonth: varchar('year_month', { length: 7 }).primaryKey(),
+    metaSpend: numeric('meta_spend', { precision: 14, scale: 2 }).notNull().default('0.00'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      'ad_spend_months_year_month_check',
+      sql`${table.yearMonth} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`
+    ),
+    check('ad_spend_months_meta_spend_check', sql`${table.metaSpend} >= 0`),
   ]
 );
 

@@ -70,7 +70,7 @@ export function createCoreHandler(
       return json(400, { error: 'SKU não pode ser alterado.' });
     }
 
-    const allowed = ['nome', 'descricao', 'categoria', 'unidade', 'marca', 'ativo'] as const;
+    const allowed = ['nome', 'descricao', 'categoria', 'unidade', 'marca', 'ativo', 'custo_unitario'] as const;
     const patch: ProductUpdateInput = {};
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(payload, key)) {
@@ -175,6 +175,7 @@ export function createCoreHandler(
           criado_em: updated.criado_em,
           atualizado_em: updated.atualizado_em,
           arquivado_em: updated.arquivado_em,
+          custo_unitario: updated.custo_unitario ?? null,
           ...(pricing ? { preco_base: pricing.preco_base } : {}),
         },
         ...(pricing ? { preco_base: pricing.preco_base, precos: pricing.precos, pricing_available: pricing.pricing_available } : {}),

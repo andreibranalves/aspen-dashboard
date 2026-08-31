@@ -11,10 +11,11 @@ export interface StatCardProps {
   value: string;
   /** metadado opcional (ex.: variação vs período anterior) */
   metadata?: ReactNode;
+  footer?: ReactNode;
   className?: string;
 }
 
-export function StatCard({ icon: Icon, label, value, metadata, className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, metadata, footer, className }: StatCardProps) {
   return (
     <div
       className={cn('flex flex-col gap-2 rounded-lg border border-line bg-surface p-5', className)}
@@ -31,6 +32,7 @@ export function StatCard({ icon: Icon, label, value, metadata, className }: Stat
               </span>
             )}
           </div>
+          {footer != null && <div className="mt-2 text-xs text-fg-muted">{footer}</div>}
         </div>
       </div>
     </div>

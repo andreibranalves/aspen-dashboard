@@ -6,6 +6,7 @@ const INITIAL_SETTINGS = {
   pagamento: '',
   entrega: '',
   frete_padrao: '0.00',
+  aliquota: '4.00',
   observacoes: '',
   template_padrao: 'padrao',
   settings_version: 1,

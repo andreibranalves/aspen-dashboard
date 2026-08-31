@@ -29,8 +29,12 @@ test('dashboard view model keeps nullable deltas and omits untrusted rows', () =
   assert.ok(view);
   assert.equal(view.summary?.revenue_delta, null);
   assert.equal(view.summary?.conversion_delta, null);
+  assert.equal(view.summary?.faturamento, 123456789.99);
+  assert.equal(view.summary?.custo, 0);
+  assert.equal(view.summary?.lucro, 0);
+  assert.equal(view.summary?.meta_editable, false);
   assert.deepEqual(view.topProducts?.items, [
-    { sku: 'SKU-1', product: 'Produto 1', quantity: 3, revenue: 100, orders: 2 },
+    { sku: 'SKU-1', product: 'Produto 1', quantity: 3, revenue: 100, custo: 0, margem: 1, orders: 2 },
   ]);
   assert.equal(view.topProducts?.omitted, 1);
   assert.equal(view.topCustomers, null);

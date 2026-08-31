@@ -22,6 +22,7 @@ import {
 import { createSalesDashboardHandler } from '../../api/_modules/sales-dashboard.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
+import { DEFAULT_SETTINGS } from '../../api/_infrastructure/db/repositories/settings-repository.js';
 
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
@@ -33,6 +34,38 @@ const migrationsFolder = path.resolve(
   'drizzle'
 );
 const NOW = new Date('2098-08-10T12:00:00.000Z');
+
+const profitDependencies = {
+  settings: { get: async () => ({ ...DEFAULT_SETTINGS }) },
+  adsSpend: {
+    get: async (yearMonth: string) => ({ year_month: yearMonth, meta_spend: '0.00' }),
+    upsert: async (yearMonth: string, metaSpend: string) => ({
+      year_month: yearMonth,
+      meta_spend: metaSpend,
+    }),
+  },
+  googleAds: {
+    fetchSpend: async () => ({ amount: 0, available: false }),
+  },
+};
+
+function profitOverlay(
+  faturamento: number,
+  { custo = 0, metaEditable = false }: { custo?: number; metaEditable?: boolean } = {}
+) {
+  const imposto = Math.round((faturamento * 4) / 100 * 100) / 100;
+  return {
+    faturamento,
+    custo,
+    ads: 0,
+    ads_google: 0,
+    ads_meta: 0,
+    imposto,
+    lucro: Math.round((faturamento - custo - imposto) * 100) / 100,
+    ads_google_unavailable: true,
+    meta_editable: metaEditable,
+  };
+}
 
 
 function event(
@@ -65,12 +98,13 @@ test(
     try {
       await migrate(db, { migrationsFolder });
       const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
-      const handler = createSalesDashboardHandler({ repository });
+      const handler = createSalesDashboardHandler({ repository, ...profitDependencies });
       const response = await handler(event('GET', undefined, { period: '30d' }));
       assert.equal(response.statusCode, 200);
       const body = JSON.parse(response.body || '{}');
       assert.deepEqual(body.summary, {
         total_revenue: 0,
+        custo: 0,
         orders_count: 0,
         avg_ticket: 0,
         open_orders: 0,
@@ -79,6 +113,7 @@ test(
         orders_delta: 0,
         avg_ticket_delta: 0,
         conversion_delta: 0,
+        ...profitOverlay(0, { metaEditable: false }),
       });
       assert.deepEqual(body.top_products, []);
       assert.deepEqual(body.top_customers, []);
@@ -107,7 +142,7 @@ test(
     });
     const db = drizzle(client, { schema });
     const repository = createPostgresSalesOrdersRepository(() => db, { now: () => NOW });
-    const handler = createSalesDashboardHandler({ repository });
+    const handler = createSalesDashboardHandler({ repository, ...profitDependencies });
     const clientIds = [randomUUID(), randomUUID()];
     const quotationIds = [randomUUID(), randomUUID(), randomUUID()];
     const revisionIds = [randomUUID(), randomUUID(), randomUUID()];
@@ -300,6 +335,7 @@ test(
       });
       assert.deepEqual(body.summary, {
         total_revenue: 161.7,
+        custo: 0,
         orders_count: 14,
         avg_ticket: 11.55,
         open_orders: 1,
@@ -308,6 +344,7 @@ test(
         orders_delta: 1300,
         avg_ticket_delta: -71.12,
         conversion_delta: 100,
+        ...profitOverlay(161.7, { metaEditable: false }),
       });
       assert.deepEqual(body.top_products, [
         {
@@ -315,6 +352,8 @@ test(
           product: 'Produto Dashboard A',
           quantity: 2,
           revenue: 100,
+          custo: 0,
+          margem: 1,
           orders: 1,
         },
         {
@@ -322,6 +361,8 @@ test(
           product: 'Produto Dashboard B',
           quantity: 1.234,
           revenue: 61.7,
+          custo: 0,
+          margem: 1,
           orders: 1,
         },
         ...extraProductSkus.slice(0, 8).map((sku, index) => ({
@@ -329,6 +370,8 @@ test(
           product: `Produto Dashboard Extra ${index}`,
           quantity: 0.001,
           revenue: 0,
+          custo: 0,
+          margem: 0,
           orders: 1,
         })),
       ]);
@@ -383,6 +426,7 @@ test('sales dashboard handler does not call external fetch', async () => {
   }) as typeof fetch;
   try {
     const handler = createSalesDashboardHandler({
+      ...profitDependencies,
       repository: {
         async dashboard() {
           return {
@@ -413,6 +457,35 @@ test('sales dashboard handler does not call external fetch', async () => {
   } finally {
     globalThis.fetch = previousFetch;
   }
+});
+
+test('PUT rejects Meta spend outside Este mês and Mês passado', async () => {
+  const handler = createSalesDashboardHandler({
+    ...profitDependencies,
+    repository: {
+      async dashboard() {
+        return {
+          success: true,
+          period: { label: 'Últimos 30 dias', from: '2098-07-12', to: '2098-08-10' },
+          summary: {
+            total_revenue: 0,
+            custo: 0,
+            orders_count: 0,
+            avg_ticket: 0,
+            open_orders: 0,
+            conversion_rate: 0,
+          },
+          top_products: [],
+          top_customers: [],
+          sales_by_day: [],
+          stale_quotations: [],
+        };
+      },
+    },
+  });
+  const response = await handler(event('PUT', { period: '30d', meta_spend: '10.00' }));
+  assert.equal(response.statusCode, 400);
+  assert.match(JSON.parse(response.body || '{}').error, /Este mês ou Mês passado/);
 });
 
 test('sales dashboard runtime has no network or rollout dependency', () => {

@@ -27,7 +27,12 @@ import {
   salesOrderItems,
   salesOrderSequences,
   salesOrders,
+  products,
 } from '../schema.js';
+import {
+  calendarDateInSaoPaulo,
+  resolveNamedPeriod,
+} from '../../../_shared/calendar-sao-paulo.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -51,6 +56,7 @@ export type SalesOrderStatus = (typeof SALES_ORDER_STATUSES)[number];
 const SUBMITTED_ORDER_STATUSES = SALES_ORDER_STATUSES.filter(
   (status) => status !== 'Draft' && status !== ACTIVE_ORDER_STATUS
 );
+const FATURAMENTO_ORDER_STATUSES = SUBMITTED_ORDER_STATUSES.filter((status) => status !== 'Closed');
 
 export type SalesOrderTimestamp = Date | string;
 export type SalesOrderMoney = number;
@@ -168,6 +174,15 @@ export interface DashboardPeriod {
 
 export interface SalesDashboardSummary {
   total_revenue: number;
+  custo?: number;
+  faturamento?: number;
+  ads?: number;
+  ads_google?: number;
+  ads_meta?: number;
+  imposto?: number;
+  lucro?: number;
+  ads_google_unavailable?: boolean;
+  meta_editable?: boolean;
   orders_count: number;
   avg_ticket: number;
   open_orders: number;
@@ -191,6 +206,8 @@ export interface SalesDashboardResult {
     product: string;
     quantity: number;
     revenue: number;
+    custo: number;
+    margem: number;
     orders: number;
   }>;
   top_customers: Array<{
@@ -266,14 +283,18 @@ function asDate(value: unknown, fallback = new Date()): Date {
   return new Date(fallback.getTime());
 }
 
-function dateOnly(value: Date): string {
+function utcIsoDate(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+function dateOnly(value: Date): string {
+  return calendarDateInSaoPaulo(value);
 }
 
 function addDays(value: Date, days: number): string {
   const result = new Date(value.getTime());
   result.setUTCDate(result.getUTCDate() + days);
-  return dateOnly(result);
+  return utcIsoDate(result);
 }
 
 function asMoney(value: unknown): number {
@@ -321,7 +342,7 @@ function validateDate(value: unknown, label: string): string | undefined {
   const normalized = String(value).trim();
   if (!DATE_PATTERN.test(normalized)) throw new SalesOrderInputError(`${label} inválida.`);
   const parsed = new Date(`${normalized}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || dateOnly(parsed) !== normalized) {
+  if (Number.isNaN(parsed.getTime()) || utcIsoDate(parsed) !== normalized) {
     throw new SalesOrderInputError(`${label} inválida.`);
   }
   return normalized;
@@ -333,50 +354,10 @@ function periodDates(
   to: string | undefined,
   now: Date
 ): { start?: string; end?: string } {
-  const normalizedPeriod = (period || '').trim().toLowerCase();
   const today = dateOnly(now);
-  const cursor = new Date(now.getTime());
-  let start: string | undefined;
-  let end: string | undefined;
-
-  switch (normalizedPeriod) {
-    case 'today':
-      start = today;
-      end = today;
-      break;
-    case '7d':
-      cursor.setUTCDate(cursor.getUTCDate() - 7);
-      start = dateOnly(cursor);
-      end = today;
-      break;
-    case '30d':
-      cursor.setUTCDate(cursor.getUTCDate() - 30);
-      start = dateOnly(cursor);
-      end = today;
-      break;
-    case '90d':
-      cursor.setUTCDate(cursor.getUTCDate() - 90);
-      start = dateOnly(cursor);
-      end = today;
-      break;
-    case 'month':
-      cursor.setUTCDate(1);
-      start = dateOnly(cursor);
-      end = today;
-      break;
-    case 'last_month':
-      cursor.setUTCDate(1);
-      cursor.setUTCMonth(cursor.getUTCMonth() - 1);
-      start = dateOnly(cursor);
-      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-      cursor.setUTCDate(0);
-      end = dateOnly(cursor);
-      break;
-    case '':
-      break;
-    default:
-      break;
-  }
+  const named = resolveNamedPeriod(period, now);
+  let start = named?.start;
+  let end = named?.end;
 
   if (!start && !end) {
     start = validateDate(from, 'Data inicial') || today;
@@ -425,7 +406,7 @@ function previousPeriodDates(start: string, end: string): { start: string; end: 
   const days = Math.round((currentEnd.getTime() - currentStart.getTime()) / 86400000) + 1;
   const previousEnd = new Date(currentStart.getTime() - 86400000);
   const previousStart = new Date(previousEnd.getTime() - (days - 1) * 86400000);
-  return { start: dateOnly(previousStart), end: dateOnly(previousEnd) };
+  return { start: utcIsoDate(previousStart), end: utcIsoDate(previousEnd) };
 }
 
 function roundNumber(value: number): number {
@@ -451,6 +432,14 @@ function submittedOrdersPeriodFilter(start: string, end: string) {
   );
 }
 
+function faturamentoOrdersPeriodFilter(start: string, end: string) {
+  return and(
+    inArray(salesOrders.status, FATURAMENTO_ORDER_STATUSES),
+    gte(salesOrders.transactionDate, start),
+    lte(salesOrders.transactionDate, end)
+  );
+}
+
 function quotationDateExpression() {
   return sql`(${quotations.createdAt} AT TIME ZONE 'UTC')::date`;
 }
@@ -459,17 +448,26 @@ async function dashboardSummary(
   database: SalesOrderDatabase,
   start: string,
   end: string
-): Promise<{ revenue: number; orders: number; openOrders: number }> {
+): Promise<{ revenue: number; custo: number; orders: number; openOrders: number }> {
   const [row] = await database
     .select({
-      revenue: sql<string>`coalesce(sum(case when ${salesOrders.status} <> 'Closed' then ${salesOrders.grandTotal} else 0 end), 0)`,
+      revenue: sql<string>`coalesce(sum(${salesOrders.grandTotal}), 0)`,
+      custo: sql<string>`coalesce((
+        select coalesce(sum(i.quantity * coalesce(i.custo_unitario, 0)), 0)
+        from sales_order_items i
+        inner join sales_orders o on i.sales_order_id = o.id
+        where o.status in ('To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed')
+          and o.transaction_date >= ${start}
+          and o.transaction_date <= ${end}
+      ), 0)`,
       orders: sql<number>`count(*)::int`,
       openOrders: sql<number>`count(*) filter (where ${salesOrders.status} not in ('Completed', 'Cancelled', 'Closed'))::int`,
     })
     .from(salesOrders)
-    .where(submittedOrdersPeriodFilter(start, end));
+    .where(faturamentoOrdersPeriodFilter(start, end));
   return {
     revenue: roundNumber(asMoney(row?.revenue)),
+    custo: roundNumber(asMoney(row?.custo)),
     orders: Number(row?.orders) || 0,
     openOrders: Number(row?.openOrders) || 0,
   };
@@ -511,21 +509,28 @@ async function dashboardTopProducts(
       product: sql<string>`max(${salesOrderItems.productName})`,
       quantity: sql<string>`coalesce(sum(${salesOrderItems.quantity}), 0)`,
       revenue: sql<string>`coalesce(sum(${salesOrderItems.lineTotal}), 0)`,
+      custo: sql<string>`coalesce(sum(coalesce(${salesOrderItems.quantity} * coalesce(${salesOrderItems.custoUnitario}, 0), 0)), 0)`,
       orders: sql<number>`count(distinct ${salesOrderItems.salesOrderId})::int`,
     })
     .from(salesOrderItems)
     .innerJoin(salesOrders, eq(salesOrderItems.salesOrderId, salesOrders.id))
-    .where(submittedOrdersPeriodFilter(start, end))
+    .where(faturamentoOrdersPeriodFilter(start, end))
     .groupBy(salesOrderItems.productSku)
     .orderBy(desc(sql`sum(${salesOrderItems.lineTotal})`), asc(salesOrderItems.productSku))
     .limit(10);
-  return rows.map((row) => ({
-    sku: row.sku,
-    product: String(row.product || ''),
-    quantity: roundQuantity(asMoney(row.quantity)),
-    revenue: roundNumber(asMoney(row.revenue)),
-    orders: Number(row.orders) || 0,
-  }));
+  return rows.map((row) => {
+    const revenue = roundNumber(asMoney(row.revenue));
+    const custo = roundNumber(asMoney(row.custo));
+    return {
+      sku: row.sku,
+      product: String(row.product || ''),
+      quantity: roundQuantity(asMoney(row.quantity)),
+      revenue,
+      custo,
+      margem: revenue > 0 ? roundNumber((revenue - custo) / revenue) : 0,
+      orders: Number(row.orders) || 0,
+    };
+  });
 }
 
 async function dashboardTopCustomers(
@@ -541,7 +546,7 @@ async function dashboardTopCustomers(
     })
     .from(salesOrders)
     .innerJoin(clients, eq(salesOrders.clientId, clients.id))
-    .where(and(submittedOrdersPeriodFilter(start, end), ne(salesOrders.status, 'Closed')))
+    .where(faturamentoOrdersPeriodFilter(start, end))
     .groupBy(salesOrders.clientId, clients.nome)
     .orderBy(desc(sql`sum(${salesOrders.grandTotal})`), asc(clients.nome))
     .limit(10);
@@ -564,7 +569,7 @@ async function dashboardSalesByDay(
       orders: sql<number>`count(*)::int`,
     })
     .from(salesOrders)
-    .where(submittedOrdersPeriodFilter(start, end))
+    .where(faturamentoOrdersPeriodFilter(start, end))
     .groupBy(salesOrders.transactionDate)
     .orderBy(asc(salesOrders.transactionDate));
   return rows.map((row) => ({
@@ -872,18 +877,30 @@ async function insertSalesOrderFromApprovedQuotation(
     .returning();
   if (!order) throw new SalesOrderRepositoryError('Não foi possível criar o pedido local.');
   if (revisionItems.length > 0) {
+    const skus = [...new Set(revisionItems.map((item) => item.produtoSku || item.productSku))];
+    const catalog = skus.length
+      ? await transaction
+          .select({ sku: products.sku, custoUnitario: products.custoUnitario })
+          .from(products)
+          .where(inArray(products.sku, skus))
+      : [];
+    const costBySku = new Map(catalog.map((row) => [row.sku, row.custoUnitario ?? null]));
     await transaction.insert(salesOrderItems).values(
-      revisionItems.map((item) => ({
-        id: options.idFactory(),
-        salesOrderId: order.id,
-        position: item.position,
-        productSku: item.produtoSku || item.productSku,
-        productName: item.produtoNome,
-        unit: item.produtoUnidade,
-        quantity: item.quantidade,
-        unitPrice: item.precoAplicado,
-        lineTotal: item.totalLinha,
-      }))
+      revisionItems.map((item) => {
+        const sku = item.produtoSku || item.productSku;
+        return {
+          id: options.idFactory(),
+          salesOrderId: order.id,
+          position: item.position,
+          productSku: sku,
+          productName: item.produtoNome,
+          unit: item.produtoUnidade,
+          quantity: item.quantidade,
+          unitPrice: item.precoAplicado,
+          lineTotal: item.totalLinha,
+          custoUnitario: costBySku.get(sku) ?? null,
+        };
+      })
     );
   }
   await appendProductActivityEvents(
@@ -1078,6 +1095,7 @@ export function createPostgresSalesOrdersRepository(
           previousConversion > 0;
         const summary: SalesDashboardSummary = {
           total_revenue: currentSummary.revenue,
+          custo: currentSummary.custo,
           orders_count: currentSummary.orders,
           avg_ticket: currentAverage,
           open_orders: currentSummary.openOrders,

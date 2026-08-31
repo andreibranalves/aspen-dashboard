@@ -1,0 +1,59 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+  calendarDateInSaoPaulo,
+  isCalendarMonthPeriod,
+  resolveNamedPeriod,
+  yearMonthOf,
+} from '../../api/_shared/calendar-sao-paulo.ts';
+
+describe('calendarDateInSaoPaulo', () => {
+  it('keeps 22h in Brazil on the São Paulo calendar day, not UTC', () => {
+    const lateNightUtc = new Date('2026-09-01T01:00:00.000Z');
+    assert.equal(calendarDateInSaoPaulo(lateNightUtc), '2026-08-31');
+    assert.equal(lateNightUtc.toISOString().slice(0, 10), '2026-09-01');
+  });
+});
+
+describe('resolveNamedPeriod', () => {
+  it('resolves Este mês and Mês passado on the São Paulo calendar', () => {
+    const lateAugust = new Date('2026-09-01T01:00:00.000Z');
+    assert.deepEqual(resolveNamedPeriod('today', lateAugust), {
+      start: '2026-08-31',
+      end: '2026-08-31',
+    });
+    assert.deepEqual(resolveNamedPeriod('month', lateAugust), {
+      start: '2026-08-01',
+      end: '2026-08-31',
+    });
+
+    const firstOfSeptember = new Date('2026-09-01T03:00:00.000Z');
+    assert.deepEqual(resolveNamedPeriod('today', firstOfSeptember), {
+      start: '2026-09-01',
+      end: '2026-09-01',
+    });
+    assert.deepEqual(resolveNamedPeriod('last_month', firstOfSeptember), {
+      start: '2026-08-01',
+      end: '2026-08-31',
+    });
+  });
+
+  it('counts rolling windows from the São Paulo civil date', () => {
+    const now = new Date('2026-08-10T12:00:00.000Z');
+    assert.deepEqual(resolveNamedPeriod('7d', now), {
+      start: '2026-08-03',
+      end: '2026-08-10',
+    });
+  });
+});
+
+describe('isCalendarMonthPeriod', () => {
+  it('marks only Este mês and Mês passado as Meta months', () => {
+    assert.equal(isCalendarMonthPeriod('month'), true);
+    assert.equal(isCalendarMonthPeriod('last_month'), true);
+    assert.equal(isCalendarMonthPeriod('7d'), false);
+    assert.equal(isCalendarMonthPeriod('30d'), false);
+    assert.equal(yearMonthOf('2026-08-31'), '2026-08');
+  });
+});

@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq, ilike, isNotNull, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import { products } from '../schema.js';
+import { products, salesOrderItems } from '../schema.js';
+import { canonicalizeNonNegativeDecimal } from '../../../_shared/decimal-money.js';
 
 export type ProductStatus = 'active' | 'archived' | 'all';
 
@@ -14,6 +15,7 @@ export interface ProductRecord {
   marca: string | null;
   /** Optional persisted base price; tiers are exposed by PricingRepository. */
   preco_base?: string | null;
+  custo_unitario?: string | null;
   ativo: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -28,6 +30,7 @@ export interface ProductCreateInput {
   categoria?: string | null;
   marca?: string | null;
   preco_base?: string | number | null;
+  custo_unitario?: string | number | null;
 }
 
 export interface ProductUpdateInput {
@@ -38,6 +41,7 @@ export interface ProductUpdateInput {
   marca?: string | null;
   ativo?: boolean;
   preco_base?: string | number | null;
+  custo_unitario?: string | number | null;
 }
 
 export interface ProductListOptions {
@@ -108,11 +112,47 @@ export function toProductRecord(row: typeof products.$inferSelect): ProductRecor
     categoria: row.categoria ?? null,
     marca: row.marca ?? null,
     preco_base: row.precoBase ?? null,
+    custo_unitario: row.custoUnitario ?? null,
     ativo: row.ativo,
     criado_em: asIso(row.criadoEm),
     atualizado_em: asIso(row.atualizadoEm),
     arquivado_em: row.arquivadoEm ? asIso(row.arquivadoEm) : null,
   };
+}
+
+
+function normalizeCustoUnitario(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new ProductRepositoryError(
+        400,
+        'Informe um custo unitário não negativo com até duas casas decimais.'
+      );
+    }
+    value = value.toFixed(2);
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const canonical = canonicalizeNonNegativeDecimal(trimmed, { maxIntegerDigits: 12 });
+  if (!canonical) {
+    throw new ProductRepositoryError(
+      400,
+      'Informe um custo unitário não negativo com até duas casas decimais.'
+    );
+  }
+  return canonical;
+}
+
+async function backfillUnsnapshottedOrderItemCosts(
+  db: AppDatabase,
+  sku: string,
+  custoUnitario: string
+): Promise<void> {
+  await db
+    .update(salesOrderItems)
+    .set({ custoUnitario })
+    .where(and(eq(salesOrderItems.productSku, sku), isNull(salesOrderItems.custoUnitario)));
 }
 
 function normalizeSku(sku: string): string {
@@ -152,7 +192,7 @@ export function normalizeProductCreateInput(input: ProductCreateInput): ProductC
     throw new ProductRepositoryError(400, 'Marca deve ter no máximo 255 caracteres.');
   }
 
-  return { sku, nome, descricao, unidade, categoria, marca, preco_base: input.preco_base };
+  return { sku, nome, descricao, unidade, categoria, marca, preco_base: input.preco_base, custo_unitario: normalizeCustoUnitario(input.custo_unitario) };
 }
 
 export function normalizeProductUpdateInput(patch: ProductUpdateInput): ProductUpdateInput {
@@ -204,6 +244,9 @@ export function normalizeProductUpdateInput(patch: ProductUpdateInput): ProductU
   // replacement can be atomic. Keep this field optional for repository users
   // that only need to update the product row itself.
   if (patch.preco_base !== undefined) normalized.preco_base = patch.preco_base;
+  if (patch.custo_unitario !== undefined) {
+    normalized.custo_unitario = normalizeCustoUnitario(patch.custo_unitario);
+  }
   return normalized;
 }
 
@@ -327,6 +370,7 @@ export function createPostgresProductsRepository(
             categoria: normalized.categoria,
             marca: normalized.marca,
             precoBase: normalized.preco_base == null ? null : String(normalized.preco_base),
+            custoUnitario: normalized.custo_unitario == null ? null : String(normalized.custo_unitario),
             ativo: true,
             arquivadoEm: null,
           })
@@ -357,6 +401,7 @@ export function createPostgresProductsRepository(
         if (key === 'categoria') values.categoria = value;
         if (key === 'marca') values.marca = value;
         if (key === 'preco_base') values.precoBase = value == null ? null : String(value);
+        if (key === 'custo_unitario') values.custoUnitario = value == null ? null : String(value);
         if (key === 'ativo') {
           values.ativo = value;
           values.arquivadoEm = value === false ? new Date() : null;
@@ -370,6 +415,13 @@ export function createPostgresProductsRepository(
           .set(values as Partial<typeof products.$inferInsert>)
           .where(eq(products.sku, normalizedSku))
           .returning();
+        if (row && normalized.custo_unitario) {
+          await backfillUnsnapshottedOrderItemCosts(
+            db,
+            normalizedSku,
+            String(normalized.custo_unitario)
+          );
+        }
         return row ? toProductRecord(row) : null;
       } catch {
         throw new ProductRepositoryError(500, 'Não foi possível atualizar o produto.', false);

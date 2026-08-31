@@ -558,6 +558,7 @@ async function readSettings(tx: QuoteTransaction): Promise<Settings> {
     pagamento: secoes.pagamento.body,
     entrega: row.entrega,
     frete_padrao: row.fretePadrao,
+    aliquota: row.aliquota ?? DEFAULT_SETTINGS.aliquota,
     observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
     secoes,

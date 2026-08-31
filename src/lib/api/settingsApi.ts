@@ -42,6 +42,7 @@ export interface DashboardSettings {
   pagamento: string;
   entrega: string;
   frete_padrao: string;
+  aliquota: string;
   observacoes: string;
   template_padrao: string;
   secoes: QuotationSectionsSettings;

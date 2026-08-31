@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS: Settings = {
   pagamento: '',
   entrega: '',
   frete_padrao: '0.00',
+  aliquota: '4.00',
   observacoes: '',
   template_padrao: 'padrao',
   secoes: {
@@ -95,6 +96,7 @@ describe('settings handler', () => {
       pagamento: '50% na aprovação',
       entrega: 'Até 10 dias úteis',
       frete_padrao: '12.50',
+      aliquota: '4.00',
       observacoes: '',
       template_padrao: 'corporativo',
       secoes: payload.secoes,
@@ -275,5 +277,20 @@ describe('settings handler', () => {
       'Não foi possível carregar as configurações. Tente novamente.'
     );
     assert.doesNotMatch(unavailable.body || '', /segredo|postgres:/);
+  });
+
+  it('accepts aliquota 0 and 100 and rejects values above 100', async () => {
+    const handler = createHandler({ repository: createMemoryRepository() });
+    const zero = await handler(event('PUT', { validade_dias: 15, frete_padrao: '0.00', aliquota: '0' }));
+    assert.equal(zero.statusCode, 200);
+    assert.equal(parse(zero).aliquota, '0.00');
+
+    const full = await handler(event('PUT', { validade_dias: 15, frete_padrao: '0.00', aliquota: '100.00' }));
+    assert.equal(full.statusCode, 200);
+    assert.equal(parse(full).aliquota, '100.00');
+
+    const over = await handler(event('PUT', { validade_dias: 15, frete_padrao: '0.00', aliquota: '100.01' }));
+    assert.equal(over.statusCode, 400);
+    assert.match(parse(over).fields.aliquota, /entre 0 e 100/);
   });
 });
