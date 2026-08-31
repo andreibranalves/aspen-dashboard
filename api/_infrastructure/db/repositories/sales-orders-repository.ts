@@ -30,6 +30,7 @@ import {
   products,
 } from '../schema.js';
 import {
+  addCalendarDays,
   calendarDateInSaoPaulo,
   resolveNamedPeriod,
 } from '../../../_shared/calendar-sao-paulo.js';
@@ -292,9 +293,7 @@ function dateOnly(value: Date): string {
 }
 
 function addDays(value: Date, days: number): string {
-  const result = new Date(value.getTime());
-  result.setUTCDate(result.getUTCDate() + days);
-  return utcIsoDate(result);
+  return addCalendarDays(calendarDateInSaoPaulo(value), days);
 }
 
 function asMoney(value: unknown): number {
@@ -855,7 +854,8 @@ async function insertSalesOrderFromApprovedQuotation(
     .where(eq(quoteRevisionItems.revisionId, revision.id))
     .orderBy(asc(quoteRevisionItems.position));
   const current = asDate(options.now);
-  const orderNumber = await reserveOrderNumber(transaction, current.getUTCFullYear());
+  const businessDate = calendarDateInSaoPaulo(current);
+  const orderNumber = await reserveOrderNumber(transaction, Number(businessDate.slice(0, 4)));
   const orderId = options.idFactory();
   const createdAt = current;
   const [order] = await transaction
@@ -867,7 +867,7 @@ async function insertSalesOrderFromApprovedQuotation(
       quotationRevisionId: revision.id,
       clientId: quotation.clientId,
       status: CREATED_ORDER_STATUS,
-      transactionDate: dateOnly(current),
+      transactionDate: businessDate,
       deliveryDate: addDays(current, 30),
       subtotal: revision.subtotal,
       grandTotal: revision.total,
