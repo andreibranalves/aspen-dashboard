@@ -37,11 +37,13 @@ describe('auth guard', () => {
   it('lets explicit machine routes reach their own bearer guards only', () => {
     assert.equal(isMachineRoute('evolution-webhook'), true);
     assert.equal(isMachineRoute('quotation-delivery-worker'), true);
+    assert.equal(isMachineRoute('quotation-follow-up-worker'), true);
     assert.equal(isMachineRoute('quotation-deliveries'), false);
     assert.equal(isAuthenticated({ url: '/api/evolution-webhook' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/quotation-delivery-worker' }, {}), true);
-  });
+    assert.equal(isAuthenticated({ url: '/api/quotation-follow-up-worker' }, {}), true);
 
+  });
   it('requires a valid signed cookie and never accepts the removed header fallback', async () => {
     const passwordHash = await createPasswordHash(randomBytes(24).toString('base64url'));
     const secret = randomSecret();

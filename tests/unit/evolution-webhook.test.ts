@@ -27,6 +27,23 @@ function payload(overrides: Record<string, unknown> = {}): Record<string, unknow
   };
 }
 
+function upsertPayload(data: unknown): Record<string, unknown> {
+  return { event: 'MESSAGES_UPSERT', instance, data };
+}
+
+function upsertItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    key: {
+      id: 'inbound-message-1',
+      remoteJid: '5511999990000@s.whatsapp.net',
+      fromMe: false,
+    },
+    messageTimestamp: 1_700_000_000,
+    message: { conversation: 'não deve ser persistida' },
+    ...overrides,
+  };
+}
+
 function event(
   headers: Record<string, string> = {},
   body: Record<string, unknown> | string = payload(),
@@ -42,12 +59,32 @@ function event(
 
 function dependencies() {
   const calls: unknown[] = [];
+  const activityCalls: unknown[] = [];
+  const healthCalls: unknown[] = [];
   return {
     calls,
+    activityCalls,
+    healthCalls,
     deliveryModule: {
       applyEvolutionEvent: async (value: unknown) => {
         calls.push(value);
         return null;
+      },
+    },
+    activityRepository: {
+      recordActivity: async (value: unknown) => {
+        activityCalls.push(value);
+      },
+      getHealth: async () => null,
+      blockIngestion: async (value: unknown) => {
+        healthCalls.push(['block', value]);
+      },
+      unblockIngestionIfEvent: async (value: unknown) => {
+        healthCalls.push(['unblock', value]);
+        return false;
+      },
+      markIngestion: async (value: unknown) => {
+        healthCalls.push(['mark', value]);
       },
     },
     environment: {
@@ -92,12 +129,14 @@ test('webhook rejects missing secret and accepts duplicate known event neutrally
       providerMessageId: 'provider-message-1',
       fromMe: true,
       status: 'DELIVERY_ACK',
+      remoteJid: '5511999990000@s.whatsapp.net',
     },
     {
       instance,
       providerMessageId: 'provider-message-1',
       fromMe: true,
       status: 'DELIVERY_ACK',
+      remoteJid: '5511999990000@s.whatsapp.net',
     },
   ]);
 });
@@ -105,7 +144,7 @@ test('webhook rejects missing secret and accepts duplicate known event neutrally
 test('webhook validates instance, event, fromMe, keyId, and status before module access', async () => {
   const cases: Array<[string, Record<string, unknown>]> = [
     ['instance', { instance: 'other-instance' }],
-    ['event', { event: 'MESSAGES_UPSERT' }],
+    ['event', { event: 'SOMETHING_ELSE' }],
     ['fromMe', { data: { fromMe: false } }],
     ['keyId', { data: { keyId: '' } }],
     ['status', { data: { status: 'UNKNOWN_STATUS' } }],
@@ -192,4 +231,133 @@ test('webhook normalizes the event name while preserving recognized receipt stat
   );
   assert.equal(result.statusCode, 200);
   assert.equal((deps.calls[0] as { status: string }).status, 'READ');
+});
+
+test('webhook records every supported message kind without persisting content', async () => {
+  const deps = dependencies();
+  const types = ['conversation', 'audioMessage', 'imageMessage', 'documentMessage', 'reactionMessage'];
+  const items = types.map((type, index) =>
+    upsertItem({
+      key: {
+        id: `message-${index}`,
+        remoteJid: '5511999990000@s.whatsapp.net',
+        fromMe: false,
+      },
+      message: { [type]: { caption: 'sensitive content', mimetype: 'text/plain' } },
+    }),
+  );
+
+  const result = await webhook(event(authorization, upsertPayload(items)), deps);
+  assert.equal(result.statusCode, 200);
+  assert.equal(deps.activityCalls.length, types.length);
+  assert.equal((deps.activityCalls[0] as Record<string, unknown>).providerMessageId, 'message-0');
+  assert.equal((deps.activityCalls[0] as Record<string, unknown>).canonicalPhone, '5511999990000');
+  assert.equal('message' in (deps.activityCalls[0] as Record<string, unknown>), false);
+  assert.equal(
+    deps.healthCalls.filter(([kind]) => kind === 'mark').length,
+    1,
+  );
+});
+
+test('webhook accepts flat and nested UPSERT keys and fromMe fields', async () => {
+  const deps = dependencies();
+  const result = await webhook(
+    event(
+      authorization,
+      upsertPayload([
+        {
+          keyId: 'flat-id',
+          remoteJid: '5511888887777@s.whatsapp.net',
+          fromMe: true,
+          messageTimestamp: '2026-01-02T03:04:05.000Z',
+          message: { conversation: 'outbound' },
+        },
+        upsertItem({
+          key: { id: 'nested-id', remoteJid: 'abc123@lid', fromMe: false },
+          messageTimestamp: 1_700_000_001_000,
+        }),
+      ]),
+    ),
+    deps,
+  );
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(
+    deps.activityCalls.map((value) => {
+      const item = value as Record<string, unknown>;
+      return [item.providerMessageId, item.providerConversationId, item.fromMe, item.identityStatus];
+    }),
+    [
+      ['flat-id', '5511888887777@s.whatsapp.net', true, 'derived'],
+      ['nested-id', 'abc123@lid', false, 'unresolved'],
+    ],
+  );
+});
+
+test('webhook blocks an unparseable recognized UPSERT and unblocks only its exact retry', async () => {
+  const deps = dependencies();
+  const malformed = await webhook(
+    event(
+      authorization,
+      upsertPayload([
+        upsertItem(),
+        { key: { id: 'retry-id', remoteJid: '5511999990000@s.whatsapp.net' } },
+      ]),
+    ),
+    deps,
+  );
+  assert.equal(malformed.statusCode, 503);
+  assert.deepEqual(deps.activityCalls, []);
+  assert.equal(deps.healthCalls[0]?.[0], 'block');
+  assert.equal(
+    (deps.healthCalls[0]?.[1] as Record<string, unknown>).eventKey,
+    `${instance}:upsert:1:retry-id`,
+  );
+
+  const retry = await webhook(
+    event(
+      authorization,
+      upsertPayload([
+        upsertItem(),
+        {
+          key: {
+            id: 'retry-id',
+            remoteJid: '5511999990000@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: { conversation: 'now parseable' },
+        },
+      ]),
+    ),
+    deps,
+  );
+  assert.equal(retry.statusCode, 200);
+  assert.equal(
+    deps.healthCalls.some(
+      ([kind, value]) =>
+        kind === 'unblock' &&
+        (value as Record<string, unknown>).eventKey === `${instance}:upsert:1:retry-id`,
+    ),
+    true,
+  );
+});
+
+test('webhook ignores groups and MESSAGES_SET', async () => {
+  const deps = dependencies();
+  const group = await webhook(
+    event(
+      authorization,
+      upsertPayload({
+        key: { id: 'group-id', remoteJid: '12345@g.us', fromMe: false },
+        message: { conversation: 'group' },
+      }),
+    ),
+    deps,
+  );
+  const set = await webhook(
+    event(authorization, { event: 'MESSAGES_SET', instance, data: [] }),
+    deps,
+  );
+  assert.equal(group.statusCode, 200);
+  assert.equal(set.statusCode, 200);
+  assert.deepEqual(deps.activityCalls, []);
 });

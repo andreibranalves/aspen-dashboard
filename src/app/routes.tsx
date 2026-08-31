@@ -4,6 +4,7 @@ import {
   BarChart3,
   Columns3,
   FileText,
+  MessageSquare,
   Package,
   Radio,
   Settings,
@@ -32,6 +33,7 @@ const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage')
 const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
 const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
+const FollowUpsPage = lazy(() => import('@/features/follow-ups/pages/FollowUpsPage'));
 
 export interface RouteContext {
   navigate: (hash: string) => void;
@@ -111,6 +113,12 @@ export const routes: AppRoute[] = [
     suspense: true,
     render: () => <CrmKanbanPage />,
     nav: { label: 'CRM', icon: Columns3, section: 'Operacional' },
+  },
+  {
+    path: '/follow-ups',
+    suspense: true,
+    render: () => <FollowUpsPage />,
+    nav: { label: 'Follow-ups', icon: MessageSquare, section: 'Operacional' },
   },
   {
     path: '/quotations',

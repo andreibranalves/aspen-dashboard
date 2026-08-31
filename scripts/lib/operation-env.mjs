@@ -24,7 +24,15 @@ import { join, resolve } from 'node:path';
 export const OPERATION_ENV_CONTRACTS = Object.freeze({
   runtime: {
     description: 'Aplicação implantada (Vercel) e transporte de e-mail.',
-    keys: ['APP_ENV', 'EXTERNAL_WRITES_ENABLED', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL'],
+    keys: [
+      'APP_ENV',
+      'EXTERNAL_WRITES_ENABLED',
+      'RESEND_API_KEY',
+      'RESEND_FROM_EMAIL',
+      'QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT',
+      'QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED',
+      'QUOTATION_FOLLOW_UP_WORKER_URL',
+    ],
     anyOf: [],
     paths: {},
   },
