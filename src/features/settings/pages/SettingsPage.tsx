@@ -21,6 +21,7 @@ interface SettingsForm {
   pagamento: string;
   entrega: string;
   frete_padrao: string;
+  aliquota: string;
   observacoes: string;
   secoes: DashboardSettings['secoes'];
   empresa: DashboardSettings['empresa'];
@@ -41,6 +42,7 @@ const EMPTY_FORM: SettingsForm = {
   pagamento: '',
   entrega: '',
   frete_padrao: '0.00',
+  aliquota: '4.00',
   observacoes: '',
   secoes: EMPTY_SECTIONS,
   empresa: {
@@ -58,6 +60,7 @@ function toForm(settings: DashboardSettings): SettingsForm {
     pagamento: settings.secoes.pagamento.body,
     entrega: settings.entrega,
     frete_padrao: settings.frete_padrao,
+    aliquota: settings.aliquota ?? '4.00',
     observacoes: settings.secoes.condicoes_gerais.body,
     secoes: settings.secoes,
     empresa: settings.empresa || EMPTY_FORM.empresa,
@@ -102,7 +105,7 @@ export default function SettingsPage() {
     void loadSettings();
   }, [loadSettings]);
 
-  function updateField(field: 'validade_dias' | 'entrega' | 'frete_padrao', value: string) {
+  function updateField(field: 'validade_dias' | 'entrega' | 'frete_padrao' | 'aliquota', value: string) {
     setForm((current) => ({ ...current, [field]: value }));
     setSaveError(null);
     setSavedMessage(null);
@@ -151,6 +154,7 @@ export default function SettingsPage() {
         validade_dias: validadeDias,
         entrega: form.entrega,
         frete_padrao: form.frete_padrao,
+        aliquota: form.aliquota,
         secoes: form.secoes,
         empresa: form.empresa,
         settings_version: form.settings_version,
@@ -235,7 +239,7 @@ export default function SettingsPage() {
           >
             <details name="quotation-settings" open className="group overflow-hidden rounded-lg border border-line bg-surface">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
-                <span><span className="text-sm font-semibold text-fg">Prazos e valores</span><span className="ml-3 text-xs text-fg-muted">Validade, frete e produção</span></span>
+                <span><span className="text-sm font-semibold text-fg">Prazos e valores</span><span className="ml-3 text-xs text-fg-muted">Validade, frete, alíquota e produção</span></span>
                 <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
               </summary>
               <fieldset className="space-y-4 p-5">
@@ -267,6 +271,22 @@ export default function SettingsPage() {
                   />
                   <span className="block text-xs text-fg-muted">
                     Use ponto e até duas casas decimais.
+                  </span>
+                </label>
+
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Alíquota de imposto (%)</span>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="4.00"
+                    value={form.aliquota}
+                    onChange={(event) => updateField('aliquota', event.target.value)}
+                    disabled={saving}
+                    required
+                    aria-label="Alíquota de imposto (%)"
+                  />
+                  <span className="block text-xs text-fg-muted">
+                    Percentual sobre o faturamento no Lucro do dashboard. Padrão 4%.
                   </span>
                 </label>
               </div>

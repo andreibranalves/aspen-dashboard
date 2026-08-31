@@ -1,5 +1,14 @@
 export interface DashboardSummaryView {
   total_revenue: number;
+  faturamento: number;
+  custo: number;
+  ads: number;
+  ads_google: number;
+  ads_meta: number;
+  imposto: number;
+  lucro: number;
+  ads_google_unavailable: boolean;
+  meta_editable: boolean;
   orders_count: number;
   avg_ticket: number;
   open_orders: number;
@@ -15,6 +24,8 @@ export interface DashboardProductView {
   product: string;
   quantity: number;
   revenue: number;
+  custo: number;
+  margem: number;
   orders: number;
 }
 
@@ -104,12 +115,20 @@ function projectSummary(value: unknown): DashboardSummaryView | null {
   const source = asRecord(value);
   if (!source) return null;
   const totalRevenue = nonnegativeNumber(source.total_revenue);
+  const faturamento = nonnegativeNumber(source.faturamento) ?? totalRevenue;
+  const custo = nonnegativeNumber(source.custo) ?? 0;
+  const ads = nonnegativeNumber(source.ads) ?? 0;
+  const adsGoogle = nonnegativeNumber(source.ads_google) ?? 0;
+  const adsMeta = nonnegativeNumber(source.ads_meta) ?? 0;
+  const imposto = nonnegativeNumber(source.imposto) ?? 0;
+  const lucro = finiteNumber(source.lucro) ?? 0;
   const ordersCount = safeCount(source.orders_count);
   const avgTicket = nonnegativeNumber(source.avg_ticket);
   const openOrders = safeCount(source.open_orders);
   const conversionRate = nonnegativeNumber(source.conversion_rate);
   if (
     totalRevenue === undefined ||
+    faturamento === undefined ||
     ordersCount === undefined ||
     avgTicket === undefined ||
     openOrders === undefined ||
@@ -119,6 +138,15 @@ function projectSummary(value: unknown): DashboardSummaryView | null {
     return null;
   return {
     total_revenue: totalRevenue,
+    faturamento,
+    custo,
+    ads,
+    ads_google: adsGoogle,
+    ads_meta: adsMeta,
+    imposto,
+    lucro,
+    ads_google_unavailable: source.ads_google_unavailable === true,
+    meta_editable: source.meta_editable === true,
     orders_count: ordersCount,
     avg_ticket: avgTicket,
     open_orders: openOrders,
@@ -137,10 +165,12 @@ function projectProduct(value: unknown): DashboardProductView | null {
   const product = identifier(source.product);
   const quantity = nonnegativeNumber(source.quantity);
   const revenue = nonnegativeNumber(source.revenue);
+  const custo = nonnegativeNumber(source.custo) ?? 0;
+  const margem = finiteNumber(source.margem) ?? (revenue && revenue > 0 ? (revenue - custo) / revenue : 0);
   const orders = safeCount(source.orders);
   if (!sku || !product || quantity === undefined || revenue === undefined || orders === undefined)
     return null;
-  return { sku, product, quantity, revenue, orders };
+  return { sku, product, quantity, revenue, custo, margem, orders };
 }
 
 function projectCustomer(value: unknown): DashboardCustomerView | null {

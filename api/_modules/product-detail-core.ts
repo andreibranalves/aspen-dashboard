@@ -61,6 +61,7 @@ export function createCoreHandler(
           atualizado_em: row.atualizado_em,
           arquivado_em: row.arquivado_em,
           preco_base: pricing?.preco_base ?? null,
+          custo_unitario: row.custo_unitario ?? null,
           // Existing UI uses this compatibility name for the last update.
           modificado_em: row.atualizado_em,
         },

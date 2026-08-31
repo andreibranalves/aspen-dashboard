@@ -152,6 +152,8 @@ export function createCoreHandler(
             : String(payload.categoria).trim(),
         marca:
           payload.marca === undefined || payload.marca === null ? null : String(payload.marca).trim(),
+        custo_unitario:
+          payload.custo_unitario === undefined ? undefined : payload.custo_unitario as string | number | null,
       };
 
       try {
@@ -200,6 +202,7 @@ export function createCoreHandler(
             criado_em: created.criado_em,
             atualizado_em: created.atualizado_em,
             arquivado_em: created.arquivado_em,
+            custo_unitario: created.custo_unitario ?? null,
             ...(pricing ? { preco_base: pricing.preco_base } : {}),
           },
           ...(pricing ? { preco_base: pricing.preco_base, precos: pricing.precos, pricing_available: pricing.pricing_available } : {}),

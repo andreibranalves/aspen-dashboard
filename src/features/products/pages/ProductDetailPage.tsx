@@ -46,6 +46,7 @@ interface Produto {
   imagem: string | null;
   modificado_em: string | null;
   preco_base?: string | number | null;
+  custo_unitario?: string | number | null;
 }
 
 interface Preco {
@@ -85,6 +86,7 @@ interface EditedProduct {
   unidade: string;
   ativo: boolean;
   precoBase: string;
+  custoUnitario: string;
   tiers: Array<{ minimum_quantity: string; unit_price: string }>;
 }
 
@@ -146,6 +148,7 @@ function buildEditedState(
     unidade: produto?.unidade || 'Und',
     ativo: produto?.ativo ?? true,
     precoBase: precoBase == null ? '' : String(precoBase),
+    custoUnitario: produto?.custo_unitario == null ? '' : String(produto.custo_unitario),
     tiers: precos
       .map((row) => ({
         minimum_quantity: String(row.minimum_quantity ?? row.faixa ?? row.qty ?? ''),
@@ -481,6 +484,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         unidade,
         ativo,
         precoBase = '',
+        custoUnitario = '',
         tiers = [],
       } = edited as EditedProduct;
       const normalizedSku = (editedSku || '').trim();
@@ -504,6 +508,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         marca: marca?.trim() || undefined,
         unidade: unidade?.trim() || 'Und',
         preco_base: precoBase.trim() === '' ? null : precoBase.trim(),
+        custo_unitario: custoUnitario.trim() === '' ? null : custoUnitario.trim(),
         precos: tiers.map((tier) => ({
           minimum_quantity: tier.minimum_quantity,
           unit_price: tier.unit_price,
@@ -546,6 +551,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       const body: Record<string, unknown> = {
         ...metadata,
         preco_base: createPayload.preco_base,
+        custo_unitario: createPayload.custo_unitario,
         precos: createPayload.precos,
       };
 
@@ -886,6 +892,32 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               </div>
             ) : (
               <InfoField label="Marca" value={produto.marca || '—'} />
+            )}
+
+            {editing ? (
+              <div>
+                <label className="text-fg-muted text-[11px] uppercase tracking-wide">
+                  Custo unitário (R$)
+                </label>
+                <Input
+                  inputMode="decimal"
+                  aria-label="Custo unitário"
+                  value={edited.custoUnitario ?? ''}
+                  onChange={(e) =>
+                    setEdited((prev) => ({ ...prev, custoUnitario: e.target.value }))
+                  }
+                  className="mt-1 text-sm font-mono"
+                  placeholder="0.00"
+                />
+                <p className="mt-1 text-xs text-fg-muted">
+                  Pedidos novos gravam este custo. Linhas antigas sem custo recebem o valor na primeira vez.
+                </p>
+              </div>
+            ) : (
+              <InfoField
+                label="Custo unitário"
+                value={produto.custo_unitario != null && String(produto.custo_unitario) !== '' ? formatBRL(produto.custo_unitario) : '—'}
+              />
             )}
 
             {editing ? (

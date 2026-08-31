@@ -6,13 +6,14 @@ import {
   DollarSign,
   ExternalLink,
   Package,
+  Percent,
   ShoppingCart,
   TrendingUp,
   Users,
   type LucideIcon,
 } from 'lucide-react';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
-import { apiGet } from '@/lib/api/api';
+import { apiGet, apiPut } from '@/lib/api/api';
 import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
@@ -20,6 +21,7 @@ import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { FilterChip } from '@/components/ui/filter-chip';
+import { Input } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import {
   Table,
@@ -80,11 +82,18 @@ function formatDashboardDate(value: string): string {
   return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
 }
 
+function formatPercent(value: number): string {
+  return `${Number((value * 100).toFixed(1)).toString().replace('.', ',')}%`;
+}
+
 export default function DashboardPage({ navigate }: DashboardPageProps) {
-  const [period, setPeriod] = useHashQueryState('period', '30d', parseDashboardPeriod);
+  const [period, setPeriod] = useHashQueryState('period', 'month', parseDashboardPeriod);
   const [data, setData] = useState<DashboardViewData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [metaDraft, setMetaDraft] = useState('');
+  const [metaSaving, setMetaSaving] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
   const requestGenerationRef = useRef(0);
 
   const fetchDashboard = useCallback(async () => {
@@ -113,6 +122,44 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   useEffect(() => {
     void fetchDashboard();
   }, [fetchDashboard]);
+
+  useEffect(() => {
+    if (!data?.summary?.meta_editable) {
+      setMetaDraft('');
+      setMetaError(null);
+      return;
+    }
+    setMetaDraft(String(data.summary.ads_meta));
+    setMetaError(null);
+  }, [data]);
+
+  const saveMeta = useCallback(
+    async (event: { preventDefault: () => void }) => {
+      event.preventDefault();
+      setMetaSaving(true);
+      setMetaError(null);
+      try {
+        const result = await apiPut<unknown>(`/sales-dashboard?period=${encodeURIComponent(period)}`, {
+          period,
+          meta_spend: metaDraft,
+        });
+        const projected = projectDashboardView(result);
+        if (!projected || !projected.summary) {
+          throw new Error('Resposta inválida ao salvar o gasto da Meta.');
+        }
+        setData(projected);
+      } catch (error) {
+        setMetaError(
+          error instanceof Error && error.message
+            ? error.message
+            : 'Não foi possível salvar o gasto da Meta.'
+        );
+      } finally {
+        setMetaSaving(false);
+      }
+    },
+    [period, metaDraft]
+  );
 
   const deltaClass = (value: number): string => {
     if (value === 0) return 'text-fg-muted';
@@ -143,7 +190,15 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           <div className="h-4 w-48 animate-pulse rounded-sm bg-surface-muted" />
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="space-y-3 rounded-lg border border-line p-4">
+              <div key={`profit-skeleton-${index}`} className="space-y-3 rounded-lg border border-line p-4">
+                <div className="h-4 w-24 animate-pulse rounded-sm bg-surface-muted" />
+                <div className="h-8 w-32 animate-pulse rounded-sm bg-surface-muted" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={`ops-skeleton-${index}`} className="space-y-3 rounded-lg border border-line p-4">
                 <div className="h-4 w-24 animate-pulse rounded-sm bg-surface-muted" />
                 <div className="h-8 w-32 animate-pulse rounded-sm bg-surface-muted" />
               </div>
@@ -184,14 +239,8 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   if (!data) return null;
 
   const summary = data.summary;
-  const summaryCards: SummaryCard[] = summary
+  const opsCards: SummaryCard[] = summary
     ? [
-        {
-          icon: DollarSign,
-          label: 'Total vendido',
-          value: formatBRL(summary.total_revenue),
-          delta: summary.revenue_delta,
-        },
         {
           icon: ShoppingCart,
           label: 'Pedidos',
@@ -337,30 +386,96 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           </div>
         </div>
         {summary ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {summaryCards.map((card) => {
-              const formattedDelta = formatDelta(card.delta);
-              return (
-                <StatCard
-                  key={card.label}
-                  icon={card.icon}
-                  label={card.label}
-                  value={card.value}
-                  metadata={
-                    formattedDelta ? (
-                      <span
-                        className={cn(
-                          'whitespace-nowrap text-xs font-medium',
-                          deltaClass(card.delta as number)
-                        )}
-                      >
-                        {formattedDelta}
-                      </span>
-                    ) : undefined
-                  }
-                />
-              );
-            })}
+          <div className="space-y-3">
+            {summary.ads_google_unavailable ? (
+              <p
+                className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
+                role="status"
+              >
+                Google indisponível. Lucro calculado com Ads Google igual a zero.
+              </p>
+            ) : null}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <StatCard
+                icon={DollarSign}
+                label="Faturamento"
+                value={formatBRL(summary.faturamento)}
+                metadata={
+                  formatDelta(summary.revenue_delta) ? (
+                    <span className={cn('whitespace-nowrap text-xs font-medium', deltaClass(summary.revenue_delta as number))}>
+                      {formatDelta(summary.revenue_delta)}
+                    </span>
+                  ) : undefined
+                }
+              />
+              <StatCard icon={Package} label="Custo" value={formatBRL(summary.custo)} />
+              <StatCard
+                icon={BarChart3}
+                label="Ads"
+                value={formatBRL(summary.ads)}
+                footer={
+                  <div className="space-y-2">
+                    <p>
+                      Google:{' '}
+                      {summary.ads_google_unavailable ? 'indisponível' : formatBRL(summary.ads_google)}
+                    </p>
+                    {summary.meta_editable ? (
+                      <form className="flex flex-wrap items-end gap-2" onSubmit={saveMeta}>
+                        <label className="min-w-[8rem] space-y-1">
+                          <span className="block text-[11px] font-medium uppercase tracking-wide">
+                            Meta do mês
+                          </span>
+                          <Input
+                            inputMode="decimal"
+                            value={metaDraft}
+                            onChange={(event) => setMetaDraft(event.target.value)}
+                            aria-label="Gasto da Meta no mês"
+                            disabled={metaSaving}
+                            placeholder="0.00"
+                          />
+                        </label>
+                        <Button type="submit" size="sm" disabled={metaSaving}>
+                          Salvar Meta
+                        </Button>
+                      </form>
+                    ) : null}
+                    {metaError ? <p className="text-destructive">{metaError}</p> : null}
+                  </div>
+                }
+              />
+              <StatCard icon={Percent} label="Imposto" value={formatBRL(summary.imposto)} />
+              <StatCard
+                icon={TrendingUp}
+                label="Lucro"
+                value={formatBRL(summary.lucro)}
+                className={summary.lucro < 0 ? 'border-destructive/40' : undefined}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {opsCards.map((card) => {
+                const formattedDelta = formatDelta(card.delta);
+                return (
+                  <StatCard
+                    key={card.label}
+                    icon={card.icon}
+                    label={card.label}
+                    value={card.value}
+                    metadata={
+                      formattedDelta ? (
+                        <span
+                          className={cn(
+                            'whitespace-nowrap text-xs font-medium',
+                            deltaClass(card.delta as number)
+                          )}
+                        >
+                          {formattedDelta}
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                );
+              })}
+            </div>
           </div>
         ) : (
           <div className="rounded-lg border border-line bg-surface px-5 py-6">
@@ -399,7 +514,8 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                       <TableHead>SKU</TableHead>
                       <TableHead>Produto</TableHead>
                       <TableHead className="text-right">Qtd</TableHead>
-                      <TableHead className="text-right">Receita</TableHead>
+                      <TableHead className="text-right">Faturamento</TableHead>
+                      <TableHead className="text-right">Margem</TableHead>
                       <TableHead className="text-right">Pedidos</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -416,6 +532,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                         <TableCell className="text-right font-medium">
                           {formatBRL(product.revenue)}
                         </TableCell>
+                        <TableCell className="text-right">{formatPercent(product.margem)}</TableCell>
                         <TableCell className="text-right">{product.orders}</TableCell>
                       </TableRow>
                     ))}

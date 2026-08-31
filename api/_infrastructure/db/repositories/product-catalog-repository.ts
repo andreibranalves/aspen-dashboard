@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
@@ -14,7 +14,7 @@ import {
   type ProductRecord,
   type ProductUpdateInput,
 } from './products-repository.js';
-import { productPricingTiers, products } from '../schema.js';
+import { productPricingTiers, products, salesOrderItems } from '../schema.js';
 import {
   normalizeProductPricing,
   type PricingTierInput,
@@ -88,6 +88,9 @@ function metadataValues(patch: ProductUpdateInput): Partial<typeof products.$inf
   if (patch.unidade !== undefined) values.unidade = patch.unidade;
   if (patch.categoria !== undefined) values.categoria = patch.categoria;
   if (patch.marca !== undefined) values.marca = patch.marca;
+  if (patch.custo_unitario !== undefined) {
+    values.custoUnitario = patch.custo_unitario == null ? null : String(patch.custo_unitario);
+  }
   if (patch.ativo !== undefined) {
     values.ativo = patch.ativo;
     values.arquivadoEm = patch.ativo === false ? new Date() : null;
@@ -185,6 +188,7 @@ export function createPostgresProductCatalogRepository(
           const metadataChanged = Object.entries(normalizedPatch).some(([key, value]) => {
             if (key === 'ativo') return existing.ativo !== value;
             if (key === 'categoria' || key === 'marca') return (existing[key] ?? null) !== (value ?? null);
+            if (key === 'custo_unitario') return (existing.custoUnitario ?? null) !== (value ?? null);
             return existing[key as keyof typeof existing] !== value;
           });
           let pricingChanged = false;
@@ -245,6 +249,17 @@ export function createPostgresProductCatalogRepository(
                 ? new Date(operationAt.getTime() + 1)
                 : new Date(new Date(operationAt).getTime() + 1),
             });
+          }
+          if (normalizedPatch.custo_unitario) {
+            await tx
+              .update(salesOrderItems)
+              .set({ custoUnitario: String(normalizedPatch.custo_unitario) })
+              .where(
+                and(
+                  eq(salesOrderItems.productSku, normalizedSku),
+                  isNull(salesOrderItems.custoUnitario)
+                )
+              );
           }
           await appendProductActivityEvents(tx, activity);
           return updated;

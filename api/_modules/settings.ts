@@ -13,6 +13,10 @@ import {
   type QuotationCompanyConfiguration,
 } from './quotation-company.js';
 import {
+  canonicalizeNonNegativeDecimal,
+  decimalDoesNotExceed,
+} from '../_shared/decimal-money.js';
+import {
   normalizeQuotationSections,
   validateQuotationSections,
   type QuotationSectionsSettings,
@@ -128,6 +132,15 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
       ? undefined
       : validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
   const fretePadrao = validateFreight(payload.frete_padrao, fields);
+  let aliquota: string | undefined;
+  if (payload.aliquota !== undefined) {
+    const canonical = canonicalizeNonNegativeDecimal(payload.aliquota, { maxIntegerDigits: 3 });
+    if (!canonical || !decimalDoesNotExceed(canonical, '100.00')) {
+      fields.aliquota = 'Informe uma alíquota entre 0 e 100 com até duas casas decimais.';
+    } else {
+      aliquota = canonical;
+    }
+  }
   const observacoes =
     payload.observacoes === undefined
       ? ''
@@ -204,6 +217,7 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     ...(empresa ? { empresa } : {}),
     ...(typeof templatePadrao === 'string' ? { template_padrao: templatePadrao.trim() } : {}),
     ...(settingsVersion === undefined ? {} : { settings_version: settingsVersion }),
+    ...(aliquota === undefined ? {} : { aliquota }),
   };
 }
 

@@ -18,6 +18,7 @@ export interface Settings {
   pagamento: string;
   entrega: string;
   frete_padrao: string;
+  aliquota: string;
   observacoes: string;
   template_padrao: string;
   secoes: QuotationSectionsSettings;
@@ -27,12 +28,13 @@ export interface Settings {
 
 export type SettingsInput = Omit<
   Settings,
-  'template_padrao' | 'entrega' | 'empresa' | 'settings_version'
+  'template_padrao' | 'entrega' | 'empresa' | 'settings_version' | 'aliquota'
 > & {
   entrega?: string;
   template_padrao?: string;
   empresa?: QuotationCompanyConfiguration;
   settings_version?: number;
+  aliquota?: string;
 };
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
@@ -40,6 +42,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   pagamento: '',
   entrega: '',
   frete_padrao: '0.00',
+  aliquota: '4.00',
   observacoes: '',
   template_padrao: 'padrao',
   secoes: DEFAULT_QUOTATION_SECTIONS,
@@ -78,6 +81,7 @@ function toSettings(row: typeof appSettings.$inferSelect): Settings {
     pagamento: secoes.pagamento.body,
     entrega: row.entrega,
     frete_padrao: row.fretePadrao,
+    aliquota: row.aliquota,
     observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
     secoes,
@@ -162,6 +166,7 @@ export function createPostgresSettingsRepository(
             validadeDias: settings.validade_dias,
             entrega: settings.entrega ?? currentForMerge?.entrega ?? '',
             fretePadrao: settings.frete_padrao,
+            aliquota: settings.aliquota ?? currentForMerge?.aliquota ?? '4.00',
             quotationSections: secoes,
             companyConfiguration: empresa,
             templatePadrao: settings.template_padrao ?? currentForMerge?.templatePadrao ?? 'padrao',
@@ -173,6 +178,7 @@ export function createPostgresSettingsRepository(
               validadeDias: settings.validade_dias,
               entrega: settings.entrega ?? currentForMerge?.entrega ?? '',
               fretePadrao: settings.frete_padrao,
+              aliquota: settings.aliquota ?? currentForMerge?.aliquota ?? '4.00',
               quotationSections: secoes,
               companyConfiguration: empresa,
               settingsVersion,
