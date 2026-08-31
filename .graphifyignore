@@ -9,11 +9,41 @@
 # Pi config (tool config, not project code)
 .pi/
 
-# Build artifacts tracked for convenience but not source
-api/[...path].js
+# Runtime/source graph only. Documentation remains authoritative Markdown and is read directly.
+*.md
+docs/
 
-# Generated HTML (not source)
-public/index.html
+# Tests and database history are useful for validation, not runtime topology.
+tests/
+drizzle/
 
-# graphify own output
+# Generated frontend and backend outputs.
+public/
+api/**/*.js
+api/**/*.js.map
+api/*.js
+api/*.js.map
+index.html
+
+docker-compose.test.yml
+
+# Test, browser, design, and local-tool artifacts.
+playwright-report/
+test-results/
+.playwright/
+.playwright-cli/
+.sisyphus/
+.impeccable/
+.scratch/
+.worktrees/
+.superpowers/
+.vercel/
+.cursor/
+.github/
+
+# Dependency manifests generated from package.json.
+package-lock.json
+skills-lock.json
+
+# Graphify's own output.
 graphify-out/
