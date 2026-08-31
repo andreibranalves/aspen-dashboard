@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, Check, DollarSign, FileText, Truck } from 'lucide-react';
-import { apiGet } from '@/lib/api/api';
+import { apiGet, apiPatch } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -107,7 +107,8 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
   const [data, setData] = useState<SalesOrderDetailView | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<'billed' | 'delivered' | null>(null);
   const fetchDetail = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -122,6 +123,26 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       setLoading(false);
     }
   }, [id]);
+  const markProgress = useCallback(
+    async (field: 'billed' | 'delivered') => {
+      setUpdating(field);
+      setActionError(null);
+      try {
+        const result = await apiPatch<unknown>(`/sales-orders?id=${encodeURIComponent(id)}`, {
+          [field === 'billed' ? 'per_billed' : 'per_delivered']: 100,
+        });
+        const projected = projectSalesOrderDetail(result);
+        if (!projected) throw new Error('Resposta inválida ao atualizar pedido.');
+        setData(projected);
+      } catch (caught) {
+        setActionError(caught instanceof Error ? caught.message : 'Não foi possível atualizar o pedido.');
+      } finally {
+        setUpdating(null);
+      }
+    },
+    [id]
+  );
+
 
   useEffect(() => {
     void fetchDetail();
@@ -166,6 +187,18 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
     data.grand_total ?? data.rounded_total ?? (items && items.length > 0 ? itemTotal : undefined);
   const orderDate = data.date ?? data.data;
   const statusLabel = STATUS_LABELS[data.status] || data.status;
+  const orderIsReadOnly =
+    data.status === 'Draft' || data.status === 'Cancelled' || data.status === 'Closed';
+  const billedBlockedReason = orderIsReadOnly
+    ? 'Pedido não pode ser alterado neste status.'
+    : data.per_billed !== undefined && data.per_billed >= 100
+      ? 'Pedido já está faturado.'
+      : undefined;
+  const deliveredBlockedReason = orderIsReadOnly
+    ? 'Pedido não pode ser alterado neste status.'
+    : data.per_delivered !== undefined && data.per_delivered >= 100
+      ? 'Pedido já está entregue.'
+      : undefined;
 
   return (
     <PageShell>
@@ -262,6 +295,45 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               <span>Concluído</span>
             </div>
           )}
+          {actionError && (
+            <p className="w-full text-sm text-destructive" role="alert">
+              {actionError}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {billedBlockedReason && (
+              <span id="sales-order-billed-reason" className="sr-only">
+                {billedBlockedReason}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Marcar faturado"
+              aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
+              title={billedBlockedReason}
+              disabled={Boolean(billedBlockedReason) || updating !== null}
+              onClick={() => void markProgress('billed')}
+            >
+              <DollarSign size={14} aria-hidden="true" /> Marcar faturado
+            </Button>
+            {deliveredBlockedReason && (
+              <span id="sales-order-delivered-reason" className="sr-only">
+                {deliveredBlockedReason}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Marcar entregue"
+              aria-describedby={deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined}
+              title={deliveredBlockedReason}
+              disabled={Boolean(deliveredBlockedReason) || updating !== null}
+              onClick={() => void markProgress('delivered')}
+            >
+              <Truck size={14} aria-hidden="true" /> Marcar entregue
+            </Button>
+          </div>
           <div className="flex-1" />
           {data.source_quotation && (
             <Button

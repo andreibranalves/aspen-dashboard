@@ -169,12 +169,105 @@ test('sales handlers use local repository contracts and preserve response fields
   assert.equal(repository.calls.create, 'ORC-20980001');
 });
 
+test('sales order PATCH validates progress, derives status, and returns updated detail', async () => {
+  let detail = orderDetail();
+  const repository: SalesOrdersRepository = {
+    async list() {
+      return {
+        success: true,
+        items: [detail],
+        page: 1,
+        limit: 25,
+        total: 1,
+        has_more: false,
+      };
+    },
+    async get(id) {
+      return id === detail.id ? detail : null;
+    },
+    async update(id, input) {
+      if (id !== detail.id) {
+        const error = new Error('Pedido de Venda não encontrado.') as Error & { statusCode: number };
+        error.statusCode = 404;
+        throw error;
+      }
+      if (detail.status === 'Cancelled') {
+        const error = new Error('Pedidos cancelados não podem ser alterados.') as Error & {
+          statusCode: number;
+        };
+        error.statusCode = 409;
+        throw error;
+      }
+      detail = {
+        ...detail,
+        per_billed: input.per_billed ?? detail.per_billed,
+        per_delivered: input.per_delivered ?? detail.per_delivered,
+        status:
+          (input.per_billed ?? detail.per_billed) === 100 &&
+          (input.per_delivered ?? detail.per_delivered) < 100
+            ? 'To Deliver'
+            : (input.per_delivered ?? detail.per_delivered) === 100 &&
+                (input.per_billed ?? detail.per_billed) < 100
+              ? 'To Bill'
+              : (input.per_billed ?? detail.per_billed) === 100 &&
+                  (input.per_delivered ?? detail.per_delivered) === 100
+                ? 'Completed'
+                : 'To Deliver and Bill',
+      };
+      return detail;
+    },
+  };
+  const handler = createSalesOrdersHandler({ repository });
+
+  const billed = await handler(event('PATCH', { per_billed: 100 }, { id: detail.id }));
+  assert.equal(billed.statusCode, 200);
+  assert.equal(JSON.parse(billed.body || '{}').per_billed, 100);
+  assert.equal(JSON.parse(billed.body || '{}').status, 'To Deliver');
+
+  const delivered = await handler(event('PATCH', { per_delivered: 100 }, { id: detail.id }));
+  assert.equal(delivered.statusCode, 200);
+  assert.equal(JSON.parse(delivered.body || '{}').status, 'Completed');
+
+  const getAfterPatch = await handler(event('GET', undefined, { id: detail.id }));
+  assert.equal(getAfterPatch.statusCode, 200);
+  assert.deepEqual(JSON.parse(getAfterPatch.body || '{}'), detail);
+
+  const cancelledRepository = {
+    ...repository,
+    async get() {
+      return { ...detail, status: 'Cancelled' };
+    },
+    async update() {
+      const error = new Error('Pedidos cancelados não podem ser alterados.') as Error & {
+        statusCode: number;
+      };
+      error.statusCode = 409;
+      throw error;
+    },
+  } as SalesOrdersRepository;
+  const cancelled = await createSalesOrdersHandler({ repository: cancelledRepository })(
+    event('PATCH', { per_billed: 100 }, { id: detail.id })
+  );
+  assert.equal(cancelled.statusCode, 409);
+  assert.match(JSON.parse(cancelled.body || '{}').error, /cancelados/);
+
+  const invalid = await handler(event('PATCH', { per_billed: 100.5 }, { id: detail.id }));
+  assert.equal(invalid.statusCode, 400);
+  assert.match(JSON.parse(invalid.body || '{}').error, /inteiro|percentual/i);
+
+  const empty = await handler(event('PATCH', {}, { id: detail.id }));
+  assert.equal(empty.statusCode, 400);
+});
+
 test('sales handlers keep Portuguese validation and not-found contracts', async () => {
   const repository = memoryRepository();
   const listHandler = createSalesOrdersHandler({ repository });
   const methodNotAllowed = await listHandler(event('POST'));
   assert.equal(methodNotAllowed.statusCode, 405);
-  assert.deepEqual(methodNotAllowed.headers, { 'Content-Type': 'application/json' });
+  assert.deepEqual(methodNotAllowed.headers, {
+    'Content-Type': 'application/json',
+    Allow: 'GET, PATCH',
+  });
   assert.deepEqual(JSON.parse(methodNotAllowed.body || '{}'), {
     error: 'Método não permitido.',
   });
@@ -656,6 +749,99 @@ test(
       await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
       await db.delete(schema.productActivityEvents).where(eq(schema.productActivityEvents.productSku, sku));
       await db.delete(schema.products).where(eq(schema.products.sku, sku));
+      await client.end({ timeout: 5 });
+    }
+  }
+);
+test(
+  'PostgreSQL sales order PATCH persists percentages and derives official statuses',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, {
+      max: 4,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const db = drizzle(client, { schema });
+    const clientId = randomUUID();
+    const tag = randomUUID().slice(0, 8);
+    const orderIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    const orderNumbers = [0, 1, 2, 3].map(
+      (index) =>
+        `PED-2098-${String(1000 + Math.floor(Math.random() * 8000) + index).slice(-4)}`
+    );
+    const repository = createPostgresSalesOrdersRepository(() => db, { now: () => NOW });
+    const handler = createSalesOrdersHandler({ repository });
+    try {
+      await migrate(db, { migrationsFolder });
+      await db.insert(schema.clients).values({ id: clientId, nome: `PATCH ${tag}` });
+      await db.insert(schema.salesOrders).values(
+        orderIds.map((id, index) => ({
+          id,
+          orderNumber: orderNumbers[index]!,
+          quotationId: null,
+          clientId,
+          status: index === 3 ? 'Cancelled' : 'To Deliver and Bill',
+          transactionDate: '2098-08-10',
+          subtotal: '10.00',
+          grandTotal: '10.00',
+        }))
+      );
+
+      const billed = await handler(event('PATCH', { per_billed: 100 }, { id: orderNumbers[0]! }));
+      assert.equal(billed.statusCode, 200);
+      assert.deepEqual(
+        ((JSON.parse(billed.body || '{}') as Record<string, unknown>).status),
+        'To Deliver'
+      );
+      assert.equal((JSON.parse(billed.body || '{}') as Record<string, unknown>).per_billed, 100);
+
+      const delivered = await handler(
+        event('PATCH', { per_delivered: 100 }, { id: orderNumbers[1]! })
+      );
+      assert.equal(delivered.statusCode, 200);
+      assert.equal((JSON.parse(delivered.body || '{}') as Record<string, unknown>).status, 'To Bill');
+
+      const both = await handler(
+        event('PATCH', { per_billed: 100, per_delivered: 100 }, { id: orderNumbers[2]! })
+      );
+      assert.equal(both.statusCode, 200);
+      assert.equal((JSON.parse(both.body || '{}') as Record<string, unknown>).status, 'Completed');
+
+      const cancelled = await handler(
+        event('PATCH', { per_billed: 100 }, { id: orderNumbers[3]! })
+      );
+      assert.equal(cancelled.statusCode, 409);
+      assert.match(JSON.parse(cancelled.body || '{}').error, /rascunho|cancelados|fechados/i);
+
+      const invalid = await handler(
+        event('PATCH', { per_billed: 101 }, { id: orderNumbers[0]! })
+      );
+      assert.equal(invalid.statusCode, 400);
+      const empty = await handler(event('PATCH', undefined, { id: orderNumbers[0]! }));
+      assert.equal(empty.statusCode, 400);
+      const unknown = await handler(
+        event('PATCH', { per_billed: 100 }, { id: 'PED-2098-0000' })
+      );
+      assert.equal(unknown.statusCode, 404);
+
+      const afterPatch = await handler(event('GET', undefined, { id: orderNumbers[0]! }));
+      assert.equal(afterPatch.statusCode, 200);
+      const persisted = JSON.parse(afterPatch.body || '{}') as Record<string, unknown>;
+      assert.equal(persisted.per_billed, 100);
+      assert.equal(persisted.per_delivered, 0);
+      assert.equal(persisted.status, 'To Deliver');
+
+      const listed = await repository.list({ search: tag, limit: 100 });
+      const statuses = new Map(listed.items.map((item) => [item.id, item.status]));
+      assert.equal(statuses.get(orderNumbers[0]!), 'To Deliver');
+      assert.equal(statuses.get(orderNumbers[1]!), 'To Bill');
+      assert.equal(statuses.get(orderNumbers[2]!), 'Completed');
+    } finally {
+      await db.delete(schema.salesOrders).where(inArray(schema.salesOrders.id, orderIds));
+      await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
       await client.end({ timeout: 5 });
     }
   }

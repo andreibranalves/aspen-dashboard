@@ -1,4 +1,4 @@
-// SendHistoryTab — recent WhatsApp send events from KV.
+// SendHistoryTab — recent WhatsApp delivery records from the PostgreSQL outbox.
 // The existing read-only endpoint and send history data shape are preserved.
 
 import { useState, useEffect, useCallback } from 'react';

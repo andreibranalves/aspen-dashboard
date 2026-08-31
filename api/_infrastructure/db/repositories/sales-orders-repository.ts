@@ -146,6 +146,11 @@ export interface SalesOrderDetail extends SalesOrderListItem {
   items: SalesOrderItemDetail[];
 }
 
+export interface SalesOrderProgressInput {
+  per_billed?: number;
+  per_delivered?: number;
+}
+
 export interface SalesOrderListResult {
   success: true;
   items: SalesOrderListItem[];
@@ -234,6 +239,7 @@ export interface SalesDashboardResult {
 export interface SalesOrdersRepository {
   list(options?: SalesOrderListOptions): Promise<SalesOrderListResult>;
   get(id: string): Promise<SalesOrderDetail | null>;
+  update(id: string, input: SalesOrderProgressInput): Promise<SalesOrderDetail>;
   createFromQuotation(quotationId: string): Promise<CreateSalesOrderResult>;
   dashboard(options?: DashboardPeriod): Promise<SalesDashboardResult>;
   itemCount?(id: string): Promise<number>;
@@ -689,13 +695,35 @@ function safeRepositoryError(error: unknown): never {
   ) {
     throw new SalesOrderConflictError(
       'Já existe um pedido ativo para este orçamento. Atualize a página e tente novamente.'
+
     );
   }
   console.error('[sales-orders-repository]', error instanceof Error ? error.name : typeof error);
   throw new SalesOrderRepositoryError();
 }
+const PROGRESS_ORDER_STATUSES: Record<string, true> = {
+  'To Deliver and Bill': true,
+  'To Deliver': true,
+  'To Bill': true,
+  Completed: true,
+};
+
+export function deriveSalesOrderStatus(
+  status: string,
+  perBilled: number,
+  perDelivered: number
+): string {
+  if (!PROGRESS_ORDER_STATUSES[status]) return status;
+  if (perBilled === 100 && perDelivered < 100) return 'To Deliver';
+  if (perDelivered === 100 && perBilled < 100) return 'To Bill';
+  if (perBilled === 100 && perDelivered === 100) return 'Completed';
+  return 'To Deliver and Bill';
+}
 
 function mapListRow(row: JoinedOrderRow): SalesOrderListItem {
+  const perDelivered = asMoney(row.perDelivered);
+  const perBilled = asMoney(row.perBilled);
+  const status = deriveSalesOrderStatus(row.status, perBilled, perDelivered);
   return {
     id: row.orderNumber,
     order_number: row.orderNumber,
@@ -704,11 +732,11 @@ function mapListRow(row: JoinedOrderRow): SalesOrderListItem {
     customer_name: row.customerName,
     grand_total: asMoney(row.grandTotal),
     rounded_total: asMoney(row.grandTotal),
-    status: row.status,
-    docstatus: docstatusFor(row.status),
+    status,
+    docstatus: docstatusFor(status),
     delivery_date: row.deliveryDate || '',
-    per_delivered: asMoney(row.perDelivered),
-    per_billed: asMoney(row.perBilled),
+    per_delivered: perDelivered,
+    per_billed: perBilled,
     source_quotation: row.sourceQuotation,
   };
 }
@@ -1019,6 +1047,36 @@ export async function listSalesOrderItemsForExport(
     .limit(limit);
 }
 
+function validateProgressInput(rawInput: SalesOrderProgressInput): SalesOrderProgressInput {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    throw new SalesOrderInputError('Envie um payload válido.');
+  }
+  const input = rawInput as Record<string, unknown>;
+  const keys = Object.keys(input);
+  if (
+    keys.length === 0 ||
+    keys.some((key) => key !== 'per_billed' && key !== 'per_delivered')
+  ) {
+    throw new SalesOrderInputError(
+      'Informe per_billed ou per_delivered com um percentual inteiro de 0 a 100.'
+    );
+  }
+  for (const key of ['per_billed', 'per_delivered'] as const) {
+    if (input[key] === undefined) continue;
+    if (!Number.isInteger(input[key]) || Number(input[key]) < 0 || Number(input[key]) > 100) {
+      throw new SalesOrderInputError(
+        `${key} deve ser um percentual inteiro entre 0 e 100.`
+      );
+    }
+  }
+  return {
+    ...(input.per_billed === undefined ? {} : { per_billed: input.per_billed as number }),
+    ...(input.per_delivered === undefined
+      ? {}
+      : { per_delivered: input.per_delivered as number }),
+  };
+}
+
 export function createPostgresSalesOrdersRepository(
   getDb: DatabaseProvider = getDatabase,
   options: SalesOrdersRepositoryOptions = {}
@@ -1068,6 +1126,7 @@ export function createPostgresSalesOrdersRepository(
           .orderBy(...salesOrderListOrder())
           .limit(limit)
           .offset(offset);
+
         const numericTotal = Number(total) || 0;
         return {
           success: true,
@@ -1094,6 +1153,57 @@ export function createPostgresSalesOrdersRepository(
           .where(eq(salesOrderItems.salesOrderId, row.internalId))
           .orderBy(asc(salesOrderItems.position));
         return detailFromJoined(row, items);
+      } catch (error) {
+        return safeRepositoryError(error);
+      }
+    },
+    async update(id: string, rawInput: SalesOrderProgressInput): Promise<SalesOrderDetail> {
+      const normalized = cleanId(id, 'ID do pedido');
+      const input = validateProgressInput(rawInput);
+      try {
+        const database = getDb();
+        return await database.transaction(async (transaction) => {
+          const [current] = await transaction
+            .select()
+            .from(salesOrders)
+            .where(orderPredicate(normalized))
+            .for('update')
+            .limit(1);
+          if (!current) throw new SalesOrderNotFoundError();
+          if (
+            current.status === 'Draft' ||
+            current.status === 'Cancelled' ||
+            current.status === 'Closed'
+          ) {
+            throw new SalesOrderConflictError(
+              'Pedidos em rascunho, cancelados ou fechados não podem ser alterados.'
+            );
+          }
+          const perBilled =
+            input.per_billed === undefined ? asMoney(current.perBilled) : input.per_billed;
+          const perDelivered =
+            input.per_delivered === undefined
+              ? asMoney(current.perDelivered)
+              : input.per_delivered;
+          const status = deriveSalesOrderStatus(current.status, perBilled, perDelivered);
+          await transaction
+            .update(salesOrders)
+            .set({
+              perBilled: String(perBilled),
+              perDelivered: String(perDelivered),
+              status,
+              updatedAt: asDate(nowFactory()),
+            })
+            .where(eq(salesOrders.id, current.id));
+          const row = await readJoinedOrder(transaction, eq(salesOrders.id, current.id));
+          if (!row) throw new SalesOrderRepositoryError('Não foi possível ler o pedido atualizado.');
+          const items = await transaction
+            .select()
+            .from(salesOrderItems)
+            .where(eq(salesOrderItems.salesOrderId, row.internalId))
+            .orderBy(asc(salesOrderItems.position));
+          return detailFromJoined(row, items);
+        });
       } catch (error) {
         return safeRepositoryError(error);
       }

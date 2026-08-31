@@ -1,5 +1,9 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import {
+  createPostgresClientCommercialRepository,
+  type ClientCommercialRepository,
+} from '../_infrastructure/db/repositories/client-commercial-repository.js';
+import {
   buildPatchInput,
   findRequiredClient,
   jsonResponse,
@@ -7,14 +11,23 @@ import {
   mergeAddressPatch,
   normalizeCoreError,
   parseJsonBody,
+  type ClientCommercialContext,
 } from './client-core.js';
 import { getClientRepository, type ClientRepository } from './client-repository.js';
 import { ClientInputError } from './client-schema.js';
 
+export type {
+  ClientCommercialContext,
+  ClientDealSummary,
+  ClientOrderSummary,
+  ClientQuotationSummary,
+} from './client-core.js';
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
+export type { ClientCommercialRepository } from '../_infrastructure/db/repositories/client-commercial-repository.js';
 
 export interface ClientDetailHandlerDependencies {
   repository?: ClientRepository;
+  commercial?: ClientCommercialRepository;
   core?: Handler;
 }
 
@@ -23,9 +36,24 @@ function logCoreError(operation: string, error: unknown): void {
   console.error(`[client-detail] core ${operation} failed (${kind})`);
 }
 
+async function readCommercial(
+  commercial: ClientCommercialRepository,
+  clientId: string
+): Promise<ClientCommercialContext> {
+  const [latestQuotation, deal, orders] = await Promise.all([
+    commercial.latestQuotation(clientId),
+    commercial.activeDeal(clientId),
+    commercial.orders(clientId),
+  ]);
+  return { latestQuotation, deal, orders };
+}
+
 /** Unified UUID-backed client detail/update handler. */
-export function createCoreHandler(dependencies: Pick<ClientDetailHandlerDependencies, 'repository'> = {}): (event: FunctionEvent) => Promise<FunctionResult> {
+export function createCoreHandler(
+  dependencies: Pick<ClientDetailHandlerDependencies, 'repository' | 'commercial'> = {}
+): (event: FunctionEvent) => Promise<FunctionResult> {
   const repository = dependencies.repository || getClientRepository();
+  const commercial = dependencies.commercial || createPostgresClientCommercialRepository();
   return async function clientDetailCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     try {
       const name = String(event.queryStringParameters?.name || '').trim();
@@ -33,7 +61,8 @@ export function createCoreHandler(dependencies: Pick<ClientDetailHandlerDependen
 
       if (event.httpMethod === 'GET') {
         const record = await findRequiredClient(repository, name);
-        return jsonResponse(200, mapClientDetail(record));
+        const context = await readCommercial(commercial, record.id);
+        return jsonResponse(200, mapClientDetail(record, context));
       }
 
       if (event.httpMethod === 'PATCH' || event.httpMethod === 'PUT') {
@@ -44,7 +73,8 @@ export function createCoreHandler(dependencies: Pick<ClientDetailHandlerDependen
           parsed.patch.address = mergeAddressPatch(current.address, parsed.addressValue);
         }
         const updated = await repository.update(name, parsed.patch);
-        return jsonResponse(200, { ...mapClientDetail(updated), updated: true });
+        const context = await readCommercial(commercial, updated.id);
+        return jsonResponse(200, { ...mapClientDetail(updated, context), updated: true });
       }
 
       return jsonResponse(405, { error: 'Método não permitido.' }, { Allow: 'GET, PATCH, PUT' });
@@ -61,3 +91,4 @@ export function createHandler(dependencies: ClientDetailHandlerDependencies = {}
 }
 
 export const handler = createHandler();
+
