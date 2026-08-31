@@ -32,7 +32,6 @@ export function commercialExportPath(
   return `/commercial-exports?${params.toString()}`;
 }
 
-
 export async function downloadCommercialExport(
   resource: CommercialExportResource,
   filters: CommercialExportFilters
@@ -48,7 +47,10 @@ export async function downloadCommercialExport(
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null);
     const message =
-      payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
+      payload &&
+      typeof payload === 'object' &&
+      'error' in payload &&
+      typeof payload.error === 'string'
         ? payload.error
         : 'Não foi possível gerar a exportação. Tente novamente.';
     const error = createApiError(new Error(message));

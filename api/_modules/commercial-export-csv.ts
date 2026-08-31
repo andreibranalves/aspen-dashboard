@@ -88,14 +88,10 @@ function saoPauloParts(value: Date): Record<string, string> {
     second: '2-digit',
     hourCycle: 'h23',
   });
-  return Object.fromEntries(
-    formatter.formatToParts(value).map((part) => [part.type, part.value])
-  );
+  return Object.fromEntries(formatter.formatToParts(value).map((part) => [part.type, part.value]));
 }
 
-export function formatSaoPauloDateTime(
-  value: Date | string | null | undefined
-): string {
+export function formatSaoPauloDateTime(value: Date | string | null | undefined): string {
   if (value === null || value === undefined || value === '') return '';
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);

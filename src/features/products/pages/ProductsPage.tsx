@@ -153,10 +153,17 @@ export default function ProductsPage() {
       sortValue: string,
       statusValue: ProductStatus
     ) => {
-      const requestKey = JSON.stringify([searchValue, pageValue, limitValue, sortValue, statusValue]);
-      const requestGeneration = requestKey === listRequestKeyRef.current
-        ? listRequestGenerationRef.current
-        : listRequestGenerationRef.current + 1;
+      const requestKey = JSON.stringify([
+        searchValue,
+        pageValue,
+        limitValue,
+        sortValue,
+        statusValue,
+      ]);
+      const requestGeneration =
+        requestKey === listRequestKeyRef.current
+          ? listRequestGenerationRef.current
+          : listRequestGenerationRef.current + 1;
       listRequestGenerationRef.current = requestGeneration;
       listRequestKeyRef.current = requestKey;
       setLoading(true);
@@ -369,10 +376,7 @@ export default function ProductsPage() {
         description="Catálogo de produtos, SKUs e preços para seus orçamentos."
         actions={
           <>
-            <ExportCsvButton
-              resource="products"
-              filters={{ search, status, order_by: sort }}
-            >
+            <ExportCsvButton resource="products" filters={{ search, status, order_by: sort }}>
               Exportar produtos
             </ExportCsvButton>
             <ExportCsvButton

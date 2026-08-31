@@ -375,12 +375,7 @@ function periodDates(
 function salesOrderListWhere(rawOptions: SalesOrderListOptions, now: Date): SQL {
   const status = normalizeStatus(rawOptions.status);
   const search = normalizedSearch(rawOptions.search);
-  const { start, end } = periodDates(
-    rawOptions.period,
-    rawOptions.from,
-    rawOptions.to,
-    now
-  );
+  const { start, end } = periodDates(rawOptions.period, rawOptions.from, rawOptions.to, now);
   const filters: SQL[] = [
     status ? eq(salesOrders.status, status) : ne(salesOrders.status, ACTIVE_ORDER_STATUS),
   ];
@@ -857,10 +852,7 @@ async function insertSalesOrderFromApprovedQuotation(
     .select()
     .from(salesOrders)
     .where(
-      and(
-        eq(salesOrders.quotationId, quotation.id),
-        ne(salesOrders.status, ACTIVE_ORDER_STATUS)
-      )
+      and(eq(salesOrders.quotationId, quotation.id), ne(salesOrders.status, ACTIVE_ORDER_STATUS))
     )
     .for('update')
     .limit(1);
@@ -870,19 +862,12 @@ async function insertSalesOrderFromApprovedQuotation(
   }
 
   if (quotation.status !== 'aprovado') {
-    throw new SalesOrderInputError(
-      'Este orçamento não pode ser convertido em pedido de venda.'
-    );
+    throw new SalesOrderInputError('Este orçamento não pode ser convertido em pedido de venda.');
   }
   const [revision] = await transaction
     .select()
     .from(quoteRevisions)
-    .where(
-      and(
-        eq(quoteRevisions.quotationId, quotation.id),
-        eq(quoteRevisions.status, 'aprovado')
-      )
-    )
+    .where(and(eq(quoteRevisions.quotationId, quotation.id), eq(quoteRevisions.status, 'aprovado')))
     .orderBy(desc(quoteRevisions.version))
     .limit(1);
   if (!revision) {
@@ -951,7 +936,7 @@ async function insertSalesOrderFromApprovedQuotation(
       texto: `Pedido ${order.orderNumber} criado`,
       reference_id: `pedido:${order.id}:${sku}`,
       created_at: createdAt,
-    })),
+    }))
   );
   await transaction
     .update(quoteRevisions)
@@ -1182,10 +1167,16 @@ export function createPostgresSalesOrdersRepository(
           avg_ticket: currentAverage,
           open_orders: currentSummary.openOrders,
           conversion_rate: currentConversion,
-          revenue_delta: hasComparison ? percentageDelta(currentSummary.revenue, previousSummary.revenue) : 0,
-          orders_delta: hasComparison ? percentageDelta(currentSummary.orders, previousSummary.orders) : 0,
+          revenue_delta: hasComparison
+            ? percentageDelta(currentSummary.revenue, previousSummary.revenue)
+            : 0,
+          orders_delta: hasComparison
+            ? percentageDelta(currentSummary.orders, previousSummary.orders)
+            : 0,
           avg_ticket_delta: hasComparison ? percentageDelta(currentAverage, previousAverage) : 0,
-          conversion_delta: hasComparison ? percentageDelta(currentConversion, previousConversion) : 0,
+          conversion_delta: hasComparison
+            ? percentageDelta(currentConversion, previousConversion)
+            : 0,
         };
         return {
           success: true,

@@ -110,7 +110,7 @@ const CLIENT_COLUMNS: readonly CsvColumn<CommercialExportRow>[] = [
   { header: 'Município', value: (row) => rowValue(row, 'municipio') },
   { header: 'UF', value: (row) => rowValue(row, 'uf') },
   { header: 'CEP', value: (row) => formatBrazilianPostalCode(rowText(row, 'cep')) },
-  { header: 'Situação', value: (row) => row.arquivado === true ? 'Arquivado' : 'Ativo' },
+  { header: 'Situação', value: (row) => (row.arquivado === true ? 'Arquivado' : 'Ativo') },
   { header: 'Criado em', value: (row) => rowDateTime(row, 'createdAt') },
   { header: 'Atualizado em', value: (row) => rowDateTime(row, 'updatedAt') },
   { header: 'Arquivado em', value: (row) => rowDateTime(row, 'archivedAt') },
@@ -125,7 +125,7 @@ const PRODUCT_COLUMNS: readonly CsvColumn<CommercialExportRow>[] = [
   { header: 'Marca', value: (row) => rowValue(row, 'marca') },
   { header: 'Preço-base', value: (row) => rowDecimal(row, 'precoBase') },
   { header: 'Custo unitário', value: (row) => rowDecimal(row, 'custoUnitario') },
-  { header: 'Situação', value: (row) => row.ativo === false ? 'Arquivado' : 'Ativo' },
+  { header: 'Situação', value: (row) => (row.ativo === false ? 'Arquivado' : 'Ativo') },
   { header: 'Criado em', value: (row) => rowDateTime(row, 'criadoEm') },
   { header: 'Atualizado em', value: (row) => rowDateTime(row, 'atualizadoEm') },
   { header: 'Arquivado em', value: (row) => rowDateTime(row, 'arquivadoEm') },
@@ -148,18 +148,30 @@ const SALES_ORDER_COLUMNS: readonly CsvColumn<CommercialExportRow>[] = [
   { header: 'ID da revisão do orçamento', value: (row) => rowValue(row, 'quotationRevisionId') },
   { header: 'ID do cliente', value: (row) => rowValue(row, 'clientId') },
   { header: 'Cliente', value: (row) => rowValue(row, 'clientName') },
-  { header: 'CPF/CNPJ do cliente', value: (row) => formatBrazilianDocument(rowText(row, 'clientDocument')) },
+  {
+    header: 'CPF/CNPJ do cliente',
+    value: (row) => formatBrazilianDocument(rowText(row, 'clientDocument')),
+  },
   { header: 'E-mail do cliente', value: (row) => rowValue(row, 'clientEmail') },
-  { header: 'Telefone do cliente', value: (row) => formatBrazilianPhone(rowText(row, 'clientPhone')) },
+  {
+    header: 'Telefone do cliente',
+    value: (row) => formatBrazilianPhone(rowText(row, 'clientPhone')),
+  },
   { header: 'Endereço do cliente', value: (row) => rowValue(row, 'clientAddress') },
   { header: 'Número do endereço', value: (row) => rowValue(row, 'clientAddressNumber') },
   { header: 'Bairro do cliente', value: (row) => rowValue(row, 'clientDistrict') },
   { header: 'Complemento do endereço', value: (row) => rowValue(row, 'clientAddressExtra') },
   { header: 'Município do cliente', value: (row) => rowValue(row, 'clientCity') },
   { header: 'UF do cliente', value: (row) => rowValue(row, 'clientState') },
-  { header: 'CEP do cliente', value: (row) => formatBrazilianPostalCode(rowText(row, 'clientPostalCode')) },
+  {
+    header: 'CEP do cliente',
+    value: (row) => formatBrazilianPostalCode(rowText(row, 'clientPostalCode')),
+  },
   { header: 'Código do status', value: (row) => rowValue(row, 'status') },
-  { header: 'Status', value: (row) => ORDER_STATUS_LABELS[rowText(row, 'status')] || rowText(row, 'status') },
+  {
+    header: 'Status',
+    value: (row) => ORDER_STATUS_LABELS[rowText(row, 'status')] || rowText(row, 'status'),
+  },
   { header: 'Data da venda', value: (row) => rowDate(row, 'transactionDate') },
   { header: 'Data da entrega', value: (row) => rowDate(row, 'deliveryDate') },
   { header: 'Percentual entregue', value: (row) => rowDecimal(row, 'perDelivered') },
@@ -245,11 +257,20 @@ export async function loadCommercialExport(
     case 'products':
       return { resource, rows: await listProductsForExport(productOptions(query), QUERY_LIMIT) };
     case 'product-pricing':
-      return { resource, rows: await listProductPricingForExport(productOptions(query), QUERY_LIMIT) };
+      return {
+        resource,
+        rows: await listProductPricingForExport(productOptions(query), QUERY_LIMIT),
+      };
     case 'sales-orders':
-      return { resource, rows: await listSalesOrdersForExport(salesOrderOptions(query), QUERY_LIMIT, now) };
+      return {
+        resource,
+        rows: await listSalesOrdersForExport(salesOrderOptions(query), QUERY_LIMIT, now),
+      };
     case 'sales-order-items':
-      return { resource, rows: await listSalesOrderItemsForExport(salesOrderOptions(query), QUERY_LIMIT, now) };
+      return {
+        resource,
+        rows: await listSalesOrderItemsForExport(salesOrderOptions(query), QUERY_LIMIT, now),
+      };
   }
 }
 

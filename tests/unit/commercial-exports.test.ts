@@ -5,10 +5,7 @@ import { createCommercialExportHandler } from '../../api/_modules/commercial-exp
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { routes } from '../../api/_app/routes.js';
 
-function event(
-  query: Record<string, string> = {},
-  method = 'GET'
-): FunctionEvent {
+function event(query: Record<string, string> = {}, method = 'GET'): FunctionEvent {
   return {
     httpMethod: method,
     body: '',
@@ -88,7 +85,10 @@ describe('commercial export endpoint', () => {
 
     assert.equal(result.statusCode, 200);
     assert.equal(result.headers?.['Content-Type'], 'text/csv; charset=utf-8');
-    assert.equal(result.headers?.['Content-Disposition'], 'attachment; filename="clientes-2026-08-31-153000.csv"');
+    assert.equal(
+      result.headers?.['Content-Disposition'],
+      'attachment; filename="clientes-2026-08-31-153000.csv"'
+    );
     assert.equal(result.headers?.['Cache-Control'], 'private, no-store');
     assert.equal(result.headers?.['X-Content-Type-Options'], 'nosniff');
     assert.match(result.body || '', /^\uFEFF"ID do cliente";"Nome";/);

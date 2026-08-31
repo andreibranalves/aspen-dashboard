@@ -120,7 +120,6 @@ export function toProductRecord(row: typeof products.$inferSelect): ProductRecor
   };
 }
 
-
 function normalizeCustoUnitario(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -169,7 +168,8 @@ export function normalizeProductCreateInput(input: ProductCreateInput): ProductC
   const sku = normalizeSku(input.sku);
   const nome = String(input.nome || '').trim();
   if (!sku) throw new ProductRepositoryError(400, 'SKU é obrigatório.');
-  if (sku.length > 120) throw new ProductRepositoryError(400, 'SKU deve ter no máximo 120 caracteres.');
+  if (sku.length > 120)
+    throw new ProductRepositoryError(400, 'SKU deve ter no máximo 120 caracteres.');
   if (!nome) throw new ProductRepositoryError(400, 'Nome do produto é obrigatório.');
   if (nome.length > 255) {
     throw new ProductRepositoryError(400, 'Nome do produto deve ter no máximo 255 caracteres.');
@@ -192,7 +192,16 @@ export function normalizeProductCreateInput(input: ProductCreateInput): ProductC
     throw new ProductRepositoryError(400, 'Marca deve ter no máximo 255 caracteres.');
   }
 
-  return { sku, nome, descricao, unidade, categoria, marca, preco_base: input.preco_base, custo_unitario: normalizeCustoUnitario(input.custo_unitario) };
+  return {
+    sku,
+    nome,
+    descricao,
+    unidade,
+    categoria,
+    marca,
+    preco_base: input.preco_base,
+    custo_unitario: normalizeCustoUnitario(input.custo_unitario),
+  };
 }
 
 export function normalizeProductUpdateInput(patch: ProductUpdateInput): ProductUpdateInput {
@@ -399,7 +408,11 @@ export function createPostgresProductsRepository(
       const normalizedSku = normalizeSku(sku);
       if (!normalizedSku) return null;
       const db = getDb();
-      const [row] = await db.select().from(products).where(eq(products.sku, normalizedSku)).limit(1);
+      const [row] = await db
+        .select()
+        .from(products)
+        .where(eq(products.sku, normalizedSku))
+        .limit(1);
       return row ? toProductRecord(row) : null;
     },
 
@@ -417,7 +430,8 @@ export function createPostgresProductsRepository(
             categoria: normalized.categoria,
             marca: normalized.marca,
             precoBase: normalized.preco_base == null ? null : String(normalized.preco_base),
-            custoUnitario: normalized.custo_unitario == null ? null : String(normalized.custo_unitario),
+            custoUnitario:
+              normalized.custo_unitario == null ? null : String(normalized.custo_unitario),
             ativo: true,
             arquivadoEm: null,
           })
@@ -425,7 +439,8 @@ export function createPostgresProductsRepository(
         if (!row) throw new Error('empty insert result');
         return toProductRecord(row);
       } catch (error) {
-        if (isDuplicateProductError(error)) throw new ProductRepositoryError(409, 'SKU já cadastrado.');
+        if (isDuplicateProductError(error))
+          throw new ProductRepositoryError(409, 'SKU já cadastrado.');
         throw new ProductRepositoryError(500, 'Não foi possível criar o produto.', false);
       }
     },

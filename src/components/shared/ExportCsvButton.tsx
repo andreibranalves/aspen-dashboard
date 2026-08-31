@@ -15,11 +15,7 @@ interface ExportCsvButtonProps {
   children: ReactNode;
 }
 
-export default function ExportCsvButton({
-  resource,
-  filters,
-  children,
-}: ExportCsvButtonProps) {
+export default function ExportCsvButton({ resource, filters, children }: ExportCsvButtonProps) {
   const [exporting, setExporting] = useState(false);
   const { toast } = useToast();
 
@@ -48,7 +44,11 @@ export default function ExportCsvButton({
       disabled={exporting}
       aria-busy={exporting}
     >
-      {exporting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
+      {exporting ? (
+        <LoaderCircle className="animate-spin" aria-hidden="true" />
+      ) : (
+        <Download aria-hidden="true" />
+      )}
       {exporting ? 'Exportando…' : children}
     </Button>
   );

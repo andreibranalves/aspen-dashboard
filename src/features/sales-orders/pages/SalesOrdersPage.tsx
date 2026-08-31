@@ -324,16 +324,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         }.`}
         actions={
           <>
-            <ExportCsvButton
-              resource="sales-orders"
-              filters={{ period, status, search }}
-            >
+            <ExportCsvButton resource="sales-orders" filters={{ period, status, search }}>
               Exportar pedidos
             </ExportCsvButton>
-            <ExportCsvButton
-              resource="sales-order-items"
-              filters={{ period, status, search }}
-            >
+            <ExportCsvButton resource="sales-order-items" filters={{ period, status, search }}>
               Exportar itens
             </ExportCsvButton>
           </>
