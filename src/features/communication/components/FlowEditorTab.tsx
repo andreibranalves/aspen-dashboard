@@ -382,9 +382,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
             <h2 id="flows-list-title" className="text-base font-semibold text-fg">
               Fluxos cadastrados
             </h2>
-            <p className="mt-1 text-sm text-fg-muted">
-              Selecione um fluxo para consultar ou editar suas etapas.
-            </p>
           </div>
           <span className="text-xs text-fg-muted">
             {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}
@@ -726,9 +723,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                             placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
                             className="min-h-[96px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                           />
-                          <p className="text-xs text-fg-muted">
-                            As variáveis serão preenchidas com o contexto real do envio.
-                          </p>
                         </div>
                       )}
 

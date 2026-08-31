@@ -24,6 +24,7 @@
 - Handlers recebem eventos no formato Lambda e retornam `{ statusCode, headers?, body }`.
 - Registre cada endpoint uma única vez em `api/_app/routes.ts`.
 - Mensagens HTTP destinadas ao usuário são escritas em português brasileiro.
+- O frontend é para um operador único experiente. Não acrescente texto de ajuda abaixo de campos, descrições de PageHeader/seção que repetem o título, nem copy tutorial. Deixe texto auxiliar só quando a consequência não aparece no rótulo: efeito colateral, ação bloqueada, ou empty state com o próximo passo.
 - O frontend usa rotas por hash; não adicione React Router.
 - Prefira estado local ou contexto; não adicione biblioteca de estado global sem aprovação.
 - PostgreSQL é a fonte de verdade para produtos, clientes, orçamentos, CRM, pedidos e atividades.

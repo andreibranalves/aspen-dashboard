@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 export interface PageHeaderProps {
   /** título da página (obrigatório) */
   title: string;
-  /** descrição curta abaixo do título (opcional) */
+  /** contexto operacional abaixo do título (período, contagem). Nunca tutorial. */
   description?: string;
   /** grupo de ações da página (secundária → primária) */
   actions?: ReactNode;

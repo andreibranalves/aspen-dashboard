@@ -696,9 +696,6 @@ export default function ManualOrcamentoPage() {
       {!result && (
         <header>
           <h1 className="text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-5 text-fg-muted">
-            Preencha os dados do cliente, revise os itens e escolha quando salvar ou enviar.
-          </p>
         </header>
       )}
 
@@ -1347,9 +1344,11 @@ export default function ManualOrcamentoPage() {
                   />
                 </div>
 
-                <div className="rounded-lg border border-line bg-surface-muted/20 px-3 py-2 text-sm text-fg-muted">
-                  {canSubmit ? 'Pré-visualize sem salvar; salve ou envie somente quando decidir.' : 'Informe cliente e ao menos um item para liberar as ações.'}
-                </div>
+                {!canSubmit && (
+                  <div className="rounded-lg border border-line bg-surface-muted/20 px-3 py-2 text-sm text-fg-muted">
+                    Informe cliente e ao menos um item para liberar as ações.
+                  </div>
+                )}
               </section>
             </div>
 

@@ -411,7 +411,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       {/* PageHeader + page actions */}
       <PageHeader
         title="Orçamentos"
-        description="Gerencie propostas e acompanhe seu andamento."
         actions={
           <>
             <Button onClick={() => navigate('/auto')} variant="outline">
