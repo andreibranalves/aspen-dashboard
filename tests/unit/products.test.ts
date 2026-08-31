@@ -212,6 +212,10 @@ describe('products core handlers', () => {
     const restored = await update(event('PATCH', { ativo: true, nome: 'Alpha atualizado' }, { sku: 'SKU-1' }));
     assert.equal(restored.statusCode, 200);
     assert.equal(parse(restored).produto.nome, 'Alpha atualizado');
+    const costUpdated = await update(event('PATCH', { custo_unitario: '12.50' }, { sku: 'SKU-1' }));
+    assert.equal(costUpdated.statusCode, 200);
+    const allProducts = parse(await products(event('GET', undefined, { status: 'all' })));
+    assert.equal(allProducts.data.find((row: { sku: string }) => row.sku === 'SKU-1').custo_unitario, '12.50');
 
     const pricing = await update(event('PATCH', { precos: [] }, { sku: 'SKU-1' }));
     assert.equal(pricing.statusCode, 409);

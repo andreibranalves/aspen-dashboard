@@ -114,6 +114,7 @@ export function createCoreHandler(
             descricao: row.descricao,
             unidade: row.unidade,
             ativo: row.ativo,
+            custo_unitario: row.custo_unitario ?? null,
             preco_base: pricing.get(row.sku)?.preco_base ?? null,
             preco_minimo: pricing.get(row.sku)?.preco_minimo ?? null,
             pricing_available: pricing.get(row.sku)?.pricing_available === true,

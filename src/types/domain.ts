@@ -10,6 +10,7 @@ export interface Product {
   descricao?: string;
   unidade?: string;
   stock_uom?: string;
+  custo_unitario?: number | string | null;
   preco_minimo?: number | string;
   preco_base?: number | string | null;
   precos?: Array<{

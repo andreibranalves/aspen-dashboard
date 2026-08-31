@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } f
 import {
   Search,
   AlertTriangle,
+  Download,
   Eye,
   Tag,
   PlusCircle,
@@ -42,6 +43,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { projectProductListResponse, type ProjectedProductListRow } from '@/lib/localProjections';
+import { buildProductCostCsv } from '@/features/products/productCostSpreadsheet';
 
 type Product = ProjectedProductListRow;
 type ProductsApiResponse = unknown;
@@ -60,6 +62,8 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'modified asc', label: 'Criação (mais antiga)' },
   { value: 'item_code asc', label: 'Código SKU (A–Z)' },
 ];
+
+const EXPORT_PAGE_SIZE = 200;
 
 type ProductStatus = 'active' | 'archived' | 'all';
 const parseProductStatus = parseHashOption<ProductStatus>(['active', 'archived', 'all']);
@@ -111,9 +115,33 @@ function productStatus(product: Product): { status: string; label: string } {
     : { status: 'Active', label: 'Ativo' };
 }
 
+async function fetchAllProductsForExport(): Promise<Product[]> {
+  const products: Product[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(EXPORT_PAGE_SIZE),
+      status: 'all',
+      order_by: 'item_name asc',
+    });
+    const result = await apiGet<ProductsApiResponse>(`/products?${params.toString()}`);
+    const projected = projectProductListResponse(result);
+    if (!projected) throw new Error('Resposta inválida ao exportar produtos.');
+    products.push(...projected.data);
+    totalPages = projected.pagination.total_pages;
+    page += 1;
+  }
+
+  return products;
+}
+
 export default function ProductsPage() {
   const [data, setData] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useHashQueryState('search', '', parseHashString);
   const [searchInput, setSearchInput] = useState(search);
@@ -282,6 +310,32 @@ export default function ProductsPage() {
   // ── Archive / restore ──
 
   const { toast } = useToast();
+
+  const exportProductCosts = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const products = await fetchAllProductsForExport();
+      const csv = buildProductCostCsv(products);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'planilha-custos-produtos.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast(
+        `${products.length} produto${products.length === 1 ? '' : 's'} exportado${products.length === 1 ? '' : 's'}.`,
+        'success'
+      );
+    } catch {
+      toast('Não foi possível gerar a planilha de custos. Tente novamente.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, toast]);
   const [pendingArchive, setPendingArchive] = useState<PendingProductArchive | null>(null);
   const archiveDialog = useMemo(
     () => (pendingArchive ? archiveDialogText(pendingArchive) : null),
@@ -367,10 +421,23 @@ export default function ProductsPage() {
         title="Produtos"
         description="Catálogo de produtos, SKUs e preços para seus orçamentos."
         actions={
-          <Button size="md" onClick={() => navigate('/products/new')}>
-            <PlusCircle />
-            Novo produto
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => void exportProductCosts()}
+              disabled={exporting}
+              aria-busy={exporting}
+            >
+              <Download />
+              {exporting ? 'Gerando planilha…' : 'Baixar planilha de custos'}
+            </Button>
+            <Button size="md" onClick={() => navigate('/products/new')}>
+              <PlusCircle />
+              Novo produto
+            </Button>
+          </div>
         }
       />
 

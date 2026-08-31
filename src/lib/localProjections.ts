@@ -100,6 +100,7 @@ export interface ProjectedProductListRow {
   unidade?: string;
   stock_uom?: string;
   preco_minimo?: number | string;
+  custo_unitario?: number | string | null;
   pricing_available?: boolean;
   ativo?: boolean;
 }
@@ -880,6 +881,15 @@ export function projectProductListRow(value: unknown): ProjectedProductListRow |
       const minimum = readMoney(source.preco_minimo);
       if (minimum === undefined) return null;
       result.preco_minimo = minimum;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(source, 'custo_unitario')) {
+    if (source.custo_unitario === null) {
+      result.custo_unitario = null;
+    } else {
+      const cost = readMoney(source.custo_unitario);
+      if (cost === undefined) return null;
+      result.custo_unitario = cost;
     }
   }
   return result;
