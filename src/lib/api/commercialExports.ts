@@ -32,12 +32,28 @@ export function commercialExportPath(
   return `/commercial-exports?${params.toString()}`;
 }
 
+const EXPORT_FAILURE = 'Não foi possível gerar a exportação. Tente novamente.';
+const ENGLISH_NETWORK_ERROR =
+  /failed to fetch|networkerror|load failed|network request failed/i;
+
+export function commercialExportOperatorMessage(error: unknown): string {
+  if (!(error instanceof Error) || !error.message) return EXPORT_FAILURE;
+  if (ENGLISH_NETWORK_ERROR.test(error.message)) return EXPORT_FAILURE;
+  return error.message;
+}
+
 export async function downloadCommercialExport(
   resource: CommercialExportResource,
   filters: CommercialExportFilters
 ): Promise<void> {
   const path = commercialExportPath(resource, filters);
-  const response = await fetch(`/api${path}`, { method: 'GET' });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { method: 'GET' });
+  } catch {
+    const error = createApiError(new Error(EXPORT_FAILURE));
+    throw error;
+  }
   if (response.status === 401) {
     window.location.hash = '#/login';
     const error = createApiError(new Error('Sessão expirada.'));

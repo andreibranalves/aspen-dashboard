@@ -4,6 +4,7 @@ import { Download, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/shared/toast';
 import {
+  commercialExportOperatorMessage,
   downloadCommercialExport,
   type CommercialExportFilters,
   type CommercialExportResource,
@@ -25,12 +26,7 @@ export default function ExportCsvButton({ resource, filters, children }: ExportC
       await downloadCommercialExport(resource, filters);
       toast('Exportação iniciada.', 'success');
     } catch (error) {
-      toast(
-        error instanceof Error
-          ? error.message
-          : 'Não foi possível gerar a exportação. Tente novamente.',
-        'error'
-      );
+      toast(commercialExportOperatorMessage(error), 'error');
     } finally {
       setExporting(false);
     }

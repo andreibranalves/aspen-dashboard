@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { commercialExportPath } from '../../src/lib/api/commercialExports.ts';
+import {
+  commercialExportOperatorMessage,
+  commercialExportPath,
+  downloadCommercialExport,
+} from '../../src/lib/api/commercialExports.ts';
 
 describe('commercial export client', () => {
   it('forwards only client filters and never the visible page', () => {
@@ -48,5 +52,32 @@ describe('commercial export client', () => {
       commercialExportPath('sales-order-items', filters),
       '/commercial-exports?resource=sales-order-items&period=30d&status=Completed&search=PED-2026'
     );
+  });
+
+  it('maps English network failures to a Portuguese operator message', async () => {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new TypeError('Failed to fetch');
+    }) as typeof fetch;
+    try {
+      await assert.rejects(
+        () => downloadCommercialExport('products', {}),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, /Não foi possível gerar a exportação/);
+          return true;
+        }
+      );
+      assert.equal(
+        commercialExportOperatorMessage(new TypeError('Failed to fetch')),
+        'Não foi possível gerar a exportação. Tente novamente.'
+      );
+      assert.equal(
+        commercialExportOperatorMessage(new Error('Sessão expirada.')),
+        'Sessão expirada.'
+      );
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 });
