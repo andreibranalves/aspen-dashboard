@@ -63,7 +63,7 @@ describe('commercial export client', () => {
       await assert.rejects(
         () => downloadCommercialExport('products', {}),
         (error: unknown) => {
-          assert.ok(error instanceof Error);
+          if (!(error instanceof Error)) return false;
           assert.match(error.message, /Não foi possível gerar a exportação/);
           return true;
         }
