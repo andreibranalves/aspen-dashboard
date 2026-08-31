@@ -61,6 +61,30 @@ Em rollback de código, não faça rollback da migração, porque ela é aditiva
 
 Não registre valores dessas variáveis neste repositório, em comandos ou em relatórios.
 
+## Corte de follow-up de orçamento
+
+O corte do follow-up é separado da aplicação da migration. A migration aditiva deve ser
+aplicada posteriormente, durante uma janela controlada; não a aplique como parte deste
+procedimento.
+
+Antes do corte, mantenha
+`QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=0`. Depois de confirmar a migration e a
+configuração de `QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT`,
+`QUOTATION_FOLLOW_UP_WORKER_URL`, `QSTASH_TOKEN`, `QSTASH_API_URL` e `CRON_SECRET`,
+programe no QStash uma chamada a `POST /api/quotation-follow-up-worker` a cada 15
+minutos, com zero retries e o bearer encaminhado por
+`Upstash-Forward-Authorization`.
+
+Habilite o envio somente com `APP_ENV=production`,
+`EXTERNAL_WRITES_ENABLED=1` e `QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=1`.
+O kill switch é qualquer um desses valores diferente do exigido; para interromper
+imediatamente, defina `QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=0`.
+
+Execute apenas um envio controlado para um destinatário designado e confirme o
+recebimento no dispositivo. Em seguida, verifique o estado persistido e os logs sem
+segredos, telefones ou texto da mensagem. Se houver qualquer divergência, desligue o
+kill switch e não repita o envio.
+
 ## Gate controlado de staging
 
 A execução local termina antes do passo controlado de staging.

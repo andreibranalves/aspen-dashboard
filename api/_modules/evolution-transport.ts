@@ -10,6 +10,7 @@ import type {
 } from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import type { TransportFailureKind } from './quotation-delivery-state.js';
+import { hasDisallowedWhatsappControls } from './quotation-follow-up-state.js';
 import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -66,7 +67,7 @@ function text(value: unknown, label: string, required = true): string {
     if (!required) return '';
     permanentInput(`${label} inválido.`);
   }
-  if (hasControlCharacters(value) || value.length > 4_000) {
+  if (hasDisallowedWhatsappControls(value) || value.length > 4_000) {
     permanentInput(`${label} inválido.`);
   }
   const result = value.trim();

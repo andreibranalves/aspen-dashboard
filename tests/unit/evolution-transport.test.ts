@@ -58,13 +58,13 @@ test('transport classifies provider outcomes without guessing network delivery',
   assert.equal(errorOf(transient).kind, 'transient_pre_transport');
 });
 
-test('transport rejects text control characters and oversized text before provider access', async () => {
+test('transport rejects disallowed control characters and oversized text before provider access', async () => {
   let calls = 0;
   const fetch = async () => {
     calls += 1;
     return response(200, { accepted: true, message_id: 'unexpected' });
   };
-  for (const text of ['Olá\nCliente', 'x'.repeat(4_001)]) {
+  for (const text of ['Olá\rCliente', 'x'.repeat(4_001)]) {
     const error = await rejected(
       sendFrozenStep({ phone: '5511999990000', step: { ...textStep, payload: { text } } }, {
         ...config,
@@ -74,6 +74,21 @@ test('transport rejects text control characters and oversized text before provid
     assert.equal(errorOf(error).kind, 'permanent_pre_transport');
   }
   assert.equal(calls, 0);
+});
+
+test('transport accepts newline and tab in outbound text', async () => {
+  const bodies: unknown[] = [];
+  await sendFrozenStep(
+    { phone: '5511999990000', step: { ...textStep, payload: { text: 'Olá\nCliente\t1' } } },
+    {
+      ...config,
+      fetch: async (_url, init) => {
+        bodies.push(JSON.parse(String(init?.body || '{}')));
+        return response(200, { key: { id: 'provider-1' } });
+      },
+    },
+  );
+  assert.deepEqual(bodies, [{ number: '5511999990000', text: 'Olá\nCliente\t1' }]);
 });
 
 test('transport classifies malformed success, server failures and validation rejection', async () => {

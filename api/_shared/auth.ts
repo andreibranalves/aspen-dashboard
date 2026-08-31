@@ -3,7 +3,7 @@ import { isValidPasswordHash } from './password.js';
 import { isValidSessionSecret, SESSION_COOKIE_NAME, verifySessionToken } from './session.js';
 
 const AUTH_ROUTES = new Set(['login', 'logout']);
-const MACHINE_ROUTES = new Set(['evolution-webhook', 'quotation-delivery-worker']);
+const MACHINE_ROUTES = new Set(['evolution-webhook', 'quotation-delivery-worker', 'quotation-follow-up-worker']);
 const MAX_COOKIE_HEADER_LENGTH = 8192;
 
 export interface AuthEnvironment {

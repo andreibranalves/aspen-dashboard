@@ -18,6 +18,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
   '/crm': 'CRM',
+  '/follow-ups': 'Follow-ups',
   '/products': 'Produtos',
   '/leads': 'Clientes',
   '/settings': 'Configurações',

@@ -124,6 +124,7 @@ export interface EvolutionMessageEvent {
   providerMessageId: string;
   fromMe: true;
   status: EvolutionReceiptStatus;
+  remoteJid?: string;
 }
 
 export interface QuotationDeliveryModule {

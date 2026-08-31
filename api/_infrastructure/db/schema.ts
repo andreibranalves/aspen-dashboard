@@ -810,6 +810,245 @@ export const productActivityEvents = pgTable(
   ]
 );
 
+export const WHATSAPP_IDENTITY_STATUSES = [
+  'verified',
+  'derived',
+  'unresolved',
+  'conflict',
+] as const;
+
+export const FOLLOW_UP_STATES = [
+  'approved',
+  'processing',
+  'sent',
+  'cancelled',
+  'dismissed',
+  'needs_review',
+  'failed',
+] as const;
+
+export const FOLLOW_UP_CLOSED_REASONS = [
+  'already_handled',
+  'do_not_contact',
+  'no_continuity',
+  'wrong_contact',
+  'other',
+  'before_tracking_start',
+  'newer_delivery_in_flight',
+  'delivery_incomplete',
+  'missing_provider_receipt',
+  'quotation_not_issued',
+  'crm_not_eligible',
+  'client_archived',
+  'identity_unresolved',
+  'contact_blocked',
+  'inbound_after_anchor',
+  'outbound_after_anchor',
+  'already_attempted',
+  'provider_rejected',
+  'rate_limited',
+  'transport_ambiguous',
+  'lease_expired_after_transport',
+] as const;
+
+export const WHATSAPP_CONTACT_BLOCK_REASONS = ['do_not_contact'] as const;
+export const FOLLOW_UP_INGESTION_BLOCK_REASONS = ['unparsed_upsert'] as const;
+
+/**
+ * One row per Evolution conversation. Stores monotonic inbound/outbound
+ * watermarks and optional contact blocks. Message bodies are never persisted.
+ */
+export const whatsappContactActivity = pgTable(
+  'whatsapp_contact_activity',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+    lastInboundProviderMessageId: varchar('last_inbound_provider_message_id', { length: 255 }),
+    lastOutboundAt: timestamp('last_outbound_at', { withTimezone: true }),
+    lastOutboundProviderMessageId: varchar('last_outbound_provider_message_id', { length: 255 }),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }),
+    identityStatus: varchar('identity_status', { length: 16 }),
+    blockedAt: timestamp('blocked_at', { withTimezone: true }),
+    blockReason: varchar('block_reason', { length: 32 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_contact_activity_instance_conversation_unique').on(
+      table.instance,
+      table.providerConversationId
+    ),
+    index('whatsapp_contact_activity_instance_phone_idx').on(
+      table.instance,
+      table.canonicalPhone
+    ),
+    check(
+      'whatsapp_contact_activity_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`
+    ),
+    check(
+      'whatsapp_contact_activity_conversation_not_blank_check',
+      sql`char_length(btrim(${table.providerConversationId})) > 0`
+    ),
+    check(
+      'whatsapp_contact_activity_identity_status_check',
+      sql`${table.identityStatus} IS NULL OR ${table.identityStatus} IN ('verified', 'derived', 'unresolved', 'conflict')`
+    ),
+    check(
+      'whatsapp_contact_activity_block_reason_check',
+      sql`(${table.blockedAt} IS NULL AND ${table.blockReason} IS NULL) OR (${table.blockedAt} IS NOT NULL AND ${table.blockReason} IN ('do_not_contact'))`
+    ),
+  ]
+);
+
+/**
+ * Per-instance ingestion watermark. An unparsed recognized UPSERT blocks the
+ * instance until that same event key parses fully.
+ */
+export const whatsappFollowUpIngestionHealth = pgTable(
+  'whatsapp_follow_up_ingestion_health',
+  {
+    instance: varchar('instance', { length: 120 }).primaryKey(),
+    lastUpsertAt: timestamp('last_upsert_at', { withTimezone: true }),
+    lastUpsertEventKey: varchar('last_upsert_event_key', { length: 255 }),
+    blockedAt: timestamp('blocked_at', { withTimezone: true }),
+    blockReason: varchar('block_reason', { length: 32 }),
+    blockedEventKey: varchar('blocked_event_key', { length: 255 }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'whatsapp_follow_up_ingestion_health_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`
+    ),
+    check(
+      'whatsapp_follow_up_ingestion_health_block_check',
+      sql`(
+        ${table.blockedAt} IS NULL
+        AND ${table.blockReason} IS NULL
+        AND ${table.blockedEventKey} IS NULL
+      ) OR (
+        ${table.blockedAt} IS NOT NULL
+        AND ${table.blockReason} IN ('unparsed_upsert')
+        AND char_length(btrim(${table.blockedEventKey})) > 0
+      )`
+    ),
+  ]
+);
+
+/**
+ * One durable follow-up attempt per quotation, created only after a human
+ * approve/dismiss. Foreign keys do not cascade so the audit trail survives
+ * quotation edits.
+ */
+export const quotationFollowUps = pgTable(
+  'quotation_follow_ups',
+  {
+    id: uuid('id').primaryKey(),
+    quotationId: uuid('quotation_id')
+      .notNull()
+      .references(() => quotations.id),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id),
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .references(() => quotationDeliveries.id),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }).notNull(),
+    eligibilityVersion: varchar('eligibility_version', { length: 64 }).notNull(),
+    messageSnapshot: varchar('message_snapshot', { length: 4000 }).notNull(),
+    state: varchar('state', { length: 16 }).notNull(),
+    closedReason: varchar('closed_reason', { length: 64 }),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    transportStartedAt: timestamp('transport_started_at', { withTimezone: true }),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    firstProviderReceiptAt: timestamp('first_provider_receipt_at', { withTimezone: true }).notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('quotation_follow_ups_quotation_id_unique').on(table.quotationId),
+    uniqueIndex('quotation_follow_ups_provider_message_id_unique')
+      .on(table.providerMessageId)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+    index('quotation_follow_ups_state_due_idx').on(table.state, table.dueAt),
+    check(
+      'quotation_follow_ups_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`
+    ),
+    check(
+      'quotation_follow_ups_conversation_not_blank_check',
+      sql`char_length(btrim(${table.providerConversationId})) > 0`
+    ),
+    check(
+      'quotation_follow_ups_phone_not_blank_check',
+      sql`char_length(btrim(${table.canonicalPhone})) > 0`
+    ),
+    check(
+      'quotation_follow_ups_eligibility_version_check',
+      sql`${table.eligibilityVersion} ~ '^[0-9a-f]{64}$'`
+    ),
+    check(
+      'quotation_follow_ups_message_not_blank_check',
+      sql`char_length(btrim(${table.messageSnapshot})) > 0`
+    ),
+    check(
+      'quotation_follow_ups_state_check',
+      sql`${table.state} IN ('approved', 'processing', 'sent', 'cancelled', 'dismissed', 'needs_review', 'failed')`
+    ),
+    check(
+      'quotation_follow_ups_closed_reason_check',
+      sql`${table.closedReason} IS NULL OR ${table.closedReason} IN (
+        'already_handled',
+        'do_not_contact',
+        'no_continuity',
+        'wrong_contact',
+        'other',
+        'before_tracking_start',
+        'newer_delivery_in_flight',
+        'delivery_incomplete',
+        'missing_provider_receipt',
+        'quotation_not_issued',
+        'crm_not_eligible',
+        'client_archived',
+        'identity_unresolved',
+        'contact_blocked',
+        'inbound_after_anchor',
+        'outbound_after_anchor',
+        'already_attempted',
+        'provider_rejected',
+        'rate_limited',
+        'transport_ambiguous',
+        'lease_expired_after_transport'
+      )`
+    ),
+    check(
+      'quotation_follow_ups_closed_consistency_check',
+      sql`(
+        ${table.state} IN ('approved', 'processing')
+        AND ${table.closedReason} IS NULL
+        AND ${table.closedAt} IS NULL
+      ) OR (
+        ${table.state} IN ('sent', 'cancelled', 'dismissed', 'needs_review', 'failed')
+        AND ${table.closedAt} IS NOT NULL
+        AND (
+          ${table.state} = 'sent'
+          OR ${table.closedReason} IS NOT NULL
+        )
+      )`
+    ),
+  ]
+);
+
 
 // Singular aliases make repository/tests that speak in domain terms concise
 // without changing the SQL table names used by migrations.
