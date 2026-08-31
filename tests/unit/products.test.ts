@@ -15,7 +15,11 @@ import type {
   ProductStatus,
   ProductsRepository,
 } from '../../api/_infrastructure/db/repositories/products-repository.js';
-import { isDuplicateProductError } from '../../api/_infrastructure/db/repositories/products-repository.js';
+import {
+  isDuplicateProductError,
+  normalizeProductUpdateInput,
+  ProductRepositoryError,
+} from '../../api/_infrastructure/db/repositories/products-repository.js';
 
 function event(method: string, body?: unknown, query: Record<string, string> = {}) {
   return {
@@ -214,5 +218,17 @@ describe('products core handlers', () => {
     const hard = await products(event('DELETE', undefined, { id: 'SKU-1', permanent: 'true' }));
     assert.equal(hard.statusCode, 409);
     assert.equal((await products(event('DELETE', undefined, { id: 'missing' }))).statusCode, 404);
+  });
+});
+
+describe('product unit cost', () => {
+  it('accepts Brazilian comma for custo unitário', () => {
+    assert.equal(normalizeProductUpdateInput({ custo_unitario: '12,5' }).custo_unitario, '12.50');
+    assert.equal(normalizeProductUpdateInput({ custo_unitario: '12.50' }).custo_unitario, '12.50');
+    assert.equal(normalizeProductUpdateInput({ custo_unitario: '' }).custo_unitario, null);
+    assert.throws(
+      () => normalizeProductUpdateInput({ custo_unitario: 'abc' }),
+      (error: unknown) => error instanceof ProductRepositoryError && (error as ProductRepositoryError).statusCode === 400
+    );
   });
 });

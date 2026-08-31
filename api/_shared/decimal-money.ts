@@ -8,7 +8,10 @@ export function canonicalizeNonNegativeDecimal(
 ): string | null {
   if (typeof value !== 'string') return null;
   const input = value.trim();
-  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(input);
+  // Accept the unambiguous Brazilian comma form. Persisted money stays
+  // a dot-decimal string so PostgreSQL NUMERIC is never locale-dependent.
+  const unambiguous = input.includes(',') && !input.includes('.') ? input.replace(',', '.') : input;
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(unambiguous);
   if (!match) return null;
   const integerPart = match[1];
   const fractionalPart = match[2] || '';

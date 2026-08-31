@@ -49,6 +49,7 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
   const catalogOrderSku = `${sku}-ORDER`;
   const emptyPricingSku = `${sku}-EMPTY`;
   const archiveSku = `${sku}-ARCHIVE`;
+  const costSku = `${sku}-CUSTO`;
   const productsRepository = createPostgresProductsRepository(() => db);
   const pricingRepository = createPostgresPricingRepository(() => db);
 
@@ -221,6 +222,18 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
       preco_base: null,
       precos: [],
     });
+    await catalogRepository.create(
+      { sku: costSku, nome: 'Produto com custo', custo_unitario: '12,5' },
+      { preco_base: '20.00', precos: [] },
+    );
+    assert.equal((await productsRepository.get(costSku))?.custo_unitario, '12.50');
+    const costUpdate = await updateCore(event('PUT', {
+      custo_unitario: '8,00',
+      preco_base: '20.00',
+      precos: [],
+    }, { sku: costSku }));
+    assert.equal(costUpdate.statusCode, 200);
+    assert.equal(parse(costUpdate).produto.custo_unitario, '8.00');
     const emptyPricingActivities = await db
       .select()
       .from(productActivityEvents)
@@ -258,7 +271,7 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
       },
     );
   } finally {
-    for (const cleanupSku of [sku, createFailureSku, updateFailureSku, catalogOrderSku, emptyPricingSku, archiveSku]) {
+    for (const cleanupSku of [sku, createFailureSku, updateFailureSku, catalogOrderSku, emptyPricingSku, archiveSku, costSku]) {
       await db.delete(productActivityEvents).where(eq(productActivityEvents.productSku, cleanupSku)).catch(() => undefined);
       await db.delete(productPricingTiers).where(eq(productPricingTiers.productSku, cleanupSku)).catch(() => undefined);
       await db.delete(products).where(eq(products.sku, cleanupSku)).catch(() => undefined);
