@@ -19,6 +19,9 @@ interface Deal {
   lead_name?: string;
   email?: string;
   telefone?: string;
+  client_id?: string | null;
+  quote_lead_id?: string | null;
+  quotation_id?: string | null;
   quotation?: string;
   follow_up_stage?: number;
   next_step?: string;
@@ -322,12 +325,6 @@ export default function CrmKanbanPage() {
     [columns, fetchData, restoreMoveMenuFocus, search, toast]
   );
 
-  const openLeadCard = useCallback((deal: Deal) => {
-    const leadName = String(deal.lead_name || '').trim();
-    if (!leadName || leadName === 'Sem nome') return;
-    // ponytail: deal não traz id do lead/cliente; busca por nome na lista de leads
-    window.location.hash = `#/leads?search=${encodeURIComponent(leadName)}&status=all`;
-  }, []);
 
   const orderedColumns = [
     ...PIPELINE.map(
@@ -532,7 +529,14 @@ export default function CrmKanbanPage() {
                         {shown.map((deal) => {
                           const leadName = String(deal.lead_name || '').trim();
                           const displayLeadName = leadName || 'Sem nome';
-                          const leadClickable = !!leadName && leadName !== 'Sem nome';
+                          const leadHref = deal.client_id
+                            ? `#/leads/cliente/${deal.client_id}`
+                            : deal.quote_lead_id
+                              ? `#/leads/lead/${deal.quote_lead_id}`
+                              : null;
+                          const leadClickable = Boolean(
+                            leadHref && leadName && leadName !== 'Sem nome'
+                          );
                           const currentStatus = deal.status || col.status;
                           const moving = movingDealIds.has(deal.id);
                           const menuId = `move-deal-${deal.id}`;
@@ -557,8 +561,7 @@ export default function CrmKanbanPage() {
                               <div className="flex items-start justify-between gap-2">
                                 {leadClickable ? (
                                   <a
-                                    href={`#/leads?search=${encodeURIComponent(displayLeadName)}&status=all`}
-                                    onClick={() => openLeadCard(deal)}
+                                    href={leadHref || '#'}
                                     className="min-w-0 text-left text-sm font-medium text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
                                     aria-label={`Abrir lead ${displayLeadName}`}
                                   >
@@ -589,16 +592,25 @@ export default function CrmKanbanPage() {
                                 </p>
                               )}
                               <div className="mt-2 flex flex-wrap items-center gap-2">
-                                {deal.quotation && (
-                                  <a
-                                    href={`#/quotations/${encodeURIComponent(deal.quotation)}`}
-                                    className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
-                                    aria-label={`Abrir orçamento ${deal.quotation}`}
-                                  >
-                                    <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                    {deal.quotation}
-                                  </a>
-                                )}
+                                {deal.quotation &&
+                                  (deal.quotation_id ? (
+                                    <a
+                                      href={`#/quotations/${deal.quotation_id}`}
+                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
+                                      aria-label={`Abrir orçamento ${deal.quotation}`}
+                                    >
+                                      <Clipboard size={12} className="mr-1" aria-hidden="true" />
+                                      {deal.quotation}
+                                    </a>
+                                  ) : (
+                                    <span
+                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary"
+                                      aria-label={`Orçamento ${deal.quotation}`}
+                                    >
+                                      <Clipboard size={12} className="mr-1" aria-hidden="true" />
+                                      {deal.quotation}
+                                    </span>
+                                  ))}
                                 {Number(deal.follow_up_stage) > 0 && (
                                   <span className="inline-flex items-center rounded bg-surface-muted px-1.5 py-0.5 text-xs text-fg">
                                     <Send size={12} className="mr-1" aria-hidden="true" />

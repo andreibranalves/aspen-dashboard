@@ -32,15 +32,17 @@ function mapDeal(deal: CrmDealRecord | Record<string, unknown>): Record<string, 
   const row = deal as Record<string, unknown>;
   const status = typeof row.status === 'string' && row.status ? row.status : 'Novo Lead';
   const followUpStage = row.followUpStage ?? row.follow_up_stage ?? 0;
-  const quotationValue = row.quotation ?? row.quotationBusinessNumber ?? row.quotation_id;
   const nameValue = row.nome ?? row.lead_name;
   return {
     id: row.id,
+    client_id: row.clientId ?? row.client_id ?? null,
+    quote_lead_id: row.quoteLeadId ?? row.quote_lead_id ?? null,
+    quotation_id: row.quotationId ?? null,
     lead_name: typeof nameValue === 'string' && nameValue.trim() ? nameValue : 'Sem nome',
     email: row.email || null,
     telefone: row.telefone || row.mobile_no || null,
     status,
-    quotation: quotationValue || null,
+    quotation: row.quotation ?? row.quotationBusinessNumber ?? null,
     follow_up_stage: followUpStage || 0,
     next_step: row.nextStep || row.next_step || null,
     criado_em: timestamp(row.createdAt ?? row.criado_em ?? row.creation),
