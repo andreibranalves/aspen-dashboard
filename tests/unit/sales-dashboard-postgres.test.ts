@@ -15,6 +15,7 @@ import {
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
@@ -81,6 +82,16 @@ function event(
   };
 }
 
+async function resetSharedCommerce(db: AppDatabase) {
+  await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
+  await db.delete(schema.crmDeals);
+  await db.delete(schema.quoteLeads);
+  await db.delete(schema.quotationIssueRequests);
+  await db.delete(schema.quotationDeliveries);
+  await db.delete(schema.salesOrders);
+  await db.delete(schema.quotations);
+}
+
 test(
   'returns a zero-valued dashboard when no local orders exist',
   { skip: !TEST_DATABASE_URL },
@@ -97,6 +108,7 @@ test(
 
     try {
       await migrate(db, { migrationsFolder });
+      await resetSharedCommerce(db);
       const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       const handler = createSalesDashboardHandler({ repository, ...profitDependencies });
       const response = await handler(event('GET', undefined, { period: '30d' }));
@@ -164,6 +176,7 @@ test(
       await migrate(db, { migrationsFolder });
       const fixtureFields: FixtureRevisionFields = await ensureFixtureTemplateVersion(db as any);
       migrated = true;
+      await resetSharedCommerce(db);
       await db.insert(schema.clients).values([
         { id: clientIds[0]!, nome: 'Cliente Dashboard A' },
         { id: clientIds[1]!, nome: 'Cliente Dashboard B' },

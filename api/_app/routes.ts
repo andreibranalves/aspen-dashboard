@@ -7,6 +7,7 @@ import { handler as crmPruneCandidates } from '../_modules/crm-prune-candidates.
 import { handler as duplicateQuotation } from '../_modules/duplicate-quotation.js';
 import { handler as editDraft } from '../_modules/edit-draft.js';
 import { handler as extract } from '../_modules/extract.js';
+import { handler as commercialExport } from '../_modules/commercial-export.js';
 import { handler as clientDetail } from '../_modules/client-detail.js';
 import { handler as leadsClients } from '../_modules/leads-clients.js';
 import { handler as login } from '../_modules/login.js';
@@ -57,6 +58,7 @@ export const routes: Record<string, LegacyHandler> = {
   'duplicate-quotation': duplicateQuotation,
   'edit-draft': editDraft,
   extract,
+  'commercial-exports': commercialExport,
   'leads-clients': leadsClients,
   orcamento,
   pdf,

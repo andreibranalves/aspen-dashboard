@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { clients, type ClientRow } from '../client-schema.js';
@@ -163,6 +163,66 @@ function normalizedDigitsSearchTerm(value: string): string | null {
   }
 }
 
+function clientListWhere(options: ClientListOptions): SQL | undefined {
+  const filters: SQL[] = [];
+  if (options.status === 'active' || !options.status) filters.push(eq(clients.arquivado, false));
+  if (options.status === 'archived') filters.push(eq(clients.arquivado, true));
+  const search = typeof options.search === 'string' ? options.search.trim() : '';
+  if (search) {
+    const pattern = `%${escapeLike(search)}%`;
+    const digits = normalizedDigitsSearchTerm(search);
+    filters.push(
+      or(
+        ilike(clients.nome, pattern),
+        ilike(clients.documento, pattern),
+        ilike(clients.email, pattern),
+        ilike(clients.telefone, pattern),
+        ilike(clients.notes, pattern),
+        ilike(clients.endereco, pattern),
+        ilike(clients.numero, pattern),
+        ilike(clients.bairro, pattern),
+        ilike(clients.complemento, pattern),
+        ilike(clients.municipio, pattern),
+        ilike(clients.uf, pattern),
+        ilike(clients.cep, pattern),
+        ...(digits ? [ilike(clients.documento, `%${escapeLike(digits)}%`)] : []),
+        ...(digits ? [ilike(clients.telefone, `%${escapeLike(digits)}%`)] : [])
+      )!
+    );
+  }
+  return filters.length ? and(...filters) : undefined;
+}
+
+export async function listClientsForExport(
+  options: ClientListOptions,
+  limit: number,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      id: clients.id,
+      nome: clients.nome,
+      documento: clients.documento,
+      email: clients.email,
+      telefone: clients.telefone,
+      endereco: clients.endereco,
+      numero: clients.numero,
+      bairro: clients.bairro,
+      complemento: clients.complemento,
+      municipio: clients.municipio,
+      uf: clients.uf,
+      cep: clients.cep,
+      arquivado: clients.arquivado,
+      createdAt: clients.createdAt,
+      updatedAt: clients.updatedAt,
+      archivedAt: clients.archivedAt,
+    })
+    .from(clients)
+    .where(clientListWhere(options))
+    .orderBy(desc(clients.updatedAt))
+    .limit(limit);
+}
+
 function dataForWrite(input: ClientWriteInput | ClientPatchInput, existing?: ClientRecord) {
   const result: Record<string, unknown> = {};
   if (Object.prototype.hasOwnProperty.call(input, 'nome'))
@@ -244,34 +304,7 @@ export function createPostgresClientRepository(
         const db = getDb() as AppDatabase;
         const page = normalizePage(options.page, 1);
         const limit = normalizePage(options.limit, 50, 200);
-        const filters = [];
-        if (options.status === 'active' || !options.status)
-          filters.push(eq(clients.arquivado, false));
-        if (options.status === 'archived') filters.push(eq(clients.arquivado, true));
-        const search = typeof options.search === 'string' ? options.search.trim() : '';
-        if (search) {
-          const pattern = `%${escapeLike(search)}%`;
-          const digits = normalizedDigitsSearchTerm(search);
-          filters.push(
-            or(
-              ilike(clients.nome, pattern),
-              ilike(clients.documento, pattern),
-              ilike(clients.email, pattern),
-              ilike(clients.telefone, pattern),
-              ilike(clients.notes, pattern),
-              ilike(clients.endereco, pattern),
-              ilike(clients.numero, pattern),
-              ilike(clients.bairro, pattern),
-              ilike(clients.complemento, pattern),
-              ilike(clients.municipio, pattern),
-              ilike(clients.uf, pattern),
-              ilike(clients.cep, pattern),
-              ...(digits ? [ilike(clients.documento, `%${escapeLike(digits)}%`)] : []),
-              ...(digits ? [ilike(clients.telefone, `%${escapeLike(digits)}%`)] : [])
-            )
-          );
-        }
-        const where = filters.length ? and(...filters) : undefined;
+        const where = clientListWhere(options);
         const rows = await db
           .select()
           .from(clients)

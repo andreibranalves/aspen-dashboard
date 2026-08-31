@@ -13,6 +13,7 @@ import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
@@ -310,7 +311,19 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   return (
     <PageShell>
       {/* PageHeader */}
-      <PageHeader title="Pedidos" />
+      <PageHeader
+        title="Pedidos"
+        actions={
+          <>
+            <ExportCsvButton resource="sales-orders" filters={{ period, status, search }}>
+              Exportar pedidos
+            </ExportCsvButton>
+            <ExportCsvButton resource="sales-order-items" filters={{ period, status, search }}>
+              Exportar itens
+            </ExportCsvButton>
+          </>
+        }
+      />
 
       {/* Summary cards */}
       {summaryError && (

@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, ilike, isNotNull, isNull, or, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import { products, salesOrderItems } from '../schema.js';
+import { productPricingTiers, products, salesOrderItems } from '../schema.js';
 import { canonicalizeNonNegativeDecimal } from '../../../_shared/decimal-money.js';
 
 export type ProductStatus = 'active' | 'archived' | 'all';
@@ -120,7 +120,6 @@ export function toProductRecord(row: typeof products.$inferSelect): ProductRecor
   };
 }
 
-
 function normalizeCustoUnitario(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -169,7 +168,8 @@ export function normalizeProductCreateInput(input: ProductCreateInput): ProductC
   const sku = normalizeSku(input.sku);
   const nome = String(input.nome || '').trim();
   if (!sku) throw new ProductRepositoryError(400, 'SKU é obrigatório.');
-  if (sku.length > 120) throw new ProductRepositoryError(400, 'SKU deve ter no máximo 120 caracteres.');
+  if (sku.length > 120)
+    throw new ProductRepositoryError(400, 'SKU deve ter no máximo 120 caracteres.');
   if (!nome) throw new ProductRepositoryError(400, 'Nome do produto é obrigatório.');
   if (nome.length > 255) {
     throw new ProductRepositoryError(400, 'Nome do produto deve ter no máximo 255 caracteres.');
@@ -192,7 +192,16 @@ export function normalizeProductCreateInput(input: ProductCreateInput): ProductC
     throw new ProductRepositoryError(400, 'Marca deve ter no máximo 255 caracteres.');
   }
 
-  return { sku, nome, descricao, unidade, categoria, marca, preco_base: input.preco_base, custo_unitario: normalizeCustoUnitario(input.custo_unitario) };
+  return {
+    sku,
+    nome,
+    descricao,
+    unidade,
+    categoria,
+    marca,
+    preco_base: input.preco_base,
+    custo_unitario: normalizeCustoUnitario(input.custo_unitario),
+  };
 }
 
 export function normalizeProductUpdateInput(patch: ProductUpdateInput): ProductUpdateInput {
@@ -287,6 +296,53 @@ function buildWhere(options: ProductListOptions): SQL | undefined {
   return and(...conditions);
 }
 
+export async function listProductsForExport(
+  options: ProductListOptions,
+  limit: number,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      sku: products.sku,
+      nome: products.nome,
+      descricao: products.descricao,
+      unidade: products.unidade,
+      categoria: products.categoria,
+      marca: products.marca,
+      precoBase: products.precoBase,
+      custoUnitario: products.custoUnitario,
+      ativo: products.ativo,
+      criadoEm: products.criadoEm,
+      atualizadoEm: products.atualizadoEm,
+      arquivadoEm: products.arquivadoEm,
+    })
+    .from(products)
+    .where(buildWhere(options))
+    .orderBy(mapOrderBy(options.orderBy))
+    .limit(limit);
+}
+
+export async function listProductPricingForExport(
+  options: ProductListOptions,
+  limit: number,
+  getDb: DatabaseProvider = getDatabase
+) {
+  return getDb()
+    .select({
+      productSku: productPricingTiers.productSku,
+      productName: products.nome,
+      minimumQuantity: productPricingTiers.minimumQuantity,
+      unitPrice: productPricingTiers.unitPrice,
+      criadoEm: productPricingTiers.criadoEm,
+      atualizadoEm: productPricingTiers.atualizadoEm,
+    })
+    .from(productPricingTiers)
+    .innerJoin(products, eq(productPricingTiers.productSku, products.sku))
+    .where(buildWhere(options))
+    .orderBy(mapOrderBy(options.orderBy), asc(productPricingTiers.minimumQuantity))
+    .limit(limit);
+}
+
 /**
  * Drizzle wraps postgres.js errors as `Error.cause`, so inspect the bounded
  * cause chain before deciding whether a SKU conflict is safe to expose.
@@ -352,7 +408,11 @@ export function createPostgresProductsRepository(
       const normalizedSku = normalizeSku(sku);
       if (!normalizedSku) return null;
       const db = getDb();
-      const [row] = await db.select().from(products).where(eq(products.sku, normalizedSku)).limit(1);
+      const [row] = await db
+        .select()
+        .from(products)
+        .where(eq(products.sku, normalizedSku))
+        .limit(1);
       return row ? toProductRecord(row) : null;
     },
 
@@ -370,7 +430,8 @@ export function createPostgresProductsRepository(
             categoria: normalized.categoria,
             marca: normalized.marca,
             precoBase: normalized.preco_base == null ? null : String(normalized.preco_base),
-            custoUnitario: normalized.custo_unitario == null ? null : String(normalized.custo_unitario),
+            custoUnitario:
+              normalized.custo_unitario == null ? null : String(normalized.custo_unitario),
             ativo: true,
             arquivadoEm: null,
           })
@@ -378,7 +439,8 @@ export function createPostgresProductsRepository(
         if (!row) throw new Error('empty insert result');
         return toProductRecord(row);
       } catch (error) {
-        if (isDuplicateProductError(error)) throw new ProductRepositoryError(409, 'SKU já cadastrado.');
+        if (isDuplicateProductError(error))
+          throw new ProductRepositoryError(409, 'SKU já cadastrado.');
         throw new ProductRepositoryError(500, 'Não foi possível criar o produto.', false);
       }
     },

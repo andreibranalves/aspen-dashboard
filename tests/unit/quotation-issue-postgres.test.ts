@@ -32,6 +32,14 @@ const NOW = new Date('2026-08-10T12:00:00.000Z');
 const VALID_PDF = Buffer.from('%PDF-1.4\n% task4\n%%EOF', 'utf8');
 
 let migrationPromise: Promise<void> | undefined;
+async function clearIssueFixtures(db: AppDatabase) {
+  await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
+  await db.delete(schema.crmDeals);
+  await db.delete(schema.quoteLeads);
+  await db.delete(schema.quotationIssueRequests);
+  await db.delete(schema.quotations);
+  await db.delete(schema.clients).where(eq(schema.clients.email, 'cliente@teste.com'));
+}
 async function withDatabase<T>(callback: (db: AppDatabase) => Promise<T>): Promise<T> {
   const client = postgres(TEST_DATABASE_URL!, { max: 4, prepare: false, connect_timeout: 10, idle_timeout: 20, onnotice: () => undefined });
   const db = drizzle(client, { schema }) as AppDatabase;
@@ -39,15 +47,16 @@ async function withDatabase<T>(callback: (db: AppDatabase) => Promise<T>): Promi
     migrationPromise ||= migrate(db, { migrationsFolder }).then(() => undefined);
     await migrationPromise;
     return await callback(db);
-  } finally { await client.end({ timeout: 5 }); }
+  } finally {
+    try {
+      await clearIssueFixtures(db);
+    } finally {
+      await client.end({ timeout: 5 });
+    }
+  }
 }
 async function seed(db: AppDatabase) {
-  await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
-  await db.delete(schema.crmDeals);
-  await db.delete(schema.quoteLeads);
-  await db.delete(schema.quotationIssueRequests);
-  await db.delete(schema.quotations);
-  await db.delete(schema.clients).where(eq(schema.clients.email, 'cliente@teste.com'));
+  await clearIssueFixtures(db);
   await db.delete(schema.quoteSequences);
   await db.delete(schema.quoteRevisionItems).where(eq(schema.quoteRevisionItems.productSku, 'TASK4-SKU'));
   await db.delete(schema.productActivityEvents).where(eq(schema.productActivityEvents.productSku, 'TASK4-SKU'));

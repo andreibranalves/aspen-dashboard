@@ -31,6 +31,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import { useToast } from '@/components/shared/toast';
 import {
@@ -152,10 +153,17 @@ export default function ProductsPage() {
       sortValue: string,
       statusValue: ProductStatus
     ) => {
-      const requestKey = JSON.stringify([searchValue, pageValue, limitValue, sortValue, statusValue]);
-      const requestGeneration = requestKey === listRequestKeyRef.current
-        ? listRequestGenerationRef.current
-        : listRequestGenerationRef.current + 1;
+      const requestKey = JSON.stringify([
+        searchValue,
+        pageValue,
+        limitValue,
+        sortValue,
+        statusValue,
+      ]);
+      const requestGeneration =
+        requestKey === listRequestKeyRef.current
+          ? listRequestGenerationRef.current
+          : listRequestGenerationRef.current + 1;
       listRequestGenerationRef.current = requestGeneration;
       listRequestKeyRef.current = requestKey;
       setLoading(true);
@@ -366,10 +374,21 @@ export default function ProductsPage() {
         className="[&_h1]:text-xl [&_h1]:tracking-[-0.2px]"
         title="Produtos"
         actions={
-          <Button size="md" onClick={() => navigate('/products/new')}>
-            <PlusCircle />
-            Novo produto
-          </Button>
+          <>
+            <ExportCsvButton resource="products" filters={{ search, status, order_by: sort }}>
+              Exportar produtos
+            </ExportCsvButton>
+            <ExportCsvButton
+              resource="product-pricing"
+              filters={{ search, status, order_by: sort }}
+            >
+              Exportar faixas de preço
+            </ExportCsvButton>
+            <Button size="md" onClick={() => navigate('/products/new')}>
+              <PlusCircle />
+              Novo produto
+            </Button>
+          </>
         }
       />
 

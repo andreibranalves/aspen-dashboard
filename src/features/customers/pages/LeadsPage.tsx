@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
@@ -248,9 +249,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const fetchData = useCallback(
     async (searchValue = search, pageValue = page, statusValue = status, limitValue = limit) => {
       const requestKey = JSON.stringify([searchValue, pageValue, statusValue, limitValue]);
-      const requestGeneration = requestKey === listRequestKeyRef.current
-        ? listRequestGenerationRef.current
-        : listRequestGenerationRef.current + 1;
+      const requestGeneration =
+        requestKey === listRequestKeyRef.current
+          ? listRequestGenerationRef.current
+          : listRequestGenerationRef.current + 1;
       listRequestGenerationRef.current = requestGeneration;
       listRequestKeyRef.current = requestKey;
       setLoading(true);
@@ -267,9 +269,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         if (requestGeneration !== listRequestGenerationRef.current) return;
         const projected = projectClientListResponse(result);
         if (!projected) throw new Error('Resposta inválida ao carregar clientes.');
-        const safePage = projected.pagination.total_pages > 0
-          ? Math.min(pageValue, projected.pagination.total_pages)
-          : 1;
+        const safePage =
+          projected.pagination.total_pages > 0
+            ? Math.min(pageValue, projected.pagination.total_pages)
+            : 1;
         if (safePage !== pageValue) {
           setPage(safePage);
           return;
@@ -340,16 +343,19 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     }
   }, []);
 
-  const openDrawer = useCallback((row: DataRow) => {
-    setSelectedId(row.id);
-    setDrawerOpen(true);
-    setDetail(null);
-    setDetailSaving(false);
-    setEditMode(false);
-    setConfirmDrawerDiscard(false);
-    setDrawerDiscardAction(null);
-    void loadDrawerDetail(row.id);
-  }, [loadDrawerDetail]);
+  const openDrawer = useCallback(
+    (row: DataRow) => {
+      setSelectedId(row.id);
+      setDrawerOpen(true);
+      setDetail(null);
+      setDetailSaving(false);
+      setEditMode(false);
+      setConfirmDrawerDiscard(false);
+      setDrawerDiscardAction(null);
+      void loadDrawerDetail(row.id);
+    },
+    [loadDrawerDetail]
+  );
 
   const closeDrawer = useCallback(() => {
     drawerRequestRef.current += 1;
@@ -365,9 +371,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
   const drawerHasUnsavedChanges = Boolean(
     drawerOpen &&
-      editMode &&
-      detail &&
-      JSON.stringify(editFields) !== JSON.stringify(fieldsFromDetail(detail))
+    editMode &&
+    detail &&
+    JSON.stringify(editFields) !== JSON.stringify(fieldsFromDetail(detail))
   );
 
   const requestDrawerClose = useCallback(
@@ -613,10 +619,15 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       <PageHeader
         title="Clientes"
         actions={
-          <Button onClick={() => navigate?.('/leads/cliente/new')}>
-            <UserPlus />
-            Novo contato
-          </Button>
+          <>
+            <ExportCsvButton resource="clients" filters={{ search, status }}>
+              Exportar clientes
+            </ExportCsvButton>
+            <Button onClick={() => navigate?.('/leads/cliente/new')}>
+              <UserPlus />
+              Novo contato
+            </Button>
+          </>
         }
       />
 
@@ -759,7 +770,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       className="cursor-pointer"
                       onClick={(event) => {
                         const target = event.target as HTMLElement;
-                        if (target.closest('a,button,input,select,textarea,summary,details')) return;
+                        if (target.closest('a,button,input,select,textarea,summary,details'))
+                          return;
                         navigateToDetail(row.id);
                       }}
                     >
