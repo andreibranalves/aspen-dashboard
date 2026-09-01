@@ -939,9 +939,9 @@ export const whatsappFollowUpIngestionHealth = pgTable(
 );
 
 /**
- * One durable follow-up attempt per quotation, created only after a human
- * approve/dismiss. Foreign keys do not cascade so the audit trail survives
- * quotation edits.
+ * One durable follow-up attempt per quotation. Queue rows are created when a
+ * quotation delivery is accepted; approval-only fields remain nullable until
+ * a human approves or dismisses the attempt.
  */
 export const quotationFollowUps = pgTable(
   'quotation_follow_ups',
@@ -959,16 +959,16 @@ export const quotationFollowUps = pgTable(
     instance: varchar('instance', { length: 120 }).notNull(),
     providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
     canonicalPhone: varchar('canonical_phone', { length: 15 }).notNull(),
-    eligibilityVersion: varchar('eligibility_version', { length: 64 }).notNull(),
-    messageSnapshot: varchar('message_snapshot', { length: 4000 }).notNull(),
-    state: varchar('state', { length: 16 }).notNull(),
+    eligibilityVersion: varchar('eligibility_version', { length: 64 }),
+    messageSnapshot: varchar('message_snapshot', { length: 4000 }),
+    state: varchar('state', { length: 20 }).notNull(),
     closedReason: varchar('closed_reason', { length: 64 }),
     leaseToken: uuid('lease_token'),
     leaseUntil: timestamp('lease_until', { withTimezone: true }),
     transportStartedAt: timestamp('transport_started_at', { withTimezone: true }),
     providerMessageId: varchar('provider_message_id', { length: 255 }),
-    firstProviderReceiptAt: timestamp('first_provider_receipt_at', { withTimezone: true }).notNull(),
-    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    firstProviderReceiptAt: timestamp('first_provider_receipt_at', { withTimezone: true }),
+    dueAt: timestamp('due_at', { withTimezone: true }),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
@@ -991,19 +991,25 @@ export const quotationFollowUps = pgTable(
     ),
     check(
       'quotation_follow_ups_phone_not_blank_check',
-      sql`char_length(btrim(${table.canonicalPhone})) > 0`
+      sql`(
+        ${table.canonicalPhone} ~ '^[0-9]{10,15}$'
+        OR (
+          char_length(btrim(${table.canonicalPhone})) = 0
+          AND lower(right(btrim(${table.providerConversationId}), 4)) = '@lid'
+        )
+      )`
     ),
     check(
       'quotation_follow_ups_eligibility_version_check',
-      sql`${table.eligibilityVersion} ~ '^[0-9a-f]{64}$'`
+      sql`${table.eligibilityVersion} IS NULL OR ${table.eligibilityVersion} ~ '^[0-9a-f]{64}$'`
     ),
     check(
       'quotation_follow_ups_message_not_blank_check',
-      sql`char_length(btrim(${table.messageSnapshot})) > 0`
+      sql`${table.messageSnapshot} IS NULL OR char_length(btrim(${table.messageSnapshot})) > 0`
     ),
     check(
       'quotation_follow_ups_state_check',
-      sql`${table.state} IN ('approved', 'processing', 'sent', 'cancelled', 'dismissed', 'needs_review', 'failed')`
+      sql`${table.state} IN ('awaiting_receipt', 'waiting', 'ready', 'held', 'approved', 'processing', 'sent', 'cancelled', 'dismissed', 'needs_review', 'failed')`
     ),
     check(
       'quotation_follow_ups_closed_reason_check',
@@ -1034,6 +1040,10 @@ export const quotationFollowUps = pgTable(
     check(
       'quotation_follow_ups_closed_consistency_check',
       sql`(
+        ${table.state} IN ('awaiting_receipt', 'waiting', 'ready', 'held')
+        AND ${table.closedReason} IS NULL
+        AND ${table.closedAt} IS NULL
+      ) OR (
         ${table.state} IN ('approved', 'processing')
         AND ${table.closedReason} IS NULL
         AND ${table.closedAt} IS NULL

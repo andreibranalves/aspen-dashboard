@@ -23,6 +23,7 @@ import {
   type ClientRecord,
   type ClientWriteInput,
 } from '../../../_modules/client-schema.js';
+import { cancelClientFollowUpsForArchive } from './quotation-follow-up-facts.js';
 import type { ClientRepository } from '../../../_modules/client-repository.js';
 
 export type {
@@ -369,18 +370,24 @@ export function createPostgresClientRepository(
       if (!isUuid(id)) throw new ClientNotFoundError();
       try {
         const db = getDb() as AppDatabase;
-        const [existingRow] = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
-        if (!existingRow) throw new ClientNotFoundError();
-        const existing = toRecord(existingRow);
-        const data = dataForWrite(patch, existing);
-        data.updatedAt = new Date();
-        const [row] = await db
-          .update(clients)
-          .set(data as never)
-          .where(eq(clients.id, id))
-          .returning();
-        if (!row) throw new ClientNotFoundError();
-        return toRecord(row as ClientRow);
+        return await db.transaction(async (tx) => {
+          const [existingRow] = await tx.select().from(clients).where(eq(clients.id, id)).limit(1);
+          if (!existingRow) throw new ClientNotFoundError();
+          const existing = toRecord(existingRow);
+          const data = dataForWrite(patch, existing);
+          data.updatedAt = new Date();
+          const [row] = await tx
+            .update(clients)
+            .set(data as never)
+            .where(eq(clients.id, id))
+            .returning();
+          if (!row) throw new ClientNotFoundError();
+          const updated = toRecord(row as ClientRow);
+          if (!existing.arquivado && updated.arquivado) {
+            await cancelClientFollowUpsForArchive(tx, id, new Date(updated.updatedAt));
+          }
+          return updated;
+        });
       } catch (error) {
         normalizeError(error);
       }

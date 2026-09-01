@@ -29,6 +29,8 @@ function fixture(overrides: Partial<FollowUpView> = {}): Record<string, unknown>
     dueAt: '2026-08-21T12:00:00.000Z',
     eligibilityVersion: version,
     state: 'ready',
+    reason: 'ready',
+    reasonLabel: 'Silêncio após o recibo',
     followUpId: null,
     messageSnapshot: null,
     closedReason: null,
@@ -53,6 +55,8 @@ function fixture(overrides: Partial<FollowUpView> = {}): Record<string, unknown>
     due_at: item.dueAt,
     eligibility_version: item.eligibilityVersion,
     state: item.state,
+    reason: item.reason,
+    reason_label: item.reasonLabel,
     message_snapshot: item.messageSnapshot,
     closed_reason: item.closedReason,
     approved_at: item.approvedAt,
@@ -73,6 +77,23 @@ test('parses snake_case list response into camelCase view model', () => {
   assert.equal(page.data[0].businessNumber, 'ORC-20260001');
   assert.equal(page.data[0].firstProviderReceiptAt, timestamp);
   assert.equal(page.data[0].messageSnapshot, null);
+});
+
+test('accepts a LID attention candidate without a canonical phone', () => {
+  const page = parseFollowUpPage({
+    data: [fixture({
+      providerConversationId: 'abc123@lid',
+      canonicalPhone: '',
+      state: 'held',
+      reason: 'identity_unresolved',
+      reasonLabel: 'Contato sem telefone confiável',
+    })],
+    total: 1,
+    page: 1,
+    page_size: 25,
+  });
+  assert.equal(page.data[0].providerConversationId, 'abc123@lid');
+  assert.equal(page.data[0].canonicalPhone, '');
 });
 
 test('keeps newlines in the follow-up message snapshot', () => {
@@ -118,6 +139,25 @@ test('uses snake_case requests for listing, approve, and dismiss', async () => {
   assert.deepEqual(calls[2].body, {
     quotation_id: 'quotation-1',
     eligibility_version: version,
+    reason: 'other',
+  });
+});
+
+test('dismiss sends an empty eligibility version for awaiting receipt', async () => {
+  let requestBody: unknown;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init = {}) => {
+    requestBody = JSON.parse(String(init.body));
+    return response({ follow_up_id: 'follow-up-1', state: 'dismissed' });
+  };
+  try {
+    await dismissFollowUp({ quotationId: 'quotation-1', eligibilityVersion: null, reason: 'other' });
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+  assert.deepEqual(requestBody, {
+    quotation_id: 'quotation-1',
+    eligibility_version: '',
     reason: 'other',
   });
 });

@@ -35,6 +35,7 @@ import {
   calendarDateInSaoPaulo,
   resolveNamedPeriod,
 } from '../../../_shared/calendar-sao-paulo.js';
+import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -821,6 +822,7 @@ async function updateDealForQuotation(
     .from(crmDeals)
     .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, 'Perdido')));
   if (deals.length === 0) return false;
+  let cancelledAt: Date | null = null;
   for (const deal of deals) {
     const previous = asDate(deal.updatedAt, new Date(0));
     const updatedAt = now.getTime() > previous.getTime() ? now : new Date(previous.getTime() + 1);
@@ -828,6 +830,10 @@ async function updateDealForQuotation(
       .update(crmDeals)
       .set({ status: 'Pedido Fechado', updatedAt })
       .where(eq(crmDeals.id, deal.id));
+    cancelledAt = updatedAt;
+  }
+  if (cancelledAt) {
+    await cancelQuotationFollowUpForFact(transaction, quotationId, 'crm_not_eligible', cancelledAt);
   }
   return true;
 }

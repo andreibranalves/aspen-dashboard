@@ -27,6 +27,7 @@ export interface QuotationFollowUpModule {
   list(input?: { view?: FollowUpListView; page?: number; pageSize?: number }): Promise<FollowUpListResult>;
   approve(input: { quotationId: string; eligibilityVersion: string; message: string }): Promise<FollowUpRecord>;
   dismiss(input: { quotationId: string; eligibilityVersion: string; reason: DismissReason }): Promise<FollowUpRecord>;
+  promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<ClaimedFollowUp | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
   completeSent(input: { id: string; leaseToken: string; providerMessageId: string }): Promise<FollowUpRecord | null>;
@@ -51,12 +52,16 @@ export function createQuotationFollowUpModule(dependencies: QuotationFollowUpMod
       return repository.list(input as FollowUpListInput);
     },
     approve(input) {
-      if (!followUpExternalWritesEnabled(env)) throw new ConflictError('Envio de follow-up desativado neste ambiente.');
+      if (!followUpExternalWritesEnabled(env)) throw new ConflictError('Envio automático desativado');
       return repository.approve(input as ApproveInput);
     },
     dismiss(input) {
       if (!DISMISS_REASONS.has(input.reason)) throw new InputError('Motivo de dispensa inválido.');
       return repository.dismiss(input as DismissInput);
+    },
+    promoteDueWaitingToReady(now) {
+      if (!repository.promoteDueWaitingToReady) return Promise.resolve(0);
+      return repository.promoteDueWaitingToReady(now);
     },
     claimApproved(id) {
       return repository.claimApproved(id);

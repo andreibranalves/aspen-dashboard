@@ -26,8 +26,12 @@ function followUp(view, options = {}) {
     delivery_created_at: timestamp,
     first_provider_receipt_at: timestamp,
     due_at: '2026-08-21T12:00:00.000Z',
-    eligibility_version: options.eligibilityVersion || version,
+    eligibility_version: Object.prototype.hasOwnProperty.call(options, 'eligibilityVersion')
+      ? options.eligibilityVersion
+      : version,
     state: options.state || view,
+    reason: options.reason || (view === 'attention' ? 'transport_ambiguous' : view),
+    reason_label: options.reasonLabel || (view === 'attention' ? 'Falha de transporte' : view === 'ready' ? 'Silêncio após o recibo' : 'Aguardando 24h'),
     follow_up_id: options.followUpId || null,
     message_snapshot: null,
     closed_reason: null,
@@ -81,6 +85,7 @@ test('operador alterna filas e aprova ou dispensa follow-ups', async ({ page }) 
 
   await page.getByRole('tab', { name: 'Aguardando 24h' }).click();
   await expect(page.getByText('ORC-WAITING')).toBeVisible();
+  await expect(page.getByText(/vence em/)).toBeVisible();
   await page.getByRole('tab', { name: 'Enviados' }).click();
   await expect(page.getByText('ORC-SENT')).toBeVisible();
   await page.getByRole('tab', { name: 'Dispensados' }).click();
@@ -105,4 +110,43 @@ test('operador alterna filas e aprova ou dispensa follow-ups', async ({ page }) 
   expect(
     new Set(requests.filter(({ method }) => method === 'GET').map(({ view }) => view)),
   ).toEqual(new Set(['ready', 'waiting', 'sent', 'dismissed', 'attention']));
+});
+
+test('prontos mostra uma mensagem específica quando a fila está vazia', async ({ page }) => {
+  await page.route('**/api/follow-ups**', (route) => json(route, list([])));
+  await page.goto('/#/follow-ups');
+  await expect(page.getByText('Nenhum follow-up pronto. Envios recentes ficam em Aguardando 24h.')).toBeVisible();
+});
+
+test('operador pode dispensar aguardando recibo sem versão de elegibilidade', async ({ page }) => {
+  const awaiting = followUp('attention', {
+    number: 'ORC-AWAITING',
+    state: 'awaiting_receipt',
+    eligibilityVersion: null,
+    followUpId: 'follow-up-awaiting',
+    reason: 'awaiting_receipt',
+    reasonLabel: 'Aguardando recibo do WhatsApp',
+  });
+  let patchBody;
+  await page.route('**/api/follow-ups**', (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') {
+      patchBody = request.postDataJSON();
+      return json(route, { follow_up_id: 'follow-up-awaiting', state: 'dismissed' });
+    }
+    return json(route, list([awaiting]));
+  });
+
+  await page.goto('/#/follow-ups');
+  await page.getByRole('tab', { name: 'Atenção' }).click();
+  await expect(page.getByText('ORC-AWAITING')).toBeVisible();
+  await page.getByRole('button', { name: 'Revisar' }).click();
+  await expect(page.getByRole('dialog', { name: /ORC-AWAITING/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Dispensar' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Follow-up dispensado.' })).toBeVisible();
+  expect(patchBody).toEqual({
+    quotation_id: awaiting.quotation_id,
+    eligibility_version: '',
+    reason: 'already_handled',
+  });
 });

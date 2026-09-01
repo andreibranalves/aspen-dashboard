@@ -31,6 +31,7 @@ import {
   type QuotationSectionsSnapshot,
 } from '../../../_modules/quotation-content.js';
 import { canonicalQuotationStatus, type QuotationStatus } from '../../../_modules/quotation-status.js';
+import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -1501,6 +1502,7 @@ export function createPostgresQuoteDraftManagementRepository(
             .update(quotations)
             .set({ clientId: client.id, status: 'rascunho', updatedAt })
             .where(eq(quotations.id, quotation.id));
+          await cancelQuotationFollowUpForFact(tx, quotation.id, 'quotation_not_issued', updatedAt);
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;

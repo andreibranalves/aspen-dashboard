@@ -299,6 +299,11 @@ test('sales order runtime contains no network or rollout dependency', () => {
     const source = readFileSync(path.resolve(relative), 'utf8');
     assert.doesNotMatch(source, /fetch\(|process\.env\./);
   }
+  const writer = readFileSync(
+    path.resolve('api/_infrastructure/db/repositories/sales-orders-repository.ts'),
+    'utf8',
+  );
+  assert.match(writer, /cancelQuotationFollowUpForFact\(transaction, quotationId, 'crm_not_eligible'/);
 });
 
 test(

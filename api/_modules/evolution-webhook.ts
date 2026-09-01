@@ -1,4 +1,5 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { createPostgresQuotationFollowUpRepository } from '../_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { createPostgresWhatsappContactActivityRepository, type WhatsappContactActivityRepository } from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 import { isMachineBearerAuthorized } from '../_shared/machine-auth.js';
 import {
@@ -9,7 +10,6 @@ import {
 } from './quotation-delivery-outbox.js';
 import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
 import type { EvolutionReceiptStatus } from './quotation-delivery-state.js';
-
 export const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
 const RECEIPT_STATUSES: readonly EvolutionReceiptStatus[] = [
@@ -21,12 +21,27 @@ const RECEIPT_STATUSES: readonly EvolutionReceiptStatus[] = [
   'PLAYED',
 ];
 
+interface FollowUpConversationInput {
+  instance: string;
+  providerConversationId: string;
+  providerMessageId: string;
+  fromMe: boolean;
+  occurredAt: Date;
+  identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
+  canonicalPhone: string | null;
+}
+
+type FollowUpConversationRepository = {
+  applyConversationToOpenFollowUps(input: FollowUpConversationInput): Promise<void>;
+};
+
 export interface EvolutionWebhookDependencies {
   deliveryModule?: Pick<QuotationDeliveryModule, 'applyEvolutionEvent'>;
   activityRepository?: Pick<
     WhatsappContactActivityRepository,
     'recordActivity' | 'getHealth' | 'blockIngestion' | 'unblockIngestionIfEvent' | 'markIngestion'
   >;
+  followUpRepository?: FollowUpConversationRepository;
   environment?: {
     EVOLUTION_WEBHOOK_SECRET?: string;
     EVOLUTION_INSTANCE?: string;
@@ -233,6 +248,9 @@ export async function handler(
   if (upsert) {
     const activityRepository =
       dependencies.activityRepository || createPostgresWhatsappContactActivityRepository();
+    const followUpRepository: FollowUpConversationRepository =
+      dependencies.followUpRepository ||
+      (createPostgresQuotationFollowUpRepository() as unknown as FollowUpConversationRepository);
     if (upsert.failureEventKey) {
       await activityRepository.blockIngestion({
         instance: configuredInstance,
@@ -245,7 +263,7 @@ export async function handler(
     }
 
     for (const item of upsert.parsed) {
-      await activityRepository.recordActivity({
+      const conversation: FollowUpConversationInput = {
         instance: configuredInstance,
         providerConversationId: item.remoteJid,
         providerMessageId: item.providerMessageId,
@@ -253,7 +271,9 @@ export async function handler(
         occurredAt: item.occurredAt,
         identityStatus: item.identityStatus,
         canonicalPhone: item.canonicalPhone || null,
-      });
+      };
+      await activityRepository.recordActivity(conversation);
+      await followUpRepository.applyConversationToOpenFollowUps(conversation);
     }
     if (upsert.parsed.length > 0) {
       const latest = upsert.parsed.reduce((current, candidate) => {

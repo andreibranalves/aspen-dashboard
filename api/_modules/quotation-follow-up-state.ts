@@ -35,7 +35,53 @@ export const TEMPORARY_HOLD_REASONS = [
   'external_writes_disabled',
 ] as const;
 
+export const FOLLOW_UP_REASON_LABELS: Record<string, string> = {
+  awaiting_receipt: 'Aguardando recibo do WhatsApp',
+  waiting: 'Aguardando 24h',
+  ready: 'Silêncio após o recibo',
+  held: 'Identidade LID não associada',
+  approved: 'Aprovado, aguardando envio',
+  processing: 'Enviando',
+  sent: 'Follow-up enviado',
+  cancelled: 'Cancelado',
+  dismissed: 'Dispensado',
+  needs_review: 'Envio sem confirmação',
+  failed: 'Falha de transporte',
+  inbound_after_anchor: 'Cliente respondeu',
+  outbound_after_anchor: 'Houve outro envio',
+  newer_delivery_in_flight: 'Novo envio em andamento',
+  missing_provider_receipt: 'Sem recibo de entrega',
+  quotation_not_issued: 'Orçamento não emitido',
+  crm_not_eligible: 'CRM fora de Orçamento Enviado',
+  client_archived: 'Cliente arquivado',
+  identity_unresolved: 'Contato sem telefone confiável',
+  contact_blocked: 'Contato bloqueado',
+  ingestion_blocked: 'Ingestão do WhatsApp bloqueada',
+  unresolved_identity_barrier: 'Identidade LID não associada',
+  external_writes_disabled: 'Envio automático desativado',
+  already_attempted: 'Já houve tentativa',
+  before_tracking_start: 'Anterior ao início do rastreio',
+  delivery_incomplete: 'Entrega incompleta',
+  provider_rejected: 'WhatsApp recusou',
+  rate_limited: 'Limite do WhatsApp',
+  transport_ambiguous: 'Falha de transporte',
+  lease_expired_after_transport: 'Envio sem confirmação',
+  already_handled: 'Já tratado',
+  do_not_contact: 'Não contatar',
+  no_continuity: 'Sem continuidade',
+  wrong_contact: 'Contato incorreto',
+  other: 'Outro',
+};
+
+export function followUpReasonLabel(reason: string): string {
+  return FOLLOW_UP_REASON_LABELS[reason] || reason;
+}
+
 export const FOLLOW_UP_PERSISTED_STATES = [
+  'awaiting_receipt',
+  'waiting',
+  'ready',
+  'held',
   'approved',
   'processing',
   'sent',
@@ -78,7 +124,10 @@ export type FollowUpPersistedState = (typeof FOLLOW_UP_PERSISTED_STATES)[number]
 export type FollowUpTerminalState = (typeof FOLLOW_UP_TERMINAL_STATES)[number];
 export type FollowUpInFlightDeliveryState = (typeof FOLLOW_UP_IN_FLIGHT_DELIVERY_STATES)[number];
 export type FollowUpListView = (typeof FOLLOW_UP_LIST_VIEWS)[number];
-export type FollowUpProjectionState = 'waiting' | 'ready';
+export type FollowUpProjectionState = 'awaiting_receipt' | 'waiting' | 'ready' | 'held';
+
+export type FollowUpReason = keyof typeof FOLLOW_UP_REASON_LABELS;
+
 
 export type FollowUpDeliveryFacts = {
   id: string;
@@ -92,6 +141,7 @@ export type FollowUpCandidateFacts = {
   now: Date;
   trackingStartedAt: Date;
   persistedState: FollowUpPersistedState | null;
+  persistedDueAt?: Date | null;
   latestDelivery: FollowUpDeliveryFacts | null;
   quotationStatus: string;
   crmStatus: string | null;
@@ -104,21 +154,26 @@ export type FollowUpCandidateFacts = {
   outboundAfterAnchor: boolean;
 };
 
+
 export type FollowUpEvaluation =
+  | { kind: 'awaiting_receipt'; reason: 'awaiting_receipt' }
   | { kind: 'waiting'; dueAt: Date; firstProviderReceiptAt: Date }
   | { kind: 'ready'; dueAt: Date; firstProviderReceiptAt: Date }
   | { kind: 'eligible_to_send'; dueAt: Date; firstProviderReceiptAt: Date }
   | { kind: 'absent'; reason: CancellationReason | TemporaryHoldReason }
   | { kind: 'cancel'; reason: CancellationReason }
-  | { kind: 'hold'; reason: TemporaryHoldReason };
+  | { kind: 'hold'; reason: CancellationReason | TemporaryHoldReason };
 
 const TERMINAL = new Set<string>(FOLLOW_UP_TERMINAL_STATES);
 const IN_FLIGHT = new Set<string>(FOLLOW_UP_IN_FLIGHT_DELIVERY_STATES);
 const DISMISS = new Set<string>(DISMISS_REASONS);
 const CANCEL = new Set<string>(CANCELLATION_REASONS);
-
 const ALLOWED_TRANSITIONS: Record<FollowUpPersistedState, readonly FollowUpPersistedState[]> = {
-  approved: ['processing'],
+  awaiting_receipt: ['awaiting_receipt', 'waiting', 'held', 'cancelled', 'dismissed'],
+  waiting: ['waiting', 'ready', 'held', 'cancelled', 'dismissed'],
+  ready: ['ready', 'waiting', 'held', 'cancelled', 'dismissed'],
+  held: ['awaiting_receipt', 'waiting', 'ready', 'held', 'cancelled', 'dismissed'],
+  approved: ['processing', 'cancelled'],
   processing: ['approved', 'sent', 'failed', 'needs_review', 'cancelled'],
   sent: [],
   cancelled: [],
@@ -155,6 +210,18 @@ export function followUpListView(
   }
   return 'attention';
 }
+export function followUpVisibleListView(
+  persistedState: FollowUpPersistedState | null | undefined,
+  evaluation: FollowUpEvaluation,
+): FollowUpListView | null {
+  if (!persistedState) return null;
+  if (evaluation.kind === 'cancel' || evaluation.kind === 'hold') return 'attention';
+  if (evaluation.kind === 'ready') return 'ready';
+  if (evaluation.kind === 'waiting') return 'waiting';
+  if (evaluation.kind === 'awaiting_receipt') return 'attention';
+  return followUpListView(persistedState);
+}
+
 
 export function canTransitionFollowUp(
   from: FollowUpPersistedState,
@@ -239,7 +306,7 @@ function fail(
   persisted: FollowUpPersistedState | null,
   reason: CancellationReason,
 ): FollowUpEvaluation {
-  return persisted === 'approved' || persisted === 'processing'
+  return persisted && persisted !== 'sent' && persisted !== 'dismissed' && persisted !== 'failed' && persisted !== 'needs_review' && persisted !== 'cancelled'
     ? { kind: 'cancel', reason }
     : { kind: 'absent', reason };
 }
@@ -248,7 +315,7 @@ function hold(
   persisted: FollowUpPersistedState | null,
   reason: TemporaryHoldReason,
 ): FollowUpEvaluation {
-  return persisted === 'approved' || persisted === 'processing'
+  return persisted && persisted !== 'sent' && persisted !== 'dismissed' && persisted !== 'failed' && persisted !== 'needs_review' && persisted !== 'cancelled'
     ? { kind: 'hold', reason }
     : { kind: 'absent', reason };
 }
@@ -263,6 +330,46 @@ export function evaluateFollowUp(input: FollowUpCandidateFacts): FollowUpEvaluat
     return fail(input.persistedState, 'before_tracking_start');
   }
 
+  if (input.inboundAfterAnchor) {
+    return fail(input.persistedState, 'inbound_after_anchor');
+  }
+  if (input.unresolvedIdentityBarrier) {
+    return hold(input.persistedState, 'unresolved_identity_barrier');
+  }
+  if (input.outboundAfterAnchor) {
+    return fail(input.persistedState, 'outbound_after_anchor');
+  }
+
+  if (input.quotationStatus !== ELIGIBLE_QUOTATION_STATUS) {
+    return fail(input.persistedState, 'quotation_not_issued');
+  }
+  if (input.crmStatus !== ELIGIBLE_CRM_STATUS) {
+    return fail(input.persistedState, 'crm_not_eligible');
+  }
+  if (input.clientArchived) {
+    return fail(input.persistedState, 'client_archived');
+  }
+  if (input.contactBlocked) {
+    return fail(input.persistedState, 'contact_blocked');
+  }
+  if (input.ingestionBlocked) {
+    return hold(input.persistedState, 'ingestion_blocked');
+  }
+  if (!input.identityResolved && input.persistedState === 'held') {
+    return { kind: 'hold', reason: 'identity_unresolved' };
+  }
+
+  const acceptedWithoutReceipt =
+    delivery.state === 'provider_accepted' ||
+    (delivery.state === 'delivered' && !delivery.firstProviderReceiptAt);
+  if (
+    acceptedWithoutReceipt &&
+    input.persistedState !== 'approved' &&
+    input.persistedState !== 'processing'
+  ) {
+    return { kind: 'awaiting_receipt', reason: 'awaiting_receipt' };
+  }
+
   if (IN_FLIGHT.has(delivery.state)) {
     return fail(input.persistedState, 'newer_delivery_in_flight');
   }
@@ -274,44 +381,12 @@ export function evaluateFollowUp(input: FollowUpCandidateFacts): FollowUpEvaluat
   if (!delivery.firstProviderReceiptAt) {
     return fail(input.persistedState, 'missing_provider_receipt');
   }
-
-  if (input.quotationStatus !== ELIGIBLE_QUOTATION_STATUS) {
-    return fail(input.persistedState, 'quotation_not_issued');
-  }
-
-  if (input.crmStatus !== ELIGIBLE_CRM_STATUS) {
-    return fail(input.persistedState, 'crm_not_eligible');
-  }
-
-  if (input.clientArchived) {
-    return fail(input.persistedState, 'client_archived');
-  }
-
   if (!input.identityResolved) {
     return fail(input.persistedState, 'identity_unresolved');
   }
 
-  if (input.contactBlocked) {
-    return fail(input.persistedState, 'contact_blocked');
-  }
 
-  if (input.ingestionBlocked) {
-    return hold(input.persistedState, 'ingestion_blocked');
-  }
-
-  if (input.unresolvedIdentityBarrier) {
-    return hold(input.persistedState, 'unresolved_identity_barrier');
-  }
-
-  if (input.inboundAfterAnchor) {
-    return fail(input.persistedState, 'inbound_after_anchor');
-  }
-
-  if (input.outboundAfterAnchor) {
-    return fail(input.persistedState, 'outbound_after_anchor');
-  }
-
-  const dueAt = followUpDueAt(delivery.firstProviderReceiptAt);
+  const dueAt = input.persistedDueAt ?? followUpDueAt(delivery.firstProviderReceiptAt);
   if (input.persistedState === 'approved' || input.persistedState === 'processing') {
     return {
       kind: 'eligible_to_send',

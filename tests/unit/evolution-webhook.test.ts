@@ -60,10 +60,14 @@ function event(
 function dependencies() {
   const calls: unknown[] = [];
   const activityCalls: unknown[] = [];
+  const followUpCalls: unknown[] = [];
+  const operationOrder: string[] = [];
   const healthCalls: unknown[] = [];
   return {
     calls,
     activityCalls,
+    followUpCalls,
+    operationOrder,
     healthCalls,
     deliveryModule: {
       applyEvolutionEvent: async (value: unknown) => {
@@ -73,6 +77,7 @@ function dependencies() {
     },
     activityRepository: {
       recordActivity: async (value: unknown) => {
+        operationOrder.push('activity');
         activityCalls.push(value);
       },
       getHealth: async () => null,
@@ -85,6 +90,12 @@ function dependencies() {
       },
       markIngestion: async (value: unknown) => {
         healthCalls.push(['mark', value]);
+      },
+    },
+    followUpRepository: {
+      applyConversationToOpenFollowUps: async (value: unknown) => {
+        operationOrder.push('follow-up');
+        followUpCalls.push(value);
       },
     },
     environment: {
@@ -112,6 +123,57 @@ function responseFixture() {
     },
   };
 }
+
+test('webhook projects UPSERT activity after recording it', async () => {
+  const deps = dependencies();
+  const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(deps.operationOrder, ['activity', 'follow-up']);
+  assert.deepEqual(deps.followUpCalls, [
+    {
+      instance,
+      providerConversationId: '5511999990000@s.whatsapp.net',
+      providerMessageId: 'inbound-message-1',
+      fromMe: false,
+      occurredAt: new Date('2023-11-14T22:13:20.000Z'),
+      identityStatus: 'derived',
+      canonicalPhone: '5511999990000',
+    },
+  ]);
+});
+test('webhook forwards an unresolved LID without deriving a phone', async () => {
+  const deps = dependencies();
+  const result = await webhook(
+    event(
+      authorization,
+      upsertPayload(
+        upsertItem({
+          key: {
+            id: 'lid-message-1',
+            remoteJid: '183792384719283741@lid',
+            fromMe: false,
+          },
+        }),
+      ),
+    ),
+    deps,
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(deps.followUpCalls, [
+    {
+      instance,
+      providerConversationId: '183792384719283741@lid',
+      providerMessageId: 'lid-message-1',
+      fromMe: false,
+      occurredAt: new Date('2023-11-14T22:13:20.000Z'),
+      identityStatus: 'unresolved',
+      canonicalPhone: null,
+    },
+  ]);
+});
+
 
 test('webhook rejects missing secret and accepts duplicate known event neutrally', async () => {
   const deps = dependencies();

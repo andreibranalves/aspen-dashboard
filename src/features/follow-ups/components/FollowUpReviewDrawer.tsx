@@ -28,6 +28,8 @@ const DISMISS_OPTIONS: Array<{ value: DismissReason; label: string }> = [
 const STATE_LABELS: Record<string, string> = {
   ready: 'Pronto',
   waiting: 'Aguardando 24h',
+  awaiting_receipt: 'Atenção',
+  held: 'Atenção',
   approved: 'Aprovado',
   processing: 'Processando',
   sent: 'Enviado',
@@ -43,7 +45,8 @@ function defaultMessage(followUp: FollowUpView): string {
 }
 
 
-function formatDate(value: string): string {
+function formatDate(value: string | null): string {
+  if (!value) return 'Sem recibo';
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? 'Data indisponível'
@@ -64,7 +67,11 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
   const [pending, setPending] = useState<'approve' | 'dismiss' | null>(null);
 
   const canApprove = followUp?.state === 'ready';
-  const canDismiss = followUp?.state === 'ready' || followUp?.state === 'waiting';
+  const canDismiss =
+    followUp?.state === 'ready' ||
+    followUp?.state === 'waiting' ||
+    followUp?.state === 'held' ||
+    followUp?.state === 'awaiting_receipt';
   const currentMessage = message;
 
   useEffect(() => {
@@ -77,7 +84,7 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
     try {
       await approveFollowUp({
         quotationId: followUp.quotationId,
-        eligibilityVersion: followUp.eligibilityVersion,
+        eligibilityVersion: followUp.eligibilityVersion!,
         message: currentMessage,
       });
       toast('Follow-up aprovado.');
@@ -96,7 +103,7 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
     try {
       await dismissFollowUp({
         quotationId: followUp.quotationId,
-        eligibilityVersion: followUp.eligibilityVersion,
+        eligibilityVersion: followUp.eligibilityVersion || '',
         reason,
       });
       toast('Follow-up dispensado.');
@@ -150,6 +157,14 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
             <div>
               <dt className="text-xs text-fg-muted">Valor</dt>
               <dd className="font-medium text-fg">R$ {followUp.amount}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-fg-muted">Destino</dt>
+              <dd className="font-medium text-fg">{followUp.canonicalPhone || 'Telefone indisponível'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-fg-muted">Motivo</dt>
+              <dd className="font-medium text-fg">{followUp.reasonLabel}</dd>
             </div>
             <div>
               <dt className="text-xs text-fg-muted">Recibo do provedor</dt>

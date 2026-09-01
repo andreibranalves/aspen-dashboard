@@ -10,6 +10,8 @@ import {
   evaluateFollowUp,
   followUpDueAt,
   followUpListView,
+  followUpReasonLabel,
+  followUpVisibleListView,
   isDismissReason,
   isFollowUpReady,
   normalizeWhatsappOutboundText,
@@ -62,6 +64,143 @@ test('due date is exactly 24 hours and becomes ready at the boundary', () => {
   assert.equal(ready.kind, 'ready');
 });
 
+test('visible list view promotes persisted waiting to ready without mutation', () => {
+  const ready = evaluateFollowUp(facts());
+  assert.equal(followUpVisibleListView('waiting', ready), 'ready');
+  assert.equal(followUpVisibleListView('ready', ready), 'ready');
+  assert.equal(followUpVisibleListView('held', ready), 'ready');
+  const waiting = evaluateFollowUp(facts({ now: new Date(receiptAt.getTime() + FOLLOW_UP_WAIT_MS - 1) }));
+  assert.equal(followUpVisibleListView('waiting', waiting), 'waiting');
+  assert.equal(followUpVisibleListView(null, { kind: 'awaiting_receipt', reason: 'awaiting_receipt' }), null);
+});
+test('open candidates cancel or hold when conversation facts arrive', () => {
+  const openStates = ['awaiting_receipt', 'waiting', 'ready', 'held'] as const;
+  for (const persistedState of openStates) {
+    assert.deepEqual(
+      evaluateFollowUp(facts({ persistedState, inboundAfterAnchor: true })),
+      { kind: 'cancel', reason: 'inbound_after_anchor' },
+    );
+    assert.deepEqual(
+      evaluateFollowUp(facts({ persistedState, unresolvedIdentityBarrier: true })),
+      { kind: 'hold', reason: 'unresolved_identity_barrier' },
+    );
+    assert.equal(
+      followUpVisibleListView(persistedState, { kind: 'cancel', reason: 'inbound_after_anchor' }),
+      'attention',
+    );
+  }
+  assert.deepEqual(
+    evaluateFollowUp(facts({
+      persistedState: 'waiting',
+      inboundAfterAnchor: true,
+      unresolvedIdentityBarrier: true,
+    })),
+    { kind: 'cancel', reason: 'inbound_after_anchor' },
+  );
+  assert.deepEqual(
+    evaluateFollowUp(facts({
+      persistedState: 'waiting',
+      identityResolved: false,
+      inboundAfterAnchor: true,
+    })),
+    { kind: 'cancel', reason: 'inbound_after_anchor' },
+  );
+  const awaitingDelivery = {
+    id: 'delivery-awaiting',
+    state: 'provider_accepted',
+    completionSource: null,
+    createdAt: new Date('2026-08-31T11:00:00.000Z'),
+    firstProviderReceiptAt: null,
+  } as const;
+  assert.deepEqual(
+    evaluateFollowUp(facts({
+      persistedState: 'awaiting_receipt',
+      latestDelivery: awaitingDelivery,
+      inboundAfterAnchor: true,
+    })),
+    { kind: 'cancel', reason: 'inbound_after_anchor' },
+  );
+  assert.deepEqual(
+    evaluateFollowUp(facts({
+      persistedState: 'awaiting_receipt',
+      latestDelivery: awaitingDelivery,
+      unresolvedIdentityBarrier: true,
+    })),
+    { kind: 'hold', reason: 'unresolved_identity_barrier' },
+  );
+  assert.deepEqual(
+    evaluateFollowUp(facts({
+      persistedState: 'awaiting_receipt',
+      latestDelivery: awaitingDelivery,
+      ingestionBlocked: true,
+    })),
+    { kind: 'hold', reason: 'ingestion_blocked' },
+  );
+  assert.deepEqual(
+    evaluateFollowUp(facts({
+      persistedState: 'awaiting_receipt',
+      latestDelivery: awaitingDelivery,
+      crmStatus: 'Pedido Fechado',
+    })),
+    { kind: 'cancel', reason: 'crm_not_eligible' },
+  );
+  assert.equal(
+    followUpVisibleListView('ready', { kind: 'hold', reason: 'unresolved_identity_barrier' }),
+    'attention',
+  );
+  assert.equal(followUpVisibleListView(null, evaluateFollowUp(facts())), null);
+});
+test('persisted completion due date wins over a stale first-step receipt clock', () => {
+  const firstStepReceiptAt = new Date('2026-08-31T00:00:00.000Z');
+  const completionReceiptAt = new Date('2026-08-31T23:00:00.000Z');
+  const dueAt = followUpDueAt(completionReceiptAt);
+  const result = evaluateFollowUp(facts({
+    now: new Date('2026-09-01T00:00:00.000Z'),
+    persistedState: 'waiting',
+    persistedDueAt: dueAt,
+    latestDelivery: {
+      id: 'delivery-two-step',
+      state: 'delivered',
+      completionSource: 'provider_receipt',
+      createdAt: new Date('2026-08-31T00:00:00.000Z'),
+      firstProviderReceiptAt: firstStepReceiptAt,
+    },
+  }));
+  assert.deepEqual(result, {
+    kind: 'waiting',
+    dueAt,
+    firstProviderReceiptAt: firstStepReceiptAt,
+  });
+});
+
+
+test('accepted delivery without a provider receipt remains visible awaiting receipt', () => {
+  const providerAccepted = evaluateFollowUp(facts({
+    now: receiptAt,
+    latestDelivery: {
+      id: 'delivery-accepted',
+      state: 'provider_accepted',
+      completionSource: null,
+      createdAt: new Date('2026-08-31T11:00:00.000Z'),
+      firstProviderReceiptAt: null,
+    },
+    identityResolved: false,
+  }));
+  assert.deepEqual(providerAccepted, { kind: 'awaiting_receipt', reason: 'awaiting_receipt' });
+
+  const deliveredWithoutReceipt = evaluateFollowUp(facts({
+    now: receiptAt,
+    latestDelivery: {
+      id: 'delivery-delivered',
+      state: 'delivered',
+      completionSource: 'provider_receipt',
+      createdAt: new Date('2026-08-31T11:00:00.000Z'),
+      firstProviderReceiptAt: null,
+    },
+  }));
+  assert.deepEqual(deliveredWithoutReceipt, { kind: 'awaiting_receipt', reason: 'awaiting_receipt' });
+});
+
 test('each cancellation reason hides an unapproved candidate', () => {
   const cases: Array<[Partial<FollowUpCandidateFacts>, string]> = [
     [{ latestDelivery: null }, 'before_tracking_start'],
@@ -109,10 +248,14 @@ test('each cancellation reason hides an unapproved candidate', () => {
     [{ inboundAfterAnchor: true }, 'inbound_after_anchor'],
     [{ outboundAfterAnchor: true }, 'outbound_after_anchor'],
   ];
-
   for (const [override, reason] of cases) {
     const result = evaluateFollowUp(facts(override));
-    assert.deepEqual(result, { kind: 'absent', reason });
+    assert.deepEqual(
+      result,
+      reason === 'missing_provider_receipt'
+        ? { kind: 'awaiting_receipt', reason: 'awaiting_receipt' }
+        : { kind: 'absent', reason },
+    );
   }
 });
 
@@ -150,7 +293,12 @@ test('terminal attempts stay terminal and cannot return to sendable states', () 
     reason: 'already_attempted',
   });
   assert.equal(canTransitionFollowUp('approved', 'processing'), true);
+  assert.equal(canTransitionFollowUp('approved', 'cancelled'), true);
+  assert.equal(canTransitionFollowUp('processing', 'cancelled'), true);
   assert.equal(canTransitionFollowUp('processing', 'sent'), true);
+  assert.equal(followUpReasonLabel('sent'), 'Follow-up enviado');
+  assert.equal(followUpReasonLabel('processing'), 'Enviando');
+  assert.equal(followUpReasonLabel('approved'), 'Aprovado, aguardando envio');
   assert.equal(canTransitionFollowUp('processing', 'approved'), true);
   assert.equal(canTransitionFollowUp('processing', 'needs_review'), true);
   assert.equal(canTransitionFollowUp('sent', 'approved'), false);
@@ -158,7 +306,7 @@ test('terminal attempts stay terminal and cannot return to sendable states', () 
   assert.equal(canTransitionFollowUp('needs_review', 'approved'), false);
   assert.equal(canTransitionFollowUp('dismissed', 'approved'), false);
   assert.equal(followUpListView('ready'), 'ready');
-  assert.equal(followUpListView('approved'), 'attention');
+  assert.equal(followUpListView('awaiting_receipt'), 'attention');
   assert.equal(followUpListView('needs_review'), 'attention');
   assert.equal(isDismissReason('do_not_contact'), true);
   assert.equal(isDismissReason('spam'), false);

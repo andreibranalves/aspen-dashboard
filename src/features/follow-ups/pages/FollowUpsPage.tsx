@@ -26,6 +26,8 @@ const TABS: Array<{ view: FollowUpListView; label: string }> = [
 const STATE_LABELS: Record<string, string> = {
   ready: 'Pronto',
   waiting: 'Aguardando 24h',
+  awaiting_receipt: 'Atenção',
+  held: 'Atenção',
   approved: 'Aprovado',
   processing: 'Processando',
   sent: 'Enviado',
@@ -35,17 +37,28 @@ const STATE_LABELS: Record<string, string> = {
   failed: 'Falhou',
 };
 
-function formatDate(value: string): string {
+function formatDate(value: string | null): string {
+  if (!value) return 'Sem recibo';
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? 'Data indisponível'
     : new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
+const EMPTY_DESCRIPTIONS: Record<FollowUpListView, string> = {
+  ready: 'Nenhum follow-up pronto. Envios recentes ficam em Aguardando 24h.',
+  waiting: 'Nenhum envio no prazo de 24h.',
+  attention: 'Nada exige atenção. Cliente que já respondeu também aparece aqui.',
+  sent: 'Nenhum item nesta lista.',
+  dismissed: 'Nenhum item nesta lista.',
+};
+
 function toneForState(value: string): string {
   if (value === 'ready' || value === 'sent' || value === 'approved') return 'tone-success-soft';
   if (value === 'waiting' || value === 'processing') return 'tone-warning-soft';
-  if (value === 'failed' || value === 'needs_review') return 'tone-destructive-soft';
+  if (value === 'failed' || value === 'needs_review' || value === 'awaiting_receipt' || value === 'held' || value === 'cancelled') {
+    return 'tone-destructive-soft';
+  }
   return 'tone-neutral-muted';
 }
 
@@ -129,12 +142,12 @@ export default function FollowUpsPage() {
       )}
 
       {loading ? (
-        <SkeletonTable rows={5} cols={6} />
+        <SkeletonTable rows={5} cols={9} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}
           title="Nenhum follow-up"
-          description="Não há itens nesta fila."
+          description={EMPTY_DESCRIPTIONS[view]}
         />
       ) : (
         <Table>
@@ -142,19 +155,34 @@ export default function FollowUpsPage() {
             <TableRow>
               <TableHead>Orçamento</TableHead>
               <TableHead>Cliente</TableHead>
+              <TableHead>Destino</TableHead>
               <TableHead>Valor</TableHead>
               <TableHead>Recibo</TableHead>
+              <TableHead>Prazo</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Motivo</TableHead>
               <TableHead className="text-right">Ação</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((item) => (
               <TableRow key={`${item.quotationId}-${item.followUpId || item.eligibilityVersion}`}>
-                <TableCell className="font-medium">{item.businessNumber}</TableCell>
+                <TableCell className="font-medium">
+                  <a
+                    href={`#/quotations/${encodeURIComponent(item.quotationId)}`}
+                    className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Abrir orçamento ${item.businessNumber}`}
+                  >
+                    {item.businessNumber}
+                  </a>
+                </TableCell>
                 <TableCell>{item.clientName}</TableCell>
+                <TableCell>{item.canonicalPhone || 'Telefone indisponível'}</TableCell>
                 <TableCell>{formatAmount(item.amount)}</TableCell>
                 <TableCell>{formatDate(item.firstProviderReceiptAt)}</TableCell>
+                <TableCell>
+                  {item.state === 'waiting' && item.dueAt ? `vence em ${formatDate(item.dueAt)}` : '—'}
+                </TableCell>
                 <TableCell>
                   <StatusBadge
                     status={item.state}
@@ -162,6 +190,7 @@ export default function FollowUpsPage() {
                     className={toneForState(item.state)}
                   />
                 </TableCell>
+                <TableCell>{item.reasonLabel}</TableCell>
                 <TableCell className="text-right">
                   <Button type="button" variant="outline" size="sm" onClick={() => setSelected(item)}>
                     Revisar
