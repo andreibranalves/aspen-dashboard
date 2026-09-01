@@ -943,22 +943,10 @@ export function createQuotationDeliveryModule(
         revisionId: aggregate.revisionId,
         phone: aggregate.phone,
         providerConversationId: event.remoteJid || `${aggregate.phone}@s.whatsapp.net`,
-        allStepsDelivered: aggregate.state === 'delivered',
+        allStepsDelivered:
+          aggregate.state === 'delivered' && aggregate.completionSource === 'provider_receipt',
         receivedAt,
       });
-      if (activityRepository && event.remoteJid) {
-        const remoteJid = event.remoteJid.trim();
-        const numericJid = /^([0-9]+)@(?:s\.whatsapp\.net|c\.us)$/i.exec(remoteJid);
-        await activityRepository.recordActivity({
-          instance: event.instance,
-          providerConversationId: remoteJid,
-          providerMessageId: event.providerMessageId,
-          fromMe: true,
-          occurredAt: receivedAt,
-          identityStatus: numericJid ? 'derived' : 'unresolved',
-          canonicalPhone: numericJid?.[1] || null,
-        });
-      }
     }
     return aggregate;
   }

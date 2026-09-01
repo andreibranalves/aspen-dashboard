@@ -162,7 +162,7 @@ export type FollowUpEvaluation =
   | { kind: 'eligible_to_send'; dueAt: Date; firstProviderReceiptAt: Date }
   | { kind: 'absent'; reason: CancellationReason | TemporaryHoldReason }
   | { kind: 'cancel'; reason: CancellationReason }
-  | { kind: 'hold'; reason: TemporaryHoldReason };
+  | { kind: 'hold'; reason: CancellationReason | TemporaryHoldReason };
 
 const TERMINAL = new Set<string>(FOLLOW_UP_TERMINAL_STATES);
 const IN_FLIGHT = new Set<string>(FOLLOW_UP_IN_FLIGHT_DELIVERY_STATES);
@@ -355,6 +355,9 @@ export function evaluateFollowUp(input: FollowUpCandidateFacts): FollowUpEvaluat
   if (input.ingestionBlocked) {
     return hold(input.persistedState, 'ingestion_blocked');
   }
+  if (!input.identityResolved && input.persistedState === 'held') {
+    return { kind: 'hold', reason: 'identity_unresolved' };
+  }
 
   const acceptedWithoutReceipt =
     delivery.state === 'provider_accepted' ||
@@ -378,10 +381,10 @@ export function evaluateFollowUp(input: FollowUpCandidateFacts): FollowUpEvaluat
   if (!delivery.firstProviderReceiptAt) {
     return fail(input.persistedState, 'missing_provider_receipt');
   }
-
   if (!input.identityResolved) {
     return fail(input.persistedState, 'identity_unresolved');
   }
+
 
   const dueAt = input.persistedDueAt ?? followUpDueAt(delivery.firstProviderReceiptAt);
   if (input.persistedState === 'approved' || input.persistedState === 'processing') {

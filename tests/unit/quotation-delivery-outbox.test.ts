@@ -378,6 +378,9 @@ class FakeRepository {
       if (state === 'read') view.readAt ||= now;
       view.updatedAt = now;
       this.sync(row);
+      if (row.aggregate.state === 'delivered' && row.aggregate.completionSource !== 'operator') {
+        row.aggregate.completionSource = 'provider_receipt';
+      }
       return this.clone(row);
     }
     return null;
@@ -508,6 +511,7 @@ function dependencies(
       input: { phone: string; step: FrozenDeliveryStep; document?: unknown; image?: unknown }
     ) => Promise<{ accepted: true; providerMessageId: string }>;
     followUpUpserts?: Array<Record<string, string>>;
+    followUpReceiptUpserts?: Array<Record<string, unknown>>;
     activities?: Array<Record<string, unknown>>;
     sleep?: (delayMs: number) => Promise<void>;
     rejectFollowUpUpsert?: boolean;
@@ -520,11 +524,14 @@ function dependencies(
       failAfterAcceptedPersistence: options.failAfterAcceptedPersistence,
     });
   const transport = options.transport || new FakeTransport();
-  const followUpRepository = options.followUpUpserts || options.rejectFollowUpUpsert
+  const followUpRepository = options.followUpUpserts || options.followUpReceiptUpserts || options.rejectFollowUpUpsert
     ? {
         upsertAwaitingReceiptFromAcceptedDelivery: async (input: Record<string, string>) => {
           if (options.rejectFollowUpUpsert) throw new Error('follow-up db unavailable');
           options.followUpUpserts?.push(input);
+        },
+        upsertFromDeliveryReceipt: async (input: Record<string, unknown>) => {
+          options.followUpReceiptUpserts?.push(input);
         },
       }
     : undefined;
@@ -921,8 +928,11 @@ test('duplicate process calls share one in-flight attempt', async () => {
   assert.equal(b?.state, 'provider_accepted');
 });
 
-test('receipt aggregation is monotonic and unknown provider IDs are neutral', async () => {
-  const { module, transport } = dependencies();
+test('receipt aggregation is monotonic and does not replace outbound activity', async () => {
+  const activities: Array<Record<string, unknown>> = [];
+  const followUpUpserts: Array<Record<string, string>> = [];
+  const followUpReceiptUpserts: Array<Record<string, unknown>> = [];
+  const { module, transport } = dependencies({ activities, followUpUpserts, followUpReceiptUpserts });
   const accepted = await module.enqueue({ ...identity, flowId: 'receipts' });
   const first = await module.applyEvolutionEvent({
     instance: 'test-instance',
@@ -953,6 +963,11 @@ test('receipt aggregation is monotonic and unknown provider IDs are neutral', as
   });
   assert.equal(second?.state, 'delivered');
   assert.equal(transport.calls.length, 2);
+  assert.equal(activities.length, 1);
+  assert.deepEqual(
+    followUpReceiptUpserts.map((input) => input.allStepsDelivered),
+    [false, true],
+  );
   assert.equal(
     await module.applyEvolutionEvent({
       instance: 'test-instance',
@@ -963,6 +978,25 @@ test('receipt aggregation is monotonic and unknown provider IDs are neutral', as
     null
   );
   assert.equal(accepted.steps.length, 2);
+});
+
+test('operator completion plus one provider receipt does not start the follow-up clock', async () => {
+  const followUpUpserts: Array<Record<string, string>> = [];
+  const followUpReceiptUpserts: Array<Record<string, unknown>> = [];
+  const { module, repository } = dependencies({ followUpUpserts, followUpReceiptUpserts });
+  const accepted = await module.enqueue({ ...identity, flowId: 'operator-receipt' });
+  const row = repository.rows.get(accepted.id)!;
+  row.aggregate.state = 'delivered';
+  row.aggregate.completionSource = 'operator';
+
+  await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'DELIVERY_ACK',
+  });
+
+  assert.equal(followUpReceiptUpserts[0]?.allStepsDelivered, false);
 });
 
 test('a delayed DELIVERY_ACK resolves a needs_review step without another transport call', async () => {

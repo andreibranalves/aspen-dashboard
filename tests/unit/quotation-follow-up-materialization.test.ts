@@ -44,7 +44,7 @@ test('materialization is an explicit no-op without a tracking cut or instance', 
   assert.equal(executions, 0);
 });
 
-test('commercial cancel updates approved and processing candidates', async () => {
+test('commercial cancel leaves transport-started processing candidates untouched', async () => {
   const queries: unknown[] = [];
   const database: FollowUpFactsDatabase = {
     async execute(query) {
@@ -60,11 +60,13 @@ test('commercial cancel updates approved and processing candidates', async () =>
     new Date('2026-08-31T00:00:00.000Z'),
   );
 
-  assert.equal(queries.length, 1);
-  const text = queryText(queries[0]);
+  assert.equal(queries.length, 3);
+  const text = queries.map(queryText).join('\n');
   assert.match(text, /approved/);
   assert.match(text, /processing/);
+  assert.match(text, /transport_started_at IS NULL/);
   assert.match(text, /crm_not_eligible/);
+  assert.match(text, /quotation-follow-up-commercial-facts/);
 });
 
 test('materialization performs one idempotent insert and never copies provider message ids', async () => {
@@ -90,11 +92,13 @@ test('materialization performs one idempotent insert and never copies provider m
   assert.match(text, /provider_accepted/);
   assert.match(text, /has_accepted_step/);
   assert.match(text, /@lid/);
-  assert.match(text, /identity_unresolved/);
+  assert.match(text, /THEN 'held'/);
+  assert.match(text, /completion_source = 'provider_receipt'/);
+  assert.match(text, /quotation_status IS DISTINCT FROM 'emitido'/);
+  assert.match(text, /client_archived/);
+  assert.match(text, /crm_eligible/);
   assert.match(text, /GROUP BY d\.delivery_id/);
   assert.doesNotMatch(text, /GROUP BY d\.id\b/);
-  assert.doesNotMatch(text, /r\.status = 'emitido'/);
-  assert.doesNotMatch(text, /'processing', 'reconciling', 'retry_scheduled'/);
 });
 
 test('companion SQL matches TS eligibility and is syntactically insertable', () => {
@@ -102,12 +106,16 @@ test('companion SQL matches TS eligibility and is syntactically insertable', () 
     join(dirname(fileURLToPath(import.meta.url)), '../../scripts/materialize-quotation-follow-up-queue.sql'),
     'utf8',
   );
-  assert.match(sql, /has_accepted_step OR l\.delivery_state = 'provider_accepted'/);
-  assert.match(sql, /identity_unresolved/);
+  assert.match(sql, /has_accepted_step\s+OR l\.delivery_state = 'provider_accepted'/);
+  assert.match(sql, /THEN 'held'/);
   assert.match(sql, /l\.phone ILIKE '%@lid'/);
+  assert.match(sql, /completion_source = 'provider_receipt'/);
+  assert.match(sql, /quotation_status IS DISTINCT FROM 'emitido'/);
+  assert.match(sql, /client_archived/);
+  assert.match(sql, /crm_eligible/);
+  assert.match(sql, /quotation-follow-up-commercial-facts/);
   assert.match(sql, /GROUP BY d\.delivery_id/);
   assert.doesNotMatch(sql, /GROUP BY d\.id\b/);
-  assert.doesNotMatch(sql, /'processing', 'reconciling', 'retry_scheduled'/);
   assert.match(sql, /transport_started_at, created_at, updated_at\s*\)\s*SELECT/s);
   assert.doesNotMatch(sql, /markAccepted|delivered_at = now\(\)/i);
 });

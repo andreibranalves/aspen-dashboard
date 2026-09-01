@@ -79,6 +79,23 @@ test('parses snake_case list response into camelCase view model', () => {
   assert.equal(page.data[0].messageSnapshot, null);
 });
 
+test('accepts a LID attention candidate without a canonical phone', () => {
+  const page = parseFollowUpPage({
+    data: [fixture({
+      providerConversationId: 'abc123@lid',
+      canonicalPhone: '',
+      state: 'held',
+      reason: 'identity_unresolved',
+      reasonLabel: 'Contato sem telefone confiável',
+    })],
+    total: 1,
+    page: 1,
+    page_size: 25,
+  });
+  assert.equal(page.data[0].providerConversationId, 'abc123@lid');
+  assert.equal(page.data[0].canonicalPhone, '');
+});
+
 test('keeps newlines in the follow-up message snapshot', () => {
   const page = parseFollowUpPage({
     data: [fixture({ messageSnapshot: 'Olá, Cliente.\n\nPassando para saber.' })],

@@ -53,6 +53,7 @@ test('acceptance recovery can retry a newer delivery over a reopenable cancelled
     source.indexOf('async listAcceptedDeliveriesMissingFollowUp'),
     source.indexOf('async upsertFromDeliveryReceipt'),
   );
+  assert.match(listFn, /f\.state IN \('awaiting_receipt', 'waiting', 'ready', 'held'\)/);
   assert.match(listFn, /f\.state = 'cancelled'/);
   assert.match(listFn, /delivery_incomplete/);
   assert.match(listFn, /missing_provider_receipt/);
@@ -63,6 +64,19 @@ test('acceptance recovery can retry a newer delivery over a reopenable cancelled
     listFn,
     /AND NOT EXISTS \(\s*SELECT 1 FROM quotation_follow_ups f WHERE f\.quotation_id = q\.id\s*\)/,
   );
+});
+
+test('follow-up writers serialize with client archive and protect started transport', () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.ts'),
+    'utf8',
+  );
+  assert.equal((source.match(/FOR UPDATE OF cl/g) || []).length, 2);
+  const activityUpdate = source.slice(
+    source.indexOf('async applyConversationToOpenFollowUps'),
+    source.indexOf('async promoteDueWaitingToReady'),
+  );
+  assert.match(activityUpdate, /state = 'processing' AND f\.transport_started_at IS NULL/);
 });
 
 test('LID without a phone persists as an identity_unresolved attention candidate', () => {
@@ -76,6 +90,7 @@ test('LID without a phone persists as an identity_unresolved attention candidate
   );
   assert.match(upsert, /acceptedLidConversation/);
   assert.match(upsert, /identityUnresolved/);
-  assert.match(upsert, /identity_unresolved/);
+  assert.match(upsert, /THEN 'held'/);
+  assert.match(source, /identity_unresolved/);
   assert.match(source, /OR d\.phone ILIKE '%@lid'/);
 });

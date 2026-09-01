@@ -254,14 +254,20 @@ function projection(
 ): FollowUpProjection {
     const clientName = String(row.client_name);
     const businessNumber = String(row.business_number);
-    const canonicalPhone = digits(row.follow_up_canonical_phone || row.canonical_phone || row.delivery_phone);
-    const conversation = String(row.follow_up_provider_conversation_id || row.activity_conversation_id || row.provider_conversation_id || '').trim() ||
+    const persistedConversation = String(row.follow_up_provider_conversation_id || '').trim();
+    const canonicalPhone = digits(
+        row.follow_up_id != null
+            ? row.follow_up_canonical_phone
+            : row.canonical_phone || (acceptedLidConversation(persistedConversation) ? '' : row.delivery_phone),
+    );
+    const conversation = persistedConversation ||
+        String(row.activity_conversation_id || row.provider_conversation_id || '').trim() ||
         (canonicalPhone ? `${canonicalPhone}@s.whatsapp.net` : '');
     const reason = evaluation && (evaluation.kind === 'cancel' || evaluation.kind === 'hold')
         ? evaluation.reason
         : row.reason == null
-            ? row.closed_reason == null && ['awaiting_receipt', 'waiting', 'ready', 'held'].includes(state)
-                ? state
+            ? row.closed_reason == null && state === 'held' && !canonicalPhone
+                ? 'identity_unresolved'
                 : row.closed_reason == null
                     ? state
                     : String(row.closed_reason)
@@ -476,7 +482,12 @@ function factsSql(started: Date, instance: string): SQL {
   SELECT * FROM latest`;
 }
 function evaluate(row: Record<string, unknown>, now: Date, started: Date): FollowUpEvaluation {
-    const phone = digits(row.follow_up_canonical_phone || row.canonical_phone || row.delivery_phone);
+    const persistedConversation = String(row.follow_up_provider_conversation_id || '').trim();
+    const phone = digits(
+        row.follow_up_id != null
+            ? row.follow_up_canonical_phone
+            : row.canonical_phone || (acceptedLidConversation(persistedConversation) ? '' : row.delivery_phone),
+    );
     const identityResolved = phone.length >= 10 && phone.length <= 15;
     const persisted = row.follow_up_id != null;
     const firstProviderReceiptAt = asDate(persisted ? row.follow_up_first_provider_receipt_at : row.first_provider_receipt_at);
@@ -711,11 +722,13 @@ export function createPostgresQuotationFollowUpRepository(
             try {
                 await getDb().transaction(async (tx) => {
                     const source = Array.from(await tx.execute(sql `
-              SELECT q.id
+              SELECT q.id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0))
               FROM quotation_deliveries d
               JOIN quote_revisions r ON r.id = d.revision_id
               JOIN quotations q ON q.id = r.quotation_id
+              JOIN clients cl ON cl.id = q.client_id
               WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
+              FOR UPDATE OF cl
             `));
                     if (!source.length)
                         throw new RepositoryError();
@@ -733,19 +746,19 @@ export function createPostgresQuotationFollowUpRepository(
                 WHEN cl.arquivado THEN 'cancelled'
                 WHEN q.status IS DISTINCT FROM 'emitido' THEN 'cancelled'
                 WHEN cd.id IS NULL THEN 'cancelled'
-                WHEN ${identityUnresolved} THEN 'cancelled'
+                WHEN ${identityUnresolved} THEN 'held'
                 ELSE 'awaiting_receipt'
               END,
               CASE
                 WHEN cl.arquivado THEN 'client_archived'
                 WHEN q.status IS DISTINCT FROM 'emitido' THEN 'quotation_not_issued'
                 WHEN cd.id IS NULL THEN 'crm_not_eligible'
-                WHEN ${identityUnresolved} THEN 'identity_unresolved'
+                WHEN ${identityUnresolved} THEN NULL
                 ELSE NULL
               END,
               NULL, NULL, NULL, NULL,
               CASE
-                WHEN cl.arquivado OR q.status IS DISTINCT FROM 'emitido' OR cd.id IS NULL OR ${identityUnresolved}
+                WHEN cl.arquivado OR q.status IS DISTINCT FROM 'emitido' OR cd.id IS NULL
                   THEN ${iso(now)}::timestamptz
                 ELSE NULL
               END,
@@ -786,14 +799,14 @@ export function createPostgresQuotationFollowUpRepository(
                 WHEN quotation_follow_ups.delivery_id = EXCLUDED.delivery_id
                   AND quotation_follow_ups.first_provider_receipt_at IS NOT NULL
                   THEN quotation_follow_ups.state
-                WHEN ${identityUnresolved} THEN 'cancelled'
+                WHEN ${identityUnresolved} THEN 'held'
                 ELSE 'awaiting_receipt'
               END,
               closed_reason = CASE
                 WHEN quotation_follow_ups.delivery_id = EXCLUDED.delivery_id
                   AND quotation_follow_ups.first_provider_receipt_at IS NOT NULL
                   THEN quotation_follow_ups.closed_reason
-                WHEN ${identityUnresolved} THEN 'identity_unresolved'
+                WHEN ${identityUnresolved} THEN NULL
                 ELSE NULL
               END,
               first_provider_receipt_at = CASE
@@ -822,7 +835,6 @@ export function createPostgresQuotationFollowUpRepository(
                 WHEN quotation_follow_ups.delivery_id = EXCLUDED.delivery_id
                   AND quotation_follow_ups.first_provider_receipt_at IS NOT NULL
                   THEN quotation_follow_ups.closed_at
-                WHEN ${identityUnresolved} THEN EXCLUDED.closed_at
                 ELSE NULL
               END,
               provider_message_id = CASE
@@ -923,19 +935,21 @@ export function createPostgresQuotationFollowUpRepository(
               OR EXISTS (
                 SELECT 1
                 FROM quotation_follow_ups f
-                LEFT JOIN quotation_deliveries current_delivery ON current_delivery.id = f.delivery_id
+                JOIN quotation_deliveries current_delivery ON current_delivery.id = f.delivery_id
                 WHERE f.quotation_id = q.id
-                  AND f.state = 'cancelled'
-                  AND f.closed_reason IN (
-                    'delivery_incomplete',
-                    'missing_provider_receipt',
-                    'newer_delivery_in_flight'
+                  AND (
+                    f.state IN ('awaiting_receipt', 'waiting', 'ready', 'held')
+                    OR (
+                      f.state = 'cancelled'
+                      AND f.closed_reason IN (
+                        'delivery_incomplete',
+                        'missing_provider_receipt',
+                        'newer_delivery_in_flight'
+                      )
+                    )
                   )
                   AND f.delivery_id IS DISTINCT FROM d.id
-                  AND (
-                    current_delivery.id IS NULL
-                    OR (d.created_at, d.id) > (current_delivery.created_at, current_delivery.id)
-                  )
+                  AND (d.created_at, d.id) > (current_delivery.created_at, current_delivery.id)
               )
             )
           ORDER BY d.created_at ASC
@@ -966,9 +980,15 @@ export function createPostgresQuotationFollowUpRepository(
             const deliveryId = id(input.deliveryId, 'delivery_id');
             const revisionId = id(input.revisionId, 'revision_id');
             const canonicalPhone = acceptedCanonicalPhone(input.phone);
-            if (!canonicalPhone)
+            const lidConversation =
+                acceptedLidConversation(input.providerConversationId) || acceptedLidConversation(input.phone);
+            if (!canonicalPhone && !lidConversation)
                 return;
-            const providerConversationId = String(input.providerConversationId || '').trim() || `${canonicalPhone}@s.whatsapp.net`;
+            const providerConversationId = lidConversation ||
+                String(input.providerConversationId || '').trim() ||
+                `${canonicalPhone}@s.whatsapp.net`;
+            const phoneValue = canonicalPhone || '';
+            const identityUnresolved = !canonicalPhone;
             const receivedAt = requiredDate(input.receivedAt, 'recibo');
             const instance = configuredInstance();
             if (!instance)
@@ -978,6 +998,17 @@ export function createPostgresQuotationFollowUpRepository(
             const now = new Date();
             try {
                 await getDb().transaction(async (tx) => {
+                    const source = Array.from(await tx.execute(sql `
+              SELECT q.id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0))
+              FROM quotation_deliveries d
+              JOIN quote_revisions r ON r.id = d.revision_id
+              JOIN quotations q ON q.id = r.quotation_id
+              JOIN clients cl ON cl.id = q.client_id
+              WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
+              FOR UPDATE OF cl
+            `));
+                    if (!source.length)
+                        throw new RepositoryError();
                     await tx.execute(sql `
             INSERT INTO quotation_follow_ups (
               id, quotation_id, revision_id, delivery_id, instance, provider_conversation_id,
@@ -987,17 +1018,19 @@ export function createPostgresQuotationFollowUpRepository(
             )
             SELECT
               ${randomUUID()}, q.id, r.id, d.id, ${instance}, ${providerConversationId},
-              ${canonicalPhone}, NULL, NULL,
+              ${phoneValue}, NULL, NULL,
               CASE
                 WHEN cl.arquivado THEN 'cancelled'
                 WHEN q.status IS DISTINCT FROM 'emitido' THEN 'cancelled'
                 WHEN cd.id IS NULL THEN 'cancelled'
+                WHEN ${identityUnresolved} THEN 'held'
                 ELSE ${firstReceipt ? 'waiting' : 'awaiting_receipt'}
               END,
               CASE
                 WHEN cl.arquivado THEN 'client_archived'
                 WHEN q.status IS DISTINCT FROM 'emitido' THEN 'quotation_not_issued'
                 WHEN cd.id IS NULL THEN 'crm_not_eligible'
+                WHEN ${identityUnresolved} THEN NULL
                 ELSE NULL
               END,
               ${firstReceipt ? iso(firstReceipt) : null}::timestamptz,
@@ -1160,7 +1193,10 @@ export function createPostgresQuotationFollowUpRepository(
             )
             AND (
               (
-                f.state IN ('awaiting_receipt', 'waiting', 'ready', 'held', 'approved', 'processing')
+                (
+                  f.state IN ('awaiting_receipt', 'waiting', 'ready', 'held', 'approved')
+                  OR (f.state = 'processing' AND f.transport_started_at IS NULL)
+                )
                 AND (
                   f.provider_conversation_id = ${conversation}
                   OR (

@@ -167,7 +167,15 @@ export default function FollowUpsPage() {
           <TableBody>
             {rows.map((item) => (
               <TableRow key={`${item.quotationId}-${item.followUpId || item.eligibilityVersion}`}>
-                <TableCell className="font-medium">{item.businessNumber}</TableCell>
+                <TableCell className="font-medium">
+                  <a
+                    href={`#/quotations/${encodeURIComponent(item.quotationId)}`}
+                    className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Abrir orçamento ${item.businessNumber}`}
+                  >
+                    {item.businessNumber}
+                  </a>
+                </TableCell>
                 <TableCell>{item.clientName}</TableCell>
                 <TableCell>{item.canonicalPhone || 'Telefone indisponível'}</TableCell>
                 <TableCell>{formatAmount(item.amount)}</TableCell>

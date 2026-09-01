@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
 import type { DeliveryAggregate, QuotationDeliveryOutboxRepository } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 
-test('receipt hook upserts only delivery receipts and records the real step activity', async () => {
+test('receipt hook upserts delivery receipts without recording a new outbound activity', async () => {
   const followUpReceipts: unknown[] = [];
   const activities: unknown[] = [];
   let receiptCount = 0;
@@ -17,6 +17,7 @@ test('receipt hook upserts only delivery receipts and records the real step acti
           revisionId: 'revision-1',
           phone: '5511999990000',
           state: receiptCount === 1 ? 'provider_accepted' : 'delivered',
+          completionSource: receiptCount === 1 ? null : 'provider_receipt',
         } as unknown as DeliveryAggregate;
       },
     } as unknown as QuotationDeliveryOutboxRepository,
@@ -63,29 +64,10 @@ test('receipt hook upserts only delivery receipts and records the real step acti
       receivedAt: new Date('2026-08-31T12:00:00.000Z'),
     },
   ]);
-  assert.deepEqual(activities, [
-    {
-      instance: 'instance-test',
-      providerConversationId: '5511999990000@s.whatsapp.net',
-      providerMessageId: 'step-provider-1',
-      fromMe: true,
-      occurredAt: new Date('2026-08-31T12:00:00.000Z'),
-      identityStatus: 'derived',
-      canonicalPhone: '5511999990000',
-    },
-    {
-      instance: 'instance-test',
-      providerConversationId: '5511999990000@s.whatsapp.net',
-      providerMessageId: 'step-provider-2',
-      fromMe: true,
-      occurredAt: new Date('2026-08-31T12:00:00.000Z'),
-      identityStatus: 'derived',
-      canonicalPhone: '5511999990000',
-    },
-  ]);
+  assert.deepEqual(activities, []);
 });
 
-test('receipt activity for a LID never promotes the LID to a canonical phone', async () => {
+test('receipt for a LID reaches the follow-up writer without recording activity', async () => {
   const activities: unknown[] = [];
   const module = createQuotationDeliveryModule({
     repository: {
@@ -94,6 +76,7 @@ test('receipt activity for a LID never promotes the LID to a canonical phone', a
         revisionId: 'revision-1',
         phone: '5511999990000',
         state: 'delivered',
+        completionSource: 'provider_receipt',
       } as unknown as DeliveryAggregate),
     } as unknown as QuotationDeliveryOutboxRepository,
     followUpRepository: {
@@ -114,15 +97,7 @@ test('receipt activity for a LID never promotes the LID to a canonical phone', a
     remoteJid: 'abc123@lid',
   });
 
-  assert.deepEqual(activities[0], {
-    instance: 'instance-test',
-    providerConversationId: 'abc123@lid',
-    providerMessageId: 'step-provider-1',
-    fromMe: true,
-    occurredAt: new Date('2026-08-31T12:00:00.000Z'),
-    identityStatus: 'unresolved',
-    canonicalPhone: null,
-  });
+  assert.deepEqual(activities, []);
 });
 
 test('group receipt updates delivery state without writing a follow-up candidate or activity', async () => {

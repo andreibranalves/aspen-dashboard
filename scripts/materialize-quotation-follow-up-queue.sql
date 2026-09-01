@@ -3,16 +3,27 @@
 -- database, with psql variables tracking_started_at and instance supplied.
 -- This script is not imported by API startup and does not acknowledge delivery.
 
-WITH latest_delivery AS (
+WITH commercial_lock AS (
+  SELECT pg_advisory_xact_lock(hashtextextended('quotation-follow-up-commercial-facts', 0))
+), latest_delivery AS (
   SELECT DISTINCT ON (q.id)
     q.id AS quotation_id,
+    q.status AS quotation_status,
+    cl.arquivado AS client_archived,
+    EXISTS (
+      SELECT 1 FROM crm_deals cd
+      WHERE cd.quotation_id = q.id AND cd.status = 'Orcamento Enviado'
+    ) AS crm_eligible,
     r.id AS revision_id,
     d.id AS delivery_id,
     d.phone,
     d.state AS delivery_state,
+    d.completion_source,
     regexp_replace(d.phone, '[^0-9]', '', 'g') AS canonical_phone
   FROM quotations q
+  CROSS JOIN commercial_lock
   JOIN quote_revisions r ON r.quotation_id = q.id
+  JOIN clients cl ON cl.id = q.client_id
   JOIN quotation_deliveries d ON d.revision_id = r.id
   WHERE d.created_at >= :'tracking_started_at'::timestamptz
     AND d.phone NOT ILIKE '%@g.us'
@@ -44,14 +55,26 @@ WITH latest_delivery AS (
     r.first_receipt_at,
     r.has_accepted_step,
     CASE
-      WHEN l.phone ILIKE '%@lid' THEN 'cancelled'
-      WHEN r.step_count > 0 AND r.incomplete_steps = 0
+      WHEN NOT (
+        r.has_accepted_step
+        OR l.delivery_state = 'provider_accepted'
+        OR (
+          l.completion_source = 'provider_receipt'
+          AND r.step_count > 0
+          AND r.incomplete_steps = 0
+        )
+      ) THEN NULL
+      WHEN l.client_archived THEN 'cancelled'
+      WHEN l.quotation_status IS DISTINCT FROM 'emitido' THEN 'cancelled'
+      WHEN NOT l.crm_eligible THEN 'cancelled'
+      WHEN l.phone ILIKE '%@lid' THEN 'held'
+      WHEN l.completion_source = 'provider_receipt'
+        AND r.step_count > 0 AND r.incomplete_steps = 0
         AND r.first_receipt_at + interval '24 hours' <= now()
         THEN 'ready'
-      WHEN r.step_count > 0 AND r.incomplete_steps = 0 THEN 'waiting'
-      WHEN r.has_accepted_step OR l.delivery_state = 'provider_accepted'
-        THEN 'awaiting_receipt'
-      ELSE NULL
+      WHEN l.completion_source = 'provider_receipt'
+        AND r.step_count > 0 AND r.incomplete_steps = 0 THEN 'waiting'
+      ELSE 'awaiting_receipt'
     END AS candidate_state
   FROM latest_delivery l
   JOIN delivery_receipts r ON r.delivery_id = l.delivery_id
@@ -64,12 +87,20 @@ INSERT INTO quotation_follow_ups (
 )
 SELECT
   gen_random_uuid(), c.quotation_id, c.revision_id, c.delivery_id, :'instance',
-  CASE WHEN c.candidate_state = 'cancelled' THEN btrim(c.phone) ELSE c.canonical_phone || '@s.whatsapp.net' END,
-  CASE WHEN c.candidate_state = 'cancelled' THEN '' ELSE c.canonical_phone END,
+  CASE WHEN c.phone ILIKE '%@lid' THEN btrim(c.phone) ELSE c.canonical_phone || '@s.whatsapp.net' END,
+  CASE WHEN c.phone ILIKE '%@lid' THEN '' ELSE c.canonical_phone END,
   NULL, NULL, c.candidate_state,
-  CASE WHEN c.candidate_state = 'cancelled' THEN 'identity_unresolved' ELSE NULL END,
-  CASE WHEN c.candidate_state IN ('waiting', 'ready') THEN c.first_receipt_at ELSE NULL END,
-  CASE WHEN c.candidate_state IN ('waiting', 'ready') THEN c.first_receipt_at + interval '24 hours' ELSE NULL END,
+  CASE
+    WHEN c.client_archived THEN 'client_archived'
+    WHEN c.quotation_status IS DISTINCT FROM 'emitido' THEN 'quotation_not_issued'
+    WHEN NOT c.crm_eligible THEN 'crm_not_eligible'
+    ELSE NULL
+  END,
+  CASE WHEN c.completion_source = 'provider_receipt'
+    AND c.candidate_state IN ('waiting', 'ready', 'held') THEN c.first_receipt_at ELSE NULL END,
+  CASE WHEN c.completion_source = 'provider_receipt'
+    AND c.candidate_state IN ('waiting', 'ready', 'held') AND c.first_receipt_at IS NOT NULL
+    THEN c.first_receipt_at + interval '24 hours' ELSE NULL END,
   NULL, NULL,
   CASE WHEN c.candidate_state = 'cancelled' THEN now() ELSE NULL END,
   NULL, NULL, NULL, NULL, now(), now()

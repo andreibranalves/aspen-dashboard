@@ -21,6 +21,7 @@ import {
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { ensureFixtureTemplateVersion } from '../fixtures/quotation-revision-seeds.ts';
 import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
+import { materializeQuotationFollowUpQueue } from '../../api/_infrastructure/db/repositories/quotation-follow-up-facts.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 const databaseUrl = resolveDisposableTestDatabaseUrl(process.env);
@@ -110,7 +111,8 @@ test.before(async () => {
     deliveryValues({
       id: ids.resendDelivery,
       phone: '5511888888888',
-      createdAt: new Date('2026-08-03T00:00:00.000Z'),
+      flowId: `flow-${ids.resendDelivery}`,
+      createdAt: new Date('2026-08-01T00:00:00.000Z'),
     }) as never,
   );
   await db.insert(quotationDeliveries).values(deliveryValues() as never);
@@ -154,6 +156,11 @@ test.before(async () => {
     updatedAt: now,
   });
   process.env.EVOLUTION_INSTANCE = instance;
+  await materializeQuotationFollowUpQueue(db, {
+    trackingStartedAt: tracking,
+    instance,
+    now: new Date('2026-08-02T12:00:00.000Z'),
+  });
   process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = tracking.toISOString();
 });
 
@@ -336,6 +343,10 @@ databaseTest('same delivery preserves a partial LID over later numeric acceptanc
 databaseTest('resend resets the receipt clock and the next receipt starts it again', async () => {
   const repository = createPostgresQuotationFollowUpRepository(() => db);
   await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+  await db
+    .update(quotationDeliveries)
+    .set({ createdAt: new Date('2026-08-03T00:00:00.000Z') })
+    .where(eq(quotationDeliveries.id, ids.resendDelivery));
 
   const firstReceiptAt = new Date('2026-08-04T12:00:00.000Z');
   const secondReceiptAt = new Date('2026-08-05T12:00:00.000Z');
@@ -453,6 +464,19 @@ databaseTest('acceptance recovery retries a newer delivery over a reopenable can
     await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.delivery }),
     [],
   );
+  await db
+    .update(quotationFollowUps)
+    .set({ state: 'waiting', closedReason: null, closedAt: null, updatedAt: now })
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(
+    (await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery })).length,
+    1,
+  );
+
+  await db
+    .update(quotationFollowUps)
+    .set({ state: 'cancelled', closedReason: 'delivery_incomplete', closedAt: now, updatedAt: now })
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
 
   await db
     .update(quotationFollowUps)
@@ -482,18 +506,93 @@ databaseTest('LID without a phone appears in attention as identity_unresolved', 
       providerConversationId: quotationFollowUps.providerConversationId,
       closedReason: quotationFollowUps.closedReason,
     })
+    .from(quotationFollowUps);
+  assert.deepEqual(persisted[0], {
+    state: 'held',
+    canonicalPhone: '',
+    providerConversationId: 'abc123@lid',
+    closedReason: null,
+  });
+
+  const attention = await repository.list({ view: 'attention', now });
+  const row = attention.data.find((item) => item.quotationId === ids.quotation);
+  assert.equal(row?.state, 'held');
+  assert.equal(row?.reason, 'identity_unresolved');
+  assert.equal(row?.reasonLabel, 'Contato sem telefone confiável');
+});
+
+databaseTest('receipt keeps a phone-less LID in attention and records its receipt clock', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+
+  const receivedAt = new Date('2026-08-02T23:01:00.000Z');
+  await repository.upsertFromDeliveryReceipt!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: 'abc123@lid',
+    providerConversationId: 'abc123@lid',
+    allStepsDelivered: true,
+    receivedAt,
+  });
+
+  const attention = await repository.list({ view: 'attention', now });
+  const row = attention.data.find((item) => item.quotationId === ids.quotation);
+  assert.equal(row?.state, 'held');
+  assert.equal(row?.canonicalPhone, '');
+  assert.equal(row?.providerConversationId, 'abc123@lid');
+  assert.equal(row?.firstProviderReceiptAt?.toISOString(), receivedAt.toISOString());
+  assert.equal(row?.dueAt?.toISOString(), '2026-08-03T23:01:00.000Z');
+});
+
+databaseTest('materialization preserves LID identity and ignores operator receipt timestamps', async () => {
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+  await db
+    .update(quotationDeliveries)
+    .set({ phone: 'abc123@lid', completionSource: 'operator' })
+    .where(eq(quotationDeliveries.id, ids.resendDelivery));
+  await db.update(clients).set({ arquivado: true }).where(eq(clients.id, ids.client));
+
+  await materializeQuotationFollowUpQueue(db, { trackingStartedAt: tracking, instance, now });
+  let persisted = await db
+    .select({
+      state: quotationFollowUps.state,
+      canonicalPhone: quotationFollowUps.canonicalPhone,
+      providerConversationId: quotationFollowUps.providerConversationId,
+      closedReason: quotationFollowUps.closedReason,
+      firstProviderReceiptAt: quotationFollowUps.firstProviderReceiptAt,
+      dueAt: quotationFollowUps.dueAt,
+    })
     .from(quotationFollowUps)
     .where(eq(quotationFollowUps.quotationId, ids.quotation));
   assert.deepEqual(persisted[0], {
     state: 'cancelled',
     canonicalPhone: '',
     providerConversationId: 'abc123@lid',
-    closedReason: 'identity_unresolved',
+    closedReason: 'client_archived',
+    firstProviderReceiptAt: null,
+    dueAt: null,
   });
 
-  const attention = await repository.list({ view: 'attention', now });
-  const row = attention.data.find((item) => item.quotationId === ids.quotation);
-  assert.equal(row?.state, 'cancelled');
-  assert.equal(row?.reason, 'identity_unresolved');
-  assert.equal(row?.reasonLabel, 'Contato sem telefone confiável');
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+  await db.update(clients).set({ arquivado: false }).where(eq(clients.id, ids.client));
+  await materializeQuotationFollowUpQueue(db, { trackingStartedAt: tracking, instance, now });
+  persisted = await db
+    .select({
+      state: quotationFollowUps.state,
+      canonicalPhone: quotationFollowUps.canonicalPhone,
+      providerConversationId: quotationFollowUps.providerConversationId,
+      closedReason: quotationFollowUps.closedReason,
+      firstProviderReceiptAt: quotationFollowUps.firstProviderReceiptAt,
+      dueAt: quotationFollowUps.dueAt,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.deepEqual(persisted[0], {
+    state: 'held',
+    canonicalPhone: '',
+    providerConversationId: 'abc123@lid',
+    closedReason: null,
+    firstProviderReceiptAt: null,
+    dueAt: null,
+  });
 });

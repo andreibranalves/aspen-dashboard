@@ -177,7 +177,7 @@ function parseFollowUp(value: unknown): FollowUpView {
     amount: text(value.amount, true, 100),
     instance: text(value.instance, true, 120),
     providerConversationId: text(value.provider_conversation_id, true, 255),
-    canonicalPhone: text(value.canonical_phone, true, 255),
+    canonicalPhone: text(value.canonical_phone, false, 255),
     deliveryCreatedAt: timestamp(value.delivery_created_at) as string,
     firstProviderReceiptAt: timestamp(value.first_provider_receipt_at, true),
     dueAt: timestamp(value.due_at, true),
