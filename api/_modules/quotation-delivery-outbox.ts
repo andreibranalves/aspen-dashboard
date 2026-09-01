@@ -1,4 +1,17 @@
 import {
+  createPostgresQuotationDeliveryRepository,
+  type PreparedDeliveryDocument,
+  type PreparedDeliveryImage,
+} from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
+import {
+  createPostgresWhatsappContactActivityRepository,
+  type WhatsappContactActivityRepository,
+} from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
+import {
+  createPostgresQuotationFollowUpRepository,
+  type QuotationFollowUpRepository,
+} from '../_infrastructure/db/repositories/quotation-follow-up-repository.js';
+import {
   createPostgresQuotationDeliveryOutboxRepository,
   type ClaimedDeliveryStep,
   type DeliveryAggregate,
@@ -9,11 +22,6 @@ import {
   type QuotationDeliveryOutboxRepository,
   type ResolveDeliveryInput,
 } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
-import {
-  createPostgresQuotationDeliveryRepository,
-  type PreparedDeliveryDocument,
-  type PreparedDeliveryImage,
-} from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import {
   createDeliveryPlan,
@@ -26,7 +34,8 @@ import {
   type EvolutionAccepted,
   type EvolutionTransportDependencies,
 } from './evolution-transport.js';
-import type { EvolutionReceiptStatus, TransportFailureKind } from './quotation-delivery-state.js';
+import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
+import { type EvolutionReceiptStatus, type TransportFailureKind } from './quotation-delivery-state.js';
 
 export const DELIVERY_LEASE_MS = 90_000;
 export const RECONCILIATION_WAIT_MS = 120_000;
@@ -48,6 +57,15 @@ const FAILURE_KINDS: readonly TransportFailureKind[] = [
   'permanent_pre_transport',
   'ambiguous',
 ];
+
+function isIgnoredRemoteJid(value: string): boolean {
+  const remoteJid = value.trim().toLowerCase();
+  return (
+    remoteJid.endsWith('@g.us') ||
+    remoteJid.endsWith('@broadcast') ||
+    remoteJid === 'status@broadcast'
+  );
+}
 
 const PUBLIC_ERRORS: Record<TransportFailureKind, string> = {
   transient_pre_transport: 'Falha transitória antes do transporte. Tente novamente.',
@@ -99,6 +117,19 @@ export type DeliveryLogger =
 export interface QuotationDeliveryModuleDependencies {
   repository?: QuotationDeliveryOutboxRepository;
   repositoryFactory?: () => QuotationDeliveryOutboxRepository;
+  followUpRepository?: Pick<
+    QuotationFollowUpRepository,
+    | 'upsertAwaitingReceiptFromAcceptedDelivery'
+    | 'upsertFromDeliveryReceipt'
+    | 'listAcceptedDeliveriesMissingFollowUp'
+  >;
+  followUpRepositoryFactory?: () => Pick<
+    QuotationFollowUpRepository,
+    | 'upsertAwaitingReceiptFromAcceptedDelivery'
+    | 'upsertFromDeliveryReceipt'
+    | 'listAcceptedDeliveriesMissingFollowUp'
+  >;
+  activityRepository?: Pick<WhatsappContactActivityRepository, 'recordActivity'>;
   planner?: DeliveryPlanner;
   plan?: DeliveryPlanner;
   createPlan?: DeliveryPlanner;
@@ -163,7 +194,6 @@ class DeliveryStepFailure extends Error {
     this.name = 'DeliveryStepFailure';
   }
 }
-
 interface ProcessResult {
   aggregate: DeliveryAggregate | null;
   claims: number;
@@ -467,6 +497,9 @@ export function createQuotationDeliveryModule(
   dependencies: QuotationDeliveryModuleDependencies = {}
 ): QuotationDeliveryModule {
   const now = dependencies.now || (() => new Date());
+  const instance = String(
+    dependencies.instance || globalThis.process?.env?.EVOLUTION_INSTANCE || ''
+  ).trim();
   const repository =
     dependencies.repository ||
     dependencies.repositoryFactory?.() ||
@@ -475,7 +508,18 @@ export function createQuotationDeliveryModule(
       leaseMs: DELIVERY_LEASE_MS,
       reconciliationMs: RECONCILIATION_WAIT_MS,
     });
-  const configuredPlanner = dependencies.planner || dependencies.plan || dependencies.createPlan;
+  const followUpRepository =
+    dependencies.followUpRepository ||
+    dependencies.followUpRepositoryFactory?.() ||
+    (!dependencies.repository && !dependencies.repositoryFactory
+      ? createPostgresQuotationFollowUpRepository()
+      : undefined);
+  const activityRepository =
+    dependencies.activityRepository ||
+    (!dependencies.repository && !dependencies.repositoryFactory
+      ? createPostgresWhatsappContactActivityRepository()
+      : undefined);
+
   const resolveQuotation =
     dependencies.resolveQuotation ||
     (async (revisionId: string) => {
@@ -487,6 +531,7 @@ export function createQuotationDeliveryModule(
           }
         : null;
     });
+  const configuredPlanner = dependencies.planner || dependencies.plan || dependencies.createPlan;
   const planner: DeliveryPlanner =
     configuredPlanner ||
     (async (input) => {
@@ -631,6 +676,57 @@ export function createQuotationDeliveryModule(
     }
   }
 
+
+  async function retryFollowUpAcceptanceWrites(targetDeliveryId?: string): Promise<void> {
+    const list = followUpRepository?.listAcceptedDeliveriesMissingFollowUp;
+    const upsert = followUpRepository?.upsertAwaitingReceiptFromAcceptedDelivery;
+    if (!list || !upsert) return;
+    try {
+      const missing = await list(targetDeliveryId ? { deliveryId: targetDeliveryId } : {});
+      for (const row of missing) {
+        try {
+          await upsert(row);
+          const canonicalPhone = normalizeWhatsappPhone(row.phone);
+          if (activityRepository && canonicalPhone) {
+            await activityRepository.recordActivity({
+              instance,
+              providerConversationId: `${canonicalPhone}@s.whatsapp.net`,
+              providerMessageId: row.providerMessageId,
+              fromMe: true,
+              occurredAt: now(),
+              identityStatus: 'derived',
+              canonicalPhone,
+            });
+          }
+        } catch {
+          logEvent(
+            logger,
+            {
+              deliveryId: row.deliveryId,
+              stepId: '',
+              state: 'provider_accepted',
+              errorCode: 'FOLLOW_UP_ACCEPTANCE_PERSISTENCE',
+              duration: 0,
+            },
+            'error',
+          );
+        }
+      }
+    } catch {
+      logEvent(
+        logger,
+        {
+          deliveryId: targetDeliveryId || '',
+          stepId: '',
+          state: 'provider_accepted',
+          errorCode: 'FOLLOW_UP_ACCEPTANCE_PERSISTENCE',
+          duration: 0,
+        },
+        'error',
+      );
+    }
+  }
+
   async function processInternal(
     deliveryId: string | undefined,
     maxClaims = Number.POSITIVE_INFINITY,
@@ -639,6 +735,7 @@ export function createQuotationDeliveryModule(
   ): Promise<ProcessResult> {
     let latest: DeliveryAggregate | null = null;
     let claims = 0;
+    await retryFollowUpAcceptanceWrites(deliveryId);
     while (claims < maxClaims) {
       if (Date.now() >= deadline) break;
       const claimed = await repository.claim(deliveryId ? { deliveryId } : {});
@@ -712,6 +809,46 @@ export function createQuotationDeliveryModule(
           leaseToken: claimed.leaseToken,
           providerMessageId: accepted.providerMessageId,
         });
+        const firstAcceptedStep = latest.steps
+          .filter((step) => step.acceptedAt)
+          .sort((left, right) => left.position - right.position)[0];
+        if (
+          firstAcceptedStep?.id === claimed.step.id &&
+          followUpRepository?.upsertAwaitingReceiptFromAcceptedDelivery
+        ) {
+          try {
+            await followUpRepository.upsertAwaitingReceiptFromAcceptedDelivery({
+              deliveryId: claimed.delivery.id,
+              revisionId: claimed.delivery.revisionId,
+              phone: claimed.delivery.phone,
+              providerMessageId: accepted.providerMessageId,
+            });
+            const canonicalPhone = normalizeWhatsappPhone(claimed.delivery.phone);
+            if (activityRepository && canonicalPhone) {
+              await activityRepository.recordActivity({
+                instance,
+                providerConversationId: `${canonicalPhone}@s.whatsapp.net`,
+                providerMessageId: accepted.providerMessageId,
+                fromMe: true,
+                occurredAt: firstAcceptedStep.acceptedAt || now(),
+                identityStatus: 'derived',
+                canonicalPhone,
+              });
+            }
+          } catch {
+            logEvent(
+              logger,
+              {
+                deliveryId: claimed.delivery.id,
+                stepId: claimed.step.id,
+                state: latest.state,
+                errorCode: 'FOLLOW_UP_ACCEPTANCE_PERSISTENCE',
+                duration: durationSince(startedAt),
+              },
+              'error',
+            );
+          }
+        }
         logEvent(logger, {
           deliveryId: claimed.delivery.id,
           stepId: claimed.step.id,
@@ -740,6 +877,7 @@ export function createQuotationDeliveryModule(
       }
     }
 
+    await retryFollowUpAcceptanceWrites(deliveryId);
     if (deliveryId && latest === null) latest = await repository.get(deliveryId);
     else if (deliveryId) latest = (await repository.get(deliveryId)) || latest;
     const cacheDeliveryId = deliveryId || latest?.id;
@@ -789,10 +927,40 @@ export function createQuotationDeliveryModule(
     event: EvolutionMessageEvent
   ): Promise<DeliveryAggregate | null> {
     validateEvent(event, dependencies.instance);
-    return repository.applyReceipt({
+    const aggregate = await repository.applyReceipt({
       providerMessageId: event.providerMessageId,
       status: event.status,
     });
+    if (!aggregate) return null;
+    if (
+      (event.status === 'DELIVERY_ACK' || event.status === 'READ') &&
+      followUpRepository?.upsertFromDeliveryReceipt &&
+      (!event.remoteJid || !isIgnoredRemoteJid(event.remoteJid))
+    ) {
+      const receivedAt = now();
+      await followUpRepository.upsertFromDeliveryReceipt({
+        deliveryId: aggregate.id,
+        revisionId: aggregate.revisionId,
+        phone: aggregate.phone,
+        providerConversationId: event.remoteJid || `${aggregate.phone}@s.whatsapp.net`,
+        allStepsDelivered: aggregate.state === 'delivered',
+        receivedAt,
+      });
+      if (activityRepository && event.remoteJid) {
+        const remoteJid = event.remoteJid.trim();
+        const numericJid = /^([0-9]+)@(?:s\.whatsapp\.net|c\.us)$/i.exec(remoteJid);
+        await activityRepository.recordActivity({
+          instance: event.instance,
+          providerConversationId: remoteJid,
+          providerMessageId: event.providerMessageId,
+          fromMe: true,
+          occurredAt: receivedAt,
+          identityStatus: numericJid ? 'derived' : 'unresolved',
+          canonicalPhone: numericJid?.[1] || null,
+        });
+      }
+    }
+    return aggregate;
   }
 
   async function cancelPending(): Promise<number> {

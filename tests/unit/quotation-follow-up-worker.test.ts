@@ -38,10 +38,15 @@ const enabledEnv = {
   QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED: '1',
 };
 
-test('follow-up worker requires CRON_SECRET and does not send when the kill switch is off', async () => {
+test('follow-up worker requires CRON_SECRET, promotes due rows, and does not send when the kill switch is off', async () => {
   let claimed = 0;
+  let promoted = 0;
   const deps = {
     followUpModule: {
+      promoteDueWaitingToReady: async () => {
+        promoted += 1;
+        return 1;
+      },
       claimApproved: async () => {
         claimed += 1;
         return claim();
@@ -59,6 +64,7 @@ test('follow-up worker requires CRON_SECRET and does not send when the kill swit
   const result = await worker(authorized(), deps);
   assert.equal(result.statusCode, 200);
   assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 0, remaining: false, reaped: 2 });
+  assert.equal(promoted, 1);
   assert.equal(claimed, 0);
 });
 

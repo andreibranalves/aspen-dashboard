@@ -1,14 +1,16 @@
 export type FollowUpListView = 'ready' | 'waiting' | 'sent' | 'dismissed' | 'attention';
 export type FollowUpState =
+  | 'awaiting_receipt'
+  | 'waiting'
+  | 'ready'
+  | 'held'
   | 'approved'
   | 'processing'
   | 'sent'
   | 'cancelled'
   | 'dismissed'
   | 'needs_review'
-  | 'failed'
-  | 'ready'
-  | 'waiting';
+  | 'failed';
 export type DismissReason =
   | 'already_handled'
   | 'do_not_contact'
@@ -27,10 +29,12 @@ export interface FollowUpView {
   providerConversationId: string;
   canonicalPhone: string;
   deliveryCreatedAt: string;
-  firstProviderReceiptAt: string;
-  dueAt: string;
-  eligibilityVersion: string;
+  firstProviderReceiptAt: string | null;
+  dueAt: string | null;
+  eligibilityVersion: string | null;
   state: FollowUpState;
+  reason: string;
+  reasonLabel: string;
   followUpId: string | null;
   messageSnapshot: string | null;
   closedReason: string | null;
@@ -60,7 +64,7 @@ export interface ApproveFollowUpInput {
 
 export interface DismissFollowUpInput {
   quotationId: string;
-  eligibilityVersion: string;
+  eligibilityVersion: string | null;
   reason: DismissReason;
 }
 
@@ -81,6 +85,10 @@ export class FollowUpApiError extends Error {
 
 const VIEWS = ['ready', 'waiting', 'sent', 'dismissed', 'attention'] as const;
 const STATES = [
+  'awaiting_receipt',
+  'waiting',
+  'ready',
+  'held',
   'approved',
   'processing',
   'sent',
@@ -88,8 +96,6 @@ const STATES = [
   'dismissed',
   'needs_review',
   'failed',
-  'ready',
-  'waiting',
 ] as const;
 const REASONS = ['already_handled', 'do_not_contact', 'no_continuity', 'wrong_contact', 'other'] as const;
 const MAX_PAGE_SIZE = 100;
@@ -173,10 +179,14 @@ function parseFollowUp(value: unknown): FollowUpView {
     providerConversationId: text(value.provider_conversation_id, true, 255),
     canonicalPhone: text(value.canonical_phone, true, 255),
     deliveryCreatedAt: timestamp(value.delivery_created_at) as string,
-    firstProviderReceiptAt: timestamp(value.first_provider_receipt_at) as string,
-    dueAt: timestamp(value.due_at) as string,
-    eligibilityVersion: text(value.eligibility_version, true, 128),
+    firstProviderReceiptAt: timestamp(value.first_provider_receipt_at, true),
+    dueAt: timestamp(value.due_at, true),
+    eligibilityVersion: value.eligibility_version === null
+      ? null
+      : text(value.eligibility_version, true, 128),
     state: state(value.state),
+    reason: text(value.reason, true, 100),
+    reasonLabel: text(value.reason_label, true, 255),
     followUpId,
     messageSnapshot,
     closedReason: optionalText(value.closed_reason, 100),
@@ -246,7 +256,7 @@ export async function approveFollowUp(input: ApproveFollowUpInput): Promise<Foll
 
 export async function dismissFollowUp(input: DismissFollowUpInput): Promise<FollowUpMutationResult> {
   const quotationId = identifier(input.quotationId, 'Orçamento');
-  const eligibilityVersion = identifier(input.eligibilityVersion, 'Versão de elegibilidade');
+  const eligibilityVersion = input.eligibilityVersion ? identifier(input.eligibilityVersion, 'Versão de elegibilidade') : '';
   if (!(REASONS as readonly string[]).includes(input.reason)) invalidInput('Motivo inválido.');
   const body = await request<unknown>('/follow-ups', {
     method: 'PATCH',

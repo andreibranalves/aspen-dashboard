@@ -33,7 +33,9 @@ const ids = {
   quotation: randomUUID(),
   revision: randomUUID(),
   delivery: randomUUID(),
+  resendDelivery: randomUUID(),
   step: randomUUID(),
+  secondStep: randomUUID(),
   activity: randomUUID(),
   crm: randomUUID(),
 };
@@ -104,6 +106,13 @@ test.before(async () => {
     createdAt: now,
     updatedAt: now,
   });
+  await db.insert(quotationDeliveries).values(
+    deliveryValues({
+      id: ids.resendDelivery,
+      phone: '5511888888888',
+      createdAt: new Date('2026-08-03T00:00:00.000Z'),
+    }) as never,
+  );
   await db.insert(quotationDeliveries).values(deliveryValues() as never);
   await db.insert(quotationDeliverySteps).values({
     id: ids.step,
@@ -115,6 +124,20 @@ test.before(async () => {
     providerMessageId: `provider-${ids.step}`,
     acceptedAt: new Date('2026-08-02T00:00:00.000Z'),
     deliveredAt: new Date('2026-08-02T00:01:00.000Z'),
+    readAt: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(quotationDeliverySteps).values({
+    id: ids.secondStep,
+    deliveryId: ids.delivery,
+    position: 1,
+    type: 'text',
+    payloadSnapshot: { text: 'y' },
+    state: 'delivered',
+    providerMessageId: `provider-${ids.secondStep}`,
+    acceptedAt: new Date('2026-08-02T23:00:00.000Z'),
+    deliveredAt: new Date('2026-08-02T23:01:00.000Z'),
     readAt: null,
     createdAt: now,
     updatedAt: now,
@@ -139,7 +162,9 @@ test.after(async () => {
   await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
   await db.delete(whatsappContactActivity).where(eq(whatsappContactActivity.instance, instance));
   await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.deliveryId, ids.delivery));
+  await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.deliveryId, ids.resendDelivery));
   await db.delete(quotationDeliveries).where(eq(quotationDeliveries.id, ids.delivery));
+  await db.delete(quotationDeliveries).where(eq(quotationDeliveries.id, ids.resendDelivery));
   await db.delete(crmDeals).where(eq(crmDeals.id, ids.crm));
   await db.delete(quoteRevisions).where(eq(quoteRevisions.id, ids.revision));
   await db.delete(quotations).where(eq(quotations.id, ids.quotation));
@@ -153,6 +178,12 @@ databaseTest('lists waiting then ready, rejects stale approve, claims and reaps 
   const waitingRow = waiting.data.find((row) => row.quotationId === ids.quotation);
   assert.ok(waitingRow);
   assert.equal(waitingRow.state, 'waiting');
+  assert.equal(waitingRow.dueAt?.toISOString(), '2026-08-03T23:01:00.000Z');
+  const beforeCompletionDue = await repository.list({ now: new Date('2026-08-03T00:01:00.000Z') });
+  const stillWaiting = beforeCompletionDue.data.find((row) => row.quotationId === ids.quotation);
+  assert.ok(stillWaiting);
+  assert.equal(stillWaiting.state, 'waiting');
+  assert.equal(stillWaiting.dueAt?.toISOString(), '2026-08-03T23:01:00.000Z');
   const ready = await repository.list({ now });
   const readyRow = ready.data.find((row) => row.quotationId === ids.quotation);
   assert.ok(readyRow);
@@ -197,4 +228,272 @@ databaseTest('lists waiting then ready, rejects stale approve, claims and reaps 
     .set({ leaseUntil: new Date('2026-08-01T00:00:00.000Z') })
     .where(eq(quotationFollowUps.id, reclaimed.followUp.followUpId!));
   assert.equal(await repository.reapExpiredLeases(), 1);
+});
+
+databaseTest('accept upsert creates one awaiting row without copying the delivery provider id', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '55 (11) 99999-9999',
+    providerMessageId: `provider-${ids.step}`,
+  });
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerMessageId: `provider-${ids.step}`,
+  });
+
+  const persisted = await db
+    .select({
+      state: quotationFollowUps.state,
+      canonicalPhone: quotationFollowUps.canonicalPhone,
+      providerConversationId: quotationFollowUps.providerConversationId,
+      eligibilityVersion: quotationFollowUps.eligibilityVersion,
+      messageSnapshot: quotationFollowUps.messageSnapshot,
+      firstProviderReceiptAt: quotationFollowUps.firstProviderReceiptAt,
+      dueAt: quotationFollowUps.dueAt,
+      providerMessageId: quotationFollowUps.providerMessageId,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(persisted.length, 1);
+  assert.deepEqual(persisted[0], {
+    state: 'awaiting_receipt',
+    canonicalPhone: '5511999999999',
+    providerConversationId: '5511999999999@s.whatsapp.net',
+    eligibilityVersion: null,
+    messageSnapshot: null,
+    firstProviderReceiptAt: null,
+    dueAt: null,
+    providerMessageId: null,
+  });
+
+  const beforeGet = persisted.length;
+  const attention = await repository.list({ view: 'attention', now });
+  const afterGet = await db
+    .select({ id: quotationFollowUps.id })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(attention.data[0]?.state, 'awaiting_receipt');
+  assert.equal(attention.data[0]?.firstProviderReceiptAt, null);
+  assert.equal(attention.data[0]?.dueAt, null);
+  assert.equal(attention.data[0]?.reason, 'awaiting_receipt');
+  assert.equal(attention.data[0]?.reasonLabel, 'Aguardando recibo do WhatsApp');
+
+  assert.equal(attention.data[0]?.canonicalPhone, '5511999999999');
+  assert.equal(afterGet.length, beforeGet);
+});
+databaseTest('same delivery preserves a partial LID over later numeric acceptance and receipt', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerMessageId: `provider-${ids.step}`,
+  });
+  await repository.upsertFromDeliveryReceipt!({
+    deliveryId: ids.delivery,
+
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerConversationId: 'abc@lid',
+    allStepsDelivered: false,
+    receivedAt: new Date('2026-08-02T00:01:00.000Z'),
+  });
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerMessageId: `provider-${ids.step}`,
+  });
+  let persisted = await db
+    .select({ providerConversationId: quotationFollowUps.providerConversationId })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(persisted[0]?.providerConversationId, 'abc@lid');
+
+  await repository.upsertFromDeliveryReceipt!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerConversationId: '5511999999999@s.whatsapp.net',
+    allStepsDelivered: false,
+    receivedAt: new Date('2026-08-02T23:01:00.000Z'),
+  });
+  persisted = await db
+    .select({ providerConversationId: quotationFollowUps.providerConversationId })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(persisted[0]?.providerConversationId, 'abc@lid');
+});
+
+databaseTest('resend resets the receipt clock and the next receipt starts it again', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+
+  const firstReceiptAt = new Date('2026-08-04T12:00:00.000Z');
+  const secondReceiptAt = new Date('2026-08-05T12:00:00.000Z');
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerMessageId: `provider-${ids.step}`,
+  });
+  await repository.upsertFromDeliveryReceipt!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerConversationId: '5511999999999@s.whatsapp.net',
+    allStepsDelivered: true,
+    receivedAt: firstReceiptAt,
+  });
+
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.resendDelivery,
+    revisionId: ids.revision,
+    phone: '5511888888888',
+    providerMessageId: 'provider-resend',
+  });
+  let persisted = await db
+    .select({
+      state: quotationFollowUps.state,
+      deliveryId: quotationFollowUps.deliveryId,
+      canonicalPhone: quotationFollowUps.canonicalPhone,
+      firstProviderReceiptAt: quotationFollowUps.firstProviderReceiptAt,
+      dueAt: quotationFollowUps.dueAt,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.deepEqual(persisted[0], {
+    state: 'awaiting_receipt',
+    deliveryId: ids.resendDelivery,
+    canonicalPhone: '5511888888888',
+    firstProviderReceiptAt: null,
+    dueAt: null,
+  });
+
+  await repository.upsertFromDeliveryReceipt!({
+    deliveryId: ids.resendDelivery,
+    revisionId: ids.revision,
+    phone: '5511888888888',
+    providerConversationId: '5511888888888@s.whatsapp.net',
+    allStepsDelivered: true,
+    receivedAt: secondReceiptAt,
+  });
+  persisted = await db
+    .select({
+      state: quotationFollowUps.state,
+      deliveryId: quotationFollowUps.deliveryId,
+      canonicalPhone: quotationFollowUps.canonicalPhone,
+      firstProviderReceiptAt: quotationFollowUps.firstProviderReceiptAt,
+      dueAt: quotationFollowUps.dueAt,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.deepEqual(persisted[0], {
+    state: 'waiting',
+    deliveryId: ids.resendDelivery,
+    canonicalPhone: '5511888888888',
+    firstProviderReceiptAt: secondReceiptAt,
+    dueAt: new Date('2026-08-06T12:00:00.000Z'),
+  });
+});
+
+databaseTest('acceptance recovery retries a newer delivery over a reopenable cancelled row', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+  const resendStepId = randomUUID();
+  await db.insert(quotationDeliverySteps).values({
+    id: resendStepId,
+    deliveryId: ids.resendDelivery,
+    position: 0,
+    type: 'text',
+    payloadSnapshot: { text: 'resend' },
+    state: 'server_ack',
+    providerMessageId: 'provider-resend-accepted',
+    acceptedAt: new Date('2026-08-03T00:00:00.000Z'),
+    deliveredAt: null,
+    readAt: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: '5511999999999',
+    providerMessageId: `provider-${ids.step}`,
+  });
+  await db
+    .update(quotationFollowUps)
+    .set({
+      state: 'cancelled',
+      closedReason: 'delivery_incomplete',
+      closedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+
+  assert.deepEqual(
+    await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery }),
+    [{
+      deliveryId: ids.resendDelivery,
+      revisionId: ids.revision,
+      phone: '5511888888888',
+      providerMessageId: 'provider-resend-accepted',
+    }],
+  );
+  assert.deepEqual(
+    await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.delivery }),
+    [],
+  );
+
+  await db
+    .update(quotationFollowUps)
+    .set({ closedReason: 'crm_not_eligible', updatedAt: now })
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.deepEqual(
+    await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery }),
+    [],
+  );
+});
+
+databaseTest('LID without a phone appears in attention as identity_unresolved', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+
+  await repository.upsertAwaitingReceiptFromAcceptedDelivery!({
+    deliveryId: ids.delivery,
+    revisionId: ids.revision,
+    phone: 'abc123@lid',
+    providerMessageId: `provider-${ids.step}`,
+  });
+
+  const persisted = await db
+    .select({
+      state: quotationFollowUps.state,
+      canonicalPhone: quotationFollowUps.canonicalPhone,
+      providerConversationId: quotationFollowUps.providerConversationId,
+      closedReason: quotationFollowUps.closedReason,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.deepEqual(persisted[0], {
+    state: 'cancelled',
+    canonicalPhone: '',
+    providerConversationId: 'abc123@lid',
+    closedReason: 'identity_unresolved',
+  });
+
+  const attention = await repository.list({ view: 'attention', now });
+  const row = attention.data.find((item) => item.quotationId === ids.quotation);
+  assert.equal(row?.state, 'cancelled');
+  assert.equal(row?.reason, 'identity_unresolved');
+  assert.equal(row?.reasonLabel, 'Contato sem telefone confiável');
 });

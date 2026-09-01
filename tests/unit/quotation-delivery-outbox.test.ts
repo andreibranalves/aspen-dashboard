@@ -507,7 +507,10 @@ function dependencies(
     transportSend?: (
       input: { phone: string; step: FrozenDeliveryStep; document?: unknown; image?: unknown }
     ) => Promise<{ accepted: true; providerMessageId: string }>;
+    followUpUpserts?: Array<Record<string, string>>;
+    activities?: Array<Record<string, unknown>>;
     sleep?: (delayMs: number) => Promise<void>;
+    rejectFollowUpUpsert?: boolean;
   } = {}
 ) {
   const clock = options.clock || { value: new Date(start) };
@@ -517,11 +520,29 @@ function dependencies(
       failAfterAcceptedPersistence: options.failAfterAcceptedPersistence,
     });
   const transport = options.transport || new FakeTransport();
+  const followUpRepository = options.followUpUpserts || options.rejectFollowUpUpsert
+    ? {
+        upsertAwaitingReceiptFromAcceptedDelivery: async (input: Record<string, string>) => {
+          if (options.rejectFollowUpUpsert) throw new Error('follow-up db unavailable');
+          options.followUpUpserts?.push(input);
+        },
+      }
+    : undefined;
   const planner = async () => plan(options.steps);
   const module = createQuotationDeliveryModule({
     repository,
     planner,
     transport: options.transportSend || transport.send.bind(transport),
+    ...(followUpRepository ? { followUpRepository } : {}),
+    ...(options.activities
+      ? {
+          activityRepository: {
+            recordActivity: async (input: Record<string, unknown>) => {
+              options.activities!.push(input);
+            },
+          },
+        }
+      : {}),
     preparePdf:
       options.preparePdf ||
       (async () => ({
@@ -554,6 +575,95 @@ test('enqueue starts immediately and never resends an accepted step', async () =
   const replay = await module.enqueue(identity);
   assert.equal(replay.id, first.id);
   assert.equal(transport.calls.length, 2);
+});
+
+test('accepted first delivery step upserts one follow-up candidate and records numeric outbound activity', async () => {
+  const followUpUpserts: Array<Record<string, string>> = [];
+  const activities: Array<Record<string, unknown>> = [];
+  const { module } = dependencies({
+    steps: [textStep(0), textStep(1)],
+    followUpUpserts,
+    activities,
+  });
+  const delivery = await module.enqueue(identity);
+  assert.equal(delivery.state, 'provider_accepted');
+  assert.equal(followUpUpserts.length, 1);
+  assert.deepEqual(followUpUpserts[0], {
+    deliveryId: delivery.id,
+    revisionId: identity.revisionId,
+    phone: '5511999990000',
+    providerMessageId: 'provider-1',
+  });
+  assert.deepEqual(activities, [
+    {
+      instance: 'test-instance',
+      providerConversationId: '5511999990000@s.whatsapp.net',
+      providerMessageId: 'provider-1',
+      fromMe: true,
+      occurredAt: new Date(start),
+      identityStatus: 'derived',
+      canonicalPhone: '5511999990000',
+    },
+  ]);
+});
+
+test('follow-up persistence failure retries after the accepted step is no longer claimable', async () => {
+  let fail = true;
+  const followUpUpserts: Array<Record<string, string>> = [];
+  const events: DeliveryLogEvent[] = [];
+  const repository = new FakeRepository(() => new Date(start));
+  const followUpRepository = {
+    upsertAwaitingReceiptFromAcceptedDelivery: async (input: Record<string, string>) => {
+      if (fail) throw new Error('follow-up db unavailable');
+      followUpUpserts.push(input);
+    },
+    listAcceptedDeliveriesMissingFollowUp: async () => {
+      const missing: Array<Record<string, string>> = [];
+      for (const row of repository.rows.values()) {
+        const step = row.aggregate.steps.find((candidate) => candidate.acceptedAt);
+        const providerMessageId = step && row.providerIds?.get(step.id);
+        if (!step || !providerMessageId) continue;
+        if (followUpUpserts.some((entry) => entry.deliveryId === row.aggregate.id)) continue;
+        missing.push({
+          deliveryId: row.aggregate.id,
+          revisionId: row.aggregate.revisionId,
+          phone: row.aggregate.phone,
+          providerMessageId,
+        });
+      }
+      return missing;
+    },
+  };
+  const transport = new FakeTransport();
+  const module = createQuotationDeliveryModule({
+    repository,
+    planner: async () => plan([textStep(0)]),
+    transport: transport.send.bind(transport),
+    followUpRepository,
+    logger: (event) => events.push(event),
+    now: () => new Date(start),
+    instance: 'test-instance',
+  });
+
+  const delivery = await module.enqueue(identity);
+  assert.equal(delivery.steps[0]!.state, 'server_ack');
+  assert.equal(transport.calls.length, 1);
+  assert.equal(followUpUpserts.length, 0);
+  assert.equal(
+    events.some((event) => event.errorCode === 'FOLLOW_UP_ACCEPTANCE_PERSISTENCE'),
+    true,
+  );
+
+  fail = false;
+  await module.process(delivery.id);
+  assert.equal(followUpUpserts.length, 1);
+  assert.deepEqual(followUpUpserts[0], {
+    deliveryId: delivery.id,
+    revisionId: identity.revisionId,
+    phone: '5511999990000',
+    providerMessageId: 'provider-1',
+  });
+  assert.equal(transport.calls.length, 1);
 });
 
 test('duplicate enqueue reuses the durable identity without replanning', async () => {

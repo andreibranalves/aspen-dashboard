@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { crmDeals, quoteLeads, quoteRevisions, quotations, salesOrders } from '../schema.js';
+import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 
 export const CRM_PIPELINE = [
   'Novo Lead',
@@ -521,6 +522,8 @@ export async function upsertCrmDealForQuotation(
 
   if (existing) {
     const nextStatus = nextIssuanceStatus(existing.status, statusValue);
+    const status =
+      existing.status === CRM_PRUNE_LOST_STATUS ? existing.status : nextStatus ?? existing.status;
     const updatedAt = strictlyAfter(timestamp, existing.updatedAt);
     const identityPatch = {
       ...(nameValue === undefined ? {} : { nome: requiredName(nameValue) }),
@@ -536,7 +539,6 @@ export async function upsertCrmDealForQuotation(
     if (existing.status === CRM_PRUNE_LOST_STATUS) {
       await database.update(crmDeals).set(identityPatch).where(eq(crmDeals.id, existing.id));
     } else {
-      const status = nextStatus ?? existing.status;
       await database
         .update(crmDeals)
         .set({
@@ -547,6 +549,9 @@ export async function upsertCrmDealForQuotation(
           lostReason: status === CRM_PRUNE_LOST_STATUS ? lostReason || CRM_PRUNE_LOST_REASON : null,
         })
         .where(eq(crmDeals.id, existing.id));
+    }
+    if (status !== CRM_PRUNE_TARGET_STATUS) {
+      await cancelQuotationFollowUpForFact(database, quotationId, 'crm_not_eligible', updatedAt);
     }
     await syncLeadDealLink(database, lead, existing.id, timestamp);
     const updated = await dealWithQuotation(database, existing.id);
@@ -594,6 +599,9 @@ export async function upsertCrmDealForQuotation(
         .limit(1)
     )[0];
   if (!winner) throw new CrmDealRepositoryError();
+  if (winner.status !== CRM_PRUNE_TARGET_STATUS) {
+    await cancelQuotationFollowUpForFact(database, quotationId, 'crm_not_eligible', timestamp);
+  }
   await syncLeadDealLink(database, lead, winner.id, timestamp);
   const saved = await dealWithQuotation(database, winner.id);
   if (!saved) throw new CrmDealRepositoryError();
@@ -696,6 +704,14 @@ export function createPostgresCrmDealRepository(
               updatedAt,
             })
             .where(eq(crmDeals.id, dealId));
+          if (status !== CRM_PRUNE_TARGET_STATUS) {
+            await cancelQuotationFollowUpForFact(
+              transaction,
+              current.quotationId,
+              'crm_not_eligible',
+              updatedAt,
+            );
+          }
           return dealWithQuotation(transaction, dealId);
         });
       } catch (error) {
@@ -820,15 +836,22 @@ export function createPostgresCrmDealRepository(
               skippedDeals.push({ deal_id: dealId, reason });
               continue;
             }
+            const updatedAt = strictlyAfter(nowAt, deal.updatedAt);
             await transaction
               .update(crmDeals)
               .set({
                 status: CRM_PRUNE_LOST_STATUS,
                 lostReason: CRM_PRUNE_LOST_REASON,
                 nextStep: CRM_PRUNE_NEXT_STEP,
-                updatedAt: strictlyAfter(nowAt, deal.updatedAt),
+                updatedAt,
               })
               .where(eq(crmDeals.id, dealId));
+            await cancelQuotationFollowUpForFact(
+              transaction,
+              deal.quotationId,
+              'crm_not_eligible',
+              updatedAt,
+            );
             updated += 1;
           }
           return {

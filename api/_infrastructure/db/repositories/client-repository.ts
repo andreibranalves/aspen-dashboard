@@ -23,6 +23,7 @@ import {
   type ClientRecord,
   type ClientWriteInput,
 } from '../../../_modules/client-schema.js';
+import { cancelClientFollowUpsForArchive } from './quotation-follow-up-facts.js';
 import type { ClientRepository } from '../../../_modules/client-repository.js';
 
 export type {
@@ -380,7 +381,11 @@ export function createPostgresClientRepository(
           .where(eq(clients.id, id))
           .returning();
         if (!row) throw new ClientNotFoundError();
-        return toRecord(row as ClientRow);
+        const updated = toRecord(row as ClientRow);
+        if (!existing.arquivado && updated.arquivado) {
+          await cancelClientFollowUpsForArchive(db, id, new Date(updated.updatedAt));
+        }
+        return updated;
       } catch (error) {
         normalizeError(error);
       }

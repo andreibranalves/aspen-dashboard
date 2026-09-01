@@ -85,7 +85,7 @@ test('POST approve is blocked when the kill switch is off', async () => {
     event('POST', { quotation_id: quotationId, eligibility_version: version, message: 'Olá.' }),
   );
   assert.equal(result.statusCode, 409);
-  assert.match(JSON.parse(result.body || '{}').error, /desativado/);
+  assert.equal(JSON.parse(result.body || '{}').error, 'Envio automático desativado');
 });
 
 test('POST approve publishes after insert and keeps the row if publish fails', async () => {
@@ -117,6 +117,24 @@ test('PATCH dismiss returns dismissed even when writes are off', async () => {
   );
   assert.equal(result.statusCode, 200);
   assert.deepEqual(JSON.parse(result.body || '{}'), { follow_up_id: followUpId, state: 'dismissed' });
+});
+
+test('PATCH dismiss accepts a missing eligibility version for awaiting receipt', async () => {
+  let receivedVersion: string | undefined;
+  const handler = createFollowUpsHandler({
+    followUpModule: module({
+      dismiss: async (input) => {
+        receivedVersion = input.eligibilityVersion;
+        return { ...row(), state: 'dismissed', followUpId, closedReason: 'other' };
+      },
+    }),
+    environment: { QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED: '0' },
+  });
+  const result = await handler(
+    event('PATCH', { quotation_id: quotationId, eligibility_version: null, reason: 'other' }),
+  );
+  assert.equal(result.statusCode, 200);
+  assert.equal(receivedVersion, '');
 });
 
 test('stale eligibility becomes Portuguese 409', async () => {

@@ -22,6 +22,7 @@ import {
 import { appSettings, quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';
 import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
+import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 import {
   assertQuotationTransition,
   canonicalQuotationStatus,
@@ -231,6 +232,9 @@ export function createPostgresQuotationLifecycleRepository(
           const lossReason = status === 'perdido' ? String(input.loss_reason).trim() : null;
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
           await tx.update(quotations).set({ status, lossReason, updatedAt }).where(eq(quotations.id, quotation.id));
+          if (status !== 'emitido') {
+            await cancelQuotationFollowUpForFact(tx, quotation.id, 'quotation_not_issued', updatedAt);
+          }
           let salesOrderId: string | undefined;
           if (status === 'aprovado') {
             try {
@@ -380,6 +384,7 @@ export function createPostgresQuotationLifecycleRepository(
               created_at: createdAt,
             })),
           );
+          await cancelQuotationFollowUpForFact(tx, quotation.id, 'quotation_not_issued', createdAt);
           await tx.update(quotations).set({ status: 'rascunho', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();

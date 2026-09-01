@@ -41,6 +41,8 @@ export interface MemoryClientRepositoryOptions {
   /** Inject time/id generation to make tests deterministic. */
   now?: () => Date;
   idFactory?: () => string;
+  /** Persist dependent commercial projections when a client is archived. */
+  onArchived?: (clientId: string, archivedAt: string) => void | Promise<void>;
 }
 
 function cloneInputRecord(record: ClientRecord): ClientRecord {
@@ -131,10 +133,12 @@ export class MemoryClientRepository implements ClientRepository {
   private readonly records = new Map<string, ClientRecord>();
   private readonly now: () => Date;
   private readonly idFactory: () => string;
+  private readonly onArchived?: (clientId: string, archivedAt: string) => void | Promise<void>;
 
   constructor(options: MemoryClientRepositoryOptions = {}) {
     this.now = options.now || (() => new Date());
     this.idFactory = options.idFactory || randomUUID;
+    this.onArchived = options.onArchived;
     for (const initial of options.initial || []) {
       const record = cloneInputRecord(initial);
       if (this.records.has(record.id)) {
@@ -307,6 +311,9 @@ export class MemoryClientRepository implements ClientRepository {
     else next.archivedAt = null;
 
     this.records.set(id, next);
+    if (!current.arquivado && next.arquivado) {
+      await this.onArchived?.(id, next.archivedAt || next.updatedAt);
+    }
     return cloneClientRecord(next);
   }
 

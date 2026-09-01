@@ -40,6 +40,24 @@ test('0030 SQL is additive and does not rewrite historical objects', () => {
   assert.equal(migrationSql.includes('ON DELETE CASCADE'), false);
 });
 
+test('0031 expands follow-up queue states as a destructive migration', () => {
+  const migrationPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'drizzle',
+    '0031_quotation_follow_up_queue_expand.sql',
+  );
+  const sql = readFileSync(migrationPath, 'utf8');
+  assert.equal(sql.split(/\r?\n/).find((line) => line.trim() !== ''), '-- migration-risk: destructive');
+  assert.match(sql, /ALTER COLUMN "eligibility_version" DROP NOT NULL/);
+  assert.match(sql, /"state" IN \('awaiting_receipt', 'waiting', 'ready', 'held'/);
+  assert.match(sql, /"message_snapshot" IS NULL OR/);
+  assert.doesNotMatch(sql, /closed_reason.*awaiting_receipt/s);
+  assert.match(sql, /DROP CONSTRAINT "quotation_follow_ups_phone_not_blank_check"/);
+  assert.match(sql, /lower\(right\(btrim\("provider_conversation_id"\), 4\)\) = '@lid'/);
+});
+
 test(
   '0030 creates follow-up tables with restrict FKs and partial unique provider id',
   { skip: migrationSkip, concurrency: false },

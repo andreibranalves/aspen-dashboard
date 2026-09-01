@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getTableConfig } from 'drizzle-orm/pg-core';
@@ -32,4 +35,47 @@ test('follow-up schema exposes activity, health, and attempt tables', () => {
     )
   );
   assert.equal(health.columns.length, 7);
+  assert.equal(quotationFollowUps.eligibilityVersion.notNull, false);
+  assert.equal(quotationFollowUps.messageSnapshot.notNull, false);
+  assert.equal(quotationFollowUps.firstProviderReceiptAt.notNull, false);
+  assert.equal(quotationFollowUps.dueAt.notNull, false);
+  assert.ok(
+    followUp.checks.some((check) => check.name === 'quotation_follow_ups_state_check'),
+  );
+});
+
+test('acceptance recovery can retry a newer delivery over a reopenable cancelled row', () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.ts'),
+    'utf8',
+  );
+  const listFn = source.slice(
+    source.indexOf('async listAcceptedDeliveriesMissingFollowUp'),
+    source.indexOf('async upsertFromDeliveryReceipt'),
+  );
+  assert.match(listFn, /f\.state = 'cancelled'/);
+  assert.match(listFn, /delivery_incomplete/);
+  assert.match(listFn, /missing_provider_receipt/);
+  assert.match(listFn, /newer_delivery_in_flight/);
+  assert.match(listFn, /f\.delivery_id IS DISTINCT FROM d\.id/);
+  assert.match(listFn, /\(d\.created_at, d\.id\) > \(current_delivery\.created_at, current_delivery\.id\)/);
+  assert.doesNotMatch(
+    listFn,
+    /AND NOT EXISTS \(\s*SELECT 1 FROM quotation_follow_ups f WHERE f\.quotation_id = q\.id\s*\)/,
+  );
+});
+
+test('LID without a phone persists as an identity_unresolved attention candidate', () => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.ts'),
+    'utf8',
+  );
+  const upsert = source.slice(
+    source.indexOf('async upsertAwaitingReceiptFromAcceptedDelivery'),
+    source.indexOf('async listAcceptedDeliveriesMissingFollowUp'),
+  );
+  assert.match(upsert, /acceptedLidConversation/);
+  assert.match(upsert, /identityUnresolved/);
+  assert.match(upsert, /identity_unresolved/);
+  assert.match(source, /OR d\.phone ILIKE '%@lid'/);
 });

@@ -24,6 +24,7 @@ export interface FollowUpWorkerClaim {
 }
 
 export interface QuotationFollowUpWorkerModule {
+  promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<FollowUpWorkerClaim | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
   completeSent(input: { id: string; leaseToken: string; providerMessageId: string }): Promise<unknown>;
@@ -122,12 +123,14 @@ export async function handler(
   const method = String(event.httpMethod || '').toUpperCase();
   if (method !== 'GET' && method !== 'POST') return json(405, { error: 'Método não permitido.' });
   const environment = dependencies.environment || process.env;
+  const now = dependencies.now || (() => new Date());
   if (!isMachineBearerAuthorized(event.headers, environment.CRON_SECRET)) {
     return json(401, { error: 'Não autorizado.' });
   }
   const module = dependencies.followUpModule || dependencies.module || (createQuotationFollowUpModule() as unknown as QuotationFollowUpWorkerModule);
   try {
     const reaped = await module.reapExpiredLeases(50);
+    if (module.promoteDueWaitingToReady) await module.promoteDueWaitingToReady(now());
     if (!followUpExternalWritesEnabled(environment)) {
       return json(200, { processed: 0, remaining: false, reaped });
     }

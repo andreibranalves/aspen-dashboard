@@ -102,10 +102,12 @@ function publicRecord(record: Record<string, unknown>): Record<string, unknown> 
     provider_conversation_id: record.providerConversationId,
     canonical_phone: record.canonicalPhone,
     delivery_created_at: iso(record.deliveryCreatedAt as Date),
-    first_provider_receipt_at: iso(record.firstProviderReceiptAt as Date),
-    due_at: iso(record.dueAt as Date),
-    eligibility_version: record.eligibilityVersion,
+    first_provider_receipt_at: iso(record.firstProviderReceiptAt as Date | null),
+    due_at: iso(record.dueAt as Date | null),
+    eligibility_version: record.eligibilityVersion ?? null,
     state: record.state,
+    reason: record.reason,
+    reason_label: record.reasonLabel,
     message_snapshot: record.messageSnapshot,
     closed_reason: record.closedReason,
     approved_at: iso(record.approvedAt as Date | null),
@@ -162,14 +164,18 @@ export function createFollowUpsHandler(
 
       const body = bodyObject(event);
       const quotationId = text(body.quotation_id, 'Identificador do orçamento inválido.');
-      const eligibilityVersion = text(body.eligibility_version, 'Versão de elegibilidade inválida.', 64);
-      if (!/^[0-9a-f]{64}$/.test(eligibilityVersion)) {
+      const eligibilityVersion =
+        method === 'PATCH' &&
+        (body.eligibility_version === undefined || body.eligibility_version === null || body.eligibility_version === '')
+          ? ''
+          : text(body.eligibility_version, 'Versão de elegibilidade inválida.', 64);
+      if (eligibilityVersion && !/^[0-9a-f]{64}$/.test(eligibilityVersion)) {
         throw new HandlerInputError('Versão de elegibilidade inválida.');
       }
 
       if (method === 'POST') {
         if (!followUpExternalWritesEnabled(environment)) {
-          return json(409, { error: 'Envio de follow-up desativado neste ambiente.' });
+          return json(409, { error: 'Envio automático desativado' });
         }
         if (Object.keys(body).some((key) => !['quotation_id', 'eligibility_version', 'message'].includes(key))) {
           throw new HandlerInputError('Corpo inválido.');
