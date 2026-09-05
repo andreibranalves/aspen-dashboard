@@ -1283,12 +1283,9 @@ export default function ManualOrcamentoPage() {
 
               {/* ══ 3. Condições ══ */}
               <section aria-label="Condições do orçamento" className="rounded-lg border border-line bg-surface p-5 space-y-4">
-                <div>
-                  <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
-                    <FileText size={18} /> 3. Condições e fechamento
-                  </h2>
-                  <p className="text-sm text-fg-muted mt-1">Defina prazo, urgência e observações antes de salvar ou emitir.</p>
-                </div>
+                <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
+                  <FileText size={18} /> 3. Condições e fechamento
+                </h2>
 
                 {hasZeroPrice && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-500/10 dark:text-red-200 flex items-start gap-2">

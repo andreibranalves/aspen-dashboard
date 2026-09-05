@@ -363,12 +363,10 @@ export default function SplitResultCard({
       </div>
 
       {/* ── Stage 2: extracted values remain editable until creation. ── */}
-      {!isDone && (
+      {!isDone && saved && (
         <div className="border-b border-line bg-primary/5 px-4 py-3">
           <p className="text-xs leading-5 text-fg-muted">
-            {saved
-              ? 'Rascunho salvo. Continue a revisão ou emita o orçamento.'
-              : 'Revise cliente, itens, quantidades e preços antes de salvar ou emitir.'}
+            Rascunho salvo. Continue a revisão ou emita o orçamento.
           </p>
         </div>
       )}
