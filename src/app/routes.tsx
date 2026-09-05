@@ -141,7 +141,7 @@ export const routes: AppRoute[] = [
   {
     path: '/comunicacao',
     suspense: true,
-    render: () => <ComunicacaoPage />,
+    render: ({ navigate }) => <ComunicacaoPage navigate={navigate} />,
     nav: { label: 'Comunicação', icon: Radio, section: 'Outros' },
   },
   {

@@ -19,7 +19,7 @@ import {
   type DeliveryState,
   type DeliveryView,
 } from '@/lib/api/quotationDeliveryApi';
-import { fmtPhone } from '@/lib/formatting/formatters';
+import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
   parseHashPositiveInteger,
@@ -110,15 +110,6 @@ const ACTIVE_STATES: DeliveryState[] = [
   'retry_scheduled',
 ];
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Data indisponível';
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date);
-}
-
 function stateTone(state: DeliveryState): string {
   if (state === 'delivered') return 'tone-success-soft';
   if (state === 'failed' || state === 'needs_review') return 'tone-destructive-soft';
@@ -130,6 +121,13 @@ function formatDeliveryProgress(delivery: DeliveryView): string {
   const { delivered, total } = delivery.progress;
   if (total === 0) return 'Sem etapas';
   return `${delivered} de ${total} ${total === 1 ? 'etapa' : 'etapas'}`;
+}
+
+function completionSourceLabel(delivery: DeliveryView): string {
+  if (delivery.completionSource === 'provider_receipt') return 'Recibo do provedor';
+  if (delivery.completionSource === 'operator') return 'Confirmação do operador';
+  if (delivery.completionSource === 'legacy_provider_ack') return 'Aceite legado do provedor';
+  return '—';
 }
 
 function inclusiveUtcEndOfDay(value: string): string {
@@ -184,51 +182,75 @@ interface DeliveryDetailsProps {
 
 function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps) {
   return (
-    <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-      <QuotationDeliveryStatus
-        delivery={delivery}
-        pending={pending}
-        onResolve={onResolve}
-        className="[&>div:first-child]:hidden"
-      />
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
-          Passos da entrega
-        </h3>
-        <ol className="mt-3 space-y-2" aria-label={`Passos da entrega ${delivery.businessNumber}`}>
-          {delivery.steps.length === 0 && (
-            <li className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-fg-muted">
-              Nenhuma etapa configurada para esta entrega.
-            </li>
-          )}
-          {delivery.steps.map((step, index) => (
-            <li
-              key={step.id}
-              className="flex items-start gap-3 rounded-lg border border-line bg-surface p-3 text-xs"
-            >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-muted font-semibold text-fg-muted">
-                {index + 1}
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-fg">
-                    {step.type === 'quotation_pdf'
-                      ? 'PDF do orçamento'
-                      : step.type === 'quotation_webp'
-                        ? 'Imagem WebP do orçamento'
-                        : step.type === 'media'
-                          ? 'Mídia'
-                          : 'Mensagem'}
-                  </span>
+    <div className="min-w-0 space-y-5">
+      <dl className="grid gap-3 text-xs sm:grid-cols-3">
+        <div className="min-w-0">
+          <dt className="text-fg-muted">Telefone</dt>
+          <dd className="mt-1 truncate font-medium text-fg" title={fmtPhone(delivery.phone) || '—'}>
+            {fmtPhone(delivery.phone) || '—'}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-fg-muted">Fluxo</dt>
+          <dd className="mt-1 truncate font-medium text-fg" title={delivery.flowName || '—'}>
+            {delivery.flowName || '—'}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-fg-muted">Recibo</dt>
+          <dd className="mt-1 font-medium text-fg">{completionSourceLabel(delivery)}</dd>
+        </div>
+      </dl>
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <QuotationDeliveryStatus
+          delivery={delivery}
+          pending={pending}
+          onResolve={onResolve}
+          className="[&>div:first-child]:hidden"
+        />
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+            Passos da entrega
+          </h3>
+          <ol
+            className="mt-3 space-y-2"
+            aria-label={`Passos da entrega ${delivery.businessNumber}`}
+          >
+            {delivery.steps.length === 0 && (
+              <li className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-fg-muted">
+                Nenhuma etapa configurada para esta entrega.
+              </li>
+            )}
+            {delivery.steps.map((step, index) => (
+              <li
+                key={step.id}
+                className="flex items-start gap-3 rounded-lg border border-line bg-surface p-3 text-xs"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-muted font-semibold text-fg-muted">
+                  {index + 1}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-fg">
+                      {step.type === 'quotation_pdf'
+                        ? 'PDF do orçamento'
+                        : step.type === 'quotation_webp'
+                          ? 'Imagem WebP do orçamento'
+                          : step.type === 'media'
+                            ? 'Mídia'
+                            : 'Mensagem'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-fg-muted">
+                    Tentativas: {step.attemptCount} · Atualizado em{' '}
+                    {formatDateTime(step.updatedAt) || '—'}
+                  </p>
+                  {step.publicError && <p className="mt-1 text-destructive">{step.publicError}</p>}
                 </div>
-                <p className="mt-1 text-fg-muted">
-                  Tentativas: {step.attemptCount} · Atualizado em {formatDateTime(step.updatedAt)}
-                </p>
-                {step.publicError && <p className="mt-1 text-destructive">{step.publicError}</p>}
-              </div>
-            </li>
-          ))}
-        </ol>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
     </div>
   );
@@ -575,18 +597,22 @@ export default function WhatsAppDeliveriesPage() {
           <Table
             aria-label="Tabela de entregas WhatsApp"
             aria-busy={loading}
-            className="min-w-[760px]"
+            className="table-fixed min-w-[680px]"
           >
             <TableHeader>
               <TableRow>
-                <TableHead scope="col">Orçamento</TableHead>
-                <TableHead scope="col">Cliente</TableHead>
-                <TableHead scope="col">Telefone</TableHead>
-                <TableHead scope="col">Fluxo</TableHead>
-                <TableHead scope="col" className="whitespace-nowrap">Passos</TableHead>
-                <TableHead scope="col">Estado</TableHead>
-                <TableHead scope="col" className="whitespace-nowrap">Atualização</TableHead>
-                <TableHead scope="col">Ação</TableHead>
+                <TableHead scope="col" className="w-[38%]">
+                  Orçamento
+                </TableHead>
+                <TableHead scope="col" className="w-[26%]">
+                  Estado
+                </TableHead>
+                <TableHead scope="col" className="w-[18%] whitespace-nowrap">
+                  Atualização
+                </TableHead>
+                <TableHead scope="col" className="w-[18%]">
+                  Ação
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -598,23 +624,23 @@ export default function WhatsAppDeliveriesPage() {
                 return (
                   <Fragment key={delivery.id}>
                     <TableRow>
-                      <TableCell className="whitespace-nowrap font-medium text-fg">
-                        {delivery.businessNumber}
-                      </TableCell>
-                      <TableCell className="max-w-[180px] truncate" title={delivery.clientName || 'Cliente não identificado'}>
-                        {delivery.clientName || 'Cliente não identificado'}
-                      </TableCell>
-                      <TableCell className="max-w-[140px] truncate text-xs" title={fmtPhone(delivery.phone) || 'Sem telefone'}>
-                        {fmtPhone(delivery.phone) || 'Sem telefone'}
-                      </TableCell>
-                      <TableCell className="max-w-[180px] truncate" title={delivery.flowName || 'Fluxo não identificado'}>
-                        {delivery.flowName || 'Fluxo não identificado'}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs" aria-label={`Progresso: ${formatDeliveryProgress(delivery)}`}>
-                        {formatDeliveryProgress(delivery)}
-                      </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-0">
                         <span
+                          className="block truncate font-medium text-fg"
+                          title={delivery.businessNumber}
+                        >
+                          {delivery.businessNumber}
+                        </span>
+                        <span
+                          className="mt-1 block truncate text-xs text-fg-muted"
+                          title={delivery.clientName || 'Cliente não identificado'}
+                        >
+                          {delivery.clientName || 'Cliente não identificado'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="min-w-0">
+                        <span
+                          className="block min-w-0"
                           role="status"
                           aria-live="polite"
                           aria-label={`Estado: ${projection.label}. Progresso: ${formatDeliveryProgress(delivery)}`}
@@ -624,10 +650,13 @@ export default function WhatsAppDeliveriesPage() {
                             label={projection.label}
                             className={stateTone(delivery.state)}
                           />
+                          <span className="mt-1 block truncate text-xs text-fg-muted">
+                            {formatDeliveryProgress(delivery)}
+                          </span>
                         </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-fg-muted">
-                        {formatDateTime(delivery.updatedAt)}
+                        {formatDateTime(delivery.updatedAt) || '—'}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -644,7 +673,7 @@ export default function WhatsAppDeliveriesPage() {
                       </TableCell>
                     </TableRow>
                     <TableRow id={detailId} key={`${delivery.id}-details`} hidden={!expanded}>
-                      <TableCell colSpan={8} className="bg-surface-muted/40">
+                      <TableCell colSpan={4} className="bg-surface-muted/40">
                         {expanded && (
                           <DeliveryDetails
                             delivery={delivery}

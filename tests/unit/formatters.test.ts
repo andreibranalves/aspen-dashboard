@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  formatBRL,
-  fmtPhone,
   capitalize,
+  fmtPhone,
+  formatBRL,
   formatDate,
   formatDateTime,
 } from '../../src/lib/formatting/formatters.ts';
@@ -59,5 +59,14 @@ describe('formatDate', () => {
 describe('formatDateTime', () => {
   it('formats timestamps with Brazilian notation in America/Sao_Paulo', () => {
     assert.equal(formatDateTime('2026-08-20T12:00:00.000Z'), '20/08/2026, 09:00');
+  });
+
+  it('formats timestamps in America/Sao_Paulo', () => {
+    assert.equal(formatDateTime('2026-08-31T10:00:00.000Z'), '31/08/2026, 07:00');
+  });
+
+  it('returns an empty value for absent or invalid timestamps', () => {
+    assert.equal(formatDateTime(undefined), '');
+    assert.equal(formatDateTime('invalid'), '');
   });
 });

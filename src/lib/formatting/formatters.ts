@@ -51,6 +51,18 @@ export function formatPhoneInput(phone: unknown): string {
   return fmtPhone(normalizePhoneDigits(phone));
 }
 
+/** ISO timestamp → data e hora brasileiras, no fuso operacional. */
+export function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo',
+  }).format(date);
+}
+
 /** Nome Próprio → Cada Palavra Capitalizada */
 export function capitalize(str: unknown): string {
   if (!str) return '';
@@ -75,22 +87,6 @@ export function formatDate(dateStr: string | null | undefined): string {
   const date = new Date(dateStr);
   if (Number.isNaN(date.getTime())) return String(dateStr);
   return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-}
-
-/** ISO timestamp → DD/MM/YYYY, HH:mm no fuso operacional de São Paulo. */
-export function formatDateTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return String(dateStr);
-  return date.toLocaleString('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
 }
 
 /** Bom dia / Boa tarde / Boa noite */

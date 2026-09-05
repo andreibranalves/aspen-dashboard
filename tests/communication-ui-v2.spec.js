@@ -42,7 +42,9 @@ test('fluxos exibem contexto, etapas, estado e data reais', async ({ page }) => 
   await expect(page.getByText('Mensagem configurada').first()).toBeVisible();
 });
 
-test('histórico mantém status, orçamento, etapas e data do evento', async ({ page }) => {
+test('histórico abre o orçamento referenciado, volta para a aba e mantém evento sem referência inerte', async ({
+  page,
+}) => {
   await page.route('**/api/communication-send-events*', async (route) => {
     await route.fulfill({
       status: 200,
@@ -60,6 +62,13 @@ test('histórico mantém status, orçamento, etapas e data do evento', async ({ 
             steps_planned: 2,
             sent_at: '2026-08-02T09:00:00.000Z',
           },
+          {
+            id: 'event-without-quotation',
+            status: 'pending',
+            flow_name: 'Fluxo sem orçamento',
+            steps_sent: 0,
+            steps_planned: 1,
+          },
         ],
       }),
     });
@@ -69,7 +78,26 @@ test('histórico mantém status, orçamento, etapas e data do evento', async ({ 
 
   await expect(page.getByRole('heading', { name: 'Histórico de envios' })).toBeVisible();
   await expect(page.getByText('Falhou')).toBeVisible();
-  await expect(page.getByText('ORC-2026-001')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Abrir orçamento ORC-2026-001' })).toBeVisible();
   await expect(page.getByText('1/2 etapas')).toBeVisible();
+  await expect(page.getByText('(11) 99999-9999')).toBeVisible();
   await expect(page.locator('time[datetime="2026-08-02T09:00:00.000Z"]').first()).toBeVisible();
+
+  const eventWithoutQuotation = page
+    .getByRole('article')
+    .filter({ hasText: 'Fluxo sem orçamento' });
+  await expect(eventWithoutQuotation.getByRole('button')).toHaveCount(0);
+  await expect(eventWithoutQuotation.getByRole('link')).toHaveCount(0);
+  await expect(eventWithoutQuotation.getByText('—')).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'Abrir orçamento ORC-2026-001' }).click();
+  await expect(page).toHaveURL(/#\/quotations\/ORC-2026-001$/);
+  await expect(page.getByRole('button', { name: 'voltar' })).toBeVisible();
+  await page.getByRole('button', { name: 'voltar' }).click();
+
+  await expect(page).toHaveURL(/#\/comunicacao\?tab=history$/);
+  await expect(page.getByRole('tab', { name: 'Histórico de envios' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  );
 });

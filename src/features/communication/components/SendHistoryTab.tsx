@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
+import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
 
 type SendStatus = 'sent' | 'failed' | 'skipped' | 'pending';
 
@@ -71,14 +72,8 @@ function errorMessage(_error: unknown, fallback: string): string {
   return fallback;
 }
 
-function formatDate(value: string | undefined): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date);
+interface SendHistoryTabProps {
+  onOpenQuotation: (quotationId: string) => void;
 }
 
 function statusMeta(status: string) {
@@ -103,7 +98,7 @@ function stepsLabel(event: SendEvent): string | null {
   return `${event.steps_sent}/${event.steps_planned} etapas`;
 }
 
-export default function SendHistoryTab() {
+export default function SendHistoryTab({ onOpenQuotation }: SendHistoryTabProps) {
   const [events, setEvents] = useState<SendEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -179,8 +174,10 @@ export default function SendHistoryTab() {
             const meta = statusMeta(event.status);
             const Icon = meta.icon;
             const dateValue = event.sent_at || event.created_at;
-            const date = formatDate(dateValue);
+            const date = formatDateTime(dateValue);
+            const phone = fmtPhone(event.phone);
             const steps = stepsLabel(event);
+            const quotationId = event.quotation_id;
             return (
               <article
                 key={event.id}
@@ -198,10 +195,15 @@ export default function SendHistoryTab() {
                         <h3 className="truncate text-sm font-semibold text-fg">
                           {event.flow_name || 'Fluxo sem nome'}
                         </h3>
-                        {event.quotation_id && (
-                          <span className="font-mono text-xs text-fg-muted">
-                            {event.quotation_id}
-                          </span>
+                        {quotationId && (
+                          <button
+                            type="button"
+                            className="rounded-sm font-mono text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            aria-label={`Abrir orçamento ${quotationId}`}
+                            onClick={() => onOpenQuotation(quotationId)}
+                          >
+                            {quotationId}
+                          </button>
                         )}
                       </div>
                       <span
@@ -214,27 +216,23 @@ export default function SendHistoryTab() {
                     </div>
 
                     <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-muted">
-                      {event.phone && (
-                        <div>
-                          <dt className="sr-only">Telefone</dt>
-                          <dd>{event.phone}</dd>
-                        </div>
-                      )}
+                      <div>
+                        <dt className="sr-only">Telefone</dt>
+                        <dd>{phone || '—'}</dd>
+                      </div>
                       {steps && (
                         <div>
                           <dt className="sr-only">Etapas</dt>
                           <dd>{steps}</dd>
                         </div>
                       )}
-                      {date && (
-                        <div className="inline-flex items-center gap-1">
-                          <dt className="sr-only">Data</dt>
-                          <dd className="inline-flex items-center gap-1">
-                            <Clock size={12} aria-hidden="true" />
-                            <time dateTime={dateValue}>{date}</time>
-                          </dd>
-                        </div>
-                      )}
+                      <div className="inline-flex items-center gap-1">
+                        <dt className="sr-only">Data</dt>
+                        <dd className="inline-flex items-center gap-1">
+                          <Clock size={12} aria-hidden="true" />
+                          {date && dateValue ? <time dateTime={dateValue}>{date}</time> : '—'}
+                        </dd>
+                      </div>
                     </dl>
 
                     {event.duplicate_warning && (

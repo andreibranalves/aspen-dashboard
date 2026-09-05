@@ -37,6 +37,12 @@ function getQuotationParent(): BreadcrumbItem {
   if (previousRoute && routePath(previousRoute) === '/follow-ups') {
     return { label: 'Follow-ups', hash: previousRoute };
   }
+  if (previousRoute && routePath(previousRoute) === '/comunicacao') {
+    const query = previousRoute.split('?')[1] || '';
+    if (new URLSearchParams(query).get('tab') === 'history') {
+      return { label: 'Histórico de envios', hash: previousRoute };
+    }
+  }
   return { label: 'Orçamentos', hash: getParentRoute('/quotations') };
 }
 
