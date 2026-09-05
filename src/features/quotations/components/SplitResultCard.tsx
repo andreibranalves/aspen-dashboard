@@ -1,6 +1,5 @@
 // src/components/SplitResultCard.tsx
 // Compact result card for the split-panel auto page.
-// Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {

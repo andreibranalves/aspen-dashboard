@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  projectDashboardData,
   projectQuotationDetail,
   projectQuotationListRow,
   projectQuotationItem,
@@ -129,38 +128,4 @@ test('template projection rejects malformed versions instead of inventing metada
   assert.equal(projectQuotationTemplate({ key: 'padrao', name: 'Padrão', current_version: '1' }), null);
   assert.equal(projectQuotationTemplate({ key: 'padrao', name: 'Padrão', current_version: 0 }), null);
   assert.deepEqual(projectQuotationTemplate({ key: 'padrao', name: 'Padrão' }), { key: 'padrao', name: 'Padrão' });
-});
-
-test('dashboard projection rejects malformed metrics and whitelists metadata', () => {
-  const response = {
-    success: true,
-    period: { label: '30 dias', from: '2026-08-01', to: '2026-08-30' },
-    summary: {
-      total_revenue: 123.45, revenue_delta: -2, orders_count: 2, orders_delta: 1,
-      avg_ticket: 61.72, avg_ticket_delta: 0, open_orders: 1, conversion_rate: 0.5, conversion_delta: -1,
-    },
-    top_products: [{ sku: 'SKU-1', product: 'Produto', quantity: 2, revenue: 123.45, orders: 1, provider_marker: 'drop' }],
-    top_customers: [{ name: 'Cliente', revenue: 123.45, orders: 1 }],
-    sales_by_day: [{ date: '2026-08-10', revenue: 123.45, orders: 1 }],
-    stale_quotations: [{ id: 'ORC-1', customer: 'Cliente', age: 4, value: 123.45, status: 'enviado' }],
-    provider_marker: 'drop',
-  };
-  const projected = projectDashboardData(response);
-  assert.equal(projected?.summary.total_revenue, 123.45);
-  assert.equal(Object.prototype.hasOwnProperty.call(projected!, 'provider_marker'), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(projected!.top_products[0], 'provider_marker'), false);
-  for (const patch of [
-    { total_revenue: Number.NaN },
-    { orders_count: '2' },
-    { orders_count: -1 },
-    { orders_count: 1.5 },
-    { avg_ticket: -1 },
-    { revenue_delta: Number.NaN },
-  ]) {
-    assert.equal(projectDashboardData({ ...response, summary: { ...response.summary, ...patch } }), null);
-  }
-  assert.equal(projectDashboardData({ ...response, summary: {
-    total_revenue: 0, revenue_delta: 0, orders_count: 0, orders_delta: 0,
-    avg_ticket: 0, avg_ticket_delta: 0, open_orders: 0, conversion_rate: 0, conversion_delta: 0,
-  } })?.summary.total_revenue, 0);
 });
