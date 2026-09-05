@@ -77,6 +77,22 @@ export function formatDate(dateStr: string | null | undefined): string {
   return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
+/** ISO timestamp → DD/MM/YYYY, HH:mm no fuso operacional de São Paulo. */
+export function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return String(dateStr);
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+}
+
 /** Bom dia / Boa tarde / Boa noite */
 export function saudacao(): string {
   const h = new Date().getHours();

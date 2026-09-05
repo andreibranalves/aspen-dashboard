@@ -32,6 +32,14 @@ function getParentRoute(fallback: string): string {
   return previousRoute && routePath(previousRoute) === fallback ? previousRoute : fallback;
 }
 
+function getQuotationParent(): BreadcrumbItem {
+  const previousRoute = getHashHistoryPreviousRoute();
+  if (previousRoute && routePath(previousRoute) === '/follow-ups') {
+    return { label: 'Follow-ups', hash: previousRoute };
+  }
+  return { label: 'Orçamentos', hash: getParentRoute('/quotations') };
+}
+
 function decodeLabel(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -51,7 +59,7 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
   if (path.startsWith('/quotations/')) {
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Orçamentos', hash: getParentRoute('/quotations') },
+      getQuotationParent(),
       { label: 'Orçamento', hash: null },
     ];
   }
