@@ -5,7 +5,7 @@ const draft = {
   index: 0,
   original: { nome: 'Cliente' },
   edited: {
-    nome: 'Cliente', email: '', telefone: '', urgente: false, origem: 'Site', cnpj: '',
+    nome: 'Cliente', email: '', telefone: '', urgente: false, origem: 'Google Ads', cnpj: '',
     endereco: { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
     items: [{ item_code: 'SKU-1', item_name: 'Produto', qty: 2, rate: 10 }], prazo_producao: '',
   },
@@ -80,7 +80,7 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   await expect.poll(() => previewWrites).toBe(1);
   expect(previewWrites).toBe(1);
   const postRequestPromise = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Gerar orçamento' }).dblclick();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).dblclick();
   const postRequest = await postRequestPromise;
   const postKey = postRequest.headers()['idempotency-key'];
   expect(postKey).toMatch(/^[0-9a-f-]{8}-[0-9a-f-]{27}$/i);
@@ -111,7 +111,7 @@ test('active emission does not show a recovery error while POST is pending @quot
   });
   await page.goto('/#/auto');
   const postRequest = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await postRequest;
   try {
     await expect(page.getByText('Não foi possível consultar a emissão. Tente novamente.', { exact: true })).toHaveCount(0);

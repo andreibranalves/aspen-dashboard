@@ -127,7 +127,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
     selectedFlowId: 'flow-test',
   }));
   await page.route('**/api/extract**', (route) => json(route, {
-    orders: [{ nome: 'Cliente envio', email: 'cliente@example.test', telefone: '11999990000', origem: 'WhatsApp', items: [{ item_code: 'SKU-1', qty: 10 }] }],
+    orders: [{ nome: 'Cliente envio', email: 'cliente@example.test', telefone: '11999990000', origem: 'Google Ads', items: [{ item_code: 'SKU-1', qty: 10 }] }],
   }));
   await page.route('**/api/pricing-lookup**', (route) => json(route, { success: true, items: [{ rate: 9, item_name: 'Produto' }] }));
   await page.route('**/api/orcamento**', (route) => json(route, {
@@ -191,7 +191,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
   await page.locator('textarea').first().fill('10 produtos');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });

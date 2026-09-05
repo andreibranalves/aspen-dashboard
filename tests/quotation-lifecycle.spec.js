@@ -1087,7 +1087,7 @@ test('manual quotation accepts metadata-free local responses @quotations @critic
   await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill('SKU-LOCAL');
   await page.getByRole('button', { name: 'Adicionar SKU-LOCAL ao orçamento' }).click();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho persistido com sucesso', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rascunho salvo', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
 });
 

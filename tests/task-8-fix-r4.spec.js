@@ -91,6 +91,7 @@ async function setupAuto(page) {
       nome: 'Cliente teste',
       email: 'cliente@example.test',
       telefone: '11999990000',
+      origem: 'Google Ads',
       items: [{ item_code: 'CNG-001', qty: 1 }],
     }],
   }));
@@ -157,7 +158,7 @@ async function setupAuto(page) {
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
 }
 

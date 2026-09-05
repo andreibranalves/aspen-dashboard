@@ -10,7 +10,7 @@ const MOCK_EXTRACT = {
     {
       nome: 'João Silva',
       email: 'joao@teste.com',
-      telefone: '(11) 99999-0001',
+      telefone: '5511999990001',
       urgente: false,
       items: [
         { item_code: 'LNC-SED-70', qty: 50, sku: 'LNC-SED-70', description: 'Lenço Sedoso 70cm' },
@@ -346,6 +346,15 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await setupApiMocks(page);
     /** @type {any} */
     let orcamentoRequest;
+    /** @type {any} */
+    let issueRequest;
+    let transportRequests = 0;
+    page.on('request', (request) => {
+      if (request.url().includes('/api/quotation-issues') && request.method() === 'POST') {
+        issueRequest = request.postDataJSON();
+      }
+      if (request.url().includes('/api/send-whatsapp-flow')) transportRequests += 1;
+    });
     await page.route('**/api/orcamento**', async (route) => {
       if (route.request().method() === 'POST') orcamentoRequest = route.request().postDataJSON();
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ORCAMENTO) });
@@ -369,12 +378,18 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Selecione a origem para continuar.', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeDisabled();
+    await expect(page.getByText('(11) 99999-0001', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
     const customItemName = 'Lenço 100 x 100 cm';
     await page.getByRole('button', { name: 'Editar' }).click();
     await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toHaveCount(0);
     await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
-    await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
-    await page.getByLabel('Modelo HTML').selectOption('minimalista');
+    await page.getByLabel('Origem').selectOption('Google Ads');
+    await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
+    await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
     await page.getByRole('button', { name: 'Concluir' }).click();
 
     const previewRequestPromise = page.context().waitForEvent('request', {
@@ -386,7 +401,11 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     expect(previewPayload.extracted.items[0].item_name).toBe(customItemName);
     expect(previewPayload.extracted.template_key).toBe('minimalista');
 
-    await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+    await page.getByRole('button', { name: 'Salvar rascunho' }).click();
+    await expect(page.getByText('Rascunho salvo. Continue a revisão ou emita o orçamento.', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     // Emission persists the draft first and then issues it by reference; the
     // reviewed commercial content travels in the draft-save POST only.
     await expect.poll(() => orcamentoRequest?.extracted?.items?.[0]?.item_name, { timeout: 10000 }).toBe(customItemName);
@@ -396,6 +415,12 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(pdfLink).toHaveAttribute('href', MOCK_ISSUE.pdfUrl);
     await expect(pdfLink).toHaveAttribute('target', '_blank');
     await expect(page.getByText(MOCK_ISSUE.businessNumber, { exact: true })).toBeVisible();
+    await expect(page.getByText('Validade: 28/08/2026', { exact: true })).toBeVisible();
+    expect(issueRequest).toEqual({
+      revision_id: MOCK_ORCAMENTO.revision_id,
+      concurrency_token: MOCK_ORCAMENTO.concurrency_token,
+    });
+    expect(transportRequests).toBe(0);
   });
 
   test('ação atual de WhatsApp envia somente referências exatas da cotação e revisão', async ({ page }) => {
@@ -446,7 +471,10 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.locator('textarea').first().fill(TEST_INPUT);
     await page.getByRole('button', { name: /Extrair/i }).click();
     await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-    await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+    await page.getByRole('button', { name: 'Editar' }).click();
+    await page.getByLabel('Origem').selectOption('Google Ads');
+    await page.getByRole('button', { name: 'Concluir' }).click();
+    await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
@@ -477,7 +505,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
     await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
-    await expect(page.getByText('Não foi possível carregar os modelos HTML.')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Não foi possível carregar os modelos de orçamento.')).toBeVisible({ timeout: 10000 });
 
     const textarea = page.locator('textarea').first();
     await textarea.fill('50 lenços');
@@ -486,8 +514,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByRole('button', { name: 'Tentar novamente' })).toHaveCount(0);
     await page.getByRole('button', { name: /Extrair/i }).click();
     await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-    await expect(page.getByLabel('Modelo HTML')).toBeEnabled();
-    await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
+    await expect(page.getByLabel('Modelo de orçamento')).toBeEnabled();
+    await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
     expect(templateAttempts).toBeGreaterThanOrEqual(2);
   });
 
