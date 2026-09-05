@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { withCanonicalQuotationDetail } from './fixtures/quotation-detail.js';
 
 const revisionId = '22222222-2222-4222-8222-222222222901';
 const quotationId = 'ORC-20260009';
@@ -105,14 +106,14 @@ async function routeCommonAuto(page) {
     concurrency_token: '2026-08-13T00:00:00.000Z',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
-    quotation_id: quotationUuid,
-    business_number: quotationId,
-    revision_id: revisionId,
-    revision_number: 1,
+    quotationId: quotationUuid,
+    businessNumber: quotationId,
+    revisionId,
+    revisionNumber: 1,
     status: 'emitido',
-    issued_at: updatedAt,
-    valid_until: '2026-08-28',
-    pdf_url: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
+    issuedAt: updatedAt,
+    validUntil: '2026-08-28',
+    pdfUrl: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
   }));
   await page.route('**/api/communication-flows**', (route) => json(route, {
     success: true,
@@ -194,9 +195,10 @@ async function mockDetail(page, state = 'delivered', selectedFlowId = flowId) {
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash: 'a'.repeat(64) }],
   }));
-  await page.route('**/api/quotations**', (route) => json(route, {
+  await page.route('**/api/quotations**', (route) => json(route, withCanonicalQuotationDetail({
     id: quotationId,
     quotation_id: quotationId,
+    quotation_name: quotationId,
     quotation_uuid: quotationUuid,
     revision_id: revisionId,
     revision: 1,
@@ -251,7 +253,10 @@ async function mockDetail(page, state = 'delivered', selectedFlowId = flowId) {
     is_expired: false,
     expirada: false,
     concurrency_token: updatedAt,
-  }));
+    updated_at: updatedAt,
+    email_sent: false,
+    email_sent_at: null,
+  })));
   await page.route('**/api/communication-flows**', (route) => json(route, {
     success: true,
     selectedFlowId,
@@ -427,6 +432,7 @@ test('polling failure keeps the last delivery status and shows a non-destructive
   });
   await page.goto(`/#/quotations/${quotationId}`);
   await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await expect.poll(() => statusReads, { timeout: 15000 }).toBeGreaterThan(1);
   await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
   await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
 });

@@ -220,7 +220,9 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
       revision_id: revisionId,
       concurrency_token: concurrencyToken,
     });
-    await expect(page.getByRole('button', { name: 'Emitindo…' })).toBeVisible();
+    const issueButton = page.getByRole('button', { name: 'Emitir orçamento' });
+    await expect(issueButton).toContainText('Emitindo…');
+    await expect(issueButton).toBeDisabled();
     releaseIssue();
 
     await expect(page.getByText('Orçamento emitido', { exact: true })).toBeVisible();

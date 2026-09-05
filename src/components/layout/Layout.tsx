@@ -113,6 +113,9 @@ export interface LayoutProps {
   children: ReactNode;
 }
 
+const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
+const COMPACT_MEDIA_QUERY = '(max-width: 1024px)';
+
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const { darkMode, toggleDarkMode } = useDarkMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -136,11 +139,19 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
-    const media = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(media.matches);
-    update();
-    media.addEventListener?.('change', update);
-    return () => media.removeEventListener?.('change', update);
+    const mobileMedia = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const compactMedia = window.matchMedia(COMPACT_MEDIA_QUERY);
+    const updateMobile = () => setIsMobile(mobileMedia.matches);
+    const collapseAtCompactWidth = () => {
+      if (compactMedia.matches) setSidebarCollapsed(true);
+    };
+    updateMobile();
+    mobileMedia.addEventListener?.('change', updateMobile);
+    compactMedia.addEventListener?.('change', collapseAtCompactWidth);
+    return () => {
+      mobileMedia.removeEventListener?.('change', updateMobile);
+      compactMedia.removeEventListener?.('change', collapseAtCompactWidth);
+    };
   }, []);
 
   useEffect(() => {

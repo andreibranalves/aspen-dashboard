@@ -609,7 +609,7 @@ test.describe('Leads — Página single e visualização rápida @crm', () => {
 
     await expect(page).toHaveURL(/#\/leads\/cliente\/LEAD-001/);
     await expect(
-      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 2 })
+      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 1 })
     ).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Atividade recente/i)).toBeVisible();
     await expect(page.getByText(/ORC-20260001/i).first()).toBeVisible();
@@ -632,7 +632,7 @@ test.describe('Leads — Página single e visualização rápida @crm', () => {
     await page.goto('/#/leads/lead/LEAD-001');
 
     await expect(
-      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 2 })
+      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 1 })
     ).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /Editar cadastro/i }).click();
     await page.locator('input[placeholder="Nome do cliente"]').fill('João Silva Atualizado');
@@ -642,7 +642,7 @@ test.describe('Leads — Página single e visualização rápida @crm', () => {
       timeout: 10000,
     });
     await expect(
-      page.getByRole('main').getByRole('heading', { name: 'João Silva Atualizado', level: 2 })
+      page.getByRole('main').getByRole('heading', { name: 'João Silva Atualizado', level: 1 })
     ).toBeVisible();
   });
 });

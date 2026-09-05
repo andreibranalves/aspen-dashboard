@@ -308,7 +308,7 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
               {rows.map((item) => (
                 <article
                   key={`${item.quotationId}-${item.followUpId || item.eligibilityVersion}`}
-                  className="rounded-md border border-line bg-surface p-4"
+                  className="min-w-0 rounded-md border border-line bg-surface p-4"
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
                     <div className="min-w-0">

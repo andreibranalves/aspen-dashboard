@@ -149,16 +149,20 @@ test('email markers render on desktop and mobile', async ({ page }) => {
   await page.goto('/#/quotations');
   // marcador de e-mail agora é icônico: enviado = ícone + data; pendente = '—'
   const desktopRows = page.getByRole('row');
-  await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
+  await expect(
+    desktopRows.filter({ hasText: 'ORC-EMAIL-1' }).getByLabel('E-mail enviado em 17/08/2026')
+  ).toBeVisible();
   const pendingDesktopRow = desktopRows.filter({ hasText: 'ORC-EMAIL-2' });
-  await expect(pendingDesktopRow).not.toContainText('17/08/2026');
+  await expect(pendingDesktopRow.getByLabel('E-mail ainda não enviado')).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   const mobileCards = page.locator('[class~="md:hidden"] > div');
-  await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
+  await expect(
+    mobileCards.filter({ hasText: 'ORC-EMAIL-1' }).getByLabel('E-mail enviado em 17/08/2026')
+  ).toBeVisible();
   const pendingMobileCard = mobileCards.filter({ hasText: 'ORC-EMAIL-2' });
-  await expect(pendingMobileCard).not.toContainText('17/08/2026');
+  await expect(pendingMobileCard.getByLabel('E-mail ainda não enviado')).toBeVisible();
 });
 
 test('lista oferece recuperação sem expor erro bruto @quotations @smoke', async ({ page }) => {

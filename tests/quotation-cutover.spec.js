@@ -1,6 +1,7 @@
 // @ts-check
 import { Buffer } from 'node:buffer';
 import { expect, test } from '@playwright/test';
+import { withCanonicalQuotationDetail } from './fixtures/quotation-detail.js';
 
 const CORE_ID = 'ORC-20260042';
 const CORE_REVISION_ID = '22222222-2222-4222-8222-222222222242';
@@ -9,15 +10,16 @@ const CORE_TOKEN = 'a'.repeat(40);
 
 function coreDetail(overrides = {}) {
   const revision = overrides.revision ?? overrides.revision_number ?? 1;
-  return {
+  return withCanonicalQuotationDetail({
     id: CORE_ID,
     quotation_id: CORE_ID,
+    quotation_name: CORE_ID,
     quotation_uuid: '11111111-1111-4111-8111-111111111142',
     revision_id: CORE_REVISION_ID,
     revision,
     revision_number: revision,
     status: 'Enviado',
-    status_canonical: 'enviado',
+    status_canonical: 'emitido',
     cliente: 'Cliente PostgreSQL Cutover',
     client_id: '33333333-3333-4333-8333-333333333342',
     cliente_snapshot: { id: '33333333-3333-4333-8333-333333333342', nome: 'Cliente PostgreSQL Cutover' },
@@ -84,7 +86,7 @@ function coreDetail(overrides = {}) {
       total: '90.00',
       valor: '90.00',
       status: 'Enviado',
-      status_canonical: 'enviado',
+      status_canonical: 'emitido',
       template_key: 'padrao',
       template_version: 1,
       template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
@@ -94,7 +96,7 @@ function coreDetail(overrides = {}) {
       expirada: false,
     }],
     ...overrides,
-  };
+  });
 }
 
 test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizado @quotations @database @critical', async ({ page }) => {
@@ -173,14 +175,14 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   await page.context().route('**/api/view**', async () => { throw new Error('Customer-facing path must not request /api/view'); });
 
   await page.goto(`/#/quotations/${CORE_ID}`);
-  await expect(page.getByText(CORE_ID, { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: `Orçamento ${CORE_ID}` })).toBeVisible();
   await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Revisão 1')).toBeVisible();
   await expect(page.getByText('Produto PostgreSQL')).toBeVisible();
 
   const pdfPopupPromise = page.waitForEvent('popup');
   const pdfResponsePromise = page.context().waitForEvent('response', { predicate: (response) => response.url().includes('/api/quotation-preview') && response.url().includes('format=pdf') });
-  await page.getByRole('button', { name: 'Visualizar', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Visualizar PDF', exact: true }).click();
   const [pdfPopup, pdfResponse] = await Promise.all([pdfPopupPromise, pdfResponsePromise]);
   expect(pdfResponse.status()).toBe(200);
   expect(pdfResponse.headers()['content-type']).toContain('application/pdf');
@@ -230,6 +232,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   expect(sanitizedError.body).toContain('Erro ao processar orçamento. Tente novamente.');
   expect(sanitizedError.body).not.toMatch(/EXTERNAL_API_TOKEN|stack|secret|\/home\//i);
 
+  await page.getByText('Ver histórico completo').click();
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
   await expect(page.getByText('Revisão 2')).toBeVisible();

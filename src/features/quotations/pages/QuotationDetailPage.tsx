@@ -215,6 +215,7 @@ function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
 }
 
 function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrencyTokenRef }: CoreQuotationDetailProps) {
+  const detailTopRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<QuotationData>(initialData);
   const draftEditable = data.status === 'rascunho';
   const [editing, setEditing] = useState(false);
@@ -253,6 +254,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [conflict, setConflict] = useState('');
   const { toast } = useToast();
   const { setNavigationGuard } = useRouteGuardContext();
+
+  useEffect(() => {
+    if (!editing) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      detailTopRef.current?.closest('main')?.scrollTo({ top: 0, left: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editing]);
   const showMessage = useCallback((text: string, tone: 'info' | 'error' = 'info') => {
     setMessage(text);
     setMessageTone(tone);
@@ -1174,7 +1183,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             : '';
 
   return (
-    <div className="mx-auto w-full max-w-[1060px] pb-4">
+    <div ref={detailTopRef} className="mx-auto w-full max-w-[1060px] pb-4">
       <fieldset disabled={saving} className="contents">
         <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -1390,6 +1399,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           {whatsappDisabledReason && (
             <p role="status" className="mt-2 text-xs text-fg-muted">
               {whatsappDisabledReason}
+            </p>
+          )}
+          {delivery && deliveryError && (
+            <p role="status" className="mt-2 text-xs text-warning">
+              {deliveryError}
             </p>
           )}
           {deliveryFlows.length === 0 && !deliveryError && (
@@ -2123,13 +2137,15 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   const [reloadWarning, setReloadWarning] = useState(false);
   const concurrencyTokenRef = useRef('');
   const dataRef = useRef<QuotationData | null>(null);
+  const loadedRouteIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     dataRef.current = null;
+    loadedRouteIdRef.current = null;
   }, [id]);
 
   const loadDetail = useCallback(async () => {
-    const hasExistingDetail = dataRef.current?.id === id;
+    const hasExistingDetail = dataRef.current !== null && loadedRouteIdRef.current === id;
     setLoading(true);
     setError(null);
     setReloadWarning(false);
@@ -2140,6 +2156,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       if (!projection) throw new Error('Resposta inválida ao carregar orçamento.');
       concurrencyTokenRef.current = projection.concurrencyToken;
       dataRef.current = projection.data;
+      loadedRouteIdRef.current = id;
       setData(projection.data);
     } catch {
       if (!hasExistingDetail) {

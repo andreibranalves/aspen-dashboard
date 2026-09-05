@@ -114,7 +114,7 @@ test.describe('Aspen v2 settings and recovery screens', () => {
 
   test('keeps login loading, focus and safe authentication feedback', async ({ page }) => {
     await page.addInitScript(() => globalThis.localStorage.setItem('aspen_theme', 'dark'));
-    await page.route('**/api/quotations', async (route) => {
+    await page.route('**/api/quotations**', async (route) => {
       await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
     });
     await page.route('**/api/login', async (route) => {
@@ -139,7 +139,7 @@ test.describe('Aspen v2 settings and recovery screens', () => {
   });
 
   test('keeps successful authentication navigation intact', async ({ page }) => {
-    await page.route('**/api/quotations', async (route) => {
+    await page.route('**/api/quotations**', async (route) => {
       await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
     });
     await page.route('**/api/login', async (route) => {

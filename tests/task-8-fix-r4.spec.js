@@ -110,14 +110,14 @@ async function setupAuto(page) {
     concurrency_token: '2026-08-13T00:00:00.000Z',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
-    quotation_id: quotationUuid,
-    business_number: quotationId,
-    revision_id: revisionId,
-    revision_number: 1,
+    quotationId: quotationUuid,
+    businessNumber: quotationId,
+    revisionId,
+    revisionNumber: 1,
     status: 'emitido',
-    issued_at: updatedAt,
-    valid_until: '2026-08-28',
-    pdf_url: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
+    issuedAt: updatedAt,
+    validUntil: '2026-08-28',
+    pdfUrl: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
   }));
   await page.route('**/api/communication-flows**', (route) => json(route, {
     success: true,
