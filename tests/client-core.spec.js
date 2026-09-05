@@ -33,6 +33,42 @@ const DETAIL = {
   observacoes: null,
 };
 
+const COMPLETE_DETAIL = {
+  ...DETAIL,
+  nome: 'Cliente com nome longo para consulta comercial',
+  display_name: 'Cliente com nome longo para consulta comercial',
+  address: {
+    endereco: 'Rua das Oficinas',
+    numero: '123',
+    bairro: 'Centro',
+    complemento: 'Fundos',
+    municipio: 'São Paulo',
+    uf: 'SP',
+    cep: '01234-567',
+  },
+  latest_quotation: {
+    name: 'ORC-20260001',
+    status: 'Aprovado',
+    date: '2026-09-01',
+    grand_total: '1250.00',
+  },
+  deal: {
+    name: 'Negócio Cliente Longo',
+    status: 'Em negociação',
+    next_step: 'Confirmar quantidades',
+  },
+  orders: [
+    {
+      name: 'PED-2026-0001',
+      status: 'Em produção',
+      date: '2026-09-02',
+      grand_total: '900.00',
+    },
+  ],
+  notes: 'Prefere contato pela manhã.',
+  observacoes: 'Prefere contato pela manhã.',
+};
+
 /** @typedef {typeof DETAIL & { id?: string, nome?: string, archived?: boolean, updated?: boolean }} ClientDetail */
 
 test.describe('Clientes locais @crm @smoke', () => {
@@ -65,6 +101,82 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByText(CLIENT.nome, { exact: true }).first().click();
     await expect(page.getByText('Cliente', { exact: true }).last()).toBeVisible();
     await expect(page.getByText(CLIENT.nome, { exact: true }).last()).toBeVisible();
+  });
+
+  test('consulta identidade, contato e histórico sem expor UUID e preserva os destinos comerciais', async ({
+    page,
+  }) => {
+    await page.route('**/api/client-detail**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(COMPLETE_DETAIL),
+      });
+    });
+
+    const detailUrl = `/#/leads/cliente/${CLIENT.id}`;
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(detailUrl);
+
+    const breadcrumb = page.getByRole('navigation', { name: 'Trilha de navegação' });
+    await expect(breadcrumb.getByText(COMPLETE_DETAIL.display_name, { exact: true })).toBeVisible();
+    await expect(breadcrumb.getByText(CLIENT.id, { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('heading', { name: COMPLETE_DETAIL.display_name, exact: true })
+    ).toBeVisible();
+    await expect(page.getByText('(11) 99999-0000', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Rua das Oficinas, 123 · Centro · Fundos · São Paulo/SP · 01234-567', {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Negócio ativo' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'WhatsApp' })).toHaveAttribute(
+      'href',
+      `https://wa.me/${CLIENT.telefone}`
+    );
+    await expect(page.getByRole('button', { name: 'Criar orçamento' })).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+      page.getByRole('heading', { name: COMPLETE_DETAIL.display_name, exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Editar cadastro' })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Mais ações para Cliente com nome longo' })
+    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Atividade recente' })).toBeVisible();
+    const mobileSections = await page.locator('main section h2').allTextContents();
+    expect(mobileSections.indexOf('Atividade recente')).toBeLessThan(
+      mobileSections.indexOf('Cadastro')
+    );
+
+    await page.setViewportSize({ width: 768, height: 900 });
+    await page.getByRole('button', { name: 'Ativar modo escuro' }).click();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await expect(page.getByRole('heading', { name: 'Negócio ativo' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Editar cadastro' }).click();
+    await expect(page.getByPlaceholder('Nome do cliente')).toHaveValue(
+      COMPLETE_DETAIL.display_name
+    );
+    await expect(page.getByPlaceholder('email@exemplo.com')).toHaveValue(COMPLETE_DETAIL.email);
+    await expect(page.getByPlaceholder('(99) 99999-9999')).toHaveValue(COMPLETE_DETAIL.telefone);
+    await expect(page.getByRole('textbox', { name: 'Endereço', exact: true })).toHaveValue(
+      COMPLETE_DETAIL.address.endereco
+    );
+    await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+
+    await page.getByRole('button', { name: 'Abrir orçamento', exact: true }).click();
+    await expect(page).toHaveURL(/#\/quotations\/ORC-20260001$/);
+
+    await page.goto(detailUrl);
+    await page.getByRole('button', { name: 'Abrir pedido', exact: true }).click();
+    await expect(page).toHaveURL(/#\/sales-orders\/PED-2026-0001$/);
+
+    await page.goto(detailUrl);
+    await page.getByRole('button', { name: 'Abrir no CRM', exact: true }).click();
+    await expect(page).toHaveURL(/#\/crm\?search=Neg%C3%B3cio(?:%20|\+)Cliente(?:%20|\+)Longo$/);
   });
 
   test('ação de novo orçamento preserva o contexto do cliente', async ({ page }) => {

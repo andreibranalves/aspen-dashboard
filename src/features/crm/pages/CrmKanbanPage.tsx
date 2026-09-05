@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
+import { fmtPhone } from '@/lib/formatting/formatters';
 
 interface Deal {
   id: string;
@@ -325,7 +326,6 @@ export default function CrmKanbanPage() {
     [columns, fetchData, restoreMoveMenuFocus, search, toast]
   );
 
-
   const orderedColumns = [
     ...PIPELINE.map(
       (status) =>
@@ -583,7 +583,7 @@ export default function CrmKanbanPage() {
                               )}
                               {deal.telefone && (
                                 <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {deal.telefone}
+                                  {fmtPhone(deal.telefone) || deal.telefone}
                                 </p>
                               )}
                               {deal.next_step && (

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
+import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
 
 export interface BreadcrumbItem {
   label: string;
@@ -54,7 +55,7 @@ function decodeLabel(value: string): string {
   }
 }
 
-function getBreadcrumb(route: string): BreadcrumbItem[] {
+function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbItem[] {
   const path = routePath(route);
   if (path === '/dashboard')
     return [
@@ -90,7 +91,7 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Clientes', hash: getParentRoute('/leads') },
-      { label: id === 'new' ? 'Novo cliente' : decodeLabel(id), hash: null },
+      { label: id === 'new' ? 'Novo cliente' : detailLabel || 'Detalhes do cliente', hash: null },
     ];
   }
 
@@ -121,8 +122,17 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < 768
   );
+  const [detailBreadcrumb, setDetailBreadcrumb] = useState<{
+    route: string;
+    label: string | null;
+  }>({ route, label: null });
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed((previous) => !previous), []);
+  const setDetailBreadcrumbLabel = useCallback(
+    (label: string | null) => setDetailBreadcrumb({ route, label }),
+    [route]
+  );
+  const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
@@ -158,17 +168,19 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           onMenuClick={toggleSidebar}
           sidebarOpen={!sidebarCollapsed}
           isMobile={isMobile}
-          breadcrumbItems={getBreadcrumb(route)}
+          breadcrumbItems={getBreadcrumb(route, detailLabel)}
           onNavigate={onNavigate}
           darkMode={darkMode}
           toggleDarkMode={toggleDarkMode}
         />
-        <main
-          className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
-          inert={isMobile && !sidebarCollapsed ? true : undefined}
-        >
-          {children}
-        </main>
+        <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
+          <main
+            className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
+            inert={isMobile && !sidebarCollapsed ? true : undefined}
+          >
+            {children}
+          </main>
+        </BreadcrumbLabelProvider>
       </div>
     </div>
   );
