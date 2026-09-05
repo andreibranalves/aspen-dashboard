@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Check, DollarSign, FileText, Truck } from 'lucide-react';
+import { AlertTriangle, DollarSign, FileText, Truck } from 'lucide-react';
 import { apiGet, apiPatch } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
@@ -212,20 +212,20 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       />
 
       <div className="rounded-lg border border-line bg-surface shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-line px-6 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="truncate font-mono text-lg font-semibold">{data.id}</span>
             <StatusBadge status={data.status} label={statusLabel} />
           </div>
           {data.source_quotation && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() =>
                 navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
               }
             >
-              <FileText size={14} aria-hidden="true" /> Voltar ao orçamento
+              <FileText size={14} aria-hidden="true" /> Abrir orçamento de origem
             </Button>
           )}
         </div>
@@ -245,10 +245,10 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
             </p>
           </div>
-          <div className="space-y-2">
+          <section className="space-y-2" aria-label="Progresso do pedido">
             <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
             <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
-          </div>
+          </section>
         </div>
 
         <div className="px-6 py-4">
@@ -278,23 +278,10 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           </strong>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 border-t border-line px-6 py-4">
-          <div className="flex items-center gap-1.5 text-xs text-fg-muted">
-            <DollarSign size={14} aria-hidden="true" />
-            <span>Faturado: {data.per_billed === undefined ? '—' : `${data.per_billed}%`}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-fg-muted">
-            <Truck size={14} aria-hidden="true" />
-            <span>
-              Entregue: {data.per_delivered === undefined ? '—' : `${data.per_delivered}%`}
-            </span>
-          </div>
-          {data.status === 'Completed' && (
-            <div className="flex items-center gap-1.5 text-xs text-success">
-              <Check size={14} aria-hidden="true" />
-              <span>Concluído</span>
-            </div>
-          )}
+        <div
+          className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-4"
+          aria-label="Ações operacionais do pedido"
+        >
           {actionError && (
             <p className="w-full text-sm text-destructive" role="alert">
               {actionError}
@@ -334,18 +321,6 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               <Truck size={14} aria-hidden="true" /> Marcar entregue
             </Button>
           </div>
-          <div className="flex-1" />
-          {data.source_quotation && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() =>
-                navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
-              }
-            >
-              <FileText size={14} aria-hidden="true" /> Voltar ao orçamento
-            </Button>
-          )}
         </div>
       </div>
     </PageShell>

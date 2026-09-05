@@ -1016,27 +1016,74 @@ test('frontend source guard rejects removed external files, tokens, and app URLs
   expect(violations).toEqual([]);
 });
 
-test('local sales order detail has no external app link and keeps local quotation navigation @quotations @critical', async ({ page }) => {
+test('sales order detail presents one origin, one progress summary, and protected peer actions @quotations @critical', async ({ page }) => {
+  const states = {
+    'LOCAL-PENDING': {
+      status: 'To Deliver and Bill',
+      per_delivered: 0,
+      per_billed: 0,
+    },
+    'LOCAL-PARTIAL': {
+      status: 'To Deliver and Bill',
+      per_delivered: 60,
+      per_billed: 40,
+      source_quotation: 'ORC-LOCAL-1',
+    },
+    'LOCAL-COMPLETED': {
+      status: 'Completed',
+      per_delivered: 100,
+      per_billed: 100,
+    },
+  };
+
   await page.route('**/api/sales-orders**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     const id = url.searchParams.get('id');
+    const state = states[id];
     await fulfillJson(route, {
       id,
-      status: 'Completed',
       customer_name: 'Cliente local',
       date: '2026-07-01',
-      source_quotation: id === 'LOCAL-WITH-QUOTE' ? 'ORC-LOCAL-1' : undefined,
       grand_total: 100,
       items: [{ item_code: 'SKU-1', item_name: 'Produto local', qty: 1, rate: 100, amount: 100, uom: 'und' }],
+      ...state,
     });
   });
-  await page.goto('/#/sales-orders/LOCAL-NO-QUOTE');
-  await expect(page.getByText('Cliente local', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
-  await expect(page.getByText('Voltar ao orçamento', { exact: true })).toHaveCount(0);
 
-  await page.goto('/#/sales-orders/LOCAL-WITH-QUOTE');
-  await expect(page.getByRole('button', { name: 'Voltar ao orçamento' }).last()).toBeVisible();
+  await page.goto('/#/sales-orders/LOCAL-PENDING');
+  await expect(page.getByText('A entregar e faturar', { exact: true })).toBeVisible();
+  await expect(page.getByText('Produto local', { exact: true })).toBeVisible();
+  await expect(page.locator('strong').filter({ hasText: 'R$ 100,00' })).toBeVisible();
+  const pendingProgress = page.getByRole('region', { name: 'Progresso do pedido' });
+  await expect(pendingProgress.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(pendingProgress.getByText('Faturado', { exact: true })).toBeVisible();
+  await expect(pendingProgress.getByText('0%', { exact: true })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Abrir orçamento de origem' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '← Voltar aos pedidos' })).toHaveCount(1);
+
+  const pendingActions = page.getByLabel('Ações operacionais do pedido');
+  const billButton = pendingActions.getByRole('button', { name: 'Marcar faturado' });
+  const deliverButton = pendingActions.getByRole('button', { name: 'Marcar entregue' });
+  await expect(billButton).toBeEnabled();
+  await expect(deliverButton).toBeEnabled();
+  await expect(billButton).toHaveAttribute('data-variant', 'outline');
+  await expect(deliverButton).toHaveAttribute('data-variant', 'outline');
+
+  await page.goto('/#/sales-orders/LOCAL-PARTIAL');
+  const partialProgress = page.getByRole('region', { name: 'Progresso do pedido' });
+  await expect(partialProgress.getByText('60%', { exact: true })).toBeVisible();
+  await expect(partialProgress.getByText('40%', { exact: true })).toBeVisible();
+  const sourceButton = page.getByRole('button', { name: 'Abrir orçamento de origem' });
+  await expect(sourceButton).toHaveCount(1);
+  await expect(sourceButton).toHaveAttribute('data-variant', 'ghost');
+  await sourceButton.click();
+  await expect(page).toHaveURL(/\/#\/quotations\/ORC-LOCAL-1$/);
+
+  await page.goto('/#/sales-orders/LOCAL-COMPLETED');
+  await expect(page.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Progresso do pedido' }).getByText('100%', { exact: true })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();
   await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
 });
 
