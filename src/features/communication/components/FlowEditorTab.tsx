@@ -162,6 +162,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
@@ -176,6 +177,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setLoading(true);
     setLoadError('');
     setActionError('');
+    setSaveError('');
+    setSuccessMsg('');
     try {
       const data = await fetchFlows();
       const loaded = (data.flows || []).map((flow, index) => ({
@@ -200,7 +203,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
   const handleSave = useCallback(async () => {
     setSaving(true);
-    setActionError('');
+    setSaveError('');
     setSuccessMsg('');
     try {
       await saveFlows(flows, selectedFlowId);
@@ -208,7 +211,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       setSuccessMsg('Fluxos salvos com sucesso.');
       window.setTimeout(() => setSuccessMsg(''), 3000);
     } catch (error) {
-      setActionError(errorMessage(error, 'Não foi possível salvar os fluxos.'));
+      setSaveError(errorMessage(error, 'Não foi possível salvar os fluxos.'));
     } finally {
       setSaving(false);
     }
@@ -220,6 +223,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setSelectedFlowId(newFlow.id);
     setExpandedFlow(newFlow.id);
     setActionError('');
+    setSaveError('');
+    setSuccessMsg('');
   }, [flows.length]);
 
   const duplicateFlow = (flowId: string) => {
@@ -234,6 +239,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setSelectedFlowId(duplicate.id);
     setExpandedFlow(duplicate.id);
     setActionError('');
+    setSaveError('');
+    setSuccessMsg('');
   };
 
   const deleteFlow = (flowId: string) => {
@@ -248,12 +255,15 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       setExpandedFlow(next[0]?.id || null);
     }
     setActionError('');
+    setSaveError('');
+    setSuccessMsg('');
   };
 
   const updateFlow = (flowId: string, field: keyof EditableFlow, value: unknown) => {
     setFlows((current) =>
       current.map((flow) => (flow.id === flowId ? { ...flow, [field]: value } : flow))
     );
+    setSaveError('');
     setSuccessMsg('');
   };
 
@@ -263,6 +273,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         flow.id === flowId ? { ...flow, steps: [...flow.steps, createStep(STEP_TYPES.TEXT)] } : flow
       )
     );
+    setSaveError('');
+    setSuccessMsg('');
   };
 
   const updateStep = (flowId: string, stepId: string, field: string, value: unknown) => {
@@ -277,6 +289,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         };
       })
     );
+    setSaveError('');
     setSuccessMsg('');
   };
 
@@ -287,6 +300,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         return { ...flow, steps: flow.steps.filter((step) => step.id !== stepId) };
       })
     );
+    setSaveError('');
+    setSuccessMsg('');
   };
 
   const moveStep = (flowId: string, stepId: string, direction: number) => {
@@ -301,6 +316,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         return { ...flow, steps };
       })
     );
+    setSaveError('');
+    setSuccessMsg('');
   };
 
   const handleStepTypeChange = (flowId: string, stepId: string, newType: StepType) => {
@@ -317,6 +334,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         };
       })
     );
+    setSaveError('');
+    setSuccessMsg('');
   };
 
   if (loading) return <SkeletonComunicacao />;
@@ -327,16 +346,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         <Button onClick={addFlow} size="sm">
           <Plus size={14} aria-hidden="true" /> Novo fluxo
         </Button>
-        {(isDirty || saving) && (
-          <Button onClick={handleSave} size="sm" disabled={saving}>
-            {saving ? (
-              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-            ) : (
-              <Save size={14} aria-hidden="true" />
-            )}
-            {saving ? 'Salvando…' : 'Salvar'}
-          </Button>
-        )}
       </div>
 
       {loadError && (
@@ -347,7 +356,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
           <div className="min-w-0">
             <p className="font-medium">Não foi possível carregar os fluxos.</p>
-            <p className="mt-1 text-fg-muted">{loadError}</p>
             <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadFlows()}>
               <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
             </Button>
@@ -362,17 +370,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
           <span>{actionError}</span>
-        </div>
-      )}
-
-      {successMsg && (
-        <div
-          className="flex items-center gap-2 rounded-md border border-success/25 bg-success/10 p-3 text-sm text-fg"
-          role="status"
-          aria-live="polite"
-        >
-          <CheckCircle2 size={17} className="shrink-0 text-success" aria-hidden="true" />
-          <span>{successMsg}</span>
         </div>
       )}
 
@@ -477,17 +474,17 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
       {selectedFlow && (
         <section
-          className="overflow-hidden rounded-md border border-line bg-surface"
+          className="rounded-md border border-line bg-surface"
           aria-labelledby="selected-flow-title"
         >
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line p-4">
+          <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-md border-b border-line bg-surface/95 p-4 shadow-sm backdrop-blur">
             <button
               type="button"
               onClick={() =>
                 setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
               }
               aria-expanded={expandedFlow === selectedFlow.id}
-              className="flex min-w-0 flex-1 items-start gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
                 <MessageSquare size={18} className="text-primary" aria-hidden="true" />
@@ -496,19 +493,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
                   {displayName(selectedFlow)}
                 </h2>
-                <p className="mt-1 text-sm text-fg-muted">
-                  {contextLabel(selectedFlow.context)} · {channelLabel(selectedFlow.channel)} ·{' '}
-                  {stepCountLabel(selectedFlow.steps?.length || 0)}
-                </p>
-                {(selectedFlow.updated_at || selectedFlow.created_at) && (
-                  <p className="mt-1 inline-flex items-center gap-1 text-xs text-fg-muted">
-                    <CalendarDays size={13} aria-hidden="true" />
-                    {selectedFlow.updated_at ? 'Atualizado' : 'Criado'}{' '}
-                    <time dateTime={selectedFlow.updated_at || selectedFlow.created_at}>
-                      {formatDate(selectedFlow.updated_at || selectedFlow.created_at)}
-                    </time>
-                  </p>
-                )}
               </div>
               {expandedFlow === selectedFlow.id ? (
                 <ChevronUp size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
@@ -517,11 +501,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
               )}
             </button>
 
-            <div className="flex shrink-0 items-center gap-1">
-              <StatusBadge
-                status={selectedFlow.enabled ? 'Active' : 'Archived'}
-                label={selectedFlow.enabled ? 'Ativo' : 'Inativo'}
-              />
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
               <Button
                 type="button"
                 variant="ghost"
@@ -542,6 +522,39 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 title="Remover fluxo"
               >
                 <Trash2 aria-hidden="true" />
+              </Button>
+              <span
+                className={[
+                  'order-last flex w-full items-center justify-end gap-1.5 text-xs sm:order-none sm:w-auto',
+                  saveError
+                    ? 'text-destructive'
+                    : successMsg
+                      ? 'text-success'
+                      : isDirty
+                        ? 'text-warning'
+                        : 'text-fg-muted',
+                ].join(' ')}
+                role={saveError ? 'alert' : 'status'}
+                aria-live="polite"
+              >
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                ) : successMsg ? (
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                ) : isDirty ? (
+                  <AlertCircle size={14} aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 size={14} aria-hidden="true" />
+                )}
+                {saving
+                  ? 'Salvando alterações…'
+                  : saveError ||
+                    successMsg ||
+                    (isDirty ? 'Alterações não salvas' : 'Sem alterações pendentes')}
+              </span>
+              <Button type="button" onClick={handleSave} size="sm" disabled={!isDirty || saving}>
+                <Save size={14} aria-hidden="true" />
+                Salvar
               </Button>
             </div>
           </div>
