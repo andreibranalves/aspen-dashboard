@@ -6,19 +6,13 @@ import {
   type DeliveryResolution,
   type DeliveryView,
 } from '@/lib/api/quotationDeliveryApi';
+import { formatDateTime } from '@/lib/formatting/formatters';
 
 export interface QuotationDeliveryStatusProps {
   delivery: DeliveryView | null;
   pending?: boolean;
   onResolve?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
   className?: string;
-}
-
-function formatUpdatedAt(value: string): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value));
 }
 
 function formatProgress(delivery: DeliveryView): string {
@@ -129,7 +123,7 @@ export function QuotationDeliveryStatus({
       </div>
       {delivery && (
         <div className="space-y-1 text-fg-muted">
-          <p>Última atualização: {formatUpdatedAt(delivery.updatedAt)}</p>
+          <p>Última atualização: {formatDateTime(delivery.updatedAt) || '—'}</p>
           {delivery.publicError && <p className="text-destructive">{delivery.publicError}</p>}
           {delayed && (
             <p className="text-warning">

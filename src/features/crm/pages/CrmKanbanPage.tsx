@@ -13,6 +13,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
+import { fmtPhone } from '@/lib/formatting/formatters';
 
 interface Deal {
   id: string;
@@ -115,6 +116,7 @@ export default function CrmKanbanPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
+  const pendingMoveMenuFocusRef = useRef<string | null>(null);
   const pruneDialogRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async (searchVal: string) => {
@@ -168,9 +170,12 @@ export default function CrmKanbanPage() {
     else moveMenuRefs.current.delete(dealId);
   }, []);
 
-  const restoreMoveMenuFocus = useCallback((dealId: string) => {
-    window.requestAnimationFrame(() => moveMenuRefs.current.get(dealId)?.focus());
-  }, []);
+  useEffect(() => {
+    const dealId = pendingMoveMenuFocusRef.current;
+    if (!dealId || movingDealIds.has(dealId)) return;
+    pendingMoveMenuFocusRef.current = null;
+    moveMenuRefs.current.get(dealId)?.focus();
+  }, [movingDealIds]);
 
   // Prune modal: Esc para fechar, foco inicial no diálogo, focus trap e
   // restauração de foco — mesmo comportamento do ConfirmDialog compartilhado.
@@ -314,17 +319,16 @@ export default function CrmKanbanPage() {
         await fetchData(search); // rollback via server truth after a failed mutation
         setAnnouncement(`Não foi possível mover ${leadName}. O pipeline foi restaurado.`);
       } finally {
+        pendingMoveMenuFocusRef.current = dealId;
         setMovingDealIds((previous) => {
           const next = new Set(previous);
           next.delete(dealId);
           return next;
         });
-        restoreMoveMenuFocus(dealId);
       }
     },
-    [columns, fetchData, restoreMoveMenuFocus, search, toast]
+    [columns, fetchData, search, toast]
   );
-
 
   const orderedColumns = [
     ...PIPELINE.map(
@@ -583,7 +587,7 @@ export default function CrmKanbanPage() {
                               )}
                               {deal.telefone && (
                                 <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {deal.telefone}
+                                  {fmtPhone(deal.telefone) || deal.telefone}
                                 </p>
                               )}
                               {deal.next_step && (

@@ -402,24 +402,19 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section aria-labelledby="advanced-settings-title" className="space-y-3">
-        <div className="px-1">
-          <h2 id="advanced-settings-title" className="text-base font-semibold text-fg">
-            Configurações avançadas
-          </h2>
-        </div>
-        <details open className="group">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-lg border border-line bg-surface p-4 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&::-webkit-details-marker]:hidden">
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-fg">Modelos de orçamento</span>
-            </span>
+      <section aria-labelledby="quotation-models-title">
+        <details open className="group overflow-hidden rounded-lg border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+            <h2 id="quotation-models-title" className="text-base font-semibold text-fg">
+              Modelos de orçamento
+            </h2>
             <ChevronDown
               size={18}
               className="shrink-0 text-fg-muted transition-transform group-open:rotate-180"
               aria-hidden="true"
             />
           </summary>
-          <div className="mt-3">
+          <div className="border-t border-line p-4 sm:p-6">
             <QuotationTemplateManager />
           </div>
         </details>

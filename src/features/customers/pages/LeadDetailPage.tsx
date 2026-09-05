@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
+  Columns3,
   Edit3,
   FileText,
   Mail,
@@ -30,6 +31,7 @@ import { ContextActions, type ContextAction } from '@/features/customers/compone
 import { CustomerActionMenu } from '@/features/customers/components/CustomerActionMenu';
 import { projectClientDetail, type ProjectedClientDetail } from '@/lib/localProjections';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
+import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
 
 interface Address {
   endereco?: string;
@@ -134,12 +136,13 @@ interface SectionCardProps {
   description?: string;
   icon?: (props: { size?: number }) => ReactNode;
   children: ReactNode;
+  className?: string;
 }
 
-function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
+function SectionCard({ title, description, icon: Icon, children, className }: SectionCardProps) {
   return (
     <section
-      className="space-y-4 rounded-md border border-line bg-surface p-4 md:p-5"
+      className={`space-y-4 rounded-md border border-line bg-surface p-4 md:p-5 ${className || ''}`}
       aria-labelledby={`section-${title}`}
     >
       <div className="flex items-start gap-3">
@@ -164,13 +167,15 @@ function InfoField({
   label,
   value,
   children,
+  className,
 }: {
   label: string;
   value?: string;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 ${className || ''}`}>
       <span className="text-[11px] uppercase tracking-wide text-fg-muted">{label}</span>
       {children || <p className="mt-1 break-words text-sm font-medium text-fg">{value || '—'}</p>}
     </div>
@@ -195,7 +200,10 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   const decodedId = decodeURIComponent(id || '');
   const isNewClient = decodedId === 'new';
   const initialFields = useMemo<EditFields>(
-    () => (isNewClient ? { ...EMPTY_FIELDS, ...readNewClientPrefill(window.location.hash) } : EMPTY_FIELDS),
+    () =>
+      isNewClient
+        ? { ...EMPTY_FIELDS, ...readNewClientPrefill(window.location.hash) }
+        : EMPTY_FIELDS,
     [isNewClient]
   );
   const [detail, setDetail] = useState<ClientDetail | null>(null);
@@ -253,12 +261,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       setPendingRoute(null);
       return () => setNavigationGuard(null);
     }
-    setNavigationGuard(saving
-      ? () => true
-      : (nextRoute) => {
-          setPendingRoute(nextRoute);
-          return false;
-        });
+    setNavigationGuard(
+      saving
+        ? () => true
+        : (nextRoute) => {
+            setPendingRoute(nextRoute);
+            return false;
+          }
+    );
     return () => setNavigationGuard(null);
   }, [hasUnsavedChanges, saving, setNavigationGuard]);
 
@@ -359,6 +369,9 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     discardEditing();
   }, [discardEditing, hasUnsavedChanges]);
 
+  const breadcrumbLabel = !isNewClient ? detail?.display_name || detail?.nome || null : null;
+  useBreadcrumbLabel(breadcrumbLabel);
+
   if (loading) return <SkeletonDetail />;
   if (error === 'not_found')
     return (
@@ -449,288 +462,296 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   return (
     <PageShell className="space-y-5">
       <fieldset disabled={saving} className="space-y-5">
-      <PageHeader
-        title={title}
-        actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
-      />
-
-      {!isNewClient && (
-        <section
-          className="rounded-md border border-line bg-surface p-4 md:p-5"
-          aria-labelledby="customer-identity"
-        >
-          <div className="flex items-start gap-4">
-            <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-primary/10 text-lg font-semibold text-primary"
-              aria-hidden="true"
-            >
-              {title
-                .trim()
-                .split(/\s+/)
-                .slice(0, 2)
-                .map((part) => part[0]?.toUpperCase())
-                .join('') || 'CL'}
-            </div>
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 id="customer-identity" className="break-words text-lg font-semibold text-fg">
-                  {title}
-                </h2>
-                <StatusBadge
-                  status={archived ? 'Archived' : 'Active'}
-                  label={archived ? 'Arquivado' : 'Ativo'}
-                />
-                <span className="text-xs text-fg-muted">Cliente</span>
+        {isNewClient ? (
+          <PageHeader
+            title={title}
+            actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
+          />
+        ) : (
+          <section
+            className="rounded-md border border-line bg-surface p-4 md:p-5"
+            aria-labelledby="customer-identity"
+          >
+            <div className="flex flex-wrap items-start gap-4">
+              <div
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-primary/10 text-lg font-semibold text-primary"
+                aria-hidden="true"
+              >
+                {title
+                  .trim()
+                  .split(/\s+/)
+                  .slice(0, 2)
+                  .map((part) => part[0]?.toUpperCase())
+                  .join('') || 'CL'}
               </div>
-              {qualityBadges(current as ClientDetail).length > 0 && (
-                <QualityBadges badges={qualityBadges(current as ClientDetail)} />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 id="customer-identity" className="break-words text-xl font-semibold text-fg">
+                    {title}
+                  </h1>
+                  <StatusBadge
+                    status={archived ? 'Archived' : 'Active'}
+                    label={archived ? 'Arquivado' : 'Ativo'}
+                  />
+                  <span className="text-xs text-fg-muted">Cliente</span>
+                </div>
+                {qualityBadges(current as ClientDetail).length > 0 && (
+                  <QualityBadges badges={qualityBadges(current as ClientDetail)} />
+                )}
+              </div>
+              {confirmDiscardEdits || pendingRoute !== null ? null : (
+                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                  {headerActions}
+                </div>
               )}
-              {contextActions.length > 0 && <ContextActions actions={contextActions} />}
             </div>
-          </div>
-        </section>
-      )}
+            <div className="mt-4 flex flex-col gap-4 border-t border-line pt-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+                <InfoField label="E-mail" value={current.email || 'E-mail não informado'} />
+                <InfoField
+                  label="Telefone"
+                  value={fmtPhone(current.telefone) || 'Telefone não informado'}
+                />
+              </div>
+              {contextActions.length > 0 && (
+                <ContextActions actions={contextActions} className="shrink-0" />
+              )}
+            </div>
+          </section>
+        )}
 
-      {editing ? (
-        <>
-          <SectionCard
-            title="Dados do cliente"
-            icon={UserRound}
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <label className="text-xs text-fg-muted">
-                Nome
-                <Input
-                  value={fields.nome}
-                  onChange={(event) =>
-                    setFields((value) => ({ ...value, nome: event.target.value }))
-                  }
-                  placeholder="Nome do cliente"
-                />
-              </label>
-              <label className="text-xs text-fg-muted">
-                E-mail
-                <Input
-                  type="email"
-                  value={fields.email}
-                  onChange={(event) =>
-                    setFields((value) => ({ ...value, email: event.target.value }))
-                  }
-                  placeholder="email@exemplo.com"
-                />
-              </label>
-              <label className="text-xs text-fg-muted">
-                Telefone
-                <Input
-                  value={fields.telefone}
-                  onChange={(event) =>
-                    setFields((value) => ({ ...value, telefone: event.target.value }))
-                  }
-                  placeholder="(99) 99999-9999"
-                />
-              </label>
-              <label className="text-xs text-fg-muted">
-                Documento
-                <Input
-                  value={fields.documento}
-                  onChange={(event) =>
-                    setFields((value) => ({ ...value, documento: event.target.value }))
-                  }
-                  placeholder="CPF ou CNPJ"
-                />
-              </label>
-              <label className="text-xs text-fg-muted md:col-span-2">
-                Observações
-                <textarea
-                  aria-label="Observações"
-                  value={fields.observacoes}
-                  onChange={(event) =>
-                    setFields((value) => ({ ...value, observacoes: event.target.value }))
-                  }
-                  className="mt-1 min-h-24 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                />
-              </label>
-            </div>
-          </SectionCard>
-          <SectionCard
-            title="Endereço"
-            icon={MapPin}
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {addressField(
-                'Endereço',
-                fields.endereco.endereco || '',
-                (value) =>
+        {editing ? (
+          <>
+            <SectionCard title="Dados do cliente" icon={UserRound}>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="text-xs text-fg-muted">
+                  Nome
+                  <Input
+                    value={fields.nome}
+                    onChange={(event) =>
+                      setFields((value) => ({ ...value, nome: event.target.value }))
+                    }
+                    placeholder="Nome do cliente"
+                  />
+                </label>
+                <label className="text-xs text-fg-muted">
+                  E-mail
+                  <Input
+                    type="email"
+                    value={fields.email}
+                    onChange={(event) =>
+                      setFields((value) => ({ ...value, email: event.target.value }))
+                    }
+                    placeholder="email@exemplo.com"
+                  />
+                </label>
+                <label className="text-xs text-fg-muted">
+                  Telefone
+                  <Input
+                    value={fields.telefone}
+                    onChange={(event) =>
+                      setFields((value) => ({ ...value, telefone: event.target.value }))
+                    }
+                    placeholder="(99) 99999-9999"
+                  />
+                </label>
+                <label className="text-xs text-fg-muted">
+                  Documento
+                  <Input
+                    value={fields.documento}
+                    onChange={(event) =>
+                      setFields((value) => ({ ...value, documento: event.target.value }))
+                    }
+                    placeholder="CPF ou CNPJ"
+                  />
+                </label>
+                <label className="text-xs text-fg-muted md:col-span-2">
+                  Observações
+                  <textarea
+                    aria-label="Observações"
+                    value={fields.observacoes}
+                    onChange={(event) =>
+                      setFields((value) => ({ ...value, observacoes: event.target.value }))
+                    }
+                    className="mt-1 min-h-24 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  />
+                </label>
+              </div>
+            </SectionCard>
+            <SectionCard title="Endereço" icon={MapPin}>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {addressField(
+                  'Endereço',
+                  fields.endereco.endereco || '',
+                  (value) =>
+                    setFields((currentValue) => ({
+                      ...currentValue,
+                      endereco: { ...currentValue.endereco, endereco: value },
+                    })),
+                  'md:col-span-2'
+                )}
+                {addressField('Número', fields.endereco.numero || '', (value) =>
                   setFields((currentValue) => ({
                     ...currentValue,
-                    endereco: { ...currentValue.endereco, endereco: value },
-                  })),
-                'md:col-span-2'
-              )}
-              {addressField('Número', fields.endereco.numero || '', (value) =>
-                setFields((currentValue) => ({
-                  ...currentValue,
-                  endereco: { ...currentValue.endereco, numero: value },
-                }))
-              )}
-              {addressField('Bairro', fields.endereco.bairro || '', (value) =>
-                setFields((currentValue) => ({
-                  ...currentValue,
-                  endereco: { ...currentValue.endereco, bairro: value },
-                }))
-              )}
-              {addressField('Complemento', fields.endereco.complemento || '', (value) =>
-                setFields((currentValue) => ({
-                  ...currentValue,
-                  endereco: { ...currentValue.endereco, complemento: value },
-                }))
-              )}
-              {addressField('Município', fields.endereco.municipio || '', (value) =>
-                setFields((currentValue) => ({
-                  ...currentValue,
-                  endereco: { ...currentValue.endereco, municipio: value },
-                }))
-              )}
-              {addressField('UF', fields.endereco.uf || '', (value) =>
-                setFields((currentValue) => ({
-                  ...currentValue,
-                  endereco: { ...currentValue.endereco, uf: value },
-                }))
-              )}
-              {addressField('CEP', fields.endereco.cep || '', (value) =>
-                setFields((currentValue) => ({
-                  ...currentValue,
-                  endereco: { ...currentValue.endereco, cep: value },
-                }))
-              )}
-            </div>
-          </SectionCard>
-        </>
-      ) : (
-        <>
-          <SectionCard
-            title="Dados gerais"
-            icon={UserRound}
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <InfoField label="Nome" value={title} />
-              <InfoField label="E-mail" value={current.email || 'E-mail não informado'} />
-              <InfoField
-                label="Telefone"
-                value={fmtPhone(current.telefone) || 'Telefone não informado'}
-              />
-              <InfoField
-                label="Documento"
-                value={formatDocument(current.tax_id || current.documento)}
-              />
-              {(current.notes || current.observacoes) && (
-                <InfoField label="Observações" value={current.notes ?? current.observacoes ?? ''} />
-              )}
-              {current.creation && (
-                <InfoField label="Criado em" value={formatDate(current.creation)} />
-              )}
-              {current.modified && (
-                <InfoField label="Modificado em" value={formatDate(current.modified)} />
-              )}
-            </div>
-          </SectionCard>
-          {current.address && (
-            <SectionCard title="Endereço" description={addressText(current.address)} icon={MapPin}>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <InfoField
-                  label="Endereço"
-                  value={[current.address.endereco, current.address.numero]
-                    .filter(Boolean)
-                    .join(', ')}
-                />
-                <InfoField
-                  label="Município/UF"
-                  value={[current.address.municipio, current.address.uf].filter(Boolean).join('/')}
-                />
-                <InfoField label="Bairro" value={current.address.bairro || ''} />
-                <InfoField label="Complemento" value={current.address.complemento || ''} />
-                <InfoField label="CEP" value={current.address.cep || ''} />
-              </div>
-            </SectionCard>
-          )}
-          {current.latest_quotation && (
-            <SectionCard
-              title="Atividade recente"
-              icon={FileText}
-            >
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Orçamento recente</p>
-                <p className="break-words font-medium">{current.latest_quotation.name}</p>
-                <p className="text-xs text-fg-muted">
-                  {current.latest_quotation.status || '—'}
-                  {current.latest_quotation.date
-                    ? ` · ${formatDate(current.latest_quotation.date)}`
-                    : ''}
-                </p>
-                {current.latest_quotation.grand_total != null && (
-                  <p className="text-sm">{formatBRL(current.latest_quotation.grand_total)}</p>
+                    endereco: { ...currentValue.endereco, numero: value },
+                  }))
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    navigate(`/quotations/${encodeURIComponent(current.latest_quotation!.name)}`)
-                  }
-                >
-                  Abrir orçamento
-                </Button>
-              </div>
-            </SectionCard>
-          )}
-          {current.deal && (
-            <SectionCard title="Deal ativo" icon={UserRound}>
-              <div className="space-y-1">
-                <p className="break-words font-medium">{current.deal.name}</p>
-                {current.deal.status && (
-                  <p className="text-xs text-fg-muted">{current.deal.status}</p>
+                {addressField('Bairro', fields.endereco.bairro || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, bairro: value },
+                  }))
                 )}
-                {current.deal.next_step && (
-                  <p className="text-sm">
-                    <span className="text-fg-muted">Próximo passo: </span>
-                    {current.deal.next_step}
-                  </p>
+                {addressField('Complemento', fields.endereco.complemento || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, complemento: value },
+                  }))
+                )}
+                {addressField('Município', fields.endereco.municipio || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, municipio: value },
+                  }))
+                )}
+                {addressField('UF', fields.endereco.uf || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, uf: value },
+                  }))
+                )}
+                {addressField('CEP', fields.endereco.cep || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, cep: value },
+                  }))
                 )}
               </div>
             </SectionCard>
-          )}
-          {current.orders && current.orders.length > 0 && (
-            <SectionCard title="Pedidos recentes" icon={ShoppingCart}>
-              <div className="space-y-2">
-                {current.orders.map((order) => (
-                  <div
-                    key={order.name}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-line p-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="break-words font-medium">{order.name}</p>
-                      <p className="text-xs text-fg-muted">
-                        {order.status || '—'}
-                        {order.date ? ` · ${formatDate(order.date)}` : ''}
-                      </p>
-                      {order.grand_total != null && (
-                        <p className="mt-1 text-sm">{formatBRL(order.grand_total)}</p>
+          </>
+        ) : (
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+            <div className="space-y-5 lg:order-2">
+              {current.latest_quotation && (
+                <SectionCard title="Atividade recente" icon={FileText}>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
+                      Orçamento recente
+                    </p>
+                    <p className="break-words font-medium">{current.latest_quotation.name}</p>
+                    <p className="text-xs text-fg-muted">
+                      {current.latest_quotation.status || '—'}
+                      {current.latest_quotation.date
+                        ? ` · ${formatDate(current.latest_quotation.date)}`
+                        : ''}
+                    </p>
+                    {current.latest_quotation.grand_total != null && (
+                      <p className="text-sm">{formatBRL(current.latest_quotation.grand_total)}</p>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        navigate(
+                          `/quotations/${encodeURIComponent(current.latest_quotation!.name)}`
+                        )
+                      }
+                    >
+                      Abrir orçamento
+                    </Button>
+                  </div>
+                </SectionCard>
+              )}
+              {current.deal && (
+                <SectionCard title="Negócio ativo" icon={Columns3}>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <p className="break-words font-medium">{current.deal.name}</p>
+                      {current.deal.status && (
+                        <p className="text-xs text-fg-muted">{current.deal.status}</p>
+                      )}
+                      {current.deal.next_step && (
+                        <p className="text-sm">
+                          <span className="text-fg-muted">Próximo passo: </span>
+                          {current.deal.next_step}
+                        </p>
                       )}
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => navigate(`/sales-orders/${encodeURIComponent(order.name)}`)}
+                      onClick={() =>
+                        navigate(`/crm?search=${encodeURIComponent(current.deal!.name)}`)
+                      }
                     >
-                      Abrir pedido
+                      Abrir no CRM
                     </Button>
                   </div>
-                ))}
+                </SectionCard>
+              )}
+              {current.orders && current.orders.length > 0 && (
+                <SectionCard title="Pedidos recentes" icon={ShoppingCart}>
+                  <div className="space-y-2">
+                    {current.orders.map((order) => (
+                      <div
+                        key={order.name}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-line p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="break-words font-medium">{order.name}</p>
+                          <p className="text-xs text-fg-muted">
+                            {order.status || '—'}
+                            {order.date ? ` · ${formatDate(order.date)}` : ''}
+                          </p>
+                          {order.grand_total != null && (
+                            <p className="mt-1 text-sm">{formatBRL(order.grand_total)}</p>
+                          )}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            navigate(`/sales-orders/${encodeURIComponent(order.name)}`)
+                          }
+                        >
+                          Abrir pedido
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </SectionCard>
+              )}
+            </div>
+            <SectionCard title="Cadastro" icon={UserRound} className="lg:order-1">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <InfoField
+                  label="Documento"
+                  value={formatDocument(current.tax_id || current.documento)}
+                />
+                {current.address && (
+                  <InfoField
+                    label="Endereço"
+                    value={addressText(current.address)}
+                    className="md:col-span-2"
+                  />
+                )}
+                {(current.notes || current.observacoes) && (
+                  <InfoField
+                    label="Observações"
+                    value={current.notes ?? current.observacoes ?? ''}
+                    className="md:col-span-2"
+                  />
+                )}
+                {current.creation && (
+                  <InfoField label="Criado em" value={formatDate(current.creation)} />
+                )}
+                {current.modified && (
+                  <InfoField label="Modificado em" value={formatDate(current.modified)} />
+                )}
               </div>
             </SectionCard>
-          )}
-        </>
-      )}
-
+          </div>
+        )}
       </fieldset>
       <ConfirmDialog
         open={archiveDialogOpen}

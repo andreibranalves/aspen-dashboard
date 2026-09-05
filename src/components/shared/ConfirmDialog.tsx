@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, CircleHelp, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export interface ConfirmDialogProps {
@@ -30,6 +30,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const DialogIcon = variant === 'destructive' ? AlertTriangle : CircleHelp;
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -117,8 +118,16 @@ export default function ConfirmDialog({
         className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
       >
         <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-            <AlertTriangle size={20} className="text-destructive" aria-hidden="true" />
+          <div
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              variant === 'destructive' ? 'bg-destructive/10' : 'bg-primary/10'
+            }`}
+          >
+            <DialogIcon
+              size={20}
+              className={variant === 'destructive' ? 'text-destructive' : 'text-primary'}
+              aria-hidden="true"
+            />
           </div>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-lg font-semibold text-fg">

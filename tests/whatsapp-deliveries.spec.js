@@ -34,10 +34,10 @@ function delivery(state, options = {}) {
     client_name: options.clientName || `Cliente ${state}`,
     phone: options.phone || '5511999990000',
     flow_id: 'flow-1',
-    flow_name: 'Fluxo comercial',
+    flow_name: options.flowName || 'Fluxo comercial',
     state,
     public_error: state === 'failed' ? 'Falha antes do transporte.' : null,
-    completion_source: isDelivered ? 'provider_receipt' : null,
+    completion_source: options.completionSource ?? (isDelivered ? 'provider_receipt' : null),
     progress: { delivered: isDelivered ? 1 : 0, total: 1 },
     steps: [
       {
@@ -102,8 +102,16 @@ async function mockList(page, handler) {
 }
 
 test('outbox defaults to actionable work and resolves one delivery', async ({ page }) => {
-  const needsReviewDelivery = delivery('needs_review', { number: 'ORC-NEEDS' });
-  const processingDelivery = delivery('processing', { number: 'ORC-PROCESSING' });
+  const needsReviewDelivery = delivery('needs_review', {
+    number: 'ORC-NEEDS',
+    clientName: 'Cliente com nome excepcionalmente longo para validar a largura da tabela',
+    flowName: 'Fluxo comercial com um nome igualmente longo',
+  });
+  const processingDelivery = delivery('processing', {
+    number: 'ORC-PROCESSING',
+    clientName: 'Outro cliente com nome longo e estado diferente',
+    flowName: 'Fluxo de acompanhamento prolongado',
+  });
   const deliveredDelivery = delivery('delivered', { number: 'ORC-DELIVERED' });
   let firstQuery;
 
@@ -137,7 +145,9 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
     );
   });
 
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/#/whatsapp-deliveries');
+  await page.evaluate(() => globalThis.document.fonts.ready);
   await expect(page.getByRole('heading', { name: 'Envios WhatsApp' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Envios WhatsApp' })).toBeVisible();
   await expect(page.getByText(needsReviewDelivery.business_number)).toBeVisible();
@@ -154,7 +164,37 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(processingDetails).toHaveAttribute('aria-controls', 'whatsapp-delivery-details-1');
   await expect(page.locator('#whatsapp-delivery-details-1')).toBeHidden();
   await expect(page.getByText('(11) 99999-0000').first()).toBeVisible();
+  await expect(page.getByText(needsReviewDelivery.flow_name)).toBeVisible();
+  await expect(page.getByText('Recibo', { exact: true })).toBeVisible();
+  await expect(
+    page.locator('#whatsapp-delivery-details-0').getByText('—', { exact: true })
+  ).toBeVisible();
   await expect(page.getByText('provider-message-raw-must-not-render')).toHaveCount(0);
+  const tableScroll = await page
+    .getByRole('table', { name: 'Tabela de entregas WhatsApp' })
+    .evaluate((table) => {
+      const container = table.parentElement;
+      return { clientWidth: container?.clientWidth || 0, scrollWidth: container?.scrollWidth || 0 };
+    });
+  expect(tableScroll.scrollWidth).toBeLessThanOrEqual(tableScroll.clientWidth + 1);
+  for (const button of await page.getByRole('button', { name: /detalhes de ORC-/i }).all()) {
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.x + box.width).toBeLessThanOrEqual(1440);
+  }
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const table = page.getByRole('table', { name: 'Tabela de entregas WhatsApp' });
+    await table.evaluate((element) => {
+      if (element.parentElement)
+        element.parentElement.scrollLeft = element.parentElement.scrollWidth;
+    });
+    const box = await processingDetails.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   expect(firstQuery.get('requires_action')).toBe('true');
   expect(firstQuery.get('include_active')).toBe('true');
   expect(firstQuery.get('page')).toBe('1');
@@ -166,11 +206,15 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
 });
 
-test('limpar fila cancela somente tentativas pendentes e mantém histórico', async ({ page }) => {
+test('limpar fila permite cancelar a confirmação e só então cancela tentativas pendentes', async ({
+  page,
+}) => {
   const pendingDelivery = delivery('retry_scheduled', { number: 'ORC-CLEAR' });
   let cleared = false;
+  let clearRequests = 0;
   await page.route('**/api/quotation-deliveries**', (route) => {
     if (route.request().method() === 'POST') {
+      clearRequests += 1;
       expect(route.request().postDataJSON()).toEqual({ action: 'cancel_pending' });
       cleared = true;
       return json(route, { cancelled: 1 });
@@ -180,10 +224,16 @@ test('limpar fila cancela somente tentativas pendentes e mantém histórico', as
   await page.goto('/#/whatsapp-deliveries');
   await expect(page.getByText('ORC-CLEAR', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Limpar fila' }).click();
-  // confirmação migrada para ConfirmDialog (sem confirm() nativo)
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('ORC-CLEAR', { exact: true })).toBeVisible();
+  expect(clearRequests).toBe(0);
+
+  await page.getByRole('button', { name: 'Limpar fila' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Limpar fila' }).click();
   await expect(page.getByText('1 tentativa pendente cancelada.', { exact: true })).toBeVisible();
   await expect(page.getByText('ORC-CLEAR', { exact: true })).toHaveCount(0);
+  expect(clearRequests).toBe(1);
 });
 
 test('browser absent while cron completes delivery leaves one durable delivered row', async ({ page, context }) => {
@@ -264,6 +314,8 @@ test('filters expose Portuguese controls and query state, search, and period', a
 
   await page.getByLabel('Entregues').check();
   await expect(page.getByText(deliveredDelivery.business_number)).toBeVisible();
+  await page.getByRole('button', { name: 'Detalhes de ORC-DELIVERED, linha 1' }).click();
+  await expect(page.getByText('Recibo do provedor')).toBeVisible();
   const deliveredQuery = queries.find((query) => query.get('state') === 'delivered');
   expect(deliveredQuery.get('requires_action')).toBe('false');
   expect(deliveredQuery.get('include_active')).toBe('false');

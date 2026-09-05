@@ -1,12 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { withCanonicalQuotationDetail } from './fixtures/quotation-detail.js';
 
 const id = 'ORC-20260001';
 const token = '2026-07-01T12:00:00.000Z';
 
 function coreDetail(overrides = {}) {
-  return {
+  return withCanonicalQuotationDetail({
     id,
     quotation_id: id,
+    quotation_name: id,
     quotation_uuid: '11111111-1111-4111-8111-111111111111',
     revision_id: '22222222-2222-4222-8222-222222222222',
     revision: 1,
@@ -48,7 +50,7 @@ function coreDetail(overrides = {}) {
     updated_at: token,
     items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto core', item_name: 'Produto core', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '90.00', manual_rate: false }],
     ...overrides,
-  };
+  });
 }
 
 const manifest = {
@@ -62,7 +64,13 @@ const manifest = {
 test('core UI selects/previews a repository template and saves template_key @quotations', async ({ page }) => {
   let authoritative = coreDetail();
   let lastPayload;
+  const previewPayloads = [];
   const posts = [];
+  page.context().on('request', (request) => {
+    if (!request.url().includes('/api/quotation-preview') || request.method() !== 'POST') return;
+    const encoded = new globalThis.URLSearchParams(request.postData() || '').get('payload');
+    if (encoded) previewPayloads.push(JSON.parse(encoded));
+  });
   await page.route('**/api/quotations**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
@@ -98,35 +106,37 @@ test('core UI selects/previews a repository template and saves template_key @quo
   });
 
   await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Editar' }).click();
   await expect(page.getByLabel('Modelo do orçamento')).toBeVisible();
   await page.getByLabel('Modelo do orçamento').selectOption('minimalista');
-  await expect(page.getByText(/Hash: c7060a7faa1f/)).toBeVisible();
   expect(posts.filter((payload) => payload.action === 'create_revision')).toHaveLength(0);
   const preview = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  await page.getByRole('button', { name: 'Pré-visualizar' }).click();
   const popup = await preview;
-  await expect(popup).toHaveURL(new RegExp(`/api/quotation-preview\\?id=22222222-2222-4222-8222-222222222222&template_version_id=77777777-7777-4777-8777-777777777777`));
+  await expect(popup).toHaveURL(/\/api\/quotation-preview\?format=html/);
   await popup.close();
+  expect(previewPayloads[0].extracted).toMatchObject({
+    template_key: 'minimalista',
+    template_version_id: '77777777-7777-4777-8777-777777777777',
+  });
 
-  await page.getByRole('button', { name: 'Editar' }).click();
   await expect(page.getByText('Prazo de produção', { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel('Prazo de produção do orçamento')).toBeEditable();
-  for (const label of ['Exibir seção - Prazo de produção', 'Exibir seção - Pagamento', 'Exibir seção - Condições Gerais']) {
-    await expect(page.getByLabel(label)).toBeEditable();
-    await expect(page.getByLabel(label)).toBeChecked();
+  for (const name of [/Prazo de produção/, /Dados para pagamento/, /Condições gerais/]) {
+    await expect(page.getByRole('switch', { name })).toBeEditable();
+    await expect(page.getByRole('switch', { name })).toBeChecked();
   }
-  for (const label of ['Título - Prazo de produção', 'Título - Pagamento', 'Título - Condições Gerais'])
+  for (const label of ['Título da seção Prazo de produção', 'Título da seção Dados para pagamento', 'Título da seção Condições gerais'])
     await expect(page.getByLabel(label)).toBeEditable();
-  await expect(page.getByLabel('Título - Pagamento')).toBeEditable();
+  await expect(page.getByLabel('Título da seção Dados para pagamento')).toBeEditable();
   await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
-  await expect(page.getByLabel('Observações padrão')).toBeEditable();
-  await page.getByLabel('Título - Pagamento').fill('Pagamento personalizado');
-  await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
-  await expect(page.getByText('Personalizado').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Restaurar padrão' }).nth(1).click();
-  await expect(page.getByText('Padrão').first()).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Condições gerais', exact: true })).toBeEditable();
+  await page.getByLabel('Título da seção Dados para pagamento').fill('Pagamento personalizado');
+  await page.getByRole('switch', { name: /Prazo de produção/ }).uncheck();
+  await expect(page.getByLabel('Título da seção Dados para pagamento')).toHaveValue('Pagamento personalizado');
+  await page.getByLabel('Título da seção Dados para pagamento').fill('Pagamento');
   await page.getByRole('button', { name: 'Salvar' }).click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByText('Orçamento salvo.')).toBeVisible();
   expect(lastPayload.template_key).toBe('minimalista');
   expect(lastPayload.template_version_id).toBe('77777777-7777-4777-8777-777777777777');
   expect(lastPayload.pagamento).toBeUndefined();
@@ -138,10 +148,10 @@ test('core UI selects/previews a repository template and saves template_key @quo
     }),
   }));
   await page.getByRole('button', { name: 'Editar' }).click();
-  await expect(page.getByLabel('Título - Pagamento')).toHaveValue('Título confirmado pelo servidor');
-  await expect(page.getByLabel('Exibir seção - Prazo de produção')).not.toBeChecked();
+  await expect(page.getByLabel('Título da seção Dados para pagamento')).toHaveValue('Título confirmado pelo servidor');
+  await expect(page.getByRole('switch', { name: /Prazo de produção/ })).not.toBeChecked();
   const refreshedPreview = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  await page.getByRole('button', { name: 'Pré-visualizar' }).click();
   const refreshedPopup = await refreshedPreview;
   await expect(refreshedPopup).toHaveURL(new RegExp('template_version_id=99999999-9999-4999-8999-999999999999'));
   await refreshedPopup.close();
@@ -180,10 +190,10 @@ test('draft preview uses the unsaved canonical section patch without saving @quo
   await page.goto(`/#/quotations/${id}`);
   await page.getByRole('button', { name: 'Editar' }).click();
   await page.getByLabel('Condição de pagamento').fill('Pagamento sem salvar');
-  await page.getByLabel('Título - Pagamento').fill('Título transitório');
-  await page.getByLabel('Exibir seção - Condições Gerais').uncheck();
+  await page.getByLabel('Título da seção Dados para pagamento').fill('Título transitório');
+  await page.getByRole('switch', { name: /Condições gerais/ }).uncheck();
   const preview = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  await page.getByRole('button', { name: 'Pré-visualizar' }).click();
   const popup = await preview;
   await expect(popup).toHaveURL(/\/api\/quotation-preview\?format=html/);
   await popup.close();
@@ -194,16 +204,17 @@ test('draft preview uses the unsaved canonical section patch without saving @quo
       template_key: 'padrao',
       template_version_id: '55555555-5555-4555-8555-555555555555',
       secoes: {
-        pagamento: { current: { title: 'Título transitório', body: 'Pagamento sem salvar' } },
+        pagamento: { current: { title: 'Título transitório' } },
         condicoes_gerais: { current: { enabled: false } },
       },
     },
   });
+  expect(previewPayload.extracted.secoes.pagamento.current.body).toContain('Pagamento sem salvar');
   expect(previewPayload.extracted.pagamento).toBeUndefined();
   expect(previewPayload.extracted.observacoes).toBeUndefined();
 });
 
-test('production deadline survives hide/re-enable saves and restores the captured base @quotations', async ({ page }) => {
+test('production deadline survives hide/re-enable saves and keeps the captured base @quotations', async ({ page }) => {
   const initial = coreDetail({
     prazo_producao: '5 dias',
     secoes: {
@@ -227,13 +238,12 @@ test('production deadline survives hide/re-enable saves and restores the capture
       const payload = request.postDataJSON();
       payloads.push(payload);
       const sections = globalThis.structuredClone(payload.secoes);
-      authoritative = {
-        ...authoritative,
+      authoritative = coreDetail({
         prazo_producao: sections.prazo_producao.current.enabled
           ? sections.prazo_producao.current.value
           : '',
         secoes: sections,
-      };
+      });
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
       return;
     }
@@ -246,24 +256,26 @@ test('production deadline survives hide/re-enable saves and restores the capture
   await page.goto(`/#/quotations/${id}`);
   await page.getByRole('button', { name: 'Editar' }).click();
   const deadline = page.getByLabel('Prazo de produção do orçamento');
-  await expect(deadline).toHaveValue('5 dias');
-  await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
+  await expect(deadline).toHaveText('5 dias');
+  await page.getByRole('switch', { name: /Prazo de produção/ }).uncheck();
   await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Orçamento salvo.', { exact: true }).first()).toBeVisible();
   expect(payloads[0].secoes.prazo_producao.current).toMatchObject({ enabled: false, value: '5 dias' });
   expect(payloads[0].prazo_producao).toBe('');
 
   await page.getByRole('button', { name: 'Editar' }).click();
-  await expect(page.getByLabel('Exibir seção - Prazo de produção')).not.toBeChecked();
-  await expect(page.getByLabel('Prazo de produção do orçamento')).toHaveValue('5 dias');
-  await page.getByLabel('Exibir seção - Prazo de produção').check();
+  await expect(page.getByRole('switch', { name: /Prazo de produção/ })).not.toBeChecked();
+  await expect(page.getByLabel('Prazo de produção do orçamento')).toHaveText('5 dias');
+  await page.getByRole('switch', { name: /Prazo de produção/ }).check();
   await page.getByLabel('Prazo de produção do orçamento').fill('7 dias');
-  await page.getByRole('button', { name: 'Restaurar padrão' }).nth(0).click();
-  await expect(page.getByLabel('Prazo de produção do orçamento')).toHaveValue('5 dias');
   await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Orçamento salvo.', { exact: true }).last()).toBeVisible();
-  expect(payloads[1].secoes.prazo_producao.current).toMatchObject({ enabled: true, value: '5 dias' });
-  expect(payloads[1].prazo_producao).toBe('5 dias');
+  expect(payloads[1].secoes.prazo_producao).toMatchObject({
+    base: { enabled: true, value: '5 dias' },
+    current: { enabled: true },
+  });
+  expect(payloads[1].secoes.prazo_producao.current.value).toContain('7 dias');
+  expect(payloads[1].prazo_producao).toContain('7 dias');
 });
 
 test('draft preview uses the selected unsaved client snapshot @quotations', async ({ page }) => {
@@ -322,7 +334,7 @@ test('draft preview uses the selected unsaved client snapshot @quotations', asyn
   await expect(page.getByRole('button', { name: /Cliente selecionado/ })).toBeVisible();
   await page.getByRole('button', { name: /Cliente selecionado/ }).click();
   const preview = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  await page.getByRole('button', { name: 'Pré-visualizar' }).click();
   const popup = await preview;
   await expect(popup).toHaveURL(/\/api\/quotation-preview\?format=html/);
   await popup.close();
@@ -368,11 +380,11 @@ test('draft retains an archived current template when saving unchanged @quotatio
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifest) });
   });
   await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Editar' }).click();
   await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('arquivado');
   await expect(page.getByLabel('Modelo do orçamento').locator('option:checked')).toContainText('(arquivado)');
-  await page.getByRole('button', { name: 'Editar' }).click();
   await page.getByRole('button', { name: 'Salvar' }).click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByText('Orçamento salvo.')).toBeVisible();
   expect(payload.template_key).toBe('arquivado');
   expect(payload.template_version_id).toBe(archivedVersionId);
 });
@@ -382,7 +394,7 @@ test('mismatched status label cannot enable draft editing @quotations', async ({
     const request = route.request();
     const url = new globalThis.URL(request.url());
     if (request.method() === 'GET' && url.searchParams.get('id')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(coreDetail({ status: 'Draft', status_canonical: 'enviado' })) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(coreDetail({ status: 'Draft', status_canonical: 'emitido' })) });
       return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
@@ -392,7 +404,7 @@ test('mismatched status label cannot enable draft editing @quotations', async ({
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
-  await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
+  await expect(page.getByLabel('Título da seção Dados para pagamento')).toHaveCount(0);
 });
 
 test('metadata-free quotation response renders core revision UI @quotations', async ({ page }) => {
@@ -412,6 +424,9 @@ test('metadata-free quotation response renders core revision UI @quotations', as
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Revisão 2', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Seções do orçamento' })).toBeVisible();
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await expect(page.getByRole('region', { name: 'Prazo de produção' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Dados para pagamento' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Condições gerais' })).toBeVisible();
   await expect(page.getByLabel('Modelo do orçamento')).toBeVisible();
 });

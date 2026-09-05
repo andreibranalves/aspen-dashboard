@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+import {
+  withCanonicalQuotationDetail,
+  withCanonicalQuotationListRow,
+} from './fixtures/quotation-detail.js';
 
 const revisionId = '22222222-2222-4222-8222-222222222222';
 const quotationId = 'ORC-20260001';
@@ -11,15 +15,28 @@ function json(route, body, status = 200, contentType = 'application/json') {
 test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quotations @critical', async ({ page }) => {
   const requests = [];
   await page.route('**/api/quotations**', (route) => json(route, {
-    data: [{
+    data: [withCanonicalQuotationListRow({
       id: quotationId,
+      quotation_id: quotationId,
+      quotation_uuid: quotationUuid,
       revision_id: revisionId,
+      revision_number: 1,
       cliente: 'Cliente local',
+      client_id: '33333333-3333-4333-8333-333333333333',
       data: '2026-08-10',
+      validade: '2026-08-25',
+      validade_dias: 15,
       valor: '90.00',
+      subtotal: '90.00',
+      total: '90.00',
+      frete: '0.00',
+      derived_expired: false,
+      concurrency_token: '2026-08-10T00:00:00.000Z',
+      updated_at: '2026-08-10T00:00:00.000Z',
+      email_sent: false,
       status: 'Enviado',
-      status_canonical: 'enviado',
-    }],
+      status_canonical: 'emitido',
+    })],
     pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
     status_summary: { Rascunho: 1, Enviado: 2, Aprovado: 3, Perdido: 4 },
   }));
@@ -35,6 +52,7 @@ test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quota
   const popup = page.waitForEvent('popup');
   await page.getByLabel(`Abrir PDF do orçamento ${quotationId}`).first().click();
   const opened = await popup;
+  await opened.waitForURL('**/api/quotation-preview**');
   const url = new globalThis.URL(opened.url());
   expect(url.pathname).toBe('/api/quotation-preview');
   expect(url.searchParams.get('id')).toBe(revisionId);
@@ -127,7 +145,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
     selectedFlowId: 'flow-test',
   }));
   await page.route('**/api/extract**', (route) => json(route, {
-    orders: [{ nome: 'Cliente envio', email: 'cliente@example.test', telefone: '11999990000', origem: 'WhatsApp', items: [{ item_code: 'SKU-1', qty: 10 }] }],
+    orders: [{ nome: 'Cliente envio', email: 'cliente@example.test', telefone: '11999990000', origem: 'Google Ads', items: [{ item_code: 'SKU-1', qty: 10 }] }],
   }));
   await page.route('**/api/pricing-lookup**', (route) => json(route, { success: true, items: [{ rate: 9, item_name: 'Produto' }] }));
   await page.route('**/api/orcamento**', (route) => json(route, {
@@ -141,14 +159,14 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
     concurrency_token: '2026-08-13T00:00:00.000Z',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
-    quotation_id: quotationUuid,
-    business_number: quotationId,
-    revision_id: revisionId,
-    revision_number: 1,
+    quotationId: quotationUuid,
+    businessNumber: quotationId,
+    revisionId,
+    revisionNumber: 1,
     status: 'emitido',
-    issued_at: '2026-08-13T00:00:00.000Z',
-    valid_until: '2026-08-28',
-    pdf_url: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
+    issuedAt: '2026-08-13T00:00:00.000Z',
+    validUntil: '2026-08-28',
+    pdfUrl: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
   }));
   await page.route('**/api/send-whatsapp-flow**', (route) => {
     sendCount += 1;
@@ -191,7 +209,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
   await page.locator('textarea').first().fill('10 produtos');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });
@@ -216,24 +234,24 @@ test('projeções locais descartam marcadores proibidos de cliente e cotação @
     latest_quotation: { name: quotationId, provider_marker: marker }, deal: { name: 'Negócio local', raw_payload: marker },
     provider_marker: marker,
   }));
-  await page.route('**/api/quotations**', (route) => json(route, {
-    id: quotationId, quotation_id: quotationId, quotation_uuid: '11111111-1111-4111-8111-111111111111', revision_id: revisionId,
-    revision: 1, revision_number: 1, status: 'Enviado', status_canonical: 'enviado', cliente: 'Cliente legítimo', client_id: '33333333-3333-4333-8333-333333333333',
+  await page.route('**/api/quotations**', (route) => json(route, withCanonicalQuotationDetail({
+    id: quotationId, quotation_id: quotationId, quotation_name: quotationId, quotation_uuid: '11111111-1111-4111-8111-111111111111', revision_id: revisionId,
+    revision: 1, revision_number: 1, status: 'Enviado', status_canonical: 'emitido', cliente: 'Cliente legítimo', client_id: '33333333-3333-4333-8333-333333333333',
     cliente_snapshot: { id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente legítimo' },
     data: '2026-08-10', validade: '2026-08-25', validade_dias: 15, pagamento: '', entrega: '', frete_padrao: '0.00', frete: '0.00', observacoes: '', prazo_producao: '',
     template_key: 'padrao', template_padrao: 'padrao', template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e', template_version_id: null, template_version: null,
     secoes: { schema_version: 1, prazo_producao: { base: { enabled: true, title: 'Prazo' }, current: { enabled: true, title: 'Prazo' } }, pagamento: { base: { enabled: true, title: 'Pagamento', body: '' }, current: { enabled: true, title: 'Pagamento', body: '' } }, condicoes_gerais: { base: { enabled: true, title: 'Condições', body: '' }, current: { enabled: true, title: 'Condições', body: '' } } },
     items: [{ item_code: 'SKU-1', item_name: 'Produto legítimo', sku: 'SKU-1', nome: 'Produto legítimo', qty: '1.000', quantidade: '1.000', suggested_unit_price: '9.00', preco_sugerido: '9.00', applied_unit_price: '9.00', preco_aplicado: '9.00', rate: '9.00', price_difference: '0.00', diferenca_preco: '0.00', line_total: '9.00', total_linha: '9.00', manual_rate: false, provider_marker: marker }],
-    subtotal: '9.00', total: '9.00', valor: '9.00', revision_history: [], derived_expired: false, expiration_derived: false, is_expired: false, expirada: false, concurrency_token: '2026-08-10T00:00:00.000Z',
+    subtotal: '9.00', total: '9.00', valor: '9.00', revision_history: [], derived_expired: false, expiration_derived: false, is_expired: false, expirada: false, concurrency_token: '2026-08-10T00:00:00.000Z', updated_at: '2026-08-10T00:00:00.000Z', email_sent: false, email_sent_at: null,
     provider_marker: marker, raw_payload: marker,
-  }));
+  })));
   await page.route('**/api/quotation-templates**', (route) => json(route, { templates: [] }));
 
   await page.goto('/#/leads');
   await expect(page.getByText('Cliente legítimo', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await page.goto(`/#/quotations/${quotationId}`);
-  await expect(page.getByText('Produto legítimo', { exact: true })).toBeVisible();
+  await expect(page.locator('tr').filter({ hasText: 'Produto legítimo' })).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href="https://evil.test"]')).toHaveCount(0);
 });

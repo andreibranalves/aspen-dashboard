@@ -15,8 +15,8 @@ import {
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatBRL, capitalize } from '@/lib/formatting/formatters';
-import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
+import { capitalize, fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { isValidLeadSource, LEAD_SOURCES } from '@/lib/clientMetadata';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
@@ -206,7 +206,20 @@ export default function SplitResultCard({
   const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
   const totalUrgente = total;
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
-  const canCreate = validItems > 0 && Boolean(draft.edited.nome?.trim());
+  const hasClient = Boolean(draft.edited.nome?.trim());
+  const actionBlockMessage = !hasClient && validItems === 0
+    ? 'Informe o cliente e adicione ao menos um item para continuar.'
+    : !hasClient
+      ? 'Informe o cliente para continuar.'
+      : validItems === 0
+        ? 'Adicione ao menos um item para continuar.'
+        : !draft.edited.origem
+          ? 'Selecione a origem para continuar.'
+          : !isValidLeadSource(draft.edited.origem)
+            ? 'Selecione uma origem válida para continuar.'
+            : null;
+  const canCreate = actionBlockMessage === null;
+  const actionStatusId = `quotation-action-status-${draft.index}`;
   const displayItems = editing ? items : items.filter((it) => it.item_code);
   const immutableIssue = Boolean(issue);
   const issueViewUrl = issue?.pdfUrl || viewUrl;
@@ -223,9 +236,6 @@ export default function SplitResultCard({
         if (item.item_code) terms[ii] = item.item_code;
       });
       setItemSearchTerms(terms);
-      if (!draft.edited.origem) {
-        onUpdateField(draft.index, 'origem', DEFAULT_LEAD_SOURCE);
-      }
     } else {
       // Clear local search state on exit
       setItemSearchTerms({});
@@ -311,10 +321,11 @@ export default function SplitResultCard({
                   <span className="text-[10px] font-medium text-fg-muted">Origem</span>
                   <select
                     aria-label="Origem"
-                    value={draft.edited.origem || DEFAULT_LEAD_SOURCE}
+                    value={draft.edited.origem || ''}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
                     className="h-7 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                   >
+                    <option value="">Selecione a origem…</option>
                     {LEAD_SOURCES.map((source) => (
                       <option key={source.value} value={source.value}>
                         {source.label}
@@ -331,7 +342,7 @@ export default function SplitResultCard({
               </h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-fg-muted">
                 {draft.edited.email && <span>{draft.edited.email}</span>}
-                {draft.edited.telefone && <span>{draft.edited.telefone}</span>}
+                {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
                 {draft.edited.origem && (
                   <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[10px]">
                     {draft.edited.origem}
@@ -351,10 +362,10 @@ export default function SplitResultCard({
       </div>
 
       {/* ── Stage 2: extracted values remain editable until creation. ── */}
-      {!isDone && (
+      {!isDone && saved && (
         <div className="border-b border-line bg-primary/5 px-4 py-3">
           <p className="text-xs leading-5 text-fg-muted">
-            Confirme cliente, itens, quantidades e preços. Nada será criado enquanto você não gerar o orçamento.
+            Rascunho salvo. Continue a revisão ou emita o orçamento.
           </p>
         </div>
       )}
@@ -369,15 +380,15 @@ export default function SplitResultCard({
             </div>
           ) : (
             <label className="block space-y-1">
-              <span className="text-[10px] font-medium text-fg-muted">Modelo HTML</span>
+              <span className="text-[10px] font-medium text-fg-muted">Modelo de orçamento</span>
               <select
-                aria-label="Modelo HTML"
+                aria-label="Modelo de orçamento"
                 value={draft.edited.template_key || ''}
                 onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                 disabled={templateLoading || templates.length === 0}
                 className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
-                {!draft.edited.template_key && <option value="">Padrão do servidor</option>}
+                {!draft.edited.template_key && <option value="">Modelo padrão</option>}
                 {templates.map((template) => (
                   <option key={template.key} value={template.key}>{template.name}</option>
                 ))}
@@ -576,7 +587,7 @@ export default function SplitResultCard({
             <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 pt-3 text-xs text-fg-muted">
               <strong className="text-fg">{issue.businessNumber}</strong>
               <span>Revisão {issue.revisionNumber}</span>
-              <span>Validade: {issue.validUntil}</span>
+              <span>Validade: {formatDate(issue.validUntil)}</span>
             </div>
           )}
           <WhatsAppSendPanel
@@ -603,12 +614,10 @@ export default function SplitResultCard({
 
       {/* ── Stage 3 + actions ── */}
       <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface/30 p-3">
-        {!isDone && (
-          <div className="w-full border-b border-line pb-3">
-            <p className="text-xs leading-5 text-fg-muted">
-              Um orçamento comercial com os dados revisados e o modelo selecionado.
-            </p>
-          </div>
+        {!isDone && actionBlockMessage && (
+          <p id={actionStatusId} className="w-full border-b border-line pb-3 text-xs leading-5 text-fg-muted">
+            {actionBlockMessage}
+          </p>
         )}
         {!isDone && (
           <>
@@ -685,6 +694,7 @@ export default function SplitResultCard({
                 onClick={() => onPreviewQuote(draft.index)}
                 disabled={isProcessing || !canCreate}
                 title="Pré-visualização temporária; não salva nem envia."
+                aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
                 <Eye size={13} />
                 Ver
@@ -696,6 +706,7 @@ export default function SplitResultCard({
                 size="sm"
                 onClick={() => onSaveDraft(draft.index)}
                 disabled={isProcessing || isSavingDraft || !canCreate}
+                aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
                 {isSavingDraft ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
                 {isSavingDraft ? 'Salvando…' : 'Salvar rascunho'}
@@ -706,9 +717,10 @@ export default function SplitResultCard({
                 size="sm"
                 onClick={() => onCreateQuote(draft.index)}
                 disabled={isProcessing || !canCreate}
+                aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
-                <Send size={13} />
-                Gerar orçamento
+                {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                {isProcessing ? 'Emitindo…' : 'Emitir orçamento'}
               </Button>
             )}
           </>

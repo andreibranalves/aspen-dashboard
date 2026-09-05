@@ -30,7 +30,6 @@ import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
-import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
@@ -743,21 +742,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   return (
     <PageShell className="space-y-6">
       <fieldset disabled={saving} className="space-y-6">
-      <PageHeader
-        title={isNewProduct ? 'Novo produto' : displayName}
-        actions={pageActions}
-      />
-      {isDuplicateDraft && (
-        <div
-          className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-          role="note"
-        >
-          <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o
-          produto.
-        </div>
-      )}
-
-      <header className="flex flex-col gap-4 rounded-md border border-line bg-surface p-5 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-4 rounded-md border border-line bg-surface p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-4">
           {hasImage ? (
             <img
@@ -790,12 +775,23 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             </p>
           </div>
         </div>
+        {pageActions}
       </header>
+
+      {isDuplicateDraft && (
+        <div
+          className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
+          role="note"
+        >
+          <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o
+          produto.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <SectionCard title="Dados gerais" icon={Package}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {editing ? (
+            {editing && (
               <div className="md:col-span-2">
                 <label className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
                 <Input
@@ -805,8 +801,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   placeholder="Nome do produto"
                 />
               </div>
-            ) : (
-              <InfoField label="Nome" value={produto.nome} />
             )}
 
             {editing ? (

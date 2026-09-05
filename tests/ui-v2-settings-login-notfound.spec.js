@@ -30,7 +30,7 @@ const TEMPLATE = {
 };
 
 test.describe('Aspen v2 settings and recovery screens', () => {
-  test('groups daily settings before the advanced template editor', async ({ page }) => {
+  test('groups settings and opens quote models without repeated headings', async ({ page }) => {
     await page.route('**/api/settings', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
@@ -73,10 +73,19 @@ test.describe('Aspen v2 settings and recovery screens', () => {
     await page.goto('/#/settings');
 
     await expect(page.getByRole('heading', { name: 'Padrões de orçamento' })).toBeVisible();
-    await expect(page.getByText('Prazos e valores padrão', { exact: true })).toBeVisible();
-    await expect(page.getByText('Conteúdo comercial', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Configurações avançadas' })).toBeVisible();
-    await expect(page.getByLabel('Fonte HTML')).toBeVisible();
+    await expect(page.locator('summary').filter({ hasText: 'Prazos e valores' })).toBeVisible();
+    await expect(page.locator('summary').filter({ hasText: 'Conteúdo do documento' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Configurações avançadas' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Modelos de orçamento' })).toHaveCount(1);
+
+    const modelsAccordion = page.locator('summary').filter({ hasText: 'Modelos de orçamento' });
+    await expect(page.getByLabel('Conteúdo do modelo')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Salvar nova versão' })).toBeVisible();
+    await modelsAccordion.click();
+    await expect(page.getByLabel('Conteúdo do modelo')).toBeHidden();
+    await modelsAccordion.click();
+    await expect(page.getByLabel('Conteúdo do modelo')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Salvar nova versão' })).toBeVisible();
   });
 
   test('keeps recovery copy safe when settings returns a raw error', async ({ page }) => {
@@ -105,7 +114,7 @@ test.describe('Aspen v2 settings and recovery screens', () => {
 
   test('keeps login loading, focus and safe authentication feedback', async ({ page }) => {
     await page.addInitScript(() => globalThis.localStorage.setItem('aspen_theme', 'dark'));
-    await page.route('**/api/quotations', async (route) => {
+    await page.route('**/api/quotations**', async (route) => {
       await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
     });
     await page.route('**/api/login', async (route) => {
@@ -130,7 +139,7 @@ test.describe('Aspen v2 settings and recovery screens', () => {
   });
 
   test('keeps successful authentication navigation intact', async ({ page }) => {
-    await page.route('**/api/quotations', async (route) => {
+    await page.route('**/api/quotations**', async (route) => {
       await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
     });
     await page.route('**/api/login', async (route) => {

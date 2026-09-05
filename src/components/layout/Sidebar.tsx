@@ -132,7 +132,7 @@ export default function Sidebar({
           {NAV_SECTIONS.map((section) => (
             <div key={section.title} className="mb-2">
               {!collapsed && (
-                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-fg-muted/50">
+                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-fg-muted">
                   {section.title}
                 </div>
               )}

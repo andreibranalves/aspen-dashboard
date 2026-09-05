@@ -12,6 +12,7 @@ import type {
   DraftItem,
   Product,
   ProductSearchEntry,
+  StoredAutoQuoteDraft,
 } from '@/types/domain';
 import {
   isValidLeadSource,
@@ -30,6 +31,16 @@ interface PricingItem {
 interface PricingRef {
   di: number;
   ii: number;
+}
+
+function invalidateSavedDraft(draft: Draft): Draft {
+  const next = { ...draft } as StoredAutoQuoteDraft;
+  delete next.saved;
+  delete next.issueIdempotencyKey;
+  delete next.issue;
+  delete next.result;
+  delete next.status;
+  return next;
 }
 
 export function useExtractionDrafts(initialDrafts: Draft[] = []) {
@@ -131,14 +142,15 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       setDrafts(prev => {
         const draftIndex = prev.findIndex((draft) => draft.index === draftIdx);
         if (draftIndex < 0) return prev;
-        const items = [...prev[draftIndex].edited.items];
+        const draft = invalidateSavedDraft(prev[draftIndex]);
+        const items = [...draft.edited.items];
         if (!items[itemIdx]) return prev;
         items[itemIdx] = { ...items[itemIdx], [field]: value } as DraftItem;
         if (field === 'rate') items[itemIdx]._rateManual = true;
         if (field === 'item_code') delete items[itemIdx]._rateManual;
         if (field === 'qty') delete items[itemIdx]._rateManual;
         const next = [...prev];
-        next[draftIndex] = { ...next[draftIndex], edited: { ...next[draftIndex].edited, items } };
+        next[draftIndex] = { ...draft, edited: { ...draft.edited, items } };
         return next;
       });
     },
@@ -150,12 +162,13 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     setDrafts(prev => {
       const currentIndex = prev.findIndex((draft) => draft.index === draftIdx);
       if (currentIndex < 0) return prev;
+      const draft = invalidateSavedDraft(prev[currentIndex]);
       const items = [
-        ...prev[currentIndex].edited.items,
+        ...draft.edited.items,
         { item_code: '', qty: 30, rate: null, _rateManual: true } as DraftItem,
       ];
       const next = [...prev];
-      next[currentIndex] = { ...next[currentIndex], edited: { ...next[currentIndex].edited, items } };
+      next[currentIndex] = { ...draft, edited: { ...draft.edited, items } };
       return next;
     });
   }, [nextPricingVersion]);
@@ -165,9 +178,10 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     setDrafts(prev => {
       const currentIndex = prev.findIndex((draft) => draft.index === draftIdx);
       if (currentIndex < 0) return prev;
-      const items = prev[currentIndex].edited.items.filter((_, i) => i !== itemIdx);
+      const draft = invalidateSavedDraft(prev[currentIndex]);
+      const items = draft.edited.items.filter((_, i) => i !== itemIdx);
       const next = [...prev];
-      next[currentIndex] = { ...next[currentIndex], edited: { ...next[currentIndex].edited, items } };
+      next[currentIndex] = { ...draft, edited: { ...draft.edited, items } };
       return next;
     });
   }, [nextPricingVersion]);
@@ -177,9 +191,10 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     (draftIdx: number, field: keyof DraftEdited, value: unknown) => {
       setDrafts(prev => {
         const next = [...prev];
+        const draft = invalidateSavedDraft(next[draftIdx]);
         next[draftIdx] = {
-          ...next[draftIdx],
-          edited: { ...next[draftIdx].edited, [field]: value },
+          ...draft,
+          edited: { ...draft.edited, [field]: value },
         };
         return next;
       });
@@ -191,8 +206,9 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     (draftIdx: number, field: keyof Address, value: unknown) => {
       setDrafts(prev => {
         const next = [...prev];
-        const addr = normalizeAddress({ ...next[draftIdx].edited.endereco, [field]: value });
-        next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, endereco: addr } };
+        const draft = invalidateSavedDraft(next[draftIdx]);
+        const addr = normalizeAddress({ ...draft.edited.endereco, [field]: value });
+        next[draftIdx] = { ...draft, edited: { ...draft.edited, endereco: addr } };
         return next;
       });
     },
@@ -204,7 +220,8 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     async (draftIdx: number, checked: boolean) => {
       const current = draftsRef.current.find((draft) => draft.index === draftIdx);
       if (!current) return;
-      const updated = { ...current, edited: { ...current.edited, urgente: checked } };
+      const draft = invalidateSavedDraft(current);
+      const updated = { ...draft, edited: { ...draft.edited, urgente: checked } };
       const requestVersion = nextPricingVersion(draftIdx);
       setDrafts(prev => prev.map((draft) => (
         draft.index === draftIdx ? updated : draft
@@ -258,10 +275,11 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
   const reorderItems = useCallback((draftIdx: number, fromIdx: number, toIdx: number) => {
     setDrafts(prev => {
       const next = [...prev];
-      const items = [...next[draftIdx].edited.items];
+      const draft = invalidateSavedDraft(next[draftIdx]);
+      const items = [...draft.edited.items];
       const [moved] = items.splice(fromIdx, 1);
       items.splice(toIdx, 0, moved);
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
+      next[draftIdx] = { ...draft, edited: { ...draft.edited, items } };
       return next;
     });
   }, []);
@@ -301,11 +319,12 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       if (isUnpricedProduct(product)) return;
       const current = draftsRef.current.find((draft) => draft.index === draftIdx);
       if (!current || !current.edited.items[itemIdx]) return;
+      const draft = invalidateSavedDraft(current);
       const updated: Draft = {
-        ...current,
+        ...draft,
         edited: {
-          ...current.edited,
-          items: current.edited.items.map((item, index) => (
+          ...draft.edited,
+          items: draft.edited.items.map((item, index) => (
             index === itemIdx
               ? { ...item, item_code: product.sku, item_name: product.nome || '', _rateManual: undefined }
               : item
