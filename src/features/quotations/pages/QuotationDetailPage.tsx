@@ -420,7 +420,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         setTemplateError('');
       })
       .catch(() => {
-        if (active) setTemplateError('Não foi possível carregar os templates. Tente novamente.');
+        if (active) setTemplateError('Não foi possível carregar os modelos. Tente novamente.');
       });
     return () => {
       active = false;

@@ -306,6 +306,12 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     // Botão "Extrair"
     await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
+
+    const manageModels = page.getByRole('button', { name: 'Gerenciar modelos' });
+    await manageModels.click();
+    await expect(page.getByRole('heading', { name: 'Modelos de pedido' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(manageModels).toBeFocused();
   });
 
   test('e-mail com parte local numérica não é tratado como template', async ({ page }) => {
@@ -323,7 +329,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByRole('button', { name: /Extrair/i }).click();
 
     await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-    await expect(page.getByText(/Template não encontrado/i)).toHaveCount(0);
+    await expect(page.getByText(/Modelo não encontrado/i)).toHaveCount(0);
     expect(extractRequests).toHaveLength(1);
     expect(extractRequests[0].orderTemplateSelections).toBeUndefined();
   });

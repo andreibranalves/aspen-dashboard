@@ -34,6 +34,41 @@ async function openDashboard(page, viewport) {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 }
 
+function contrastRatio(foreground, background) {
+  const parseRgb = (value) => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+  const luminance = (value) => {
+    const [red, green, blue] = parseRgb(value).map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
+async function waitForThemeToSettle(page) {
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))
+      )
+  );
+}
+
+async function expectSidebarCategoryContrast(page) {
+  for (const category of ['Operacional', 'Cadastros', 'Outros']) {
+    const label = page.getByText(category, { exact: true });
+    const colors = await label.evaluate((element) => ({
+      foreground: globalThis.getComputedStyle(element).color,
+      background: globalThis.getComputedStyle(element.closest('aside')).backgroundColor,
+    }));
+    expect(contrastRatio(colors.foreground, colors.background)).toBeGreaterThanOrEqual(4.5);
+  }
+}
+
 test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page }) => {
   await openDashboard(page, { width: 390, height: 844 });
 
@@ -42,6 +77,10 @@ test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page 
   await menu.click();
   await expect(page.locator('#aspen-sidebar')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fechar menu' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Dashboard' })).toHaveAttribute(
+    'aria-current',
+    'page'
+  );
 
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-sidebar-backdrop="true"]')).toHaveCount(0);
@@ -53,11 +92,18 @@ test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page 
   await expect(menu).toBeFocused();
 });
 
-test('tema permanece acessível na TopBar', async ({ page }) => {
+test('categorias da sidebar mantêm contraste após a troca de tema', async ({ page }) => {
+  await page.addInitScript(() => globalThis.localStorage.setItem('aspen_theme', 'light'));
   await openDashboard(page, { width: 1440, height: 900 });
+
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await waitForThemeToSettle(page);
+  await expectSidebarCategoryContrast(page);
 
   const themeToggle = page.getByRole('button', { name: 'Ativar modo escuro' });
   await themeToggle.click();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect(page.getByRole('button', { name: 'Ativar modo claro' })).toBeVisible();
+  await waitForThemeToSettle(page);
+  await expectSidebarCategoryContrast(page);
 });

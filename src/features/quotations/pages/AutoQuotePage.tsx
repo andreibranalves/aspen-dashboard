@@ -60,7 +60,7 @@ function renderTemplateText(text: string, templates: OrderTemplate[]): ReactNode
     nodes.push(
       <span
         key={`${template.id}-${pillIndex++}`}
-        title={`Template: ${template.name}`}
+        title={`Modelo: ${template.name}`}
         className="whitespace-nowrap bg-surface font-semibold text-fg"
       >
         {token}
@@ -109,7 +109,7 @@ export default function AutoQuotePage() {
       setOrderTemplates(available);
     } catch {
       setOrderTemplates([]);
-      setOrderTemplatesError('Não foi possível carregar os templates de pedido.');
+      setOrderTemplatesError('Não foi possível carregar os modelos de pedido.');
     }
   }, []);
 
@@ -313,7 +313,7 @@ export default function AutoQuotePage() {
     if (!text.trim() && !imageData) return;
     const inline = inlineTemplateSelections(text, orderTemplates);
     if (inline.unknown.length) {
-      setError(`Template não encontrado: ${inline.unknown.join(', ')}.`);
+      setError(`Modelo não encontrado: ${inline.unknown.join(', ')}.`);
       return;
     }
     const generation = ++extractionGenerationRef.current;
@@ -807,7 +807,7 @@ export default function AutoQuotePage() {
                         <span className="text-xs text-fg-muted">@{templateSlug(template.name)}</span>
                       </button>
                     )) : (
-                      <p className="px-3 py-2 text-sm text-fg-muted">Nenhum template encontrado.</p>
+                      <p className="px-3 py-2 text-sm text-fg-muted">Nenhum modelo encontrado.</p>
                     )}
                   </div>
                 )}
@@ -865,7 +865,7 @@ export default function AutoQuotePage() {
               onClick={() => setOrderTemplateManagerOpen(true)}
             >
               <Settings size={14} />
-              Gerenciar templates
+              Gerenciar modelos
             </Button>
           </div>
         </div>

@@ -223,7 +223,7 @@ export default function OrderTemplateManager({
   const save = async () => {
     const normalizedName = name.trim();
     if (!normalizedName) {
-      setError('Informe o nome do template de pedido.');
+      setError('Informe o nome do modelo de pedido.');
       return;
     }
     if (selectedItems.length === 0) {
@@ -241,7 +241,7 @@ export default function OrderTemplateManager({
       await onChanged();
       cancelEdit(true);
     } catch {
-      setError('Não foi possível salvar o template. Tente novamente.');
+      setError('Não foi possível salvar o modelo. Tente novamente.');
     } finally {
       operationRef.current = false;
       setSaving(false);
@@ -260,7 +260,7 @@ export default function OrderTemplateManager({
       await onChanged();
       if (editingId === target.id) cancelEdit(true);
     } catch {
-      setError('Não foi possível arquivar o template. Tente novamente.');
+      setError('Não foi possível arquivar o modelo. Tente novamente.');
     } finally {
       operationRef.current = false;
       setSaving(false);
@@ -287,10 +287,10 @@ export default function OrderTemplateManager({
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
             <div>
               <h2 id="order-template-manager-title" className="text-lg font-semibold text-fg">
-                Templates de pedido
+                Modelos de pedido
               </h2>
               <p className="text-xs text-fg-muted">
-                Grupos compartilhados de SKUs, sem quantidades.
+                Conjuntos de produtos reutilizáveis, sem quantidades.
               </p>
             </div>
             <button
@@ -316,12 +316,12 @@ export default function OrderTemplateManager({
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-fg-muted">
                     {templates.length
-                      ? `${templates.length} template${templates.length === 1 ? '' : 's'}`
-                      : 'Nenhum template criado'}
+                      ? `${templates.length} modelo${templates.length === 1 ? '' : 's'}`
+                      : 'Nenhum modelo criado'}
                   </p>
                   <Button type="button" size="sm" onClick={startCreate} disabled={saving}>
                     <Plus size={14} />
-                    Novo template
+                    Novo modelo
                   </Button>
                 </div>
                 {templates.map((template) => (
@@ -364,7 +364,7 @@ export default function OrderTemplateManager({
               <div className="space-y-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-semibold text-fg">
-                    {editingId === 'new' ? 'Novo template' : 'Editar template'}
+                    {editingId === 'new' ? 'Novo modelo' : 'Editar modelo'}
                   </h3>
                   <Button
                     type="button"
@@ -519,7 +519,7 @@ export default function OrderTemplateManager({
 
       <ConfirmDialog
         open={Boolean(archiveTarget)}
-        title="Arquivar template"
+        title="Arquivar modelo"
         message={`Arquivar “${archiveTarget?.name || ''}”? Ele deixará de aparecer no seletor.`}
         confirmLabel="Arquivar"
         onCancel={() => !operationRef.current && setArchiveTarget(null)}
