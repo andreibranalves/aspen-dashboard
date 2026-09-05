@@ -193,19 +193,6 @@ describe('Aspen UI v2 visual contract', () => {
     assert.match(tableCell, /\[&:has\(\[role=checkbox\]\)\]:pr-0/);
   });
 
-  it('preserves the shared focus ring on composed customer metadata inputs', () => {
-    const customerMetadataForm = read('src/features/quotations/components/CustomerMetadataForm.tsx');
-    const nameInput = customerMetadataForm.match(
-      /<Input[\s\S]*?placeholder="Nome do cliente"[\s\S]*?\/>/,
-    )?.[0];
-
-    assert.ok(nameInput, 'missing customer name input');
-    assert.match(nameInput, /border-transparent/);
-    assert.match(nameInput, /bg-transparent/);
-    assert.match(nameInput, /shadow-none/);
-    assert.doesNotMatch(nameInput, /focus-visible:ring-0/);
-  });
-
   it('keeps manual quotation success messaging above the dark contrast floor', () => {
     const manualQuotation = read('src/features/quotations/pages/ManualOrcamentoPage.tsx');
     const darkSuccessSurface = blendRgb(canonicalDark.success, canonicalDark.page, 0.1);

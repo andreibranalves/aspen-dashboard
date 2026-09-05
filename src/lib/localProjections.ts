@@ -112,27 +112,6 @@ export interface ProjectedProductListRow {
   ativo?: boolean;
 }
 
-export interface ProjectedDashboardSummary {
-  total_revenue: number;
-  orders_count: number;
-  avg_ticket: number;
-  open_orders: number;
-  conversion_rate: number;
-  revenue_delta: number;
-  orders_delta: number;
-  avg_ticket_delta: number;
-  conversion_delta: number;
-}
-
-export interface ProjectedDashboardData {
-  period: { label: string; from: string; to: string };
-  summary: ProjectedDashboardSummary;
-  top_products: Array<{ sku: string; product: string; quantity: number; revenue: number; orders: number }>;
-  top_customers: Array<{ name: string; revenue: number; orders: number }>;
-  sales_by_day: Array<{ date: string; revenue: number; orders: number }>;
-  stale_quotations: Array<{ id: string; customer: string; age: number; value: number; status: string }>;
-}
-
 /** Entrada do histórico com extras de template ainda transportados fora do contrato canônico (#124). */
 export interface ProjectedQuotationRevisionHistoryEntry extends CanonicalQuotationRevisionEntry {
   templateKey?: string | null;
@@ -257,16 +236,8 @@ function readIdentifier(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function readNonnegativeNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
 function readSafeCount(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-function readSignedNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function hasAny(source: RecordValue, keys: readonly string[]): boolean {
@@ -923,94 +894,4 @@ export function projectProductListResponse(value: unknown): ProjectedProductList
   const rows = source.data.map(projectProductListRow);
   if (!pagination || rows.some((row): row is null => row === null)) return null;
   return { data: rows as ProjectedProductListRow[], pagination };
-}
-
-export function projectDashboardData(value: unknown): ProjectedDashboardData | null {
-  const source = asRecord(value);
-  if (!source || source.success !== true) return null;
-  const periodSource = asRecord(source.period);
-  const periodLabel = readIdentifier(periodSource?.label);
-  const periodFrom = readDate(periodSource?.from);
-  const periodTo = readDate(periodSource?.to);
-  const summarySource = asRecord(source.summary);
-  if (!periodSource || !periodLabel || !periodFrom || !periodTo || !summarySource) return null;
-
-  const summary: ProjectedDashboardSummary = {
-    total_revenue: readNonnegativeNumber(summarySource.total_revenue)!,
-    orders_count: readSafeCount(summarySource.orders_count)!,
-    avg_ticket: readNonnegativeNumber(summarySource.avg_ticket)!,
-    open_orders: readSafeCount(summarySource.open_orders)!,
-    conversion_rate: readNonnegativeNumber(summarySource.conversion_rate)!,
-    revenue_delta: readSignedNumber(summarySource.revenue_delta)!,
-    orders_delta: readSignedNumber(summarySource.orders_delta)!,
-    avg_ticket_delta: readSignedNumber(summarySource.avg_ticket_delta)!,
-    conversion_delta: readSignedNumber(summarySource.conversion_delta)!,
-  };
-  if (
-    summary.total_revenue === undefined || summary.orders_count === undefined ||
-    summary.avg_ticket === undefined || summary.open_orders === undefined ||
-    summary.conversion_rate === undefined || summary.conversion_rate > 1 ||
-    summary.revenue_delta === undefined || summary.orders_delta === undefined ||
-    summary.avg_ticket_delta === undefined || summary.conversion_delta === undefined
-  ) return null;
-
-  const topProductsSource = source.top_products;
-  const topCustomersSource = source.top_customers;
-  const salesByDaySource = source.sales_by_day;
-  const staleQuotationsSource = source.stale_quotations;
-  if (
-    !Array.isArray(topProductsSource) || !Array.isArray(topCustomersSource) ||
-    !Array.isArray(salesByDaySource) || !Array.isArray(staleQuotationsSource)
-  ) return null;
-
-  const topProducts = topProductsSource.map((value): ProjectedDashboardData['top_products'][number] | null => {
-    const row = asRecord(value);
-    const sku = readIdentifier(row?.sku);
-    const product = readIdentifier(row?.product);
-    const quantity = readNonnegativeNumber(row?.quantity);
-    const revenue = readNonnegativeNumber(row?.revenue);
-    const orders = readSafeCount(row?.orders);
-    if (!sku || !product || quantity === undefined || revenue === undefined || orders === undefined) return null;
-    return { sku, product, quantity, revenue, orders };
-  });
-  const topCustomers = topCustomersSource.map((value): ProjectedDashboardData['top_customers'][number] | null => {
-    const row = asRecord(value);
-    const name = readIdentifier(row?.name);
-    const revenue = readNonnegativeNumber(row?.revenue);
-    const orders = readSafeCount(row?.orders);
-    if (!name || revenue === undefined || orders === undefined) return null;
-    return { name, revenue, orders };
-  });
-  const salesByDay = salesByDaySource.map((value): ProjectedDashboardData['sales_by_day'][number] | null => {
-    const row = asRecord(value);
-    const date = readDate(row?.date);
-    const revenue = readNonnegativeNumber(row?.revenue);
-    const orders = readSafeCount(row?.orders);
-    if (!date || revenue === undefined || orders === undefined) return null;
-    return { date, revenue, orders };
-  });
-  const staleQuotations = staleQuotationsSource.map((value): ProjectedDashboardData['stale_quotations'][number] | null => {
-    const row = asRecord(value);
-    const id = readIdentifier(row?.id);
-    const customer = readIdentifier(row?.customer);
-    const age = readSafeCount(row?.age);
-    const amount = readNonnegativeNumber(row?.value);
-    const status = readIdentifier(row?.status);
-    if (!id || !customer || age === undefined || amount === undefined || !status) return null;
-    return { id, customer, age, value: amount, status };
-  });
-  if (
-    topProducts.some((row): row is null => row === null) ||
-    topCustomers.some((row): row is null => row === null) ||
-    salesByDay.some((row): row is null => row === null) ||
-    staleQuotations.some((row): row is null => row === null)
-  ) return null;
-  return {
-    period: { label: periodLabel, from: periodFrom, to: periodTo },
-    summary,
-    top_products: topProducts as ProjectedDashboardData['top_products'],
-    top_customers: topCustomers as ProjectedDashboardData['top_customers'],
-    sales_by_day: salesByDay as ProjectedDashboardData['sales_by_day'],
-    stale_quotations: staleQuotations as ProjectedDashboardData['stale_quotations'],
-  };
 }
