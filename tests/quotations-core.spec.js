@@ -369,6 +369,34 @@ test('cancelar edição sem alterações não abre confirmação de descarte @qu
   await expect(page.getByRole('button', { name: /Editar/ })).toBeVisible();
 });
 
+test('editar mantém o início do formulário e a seleção ativa nos editores @quotations', async ({ page }) => {
+  await page.route('**/api/quotations**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail()) });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Editar' }).click();
+
+  const clientHeading = page.getByRole('heading', { name: 'Cliente', exact: true });
+  const conditions = page.getByRole('textbox', { name: 'Condições gerais', exact: true });
+  await expect(clientHeading).toBeInViewport();
+  await expect(conditions).not.toBeFocused();
+
+  const payment = page.getByRole('textbox', { name: 'Condição de pagamento', exact: true });
+  await payment.focus();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('Prazo final');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('bem ');
+
+  await expect(payment).toBeFocused();
+  await expect(payment).toHaveText('Prazo bem final');
+});
+
 test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({ page }) => {
   const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;

@@ -387,6 +387,31 @@ test('quotation email dialog traps focus, validates, cancels, and locks while se
   await expect(opener).toBeFocused();
 });
 
+test('technical details traps focus, closes with Escape and restores the actions trigger', async ({ page }) => {
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail()));
+
+  await page.goto(`/#/quotations/${id}`);
+  const opener = page.getByRole('button', { name: 'Mais ações' });
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Detalhes técnicos' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Detalhes técnicos' });
+  const close = dialog.getByRole('button', { name: 'Fechar' });
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+  await opener.focus();
+  await expect(close).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
 test('quotation email preserves ambiguous recipient and rotates attempt when changed', async ({ page }) => {
   const sentBodies = [];
   let sendCount = 0;

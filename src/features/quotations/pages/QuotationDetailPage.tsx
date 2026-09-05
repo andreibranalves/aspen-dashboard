@@ -243,6 +243,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [techDetailsOpen, setTechDetailsOpen] = useState(false);
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
+  const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
+  const techDetailsDialogRef = useRef<HTMLDivElement>(null);
+  const techDetailsCloseRef = useRef<HTMLButtonElement>(null);
   const lossReasonDialogRef = useRef<HTMLDivElement>(null);
   const lossReasonSelectRef = useRef<HTMLSelectElement>(null);
   const lossReasonRestoreFocusRef = useRef<HTMLElement | null>(null);
@@ -1035,6 +1038,56 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     };
   }, [closeLossReasonDialog, lossReasonOpen]);
 
+  const closeTechDetailsDialog = useCallback(() => {
+    setTechDetailsOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!techDetailsOpen) return undefined;
+
+    techDetailsCloseRef.current?.focus();
+    const dialog = techDetailsDialogRef.current;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeTechDetailsDialog();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR)
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (dialog && !dialog.contains(event.target as Node)) techDetailsCloseRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('focusin', handleFocusIn);
+      if (moreActionsButtonRef.current && document.contains(moreActionsButtonRef.current)) {
+        moreActionsButtonRef.current.focus();
+      }
+    };
+  }, [closeTechDetailsDialog, techDetailsOpen]);
+
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
@@ -1203,6 +1256,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
                 <div className="relative">
                   <button
+                    ref={moreActionsButtonRef}
                     type="button"
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
@@ -1939,10 +1993,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setTechDetailsOpen(false)}
+            onClick={closeTechDetailsDialog}
             aria-hidden="true"
           />
           <div
+            ref={techDetailsDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="tech-details-title"
@@ -1977,7 +2032,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               </div>
             </dl>
             <div className="mt-5 flex justify-end">
-              <Button variant="outline" onClick={() => setTechDetailsOpen(false)}>
+              <Button ref={techDetailsCloseRef} variant="outline" onClick={closeTechDetailsDialog}>
                 Fechar
               </Button>
             </div>
