@@ -50,6 +50,7 @@ import { handler as communicationMediaUpload } from '../_modules/communication-m
 import { handler as pdf } from '../_modules/pdf.js';
 import { handler as view } from '../_modules/view.js';
 import { handler as operationalStatus } from '../_modules/operational-status.js';
+import { handler as siteQuoteLeads } from '../_modules/site-quote-leads.js';
 
 export const routes: Record<string, LegacyHandler> = {
   'operational-status': operationalStatus,
@@ -80,6 +81,7 @@ export const routes: Record<string, LegacyHandler> = {
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
+  'site-quote-leads': siteQuoteLeads,
   'send-whatsapp': sendWhatsapp,
   'send-quotation-email': sendQuotationEmail,
   'quotation-deliveries': quotationDeliveries,

@@ -4,6 +4,7 @@ import type { VercelResponseLike } from '../../api/_http/types.js';
 import { createHttpError } from '../../api/_shared/http-error.js';
 import { handleApiRequest, normalizeHandlerError } from '../../api/_app/handle-request.js';
 import { routes } from '../../api/_app/routes.js';
+import { createSiteQuoteLeadsHandler } from '../../api/_modules/site-quote-leads.js';
 
 function fakeResponse() {
   let statusCode = 200;
@@ -63,13 +64,19 @@ test('normalizeHandlerError: statusCode 503 sem marcador não vaza mensagem inte
 });
 
 test('normalizeHandlerError: expose=false cai na mensagem genérica', () => {
-  const err = Object.assign(new Error('detalhe interno do storage'), { statusCode: 503, expose: false });
+  const err = Object.assign(new Error('detalhe interno do storage'), {
+    statusCode: 503,
+    expose: false,
+  });
   const result = normalizeHandlerError('quotations', err);
   assert.deepEqual(result, { statusCode: 503, message: 'Erro interno. Tente novamente.' });
 });
 
 test('normalizeHandlerError: expose=true preserva mensagem pública', () => {
-  const err = Object.assign(new Error('Produto não encontrado.'), { statusCode: 404, expose: true });
+  const err = Object.assign(new Error('Produto não encontrado.'), {
+    statusCode: 404,
+    expose: true,
+  });
   const result = normalizeHandlerError('products', err);
   assert.deepEqual(result, { statusCode: 404, message: 'Produto não encontrado.' });
 });
@@ -81,7 +88,11 @@ test('normalizeHandlerError: erro genérico vira 500 sem vazar detalhes', () => 
 
 test('handleApiRequest: sem autenticação responde 401', async () => {
   withEnv({ NODE_ENV: 'test', APP_AUTH_BYPASS: '', APP_PASSWORD_HASH: '', APP_SESSION_SECRET: '' });
-  const req = { method: 'GET', url: '/api/products', headers: {} } as unknown as import('node:http').IncomingMessage;
+  const req = {
+    method: 'GET',
+    url: '/api/products',
+    headers: {},
+  } as unknown as import('node:http').IncomingMessage;
   const { res, lastStatus, lastBody } = fakeResponse();
   await handleApiRequest(req, res);
   assert.equal(lastStatus(), 401);
@@ -110,7 +121,11 @@ test('handleApiRequest: contexto WhatsApp mantém CORS na resposta 401 da sessã
 
 test('handleApiRequest: rota inexistente responde 404 via pipeline completo', async () => {
   withEnv({ NODE_ENV: 'test', APP_AUTH_BYPASS: 'true' });
-  const req = { method: 'GET', url: '/api/rota-inexistente', headers: {} } as unknown as import('node:http').IncomingMessage;
+  const req = {
+    method: 'GET',
+    url: '/api/rota-inexistente',
+    headers: {},
+  } as unknown as import('node:http').IncomingMessage;
   const { res, lastStatus, lastBody } = fakeResponse();
   await handleApiRequest(req, res);
   assert.equal(lastStatus(), 404);
@@ -137,7 +152,11 @@ test('handleApiRequest: rate limit nega 429 na 11a chamada do login', async () =
   const ip = `198.51.100.${Date.now() % 250}`;
   const { res, lastStatus, lastBody } = fakeResponse();
   for (let i = 0; i < 11; i++) {
-    const req = { method: 'POST', url: '/api/login', headers: { 'x-real-ip': ip } } as unknown as import('node:http').IncomingMessage;
+    const req = {
+      method: 'POST',
+      url: '/api/login',
+      headers: { 'x-real-ip': ip },
+    } as unknown as import('node:http').IncomingMessage;
     await handleApiRequest(req, res);
   }
   assert.equal(lastStatus(), 429);
@@ -149,7 +168,11 @@ test('handleApiRequest: dispatch com sucesso passa pelo wrapFunctionHandler', as
   const routeName = 'task3-success-dispatch';
   routes[routeName] = async () => ({ statusCode: 201, body: JSON.stringify({ ok: true }) });
   try {
-    const req = { method: 'GET', url: `/api/${routeName}`, headers: {} } as unknown as import('node:http').IncomingMessage;
+    const req = {
+      method: 'GET',
+      url: `/api/${routeName}`,
+      headers: {},
+    } as unknown as import('node:http').IncomingMessage;
     const { res, lastStatus, lastBody } = fakeResponse();
     await handleApiRequest(req, res);
     assert.equal(lastStatus(), 201);
@@ -168,7 +191,11 @@ test('handleApiRequest: erro do handler vira 500 sem vazar detalhes', async () =
   const originalConsoleError = console.error;
   console.error = () => {};
   try {
-    const req = { method: 'GET', url: `/api/${routeName}`, headers: {} } as unknown as import('node:http').IncomingMessage;
+    const req = {
+      method: 'GET',
+      url: `/api/${routeName}`,
+      headers: {},
+    } as unknown as import('node:http').IncomingMessage;
     const { res, lastStatus, lastBody } = fakeResponse();
     await handleApiRequest(req, res);
     assert.equal(lastStatus(), 500);
@@ -177,5 +204,58 @@ test('handleApiRequest: erro do handler vira 500 sem vazar detalhes', async () =
   } finally {
     console.error = originalConsoleError;
     delete routes[routeName];
+  }
+});
+
+test('handleApiRequest: ingestão do site exige bearer próprio e recebe rate limit pelo pipeline completo', async () => {
+  const token = 'i'.repeat(32);
+  const validBody = {
+    externalId: 'siteQuote.018f47a8-7b6c-7d3e-8f90-123456789abc',
+    payloadFingerprint: 'a'.repeat(64),
+    originalCreatedAt: '2026-09-05T12:00:00.000Z',
+    nome: 'Cliente Sintético',
+    email: 'synthetic@example.invalid',
+    whatsapp: '21999990000',
+    produto: 'Cangas',
+    quantidade: '100',
+    consent: { given: true, source: 'site_quote_form' },
+  };
+  let writes = 0;
+  const original = routes['site-quote-leads'];
+  routes['site-quote-leads'] = createSiteQuoteLeadsHandler({
+    environment: { QUOTE_LEADS_INGEST_TOKEN: token },
+    ingest: async () => {
+      writes += 1;
+      return { result: 'created' };
+    },
+    correlationId: () => 'correlation-fixture',
+  });
+  try {
+    const unauthorized = {
+      method: 'POST',
+      url: '/api/site-quote-leads',
+      headers: { cookie: 'aspen_token=session' },
+      body: validBody,
+    } as unknown as import('node:http').IncomingMessage;
+    const unauthorizedResponse = fakeResponse();
+    await handleApiRequest(unauthorized, unauthorizedResponse.res);
+    assert.equal(unauthorizedResponse.lastStatus(), 401);
+
+    const ip = `192.0.2.${Date.now() % 250}`;
+    let last = fakeResponse();
+    for (let index = 0; index < 31; index += 1) {
+      last = fakeResponse();
+      const req = {
+        method: 'POST',
+        url: '/api/site-quote-leads',
+        headers: { authorization: `Bearer ${token}`, 'x-real-ip': ip },
+        body: validBody,
+      } as unknown as import('node:http').IncomingMessage;
+      await handleApiRequest(req, last.res);
+    }
+    assert.equal(last.lastStatus(), 429);
+    assert.equal(writes, 30);
+  } finally {
+    routes['site-quote-leads'] = original;
   }
 });

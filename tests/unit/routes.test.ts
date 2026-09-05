@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { routes } from '../../api/_app/routes.js';
 
-test('routes: 49 nomes únicos e bem formados', () => {
+test('routes: 50 nomes únicos e bem formados', () => {
   const names = Object.keys(routes);
-  assert.equal(names.length, 49);
+  assert.equal(names.length, 50);
   assert.equal(new Set(names).size, names.length, 'nomes duplicados');
   for (const name of names) assert.match(name, /^[a-z][a-z0-9-]*$/, name);
 });
@@ -13,6 +13,7 @@ test('routes: 49 nomes únicos e bem formados', () => {
 test('routes: não registra endpoints aposentados', () => {
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'quote-leads'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'typebot-lead-capture'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(routes, 'site-quote-leads'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'quotation-email-template'), false);
 });
 
