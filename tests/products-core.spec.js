@@ -884,6 +884,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     const displayedName = page.getByText(longName, { exact: true }).first();
 
     await expect(productRow).toBeVisible();
+    await expect(productRow).toHaveAttribute('tabindex', '0');
     await checkbox.focus();
     await checkbox.press('Space');
     await expect(checkbox).toBeChecked();
@@ -911,6 +912,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(archiveButton).toBeVisible();
 
     await productRow.focus();
+    await expect(productRow).toBeFocused();
     await productRow.press('Enter');
     await expect(page).toHaveURL(/#\/products\/A11Y-SKU$/);
   });

@@ -182,8 +182,9 @@ test('histórico abre o orçamento referenciado, volta para a aba e mantém even
 
   await page.getByRole('button', { name: 'Abrir orçamento ORC-2026-001' }).click();
   await expect(page).toHaveURL(/#\/quotations\/ORC-2026-001$/);
-  await expect(page.getByRole('button', { name: 'voltar' })).toBeVisible();
-  await page.getByRole('button', { name: 'voltar' }).click();
+  const returnToHistory = page.getByRole('button', { name: 'Voltar para Histórico de envios' });
+  await expect(returnToHistory).toBeVisible();
+  await returnToHistory.click();
 
   await expect(page).toHaveURL(/#\/comunicacao\?tab=history$/);
   await expect(page.getByRole('tab', { name: 'Histórico de envios' })).toHaveAttribute(

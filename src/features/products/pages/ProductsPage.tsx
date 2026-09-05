@@ -577,10 +577,16 @@ export default function ProductsPage() {
                   return (
                     <TableRow
                       key={sku}
+                      tabIndex={0}
                       aria-label={`Abrir produto ${sku}: ${name}`}
                       data-state={isSelected ? 'selected' : undefined}
                       className="group cursor-pointer"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget || event.key !== 'Enter') return;
+                        event.preventDefault();
+                        navigate(`/products/${encodeURIComponent(sku)}`);
+                      }}
                     >
                       <TableCell className="w-12 px-3" onClick={(event) => event.stopPropagation()}>
                         <input

@@ -38,7 +38,8 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
-import { useRouteGuardContext } from '@/hooks/useHashRoute';
+import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
+import { routePath } from '@/app/match-route';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
@@ -2155,13 +2156,23 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
 
   if (loading && !data) return <SkeletonDetail />;
   if (error) {
+    const previousRoute = getHashHistoryPreviousRoute();
+    const fromFollowUps = previousRoute && routePath(previousRoute) === '/follow-ups';
+    const fromSendHistory = previousRoute && routePath(previousRoute) === '/comunicacao' &&
+      new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
+    const returnRoute = fromFollowUps || fromSendHistory ? previousRoute : '/quotations';
+    const returnLabel = fromFollowUps
+      ? 'Follow-ups'
+      : fromSendHistory
+        ? 'Histórico de envios'
+        : 'Orçamentos';
     return (
       <div className="space-y-4 animate-fade-in">
         <button
-          onClick={() => navigate('/quotations')}
+          onClick={() => navigate(returnRoute)}
           className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
         >
-          ← Voltar para Orçamentos
+          ← Voltar para {returnLabel}
         </button>
         <div
           role="alert"

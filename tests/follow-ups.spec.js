@@ -215,7 +215,7 @@ test('aba e página sobrevivem a reload e ao retorno do orçamento', async ({ pa
   expect(page.url()).not.toContain(sent.client_name);
   expect(page.url()).not.toContain(sent.canonical_phone);
 
-  await page.getByRole('button', { name: 'voltar' }).click();
+  await page.getByRole('button', { name: 'Voltar para Follow-ups' }).click();
   await expect(page).toHaveURL(/#\/follow-ups\?view=sent&page=2$/);
   await expect(page.getByRole('link', { name: 'Abrir orçamento ORC-CONTEXTO-26' })).toBeVisible();
   expect(

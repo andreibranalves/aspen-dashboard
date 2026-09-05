@@ -446,7 +446,7 @@ export default function OrderTemplateManager({
                   <p className="text-sm font-medium text-fg">SKUs selecionados</p>
                   {selectedItems.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-sm text-fg-muted">
-                      Busque e selecione os produtos que entram neste template.
+                      Busque e selecione os produtos que entram neste modelo.
                     </div>
                   ) : (
                     selectedItems.map((item, index) => (

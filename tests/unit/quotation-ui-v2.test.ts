@@ -43,7 +43,7 @@ describe('quotation Aspen v2 surfaces', () => {
     assert.match(page, /Tentar novamente/);
     assert.match(page, /Sem etapas/);
     assert.match(page, /aria-label=\{`Estado: \$\{projection\.label\}[^`]+`\}/);
-    assert.match(page, /min-w-\[760px\]/);
+    assert.match(page, /min-w-\[680px\]/);
     assert.match(status, /Etapas entregues: \$\{delivered\} de \$\{total\}/);
     assert.match(status, /aria-busy=\{pending\}/);
     assert.match(sendPanel, /Nenhum fluxo de WhatsApp disponível/);

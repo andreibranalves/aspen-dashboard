@@ -309,7 +309,13 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     const manageModels = page.getByRole('button', { name: 'Gerenciar modelos' });
     await manageModels.click();
-    await expect(page.getByRole('heading', { name: 'Modelos de pedido' })).toBeVisible();
+    const manager = page.getByRole('dialog', { name: 'Modelos de pedido' });
+    await expect(manager).toBeVisible();
+    await manager.getByRole('button', { name: 'Novo modelo' }).click();
+    await expect(
+      manager.getByText('Busque e selecione os produtos que entram neste modelo.', { exact: true })
+    ).toBeVisible();
+    await manager.getByRole('button', { name: 'Cancelar' }).first().click();
     await page.keyboard.press('Escape');
     await expect(manageModels).toBeFocused();
   });
@@ -351,7 +357,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
   test('submissão de texto exibe rascunhos para revisão', async ({ page }) => {
     await setupApiMocks(page);
     /** @type {any} */
-    let orcamentoRequest;
+    const orcamentoRequests = [];
     /** @type {any} */
     let issueRequest;
     let transportRequests = 0;
@@ -361,9 +367,31 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
       }
       if (request.url().includes('/api/send-whatsapp-flow')) transportRequests += 1;
     });
+    const revisedOrcamento = {
+      ...MOCK_ORCAMENTO,
+      quotation_uuid: '11111111-1111-4111-8111-111111111102',
+      revision_id: '22222222-2222-4222-8222-222222222202',
+      revision_number: 2,
+      concurrency_token: '2026-08-13T00:00:01.000Z',
+    };
     await page.route('**/api/orcamento**', async (route) => {
-      if (route.request().method() === 'POST') orcamentoRequest = route.request().postDataJSON();
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ORCAMENTO) });
+      if (route.request().method() !== 'POST') return route.fallback();
+      orcamentoRequests.push(route.request().postDataJSON());
+      const response = orcamentoRequests.length === 1 ? MOCK_ORCAMENTO : revisedOrcamento;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
+    });
+    await page.route('**/api/quotation-issues**', async (route) => {
+      issueRequest = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...MOCK_ISSUE,
+          quotationId: revisedOrcamento.quotation_uuid,
+          revisionId: revisedOrcamento.revision_id,
+          revisionNumber: revisedOrcamento.revision_number,
+        }),
+      });
     });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
@@ -411,11 +439,19 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByText('Rascunho salvo. Continue a revisão ou emita o orçamento.', { exact: true })).toBeVisible();
     await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
 
+    const revisedItemName = 'Lenço 100 x 100 cm — revisão final';
+    await page.getByRole('button', { name: 'Editar' }).click();
+    await page.getByLabel(`Nome exibido no orçamento ${MOCK_EXTRACT.orders[0].items[0].item_code}`).fill(revisedItemName);
+    await page.getByRole('button', { name: 'Concluir' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeVisible();
+
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     // Emission persists the draft first and then issues it by reference; the
     // reviewed commercial content travels in the draft-save POST only.
-    await expect.poll(() => orcamentoRequest?.extracted?.items?.[0]?.item_name, { timeout: 10000 }).toBe(customItemName);
-    await expect.poll(() => orcamentoRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
+    await expect.poll(() => orcamentoRequests.length, { timeout: 10000 }).toBe(2);
+    expect(orcamentoRequests[0].extracted.items[0].item_name).toBe(customItemName);
+    expect(orcamentoRequests[1].extracted.items[0].item_name).toBe(revisedItemName);
+    expect(orcamentoRequests[1].extracted.template_key).toBe('minimalista');
     const pdfLink = page.getByRole('link', { name: 'Abrir PDF' });
     await expect(pdfLink).toBeVisible();
     await expect(pdfLink).toHaveAttribute('href', MOCK_ISSUE.pdfUrl);
@@ -423,8 +459,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByText(MOCK_ISSUE.businessNumber, { exact: true })).toBeVisible();
     await expect(page.getByText('Validade: 28/08/2026', { exact: true })).toBeVisible();
     expect(issueRequest).toEqual({
-      revision_id: MOCK_ORCAMENTO.revision_id,
-      concurrency_token: MOCK_ORCAMENTO.concurrency_token,
+      revision_id: revisedOrcamento.revision_id,
+      concurrency_token: revisedOrcamento.concurrency_token,
     });
     expect(transportRequests).toBe(0);
   });
