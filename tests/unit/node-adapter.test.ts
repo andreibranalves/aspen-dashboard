@@ -92,40 +92,86 @@ test('node adapter: limita bytes raw em JSON inflado enviado em chunks sem Conte
   assert.ok(Buffer.byteLength(JSON.stringify(validPayload), 'utf8') < 16_384);
   const { baseUrl, close } = await withServer();
   try {
-    const target = new URL('/api/site-quote-leads', baseUrl);
-    const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+    for (const routePath of [
+      '/api/site-quote-leads',
+      '/api/site-quote-leads/',
+      '/api/site-quote-leads/nested',
+      '/api/unrelated?path=site-quote-leads',
+    ]) {
+      const target = new URL(routePath, baseUrl);
+      const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = request(
+          {
+            hostname: target.hostname,
+            port: target.port,
+            path: `${target.pathname}${target.search}`,
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          },
+          (res) => {
+            let body = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => (body += chunk));
+            res.on('end', () => resolve({ status: res.statusCode || 0, body }));
+          }
+        );
+        req.on('error', reject);
+        const rawBytes = Buffer.from(rawBody, 'utf8');
+        for (let offset = 0; offset < rawBytes.length; offset += 257) {
+          req.write(rawBytes.subarray(offset, offset + 257));
+        }
+        req.end();
+      });
+      assert.equal(response.status, 413, routePath);
+      assert.deepEqual(JSON.parse(response.body), {
+        error: 'Corpo da requisição excede o limite permitido.',
+      });
+    }
+    assert.equal(writes, 0);
+  } finally {
+    routes['site-quote-leads'] = original;
+    await close();
+  }
+});
+
+test('node adapter: query.path não amplia a política raw para rota não relacionada', async () => {
+  withEnv({
+    NODE_ENV: 'test',
+    APP_AUTH_BYPASS: 'false',
+    APP_PASSWORD_HASH: '',
+    APP_SESSION_SECRET: '',
+  });
+  const rawBody = JSON.stringify({ padding: 'á'.repeat(9_000) });
+  assert.ok(Buffer.byteLength(rawBody, 'utf8') > 16_384);
+  const { baseUrl, close } = await withServer();
+  try {
+    const target = new URL('/api/site-quote-leads?path=unrelated', baseUrl);
+    const response = await new Promise<number>((resolve, reject) => {
       const req = request(
         {
           hostname: target.hostname,
           port: target.port,
-          path: target.pathname,
+          path: `${target.pathname}${target.search}`,
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
         },
         (res) => {
-          let body = '';
-          res.setEncoding('utf8');
-          res.on('data', (chunk) => (body += chunk));
-          res.on('end', () => resolve({ status: res.statusCode || 0, body }));
+          res.resume();
+          res.on('end', () => resolve(res.statusCode || 0));
         }
       );
       req.on('error', reject);
-      const rawBytes = Buffer.from(rawBody, 'utf8');
-      for (let offset = 0; offset < rawBytes.length; offset += 257) {
-        req.write(rawBytes.subarray(offset, offset + 257));
+      const bytes = Buffer.from(rawBody, 'utf8');
+      for (let offset = 0; offset < bytes.length; offset += 193) {
+        req.write(bytes.subarray(offset, offset + 193));
       }
       req.end();
     });
-    assert.equal(response.status, 413);
-    assert.deepEqual(JSON.parse(response.body), {
-      error: 'Corpo da requisição excede o limite permitido.',
-    });
-    assert.equal(writes, 0);
+    assert.equal(response, 401);
   } finally {
-    routes['site-quote-leads'] = original;
     await close();
   }
 });

@@ -2,23 +2,13 @@
 // A plataforma já entrega body/query parseados; só há casts para o contrato Node.
 import type { IncomingMessage } from 'node:http';
 import type { VercelRequestLike, VercelResponseLike } from './types.js';
+import { getRouteName } from '../_shared/auth.js';
 import {
   MAX_SITE_QUOTE_BODY_BYTES,
   readRawBody,
   RequestBodyTooLargeError,
   sendBodyTooLarge,
 } from './raw-body.js';
-
-function isSiteQuoteLeadsRequest(request: VercelRequestLike): boolean {
-  try {
-    return (
-      new URL(request.url || '/', 'https://aspen-orcamento.local').pathname ===
-      '/api/site-quote-leads'
-    );
-  } catch {
-    return false;
-  }
-}
 
 export function createVercelHandler(
   handle: (req: IncomingMessage, res: VercelResponseLike) => Promise<void>
@@ -28,7 +18,7 @@ export function createVercelHandler(
     res: VercelResponseLike
   ): Promise<void> {
     if (
-      isSiteQuoteLeadsRequest(req) &&
+      getRouteName(req) === 'site-quote-leads' &&
       typeof (req as unknown as { on?: unknown }).on === 'function'
     ) {
       try {

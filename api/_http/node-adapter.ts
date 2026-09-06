@@ -3,6 +3,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { VercelResponseLike } from './types.js';
 import { handleApiRequest } from '../_app/handle-request.js';
+import { getRouteName } from '../_shared/auth.js';
 import { MAX_SITE_QUOTE_BODY_BYTES, readRawBody, RequestBodyTooLargeError } from './raw-body.js';
 
 const CORS_HEADERS = {
@@ -59,19 +60,17 @@ function adaptResponse(res: ServerResponse): VercelResponseLike {
 export function createNodeHandler() {
   return async function nodeApiHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     for (const [key, value] of Object.entries(CORS_HEADERS)) res.setHeader(key, value);
-    const routeName = new URL(req.url || '/', 'http://localhost').pathname
-      .replace(/^\/api\/?/, '')
-      .split('/')[0];
-    if (req.method === 'OPTIONS' && routeName !== 'whatsapp-context') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
     const requestRecord = req as IncomingMessage & {
       query?: Record<string, string>;
       body?: unknown;
     };
     requestRecord.query = normalizeQueryParams(req.url || '');
+    const routeName = getRouteName(requestRecord);
+    if (req.method === 'OPTIONS' && routeName !== 'whatsapp-context') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (req.method !== 'GET') {
       try {
         const rawBody = await readRawBody(
