@@ -123,7 +123,7 @@ function buildPedidoTexto(input: Record<string, unknown>): string {
 function buildAttribution(input: Record<string, unknown>): QuoteLeadAttribution {
   return {
     page_url: nullableCleanText(input.page_url || input.pageUrl),
-    utm_source: nullableCleanText(input.utm_source || input.source),
+    utm_source: nullableCleanText(input.utm_source),
     utm_medium: nullableCleanText(input.utm_medium || input.medium),
     utm_campaign: nullableCleanText(input.utm_campaign || input.campaign),
     utm_content: nullableCleanText(input.utm_content || input.utmContent),
@@ -132,7 +132,7 @@ function buildAttribution(input: Record<string, unknown>): QuoteLeadAttribution 
     gbraid: nullableCleanText(input.gbraid),
     wbraid: nullableCleanText(input.wbraid),
     fbclid: nullableCleanText(input.fbclid),
-    source_cta: nullableCleanText(input.source_cta || input.sourceCta || input.source),
+    source_cta: nullableCleanText(input.source_cta || input.sourceCta),
     result_id: nullableCleanText(input.result_id || input.resultId),
   };
 }

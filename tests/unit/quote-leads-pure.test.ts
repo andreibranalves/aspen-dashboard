@@ -128,6 +128,22 @@ describe('quote-leads-pure', () => {
     );
   });
 
+  it('mantém canal operacional separado de UTM ausente', () => {
+    const lead = normalizeQuoteLeadInput(
+      {
+        nome: 'Cliente Sintético',
+        email: 'synthetic@example.invalid',
+        whatsapp: '21999990000',
+        produto: 'Canga',
+        quantidade: '100',
+        source: 'site_form',
+      },
+      { now: () => '2026-09-05T12:00:00.000Z', id: () => 'quote_lead_site_2' }
+    );
+    assert.equal(lead.source, 'site_form');
+    assert.equal(lead.attribution?.utm_source, null);
+  });
+
   it('classifica como incomplete quando faltam dados de contato ou pedido', () => {
     const lead = normalizeQuoteLeadInput(
       { source: 'whatsapp', telefone: '21999990000' },

@@ -23,8 +23,14 @@ function protectedRequest(headers: Record<string, string> = {}) {
 describe('auth guard', () => {
   it('keeps public and login/logout routes available while protected routes fail closed', () => {
     assert.equal(isAuthenticated({ url: '/api/view/quote-1' }, {}), false);
-    assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'GET' }, {}), true);
-    assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'POST' }, {}), false);
+    assert.equal(
+      isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'GET' }, {}),
+      true
+    );
+    assert.equal(
+      isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'POST' }, {}),
+      false
+    );
     assert.equal(isAuthenticated({ url: '/api/login' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/logout' }, {}), true);
     assert.equal(isAuthenticated(protectedRequest(), {}), false);
@@ -38,11 +44,12 @@ describe('auth guard', () => {
     assert.equal(isMachineRoute('evolution-webhook'), true);
     assert.equal(isMachineRoute('quotation-delivery-worker'), true);
     assert.equal(isMachineRoute('quotation-follow-up-worker'), true);
+    assert.equal(isMachineRoute('site-quote-leads'), true);
     assert.equal(isMachineRoute('quotation-deliveries'), false);
     assert.equal(isAuthenticated({ url: '/api/evolution-webhook' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/quotation-delivery-worker' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/quotation-follow-up-worker' }, {}), true);
-
+    assert.equal(isAuthenticated({ url: '/api/site-quote-leads', method: 'POST' }, {}), true);
   });
   it('requires a valid signed cookie and never accepts the removed header fallback', async () => {
     const passwordHash = await createPasswordHash(randomBytes(24).toString('base64url'));
@@ -55,10 +62,7 @@ describe('auth guard', () => {
       isAuthenticated(protectedRequest({ cookie: `aspen_token=${token}` }), environment),
       true
     );
-    assert.equal(
-      isAuthenticated(protectedRequest({ 'x-aspen-key': token }), environment),
-      false
-    );
+    assert.equal(isAuthenticated(protectedRequest({ 'x-aspen-key': token }), environment), false);
     assert.equal(
       isAuthenticated(protectedRequest({ cookie: 'aspen_token=legacy-plaintext' }), environment),
       false

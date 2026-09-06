@@ -23,6 +23,7 @@
     "preview:preflight": "node scripts/preview-preflight.mjs",
     "db:backup": "node scripts/backup-crm.mjs",
     "lite:baseline": "node scripts/lite-baseline.mjs",
+    "leads:reconcile": "npm run build:api --silent && node scripts/leads-reconcile.mjs",
     "beta:cleanup": "npm run build:api --silent && node scripts/beta-cleanup.mjs",
     "preview": "vite preview",
     "server": "vercel dev",

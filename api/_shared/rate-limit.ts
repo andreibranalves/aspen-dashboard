@@ -26,6 +26,7 @@ const ROUTE_LIMITS: Record<string, number> = {
   'send-whatsapp': 5,
   login: 10,
   'public-quotation': 20,
+  'site-quote-leads': 30,
 };
 
 interface BucketEntry {
