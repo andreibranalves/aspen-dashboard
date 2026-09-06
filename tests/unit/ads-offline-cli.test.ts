@@ -16,6 +16,13 @@ import {
 const VALID_ARGS = ['--from', '2026-09-01T00:00:00Z', '--to', '2026-09-02T00:00:00Z'];
 const EXPORT_ID = '55555555-5555-4555-8555-555555555555';
 const DATABASE_URL = 'postgresql://synthetic:synthetic@127.0.0.1:55434/aspen_test';
+const INVALID_RUNTIME_HOSTS = [
+  '[::1]',
+  '%5B%3A%3A1%5D',
+  '%3A%3A1',
+  '%5b%3a%3a1%5d',
+  '%255B%253A%253A1%255D',
+];
 const DATABASE_FINGERPRINT = createHash('sha256')
   .update(JSON.stringify(['127.0.0.1', '55434', 'aspen_test', 'synthetic']))
   .digest('hex');
@@ -233,16 +240,19 @@ test('ads offline rejects a colliding proof/runtime database before protected re
   assert.equal(stderr, 'Preflight recusado: preflight_databaseFingerprint_mismatch.\n');
 });
 
-test('strict PostgreSQL runtime parser rejects bracketed IPv6 with a fixed error', () => {
-  assert.throws(
-    () => parsePostgresRuntimeUrl('postgresql://synthetic:synthetic@[::1]:55434/aspen_test', {}),
-    (error: unknown) =>
-      error instanceof Error &&
-      error.message === 'DATABASE_URL precisa informar um alvo PostgreSQL explícito e não ambíguo.'
-  );
+test('strict PostgreSQL runtime parser rejects literal and encoded host delimiters', () => {
+  for (const host of INVALID_RUNTIME_HOSTS) {
+    assert.throws(
+      () =>
+        parsePostgresRuntimeUrl(`postgresql://synthetic:synthetic@${host}:55434/aspen_test`, {}),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message === 'DATABASE_URL precisa informar um alvo PostgreSQL explícito e não ambíguo.'
+    );
+  }
 });
 
-test('ads offline apply and diagnose reject bracketed IPv6 before protected effects', async () => {
+test('ads offline apply and diagnose reject encoded host delimiters before protected effects', async () => {
   const modes = [
     [
       ...VALID_ARGS,
@@ -254,64 +264,49 @@ test('ads offline apply and diagnose reject bracketed IPv6 before protected effe
     ],
     ['--diagnose', EXPORT_ID, '--preflight-proof', 'proof.json'],
   ];
-  const observations = [];
 
-  for (const argv of modes) {
-    let fileReads = 0;
-    const effects: string[] = [];
-    let stderr = '';
-    const exitCode = await runAdsOffline({
-      argv,
-      env: {
-        ...RUNTIME_ENV,
-        DATABASE_URL: 'postgresql://synthetic:synthetic@[::1]:55434/aspen_test',
-      },
-      readFile: () => {
-        fileReads += 1;
-        return '{}';
-      },
-      createRepository: () => {
-        effects.push('repository');
-        throw new Error('repository must not be constructed');
-      },
-      createTransport: () => {
-        effects.push('transport');
-        throw new Error('transport must not be constructed');
-      },
-      stdout: { write: () => true },
-      stderr: {
-        write: (value: string) => {
-          stderr += value;
-          return true;
+  for (const host of INVALID_RUNTIME_HOSTS) {
+    for (const argv of modes) {
+      let fileReads = 0;
+      const effects: string[] = [];
+      let stderr = '';
+      const exitCode = await runAdsOffline({
+        argv,
+        env: {
+          ...RUNTIME_ENV,
+          DATABASE_URL: `postgresql://synthetic:synthetic@${host}:55434/aspen_test`,
         },
-      },
-    });
+        readFile: () => {
+          fileReads += 1;
+          return '{}';
+        },
+        getDatabase: () => {
+          effects.push('database');
+          throw new Error('database must not be constructed');
+        },
+        createRepository: () => {
+          effects.push('repository');
+          throw new Error('repository must not be constructed');
+        },
+        createTransport: () => {
+          effects.push('transport');
+          throw new Error('transport must not be constructed');
+        },
+        stdout: { write: () => true },
+        stderr: {
+          write: (value: string) => {
+            stderr += value;
+            return true;
+          },
+        },
+      });
 
-    observations.push({
-      mode: argv.includes('--apply') ? 'apply' : 'diagnose',
-      exitCode,
-      fileReads,
-      effects,
-      stderr,
-    });
+      assert.equal(exitCode, 1);
+      assert.equal(fileReads, 0);
+      assert.deepEqual(effects, []);
+      assert.equal(stderr, 'DATABASE_URL ambígua ou inválida para o preflight.\n');
+    }
   }
-
-  assert.deepEqual(observations, [
-    {
-      mode: 'apply',
-      exitCode: 1,
-      fileReads: 0,
-      effects: [],
-      stderr: 'DATABASE_URL ambígua ou inválida para o preflight.\n',
-    },
-    {
-      mode: 'diagnose',
-      exitCode: 1,
-      fileReads: 0,
-      effects: [],
-      stderr: 'DATABASE_URL ambígua ou inválida para o preflight.\n',
-    },
-  ]);
 });
 
 test('explicit PostgreSQL URL identity is the same proof and client target', async () => {

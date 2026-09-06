@@ -9,6 +9,7 @@ export interface PostgresRuntimeConnection {
 }
 
 const ALLOWED_URL_PARAMETERS = new Set(['sslmode']);
+const ENCODED_HOST_DELIMITER = /%(?:25)*(?:3a|5b|5d)/i;
 const AMBIGUOUS_ENVIRONMENT_KEYS = [
   'PGHOST',
   'PGHOSTADDR',
@@ -52,13 +53,17 @@ export function parsePostgresRuntimeUrl(
     if (typeof raw !== 'string' || !raw.trim()) throw new Error();
     parsed = new URL(raw);
     if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') throw new Error();
+    const decodedHostname = decodeURIComponent(parsed.hostname);
     const database = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
     const user = decodeURIComponent(parsed.username);
     const password = decodeURIComponent(parsed.password);
     if (
       !parsed.hostname ||
-      parsed.hostname.includes(':') ||
+      decodedHostname.includes(':') ||
+      decodedHostname.includes('[') ||
+      decodedHostname.includes(']') ||
       parsed.hostname.includes(',') ||
+      ENCODED_HOST_DELIMITER.test(decodedHostname) ||
       !parsed.port ||
       !database ||
       !user ||
