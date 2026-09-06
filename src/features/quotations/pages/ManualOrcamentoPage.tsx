@@ -123,6 +123,7 @@ interface ManualDraft {
   observacoes: string;
   urgente: boolean;
   templateKey: string;
+  originPrefill?: QuotationOriginPrefill;
 }
 
 function isNewClient(value: unknown): value is NewClient {
@@ -147,12 +148,24 @@ function isCartItem(value: unknown): value is CartItem {
 function isManualDraft(value: unknown): value is ManualDraft {
   if (typeof value !== 'object' || value === null) return false;
   const draft = value as Record<string, unknown>;
+  const originPrefill = draft.originPrefill;
+  const hasValidOriginPrefill = originPrefill === undefined || (
+    typeof originPrefill === 'object' &&
+    originPrefill !== null &&
+    typeof (originPrefill as Record<string, unknown>).quoteLeadId === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).crmDealId === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).leadName === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).email === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).telefone === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).source === 'string'
+  );
   return (
     draft.version === MANUAL_DRAFT_STORAGE_VERSION &&
     typeof draft.clientType === 'string' &&
     isNewClient(draft.newClient) &&
     Array.isArray(draft.items) &&
-    draft.items.every(isCartItem)
+    draft.items.every(isCartItem) &&
+    hasValidOriginPrefill
   );
 }
 
@@ -676,6 +689,7 @@ export default function ManualOrcamentoPage() {
     if (draft.prazo) setPrazo(draft.prazo);
     if (draft.observacoes) setObservacoes(draft.observacoes);
     setUrgente(Boolean(draft.urgente));
+    if (draft.originPrefill) setOriginPrefill(draft.originPrefill);
     if (draft.templateKey) {
       templateOverrideRef.current = draft.templateKey;
       setTemplateKey(draft.templateKey);
@@ -713,8 +727,9 @@ export default function ManualOrcamentoPage() {
       observacoes,
       urgente,
       templateKey,
+      originPrefill: originPrefill || undefined,
     });
-  }, [result, hasFormData, clientType, clientSearch, selectedClient, newClient, leadSource, cnpj, address, showAddress, items, prazo, observacoes, urgente, templateKey]);
+  }, [result, hasFormData, clientType, clientSearch, selectedClient, newClient, leadSource, cnpj, address, showAddress, items, prazo, observacoes, urgente, templateKey, originPrefill]);
 
   // ── Navigation guard: filled form must never die silently ──
   const { setNavigationGuard } = useRouteGuardContext();

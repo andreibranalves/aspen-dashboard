@@ -21,3 +21,19 @@ export function resolveDisposableTestDatabaseUrl(
   }
   return raw;
 }
+
+export function requireMatchingDisposableTestDatabaseUrl(
+  env = process.env,
+  candidateKeys = DEFAULT_TEST_DATABASE_CANDIDATE_KEYS
+) {
+  const testDatabaseUrl = resolveDisposableTestDatabaseUrl(env, candidateKeys);
+  if (!testDatabaseUrl) {
+    throw new Error('TEST_DATABASE_URL é obrigatória para este teste PostgreSQL descartável.');
+  }
+
+  const applicationDatabaseUrl = String(env.DATABASE_URL || '').trim();
+  if (applicationDatabaseUrl !== testDatabaseUrl) {
+    throw new Error('DATABASE_URL deve coincidir com TEST_DATABASE_URL descartável.');
+  }
+  return testDatabaseUrl;
+}

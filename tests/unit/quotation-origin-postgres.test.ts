@@ -67,6 +67,7 @@ test(
     const leadIds: string[] = [];
     const dealIds: string[] = [];
     const orderIds: string[] = [];
+    const dateExternalId = `siteQuote.${randomUUID()}`;
 
     try {
       await migrate(db, { migrationsFolder });
@@ -340,11 +341,69 @@ test(
           reason: 'deal_origin_conflict',
         },
       );
+
+      const originalDateLead = await leadRepository.ingestSiteSubmission({
+        externalId: dateExternalId,
+        payloadFingerprint: 'e'.repeat(64),
+        originalCreatedAt: '2026-01-10T12:00:00.000Z',
+        nome: 'Contato temporal sintético',
+        email: `temporal-${suffix}@example.test`,
+        whatsapp: '5511999993333',
+        produto: 'Produto sintético',
+        quantidade: '5',
+        consent: { given: true, source: 'site_quote_form' },
+      });
+      assert.ok(originalDateLead.crmDealId);
+      leadIds.push(originalDateLead.id);
+      dealIds.push(originalDateLead.crmDealId);
+
+      const januaryQuotationRepository = createPostgresQuoteDraftRepository(() => db, {
+        now: () => new Date('2026-01-11T12:00:00.000Z'),
+      });
+      const januaryQuotation = await januaryQuotationRepository.createDraft({
+        nome: 'Contato temporal sintético',
+        email: `TEMPORAL-${suffix}@example.test`,
+        telefone: '5511999993333',
+        items: [{ item_code: sku, qty: '1.000' }],
+      });
+      createdIds.push(januaryQuotation.quotation_uuid);
+      createdClientIds.push(januaryQuotation.cliente_id);
+
+      const septemberQuotation = await quotationRepository.createDraft({
+        nome: 'Contato temporal sintético',
+        email: `temporal-${suffix}@example.test`,
+        telefone: '5511999993333',
+        items: [{ item_code: sku, qty: '1.000' }],
+      });
+      createdIds.push(septemberQuotation.quotation_uuid);
+      createdClientIds.push(septemberQuotation.cliente_id);
+
+      const januaryCandidates = await listQuotationOriginCandidates(db, {
+        from: new Date('2026-01-11T00:00:00.000Z'),
+        to: new Date('2026-01-12T00:00:00.000Z'),
+        windowDays: 2,
+      });
+      assert.deepEqual(
+        januaryCandidates
+          .filter((candidate) => candidate.quotationId === januaryQuotation.quotation_uuid)
+          .map((candidate) => candidate.quoteLeadId),
+        [originalDateLead.id],
+      );
+
+      const septemberCandidates = await listQuotationOriginCandidates(db, {
+        from: new Date('2026-09-02T00:00:00.000Z'),
+        to: new Date('2026-09-03T00:00:00.000Z'),
+        windowDays: 2,
+      });
+      assert.equal(
+        septemberCandidates.some((candidate) => candidate.quotationId === septemberQuotation.quotation_uuid),
+        false,
+      );
     } finally {
       const ownedLeads = await db
         .select({ id: quoteLeads.id, crmDealId: quoteLeads.crmDealId })
         .from(quoteLeads)
-        .where(inArray(quoteLeads.externalId, [externalId, secondExternalId]));
+        .where(inArray(quoteLeads.externalId, [externalId, secondExternalId, dateExternalId]));
       for (const lead of ownedLeads) {
         await db
           .update(quoteLeads)

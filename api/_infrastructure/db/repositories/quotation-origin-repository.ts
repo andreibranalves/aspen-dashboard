@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lt, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lt, ne, sql } from 'drizzle-orm';
 
 import type { AppDatabase } from '../client.js';
 import { crmDeals, quotations, quoteLeads, quoteRevisions, salesOrders } from '../schema.js';
@@ -29,6 +29,7 @@ export interface QuotationOriginCandidate {
 }
 
 type QuotationOriginDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
+const CANDIDATE_QUERY_PAGE_SIZE = 1_000;
 
 function sourceLabel(source: string): string {
   if (source === 'site_form') return 'Formulário do site';
@@ -204,54 +205,94 @@ function normalizedPhone(value: string | null): string {
   return (value || '').replace(/\D/g, '');
 }
 
+function timestampMilliseconds(value: Date | string): number {
+  const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) throw new Error('Data temporal inválida na origem do orçamento.');
+  return timestamp;
+}
+
 /** Read-only investigation aid. Every plausible row is returned; none is selected or written. */
 export async function listQuotationOriginCandidates(
   database: QuotationOriginDatabase,
   input: { from: Date; to: Date; windowDays: number },
 ): Promise<QuotationOriginCandidate[]> {
   const windowMs = input.windowDays * 24 * 60 * 60 * 1000;
-  const quotationRows = await database
-    .select({
-      id: quotations.id,
-      businessNumber: quotations.businessNumber,
-      createdAt: quotations.createdAt,
-      revisionEmail: quoteRevisions.clienteEmail,
-      revisionPhone: quoteRevisions.clienteTelefone,
-      revisionVersion: quoteRevisions.version,
-    })
-    .from(quotations)
-    .innerJoin(quoteRevisions, eq(quoteRevisions.quotationId, quotations.id))
-    .where(
-      and(
-        isNull(quotations.quoteLeadId),
-        gte(quotations.createdAt, input.from),
-        lt(quotations.createdAt, input.to),
-      ),
-    )
-    .orderBy(asc(quotations.id), desc(quoteRevisions.version))
-    .limit(10_000);
+  const quotationRows: Array<{
+    id: string;
+    businessNumber: string;
+    createdAt: Date | string;
+    revisionEmail: string | null;
+    revisionPhone: string | null;
+    revisionVersion: number;
+  }> = [];
+  for (let offset = 0; ; offset += CANDIDATE_QUERY_PAGE_SIZE) {
+    const page = await database
+      .select({
+        id: quotations.id,
+        businessNumber: quotations.businessNumber,
+        createdAt: quotations.createdAt,
+        revisionEmail: quoteRevisions.clienteEmail,
+        revisionPhone: quoteRevisions.clienteTelefone,
+        revisionVersion: quoteRevisions.version,
+      })
+      .from(quotations)
+      .innerJoin(quoteRevisions, eq(quoteRevisions.quotationId, quotations.id))
+      .where(
+        and(
+          isNull(quotations.quoteLeadId),
+          gte(quotations.createdAt, input.from),
+          lt(quotations.createdAt, input.to),
+        ),
+      )
+      .orderBy(asc(quotations.id), desc(quoteRevisions.version))
+      .limit(CANDIDATE_QUERY_PAGE_SIZE)
+      .offset(offset);
+    quotationRows.push(...page);
+    if (page.length < CANDIDATE_QUERY_PAGE_SIZE) break;
+  }
   const latest = new Map<string, (typeof quotationRows)[number]>();
   for (const row of quotationRows) if (!latest.has(row.id)) latest.set(row.id, row);
-  const leadRows = await database
-    .select({
-      id: quoteLeads.id,
-      email: quoteLeads.email,
-      telefone: quoteLeads.telefone,
-      createdAt: quoteLeads.createdAt,
-    })
-    .from(quoteLeads)
-    .where(
-      and(
-        gte(quoteLeads.createdAt, new Date(input.from.getTime() - windowMs)),
-        lt(quoteLeads.createdAt, new Date(input.to.getTime() + windowMs)),
-      ),
-    )
-    .orderBy(asc(quoteLeads.createdAt), asc(quoteLeads.id))
-    .limit(10_000);
+  const originalCreatedAtText = sql<string | null>`jsonb_extract_path_text(${quoteLeads.raw}, 'siteSubmission', 'originalCreatedAt')`;
+  const matchingCreatedAt = sql<Date>`CASE
+    WHEN ${quoteLeads.source} = 'site_form'
+      AND ${originalCreatedAtText} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?Z$'
+    THEN (${originalCreatedAtText})::timestamptz
+    ELSE ${quoteLeads.createdAt}
+  END`;
+  const leadRows: Array<{
+    id: string;
+    email: string | null;
+    telefone: string | null;
+    createdAt: Date | string;
+  }> = [];
+  const leadFrom = new Date(input.from.getTime() - windowMs).toISOString();
+  const leadTo = new Date(input.to.getTime() + windowMs).toISOString();
+  for (let offset = 0; ; offset += CANDIDATE_QUERY_PAGE_SIZE) {
+    const page = await database
+      .select({
+        id: quoteLeads.id,
+        email: quoteLeads.email,
+        telefone: quoteLeads.telefone,
+        createdAt: matchingCreatedAt,
+      })
+      .from(quoteLeads)
+      .where(
+        and(
+          sql`${matchingCreatedAt} >= ${leadFrom}::timestamptz`,
+          sql`${matchingCreatedAt} < ${leadTo}::timestamptz`,
+        ),
+      )
+      .orderBy(asc(matchingCreatedAt), asc(quoteLeads.id))
+      .limit(CANDIDATE_QUERY_PAGE_SIZE)
+      .offset(offset);
+    leadRows.push(...page);
+    if (page.length < CANDIDATE_QUERY_PAGE_SIZE) break;
+  }
   const candidates: QuotationOriginCandidate[] = [];
   for (const quotation of latest.values()) {
+    const quotationTime = timestampMilliseconds(quotation.createdAt);
     for (const lead of leadRows) {
-      const distanceMs = Math.abs(quotation.createdAt.getTime() - lead.createdAt.getTime());
+      const distanceMs = Math.abs(quotationTime - timestampMilliseconds(lead.createdAt));
       if (distanceMs > windowMs) continue;
       const reasons: QuotationOriginCandidate['reasons'] = [];
       const email = normalizedEmail(quotation.revisionEmail);

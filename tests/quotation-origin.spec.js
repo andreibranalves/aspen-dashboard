@@ -13,6 +13,7 @@ import { appSettings, crmDeals, products } from '../api/_infrastructure/db/schem
 import { createPostgresQuoteLeadRepository } from '../api/_infrastructure/db/repositories/quote-leads-repository.js';
 import { createPostgresQuoteDraftRepository } from '../api/_infrastructure/db/repositories/quote-repository.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../api/_modules/quotation-template-catalog.js';
+import { requireMatchingDisposableTestDatabaseUrl } from './support/disposable-postgres.js';
 
 const suffix = randomUUID().slice(0, 8);
 const leadName = `Origem UI ${suffix}`;
@@ -21,8 +22,7 @@ let missingQuotation = '';
 let conflictQuotation = '';
 
 test.beforeAll(async () => {
-  const databaseUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
-  if (!databaseUrl) throw new Error('Banco PostgreSQL descartável não configurado.');
+  const databaseUrl = requireMatchingDisposableTestDatabaseUrl(process.env);
   const client = postgres(databaseUrl, { max: 2, prepare: false });
   const db = drizzle(client, { schema });
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +123,29 @@ test('opportunity creates quotation whose origin remains visible through approva
   await expect(page.getByRole('heading', { name: 'Pedido' })).toBeVisible();
   await expect(page.getByText('Formulário do site')).toBeVisible();
   await page.getByRole('button', { name: 'Abrir orçamento de origem' }).click();
+  await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
+});
+
+test('restoring a manual draft without hash parameters preserves its direct origin', async ({ page }) => {
+  await page.goto(`/#/crm?search=${encodeURIComponent(leadName)}`);
+  const card = page.getByRole('article', { name: new RegExp(`Negócio ${leadName}`) });
+  await expect(card).toBeVisible();
+  await card.getByRole('button', { name: 'Novo orçamento' }).click();
+
+  await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
+  await page.getByLabel('Origem *').selectOption('Google Ads');
+  await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(sku);
+  await page.getByRole('button', { name: `Adicionar ${sku} ao orçamento` }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(globalThis.localStorage.getItem('aspen_manual_draft')))).toBe(true);
+
+  await page.goto('/#/manual');
+  await page.getByRole('dialog').getByRole('button', { name: 'Sair da página' }).click();
+  await page.reload();
+  await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
+  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
+
+  await expect(page.getByText('Rascunho salvo')).toBeVisible();
+  await page.getByRole('button', { name: 'Abrir orçamento' }).click();
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 });
 

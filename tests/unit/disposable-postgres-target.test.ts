@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   DEFAULT_TEST_DATABASE_CANDIDATE_KEYS,
+  requireMatchingDisposableTestDatabaseUrl,
   resolveDisposableTestDatabaseUrl,
 } from '../support/disposable-postgres.js';
 
@@ -78,4 +79,41 @@ test('default candidate list only consults TEST_DATABASE_URL', () => {
     resolveDisposableTestDatabaseUrl({ TEST_SALES_DATABASE_URL: 'postgresql://127.0.0.1/sales' }),
     undefined
   );
+});
+
+test('quotation-origin E2E target guard rejects operational or mismatched targets before DB setup', () => {
+  let connectionCalls = 0;
+  let migrationCalls = 0;
+  const openAndMigrate = (env) => {
+    const target = requireMatchingDisposableTestDatabaseUrl(env);
+    connectionCalls += 1;
+    migrationCalls += 1;
+    return target;
+  };
+
+  for (const env of [
+    { DATABASE_URL: 'postgresql://synthetic.invalid/operational' },
+    {
+      TEST_DATABASE_URL: 'postgresql://synthetic.invalid/operational',
+      DATABASE_URL: 'postgresql://synthetic.invalid/operational',
+    },
+    {
+      TEST_DATABASE_URL: 'postgresql://127.0.0.1:55433/aspen_test',
+      DATABASE_URL: 'postgresql://synthetic.invalid/operational',
+    },
+  ]) {
+    assert.throws(() => openAndMigrate(env), /TEST_DATABASE_URL|DATABASE_URL/);
+  }
+
+  assert.equal(connectionCalls, 0);
+  assert.equal(migrationCalls, 0);
+  assert.equal(
+    openAndMigrate({
+      TEST_DATABASE_URL: 'postgresql://127.0.0.1:55433/aspen_test',
+      DATABASE_URL: 'postgresql://127.0.0.1:55433/aspen_test',
+    }),
+    'postgresql://127.0.0.1:55433/aspen_test',
+  );
+  assert.equal(connectionCalls, 1);
+  assert.equal(migrationCalls, 1);
 });
