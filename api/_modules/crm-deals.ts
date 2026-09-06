@@ -37,6 +37,9 @@ function mapDeal(deal: CrmDealRecord | Record<string, unknown>): Record<string, 
     id: row.id,
     client_id: row.clientId ?? row.client_id ?? null,
     quote_lead_id: row.quoteLeadId ?? row.quote_lead_id ?? null,
+    ...((row.leadSource ?? row.lead_source)
+      ? { lead_source: row.leadSource ?? row.lead_source }
+      : {}),
     quotation_id: row.quotationId ?? null,
     lead_name: typeof nameValue === 'string' && nameValue.trim() ? nameValue : 'Sem nome',
     email: row.email || null,

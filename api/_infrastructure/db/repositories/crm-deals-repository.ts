@@ -70,6 +70,7 @@ export interface CrmDealRecord {
   createdAt: CrmTimestamp;
   updatedAt: CrmTimestamp;
   quotation?: string | null;
+  leadSource?: string | null;
   quotationDate?: string | null;
   grandTotal?: number;
 }
@@ -636,6 +637,7 @@ export function createPostgresCrmDealRepository(
           createdAt: crmDeals.createdAt,
           updatedAt: crmDeals.updatedAt,
           quotationBusinessNumber: quotations.businessNumber,
+          leadSource: quoteLeads.source,
         };
         const order = [desc(crmDeals.updatedAt), desc(crmDeals.createdAt), asc(crmDeals.id)];
         const rows = normalized
@@ -643,6 +645,7 @@ export function createPostgresCrmDealRepository(
               .select(fields)
               .from(crmDeals)
               .leftJoin(quotations, eq(crmDeals.quotationId, quotations.id))
+              .leftJoin(quoteLeads, eq(crmDeals.quoteLeadId, quoteLeads.id))
               .where(
                 or(
                   ilike(crmDeals.nome, `%${escapeLike(normalized)}%`),
@@ -657,6 +660,7 @@ export function createPostgresCrmDealRepository(
               .select(fields)
               .from(crmDeals)
               .leftJoin(quotations, eq(crmDeals.quotationId, quotations.id))
+              .leftJoin(quoteLeads, eq(crmDeals.quoteLeadId, quoteLeads.id))
               .orderBy(...order)
               .limit(boundedLimit);
         return rows.map((row) => ({
@@ -674,6 +678,7 @@ export function createPostgresCrmDealRepository(
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           quotation: row.quotationBusinessNumber || null,
+          leadSource: row.leadSource || null,
         }));
       } catch (error) {
         return safeRepositoryError(error);

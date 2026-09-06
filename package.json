@@ -25,6 +25,7 @@
     "lite:baseline": "node scripts/lite-baseline.mjs",
     "leads:reconcile": "npm run build:api --silent && node scripts/leads-reconcile.mjs",
     "beta:cleanup": "npm run build:api --silent && node scripts/beta-cleanup.mjs",
+    "quotation-origin:candidates": "npm run build:api --silent && node scripts/quotation-origin-candidates.mjs",
     "preview": "vite preview",
     "server": "vercel dev",
     "lint": "eslint .",

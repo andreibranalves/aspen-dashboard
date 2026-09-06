@@ -51,6 +51,11 @@ import {
   formatAddressSummary,
   type Address,
 } from '@/lib/clientMetadata';
+import {
+  clearQuotationOriginPrefill,
+  loadQuotationOriginPrefill,
+  type QuotationOriginPrefill,
+} from '@/features/crm/quotationOriginPrefill';
 
 // ── Constants ──
 const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' } as const;
@@ -185,6 +190,7 @@ export default function ManualOrcamentoPage() {
   const [clientSearching, setClientSearching] = useState<boolean>(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [newClient, setNewClient] = useState<NewClient>({ nome: '', email: '', telefone: '' });
+  const [originPrefill, setOriginPrefill] = useState<QuotationOriginPrefill | null>(null);
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Client metadata ──
@@ -526,9 +532,12 @@ export default function ManualOrcamentoPage() {
         validade_dias: undefined,
         ...(templateKey ? { template_key: templateKey } : {}),
         ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
+        ...(originPrefill
+          ? { quote_lead_id: originPrefill.quoteLeadId, crm_deal_id: originPrefill.crmDealId }
+          : {}),
       },
     };
-  }, [address, cnpj, clientType, getClientInfo, items, leadSource, observacoes, prazo, selectedClient, templateKey, urgente]);
+  }, [address, cnpj, clientType, getClientInfo, items, leadSource, observacoes, originPrefill, prazo, selectedClient, templateKey, urgente]);
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
@@ -547,6 +556,7 @@ export default function ManualOrcamentoPage() {
       const res = await apiPost<OrcamentoResponse>('/orcamento', buildManualPayload());
       setResult(res);
       clearManualDraft();
+      clearQuotationOriginPrefill();
     } catch {
       setError('Não foi possível salvar o rascunho. Tente novamente.');
     } finally {
@@ -598,6 +608,7 @@ export default function ManualOrcamentoPage() {
       if (!revisionId || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
       const issue = await issuePersistedDraft(revisionId, concurrencyToken, key);
       clearManualDraft();
+      clearQuotationOriginPrefill();
       setResult({ success: true, quotation_id: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision: issue.revisionNumber, status: issue.status });
     } catch {
       setError('Não foi possível emitir o orçamento. Tente novamente.');
@@ -630,6 +641,9 @@ export default function ManualOrcamentoPage() {
     setAddingSku(null);
     setPricingRows(new Set());
     clearManualDraft();
+    clearQuotationOriginPrefill();
+    setOriginPrefill(null);
+    if (window.location.hash.includes('?')) window.history.replaceState(null, '', '#/manual');
   }, []);
 
   // ── Draft persistence ──
@@ -637,6 +651,17 @@ export default function ManualOrcamentoPage() {
   useEffect(() => {
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
+    const prefill = loadQuotationOriginPrefill();
+    if (prefill) {
+      setOriginPrefill(prefill);
+      setClientType(CLIENT_TYPE.NEW);
+      setNewClient({
+        nome: prefill.leadName,
+        email: prefill.email,
+        telefone: formatPhoneInput(prefill.telefone),
+      });
+      return;
+    }
     const draft = loadManualDraft();
     if (!draft) return;
     if (Array.isArray(draft.items)) setItems(draft.items);
@@ -712,6 +737,11 @@ export default function ManualOrcamentoPage() {
       {!result && (
         <header>
           <h1 className="text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
+          {originPrefill && (
+            <p className="mt-2 text-sm text-fg-muted" role="status">
+              Origem: {originPrefill.source === 'site_form' ? 'Formulário do site' : originPrefill.source || 'Oportunidade CRM'}
+            </p>
+          )}
         </header>
       )}
 

@@ -14,6 +14,7 @@ import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { fmtPhone } from '@/lib/formatting/formatters';
+import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
 
 interface Deal {
   id: string;
@@ -22,6 +23,7 @@ interface Deal {
   telefone?: string;
   client_id?: string | null;
   quote_lead_id?: string | null;
+  lead_source?: string | null;
   quotation_id?: string | null;
   quotation?: string;
   follow_up_stage?: number;
@@ -655,6 +657,27 @@ export default function CrmKanbanPage() {
                                   ))}
                                 </Select>
                               </div>
+                              {deal.quote_lead_id && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="mt-2 w-full"
+                                  onClick={() => {
+                                    storeQuotationOriginPrefill({
+                                      quoteLeadId: deal.quote_lead_id!,
+                                      crmDealId: deal.id,
+                                      leadName,
+                                      email: deal.email || '',
+                                      telefone: deal.telefone || '',
+                                      source: deal.lead_source || '',
+                                    });
+                                    window.location.hash = `#/manual?quoteLeadId=${encodeURIComponent(deal.quote_lead_id!)}&crmDealId=${encodeURIComponent(deal.id)}`;
+                                  }}
+                                >
+                                  <PlusCircle />
+                                  Novo orçamento
+                                </Button>
+                              )}
                             </article>
                           );
                         })}

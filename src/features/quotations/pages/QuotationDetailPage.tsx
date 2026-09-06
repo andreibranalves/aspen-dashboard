@@ -1206,6 +1206,22 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 </>
               )}
             </div>
+            {data.quotationOrigin && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" aria-label="Origem do orçamento">
+                <span className={data.quotationOrigin.status === 'conflict' ? 'text-destructive' : 'text-fg-muted'}>
+                  Origem: {data.quotationOrigin.sourceLabel}
+                </span>
+                {data.quotationOrigin.salesOrderNumber && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate(`/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`)}
+                  >
+                    <ShoppingCart size={14} /> Abrir pedido
+                  </Button>
+                )}
+              </div>
+            )}
             {editing && (
               <p
                 role="status"

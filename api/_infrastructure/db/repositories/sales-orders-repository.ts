@@ -36,6 +36,7 @@ import {
   resolveNamedPeriod,
 } from '../../../_shared/calendar-sao-paulo.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
+import { readQuotationOrigin, type QuotationOriginProjection } from './quotation-origin-repository.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -145,6 +146,7 @@ export interface SalesOrderDetail extends SalesOrderListItem {
   quotation_id: string | null;
   quotation_revision_id: string | null;
   items: SalesOrderItemDetail[];
+  quotation_origin: QuotationOriginProjection;
 }
 
 export interface SalesOrderProgressInput {
@@ -801,7 +803,11 @@ async function readJoinedOrder(
   return row || null;
 }
 
-function detailFromJoined(row: JoinedOrderRow, items: SalesOrderItemRow[]): SalesOrderDetail {
+function detailFromJoined(
+  row: JoinedOrderRow,
+  items: SalesOrderItemRow[],
+  quotationOrigin: QuotationOriginProjection,
+): SalesOrderDetail {
   const base = mapListRow(row);
   return {
     ...base,
@@ -809,6 +815,28 @@ function detailFromJoined(row: JoinedOrderRow, items: SalesOrderItemRow[]): Sale
     quotation_id: row.quotationId,
     quotation_revision_id: row.quotationRevisionId,
     items: items.map((item) => mapItemRow(item, row.sourceQuotation)),
+    quotation_origin: quotationOrigin,
+  };
+}
+
+async function originForJoinedOrder(
+  database: SalesOrderDatabase,
+  row: JoinedOrderRow,
+): Promise<QuotationOriginProjection> {
+  if (row.quotationId) {
+    return readQuotationOrigin(database, {
+      quotationId: row.quotationId,
+      salesOrderId: row.internalId,
+      quotationRevisionId: row.quotationRevisionId,
+    });
+  }
+  return {
+    status: 'missing',
+    source: null,
+    sourceLabel: 'Origem ausente',
+    quotationNumber: null,
+    salesOrderNumber: row.orderNumber,
+    reason: 'order_quotation_missing',
   };
 }
 
@@ -1158,7 +1186,8 @@ export function createPostgresSalesOrdersRepository(
           .from(salesOrderItems)
           .where(eq(salesOrderItems.salesOrderId, row.internalId))
           .orderBy(asc(salesOrderItems.position));
-        return detailFromJoined(row, items);
+        const quotationOrigin = await originForJoinedOrder(database, row);
+        return detailFromJoined(row, items, quotationOrigin);
       } catch (error) {
         return safeRepositoryError(error);
       }
@@ -1208,7 +1237,8 @@ export function createPostgresSalesOrdersRepository(
             .from(salesOrderItems)
             .where(eq(salesOrderItems.salesOrderId, row.internalId))
             .orderBy(asc(salesOrderItems.position));
-          return detailFromJoined(row, items);
+          const quotationOrigin = await originForJoinedOrder(transaction, row);
+          return detailFromJoined(row, items, quotationOrigin);
         });
       } catch (error) {
         return safeRepositoryError(error);

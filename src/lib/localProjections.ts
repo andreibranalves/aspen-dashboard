@@ -1,5 +1,6 @@
 import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import type { Product } from '@/types/domain';
+import { projectQuotationOrigin, type QuotationOriginView } from '../features/quotations/quotationOrigin.ts';
 import type {
   CanonicalQuotationDetail,
   CanonicalQuotationListRow,
@@ -141,6 +142,7 @@ export interface ProjectedQuotationData extends
   /** Bridge de itens para o editor — permanece no shape legado (#125 batch 2). */
   items: ProjectedQuotationItem[];
   secoes?: QuotationSectionsSnapshot | null;
+  quotationOrigin?: QuotationOriginView;
 }
 
 export interface ProjectedQuotationDetail {
@@ -676,6 +678,7 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
   const templateVersion = hasTemplateVersion && source.template_version !== null
     ? readPositiveVersion(source.template_version)
     : (hasTemplateVersion ? null : undefined);
+  const quotationOrigin = projectQuotationOrigin(source.quotation_origin);
   if (
     !id || !businessNumber || !name ||
     revision === undefined || !statusRaw || !QUOTATION_STATUSES.has(statusRaw) ||
@@ -730,6 +733,7 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
     secoes: sections,
     items: items as ProjectedQuotationItem[],
     revisionHistory: Object.prototype.hasOwnProperty.call(canonical, 'revisionHistory') ? projectedRevisionHistory : [],
+    ...(quotationOrigin ? { quotationOrigin } : {}),
   };
   return { data, concurrencyToken: concurrencyToken! };
 }

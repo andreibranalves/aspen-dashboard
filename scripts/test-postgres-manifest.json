@@ -15,6 +15,7 @@
   "tests/unit/quotation-follow-up-postgres.test.ts",
   "tests/unit/quotation-issue-postgres.test.ts",
   "tests/unit/quotation-lifecycle-postgres.test.ts",
+  "tests/unit/quotation-origin-postgres.test.ts",
   "tests/unit/quotation-rich-content-template-publication-migration.test.ts",
   "tests/unit/quotation-template-contract-migration.test.ts",
   "tests/unit/quotation-template-publication-migration.test.ts",
