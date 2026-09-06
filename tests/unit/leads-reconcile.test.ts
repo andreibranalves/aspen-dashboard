@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
+import { buildSanityQuoteRequestsQuery } from '../../api/_infrastructure/integrations/sanity/quote-requests.js';
+
 import {
   assertApplyPreflight,
-  buildSanityQuery,
   parseReconcileArgs,
   runReconciliation,
 } from '../../scripts/leads-reconcile.mjs';
@@ -24,7 +25,7 @@ test('reconciliation requires an explicit valid half-open interval and mode', ()
 });
 
 test('Sanity query is deterministic and excludes drafts and versions', () => {
-  const query = buildSanityQuery();
+  const query = buildSanityQuoteRequestsQuery();
   assert.match(query, /order\(createdAt asc, _id asc\)/);
   assert.match(query, /drafts\.\*\*/);
   assert.match(query, /versions\.\*\*/);

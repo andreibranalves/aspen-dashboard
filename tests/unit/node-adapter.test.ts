@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import test, { afterEach } from 'node:test';
 import { createNodeHandler } from '../../api/_http/node-adapter.js';
+import { routes } from '../../api/_app/routes.js';
+import { createSiteQuoteLeadsHandler } from '../../api/_modules/site-quote-leads.js';
 
 async function withServer() {
   const server = createServer(createNodeHandler());
@@ -41,7 +43,10 @@ test('node adapter: OPTIONS responde 204 com cabeçalhos CORS', async () => {
     const res = await fetch(`${baseUrl}/api/anything`, { method: 'OPTIONS' });
     assert.equal(res.status, 204);
     assert.equal(res.headers.get('access-control-allow-origin'), '*');
-    assert.equal(res.headers.get('access-control-allow-methods'), 'GET, POST, PUT, DELETE, OPTIONS');
+    assert.equal(
+      res.headers.get('access-control-allow-methods'),
+      'GET, POST, PUT, DELETE, OPTIONS'
+    );
   } finally {
     await close();
   }
@@ -55,6 +60,72 @@ test('node adapter: rota inexistente responde 404 pelo pipeline', async () => {
     assert.equal(res.status, 404);
     assert.deepEqual(await res.json(), { error: 'Endpoint não encontrado.' });
   } finally {
+    await close();
+  }
+});
+
+test('node adapter: limita bytes raw em JSON inflado enviado em chunks sem Content-Length', async () => {
+  const token = 'n'.repeat(32);
+  let writes = 0;
+  const original = routes['site-quote-leads'];
+  routes['site-quote-leads'] = createSiteQuoteLeadsHandler({
+    environment: { QUOTE_LEADS_INGEST_TOKEN: token },
+    ingest: async () => {
+      writes += 1;
+      return { result: 'created' };
+    },
+  });
+  const validPayload = {
+    externalId: 'siteQuote.018f47a8-7b6c-7d3e-8f90-123456789abc',
+    payloadFingerprint: 'a'.repeat(64),
+    originalCreatedAt: '2026-09-05T12:00:00.000Z',
+    nome: 'Cliente Sintético',
+    email: 'synthetic@example.invalid',
+    whatsapp: '21999990000',
+    produto: 'Cangas',
+    quantidade: '100',
+    mensagem: 'ação multibyte',
+    consent: { given: true, source: 'site_quote_form' },
+  };
+  const rawBody = `${' '.repeat(16_384)}${JSON.stringify(validPayload)}`;
+  assert.ok(Buffer.byteLength(rawBody, 'utf8') > 16_384);
+  assert.ok(Buffer.byteLength(JSON.stringify(validPayload), 'utf8') < 16_384);
+  const { baseUrl, close } = await withServer();
+  try {
+    const target = new URL('/api/site-quote-leads', baseUrl);
+    const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = request(
+        {
+          hostname: target.hostname,
+          port: target.port,
+          path: target.pathname,
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+        (res) => {
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => (body += chunk));
+          res.on('end', () => resolve({ status: res.statusCode || 0, body }));
+        }
+      );
+      req.on('error', reject);
+      const rawBytes = Buffer.from(rawBody, 'utf8');
+      for (let offset = 0; offset < rawBytes.length; offset += 257) {
+        req.write(rawBytes.subarray(offset, offset + 257));
+      }
+      req.end();
+    });
+    assert.equal(response.status, 413);
+    assert.deepEqual(JSON.parse(response.body), {
+      error: 'Corpo da requisição excede o limite permitido.',
+    });
+    assert.equal(writes, 0);
+  } finally {
+    routes['site-quote-leads'] = original;
     await close();
   }
 });

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { createPostgresQuoteLeadRepository } from '../_infrastructure/db/repositories/quote-leads-repository.js';
-import { isMachineBearerAuthorized } from '../_shared/machine-auth.js';
+import { isMachineBearerAuthorized, MIN_MACHINE_SECRET_BYTES } from '../_shared/machine-auth.js';
 
 const MAX_BODY_BYTES = 16_384;
 const SANITY_ID_PATTERN =
@@ -57,8 +57,10 @@ function authorized(
   event: FunctionEvent,
   environment: SiteQuoteLeadsDependencies['environment']
 ): boolean {
+  const currentToken = environment?.QUOTE_LEADS_INGEST_TOKEN?.trim() || '';
+  if (Buffer.byteLength(currentToken, 'utf8') < MIN_MACHINE_SECRET_BYTES) return false;
   return (
-    isMachineBearerAuthorized(event.headers, environment?.QUOTE_LEADS_INGEST_TOKEN) ||
+    isMachineBearerAuthorized(event.headers, currentToken) ||
     isMachineBearerAuthorized(event.headers, environment?.QUOTE_LEADS_INGEST_PREVIOUS_TOKEN)
   );
 }

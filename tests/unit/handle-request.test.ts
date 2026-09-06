@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test, { afterEach } from 'node:test';
 import type { VercelResponseLike } from '../../api/_http/types.js';
 import { createHttpError } from '../../api/_shared/http-error.js';
+import { createSessionToken } from '../../api/_shared/session.js';
 import { handleApiRequest, normalizeHandlerError } from '../../api/_app/handle-request.js';
 import { routes } from '../../api/_app/routes.js';
 import { createSiteQuoteLeadsHandler } from '../../api/_modules/site-quote-leads.js';
@@ -255,6 +256,93 @@ test('handleApiRequest: ingestão do site exige bearer próprio e recebe rate li
     }
     assert.equal(last.lastStatus(), 429);
     assert.equal(writes, 30);
+  } finally {
+    routes['site-quote-leads'] = original;
+  }
+});
+
+test('handleApiRequest: rotação exige token atual forte e sessão não autentica a máquina', async () => {
+  const currentToken = 'c'.repeat(32);
+  const previousToken = 'p'.repeat(32);
+  const sessionToken = createSessionToken('s'.repeat(32));
+  assert.ok(sessionToken);
+  const validBody = {
+    externalId: 'siteQuote.018f47a8-7b6c-7d3e-8f90-123456789abc',
+    payloadFingerprint: 'a'.repeat(64),
+    originalCreatedAt: '2026-09-05T12:00:00.000Z',
+    nome: 'Cliente Sintético',
+    email: 'synthetic@example.invalid',
+    whatsapp: '21999990000',
+    produto: 'Cangas',
+    quantidade: '100',
+    consent: { given: true, source: 'site_quote_form' },
+  };
+  let writes = 0;
+  const original = routes['site-quote-leads'];
+  const invoke = async (
+    environment: { QUOTE_LEADS_INGEST_TOKEN?: string; QUOTE_LEADS_INGEST_PREVIOUS_TOKEN?: string },
+    authorization?: string
+  ) => {
+    routes['site-quote-leads'] = createSiteQuoteLeadsHandler({
+      environment,
+      ingest: async () => {
+        writes += 1;
+        return { result: 'created' };
+      },
+      correlationId: () => 'correlation-fixture',
+    });
+    const response = fakeResponse();
+    await handleApiRequest(
+      {
+        method: 'POST',
+        url: '/api/site-quote-leads',
+        headers: {
+          ...(authorization ? { authorization } : {}),
+          cookie: `aspen_token=${sessionToken}`,
+          'x-real-ip': `203.0.113.${writes + 1}`,
+        },
+        body: validBody,
+      } as unknown as import('node:http').IncomingMessage,
+      response.res
+    );
+    return response.lastStatus();
+  };
+
+  try {
+    assert.equal(
+      await invoke({ QUOTE_LEADS_INGEST_PREVIOUS_TOKEN: previousToken }, `Bearer ${previousToken}`),
+      401
+    );
+    assert.equal(
+      await invoke(
+        {
+          QUOTE_LEADS_INGEST_TOKEN: 'weak-current',
+          QUOTE_LEADS_INGEST_PREVIOUS_TOKEN: previousToken,
+        },
+        `Bearer ${previousToken}`
+      ),
+      401
+    );
+    assert.equal(
+      await invoke(
+        {
+          QUOTE_LEADS_INGEST_TOKEN: currentToken,
+          QUOTE_LEADS_INGEST_PREVIOUS_TOKEN: previousToken,
+        },
+        `Bearer ${previousToken}`
+      ),
+      201
+    );
+    assert.equal(
+      await invoke({ QUOTE_LEADS_INGEST_TOKEN: currentToken }, `Bearer ${previousToken}`),
+      401
+    );
+    assert.equal(await invoke({ QUOTE_LEADS_INGEST_TOKEN: currentToken }), 401);
+    assert.equal(
+      await invoke({ QUOTE_LEADS_INGEST_TOKEN: currentToken }, `Bearer ${currentToken}`),
+      201
+    );
+    assert.equal(writes, 2);
   } finally {
     routes['site-quote-leads'] = original;
   }

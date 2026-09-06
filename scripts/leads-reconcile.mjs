@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createSanityQuoteRequestsPageReader } from '../api/_infrastructure/integrations/sanity/quote-requests.js';
+
 const PAGE_SIZE = 100;
 const MAX_RECORDS = 5_000;
 const SAFE_SANITY_ID = /^[A-Za-z0-9_.-]{1,255}$/;
@@ -39,17 +41,6 @@ export function parseReconcileArgs(argv) {
     mode,
     target: values.target || null,
   };
-}
-
-export function buildSanityQuery() {
-  return `*[_type == "quoteRequest" && createdAt >= $from && createdAt < $to &&
-    !(_id in path("drafts.**")) && !(_id in path("versions.**")) &&
-    (createdAt > $cursorDate || (createdAt == $cursorDate && _id > $cursorId))]
-    | order(createdAt asc, _id asc)[0...$limit]{
-      _id, createdAt, payloadFingerprint, name, email, whatsapp, product, quantity,
-      deadline, message, consentGiven, utmSource, utmMedium, utmCampaign, utmContent,
-      utmTerm, gclid, gbraid, wbraid, fbclid, pageUrl
-    }`;
 }
 
 function text(value) {
@@ -245,28 +236,6 @@ export function assertApplyPreflight(options, environment) {
   }
 }
 
-export function createSanityPageReader(environment, fetchImpl = fetch) {
-  const project = text(environment.SANITY_PROJECT_ID);
-  const dataset = text(environment.SANITY_DATASET);
-  const token = text(environment.SANITY_API_TOKEN);
-  if (!/^[a-z0-9-]+$/.test(project) || !/^[a-z0-9_-]+$/.test(dataset) || !token)
-    throw new Error('Configuração Sanity incompleta.');
-  return async (parameters) => {
-    const url = new URL(`https://${project}.api.sanity.io/v2024-10-01/data/query/${dataset}`);
-    url.searchParams.set('query', buildSanityQuery());
-    for (const [key, value] of Object.entries(parameters))
-      url.searchParams.set(`$${key}`, JSON.stringify(value));
-    const response = await fetchImpl(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error('sanity_read_failed');
-    const payload = await response.json();
-    if (!payload || !Array.isArray(payload.result)) throw new Error('sanity_contract_failed');
-    return payload.result;
-  };
-}
-
 async function main() {
   const { loadLocalEnv } = await import('./load-env.mjs');
   loadLocalEnv(process.env);
@@ -279,7 +248,7 @@ async function main() {
   const metadata = (record) => record?.raw?.siteSubmission;
   try {
     const report = await runReconciliation(options, {
-      readPage: createSanityPageReader(process.env),
+      readPage: createSanityQuoteRequestsPageReader(process.env),
       inspect: async (input) => {
         const existing = await repository.findByExternalId(input.externalId, 'site_form');
         if (!existing) return 'create';
