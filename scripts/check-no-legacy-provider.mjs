@@ -156,15 +156,6 @@ const retiredModuleLabels = new Set([
   'retired reservation module',
   'retired quotation delivery module',
 ]);
-// Temporary pre-staging compatibility: exact source baselines keep two retained
-// test imports visible until controlled staging validation rewrites those tests.
-// Any edit, new import, or third path remains rejected; this is not a test-root exclusion.
-const retainedLegacyImportBaselines = new Map([
-  ['b1e2778835f2d9fdfc6dd14c829f9706fdcdcde39e5422140953a1c2321d9230', {
-    sourceHash: '0fc894999f7a5659ecb624dd137525279aaee67cf9ee1cd1729320c337172da8',
-    label: 'retired quotation delivery module',
-  }],
-]);
 
 function activeRetiredModuleLabels(paths) {
   const active = new Set();
@@ -177,22 +168,13 @@ function activeRetiredModuleLabels(paths) {
   return active;
 }
 
-function ignoredRetiredModuleLabels(path, bytes, activeLabels) {
+function ignoredRetiredModuleLabels(path, activeLabels) {
   const ignored = new Set();
   if (path.startsWith('api/')) {
     const fileName = path.slice(path.lastIndexOf('/') + 1);
     const stem = fileName.replace(/(?:\.js)?\.map$|\.js$|\.ts$/, '');
     const label = providerTokenHashes.get(hash(stem));
     if (retiredModuleLabels.has(label) && activeLabels.has(label)) ignored.add(label);
-  }
-  const historical = retainedLegacyImportBaselines.get(hash(path));
-  if (
-    historical &&
-    activeLabels.has(historical.label) &&
-    bytes &&
-    hash(bytes) === historical.sourceHash
-  ) {
-    ignored.add(historical.label);
   }
   return ignored;
 }
@@ -1318,7 +1300,7 @@ function scan() {
     const path = normalized.path;
     if (!isInActiveRoot(path) || isExcluded(path)) continue;
     const result = safeReadCandidate(path);
-    const ignoredLabels = ignoredRetiredModuleLabels(path, result.bytes, activeLabels);
+    const ignoredLabels = ignoredRetiredModuleLabels(path, activeLabels);
     findings.push(...checkPath(path, ignoredLabels));
     if (result.kind === 'missing' || result.kind === 'skip') continue;
     if (result.kind === 'symlink') {
