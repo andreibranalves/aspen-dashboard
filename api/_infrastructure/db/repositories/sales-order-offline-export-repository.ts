@@ -22,15 +22,32 @@ import type {
   OfflineTransportAccepted,
   OfflineTransportError,
 } from '../../../_modules/ads-offline-core.js';
-import { sanitizeTransportDetail } from '../../../_modules/ads-offline-core.js';
+import {
+  isRetryableDiagnosticCode,
+  sanitizeDiagnosticCounts,
+  sanitizeTransportCode,
+  sanitizeTransportDetail,
+  sanitizeTransportWarnings,
+} from '../../../_modules/ads-offline-core.js';
 
 type DatabaseProvider = () => AppDatabase;
 export type OfflineExportRecord = typeof salesOrderOfflineExports.$inferSelect;
 export type OfflineAttemptRecord = typeof salesOrderOfflineExportAttempts.$inferSelect;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const HEX_CODE_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 const MAX_RETRY_DELAY_MS = 24 * 60 * 60 * 1000;
+const MAX_TRANSIENT_ATTEMPTS = 3;
+const MAX_RETRY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,255}$/;
+const REVIEW_REASONS = new Set<OfflineReviewReason>([
+  'consent_review_required',
+  'result_unknown',
+  'diagnostic_partial_success',
+  'lease_expired_after_transport',
+  'cancellation_after_attempt',
+  'correction_after_attempt',
+  'substitution_after_attempt',
+]);
 
 export interface OfflineExportIdentity {
   salesOrderId: string;
@@ -93,6 +110,7 @@ export interface OfflineExportRepository {
     requestId: string;
     code: string;
     detail?: string;
+    retryable?: boolean;
     checkedAt?: Date;
   }): Promise<boolean>;
   recoverExpiredSending(now?: Date): Promise<number>;
@@ -141,17 +159,20 @@ function requiredUuid(value: string, label: string): string {
 }
 
 function safeCode(value: unknown): string {
-  const code = String(value || '').trim().slice(0, 128);
-  return HEX_CODE_PATTERN.test(code) ? code : 'UNKNOWN_TRANSPORT_ERROR';
+  return sanitizeTransportCode(value);
 }
 
 function safeRequestId(value: unknown): string | null {
-  const requestId = String(value || '').trim().slice(0, 255);
-  return requestId || null;
+  const requestId = String(value || '')
+    .trim()
+    .slice(0, 255);
+  return SAFE_REQUEST_ID_PATTERN.test(requestId) ? requestId : null;
 }
 
-function safeReviewReason(value: OfflineReviewReason | null | undefined): OfflineReviewReason | null {
-  return value || null;
+function safeReviewReason(
+  value: OfflineReviewReason | null | undefined
+): OfflineReviewReason | null {
+  return value && REVIEW_REASONS.has(value) ? value : null;
 }
 
 function jsonEqual(left: unknown, right: unknown): boolean {
@@ -193,15 +214,15 @@ function lineageVerified(row: {
 }): boolean {
   return Boolean(
     row.quotationId &&
-      row.quotationQuoteLeadId &&
-      row.quoteLeadId &&
-      row.quotationQuoteLeadId === row.quoteLeadId &&
-      row.quotationRevisionId &&
-      row.revisionId === row.quotationRevisionId &&
-      row.revisionQuotationId === row.quotationId &&
-      row.quotationStatus === 'aprovado' &&
-      row.revisionStatus === 'aprovado' &&
-      row.originSource === 'site_form'
+    row.quotationQuoteLeadId &&
+    row.quoteLeadId &&
+    row.quotationQuoteLeadId === row.quoteLeadId &&
+    row.quotationRevisionId &&
+    row.revisionId === row.quotationRevisionId &&
+    row.revisionQuotationId === row.quotationId &&
+    row.quotationStatus === 'aprovado' &&
+    row.revisionStatus === 'aprovado' &&
+    row.originSource === 'site_form'
   );
 }
 
@@ -273,19 +294,51 @@ function immutableMatches(row: OfflineExportRecord, input: PrepareOfflineExportI
   return matches.every(Boolean);
 }
 
-function attemptFinishedState(
-  error: OfflineTransportError
-): { attemptState: OfflineAttemptState; exportState: OfflineExportState; reviewReason: OfflineReviewReason | null } {
+function attemptFinishedState(error: OfflineTransportError): {
+  attemptState: OfflineAttemptState;
+  exportState: OfflineExportState;
+  reviewReason: OfflineReviewReason | null;
+} {
   if (error.kind === 'ambiguous') {
     return { attemptState: 'unknown', exportState: 'needs_review', reviewReason: 'result_unknown' };
   }
   return { attemptState: 'failed', exportState: 'failed', reviewReason: null };
 }
 
-function cancellationReason(kind: 'cancellation' | 'correction' | 'substitution'): OfflineReviewReason {
+function cancellationReason(
+  kind: 'cancellation' | 'correction' | 'substitution'
+): OfflineReviewReason {
   if (kind === 'cancellation') return 'cancellation_after_attempt';
   if (kind === 'substitution') return 'substitution_after_attempt';
   return 'correction_after_attempt';
+}
+
+function diagnosticWarnings(
+  result: GoogleDataManagerDiagnosticResult,
+  existing: unknown
+): unknown[] {
+  return [
+    ...sanitizeTransportWarnings(existing),
+    ...sanitizeDiagnosticCounts(result.errorCounts, 'error').map((item) => ({
+      code: 'GOOGLE_DM_DIAGNOSTIC_ERROR_COUNT',
+      reason: item.reason,
+      recordCount: item.recordCount,
+    })),
+    ...sanitizeDiagnosticCounts(result.warningCounts, 'warning').map((item) => ({
+      code: 'GOOGLE_DM_DIAGNOSTIC_WARNING_COUNT',
+      reason: item.reason,
+      recordCount: item.recordCount,
+    })),
+  ];
+}
+
+function canUpdateDiagnostic(current: OfflineExportRecord, attempt: OfflineAttemptRecord): boolean {
+  return (
+    current.state === 'accepted_pending_diagnostic' ||
+    (current.state === 'needs_review' &&
+      current.reviewReason === 'result_unknown' &&
+      isRetryableDiagnosticCode(attempt.errorCode))
+  );
 }
 
 export function createPostgresSalesOrderOfflineExportRepository(
@@ -295,7 +348,10 @@ export function createPostgresSalesOrderOfflineExportRepository(
   const nowFactory = options.now || (() => new Date());
   const idFactory = options.idFactory || randomUUID;
   const leaseMs = options.leaseMs || 15 * 60 * 1000;
-  const retryDelayMs = Math.min(Math.max(options.retryDelayMs || 60 * 1000, 1000), MAX_RETRY_DELAY_MS);
+  const retryDelayMs = Math.min(
+    Math.max(options.retryDelayMs || 60 * 1000, 1000),
+    MAX_RETRY_DELAY_MS
+  );
 
   const repository: OfflineExportRepository = {
     async listOrderEvidence({ from, to }) {
@@ -372,7 +428,9 @@ export function createPostgresSalesOrderOfflineExportRepository(
         throw new OfflineExportRepositoryError('Motivo da revisão offline é obrigatório.');
       }
       if (state === 'prepared' && reviewReason) {
-        throw new OfflineExportRepositoryError('Exportação preparada não pode conter motivo de revisão.');
+        throw new OfflineExportRepositoryError(
+          'Exportação preparada não pode conter motivo de revisão.'
+        );
       }
       requiredUuid(input.salesOrderId, 'Pedido');
       requiredUuid(input.quoteLeadId, 'Lead');
@@ -454,7 +512,9 @@ export function createPostgresSalesOrderOfflineExportRepository(
           .where(eq(salesOrderOfflineExportAttempts.exportId, exportId))
           .limit(1);
         if (!attempt) {
-          await tx.delete(salesOrderOfflineExports).where(eq(salesOrderOfflineExports.id, exportId));
+          await tx
+            .delete(salesOrderOfflineExports)
+            .where(eq(salesOrderOfflineExports.id, exportId));
           return 'deleted';
         }
         await tx
@@ -588,7 +648,7 @@ export function createPostgresSalesOrderOfflineExportRepository(
               finishedAt: now,
               requestId,
               httpStatus: 200,
-              fieldWarnings: outcome.result.fieldWarnings,
+              fieldWarnings: sanitizeTransportWarnings(outcome.result.fieldWarnings),
             })
             .where(eq(salesOrderOfflineExportAttempts.id, attemptId));
           await tx
@@ -606,17 +666,35 @@ export function createPostgresSalesOrderOfflineExportRepository(
         }
 
         const finalState = attemptFinishedState(outcome.error);
-        const retryAt =
-          outcome.error.kind === 'transient'
-            ? requiredDate(outcome.retryAt || new Date(now.getTime() + retryDelayMs))
-            : null;
+        let retryAt: Date | null = null;
+        if (outcome.error.kind === 'transient') {
+          const candidate = requiredDate(outcome.retryAt || new Date(now.getTime() + retryDelayMs));
+          const [firstAttempt] = await tx
+            .select({ startedAt: salesOrderOfflineExportAttempts.startedAt })
+            .from(salesOrderOfflineExportAttempts)
+            .where(eq(salesOrderOfflineExportAttempts.exportId, exportId))
+            .orderBy(asc(salesOrderOfflineExportAttempts.attemptNo))
+            .limit(1);
+          const retryDeadline = new Date(
+            (firstAttempt?.startedAt || attempt.startedAt).getTime() + MAX_RETRY_WINDOW_MS
+          );
+          if (
+            attempt.attemptNo < MAX_TRANSIENT_ATTEMPTS &&
+            now < retryDeadline &&
+            candidate <= retryDeadline
+          ) {
+            retryAt = candidate;
+          }
+        }
         await tx
           .update(salesOrderOfflineExportAttempts)
           .set({
             attemptState: finalState.attemptState,
             finishedAt: now,
             httpStatus:
-              outcome.error.httpStatus && outcome.error.httpStatus >= 100 && outcome.error.httpStatus <= 599
+              outcome.error.httpStatus &&
+              outcome.error.httpStatus >= 100 &&
+              outcome.error.httpStatus <= 599
                 ? outcome.error.httpStatus
                 : null,
             errorCode: safeCode(outcome.error.code),
@@ -642,16 +720,13 @@ export function createPostgresSalesOrderOfflineExportRepository(
       const checkedAt = requiredDate(inputCheckedAt || nowFactory());
       const normalizedRequestId = safeRequestId(requestId);
       if (!normalizedRequestId) return false;
+      if (!['processing', 'success', 'partial_success', 'failure'].includes(result.status))
+        return false;
       return getDb().transaction(async (tx) => {
         const [current] = await tx
           .select()
           .from(salesOrderOfflineExports)
-          .where(
-            and(
-              eq(salesOrderOfflineExports.id, exportId),
-              eq(salesOrderOfflineExports.state, 'accepted_pending_diagnostic')
-            )
-          )
+          .where(eq(salesOrderOfflineExports.id, exportId))
           .for('update')
           .limit(1);
         if (!current) return false;
@@ -668,7 +743,7 @@ export function createPostgresSalesOrderOfflineExportRepository(
           )
           .for('update')
           .limit(1);
-        if (!attempt) return false;
+        if (!attempt || !canUpdateDiagnostic(current, attempt)) return false;
         const diagnosticStatus: OfflineDiagnosticStatus = result.status;
         const nextState: OfflineExportState =
           diagnosticStatus === 'success'
@@ -680,9 +755,21 @@ export function createPostgresSalesOrderOfflineExportRepository(
                 : 'accepted_pending_diagnostic';
         const reviewReason: OfflineReviewReason | null =
           diagnosticStatus === 'partial_success' ? 'diagnostic_partial_success' : null;
+        const diagnosticCode =
+          diagnosticStatus === 'failure'
+            ? 'GOOGLE_DM_DIAGNOSTIC_FAILURE'
+            : diagnosticStatus === 'partial_success'
+              ? 'GOOGLE_DM_DIAGNOSTIC_PARTIAL_SUCCESS'
+              : null;
         await tx
           .update(salesOrderOfflineExportAttempts)
-          .set({ diagnosticStatus, diagnosticCheckedAt: checkedAt })
+          .set({
+            diagnosticStatus,
+            diagnosticCheckedAt: checkedAt,
+            fieldWarnings: diagnosticWarnings(result, attempt.fieldWarnings),
+            errorCode: diagnosticCode,
+            errorDetail: diagnosticCode ? sanitizeTransportDetail('diagnóstico') : null,
+          })
           .where(eq(salesOrderOfflineExportAttempts.id, attemptId));
         await tx
           .update(salesOrderOfflineExports)
@@ -692,20 +779,25 @@ export function createPostgresSalesOrderOfflineExportRepository(
       });
     },
 
-    async recordDiagnosticError({ exportId, attemptId, requestId, code, detail, checkedAt: inputCheckedAt }) {
+    async recordDiagnosticError({
+      exportId,
+      attemptId,
+      requestId,
+      code,
+      detail,
+      retryable = false,
+      checkedAt: inputCheckedAt,
+    }) {
       const checkedAt = requiredDate(inputCheckedAt || nowFactory());
       const normalizedRequestId = safeRequestId(requestId);
+      const normalizedCode = safeCode(code);
+      const canRetry = retryable && isRetryableDiagnosticCode(normalizedCode);
       if (!normalizedRequestId) return false;
       return getDb().transaction(async (tx) => {
         const [current] = await tx
           .select()
           .from(salesOrderOfflineExports)
-          .where(
-            and(
-              eq(salesOrderOfflineExports.id, exportId),
-              eq(salesOrderOfflineExports.state, 'accepted_pending_diagnostic')
-            )
-          )
+          .where(eq(salesOrderOfflineExports.id, exportId))
           .for('update')
           .limit(1);
         if (!current) return false;
@@ -722,19 +814,22 @@ export function createPostgresSalesOrderOfflineExportRepository(
           )
           .for('update')
           .limit(1);
-        if (!attempt) return false;
+        if (!attempt || !canUpdateDiagnostic(current, attempt)) return false;
         await tx
           .update(salesOrderOfflineExportAttempts)
           .set({
-            errorCode: safeCode(code),
+            errorCode: normalizedCode,
             errorDetail: sanitizeTransportDetail(detail),
           })
           .where(eq(salesOrderOfflineExportAttempts.id, attemptId));
         await tx
           .update(salesOrderOfflineExports)
           .set({
-            state: 'needs_review',
-            reviewReason: 'result_unknown',
+            state: canRetry ? 'needs_review' : 'failed',
+            reviewReason: canRetry ? 'result_unknown' : null,
+            nextAttemptAt: null,
+            leaseToken: null,
+            leaseUntil: null,
             updatedAt: checkedAt,
           })
           .where(eq(salesOrderOfflineExports.id, exportId));
@@ -754,7 +849,12 @@ export function createPostgresSalesOrderOfflineExportRepository(
           leaseUntil: null,
           updatedAt: now,
         })
-        .where(and(eq(salesOrderOfflineExports.state, 'sending'), lte(salesOrderOfflineExports.leaseUntil, now)))
+        .where(
+          and(
+            eq(salesOrderOfflineExports.state, 'sending'),
+            lte(salesOrderOfflineExports.leaseUntil, now)
+          )
+        )
         .returning({ id: salesOrderOfflineExports.id });
       return rows.length;
     },
@@ -775,7 +875,9 @@ export function createPostgresSalesOrderOfflineExportRepository(
           .where(eq(salesOrderOfflineExportAttempts.exportId, exportId))
           .limit(1);
         if (!attempt) {
-          await tx.delete(salesOrderOfflineExports).where(eq(salesOrderOfflineExports.id, exportId));
+          await tx
+            .delete(salesOrderOfflineExports)
+            .where(eq(salesOrderOfflineExports.id, exportId));
           return 'deleted';
         }
         await tx
@@ -796,4 +898,5 @@ export function createPostgresSalesOrderOfflineExportRepository(
   return repository;
 }
 
-export const createSalesOrderOfflineExportRepository = createPostgresSalesOrderOfflineExportRepository;
+export const createSalesOrderOfflineExportRepository =
+  createPostgresSalesOrderOfflineExportRepository;

@@ -19,19 +19,29 @@ const CONFIG: GoogleDataManagerConfig = {
 };
 
 const PAYLOAD = {
-  destinations: [{
-    operatingAccount: { accountType: 'GOOGLE_ADS' as const, accountId: CONFIG.operatingAccountId },
-    productDestinationId: CONFIG.productDestinationId,
-  }],
-  events: [{
-    transactionId: 'aspen-pedido-iniciado:11111111-1111-4111-8111-111111111111',
-    eventTimestamp: '2026-09-01T12:00:00.000Z',
-    conversionValue: 12.34,
-    currency: 'BRL' as const,
-    eventSource: 'OTHER' as const,
-    adIdentifiers: { gclid: 'opaque-synthetic-click' },
-    consent: { adUserData: 'CONSENT_GRANTED' as const, adPersonalization: 'CONSENT_GRANTED' as const },
-  }],
+  destinations: [
+    {
+      operatingAccount: {
+        accountType: 'GOOGLE_ADS' as const,
+        accountId: CONFIG.operatingAccountId,
+      },
+      productDestinationId: CONFIG.productDestinationId,
+    },
+  ],
+  events: [
+    {
+      transactionId: 'aspen-pedido-iniciado:11111111-1111-4111-8111-111111111111',
+      eventTimestamp: '2026-09-01T12:00:00.000Z',
+      conversionValue: 12.34,
+      currency: 'BRL' as const,
+      eventSource: 'OTHER' as const,
+      adIdentifiers: { gclid: 'opaque-synthetic-click' },
+      consent: {
+        adUserData: 'CONSENT_GRANTED' as const,
+        adPersonalization: 'CONSENT_GRANTED' as const,
+      },
+    },
+  ],
 };
 
 function response(body: unknown, status = 200): Response {
@@ -48,8 +58,12 @@ test('simulated Data Manager transport refreshes OAuth and sends one v1 ingest e
     assertWritesAllowed: () => undefined,
     fetchImpl: async (url, init) => {
       calls.push({ url: String(url), init });
-      if (String(url).includes('oauth2.googleapis.com')) return response({ access_token: 'synthetic-access' });
-      return response({ requestId: 'request-synthetic-1', fieldWarnings: [{ field: 'events[0]', reason: 'synthetic-warning', extra: 'ignored' }] });
+      if (String(url).includes('oauth2.googleapis.com'))
+        return response({ access_token: 'synthetic-access' });
+      return response({
+        requestId: 'request-synthetic-1',
+        fieldWarnings: [{ field: 'events[0]', reason: 'WARNING_REASON_GENERIC', extra: 'ignored' }],
+      });
     },
   });
   const result = await client.ingest(PAYLOAD);
@@ -57,7 +71,9 @@ test('simulated Data Manager transport refreshes OAuth and sends one v1 ingest e
     kind: 'accepted',
     requestId: 'request-synthetic-1',
     httpStatus: 200,
-    fieldWarnings: [{ field: 'events[0]', reason: 'synthetic-warning' }],
+    fieldWarnings: [
+      { code: 'GOOGLE_DM_FIELD_WARNING', field: 'events[0]', reason: 'WARNING_REASON_GENERIC' },
+    ],
   });
   assert.equal(calls.length, 2);
   assert.match(calls[1].url, /datamanager\.googleapis\.com\/v1\/events:ingest$/);
@@ -71,18 +87,58 @@ test('simulated Data Manager transport refreshes OAuth and sends one v1 ingest e
 });
 
 test('simulated diagnostics use requestStatus:retrieve and preserve status categories', async () => {
-  const urls: string[] = [];
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const client = getGoogleDataManagerClient({
+    getConfig: () => CONFIG,
+    assertWritesAllowed: () => undefined,
+    fetchImpl: async (url, init) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes('oauth2.googleapis.com'))
+        return response({ access_token: 'synthetic-access' });
+      return response({
+        requestStatusPerDestination: [
+          {
+            requestStatus: 'FAILED',
+            errorInfo: {
+              errorCounts: [{ reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: '2' }],
+            },
+            warningInfo: {
+              warningCounts: [
+                { reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: '1' },
+              ],
+            },
+          },
+        ],
+      });
+    },
+  });
+  assert.deepEqual(await client.retrieveStatus('request-synthetic-1'), {
+    status: 'failure',
+    errorCounts: [{ reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: 2 }],
+    warningCounts: [{ reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: 1 }],
+  });
+  const diagnostic = calls.at(-1)!;
+  assert.match(diagnostic.url, /\/v1\/requestStatus:retrieve\?requestId=request-synthetic-1$/);
+  assert.equal(diagnostic.init?.method, 'GET');
+  assert.equal('body' in (diagnostic.init || {}), false);
+});
+
+test('diagnostic network errors do not retain the provider message', async () => {
+  const secret = 'Authorization: Bearer synthetic-secret';
   const client = getGoogleDataManagerClient({
     getConfig: () => CONFIG,
     assertWritesAllowed: () => undefined,
     fetchImpl: async (url) => {
-      urls.push(String(url));
-      if (String(url).includes('oauth2.googleapis.com')) return response({ access_token: 'synthetic-access' });
-      return response({ requestStatusPerDestination: [{ requestStatus: 'PARTIAL_SUCCESS' }] });
+      if (String(url).includes('oauth2.googleapis.com'))
+        return response({ access_token: 'synthetic-access' });
+      throw new Error(secret);
     },
   });
-  assert.deepEqual(await client.retrieveStatus('request-synthetic-1'), { status: 'partial_success' });
-  assert.match(urls.at(-1) || '', /\/v1\/requestStatus:retrieve$/);
+  await assert.rejects(
+    () => client.retrieveStatus('request-synthetic-1'),
+    (error: unknown) =>
+      error instanceof GoogleDataManagerTransportError && !error.message.includes(secret)
+  );
 });
 
 test('Data Manager transport is blocked before any OAuth or network call', async () => {
@@ -106,25 +162,32 @@ test('Data Manager treats server errors as ambiguous and client errors as perman
     getConfig: () => CONFIG,
     assertWritesAllowed: () => undefined,
     fetchImpl: async (url) => {
-      if (String(url).includes('oauth2.googleapis.com')) return response({ access_token: 'synthetic-access' });
+      if (String(url).includes('oauth2.googleapis.com'))
+        return response({ access_token: 'synthetic-access' });
       return response({}, 503);
     },
   });
   await assert.rejects(
     () => client.ingest(PAYLOAD),
-    (error: unknown) => error instanceof GoogleDataManagerTransportError && error.kind === 'ambiguous' && error.httpStatus === 503
+    (error: unknown) =>
+      error instanceof GoogleDataManagerTransportError &&
+      error.kind === 'ambiguous' &&
+      error.httpStatus === 503
   );
   const permanent = getGoogleDataManagerClient({
     getConfig: () => CONFIG,
     assertWritesAllowed: () => undefined,
     fetchImpl: async (url) => {
-      if (String(url).includes('oauth2.googleapis.com')) return response({ access_token: 'synthetic-access' });
+      if (String(url).includes('oauth2.googleapis.com'))
+        return response({ access_token: 'synthetic-access' });
       return response({}, 400);
     },
   });
   await assert.rejects(
     () => permanent.ingest(PAYLOAD),
-    (error: unknown) => error instanceof GoogleDataManagerTransportError && error.kind === 'permanent' && error.httpStatus === 400
+    (error: unknown) =>
+      error instanceof GoogleDataManagerTransportError &&
+      error.kind === 'permanent' &&
+      error.httpStatus === 400
   );
 });
-

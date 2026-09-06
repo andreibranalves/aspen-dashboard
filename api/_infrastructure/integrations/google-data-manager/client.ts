@@ -1,6 +1,8 @@
 import { assertExternalWritesAllowed } from '../../../_shared/external-writes.js';
 import {
   sanitizeTransportDetail,
+  sanitizeDiagnosticCounts,
+  sanitizeTransportCode,
   sanitizeTransportWarnings,
   type GoogleDataManagerDiagnosticResult,
   type GoogleDataManagerPayload,
@@ -28,7 +30,7 @@ export class GoogleDataManagerTransportError extends Error {
     super(sanitizeTransportDetail(detail));
     this.name = 'GoogleDataManagerTransportError';
     this.kind = kind;
-    this.code = code;
+    this.code = sanitizeTransportCode(code);
     this.httpStatus = httpStatus;
   }
 }
@@ -64,7 +66,7 @@ function parseStatus(value: unknown): GoogleDataManagerDiagnosticResult['status'
   if (value === 'PROCESSING') return 'processing';
   if (value === 'SUCCESS') return 'success';
   if (value === 'PARTIAL_SUCCESS') return 'partial_success';
-  if (value === 'FAILURE') return 'failure';
+  if (value === 'FAILED') return 'failure';
   return null;
 }
 
@@ -128,30 +130,34 @@ export function getGoogleDataManagerClient(
   const fetchImpl = options.fetchImpl || fetch;
   const timeoutMs = options.timeoutMs || 15_000;
   const apiBaseUrl = options.apiBaseUrl || DEFAULT_API_BASE_URL;
-  const assertWrites = options.assertWritesAllowed || (() => assertExternalWritesAllowed('google-data-manager'));
+  const assertWrites =
+    options.assertWritesAllowed || (() => assertExternalWritesAllowed('google-data-manager'));
 
   async function request(
     config: GoogleDataManagerConfig,
     accessToken: string,
     path: string,
-    body: unknown
+    options: { method: 'GET' | 'POST'; body?: unknown }
   ): Promise<Response> {
     const timeout = abortAfter(timeoutMs);
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+    };
+    const init: RequestInit = {
+      method: options.method,
+      headers,
+      signal: timeout.signal,
+    };
+    if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(options.body);
+    }
     try {
-      return await fetchImpl(`${apiBaseUrl}/${config.apiVersion}${path}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: timeout.signal,
-      });
-    } catch (error) {
+      return await fetchImpl(`${apiBaseUrl}/${config.apiVersion}${path}`, init);
+    } catch {
       throw new GoogleDataManagerTransportError(
         'ambiguous',
-        timeout.signal.aborted ? 'GOOGLE_DM_TIMEOUT' : 'GOOGLE_DM_NETWORK',
-        error instanceof Error ? error.message : undefined
+        timeout.signal.aborted ? 'GOOGLE_DM_TIMEOUT' : 'GOOGLE_DM_NETWORK'
       );
     } finally {
       timeout.cancel();
@@ -166,38 +172,9 @@ export function getGoogleDataManagerClient(
         throw new GoogleDataManagerTransportError('permanent', 'GOOGLE_DM_CONFIG_INCOMPLETE');
       }
       const accessToken = await refreshAccessToken(config, fetchImpl, timeoutMs);
-      const response = await request(config, accessToken, '/events:ingest', payload);
-      const parsed = await jsonBody(response);
-      if (!response.ok) {
-        throw new GoogleDataManagerTransportError(
-          errorKindForStatus(response.status),
-          statusCode(response.status),
-          undefined,
-          response.status
-        );
-      }
-      if (response.status !== 200) {
-        throw new GoogleDataManagerTransportError('ambiguous', `GOOGLE_DM_UNEXPECTED_${response.status}`, undefined, response.status);
-      }
-      const requestId = typeof parsed?.requestId === 'string' ? parsed.requestId.trim() : '';
-      if (!requestId) throw new GoogleDataManagerTransportError('ambiguous', 'GOOGLE_DM_MISSING_REQUEST_ID', undefined, 200);
-      return {
-        kind: 'accepted',
-        requestId: requestId.slice(0, 255),
-        httpStatus: 200,
-        fieldWarnings: sanitizeTransportWarnings(parsed?.fieldWarnings),
-      };
-    },
-
-    async retrieveStatus(requestId: string): Promise<GoogleDataManagerDiagnosticResult> {
-      assertWrites();
-      const config = getConfig();
-      if (!isGoogleDataManagerConfigured(config)) {
-        throw new GoogleDataManagerTransportError('permanent', 'GOOGLE_DM_CONFIG_INCOMPLETE');
-      }
-      const accessToken = await refreshAccessToken(config, fetchImpl, timeoutMs);
-      const response = await request(config, accessToken, '/requestStatus:retrieve', {
-        requestId: requestId.trim().slice(0, 255),
+      const response = await request(config, accessToken, '/events:ingest', {
+        method: 'POST',
+        body: payload,
       });
       const parsed = await jsonBody(response);
       if (!response.ok) {
@@ -216,11 +193,78 @@ export function getGoogleDataManagerClient(
           response.status
         );
       }
-      const statuses = parsed?.requestStatusPerDestination ?? parsed?.request_status_per_destination;
+      const requestId = typeof parsed?.requestId === 'string' ? parsed.requestId.trim() : '';
+      if (!requestId)
+        throw new GoogleDataManagerTransportError(
+          'ambiguous',
+          'GOOGLE_DM_MISSING_REQUEST_ID',
+          undefined,
+          200
+        );
+      return {
+        kind: 'accepted',
+        requestId: requestId.slice(0, 255),
+        httpStatus: 200,
+        fieldWarnings: sanitizeTransportWarnings(parsed?.fieldWarnings),
+      };
+    },
+
+    async retrieveStatus(requestId: string): Promise<GoogleDataManagerDiagnosticResult> {
+      assertWrites();
+      const config = getConfig();
+      if (!isGoogleDataManagerConfigured(config)) {
+        throw new GoogleDataManagerTransportError('permanent', 'GOOGLE_DM_CONFIG_INCOMPLETE');
+      }
+      const accessToken = await refreshAccessToken(config, fetchImpl, timeoutMs);
+      const normalizedRequestId = requestId.trim().slice(0, 255);
+      if (!normalizedRequestId) {
+        throw new GoogleDataManagerTransportError('permanent', 'GOOGLE_DM_REQUEST_ID_INVALID');
+      }
+      const response = await request(
+        config,
+        accessToken,
+        `/requestStatus:retrieve?requestId=${encodeURIComponent(normalizedRequestId)}`,
+        { method: 'GET' }
+      );
+      const parsed = await jsonBody(response);
+      if (!response.ok) {
+        throw new GoogleDataManagerTransportError(
+          errorKindForStatus(response.status),
+          statusCode(response.status),
+          undefined,
+          response.status
+        );
+      }
+      if (response.status !== 200) {
+        throw new GoogleDataManagerTransportError(
+          'ambiguous',
+          `GOOGLE_DM_UNEXPECTED_${response.status}`,
+          undefined,
+          response.status
+        );
+      }
+      const statuses =
+        parsed?.requestStatusPerDestination ?? parsed?.request_status_per_destination;
       const first = Array.isArray(statuses) ? asRecord(statuses[0]) : null;
       const status = parseStatus(first?.requestStatus ?? first?.request_status ?? parsed?.status);
-      if (!status) throw new GoogleDataManagerTransportError('ambiguous', 'GOOGLE_DM_INVALID_DIAGNOSTIC_RESPONSE');
-      return { status };
+      if (!status)
+        throw new GoogleDataManagerTransportError(
+          'ambiguous',
+          'GOOGLE_DM_INVALID_DIAGNOSTIC_RESPONSE'
+        );
+      const errorInfo = asRecord(first?.errorInfo ?? first?.error_info);
+      const warningInfo = asRecord(first?.warningInfo ?? first?.warning_info);
+      return {
+        status,
+        errorCounts: sanitizeDiagnosticCounts(
+          errorInfo?.errorCounts ?? errorInfo?.error_counts,
+          'error'
+        ),
+        warningCounts: sanitizeDiagnosticCounts(
+          warningInfo?.warningCounts ?? warningInfo?.warning_counts,
+          'warning'
+        ),
+      };
     },
   };
 }

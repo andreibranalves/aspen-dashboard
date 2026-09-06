@@ -10,6 +10,36 @@ export const GOOGLE_DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datama
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const AD_IDENTIFIER_TYPES = ['gclid', 'wbraid', 'gbraid'] as const;
+const SAFE_WARNING_FIELDS = new Set([
+  'destinations',
+  'destinations[0]',
+  'destinations[0].operatingAccount',
+  'destinations[0].operatingAccount.accountType',
+  'destinations[0].operatingAccount.accountId',
+  'destinations[0].productDestinationId',
+  'events',
+  'events[0]',
+  'events[0].transactionId',
+  'events[0].eventTimestamp',
+  'events[0].conversionValue',
+  'events[0].currency',
+  'events[0].eventSource',
+  'events[0].adIdentifiers',
+  'events[0].adIdentifiers.gclid',
+  'events[0].adIdentifiers.wbraid',
+  'events[0].adIdentifiers.gbraid',
+  'events[0].consent',
+]);
+const SAFE_TRANSPORT_CODE_PATTERN =
+  /^GOOGLE_DM_(?:CONFIG_INCOMPLETE|HTTP_[1-5][0-9]{2}|OAUTH_(?:[1-5][0-9]{2}|RESPONSE|TIMEOUT|NETWORK)|TIMEOUT|NETWORK|UNEXPECTED_[1-5][0-9]{2}|MISSING_REQUEST_ID|REQUEST_ID_INVALID|INVALID_DIAGNOSTIC_RESPONSE|DIAGNOSTIC_FAILURE|DIAGNOSTIC_PARTIAL_SUCCESS)$/;
+const RETRYABLE_DIAGNOSTIC_CODES = new Set([
+  'GOOGLE_DM_HTTP_429',
+  'GOOGLE_DM_TIMEOUT',
+  'GOOGLE_DM_NETWORK',
+  'GOOGLE_DM_OAUTH_TIMEOUT',
+  'GOOGLE_DM_OAUTH_NETWORK',
+]);
+const OMITTED_TRANSPORT_DETAIL = 'detalhe do transporte omitido';
 
 export type AdIdentifierType = (typeof AD_IDENTIFIER_TYPES)[number];
 export type OfflineExportState =
@@ -112,6 +142,13 @@ export interface OfflinePreflightProof {
   verifiedAt: string;
 }
 
+export interface OfflinePreflightRuntimeTarget {
+  target: string;
+  owner: string;
+  databaseFingerprint: string;
+  deploymentRef: string;
+}
+
 export interface OfflineTransportAccepted {
   kind: 'accepted';
   requestId: string;
@@ -131,6 +168,13 @@ export type OfflineTransportResult = OfflineTransportAccepted;
 export interface GoogleDataManagerDiagnosticResult {
   status: OfflineDiagnosticStatus;
   detail?: string;
+  errorCounts?: GoogleDataManagerDiagnosticCount[];
+  warningCounts?: GoogleDataManagerDiagnosticCount[];
+}
+
+export interface GoogleDataManagerDiagnosticCount {
+  reason: string;
+  recordCount: number;
 }
 
 export interface GoogleDataManagerTransport {
@@ -218,9 +262,7 @@ function adIdentifierFrom(evidence: OfflineOrderEvidence): {
 } | null {
   const attribution = isRecord(evidence.attribution) ? evidence.attribution : {};
   const marker = rawSiteSubmission(evidence.raw)?.primaryAdIdentifier;
-  const candidates = isAdIdentifierType(marker)
-    ? [marker]
-    : AD_IDENTIFIER_TYPES;
+  const candidates = isAdIdentifierType(marker) ? [marker] : AD_IDENTIFIER_TYPES;
   for (const type of candidates) {
     const value = attribution[type];
     if (typeof value === 'string' && value.trim()) return { type, value };
@@ -234,9 +276,9 @@ function sourceSubmissionIsVerified(raw: unknown): boolean {
   const originalCreatedAt = verifiedIsoString(siteSubmission?.originalCreatedAt);
   return Boolean(
     fingerprint &&
-      SHA256_PATTERN.test(fingerprint) &&
-      originalCreatedAt &&
-      siteSubmission?.consent !== undefined
+    SHA256_PATTERN.test(fingerprint) &&
+    originalCreatedAt &&
+    siteSubmission?.consent !== undefined
   );
 }
 
@@ -275,7 +317,11 @@ function result(
 
 export function selectOfflineOrder(
   evidence: OfflineOrderEvidence,
-  options: { approvedOrderIds?: ReadonlySet<string>; allowTestMarker?: boolean } = {}
+  options: {
+    approvedOrderIds?: ReadonlySet<string>;
+    allowTestMarker?: boolean;
+    now?: Date | string;
+  } = {}
 ): OfflineOrderSelection {
   const approvedOrderIds = options.approvedOrderIds || new Set<string>();
   const reasons: string[] = [];
@@ -285,7 +331,9 @@ export function selectOfflineOrder(
     ]);
   }
   if (evidence.status === 'Closed') reasons.push('closed_status');
-  else if (!['To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed'].includes(evidence.status)) {
+  else if (
+    !['To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed'].includes(evidence.status)
+  ) {
     reasons.push('unsupported_order_status');
   }
   if (evidence.originStatus !== 'linked') reasons.push(`origin_${evidence.originStatus}`);
@@ -307,6 +355,10 @@ export function selectOfflineOrder(
   if (!total || total === '0.00') reasons.push('non_positive_total');
   const eventTimestamp = canonicalIso(evidence.createdAt);
   if (!eventTimestamp) reasons.push('invalid_order_timestamp');
+  const selectionNow = canonicalIso(options.now ?? new Date());
+  if (eventTimestamp && selectionNow && new Date(eventTimestamp) > new Date(selectionNow)) {
+    reasons.push('future_order_timestamp');
+  }
 
   const adIdentifier = adIdentifierFrom(evidence);
   if (!adIdentifier) reasons.push('missing_ad_identifier');
@@ -332,6 +384,7 @@ export function selectOfflineOrder(
       'unverified_submission_history',
       'non_positive_total',
       'invalid_order_timestamp',
+      'future_order_timestamp',
       'missing_ad_identifier',
     ].includes(reason)
   );
@@ -375,10 +428,19 @@ export function selectOfflineOrder(
 
 function safeConversionValue(value: string): number {
   const cents = BigInt(value.replace('.', ''));
-  if (cents > BigInt(Number.MAX_SAFE_INTEGER)) {
+  const numeric = Number(value);
+  const serialized = JSON.stringify(numeric);
+  const serializedValue = serialized
+    ? canonicalizeNonNegativeDecimal(serialized, { maxIntegerDigits: 18 })
+    : null;
+  if (
+    cents > BigInt(Number.MAX_SAFE_INTEGER) ||
+    !Number.isFinite(numeric) ||
+    serializedValue !== value
+  ) {
     throw new Error('conversion value exceeds the safe API number range');
   }
-  return Number(value);
+  return numeric;
 }
 
 export function buildOfflinePayload(
@@ -410,7 +472,10 @@ export function buildOfflinePayload(
     throw new Error('offline export snapshot is incomplete');
   }
   if (!snapshot.consentEvidence) throw new Error('offline export consent is not approved');
-  if (destination.productDestinationType && destination.productDestinationType !== 'UPLOAD_CLICKS') {
+  if (
+    destination.productDestinationType &&
+    destination.productDestinationType !== 'UPLOAD_CLICKS'
+  ) {
     throw new Error('offline export destination type is unsupported');
   }
   const event: GoogleDataManagerEvent = {
@@ -446,7 +511,8 @@ export function buildOfflinePayload(
 
 export function validateOfflinePreflight(
   proof: unknown,
-  destination: OfflineDestination
+  destination: OfflineDestination,
+  runtimeTarget?: OfflinePreflightRuntimeTarget
 ): { ok: true } | { ok: false; reason: string } {
   if (!isRecord(proof)) return { ok: false, reason: 'preflight_missing' };
   const required = [
@@ -460,7 +526,8 @@ export function validateOfflinePreflight(
     'oauthScope',
     'verifiedAt',
   ] as const;
-  if (required.some((key) => !clean(proof[key]))) return { ok: false, reason: 'preflight_incomplete' };
+  if (required.some((key) => !clean(proof[key])))
+    return { ok: false, reason: 'preflight_incomplete' };
   if (!SHA256_PATTERN.test(clean(proof.databaseFingerprint))) {
     return { ok: false, reason: 'preflight_database_fingerprint_invalid' };
   }
@@ -476,17 +543,55 @@ export function validateOfflinePreflight(
   if (clean(proof.productDestinationId) !== clean(destination.productDestinationId)) {
     return { ok: false, reason: 'preflight_destination_mismatch' };
   }
-  if (!verifiedIsoString(proof.verifiedAt)) return { ok: false, reason: 'preflight_timestamp_invalid' };
+  if (
+    clean(proof.productDestinationType) !==
+    clean(destination.productDestinationType || 'UPLOAD_CLICKS')
+  ) {
+    return { ok: false, reason: 'preflight_destination_type_mismatch' };
+  }
+  if (!verifiedIsoString(proof.verifiedAt))
+    return { ok: false, reason: 'preflight_timestamp_invalid' };
+  if (!runtimeTarget) return { ok: false, reason: 'preflight_runtime_target_missing' };
+  const runtimeKeys = ['target', 'owner', 'databaseFingerprint', 'deploymentRef'] as const;
+  if (runtimeKeys.some((key) => !clean(runtimeTarget[key]))) {
+    return { ok: false, reason: 'preflight_runtime_target_incomplete' };
+  }
+  if (!SHA256_PATTERN.test(clean(runtimeTarget.databaseFingerprint))) {
+    return { ok: false, reason: 'preflight_runtime_database_fingerprint_invalid' };
+  }
+  for (const key of runtimeKeys) {
+    if (clean(proof[key]) !== clean(runtimeTarget[key])) {
+      return { ok: false, reason: `preflight_${key}_mismatch` };
+    }
+  }
   return { ok: true };
+}
+
+export function sanitizeTransportCode(value: unknown): string {
+  const code = clean(value);
+  return SAFE_TRANSPORT_CODE_PATTERN.test(code) || code === 'UNKNOWN_TRANSPORT_ERROR'
+    ? code
+    : 'UNKNOWN_TRANSPORT_ERROR';
+}
+
+export function isRetryableDiagnosticCode(value: unknown): boolean {
+  const code = sanitizeTransportCode(value);
+  return (
+    RETRYABLE_DIAGNOSTIC_CODES.has(code) ||
+    /^GOOGLE_DM_(?:HTTP|OAUTH|UNEXPECTED)_5[0-9]{2}$/.test(code)
+  );
 }
 
 export function sanitizeTransportWarnings(value: unknown): unknown[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 20).map((entry) => {
-    if (!isRecord(entry)) return { code: 'unknown_warning' };
-    const field = clean(entry.field ?? entry.fieldPath ?? entry.field_path).slice(0, 128);
-    const reason = clean(entry.reason ?? entry.code).slice(0, 128);
+    if (!isRecord(entry)) return { code: 'GOOGLE_DM_FIELD_WARNING' };
+    const fieldValue = clean(entry.field ?? entry.fieldPath ?? entry.field_path);
+    const field = SAFE_WARNING_FIELDS.has(fieldValue) ? fieldValue : '';
+    const reasonValue = clean(entry.reason ?? entry.code);
+    const reason = /^WARNING_REASON_[A-Z0-9_]+$/.test(reasonValue) ? reasonValue : '';
     return {
+      code: 'GOOGLE_DM_FIELD_WARNING',
       ...(field ? { field } : {}),
       ...(reason ? { reason } : {}),
     };
@@ -494,5 +599,28 @@ export function sanitizeTransportWarnings(value: unknown): unknown[] {
 }
 
 export function sanitizeTransportDetail(value: unknown): string {
-  return clean(value).replace(/[\r\n\t]+/g, ' ').slice(0, 1000);
+  return clean(value) ? OMITTED_TRANSPORT_DETAIL : '';
+}
+
+export function sanitizeDiagnosticCounts(
+  value: unknown,
+  kind: 'error' | 'warning'
+): GoogleDataManagerDiagnosticCount[] {
+  if (!Array.isArray(value)) return [];
+  const prefix = kind === 'error' ? 'PROCESSING_ERROR_REASON_' : 'PROCESSING_WARNING_REASON_';
+  const fallback = `${prefix}UNSPECIFIED`;
+  return value.slice(0, 20).flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const rawCount = entry.recordCount;
+    const countText = typeof rawCount === 'number' ? String(rawCount) : clean(rawCount);
+    if (!/^\d+$/.test(countText)) return [];
+    const recordCount = Number(countText);
+    if (!Number.isSafeInteger(recordCount)) return [];
+    const rawReason = clean(entry.reason);
+    const reason =
+      rawReason.startsWith(prefix) && /^[A-Z0-9_]+$/.test(rawReason.slice(prefix.length))
+        ? rawReason
+        : fallback;
+    return [{ reason, recordCount }];
+  });
 }

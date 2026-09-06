@@ -1,13 +1,16 @@
 import {
   buildOfflinePayload,
+  isRetryableDiagnosticCode,
   selectOfflineOrder,
   sanitizeTransportDetail,
+  sanitizeTransportCode,
   validateOfflinePreflight,
   type GoogleDataManagerPayload,
   type GoogleDataManagerTransport,
   type OfflineDestination,
   type OfflineOrderEvidence,
   type OfflineOrderSelection,
+  type OfflinePreflightRuntimeTarget,
   type OfflineTransportError,
 } from './ads-offline-core.js';
 import {
@@ -51,6 +54,13 @@ export interface AdsOfflineApplyInput {
   to: Date;
   approvedOrderIds: ReadonlySet<string>;
   preflightProof: unknown;
+  runtimeTarget: OfflinePreflightRuntimeTarget;
+}
+
+export interface AdsOfflineDiagnoseInput {
+  exportId: string;
+  preflightProof: unknown;
+  runtimeTarget: OfflinePreflightRuntimeTarget;
 }
 
 export class AdsOfflinePreflightError extends Error {
@@ -92,7 +102,10 @@ function reportRow(
   };
 }
 
-function registeredRow(evidence: OfflineOrderEvidence, ledger: OfflineExportRecord): AdsOfflineReportRow {
+function registeredRow(
+  evidence: OfflineOrderEvidence,
+  ledger: OfflineExportRecord
+): AdsOfflineReportRow {
   return {
     salesOrderId: evidence.salesOrderId,
     orderNumber: evidence.orderNumber,
@@ -123,7 +136,7 @@ function normalizeTransportError(error: unknown): OfflineTransportError {
     ) {
       return {
         kind: value.kind,
-        code: value.code.slice(0, 128),
+        code: sanitizeTransportCode(value.code),
         detail: sanitizeTransportDetail(value.detail),
         ...(typeof value.httpStatus === 'number' ? { httpStatus: value.httpStatus } : {}),
       };
@@ -131,8 +144,8 @@ function normalizeTransportError(error: unknown): OfflineTransportError {
   }
   return {
     kind: 'ambiguous',
-    code: 'UNCLASSIFIED_TRANSPORT_ERROR',
-    detail: 'resultado do transporte não classificado',
+    code: 'UNKNOWN_TRANSPORT_ERROR',
+    detail: sanitizeTransportDetail('resultado do transporte não classificado'),
   };
 }
 
@@ -212,10 +225,11 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
     const to = asDate(input.to);
     if (!from || !to || from >= to) throw new AdsOfflinePreflightError('Intervalo inválido.');
     const evidence = await repository.listOrderEvidence({ from, to });
+    const now = nowFrom(nowFactory);
     const approvedOrderIds = input.approvedOrderIds || new Set<string>();
     const rows: AdsOfflineReportRow[] = [];
     for (const item of evidence) {
-      const selection = selectOfflineOrder(item, { approvedOrderIds });
+      const selection = selectOfflineOrder(item, { approvedOrderIds, now });
       if (destination) {
         const ledger = await repository.getByIdentity({
           salesOrderId: item.salesOrderId,
@@ -250,12 +264,18 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
     const from = asDate(input.from);
     const to = asDate(input.to);
     if (!from || !to || from >= to) throw new AdsOfflinePreflightError('Intervalo inválido.');
-    if (!destination) throw new AdsOfflinePreflightError('Destino do Data Manager não configurado.');
+    if (!destination)
+      throw new AdsOfflinePreflightError('Destino do Data Manager não configurado.');
     if (!input.approvedOrderIds || input.approvedOrderIds.size === 0) {
       throw new AdsOfflinePreflightError('Lista explícita de pedidos revisados é obrigatória.');
     }
-    const proofCheck = validateOfflinePreflight(input.preflightProof, destination);
-    if (!proofCheck.ok) throw new AdsOfflinePreflightError(`Preflight recusado: ${proofCheck.reason}.`);
+    const proofCheck = validateOfflinePreflight(
+      input.preflightProof,
+      destination,
+      input.runtimeTarget
+    );
+    if (!proofCheck.ok)
+      throw new AdsOfflinePreflightError(`Preflight recusado: ${proofCheck.reason}.`);
 
     const now = nowFrom(nowFactory);
     await repository.recoverExpiredSending(now);
@@ -263,11 +283,15 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
     const rows: AdsOfflineReportRow[] = [];
     for (const item of evidence) {
       if (!input.approvedOrderIds.has(item.salesOrderId)) {
-        const selection = selectOfflineOrder(item, { approvedOrderIds: new Set() });
-        rows.push(outputState(item, selection, null, 'not_in_reviewed_allowlist', ['reviewed_uuid_required']));
+        const selection = selectOfflineOrder(item, { approvedOrderIds: new Set(), now });
+        rows.push(
+          outputState(item, selection, null, 'not_in_reviewed_allowlist', [
+            'reviewed_uuid_required',
+          ])
+        );
         continue;
       }
-      const selection = selectOfflineOrder(item, { approvedOrderIds: input.approvedOrderIds });
+      const selection = selectOfflineOrder(item, { approvedOrderIds: input.approvedOrderIds, now });
       let ledger = await repository.getByIdentity({
         salesOrderId: item.salesOrderId,
         destinationAccountId: destination.operatingAccountId,
@@ -275,7 +299,9 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
       });
       if (selection.status !== 'eligible') {
         if (ledger && selection.reasons.some((reason) => reason !== 'reviewed_uuid_required')) {
-          const kind = selection.reasons.includes('status_cancelled') ? 'cancellation' : 'correction';
+          const kind = selection.reasons.includes('status_cancelled')
+            ? 'cancellation'
+            : 'correction';
           const result = await repository.cancelOrReview({ exportId: ledger.id, kind, now });
           const reviewReason =
             result === 'needs_review'
@@ -348,13 +374,9 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
       if (!claim) {
         const current = await repository.get(ledger.id);
         rows.push(
-          outputState(
-            item,
-            selection,
-            current?.state || ledger.state,
+          outputState(item, selection, current?.state || ledger.state, 'claim_not_available', [
             'claim_not_available',
-            ['claim_not_available']
-          )
+          ])
         );
         continue;
       }
@@ -392,23 +414,45 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
         exportId: claim.export.id,
         attemptId: claim.attempt.id,
         leaseToken: claim.leaseToken,
-        outcome: { kind: 'error', error: normalized, retryAt: normalized.kind === 'transient' ? new Date(now.getTime() + 60_000) : null },
+        outcome: {
+          kind: 'error',
+          error: normalized,
+          retryAt: normalized.kind === 'transient' ? new Date(now.getTime() + 60_000) : null,
+        },
         now,
       });
-      const state = recorded ? (normalized.kind === 'ambiguous' ? 'needs_review' : 'failed') : 'stale_worker_ignored';
+      const state = recorded
+        ? normalized.kind === 'ambiguous'
+          ? 'needs_review'
+          : 'failed'
+        : 'stale_worker_ignored';
       return outputState(evidence, selection, state, state, [normalized.code]);
     }
   }
 
-  async function diagnose(exportId: string): Promise<boolean> {
-    const ledger = await repository.get(exportId);
-    if (!ledger || ledger.state !== 'accepted_pending_diagnostic') return false;
-    const attempt = await repository.getLatestAcceptedAttempt(exportId);
+  async function diagnose(input: AdsOfflineDiagnoseInput): Promise<boolean> {
+    if (!destination)
+      throw new AdsOfflinePreflightError('Destino do Data Manager não configurado.');
+    const proofCheck = validateOfflinePreflight(
+      input.preflightProof,
+      destination,
+      input.runtimeTarget
+    );
+    if (!proofCheck.ok)
+      throw new AdsOfflinePreflightError(`Preflight recusado: ${proofCheck.reason}.`);
+    const ledger = await repository.get(input.exportId);
+    const attempt = ledger ? await repository.getLatestAcceptedAttempt(input.exportId) : null;
     if (!attempt?.requestId) return false;
+    const canRetryDiagnostic =
+      ledger?.state === 'accepted_pending_diagnostic' ||
+      (ledger?.state === 'needs_review' &&
+        ledger.reviewReason === 'result_unknown' &&
+        isRetryableDiagnosticCode(attempt.errorCode));
+    if (!canRetryDiagnostic) return false;
     try {
       const result = await transport.retrieveStatus(attempt.requestId);
       return repository.recordDiagnostic({
-        exportId,
+        exportId: input.exportId,
         attemptId: attempt.id,
         requestId: attempt.requestId,
         result,
@@ -417,11 +461,12 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
     } catch (error) {
       const normalized = normalizeTransportError(error);
       return repository.recordDiagnosticError({
-        exportId,
+        exportId: input.exportId,
         attemptId: attempt.id,
         requestId: attempt.requestId,
         code: normalized.code,
         detail: normalized.detail,
+        retryable: normalized.kind !== 'permanent' && isRetryableDiagnosticCode(normalized.code),
         checkedAt: nowFrom(nowFactory),
       });
     }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -29,9 +29,14 @@ import { createPostgresQuoteDraftManagementRepository } from '../../api/_infrast
 import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
 import { createPostgresSalesOrderOfflineExportRepository } from '../../api/_infrastructure/db/repositories/sales-order-offline-export-repository.js';
 import { createAdsOfflineService } from '../../api/_modules/ads-offline.js';
-import { buildOfflinePayload, selectOfflineOrder } from '../../api/_modules/ads-offline-core.js';
+import {
+  buildOfflinePayload,
+  GOOGLE_DATA_MANAGER_SCOPE,
+  selectOfflineOrder,
+} from '../../api/_modules/ads-offline-core.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 
+import { parsePostgresUrl, postgresIdentity } from '../../scripts/postgres-target.mjs';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, [
@@ -48,6 +53,24 @@ const DESTINATION = {
   operatingAccountId: '1234567890',
   productDestinationId: '9876543210',
   productDestinationType: 'UPLOAD_CLICKS' as const,
+};
+const RUNTIME_TARGET = {
+  target: 'synthetic-disposable',
+  owner: 'synthetic-operator',
+  databaseFingerprint: createHash('sha256')
+    .update(
+      TEST_DATABASE_URL
+        ? postgresIdentity(parsePostgresUrl(TEST_DATABASE_URL))
+        : '127.0.0.1|55434|aspen_test'
+    )
+    .digest('hex'),
+  deploymentRef: 'synthetic-deployment',
+};
+const PREFLIGHT_PROOF = {
+  ...RUNTIME_TARGET,
+  ...DESTINATION,
+  oauthScope: GOOGLE_DATA_MANAGER_SCOPE,
+  verifiedAt: NOW.toISOString(),
 };
 const CONSENT = {
   adUserData: 'CONSENT_GRANTED',
@@ -351,60 +374,105 @@ test(
       const retryClaimTwo = await repository.claim(retryExport.id, { now: retryAt, leaseMs: 60_000 });
       assert.ok(retryClaimTwo);
       assert.equal(retryClaimTwo.attempt.attemptNo, 2);
+      const retryAtTwo = new Date(retryAt.getTime() + 1_000);
       await repository.recordTransportOutcome({
         exportId: retryExport.id,
         attemptId: retryClaimTwo.attempt.id,
         leaseToken: retryClaimTwo.leaseToken,
-        outcome: { kind: 'error', error: { kind: 'permanent', code: 'GOOGLE_DM_HTTP_400', httpStatus: 400 } },
+        outcome: {
+          kind: 'error',
+          error: { kind: 'transient', code: 'GOOGLE_DM_HTTP_503', httpStatus: 503 },
+          retryAt: retryAtTwo,
+        },
         now: retryAt,
+      });
+      const retryClaimThree = await repository.claim(retryExport.id, { now: retryAtTwo, leaseMs: 60_000 });
+      assert.ok(retryClaimThree);
+      assert.equal(retryClaimThree.attempt.attemptNo, 3);
+      await repository.recordTransportOutcome({
+        exportId: retryExport.id,
+        attemptId: retryClaimThree.attempt.id,
+        leaseToken: retryClaimThree.leaseToken,
+        outcome: {
+          kind: 'error',
+          error: { kind: 'transient', code: 'GOOGLE_DM_HTTP_503', httpStatus: 503 },
+          retryAt: new Date(retryAtTwo.getTime() + 1_000),
+        },
+        now: retryAtTwo,
       });
       const retryAttempts = await database
         .select()
         .from(salesOrderOfflineExportAttempts)
         .where(eq(salesOrderOfflineExportAttempts.exportId, retryExport.id));
-      assert.deepEqual(retryAttempts.map((item) => item.attemptState).sort(), ['failed', 'failed']);
+      assert.deepEqual(retryAttempts.map((item) => item.attemptState).sort(), ['failed', 'failed', 'failed']);
+      assert.deepEqual(retryAttempts.map((item) => item.attemptNo).sort((left, right) => left - right), [1, 2, 3]);
       assert.equal((await repository.get(retryExport.id))?.state, 'failed');
+      assert.equal((await repository.get(retryExport.id))?.nextAttemptAt, null);
 
       const acceptedExport = await prepare(evidence.find((item) => item.salesOrderId === accepted.order.id)!);
-      const acceptedClaim = await repository.claim(acceptedExport.id, { now: NOW, leaseMs: 60_000 });
-      assert.ok(acceptedClaim);
-      await repository.recordTransportOutcome({
-        exportId: acceptedExport.id,
-        attemptId: acceptedClaim.attempt.id,
-        leaseToken: acceptedClaim.leaseToken,
-        outcome: {
-          kind: 'accepted',
-          result: {
-            kind: 'accepted',
-            requestId: 'request-accepted-synthetic',
-            httpStatus: 200,
-            fieldWarnings: [{ field: 'events[0]', reason: 'synthetic_warning' }],
+      let ingestCalls = 0;
+      let diagnosticCalls = 0;
+      const acceptedService = createAdsOfflineService({
+        repository,
+        destination: DESTINATION,
+        transport: {
+          ingest: async () => {
+            ingestCalls += 1;
+            return {
+              kind: 'accepted' as const,
+              requestId: 'request-accepted-synthetic',
+              httpStatus: 200 as const,
+              fieldWarnings: [{
+                field: 'events[0]',
+                reason: 'WARNING_REASON_GENERIC',
+                description: 'Authorization: Bearer synthetic-secret',
+              }],
+            };
+          },
+          retrieveStatus: async (requestId) => {
+            diagnosticCalls += 1;
+            assert.equal(requestId, 'request-accepted-synthetic');
+            return { status: 'success' as const };
           },
         },
-        now: NOW,
+        now: () => NOW,
       });
+      const applyReport = await acceptedService.apply({
+        from: new Date('2026-09-01T00:00:00Z'),
+        to: new Date('2026-09-02T00:00:00Z'),
+        approvedOrderIds: new Set([accepted.order.id]),
+        preflightProof: PREFLIGHT_PROOF,
+        runtimeTarget: RUNTIME_TARGET,
+      });
+      assert.equal(
+        applyReport.rows.find((row) => row.salesOrderId === accepted.order.id)?.category,
+        'accepted_pending_diagnostic'
+      );
+      assert.equal(ingestCalls, 1);
       assert.equal((await repository.get(acceptedExport.id))?.state, 'accepted_pending_diagnostic');
       await repository.recordDiagnostic({
         exportId: acceptedExport.id,
-        attemptId: acceptedClaim.attempt.id,
+        attemptId: (await repository.getLatestAcceptedAttempt(acceptedExport.id))!.id,
         requestId: 'request-accepted-synthetic',
         result: { status: 'processing' },
         checkedAt: NOW,
       });
       assert.equal((await repository.get(acceptedExport.id))?.state, 'accepted_pending_diagnostic');
-      await repository.recordDiagnostic({
+      assert.equal(await acceptedService.diagnose({
         exportId: acceptedExport.id,
-        attemptId: acceptedClaim.attempt.id,
-        requestId: 'request-accepted-synthetic',
-        result: { status: 'success' },
-        checkedAt: NOW,
-      });
+        preflightProof: PREFLIGHT_PROOF,
+        runtimeTarget: RUNTIME_TARGET,
+      }), true);
+      assert.equal(diagnosticCalls, 1);
       assert.equal((await repository.get(acceptedExport.id))?.state, 'processed');
       const [acceptedAttempt] = await database
         .select()
         .from(salesOrderOfflineExportAttempts)
-        .where(eq(salesOrderOfflineExportAttempts.id, acceptedClaim.attempt.id));
+        .where(eq(salesOrderOfflineExportAttempts.exportId, acceptedExport.id));
       assert.equal(acceptedAttempt?.diagnosticStatus, 'success');
+      assert.deepEqual(acceptedAttempt?.fieldWarnings, [
+        { code: 'GOOGLE_DM_FIELD_WARNING', field: 'events[0]', reason: 'WARNING_REASON_GENERIC' },
+      ]);
       await database
         .update(salesOrders)
         .set({ grandTotal: '999.99' })
@@ -469,11 +537,23 @@ test(
         exportId: partialExport.id,
         attemptId: partialClaim.attempt.id,
         requestId: 'request-partial',
-        result: { status: 'partial_success' },
+        result: {
+          status: 'partial_success',
+          errorCounts: [{ reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: 2 }],
+          warningCounts: [{ reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: 1 }],
+        },
         checkedAt: NOW,
       });
       assert.equal((await repository.get(partialExport.id))?.state, 'needs_review');
       assert.equal((await repository.get(partialExport.id))?.reviewReason, 'diagnostic_partial_success');
+      const [partialAttempt] = await database
+        .select()
+        .from(salesOrderOfflineExportAttempts)
+        .where(eq(salesOrderOfflineExportAttempts.id, partialClaim.attempt.id));
+      assert.deepEqual(partialAttempt?.fieldWarnings, [
+        { code: 'GOOGLE_DM_DIAGNOSTIC_ERROR_COUNT', reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: 2 },
+        { code: 'GOOGLE_DM_DIAGNOSTIC_WARNING_COUNT', reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: 1 },
+      ]);
 
       const expiredExport = await prepare(evidence.find((item) => item.salesOrderId === expired.order.id)!);
       const expiredClaim = await repository.claim(expiredExport.id, { now: NOW, leaseMs: 1_000 });

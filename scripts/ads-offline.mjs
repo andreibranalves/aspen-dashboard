@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { closeDatabase, getDatabase } from '../api/_infrastructure/db/client.js';
@@ -11,6 +12,7 @@ import {
 import { getGoogleDataManagerClient } from '../api/_infrastructure/integrations/google-data-manager/client.js';
 import { createAdsOfflineService, AdsOfflinePreflightError } from '../api/_modules/ads-offline.js';
 import { createPostgresSalesOrderOfflineExportRepository } from '../api/_infrastructure/db/repositories/sales-order-offline-export-repository.js';
+import { parsePostgresUrl, postgresIdentity } from './postgres-target.mjs';
 
 const SAFE_INFRASTRUCTURE_ERROR = 'Falha ao executar exportação offline.';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -31,6 +33,24 @@ function parseDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+export function resolveAdsOfflineRuntimeTarget(env = process.env) {
+  const target = clean(env.ADS_OFFLINE_RUNTIME_TARGET);
+  const owner = clean(env.ADS_OFFLINE_RUNTIME_OWNER);
+  const deploymentRef = clean(env.ADS_OFFLINE_RUNTIME_DEPLOYMENT_REF);
+  if (!target || !owner || !deploymentRef || !clean(env.DATABASE_URL)) {
+    throw new AdsOfflinePreflightError('Identidade efetiva do alvo não configurada.');
+  }
+  let databaseFingerprint;
+  try {
+    databaseFingerprint = createHash('sha256')
+      .update(postgresIdentity(parsePostgresUrl(env.DATABASE_URL)))
+      .digest('hex');
+  } catch {
+    throw new AdsOfflinePreflightError('DATABASE_URL inválida para o preflight.');
+  }
+  return { target, owner, databaseFingerprint, deploymentRef };
+}
+
 export function parseAdsOfflineArgs(argv) {
   const values = new Map();
   for (let index = 0; index < argv.length; index += 1) {
@@ -42,7 +62,8 @@ export function parseAdsOfflineArgs(argv) {
       arg === '--from' ||
       arg === '--to' ||
       arg === '--approved-orders' ||
-      arg === '--preflight-proof'
+      arg === '--preflight-proof' ||
+      arg === '--diagnose'
     ) {
       const value = argv[index + 1];
       if (!value || value.startsWith('--') || values.has(arg)) {
@@ -56,24 +77,37 @@ export function parseAdsOfflineArgs(argv) {
   }
   const dryRun = Boolean(values.get('--dry-run'));
   const apply = Boolean(values.get('--apply'));
-  if (dryRun === apply) throw new AdsOfflineUsageError('Escolha exatamente --dry-run ou --apply.');
-  const from = parseDate(values.get('--from'));
-  const to = parseDate(values.get('--to'));
-  if (!from || !to || from >= to) {
+  const diagnose = values.has('--diagnose');
+  if (Number(dryRun) + Number(apply) + Number(diagnose) !== 1) {
+    throw new AdsOfflineUsageError('Escolha exatamente --dry-run, --apply ou --diagnose.');
+  }
+  const from = diagnose ? null : parseDate(values.get('--from'));
+  const to = diagnose ? null : parseDate(values.get('--to'));
+  if (!diagnose && (!from || !to || from >= to)) {
     throw new AdsOfflineUsageError('Informe --from e --to válidos, com início anterior ao fim.');
   }
-  if (dryRun && (values.has('--approved-orders') || values.has('--preflight-proof'))) {
+  if (diagnose && (values.has('--from') || values.has('--to') || values.has('--approved-orders'))) {
+    throw new AdsOfflineUsageError('Diagnóstico exige apenas o identificador e o preflight.');
+  }
+  if (dryRun && (values.has('--approved-orders') || values.has('--preflight-proof') || diagnose)) {
     throw new AdsOfflineUsageError('Esses arquivos só podem ser usados com --apply.');
   }
   if (apply && (!values.has('--approved-orders') || !values.has('--preflight-proof'))) {
     throw new AdsOfflineUsageError('--apply exige --approved-orders e --preflight-proof.');
   }
+  if (diagnose && !values.has('--preflight-proof')) {
+    throw new AdsOfflineUsageError('--diagnose exige --preflight-proof.');
+  }
+  if (diagnose && !UUID_PATTERN.test(clean(values.get('--diagnose')))) {
+    throw new AdsOfflineUsageError('Identificador de exportação inválido.');
+  }
   return {
-    mode: dryRun ? 'dry-run' : 'apply',
+    mode: dryRun ? 'dry-run' : apply ? 'apply' : 'diagnose',
     from,
     to,
     approvedOrdersPath: values.get('--approved-orders') || null,
     preflightProofPath: values.get('--preflight-proof') || null,
+    exportId: values.get('--diagnose') || null,
   };
 }
 
@@ -114,16 +148,25 @@ export async function runAdsOffline({
     const destination = isGoogleDataManagerConfigured(config)
       ? destinationFromGoogleDataManagerConfig(config)
       : null;
+    let approved = null;
+    let proof = null;
+    let runtimeTarget = null;
+    if (input.mode === 'apply' || input.mode === 'diagnose') {
+      runtimeTarget = resolveAdsOfflineRuntimeTarget(env);
+      proof = readJson(input.preflightProofPath, readFile);
+    }
+    if (input.mode === 'apply')
+      approved = reviewedOrderIds(readJson(input.approvedOrdersPath, readFile));
     const service = createAdsOfflineService({
       repository: createRepository(getDatabaseFn),
       transport: createTransport({ getConfig: () => config }),
       destination,
     });
     if (input.mode === 'dry-run') {
-      stdout.write(`${JSON.stringify(await service.preview({ from: input.from, to: input.to }), null, 2)}\n`);
-    } else {
-      const approved = reviewedOrderIds(readJson(input.approvedOrdersPath, readFile));
-      const proof = readJson(input.preflightProofPath, readFile);
+      stdout.write(
+        `${JSON.stringify(await service.preview({ from: input.from, to: input.to }), null, 2)}\n`
+      );
+    } else if (input.mode === 'apply') {
       stdout.write(
         `${JSON.stringify(
           await service.apply({
@@ -131,7 +174,23 @@ export async function runAdsOffline({
             to: input.to,
             approvedOrderIds: approved,
             preflightProof: proof,
+            runtimeTarget,
           }),
+          null,
+          2
+        )}\n`
+      );
+    } else {
+      stdout.write(
+        `${JSON.stringify(
+          {
+            exportId: input.exportId,
+            diagnosed: await service.diagnose({
+              exportId: input.exportId,
+              preflightProof: proof,
+              runtimeTarget,
+            }),
+          },
           null,
           2
         )}\n`
@@ -168,4 +227,3 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
       process.exitCode = 1;
     });
 }
-

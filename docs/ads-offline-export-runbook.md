@@ -39,6 +39,8 @@ O escopo é fixo no código: `https://www.googleapis.com/auth/datamanager`. Não
 
 O `operatingAccount` deve ser o proprietário da ação de conversão `UPLOAD_CLICKS`. Antes de qualquer apply, o operador deve confirmar conta, ação, escopo OAuth, deployment e banco no mesmo alvo e gerar uma prova local de preflight com fingerprint do banco, owner, target, deployment e data de verificação. A prova não é gravada no banco.
 
+O CLI resolve a identidade efetiva do alvo a partir de `DATABASE_URL` e das variáveis `ADS_OFFLINE_RUNTIME_TARGET`, `ADS_OFFLINE_RUNTIME_OWNER` e `ADS_OFFLINE_RUNTIME_DEPLOYMENT_REF`. O fingerprint é SHA-256 de host, porta e database, sem credenciais. O apply e o diagnóstico recusam a prova se qualquer identidade divergir; essas variáveis devem ser injetadas pelo ambiente do alvo, não copiadas do arquivo de prova.
+
 ## Comandos
 
 Dry-run exige apenas um intervalo explícito `[from,to)` e não grava ledger, claim, tentativa ou auditoria; também não chama OAuth, `events.ingest` ou diagnóstico remoto:
@@ -63,22 +65,32 @@ npm run ads:offline -- \
   --preflight-proof /caminho/preflight.json
 ```
 
+Após um aceite HTTP 200, consulte o diagnóstico pelo `requestId` persistido sem reenviar o evento:
+
+```bash
+npm run ads:offline -- \
+  --diagnose 00000000-0000-4000-8000-000000000000 \
+  --preflight-proof /caminho/preflight.json
+```
+
+O diagnóstico também exige a identidade efetiva do alvo nas variáveis acima. `--diagnose` não aceita intervalo nem lista de pedidos.
+
 Não existe `--force`. A implementação não autoriza automaticamente nenhum pedido real; a aprovação deste código não é aprovação de lista, destino ou primeira aplicação.
 
 ## Ledger e recuperação
 
-O claim usa um `UPDATE ... RETURNING` curto, cria uma tentativa `started` e faz commit antes da rede. Nenhuma transação fica aberta durante OAuth ou HTTP. O worker que perde lease não pode concluir uma tentativa antiga. Timeout, erro de rede, resposta 5xx ou resposta sem `requestId` são ambíguos e levam a `needs_review/result_unknown`; não há replay cego. Erro 429 tem retry limitado; erros 4xx são falha permanente.
+O claim usa um `UPDATE ... RETURNING` curto, cria uma tentativa `started` e faz commit antes da rede. Nenhuma transação fica aberta durante OAuth ou HTTP. O worker que perde lease não pode concluir uma tentativa antiga. Timeout, erro de rede, resposta 5xx ou resposta sem `requestId` são ambíguos e levam a `needs_review/result_unknown`; não há replay cego. Erros transitórios têm no máximo três tentativas dentro de 24 horas; erros 4xx são falha permanente.
 
-O aceite HTTP 200 grava `requestId` e warnings sanitizados em `accepted_pending_diagnostic`. Somente o diagnóstico posterior pode levar a `processed`; `PARTIAL_SUCCESS` leva a `needs_review/diagnostic_partial_success`. O fluxo não promete atribuição, exactly-once ou sucesso comercial a partir do aceite HTTP.
+O aceite HTTP 200 grava `requestId` e warnings sanitizados em `accepted_pending_diagnostic`. Somente o diagnóstico posterior pode levar a `processed`; `PARTIAL_SUCCESS` leva a `needs_review/diagnostic_partial_success`. Falha temporária ao consultar o diagnóstico mantém `result_unknown` recuperável para uma nova consulta, sem reenviar a conversão. O fluxo não promete atribuição, exactly-once ou sucesso comercial a partir do aceite HTTP.
 
-| Estado | Significado |
-| --- | --- |
-| `prepared` | snapshot local pronto para claim |
-| `sending` | lease ativo; não é confirmação remota |
-| `accepted_pending_diagnostic` | Data Manager aceitou HTTP 200; diagnóstico pendente |
-| `processed` | diagnóstico confirmou sucesso |
-| `failed` | falha permanente ou retry transitório agendado |
-| `needs_review` | resultado ambíguo, lease expirado, consentimento, correção ou diagnóstico parcial |
+| Estado                        | Significado                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `prepared`                    | snapshot local pronto para claim                                                  |
+| `sending`                     | lease ativo; não é confirmação remota                                             |
+| `accepted_pending_diagnostic` | Data Manager aceitou HTTP 200; diagnóstico pendente                               |
+| `processed`                   | diagnóstico confirmou sucesso                                                     |
+| `failed`                      | falha permanente ou retry transitório agendado                                    |
+| `needs_review`                | resultado ambíguo, lease expirado, consentimento, correção ou diagnóstico parcial |
 
 Cancelamento antes da primeira tentativa remove o snapshot não enviado. Cancelamento, correção ou substituição depois de qualquer tentativa preserva o histórico e muda o ledger para revisão; não cria nova identidade nem tenta retractar o evento no Google.
 
@@ -93,4 +105,3 @@ As referências oficiais revalidadas para Data Manager v1 foram:
 - [events.ingest REST](https://developers.google.com/data-manager/api/reference/rest/v1/events/ingest).
 - [Consent REST](https://developers.google.com/data-manager/api/reference/rest/v1/Consent).
 - [Data Manager diagnostics](https://developers.google.com/data-manager/api/devguides/diagnostics).
-
