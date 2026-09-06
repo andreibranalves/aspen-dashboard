@@ -95,7 +95,7 @@ test.beforeAll(async () => {
   await client.end({ timeout: 5 });
 });
 
-test('opportunity creates quotation whose origin remains visible through approval and order @smoke', async ({ page }) => {
+test('opportunity creates quotation whose origin remains visible through approval and order', async ({ page }) => {
   await page.goto(`/#/crm?search=${encodeURIComponent(leadName)}`);
   const card = page.getByRole('article', { name: new RegExp(`Negócio ${leadName}`) });
   await expect(card).toBeVisible();
