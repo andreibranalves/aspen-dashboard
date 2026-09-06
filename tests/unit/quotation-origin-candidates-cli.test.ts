@@ -5,7 +5,6 @@ import {
   parseQuotationOriginCandidateArgs,
   runQuotationOriginCandidates,
 } from '../../scripts/quotation-origin-candidates.mjs';
-import { listQuotationOriginCandidates } from '../../api/_infrastructure/db/repositories/quotation-origin-repository.js';
 
 test('candidate report requires explicit read-only mode and a bounded period', () => {
   assert.throws(
@@ -23,61 +22,43 @@ test('candidate report requires explicit read-only mode and a bounded period', (
   assert.equal(parsed.to.toISOString(), '2026-02-01T00:00:00.000Z');
 });
 
-test('candidate report does not silently truncate rows before the final candidate', async () => {
-  const rowCount = 10_001;
-  const quotationRows = Array.from({ length: rowCount }, (_, index) => ({
-    id: `quotation-${index}`,
-    businessNumber: `ORC-${String(index).padStart(8, '0')}`,
-    createdAt: new Date('2026-01-01T12:00:00.000Z'),
-    revisionEmail: `candidate-${index}@example.test`,
-    revisionPhone: null,
-    revisionVersion: 1,
-  }));
-  const leadRows = [{
-    id: `lead-${rowCount - 1}`,
-    email: `candidate-${rowCount - 1}@example.test`,
-    telefone: null,
-    createdAt: new Date('2026-01-01T12:00:00.000Z'),
-  }];
-
-  const createQuery = (rows) => {
-    let offset = 0;
-    let pageSize = rows.length;
-    const query = {
-      innerJoin: () => query,
-      where: () => query,
-      orderBy: () => query,
-      limit: (value) => {
-        pageSize = value;
-        return query;
-      },
-      offset: (value) => {
-        offset = value;
-        return query;
-      },
-      then: (resolve, reject) => Promise.resolve(rows.slice(offset, offset + pageSize)).then(resolve, reject),
-    };
-    return query;
-  };
-  const database = {
-    select: (projection) => ({
-      from: () => createQuery('revisionEmail' in projection ? quotationRows : leadRows),
+test('candidate report keeps candidate and invalid-evidence totals separate', async () => {
+  let stdout = '';
+  const exitCode = await runQuotationOriginCandidates({
+    argv: [
+      '--from', '2026-01-01T00:00:00Z',
+      '--to', '2026-01-02T00:00:00Z',
+      '--dry-run',
+    ],
+    getDatabase: () => ({}),
+    listCandidates: async () => ({
+      candidates: [{
+        quotationId: 'quotation-synthetic',
+        quotationNumber: 'ORC-20329999',
+        quoteLeadId: 'lead-synthetic',
+        reasons: ['email_normalized'],
+        distanceSeconds: 0,
+      }],
+      invalidEvidence: { missing: 2, invalid: 3 },
     }),
-  };
-
-  const candidates = await listQuotationOriginCandidates(database, {
-    from: new Date('2026-01-01T00:00:00.000Z'),
-    to: new Date('2026-01-02T00:00:00.000Z'),
-    windowDays: 1,
+    closeDatabase: async () => undefined,
+    stdout: { write: (value) => { stdout += value; return true; } },
+    stderr: { write: () => true },
   });
 
-  assert.deepEqual(candidates, [{
-    quotationId: `quotation-${rowCount - 1}`,
-    quotationNumber: `ORC-${String(rowCount - 1).padStart(8, '0')}`,
-    quoteLeadId: `lead-${rowCount - 1}`,
-    reasons: ['email_normalized'],
-    distanceSeconds: 0,
-  }]);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(JSON.parse(stdout), {
+    dryRun: true,
+    count: 1,
+    invalidEvidence: { missing: 2, invalid: 3 },
+    candidates: [{
+      quotationId: 'quotation-synthetic',
+      quotationNumber: 'ORC-20329999',
+      quoteLeadId: 'lead-synthetic',
+      reasons: ['email_normalized'],
+      distanceSeconds: 0,
+    }],
+  });
 });
 
 test('candidate report sanitizes infrastructure and close failures', async () => {
@@ -111,7 +92,10 @@ test('candidate report sanitizes infrastructure and close failures', async () =>
       '--dry-run',
     ],
     getDatabase: () => ({}),
-    listCandidates: async () => [],
+    listCandidates: async () => ({
+      candidates: [],
+      invalidEvidence: { missing: 0, invalid: 0 },
+    }),
     closeDatabase: async () => { throw new Error(`close password=${secret}`); },
     stdout: { write: (value) => { stdout += value; return true; } },
     stderr: { write: (value) => { stderr += value; return true; } },

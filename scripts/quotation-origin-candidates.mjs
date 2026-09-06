@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { closeDatabase, getDatabase } from '../api/_infrastructure/db/client.js';
-import { listQuotationOriginCandidates } from '../api/_infrastructure/db/repositories/quotation-origin-repository.js';
+import { readQuotationOriginCandidateReport } from '../api/_infrastructure/db/repositories/quotation-origin-repository.js';
 
 const SAFE_INFRASTRUCTURE_ERROR = 'Falha ao gerar relatório.';
 
@@ -35,7 +35,7 @@ export function parseQuotationOriginCandidateArgs(argv) {
 export async function runQuotationOriginCandidates({
   argv = process.argv.slice(2),
   getDatabase: getDatabaseFn = getDatabase,
-  listCandidates = listQuotationOriginCandidates,
+  listCandidates = readQuotationOriginCandidateReport,
   closeDatabase: closeDatabaseFn = closeDatabase,
   stdout = process.stdout,
   stderr = process.stderr,
@@ -43,8 +43,9 @@ export async function runQuotationOriginCandidates({
   let failure = null;
   try {
     const input = parseQuotationOriginCandidateArgs(argv);
-    const candidates = await listCandidates(getDatabaseFn(), input);
-    stdout.write(`${JSON.stringify({ dryRun: true, count: candidates.length, candidates }, null, 2)}\n`);
+    const report = await listCandidates(getDatabaseFn(), input);
+    const { candidates, invalidEvidence } = report;
+    stdout.write(`${JSON.stringify({ dryRun: true, count: candidates.length, invalidEvidence, candidates }, null, 2)}\n`);
   } catch (error) {
     failure = error;
   }

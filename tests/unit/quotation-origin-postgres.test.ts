@@ -28,11 +28,14 @@ import {
 import { createPostgresQuoteLeadRepository } from '../../api/_infrastructure/db/repositories/quote-leads-repository.js';
 import {
   listQuotationOriginCandidates,
+  readQuotationOriginCandidateReport,
   readQuotationOrigin,
 } from '../../api/_infrastructure/db/repositories/quotation-origin-repository.js';
 import { createPostgresQuoteDraftManagementRepository } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
 import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
+import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
+import { ensureFixtureTemplateVersion } from '../fixtures/quotation-revision-seeds.ts';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, [
@@ -45,6 +48,179 @@ const migrationsFolder = path.resolve(
   '..',
   'drizzle',
 );
+
+type ReportDatabase = ReturnType<typeof drizzle<typeof schema>>;
+
+async function insertReportLead(
+  database: ReportDatabase,
+  input: {
+    id: string;
+    email: string;
+    createdAt: Date;
+    source?: string;
+    originalCreatedAt?: string | null;
+  },
+) {
+  const raw = input.originalCreatedAt === undefined
+    ? null
+    : {
+        siteSubmission:
+          input.originalCreatedAt === null
+            ? {}
+            : { originalCreatedAt: input.originalCreatedAt },
+      };
+  await database.insert(quoteLeads).values({
+    id: input.id,
+    identityKey: `report-fixture-${input.id}`,
+    email: input.email,
+    source: input.source || 'site_form',
+    raw,
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+  });
+}
+
+async function insertReportQuotation(
+  database: ReportDatabase,
+  fixtureFields: Awaited<ReturnType<typeof ensureFixtureTemplateVersion>>,
+  input: {
+    id: string;
+    businessNumber: string;
+    revisionId: string;
+    clientId: string;
+    createdAt: Date;
+    email: string;
+    version?: number;
+    name?: string;
+  },
+) {
+  const name = input.name || 'Relatório histórico sintético';
+  await database.insert(clients).values({ id: input.clientId, nome: name });
+  await database.insert(quotations).values({
+    id: input.id,
+    businessNumber: input.businessNumber,
+    clientId: input.clientId,
+    status: 'emitido',
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+  });
+  await insertReportRevision(database, fixtureFields, {
+    quotationId: input.id,
+    revisionId: input.revisionId,
+    createdAt: input.createdAt,
+    email: input.email,
+    version: input.version,
+    name,
+  });
+  return { quotationId: input.id, revisionId: input.revisionId, clientId: input.clientId };
+}
+
+async function insertReportRevision(
+  database: ReportDatabase,
+  fixtureFields: Awaited<ReturnType<typeof ensureFixtureTemplateVersion>>,
+  input: {
+    quotationId: string;
+    revisionId: string;
+    createdAt: Date;
+    email: string;
+    version?: number;
+    name?: string;
+  },
+) {
+  const name = input.name || 'Relatório histórico sintético';
+  await database.insert(quoteRevisions).values({
+    ...fixtureFields,
+    id: input.revisionId,
+    quotationId: input.quotationId,
+    version: input.version || 1,
+    status: 'emitido',
+    validadeDias: 15,
+    companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+    clienteNome: name,
+    clienteEmail: input.email,
+    subtotal: '1.00',
+    total: '1.00',
+    createdAt: input.createdAt,
+  });
+}
+
+function instrumentReportDatabase(
+  database: ReportDatabase,
+  mutateAfterFirstSelect: () => Promise<void>,
+) {
+  let selectCount = 0;
+  let mutationStarted = false;
+  let selectCountAtMutation: number | null = null;
+  let transactionConfig: unknown;
+
+  const wrapQuery = (query: object): object =>
+    new Proxy(query, {
+      get(target, property, receiver) {
+        if (property === 'then') {
+          const then = Reflect.get(target, property, receiver);
+          if (typeof then !== 'function') return then;
+          return (
+            resolve: (value: unknown) => unknown,
+            reject: (reason: unknown) => unknown,
+          ) =>
+            Reflect.apply(then, target, [
+              async (rows: unknown) => {
+                selectCount += 1;
+                if (!mutationStarted) {
+                  mutationStarted = true;
+                  selectCountAtMutation = selectCount;
+                  await mutateAfterFirstSelect();
+                }
+                return resolve(rows);
+              },
+              reject,
+            ]);
+        }
+        const member = Reflect.get(target, property, receiver);
+        if (typeof member !== 'function') return member;
+        return (...args: unknown[]) => wrapQuery(Reflect.apply(member, target, args) as object);
+      },
+    });
+
+  const wrapExecutor = (executor: object) =>
+    new Proxy(executor, {
+      get(target, property, receiver) {
+        if (property === 'select') {
+          const select = Reflect.get(target, property, receiver);
+          return (...args: unknown[]) => wrapQuery(Reflect.apply(select as Function, target, args) as object);
+        }
+        const member = Reflect.get(target, property, receiver);
+        return typeof member === 'function' ? member.bind(target) : member;
+      },
+    });
+
+  const instrumented = new Proxy(database, {
+    get(target, property, receiver) {
+      if (property === 'select') {
+        const select = Reflect.get(target, property, receiver);
+        return (...args: unknown[]) => wrapQuery(Reflect.apply(select as Function, target, args) as object);
+      }
+      if (property === 'transaction') {
+        const transaction = Reflect.get(target, property, receiver);
+        return (callback: (executor: object) => Promise<unknown>, config?: unknown) => {
+          transactionConfig = config;
+          return Reflect.apply(transaction as Function, target, [
+              (executor: object) => callback(wrapExecutor(executor)),
+              config,
+            ]);
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+
+  return {
+    database: instrumented,
+    getSelectCount: () => selectCount,
+    getSelectCountAtMutation: () => selectCountAtMutation,
+    getTransactionConfig: () => transactionConfig,
+  };
+}
 
 test(
   'PostgreSQL quotation creation persists a validated opportunity origin atomically',
@@ -428,6 +604,376 @@ test(
       await db.delete(productActivityEvents).where(eq(productActivityEvents.productSku, sku));
       await db.delete(products).where(eq(products.sku, sku));
       await client.end({ timeout: 5 });
+    }
+  },
+);
+
+test(
+  'historical report rejects invalid site evidence without losing valid original dates',
+  { concurrency: false, skip: !TEST_DATABASE_URL, timeout: 35_000 },
+  async () => {
+    const connection = postgres(TEST_DATABASE_URL!, {
+      max: 2,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const database = drizzle(connection, { schema });
+    const quotationIds: string[] = [];
+    const clientIds: string[] = [];
+    const leadIds: string[] = [];
+    const januaryAt = new Date('2026-01-11T12:00:00.000Z');
+    const septemberAt = new Date('2026-09-02T12:00:00.000Z');
+    const reportPrefix = `invalid-evidence-${randomUUID().slice(0, 8)}`;
+    let fixtureFields: Awaited<ReturnType<typeof ensureFixtureTemplateVersion>>;
+
+    try {
+      await migrate(database, { migrationsFolder });
+      fixtureFields = await ensureFixtureTemplateVersion(database);
+
+      const validJanuaryLeadId = randomUUID();
+      const validJanuaryEmail = `${reportPrefix}-january@example.test`;
+      await insertReportLead(database, {
+        id: validJanuaryLeadId,
+        email: validJanuaryEmail,
+        source: 'site_form',
+        originalCreatedAt: '2026-01-10T12:00:00.000Z',
+        createdAt: new Date('2026-09-01T12:00:00.000Z'),
+      });
+      leadIds.push(validJanuaryLeadId);
+      const januaryQuotation = await insertReportQuotation(database, fixtureFields, {
+        id: randomUUID(),
+        businessNumber: 'ORC-20320001',
+        revisionId: randomUUID(),
+        clientId: randomUUID(),
+        createdAt: januaryAt,
+        email: validJanuaryEmail,
+      });
+      quotationIds.push(januaryQuotation.quotationId);
+      clientIds.push(januaryQuotation.clientId);
+
+      const invalidEvidence = [
+        '2026-13-01T12:00:00.000Z',
+        '2026-02-29T12:00:00.000Z',
+        '2026-04-31T12:00:00.000Z',
+        '2026-01-10T24:00:00.000Z',
+        '2026-01-10T12:60:00.000Z',
+        '2026-01-10T23:59:60.000Z',
+        'not-a-timestamp',
+        null,
+        undefined,
+      ];
+      for (const [index, originalCreatedAt] of invalidEvidence.entries()) {
+        const email = `${reportPrefix}-invalid-${index}@example.test`;
+        const leadId = randomUUID();
+        await insertReportLead(database, {
+          id: leadId,
+          email,
+          source: 'site_form',
+          originalCreatedAt,
+          createdAt: septemberAt,
+        });
+        leadIds.push(leadId);
+        const quotation = await insertReportQuotation(database, fixtureFields, {
+          id: randomUUID(),
+          businessNumber: `ORC-${String(20320002 + index).padStart(8, '0')}`,
+          revisionId: randomUUID(),
+          clientId: randomUUID(),
+          createdAt: septemberAt,
+          email,
+        });
+        quotationIds.push(quotation.quotationId);
+        clientIds.push(quotation.clientId);
+      }
+
+      const validLeapLeadId = randomUUID();
+      const validLeapEmail = `${reportPrefix}-leap@example.test`;
+      await insertReportLead(database, {
+        id: validLeapLeadId,
+        email: validLeapEmail,
+        source: 'site_form',
+        originalCreatedAt: '2024-02-29T12:00:00.000Z',
+        createdAt: new Date('2026-09-01T12:00:00.000Z'),
+      });
+      leadIds.push(validLeapLeadId);
+      const leapQuotation = await insertReportQuotation(database, fixtureFields, {
+        id: randomUUID(),
+        businessNumber: 'ORC-20320011',
+        revisionId: randomUUID(),
+        clientId: randomUUID(),
+        createdAt: new Date('2024-02-29T13:00:00.000Z'),
+        email: validLeapEmail,
+      });
+      quotationIds.push(leapQuotation.quotationId);
+      clientIds.push(leapQuotation.clientId);
+
+      const nonSiteLeadId = randomUUID();
+      const nonSiteEmail = `${reportPrefix}-non-site@example.test`;
+      await insertReportLead(database, {
+        id: nonSiteLeadId,
+        email: nonSiteEmail,
+        source: 'typebot',
+        createdAt: septemberAt,
+      });
+      leadIds.push(nonSiteLeadId);
+      const nonSiteQuotation = await insertReportQuotation(database, fixtureFields, {
+        id: randomUUID(),
+        businessNumber: 'ORC-20320012',
+        revisionId: randomUUID(),
+        clientId: randomUUID(),
+        createdAt: septemberAt,
+        email: nonSiteEmail,
+      });
+      quotationIds.push(nonSiteQuotation.quotationId);
+      clientIds.push(nonSiteQuotation.clientId);
+
+      const januaryCandidates = await listQuotationOriginCandidates(database, {
+        from: new Date('2026-01-11T00:00:00.000Z'),
+        to: new Date('2026-01-12T00:00:00.000Z'),
+        windowDays: 2,
+      });
+      assert.deepEqual(
+        januaryCandidates
+          .filter((candidate) => candidate.quotationId === januaryQuotation.quotationId)
+          .map((candidate) => candidate.quoteLeadId),
+        [validJanuaryLeadId],
+      );
+
+      const leapCandidates = await listQuotationOriginCandidates(database, {
+        from: new Date('2024-02-29T00:00:00.000Z'),
+        to: new Date('2024-03-01T00:00:00.000Z'),
+        windowDays: 1,
+      });
+      assert.deepEqual(
+        leapCandidates
+          .filter((candidate) => candidate.quotationId === leapQuotation.quotationId)
+          .map((candidate) => candidate.quoteLeadId),
+        [validLeapLeadId],
+      );
+
+      const septemberReport = await readQuotationOriginCandidateReport(database, {
+        from: new Date('2026-09-02T00:00:00.000Z'),
+        to: new Date('2026-09-03T00:00:00.000Z'),
+        windowDays: 0,
+      });
+      const septemberCandidates = septemberReport.candidates;
+      assert.deepEqual(septemberReport.invalidEvidence, { missing: 2, invalid: 7 });
+      assert.equal(
+        septemberCandidates.some((candidate) =>
+          quotationIds.includes(candidate.quotationId) &&
+          candidate.quoteLeadId !== nonSiteLeadId
+        ),
+        false,
+      );
+      assert.deepEqual(
+        septemberCandidates
+          .filter((candidate) => candidate.quotationId === nonSiteQuotation.quotationId)
+          .map((candidate) => candidate.quoteLeadId),
+        [nonSiteLeadId],
+      );
+    } finally {
+      if (quotationIds.length) {
+        await database.delete(quotations).where(inArray(quotations.id, quotationIds));
+      }
+      if (leadIds.length) {
+        await database.delete(quoteLeads).where(inArray(quoteLeads.id, leadIds));
+      }
+      if (clientIds.length) {
+        await database.delete(clients).where(inArray(clients.id, clientIds));
+      }
+      await connection.end({ timeout: 5 });
+    }
+  },
+);
+
+test(
+  'historical report keeps quotation and lead pages in one PostgreSQL snapshot',
+  { concurrency: false, skip: !TEST_DATABASE_URL, timeout: 35_000 },
+  async () => {
+    const connection = postgres(TEST_DATABASE_URL!, {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const writerConnection = postgres(TEST_DATABASE_URL!, {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const database = drizzle(connection, { schema });
+    const writerDatabase = drizzle(writerConnection, { schema });
+    const reportAt = new Date('2026-09-02T12:00:00.000Z');
+    const quotationIds = [
+      '10000000-0000-4000-8000-000000000001',
+      '20000000-0000-4000-8000-000000000002',
+      '30000000-0000-4000-8000-000000000003',
+      '40000000-0000-4000-8000-000000000004',
+    ];
+    const revisionIds = [
+      '10000000-0000-4000-8000-000000000101',
+      '10000000-0000-4000-8000-000000000102',
+      '20000000-0000-4000-8000-000000000201',
+      '30000000-0000-4000-8000-000000000301',
+      '40000000-0000-4000-8000-000000000401',
+    ];
+    const clientIds = [
+      '10000000-0000-4000-8000-000000001001',
+      '20000000-0000-4000-8000-000000002002',
+      '30000000-0000-4000-8000-000000003003',
+      '40000000-0000-4000-8000-000000004004',
+    ];
+    const leadIds = [
+      '10000000-0000-4000-8000-000000010001',
+      '20000000-0000-4000-8000-000000020002',
+      '30000000-0000-4000-8000-000000030003',
+      '40000000-0000-4000-8000-000000040004',
+    ];
+    const insertedQuotationId = '15000000-0000-4000-8000-000000000005';
+    const insertedRevisionId = '15000000-0000-4000-8000-000000000505';
+    const insertedClientId = '15000000-0000-4000-8000-000000005005';
+    const insertedLeadId = '05000000-0000-4000-8000-000000000005';
+    const emails = [
+      'snapshot-one@example.test',
+      'snapshot-two@example.test',
+      'snapshot-three@example.test',
+      'snapshot-four@example.test',
+    ];
+    let fixtureFields: Awaited<ReturnType<typeof ensureFixtureTemplateVersion>>;
+    let mutationCompleted = false;
+
+    try {
+      await migrate(database, { migrationsFolder });
+      fixtureFields = await ensureFixtureTemplateVersion(database);
+      for (const [index, leadId] of leadIds.entries()) {
+        await insertReportLead(database, {
+          id: leadId,
+          email: emails[index],
+          source: 'typebot',
+          createdAt: reportAt,
+        });
+      }
+      await insertReportQuotation(database, fixtureFields, {
+        id: quotationIds[0],
+        businessNumber: 'ORC-20310001',
+        revisionId: revisionIds[0],
+        clientId: clientIds[0],
+        createdAt: reportAt,
+        email: 'snapshot-one-old@example.test',
+        version: 1,
+      });
+      await insertReportRevision(database, fixtureFields, {
+        quotationId: quotationIds[0],
+        revisionId: revisionIds[1],
+        createdAt: reportAt,
+        email: emails[0],
+        version: 2,
+      });
+      for (const [index, quotationId] of quotationIds.slice(1).entries()) {
+        await insertReportQuotation(database, fixtureFields, {
+          id: quotationId,
+          businessNumber: `ORC-2031000${index + 2}`,
+          revisionId: revisionIds[index + 2],
+          clientId: clientIds[index + 1],
+          createdAt: reportAt,
+          email: emails[index + 1],
+        });
+      }
+
+      const instrumented = instrumentReportDatabase(database, async () => {
+        await writerDatabase.transaction(async (transaction) => {
+          await insertReportLead(transaction as unknown as ReportDatabase, {
+            id: insertedLeadId,
+            email: 'snapshot-inserted@example.test',
+            source: 'typebot',
+            createdAt: reportAt,
+          });
+          await insertReportQuotation(transaction as unknown as ReportDatabase, fixtureFields, {
+            id: insertedQuotationId,
+            businessNumber: 'ORC-20310005',
+            revisionId: insertedRevisionId,
+            clientId: insertedClientId,
+            createdAt: reportAt,
+            email: 'snapshot-inserted@example.test',
+          });
+          await transaction
+            .delete(quotations)
+            .where(eq(quotations.id, quotationIds[1]));
+          await transaction
+            .update(quoteRevisions)
+            .set({ clienteEmail: 'snapshot-updated@example.test' })
+            .where(eq(quoteRevisions.id, revisionIds[3]));
+          await transaction
+            .delete(quoteLeads)
+            .where(eq(quoteLeads.id, leadIds[3]));
+        });
+        mutationCompleted = true;
+      });
+
+      const listCandidatesWithOptions = listQuotationOriginCandidates as unknown as (
+        database: ReportDatabase,
+        input: { from: Date; to: Date; windowDays: number },
+        options?: { pageSize?: number },
+      ) => Promise<Awaited<ReturnType<typeof listQuotationOriginCandidates>>>;
+      const candidates = await listCandidatesWithOptions(
+        instrumented.database as ReportDatabase,
+        {
+          from: new Date('2026-09-02T00:00:00.000Z'),
+          to: new Date('2026-09-03T00:00:00.000Z'),
+          windowDays: 0,
+        },
+        { pageSize: 1 },
+      );
+
+      assert.equal(mutationCompleted, true);
+      assert.ok(instrumented.getSelectCount() >= 2);
+      assert.equal(instrumented.getSelectCountAtMutation(), 1);
+      assert.deepEqual(instrumented.getTransactionConfig(), {
+        isolationLevel: 'repeatable read',
+        accessMode: 'read only',
+      });
+      assert.deepEqual(
+        candidates
+          .map((candidate) => `${candidate.quotationId}:${candidate.quoteLeadId}`)
+          .sort(),
+        quotationIds
+          .map((quotationId, index) => `${quotationId}:${leadIds[index]}`)
+          .sort(),
+      );
+      assert.equal(new Set(candidates.map((candidate) => candidate.quotationId)).size, 4);
+      assert.equal(candidates.some((candidate) => candidate.quotationId === insertedQuotationId), false);
+      assert.equal(
+        (await database.select().from(quotations).where(eq(quotations.id, quotationIds[1]))).length,
+        0,
+      );
+      assert.equal(
+        (await database.select().from(quotations).where(eq(quotations.id, insertedQuotationId))).length,
+        1,
+      );
+      assert.equal(
+        (await database.select().from(quoteLeads).where(eq(quoteLeads.id, insertedLeadId))).length,
+        1,
+      );
+      assert.equal(
+        (await database.select().from(quotations).where(inArray(quotations.quoteLeadId, leadIds))).length,
+        0,
+      );
+    } finally {
+      await database.delete(quotations).where(
+        inArray(quotations.id, [...quotationIds, insertedQuotationId]),
+      );
+      await database.delete(quoteLeads).where(
+        inArray(quoteLeads.id, [...leadIds, insertedLeadId]),
+      );
+      await database.delete(clients).where(
+        inArray(clients.id, [...clientIds, insertedClientId]),
+      );
+      await writerConnection.end({ timeout: 5 });
+      await connection.end({ timeout: 5 });
     }
   },
 );

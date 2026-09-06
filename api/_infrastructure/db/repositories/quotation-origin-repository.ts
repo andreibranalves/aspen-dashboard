@@ -28,8 +28,24 @@ export interface QuotationOriginCandidate {
   distanceSeconds: number;
 }
 
+export interface QuotationOriginInvalidEvidenceSummary {
+  missing: number;
+  invalid: number;
+}
+
+export interface QuotationOriginCandidateReport {
+  candidates: QuotationOriginCandidate[];
+  invalidEvidence: QuotationOriginInvalidEvidenceSummary;
+}
+
 type QuotationOriginDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 const CANDIDATE_QUERY_PAGE_SIZE = 1_000;
+const STRICT_UTC_ISO_TIMESTAMP =
+  '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\\.[0-9]{3})?Z$';
+
+export interface QuotationOriginCandidateReadOptions {
+  pageSize?: number;
+}
 
 function sourceLabel(source: string): string {
   if (source === 'site_form') return 'Formulário do site';
@@ -213,9 +229,35 @@ function timestampMilliseconds(value: Date | string): number {
 
 /** Read-only investigation aid. Every plausible row is returned; none is selected or written. */
 export async function listQuotationOriginCandidates(
+  database: AppDatabase,
+  input: { from: Date; to: Date; windowDays: number },
+  options: QuotationOriginCandidateReadOptions = {},
+): Promise<QuotationOriginCandidate[]> {
+  const report = await readQuotationOriginCandidateReport(database, input, options);
+  return report.candidates;
+}
+
+export async function readQuotationOriginCandidateReport(
+  database: AppDatabase,
+  input: { from: Date; to: Date; windowDays: number },
+  options: QuotationOriginCandidateReadOptions = {},
+): Promise<QuotationOriginCandidateReport> {
+  const pageSize = options.pageSize ?? CANDIDATE_QUERY_PAGE_SIZE;
+  if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > CANDIDATE_QUERY_PAGE_SIZE) {
+    throw new Error('Tamanho de página inválido no relatório de origem do orçamento.');
+  }
+
+  return database.transaction(
+    (transaction) => listQuotationOriginCandidatesInTransaction(transaction, input, pageSize),
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  );
+}
+
+async function listQuotationOriginCandidatesInTransaction(
   database: QuotationOriginDatabase,
   input: { from: Date; to: Date; windowDays: number },
-): Promise<QuotationOriginCandidate[]> {
+  pageSize: number,
+): Promise<QuotationOriginCandidateReport> {
   const windowMs = input.windowDays * 24 * 60 * 60 * 1000;
   const quotationRows: Array<{
     id: string;
@@ -225,7 +267,7 @@ export async function listQuotationOriginCandidates(
     revisionPhone: string | null;
     revisionVersion: number;
   }> = [];
-  for (let offset = 0; ; offset += CANDIDATE_QUERY_PAGE_SIZE) {
+  for (let offset = 0; ; offset += pageSize) {
     const page = await database
       .select({
         id: quotations.id,
@@ -244,30 +286,60 @@ export async function listQuotationOriginCandidates(
           lt(quotations.createdAt, input.to),
         ),
       )
-      .orderBy(asc(quotations.id), desc(quoteRevisions.version))
-      .limit(CANDIDATE_QUERY_PAGE_SIZE)
+      .orderBy(asc(quotations.id), desc(quoteRevisions.version), asc(quoteRevisions.id))
+      .limit(pageSize)
       .offset(offset);
     quotationRows.push(...page);
-    if (page.length < CANDIDATE_QUERY_PAGE_SIZE) break;
+    if (page.length < pageSize) break;
   }
   const latest = new Map<string, (typeof quotationRows)[number]>();
   for (const row of quotationRows) if (!latest.has(row.id)) latest.set(row.id, row);
   const originalCreatedAtText = sql<string | null>`jsonb_extract_path_text(${quoteLeads.raw}, 'siteSubmission', 'originalCreatedAt')`;
-  const matchingCreatedAt = sql<Date>`CASE
+  // A site form has a durable Sanity timestamp, and no trustworthy substitute
+  // exists when that evidence is absent or malformed. Other sources use their
+  // PostgreSQL creation timestamp by explicit convention.
+  const matchingCreatedAt = sql<Date | null>`CASE
     WHEN ${quoteLeads.source} = 'site_form'
-      AND ${originalCreatedAtText} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?Z$'
+      AND ${originalCreatedAtText} ~ ${STRICT_UTC_ISO_TIMESTAMP}
+      AND pg_input_is_valid(${originalCreatedAtText}, 'timestamptz')
     THEN (${originalCreatedAtText})::timestamptz
-    ELSE ${quoteLeads.createdAt}
+    WHEN ${quoteLeads.source} <> 'site_form' THEN ${quoteLeads.createdAt}
+    ELSE NULL
   END`;
+  const leadFrom = new Date(input.from.getTime() - windowMs).toISOString();
+  const leadTo = new Date(input.to.getTime() + windowMs).toISOString();
+  // Ingestion time scopes the diagnostic only. It is never used as the
+  // matching timestamp for a site form without trustworthy original evidence.
+  const [evidenceSummary] = await database
+    .select({
+      missing: sql<string>`count(*) FILTER (WHERE
+        ${quoteLeads.source} = 'site_form'
+        AND (${originalCreatedAtText} IS NULL OR btrim(${originalCreatedAtText}) = '')
+      )`,
+      invalid: sql<string>`count(*) FILTER (WHERE
+        ${quoteLeads.source} = 'site_form'
+        AND ${originalCreatedAtText} IS NOT NULL
+        AND btrim(${originalCreatedAtText}) <> ''
+        AND NOT (
+          ${originalCreatedAtText} ~ ${STRICT_UTC_ISO_TIMESTAMP}
+          AND pg_input_is_valid(${originalCreatedAtText}, 'timestamptz')
+        )
+      )`,
+    })
+    .from(quoteLeads)
+    .where(
+      and(
+        gte(quoteLeads.createdAt, sql`${leadFrom}::timestamptz`),
+        lt(quoteLeads.createdAt, sql`${leadTo}::timestamptz`),
+      ),
+    );
   const leadRows: Array<{
     id: string;
     email: string | null;
     telefone: string | null;
-    createdAt: Date | string;
+    createdAt: Date | string | null;
   }> = [];
-  const leadFrom = new Date(input.from.getTime() - windowMs).toISOString();
-  const leadTo = new Date(input.to.getTime() + windowMs).toISOString();
-  for (let offset = 0; ; offset += CANDIDATE_QUERY_PAGE_SIZE) {
+  for (let offset = 0; ; offset += pageSize) {
     const page = await database
       .select({
         id: quoteLeads.id,
@@ -283,15 +355,16 @@ export async function listQuotationOriginCandidates(
         ),
       )
       .orderBy(asc(matchingCreatedAt), asc(quoteLeads.id))
-      .limit(CANDIDATE_QUERY_PAGE_SIZE)
+      .limit(pageSize)
       .offset(offset);
     leadRows.push(...page);
-    if (page.length < CANDIDATE_QUERY_PAGE_SIZE) break;
+    if (page.length < pageSize) break;
   }
   const candidates: QuotationOriginCandidate[] = [];
   for (const quotation of latest.values()) {
     const quotationTime = timestampMilliseconds(quotation.createdAt);
     for (const lead of leadRows) {
+      if (lead.createdAt === null) continue;
       const distanceMs = Math.abs(quotationTime - timestampMilliseconds(lead.createdAt));
       if (distanceMs > windowMs) continue;
       const reasons: QuotationOriginCandidate['reasons'] = [];
@@ -310,5 +383,11 @@ export async function listQuotationOriginCandidates(
       }
     }
   }
-  return candidates;
+  return {
+    candidates,
+    invalidEvidence: {
+      missing: Number(evidenceSummary?.missing || 0),
+      invalid: Number(evidenceSummary?.invalid || 0),
+    },
+  };
 }
