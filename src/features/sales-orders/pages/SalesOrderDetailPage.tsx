@@ -231,6 +231,14 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         </div>
 
         <div className="grid grid-cols-1 gap-4 border-b border-line px-6 py-4 sm:grid-cols-2 lg:grid-cols-4">
+          {data.quotation_origin && (
+            <div>
+              <span className="text-xs text-fg-muted">Origem</span>
+              <p className={`mt-1 font-medium ${data.quotation_origin.status === 'conflict' ? 'text-destructive' : ''}`}>
+                {data.quotation_origin.sourceLabel}
+              </p>
+            </div>
+          )}
           <div>
             <span className="text-xs text-fg-muted">Cliente</span>
             <p className="mt-1 font-medium">{data.customer_name || 'Cliente não identificado'}</p>

@@ -310,6 +310,9 @@ export const quotations = pgTable(
     clientId: uuid('client_id')
       .notNull()
       .references(() => clients.id),
+    quoteLeadId: uuid('quote_lead_id').references((): AnyPgColumn => quoteLeads.id, {
+      onDelete: 'restrict',
+    }),
     status: varchar('status', { length: 32 }).$type<QuotationStatus>().notNull().default('rascunho'),
     issuedAt: timestamp('issued_at', { withTimezone: true }),
     lossReason: text('loss_reason'),
@@ -319,6 +322,9 @@ export const quotations = pgTable(
   (table) => [
     uniqueIndex('quotations_business_number_unique').on(table.businessNumber),
     index('quotations_client_created_idx').on(table.clientId, table.createdAt),
+    index('quotations_quote_lead_id_idx')
+      .on(table.quoteLeadId)
+      .where(sql`${table.quoteLeadId} IS NOT NULL`),
     check(
       'quotations_business_number_format_check',
       sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`

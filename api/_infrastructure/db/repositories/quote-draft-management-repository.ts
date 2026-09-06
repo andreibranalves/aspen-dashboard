@@ -32,6 +32,7 @@ import {
 } from '../../../_modules/quotation-content.js';
 import { canonicalQuotationStatus, type QuotationStatus } from '../../../_modules/quotation-status.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
+import { readQuotationOrigin, type QuotationOriginProjection } from './quotation-origin-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -228,6 +229,7 @@ export interface QuoteDraftManagementDetail {
   updatedAt: string;
   concurrency_token: string;
   version_token: string;
+  quotation_origin: QuotationOriginProjection;
   optimistic_concurrency_token: string;
   concurrencyToken: string;
 }
@@ -816,6 +818,7 @@ export async function readPostgresQuotationDetail(
   const sectionsSnapshot = revision.sectionsSnapshot;
   const currentExpired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
   const currentValidityDate = validUntil(revision.createdAt, revision.validadeDias);
+  const quotationOrigin = await readQuotationOrigin(tx, { quotationId: quotation.id });
   return {
     id: quotation.businessNumber,
     quotation_id: quotation.businessNumber,
@@ -867,6 +870,7 @@ export async function readPostgresQuotationDetail(
     version_token: tokenFor(quotation.updatedAt),
     optimistic_concurrency_token: tokenFor(quotation.updatedAt),
     concurrencyToken: tokenFor(quotation.updatedAt),
+    quotation_origin: quotationOrigin,
   };
 }
 
