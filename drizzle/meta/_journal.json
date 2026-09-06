@@ -232,6 +232,13 @@
       "when": 1788652800000,
       "tag": "0032_quotation_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788739200000,
+      "tag": "0033_sales_order_offline_exports",
+      "breakpoints": true
     }
   ]
 }

@@ -23,6 +23,7 @@
   "tests/unit/quotations-postgres.test.ts",
   "tests/unit/quote-leads-postgres.test.ts",
   "tests/unit/sales-dashboard-postgres.test.ts",
+  "tests/unit/sales-order-offline-export-postgres.test.ts",
   "tests/unit/sales-orders-postgres.test.ts",
   "tests/unit/settings-postgres.test.ts",
   "tests/unit/whatsapp-contact-activity-postgres.test.ts",
