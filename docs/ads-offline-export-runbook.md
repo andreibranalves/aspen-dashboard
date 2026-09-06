@@ -39,7 +39,7 @@ O escopo é fixo no código: `https://www.googleapis.com/auth/datamanager`. Não
 
 O `operatingAccount` deve ser o proprietário da ação de conversão `UPLOAD_CLICKS`. Antes de qualquer apply, o operador deve confirmar conta, ação, escopo OAuth, deployment e banco no mesmo alvo e gerar uma prova local de preflight com fingerprint do banco, owner, target, deployment e data de verificação. A prova não é gravada no banco.
 
-O CLI resolve a identidade efetiva do alvo a partir de `DATABASE_URL` e das variáveis `ADS_OFFLINE_RUNTIME_TARGET`, `ADS_OFFLINE_RUNTIME_OWNER` e `ADS_OFFLINE_RUNTIME_DEPLOYMENT_REF`. O fingerprint é SHA-256 de host, porta e database, sem credenciais. O apply e o diagnóstico recusam a prova se qualquer identidade divergir; essas variáveis devem ser injetadas pelo ambiente do alvo, não copiadas do arquivo de prova.
+O CLI resolve a identidade efetiva do alvo a partir de uma `DATABASE_URL` explícita (host, porta, database e usuário) e das variáveis `ADS_OFFLINE_RUNTIME_TARGET`, `ADS_OFFLINE_RUNTIME_OWNER` e `ADS_OFFLINE_RUNTIME_DEPLOYMENT_REF`. O fingerprint é SHA-256 desses quatro campos, sem a senha; fontes PostgreSQL alternativas (`PGSERVICE`, `PGPASSFILE`, `PGOPTIONS` e equivalentes) são recusadas. O apply e o diagnóstico recusam a prova se qualquer identidade divergir; essas variáveis devem ser injetadas pelo ambiente do alvo, não copiadas do arquivo de prova.
 
 ## Comandos
 

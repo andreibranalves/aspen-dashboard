@@ -36,7 +36,10 @@ import {
 } from '../../api/_modules/ads-offline-core.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 
-import { parsePostgresUrl, postgresIdentity } from '../../scripts/postgres-target.mjs';
+import {
+  parsePostgresRuntimeUrl,
+  postgresRuntimeIdentity,
+} from '../../api/_shared/postgres-target.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env, [
@@ -60,8 +63,8 @@ const RUNTIME_TARGET = {
   databaseFingerprint: createHash('sha256')
     .update(
       TEST_DATABASE_URL
-        ? postgresIdentity(parsePostgresUrl(TEST_DATABASE_URL))
-        : '127.0.0.1|55434|aspen_test'
+        ? postgresRuntimeIdentity(parsePostgresRuntimeUrl(TEST_DATABASE_URL, {}))
+        : '127.0.0.1|55434|aspen_test|aspen_test'
     )
     .digest('hex'),
   deploymentRef: 'synthetic-deployment',
@@ -426,6 +429,10 @@ test(
                 field: 'events[0]',
                 reason: 'WARNING_REASON_GENERIC',
                 description: 'Authorization: Bearer synthetic-secret',
+              }, {
+                field: 'events[0]',
+                reason: 'WARNING_REASON_SYNTHETIC_SECRET_123',
+                description: 'synthetic-secret',
               }],
             };
           },
@@ -472,7 +479,9 @@ test(
       assert.equal(acceptedAttempt?.diagnosticStatus, 'success');
       assert.deepEqual(acceptedAttempt?.fieldWarnings, [
         { code: 'GOOGLE_DM_FIELD_WARNING', field: 'events[0]', reason: 'WARNING_REASON_GENERIC' },
+        { code: 'GOOGLE_DM_FIELD_WARNING', field: 'events[0]' },
       ]);
+      assert.equal(JSON.stringify(acceptedAttempt?.fieldWarnings).includes('SYNTHETIC_SECRET'), false);
       await database
         .update(salesOrders)
         .set({ grandTotal: '999.99' })
@@ -539,8 +548,15 @@ test(
         requestId: 'request-partial',
         result: {
           status: 'partial_success',
-          errorCounts: [{ reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: 2 }],
-          warningCounts: [{ reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: 1 }],
+          errorCounts: [
+            { reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: 2 },
+            { reason: 'PROCESSING_ERROR_OPERATING_ACCOUNT_MISMATCH_FOR_AD_IDENTIFIER', recordCount: 1 },
+            { reason: 'PROCESSING_ERROR_REASON_SYNTHETIC_SECRET_123', recordCount: 3 },
+          ],
+          warningCounts: [
+            { reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: 1 },
+            { reason: 'PROCESSING_WARNING_REASON_SYNTHETIC_SECRET_123', recordCount: 4 },
+          ],
         },
         checkedAt: NOW,
       });
@@ -552,8 +568,12 @@ test(
         .where(eq(salesOrderOfflineExportAttempts.id, partialClaim.attempt.id));
       assert.deepEqual(partialAttempt?.fieldWarnings, [
         { code: 'GOOGLE_DM_DIAGNOSTIC_ERROR_COUNT', reason: 'PROCESSING_ERROR_REASON_INVALID_EVENT', recordCount: 2 },
+        { code: 'GOOGLE_DM_DIAGNOSTIC_ERROR_COUNT', reason: 'PROCESSING_ERROR_OPERATING_ACCOUNT_MISMATCH_FOR_AD_IDENTIFIER', recordCount: 1 },
+        { code: 'GOOGLE_DM_DIAGNOSTIC_ERROR_COUNT', reason: 'PROCESSING_ERROR_REASON_UNSPECIFIED', recordCount: 3 },
         { code: 'GOOGLE_DM_DIAGNOSTIC_WARNING_COUNT', reason: 'PROCESSING_WARNING_REASON_INTERNAL_ERROR', recordCount: 1 },
+        { code: 'GOOGLE_DM_DIAGNOSTIC_WARNING_COUNT', reason: 'PROCESSING_WARNING_REASON_UNSPECIFIED', recordCount: 4 },
       ]);
+      assert.equal(JSON.stringify(partialAttempt?.fieldWarnings).includes('SYNTHETIC_SECRET'), false);
 
       const expiredExport = await prepare(evidence.find((item) => item.salesOrderId === expired.order.id)!);
       const expiredClaim = await repository.claim(expiredExport.id, { now: NOW, leaseMs: 1_000 });

@@ -2,13 +2,22 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { parseAdsOfflineArgs, runAdsOffline } from '../../scripts/ads-offline.mjs';
+import { createDatabaseConnection } from '../../api/_infrastructure/db/client.js';
+import {
+  parsePostgresRuntimeUrl,
+  postgresRuntimeIdentity,
+} from '../../api/_shared/postgres-target.js';
+import {
+  parseAdsOfflineArgs,
+  resolveAdsOfflineRuntimeTarget,
+  runAdsOffline,
+} from '../../scripts/ads-offline.mjs';
 
 const VALID_ARGS = ['--from', '2026-09-01T00:00:00Z', '--to', '2026-09-02T00:00:00Z'];
 const EXPORT_ID = '55555555-5555-4555-8555-555555555555';
 const DATABASE_URL = 'postgresql://synthetic:synthetic@127.0.0.1:55434/aspen_test';
 const DATABASE_FINGERPRINT = createHash('sha256')
-  .update('127.0.0.1|55434|aspen_test')
+  .update('127.0.0.1|55434|aspen_test|synthetic')
   .digest('hex');
 const RUNTIME_ENV = {
   DATABASE_URL,
@@ -47,6 +56,111 @@ test('ads offline CLI requires one explicit mode and refuses force', () => {
     'diagnose'
   );
   assert.throws(() => parseAdsOfflineArgs(['--diagnose', EXPORT_ID]), /preflight-proof/);
+});
+
+test('ads offline preflight rejects ambiguous PostgreSQL selectors before any effect', async () => {
+  const proof = JSON.stringify({ databaseFingerprint: DATABASE_FINGERPRINT });
+  const cases = [
+    {
+      ...RUNTIME_ENV,
+      DATABASE_URL: 'postgresql://synthetic:synthetic@127.0.0.1/aspen_test',
+      PGPORT: '55434',
+    },
+    {
+      ...RUNTIME_ENV,
+      DATABASE_URL: 'postgresql://:synthetic@127.0.0.1:55434/aspen_test',
+      PGUSER: 'synthetic',
+    },
+    {
+      ...RUNTIME_ENV,
+      DATABASE_URL: `${DATABASE_URL}?service=synthetic-service`,
+    },
+    { ...RUNTIME_ENV, PGSERVICE: 'synthetic-service' },
+    { ...RUNTIME_ENV, PGPASSFILE: '/synthetic/passfile' },
+    { ...RUNTIME_ENV, PGOPTIONS: '-c search_path=synthetic' },
+  ];
+
+  for (const env of cases) {
+    assert.throws(() => resolveAdsOfflineRuntimeTarget(env), /DATABASE_URL|ambíguo|explícit/);
+  }
+
+  const effects: string[] = [];
+  let fileReads = 0;
+  let stderr = '';
+  const exitCode = await runAdsOffline({
+    argv: [
+      '--from',
+      '2026-09-01T00:00:00Z',
+      '--to',
+      '2026-09-02T00:00:00Z',
+      '--apply',
+      '--approved-orders',
+      'orders.json',
+      '--preflight-proof',
+      'proof.json',
+    ],
+    env: {
+      ...RUNTIME_ENV,
+      DATABASE_URL: 'postgresql://synthetic:synthetic@127.0.0.1/aspen_test',
+      PGPORT: '55434',
+    },
+    getDatabase: () => {
+      effects.push('database');
+      throw new Error('database must not be constructed');
+    },
+    createRepository: () => {
+      effects.push('repository');
+      throw new Error('repository must not be constructed');
+    },
+    createTransport: () => {
+      effects.push('transport');
+      throw new Error('transport must not be constructed');
+    },
+    readFile: () => {
+      fileReads += 1;
+      return proof;
+    },
+    closeDatabase: async () => undefined,
+    stdout: { write: () => true },
+    stderr: {
+      write: (value: string) => {
+        stderr += value;
+        return true;
+      },
+    },
+  });
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(effects, []);
+  assert.equal(fileReads, 0);
+  assert.doesNotMatch(stderr, /55434|synthetic/);
+});
+
+test('explicit PostgreSQL URL identity is the same proof and client target', async () => {
+  const connection = parsePostgresRuntimeUrl(DATABASE_URL, RUNTIME_ENV);
+  const runtimeTarget = resolveAdsOfflineRuntimeTarget(RUNTIME_ENV);
+  assert.equal(postgresRuntimeIdentity(connection), '127.0.0.1|55434|aspen_test|synthetic');
+  assert.equal(runtimeTarget.databaseFingerprint, DATABASE_FINGERPRINT);
+
+  const database = createDatabaseConnection(DATABASE_URL, { strictTarget: true });
+  try {
+    assert.deepEqual(
+      {
+        host: database.client.options.host,
+        port: database.client.options.port,
+        user: database.client.options.user,
+        database: database.client.options.database,
+      },
+      {
+        host: ['127.0.0.1'],
+        port: [55434],
+        user: 'synthetic',
+        database: 'aspen_test',
+      }
+    );
+  } finally {
+    await database.client.end({ timeout: 0 });
+  }
 });
 
 test('ads offline CLI dry-run has no database connection or transport call in the seam', async () => {
@@ -147,7 +261,13 @@ test('ads offline CLI runs the protected diagnostic path without ingesting', asy
     env: RUNTIME_ENV,
     createRepository: () => ({
       get: async (id: string) =>
-        id === EXPORT_ID ? { state: 'accepted_pending_diagnostic' } : null,
+        id === EXPORT_ID
+          ? {
+              state: 'accepted_pending_diagnostic',
+              destinationAccountId: RUNTIME_ENV.GOOGLE_DATA_MANAGER_OPERATING_ACCOUNT_ID,
+              destinationActionId: RUNTIME_ENV.GOOGLE_DATA_MANAGER_PRODUCT_DESTINATION_ID,
+            }
+          : null,
       getLatestAcceptedAttempt: async () => ({
         id: '66666666-6666-4666-8666-666666666666',
         requestId: 'request-synthetic',

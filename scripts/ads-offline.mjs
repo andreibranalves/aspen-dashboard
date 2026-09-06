@@ -3,16 +3,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-import { closeDatabase, getDatabase } from '../api/_infrastructure/db/client.js';
-import {
-  destinationFromGoogleDataManagerConfig,
-  getGoogleDataManagerConfig,
-  isGoogleDataManagerConfigured,
-} from '../api/_infrastructure/integrations/google-data-manager/config.js';
-import { getGoogleDataManagerClient } from '../api/_infrastructure/integrations/google-data-manager/client.js';
 import { createAdsOfflineService, AdsOfflinePreflightError } from '../api/_modules/ads-offline.js';
-import { createPostgresSalesOrderOfflineExportRepository } from '../api/_infrastructure/db/repositories/sales-order-offline-export-repository.js';
-import { parsePostgresUrl, postgresIdentity } from './postgres-target.mjs';
+import {
+  parsePostgresRuntimeUrl,
+  postgresRuntimeIdentity,
+} from '../api/_shared/postgres-target.js';
 
 const SAFE_INFRASTRUCTURE_ERROR = 'Falha ao executar exportação offline.';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -42,11 +37,12 @@ export function resolveAdsOfflineRuntimeTarget(env = process.env) {
   }
   let databaseFingerprint;
   try {
+    const connection = parsePostgresRuntimeUrl(env.DATABASE_URL, env);
     databaseFingerprint = createHash('sha256')
-      .update(postgresIdentity(parsePostgresUrl(env.DATABASE_URL)))
+      .update(postgresRuntimeIdentity(connection))
       .digest('hex');
   } catch {
-    throw new AdsOfflinePreflightError('DATABASE_URL inválida para o preflight.');
+    throw new AdsOfflinePreflightError('DATABASE_URL ambígua ou inválida para o preflight.');
   }
   return { target, owner, databaseFingerprint, deploymentRef };
 }
@@ -133,21 +129,18 @@ function reviewedOrderIds(value) {
 export async function runAdsOffline({
   argv = process.argv.slice(2),
   env = process.env,
-  getDatabase: getDatabaseFn = getDatabase,
-  closeDatabase: closeDatabaseFn = closeDatabase,
-  createRepository = createPostgresSalesOrderOfflineExportRepository,
-  createTransport = getGoogleDataManagerClient,
+  getDatabase: getDatabaseOverride,
+  closeDatabase: closeDatabaseOverride,
+  createRepository: createRepositoryOverride,
+  createTransport: createTransportOverride,
   readFile = readFileSync,
   stdout = process.stdout,
   stderr = process.stderr,
 } = {}) {
   let failure = null;
+  let closeDatabaseFn = closeDatabaseOverride;
   try {
     const input = parseAdsOfflineArgs(argv);
-    const config = getGoogleDataManagerConfig(env);
-    const destination = isGoogleDataManagerConfigured(config)
-      ? destinationFromGoogleDataManagerConfig(config)
-      : null;
     let approved = null;
     let proof = null;
     let runtimeTarget = null;
@@ -157,8 +150,37 @@ export async function runAdsOffline({
     }
     if (input.mode === 'apply')
       approved = reviewedOrderIds(readJson(input.approvedOrdersPath, readFile));
+    const {
+      destinationFromGoogleDataManagerConfig,
+      getGoogleDataManagerConfig,
+      isGoogleDataManagerConfigured,
+    } = await import('../api/_infrastructure/integrations/google-data-manager/config.js');
+    const config = getGoogleDataManagerConfig(env);
+    const destination = isGoogleDataManagerConfigured(config)
+      ? destinationFromGoogleDataManagerConfig(config)
+      : null;
+    let getDatabaseFn = getDatabaseOverride;
+    let createRepository = createRepositoryOverride;
+    let createTransport = createTransportOverride;
+    if (!getDatabaseFn || !closeDatabaseFn) {
+      const database = await import('../api/_infrastructure/db/client.js');
+      getDatabaseFn ||= database.getDatabase;
+      closeDatabaseFn ||= database.closeDatabase;
+    }
+    if (!createRepository) {
+      createRepository = (
+        await import('../api/_infrastructure/db/repositories/sales-order-offline-export-repository.js')
+      ).createPostgresSalesOrderOfflineExportRepository;
+    }
+    if (!createTransport) {
+      createTransport = (
+        await import('../api/_infrastructure/integrations/google-data-manager/client.js')
+      ).getGoogleDataManagerClient;
+    }
+    const databaseProvider =
+      input.mode === 'dry-run' ? getDatabaseFn : () => getDatabaseFn({ strictTarget: true });
     const service = createAdsOfflineService({
-      repository: createRepository(getDatabaseFn),
+      repository: createRepository(databaseProvider),
       transport: createTransport({ getConfig: () => config }),
       destination,
     });
@@ -201,7 +223,7 @@ export async function runAdsOffline({
   }
 
   try {
-    await closeDatabaseFn();
+    if (closeDatabaseFn) await closeDatabaseFn();
   } catch (error) {
     if (!failure) failure = error;
   }

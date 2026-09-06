@@ -6,6 +6,7 @@ import {
   GOOGLE_DATA_MANAGER_SCOPE,
   isRetryableDiagnosticCode,
   selectOfflineOrder,
+  sanitizeDiagnosticCounts,
   sanitizeTransportDetail,
   sanitizeTransportWarnings,
   validateOfflinePreflight,
@@ -291,6 +292,116 @@ test('transport diagnostics keep only controlled fields and fixed detail text', 
   assert.equal(isRetryableDiagnosticCode('GOOGLE_DM_HTTP_400'), false);
 });
 
+test('Data Manager catalogs preserve every current supported reason and reject injected values', () => {
+  const fieldWarningReasons = [
+    'WARNING_REASON_UNSPECIFIED',
+    'WARNING_REASON_CUSTOM_VARIABLE_NOT_ENABLED',
+    'WARNING_REASON_CUSTOM_VARIABLE_NOT_PREDEFINED',
+    'WARNING_REASON_CART_DATA_NOT_SUPPORTED_WITH_GBRAID_OR_WBRAID',
+    'WARNING_REASON_CART_DATA_ITEM_MERCHANT_PRODUCT_ID_MISSING',
+    'WARNING_REASON_CART_DATA_ITEM_UNIT_PRICE_MISSING',
+    'WARNING_REASON_GENERIC',
+    'WARNING_REASON_INVALID_CLIENT_ID',
+    'WARNING_REASON_INVALID_SUBDIVISION_CODE',
+    'WARNING_REASON_INVALID_REGION_CODE',
+    'WARNING_REASON_INVALID_SUBCONTINENT_CODE',
+    'WARNING_REASON_INVALID_CONTINENT_CODE',
+    'WARNING_REASON_INVALID_DEVICE_CATEGORY',
+    'WARNING_REASON_INVALID_DEVICE_SCREEN_RESOLUTION',
+    'WARNING_REASON_INVALID_MERCHANT_ID',
+  ];
+  const processingErrorReasons = [
+    'PROCESSING_ERROR_REASON_UNSPECIFIED',
+    'PROCESSING_ERROR_REASON_INVALID_CUSTOM_VARIABLE',
+    'PROCESSING_ERROR_REASON_CUSTOM_VARIABLE_NOT_ENABLED',
+    'PROCESSING_ERROR_REASON_EVENT_TOO_OLD',
+    'PROCESSING_ERROR_REASON_DENIED_CONSENT',
+    'PROCESSING_ERROR_REASON_NO_CONSENT',
+    'PROCESSING_ERROR_REASON_UNKNOWN_CONSENT',
+    'PROCESSING_ERROR_REASON_DUPLICATE_GCLID',
+    'PROCESSING_ERROR_REASON_DUPLICATE_TRANSACTION_ID',
+    'PROCESSING_ERROR_REASON_INVALID_GBRAID',
+    'PROCESSING_ERROR_REASON_INVALID_GCLID',
+    'PROCESSING_ERROR_REASON_INVALID_MERCHANT_ID',
+    'PROCESSING_ERROR_REASON_INVALID_WBRAID',
+    'PROCESSING_ERROR_REASON_INTERNAL_ERROR',
+    'PROCESSING_ERROR_REASON_DESTINATION_ACCOUNT_ENHANCED_CONVERSIONS_TERMS_NOT_SIGNED',
+    'PROCESSING_ERROR_REASON_INVALID_EVENT',
+    'PROCESSING_ERROR_REASON_INSUFFICIENT_MATCHED_TRANSACTIONS',
+    'PROCESSING_ERROR_REASON_INSUFFICIENT_TRANSACTIONS',
+    'PROCESSING_ERROR_REASON_INVALID_FORMAT',
+    'PROCESSING_ERROR_REASON_DECRYPTION_ERROR',
+    'PROCESSING_ERROR_REASON_DEK_DECRYPTION_ERROR',
+    'PROCESSING_ERROR_REASON_INVALID_WIP',
+    'PROCESSING_ERROR_REASON_INVALID_KEK',
+    'PROCESSING_ERROR_REASON_WIP_AUTH_FAILED',
+    'PROCESSING_ERROR_REASON_KEK_PERMISSION_DENIED',
+    'PROCESSING_ERROR_REASON_AWS_AUTH_FAILED',
+    'PROCESSING_ERROR_REASON_USER_IDENTIFIER_DECRYPTION_ERROR',
+    'PROCESSING_ERROR_OPERATING_ACCOUNT_MISMATCH_FOR_AD_IDENTIFIER',
+    'PROCESSING_ERROR_REASON_ONE_PER_CLICK_CONVERSION_ACTION_NOT_PERMITTED_WITH_BRAID',
+    'PROCESSING_ERROR_REASON_MATCH_ID_NOT_FOUND',
+    'PROCESSING_ERROR_REASON_USER_ID_NOT_FOUND_FOR_MATCH_ID',
+    'PROCESSING_ERROR_REASON_USER_ID_NOT_FOUND_FOR_GCLID',
+    'PROCESSING_ERROR_REASON_USER_ID_NOT_FOUND_FOR_DCLID',
+    'PROCESSING_ERROR_REASON_INVALID_AD_IDENTIFIERS',
+    'PROCESSING_ERROR_REASON_INVALID_MOBILE_ID_FORMAT',
+    'PROCESSING_ERROR_REASON_ORIGINAL_CONVERSIONS_NOT_FOUND',
+    'PROCESSING_ERROR_REASON_EVENT_ID_DECODE_ERROR',
+    'PROCESSING_ERROR_REASON_USER_ID_NOT_FOUND_FOR_IMPRESSION_ID',
+    'PROCESSING_ERROR_REASON_USER_ID_NOT_FOUND',
+    'PROCESSING_ERROR_REASON_CONVERSION_PRECEDES_CLICK',
+    'PROCESSING_ERROR_REASON_TOO_RECENT_CLICK',
+    'PROCESSING_ERROR_REASON_INVALID_CLICK',
+    'PROCESSING_ERROR_REASON_INVALID_OPERATING_ACCOUNT_FOR_CLICK',
+    'PROCESSING_ERROR_REASON_CLICK_NOT_FOUND',
+    'PROCESSING_ERROR_REASON_EXTERNAL_ATTRIBUTION_DATA_MISSING',
+  ];
+  const processingWarningReasons = [
+    'PROCESSING_WARNING_REASON_UNSPECIFIED',
+    'PROCESSING_WARNING_REASON_KEK_PERMISSION_DENIED',
+    'PROCESSING_WARNING_REASON_DEK_DECRYPTION_ERROR',
+    'PROCESSING_WARNING_REASON_DECRYPTION_ERROR',
+    'PROCESSING_WARNING_REASON_WIP_AUTH_FAILED',
+    'PROCESSING_WARNING_REASON_INVALID_WIP',
+    'PROCESSING_WARNING_REASON_INVALID_KEK',
+    'PROCESSING_WARNING_REASON_USER_IDENTIFIER_DECRYPTION_ERROR',
+    'PROCESSING_WARNING_REASON_INTERNAL_ERROR',
+    'PROCESSING_WARNING_REASON_AWS_AUTH_FAILED',
+  ];
+
+  for (const reason of fieldWarningReasons) {
+    assert.deepEqual(sanitizeTransportWarnings([{ field: 'events[0]', reason }]), [
+      { code: 'GOOGLE_DM_FIELD_WARNING', field: 'events[0]', reason },
+    ]);
+  }
+  for (const reason of processingErrorReasons) {
+    assert.deepEqual(sanitizeDiagnosticCounts([{ reason, recordCount: '2' }], 'error'), [
+      { reason, recordCount: 2 },
+    ]);
+  }
+  for (const reason of processingWarningReasons) {
+    assert.deepEqual(sanitizeDiagnosticCounts([{ reason, recordCount: '2' }], 'warning'), [
+      { reason, recordCount: 2 },
+    ]);
+  }
+
+  const secret = 'WARNING_REASON_SYNTHETIC_SECRET_123';
+  const unknownError = 'PROCESSING_ERROR_REASON_SYNTHETIC_SECRET_123';
+  const unknownWarning = 'PROCESSING_WARNING_REASON_SYNTHETIC_SECRET_123';
+  const sanitized = {
+    field: sanitizeTransportWarnings([{ field: 'events[0]', reason: secret }]),
+    error: sanitizeDiagnosticCounts([{ reason: unknownError, recordCount: '2' }], 'error'),
+    warning: sanitizeDiagnosticCounts([{ reason: unknownWarning, recordCount: '3' }], 'warning'),
+  };
+  assert.deepEqual(sanitized, {
+    field: [{ code: 'GOOGLE_DM_FIELD_WARNING', field: 'events[0]' }],
+    error: [{ reason: 'PROCESSING_ERROR_REASON_UNSPECIFIED', recordCount: 2 }],
+    warning: [{ reason: 'PROCESSING_WARNING_REASON_UNSPECIFIED', recordCount: 3 }],
+  });
+  assert.equal(JSON.stringify(sanitized).includes('SYNTHETIC_SECRET'), false);
+});
+
 test('dry-run only reads and never calls transport or repository writes', async () => {
   let transportCalls = 0;
   let writeCalls = 0;
@@ -448,6 +559,60 @@ test('apply rejects a mismatched target before recovery, claims, writes, or tran
   assert.deepEqual(effects, []);
 });
 
+test('diagnose rejects a ledger destination mismatch before fetch or persistence', async () => {
+  const effects: string[] = [];
+  const repository = {
+    get: async () => {
+      effects.push('get');
+      return {
+        state: 'accepted_pending_diagnostic',
+        destinationAccountId: 'other-account',
+        destinationActionId: DESTINATION.productDestinationId,
+      };
+    },
+    getLatestAcceptedAttempt: async () => {
+      effects.push('get-attempt');
+      return {
+        id: '66666666-6666-4666-8666-666666666666',
+        requestId: 'request-wrong-destination',
+        errorCode: null,
+      };
+    },
+    recordDiagnostic: async () => {
+      effects.push('record');
+      return true;
+    },
+    recordDiagnosticError: async () => {
+      effects.push('record-error');
+      return true;
+    },
+  } as unknown as OfflineExportRepository;
+  const service = createAdsOfflineService({
+    repository,
+    destination: DESTINATION,
+    transport: {
+      ingest: async () => {
+        effects.push('ingest');
+        throw new Error('must not ingest');
+      },
+      retrieveStatus: async () => {
+        effects.push('retrieve');
+        return { status: 'success' as const };
+      },
+    },
+  });
+
+  assert.equal(
+    await service.diagnose({
+      exportId: '55555555-5555-4555-8555-555555555555',
+      preflightProof: preflightProof(),
+      runtimeTarget: RUNTIME_TARGET,
+    }),
+    false
+  );
+  assert.deepEqual(effects, ['get']);
+});
+
 test('diagnose retries a transient diagnostic without ingesting again', async () => {
   let state: 'accepted_pending_diagnostic' | 'needs_review' = 'accepted_pending_diagnostic';
   let reviewReason: string | null = null;
@@ -457,7 +622,12 @@ test('diagnose retries a transient diagnostic without ingesting again', async ()
   let diagnosticErrors = 0;
   let diagnosticResults = 0;
   const repository = {
-    get: async () => ({ state, reviewReason }),
+    get: async () => ({
+      state,
+      reviewReason,
+      destinationAccountId: DESTINATION.operatingAccountId,
+      destinationActionId: DESTINATION.productDestinationId,
+    }),
     getLatestAcceptedAttempt: async () => ({
       id: '66666666-6666-4666-8666-666666666666',
       requestId: 'request-diagnostic-retry',

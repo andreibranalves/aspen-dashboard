@@ -441,6 +441,13 @@ export function createAdsOfflineService(options: AdsOfflineServiceOptions) {
     if (!proofCheck.ok)
       throw new AdsOfflinePreflightError(`Preflight recusado: ${proofCheck.reason}.`);
     const ledger = await repository.get(input.exportId);
+    if (
+      ledger &&
+      (ledger.destinationAccountId !== destination.operatingAccountId ||
+        ledger.destinationActionId !== destination.productDestinationId)
+    ) {
+      return false;
+    }
     const attempt = ledger ? await repository.getLatestAcceptedAttempt(input.exportId) : null;
     if (!attempt?.requestId) return false;
     const canRetryDiagnostic =
