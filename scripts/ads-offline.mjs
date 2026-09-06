@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { createAdsOfflineService, AdsOfflinePreflightError } from '../api/_modules/ads-offline.js';
+import { validateOfflinePreflight } from '../api/_modules/ads-offline-core.js';
 import {
   parsePostgresRuntimeUrl,
   postgresRuntimeIdentity,
@@ -148,8 +149,6 @@ export async function runAdsOffline({
       runtimeTarget = resolveAdsOfflineRuntimeTarget(env);
       proof = readJson(input.preflightProofPath, readFile);
     }
-    if (input.mode === 'apply')
-      approved = reviewedOrderIds(readJson(input.approvedOrdersPath, readFile));
     const {
       destinationFromGoogleDataManagerConfig,
       getGoogleDataManagerConfig,
@@ -159,6 +158,15 @@ export async function runAdsOffline({
     const destination = isGoogleDataManagerConfigured(config)
       ? destinationFromGoogleDataManagerConfig(config)
       : null;
+    if (input.mode !== 'dry-run') {
+      if (!destination)
+        throw new AdsOfflinePreflightError('Destino do Data Manager não configurado.');
+      const proofCheck = validateOfflinePreflight(proof, destination, runtimeTarget);
+      if (!proofCheck.ok)
+        throw new AdsOfflinePreflightError(`Preflight recusado: ${proofCheck.reason}.`);
+    }
+    if (input.mode === 'apply')
+      approved = reviewedOrderIds(readJson(input.approvedOrdersPath, readFile));
     let getDatabaseFn = getDatabaseOverride;
     let createRepository = createRepositoryOverride;
     let createTransport = createTransportOverride;

@@ -57,6 +57,7 @@ export function parsePostgresRuntimeUrl(
     const password = decodeURIComponent(parsed.password);
     if (
       !parsed.hostname ||
+      parsed.hostname.includes(':') ||
       parsed.hostname.includes(',') ||
       !parsed.port ||
       !database ||
@@ -86,7 +87,7 @@ export function parsePostgresRuntimeUrl(
 }
 
 export function postgresRuntimeIdentity(connection: PostgresRuntimeConnection): string {
-  return [connection.host, connection.port, connection.database, connection.user].join('|');
+  return JSON.stringify([connection.host, connection.port, connection.database, connection.user]);
 }
 
 export function postgresRuntimeOptions(connection: PostgresRuntimeConnection) {

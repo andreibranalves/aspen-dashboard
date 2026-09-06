@@ -17,7 +17,7 @@ const VALID_ARGS = ['--from', '2026-09-01T00:00:00Z', '--to', '2026-09-02T00:00:
 const EXPORT_ID = '55555555-5555-4555-8555-555555555555';
 const DATABASE_URL = 'postgresql://synthetic:synthetic@127.0.0.1:55434/aspen_test';
 const DATABASE_FINGERPRINT = createHash('sha256')
-  .update('127.0.0.1|55434|aspen_test|synthetic')
+  .update(JSON.stringify(['127.0.0.1', '55434', 'aspen_test', 'synthetic']))
   .digest('hex');
 const RUNTIME_ENV = {
   DATABASE_URL,
@@ -136,10 +136,191 @@ test('ads offline preflight rejects ambiguous PostgreSQL selectors before any ef
   assert.doesNotMatch(stderr, /55434|synthetic/);
 });
 
+test('PostgreSQL runtime identity is collision-free after URL decoding', () => {
+  const parsed = (user: string, database: string, password = 'synthetic') =>
+    parsePostgresRuntimeUrl(
+      `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:55434/${encodeURIComponent(database)}`,
+      {}
+    );
+  const decodedTargets = [
+    parsed('c', 'a|b'),
+    parsed('b|c', 'a'),
+    parsed('usuário', 'base/☃'),
+    parsed('usuario\u0301', 'base/☃'),
+    parsed('percent%value', 'base|%'),
+  ];
+  const identities = decodedTargets.map(postgresRuntimeIdentity);
+
+  assert.equal(new Set(identities).size, decodedTargets.length);
+  assert.notEqual(identities[0], identities[1]);
+  assert.equal(identities[0], postgresRuntimeIdentity(parsed('c', 'a|b', 'other-password')));
+  assert.equal(decodedTargets[2].user, 'usuário');
+  assert.equal(decodedTargets[4].database, 'base|%');
+
+  const emptyTargets = [
+    ['', ''],
+    ['', '|'],
+    ['|', ''],
+    ['a', 'b|c'],
+    ['a|b', 'c'],
+  ].map(([user, database]) => ({
+    raw: '',
+    host: '127.0.0.1',
+    port: '55434',
+    user,
+    password: '',
+    database,
+  }));
+  assert.equal(new Set(emptyTargets.map(postgresRuntimeIdentity)).size, emptyTargets.length);
+});
+
+test('ads offline rejects a colliding proof/runtime database before protected reads or DB setup', async () => {
+  const proofDatabaseUrl = 'postgresql://c:synthetic@127.0.0.1:55434/a%7Cb';
+  const runtimeDatabaseUrl = 'postgresql://b%7Cc:synthetic@127.0.0.1:55434/a';
+  const proof = JSON.stringify({
+    target: RUNTIME_ENV.ADS_OFFLINE_RUNTIME_TARGET,
+    owner: RUNTIME_ENV.ADS_OFFLINE_RUNTIME_OWNER,
+    databaseFingerprint: createHash('sha256')
+      .update(postgresRuntimeIdentity(parsePostgresRuntimeUrl(proofDatabaseUrl, {})))
+      .digest('hex'),
+    deploymentRef: RUNTIME_ENV.ADS_OFFLINE_RUNTIME_DEPLOYMENT_REF,
+    operatingAccountId: RUNTIME_ENV.GOOGLE_DATA_MANAGER_OPERATING_ACCOUNT_ID,
+    productDestinationId: RUNTIME_ENV.GOOGLE_DATA_MANAGER_PRODUCT_DESTINATION_ID,
+    productDestinationType: 'UPLOAD_CLICKS',
+    oauthScope: 'https://www.googleapis.com/auth/datamanager',
+    verifiedAt: '2026-09-01T12:00:00.000Z',
+  });
+  let proofReads = 0;
+  let approvedReads = 0;
+  const effects: string[] = [];
+  let stderr = '';
+  const exitCode = await runAdsOffline({
+    argv: [
+      ...VALID_ARGS,
+      '--apply',
+      '--approved-orders',
+      'orders.json',
+      '--preflight-proof',
+      'proof.json',
+    ],
+    env: { ...RUNTIME_ENV, DATABASE_URL: runtimeDatabaseUrl },
+    readFile: (path: string) => {
+      if (path === 'proof.json') proofReads += 1;
+      else approvedReads += 1;
+      return path === 'proof.json' ? proof : JSON.stringify([EXPORT_ID]);
+    },
+    createRepository: () => {
+      effects.push('repository');
+      throw new Error('repository must not be constructed');
+    },
+    createTransport: () => {
+      effects.push('transport');
+      throw new Error('transport must not be constructed');
+    },
+    stdout: { write: () => true },
+    stderr: {
+      write: (value: string) => {
+        stderr += value;
+        return true;
+      },
+    },
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(proofReads, 1);
+  assert.equal(approvedReads, 0);
+  assert.deepEqual(effects, []);
+  assert.equal(stderr, 'Preflight recusado: preflight_databaseFingerprint_mismatch.\n');
+});
+
+test('strict PostgreSQL runtime parser rejects bracketed IPv6 with a fixed error', () => {
+  assert.throws(
+    () => parsePostgresRuntimeUrl('postgresql://synthetic:synthetic@[::1]:55434/aspen_test', {}),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === 'DATABASE_URL precisa informar um alvo PostgreSQL explícito e não ambíguo.'
+  );
+});
+
+test('ads offline apply and diagnose reject bracketed IPv6 before protected effects', async () => {
+  const modes = [
+    [
+      ...VALID_ARGS,
+      '--apply',
+      '--approved-orders',
+      'orders.json',
+      '--preflight-proof',
+      'proof.json',
+    ],
+    ['--diagnose', EXPORT_ID, '--preflight-proof', 'proof.json'],
+  ];
+  const observations = [];
+
+  for (const argv of modes) {
+    let fileReads = 0;
+    const effects: string[] = [];
+    let stderr = '';
+    const exitCode = await runAdsOffline({
+      argv,
+      env: {
+        ...RUNTIME_ENV,
+        DATABASE_URL: 'postgresql://synthetic:synthetic@[::1]:55434/aspen_test',
+      },
+      readFile: () => {
+        fileReads += 1;
+        return '{}';
+      },
+      createRepository: () => {
+        effects.push('repository');
+        throw new Error('repository must not be constructed');
+      },
+      createTransport: () => {
+        effects.push('transport');
+        throw new Error('transport must not be constructed');
+      },
+      stdout: { write: () => true },
+      stderr: {
+        write: (value: string) => {
+          stderr += value;
+          return true;
+        },
+      },
+    });
+
+    observations.push({
+      mode: argv.includes('--apply') ? 'apply' : 'diagnose',
+      exitCode,
+      fileReads,
+      effects,
+      stderr,
+    });
+  }
+
+  assert.deepEqual(observations, [
+    {
+      mode: 'apply',
+      exitCode: 1,
+      fileReads: 0,
+      effects: [],
+      stderr: 'DATABASE_URL ambígua ou inválida para o preflight.\n',
+    },
+    {
+      mode: 'diagnose',
+      exitCode: 1,
+      fileReads: 0,
+      effects: [],
+      stderr: 'DATABASE_URL ambígua ou inválida para o preflight.\n',
+    },
+  ]);
+});
+
 test('explicit PostgreSQL URL identity is the same proof and client target', async () => {
   const connection = parsePostgresRuntimeUrl(DATABASE_URL, RUNTIME_ENV);
   const runtimeTarget = resolveAdsOfflineRuntimeTarget(RUNTIME_ENV);
-  assert.equal(postgresRuntimeIdentity(connection), '127.0.0.1|55434|aspen_test|synthetic');
+  assert.equal(
+    postgresRuntimeIdentity(connection),
+    JSON.stringify(['127.0.0.1', '55434', 'aspen_test', 'synthetic'])
+  );
   assert.equal(runtimeTarget.databaseFingerprint, DATABASE_FINGERPRINT);
 
   const database = createDatabaseConnection(DATABASE_URL, { strictTarget: true });
