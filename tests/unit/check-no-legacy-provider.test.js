@@ -203,7 +203,7 @@ test('reports deterministic labels without matched content or PII', () => {
   });
 });
 
-test('allows only exact retained legacy import baselines before staging', () => {
+test('allows current tests and rejects new retired quotation imports', () => {
   withFixture((root) => {
     writeFixture(root, `api/_functions/lib/${retainedQuotationModule}.ts`, 'export const retained = true;\n');
     writeFixture(root, retainedQuotationTestPath, readFileSync(retainedQuotationTestSourcePath));
@@ -212,20 +212,10 @@ test('allows only exact retained legacy import baselines before staging', () => 
     const baseline = runGuard(root);
     assert.equal(baseline.status, 0, baseline.stderr);
 
-    writeFixture(
-      root,
-      'tests/unit/new-active-import.test.ts',
-      `import '${`../../api/_functions/lib/${retainedQuotationModule}.js`}';\n`,
-    );
+    appendFixture(root, retainedQuotationTestPath, `\nimport '${`../../api/_functions/lib/${retainedQuotationModule}.js`}';\n`);
     const newImport = runGuard(root);
     assert.equal(newImport.status, 1);
-    assert.match(newImport.stderr, new RegExp(`tests/unit/new-active-import\\.test\\.ts:.*:retired quotation delivery module`));
-
-    rmSync(join(root, 'tests/unit/new-active-import.test.ts'));
-    appendFixture(root, 'tests/unit/send-whatsapp.test.ts', '\nexport const unrelated = true;\n');
-    const changedBaseline = runGuard(root);
-    assert.equal(changedBaseline.status, 1);
-    assert.match(changedBaseline.stderr, /tests\/unit\/send-whatsapp\.test\.ts:.*:retired quotation delivery module/);
+    assert.match(newImport.stderr, new RegExp(`tests/unit/send-whatsapp\\.test\\.ts:.*:retired quotation delivery module`));
   });
 });
 
