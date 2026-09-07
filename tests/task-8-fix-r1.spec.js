@@ -42,7 +42,6 @@ test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quota
   expect(url.pathname).not.toBe('/api/view');
   await opened.close();
 });
-
 test('pedidos usa métricas canônicas, nomes neutros e somente status suportados @quotations @critical', async ({ page }) => {
   const sentStatuses = [];
   await page.route('**/api/sales-dashboard**', (route) => json(route, {
@@ -111,6 +110,60 @@ test('detalhe de pedido não expõe UUID quando customer_name falta @quotations 
   await expect(page.getByText(uuid, { exact: true })).toHaveCount(0);
 });
 
+test('detalhe de pedido bloqueia estados finais e reporta PATCH com sucesso ou falha', async ({
+  page,
+}) => {
+  const patchPayloads = [];
+  let detail = {
+    id: 'PED-2026-0006',
+    status: 'To Deliver',
+    customer_name: 'Cliente atualização',
+    date: '2026-08-10',
+    delivery_date: '2026-08-20',
+    per_billed: 0,
+    per_delivered: 0,
+    items: [],
+  };
+  await page.route('**/api/sales-orders**', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const payload = route.request().postDataJSON();
+      patchPayloads.push(payload);
+      if (payload.per_billed === 100) {
+        detail = { ...detail, per_billed: 100 };
+        return json(route, detail);
+      }
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Falha ao atualizar pedido.' }),
+      });
+      return;
+    }
+    return json(route, detail);
+  });
+
+  await page.goto('/#/sales-orders/PED-2026-0006');
+  const billed = page.getByRole('button', { name: 'Marcar faturado' });
+  const delivered = page.getByRole('button', { name: 'Marcar entregue' });
+  await expect(billed).toBeEnabled();
+  await expect(delivered).toBeEnabled();
+
+  await billed.click();
+  await expect(billed).toBeDisabled();
+  await expect.poll(() => patchPayloads).toEqual([{ per_billed: 100 }]);
+
+  await delivered.click();
+  await expect(page.getByRole('alert')).toContainText('Falha ao atualizar pedido.');
+  await expect.poll(() => patchPayloads).toHaveLength(2);
+
+  detail = { ...detail, status: 'Draft' };
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();
+});
+
+
+
 test('pedidos agrupa exportações e envia os filtros atuais', async ({ page }) => {
   const exportUrls = [];
   await page.route('**/api/sales-dashboard**', (route) => json(route, {
@@ -158,7 +211,7 @@ test('pedidos agrupa exportações e envia os filtros atuais', async ({ page }) 
 
   await page.goto('/#/sales-orders?period=7d&status=Completed&search=Cliente');
   await expect(page.getByText('PED-2026-0007', { exact: true }).first()).toBeVisible();
-  await page.locator('summary').filter({ hasText: 'Exportar' }).click();
+  await page.getByRole('button', { name: 'Exportar' }).click();
   await expect(page.getByRole('button', { name: 'Exportar pedidos' })).toBeVisible();
   await page.getByRole('button', { name: 'Exportar pedidos' }).click();
   await expect.poll(() => exportUrls.length).toBe(1);
@@ -169,6 +222,242 @@ test('pedidos agrupa exportações e envia os filtros atuais', async ({ page }) 
   expect(url.searchParams.get('status')).toBe('Completed');
   expect(url.searchParams.get('search')).toBe('Cliente');
 });
+
+test('volta do pedido para a lista preservando o contexto e aceita entrada direta', async ({
+  page,
+}) => {
+  const detail = {
+    id: 'PED-2026-0008',
+    status: 'Completed',
+    customer_name: 'Cliente com filtros',
+    date: '2026-08-10',
+    items: [],
+  };
+  await page.route('**/api/sales-orders**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('id')) return json(route, detail);
+    return json(route, {
+      success: true,
+      items: [
+        {
+          id: detail.id,
+          date: detail.date,
+          customer_name: detail.customer_name,
+          grand_total: 100,
+          status: detail.status,
+          delivery_date: '2026-08-20',
+          per_delivered: 0,
+          per_billed: 0,
+          source_quotation: null,
+        },
+      ],
+      has_more: false,
+    });
+  });
+
+  await page.goto('/#/sales-orders?page=3&limit=25&period=7d&status=Completed&search=Cliente');
+  await page.getByText(detail.id, { exact: true }).first().click();
+  await expect(page.getByText('Cliente com filtros', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: '← Voltar aos pedidos' }).click();
+  await expect(page).toHaveURL(
+    /#\/sales-orders\?page=3&limit=25&period=7d&status=Completed&search=Cliente$/
+  );
+
+  await page.goto('/#/dashboard');
+  await page.goto('/#/sales-orders/PED-2026-0008');
+  await expect(page.getByText('Cliente com filtros', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: '← Voltar aos pedidos' }).click();
+  await expect(page).toHaveURL(/#\/sales-orders$/);
+});
+
+test('paginação usa apenas has_more e exportação fecha com Escape restaurando foco', async ({
+  page,
+}) => {
+  const requests = [];
+  await page.route('**/api/sales-dashboard**', (route) =>
+    json(route, {
+      success: true,
+      summary: {
+        total_revenue: 100,
+        revenue_delta: null,
+        orders_count: 1,
+        orders_delta: null,
+        avg_ticket: 100,
+        avg_ticket_delta: null,
+        open_orders: 1,
+        conversion_rate: 0,
+        conversion_delta: null,
+      },
+    })
+  );
+  await page.route('**/api/sales-orders**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    const pageNumber = Number(url.searchParams.get('page') || 1);
+    requests.push(pageNumber);
+    return json(route, {
+      success: true,
+      items: [
+        {
+          id: `PED-2026-000${pageNumber}`,
+          date: '2026-08-10',
+          customer_name: 'Cliente paginação',
+          grand_total: 100,
+          status: 'Completed',
+          delivery_date: '2026-08-20',
+          per_delivered: 0,
+          per_billed: 0,
+          source_quotation: null,
+        },
+      ],
+      page: pageNumber,
+      limit: 10,
+      has_more: pageNumber < 3,
+    });
+  });
+  await page.route('**/api/commercial-exports**', async (route) => {
+    if (route.request().url().includes('sales-order-items')) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="pedidos.csv"',
+      },
+      body: 'id;status\nPED-2026-0001;Completed',
+    });
+  });
+
+  await page.goto('/#/sales-orders?page=2');
+  await expect(page.getByText('PED-2026-0002', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Página 2', { exact: true })).toBeVisible();
+  await expect(page.getByText('Página 2 de 3', { exact: true })).toHaveCount(0);
+
+  const next = page.getByRole('button', { name: 'Próximo ›' });
+  await expect(next).toBeEnabled();
+  await next.click();
+  await expect(page.getByText('PED-2026-0003', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Página 3', { exact: true })).toBeVisible();
+  await expect(next).toBeDisabled();
+
+  const exportTrigger = page.getByRole('button', { name: 'Exportar' });
+  await exportTrigger.click();
+  await expect(page.getByRole('button', { name: 'Exportar pedidos' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Exportar pedidos' })).toHaveCount(0);
+  await expect(exportTrigger).toBeFocused();
+
+  await exportTrigger.click();
+  const ordersExport = page.getByRole('button', { name: 'Exportar pedidos' });
+  await ordersExport.click();
+  await expect.poll(() => requests.at(-1)).toBe(3);
+
+  await page.getByRole('button', { name: 'Exportar itens' }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Não foi possível gerar a exportação. Tente novamente.'
+  );
+});
+
+test('exportação pendente mantém a ação desabilitada', async ({ page }) => {
+  await page.route('**/api/sales-dashboard**', (route) =>
+    json(route, {
+      success: true,
+      summary: {
+        total_revenue: 100,
+        revenue_delta: null,
+        orders_count: 1,
+        orders_delta: null,
+        avg_ticket: 100,
+        avg_ticket_delta: null,
+        open_orders: 1,
+        conversion_rate: 0,
+        conversion_delta: null,
+      },
+    })
+  );
+  await page.route('**/api/sales-orders**', (route) =>
+    json(route, {
+      success: true,
+      items: [
+        {
+          id: 'PED-2026-0009',
+          date: '2026-08-10',
+          customer_name: 'Cliente exportação pendente',
+          grand_total: 100,
+          status: 'Completed',
+          delivery_date: '2026-08-20',
+          per_delivered: 0,
+          per_billed: 0,
+          source_quotation: null,
+        },
+      ],
+      has_more: false,
+    })
+  );
+  await page.route('**/api/commercial-exports**', () => new Promise(() => {}));
+
+  await page.goto('/#/sales-orders');
+  await expect(page.getByText('PED-2026-0009', { exact: true }).first()).toBeVisible();
+  const exportTrigger = page.getByRole('button', { name: 'Exportar' });
+  await exportTrigger.click();
+  const ordersExport = page.locator('#sales-order-export-menu button').first();
+  await ordersExport.click();
+  await expect(ordersExport).toContainText('Exportando…');
+  await expect(ordersExport).toBeDisabled();
+});
+
+test('lista ignora resposta stale quando uma busca mais nova termina primeiro', async ({
+  page,
+}) => {
+  await page.route('**/api/sales-dashboard**', (route) =>
+    json(route, {
+      success: true,
+      summary: {
+        total_revenue: 0,
+        revenue_delta: null,
+        orders_count: 0,
+        orders_delta: null,
+        avg_ticket: 0,
+        avg_ticket_delta: null,
+        open_orders: 0,
+        conversion_rate: 0,
+        conversion_delta: null,
+      },
+    })
+  );
+  await page.route('**/api/sales-orders**', async (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.get('search') !== 'novo') {
+      await new Promise(() => {});
+      return;
+    }
+    return json(route, {
+      success: true,
+      items: [
+        {
+          id: 'PED-2026-0010',
+          date: '2026-08-10',
+          customer_name: 'Cliente novo',
+          grand_total: 100,
+          status: 'Completed',
+          delivery_date: '2026-08-20',
+          per_delivered: 0,
+          per_billed: 0,
+          source_quotation: null,
+        },
+      ],
+      has_more: false,
+    });
+  });
+
+  await page.goto('/#/sales-orders');
+  await page.getByLabel('Buscar pedidos').fill('novo');
+  await expect(page.getByText('PED-2026-0010', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Cliente novo', { exact: true }).first()).toBeVisible();
+});
+
+
 
 test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations @critical', async ({ page }) => {
   let sendCount = 0;

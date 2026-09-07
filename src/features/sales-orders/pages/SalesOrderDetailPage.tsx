@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, Check, DollarSign, FileText, Truck } from 'lucide-react';
 import { apiGet, apiPatch } from '@/lib/api/api';
+import { routePath } from '@/app/match-route';
+import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -41,6 +43,13 @@ interface SalesOrderDetailPageProps {
 function formatSalesOrderDate(value: string): string {
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
+}
+
+function getSalesOrdersReturnRoute(): string {
+  const previousRoute = getHashHistoryPreviousRoute();
+  return previousRoute && routePath(previousRoute) === '/sales-orders'
+    ? previousRoute
+    : '/sales-orders';
 }
 
 function ProgressMetric({
@@ -157,7 +166,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         <PageHeader
           title="Pedido"
           actions={
-            <Button variant="ghost" onClick={() => navigate('/sales-orders')}>
+            <Button variant="ghost" onClick={() => navigate(getSalesOrdersReturnRoute())}>
               ← Voltar
             </Button>
           }
@@ -207,7 +216,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         title={data.id}
         description={`${data.customer_name || 'Cliente não identificado'}${data.source_quotation ? ` · originado de ${data.source_quotation}` : ''}`}
         actions={
-          <Button variant="ghost" onClick={() => navigate('/sales-orders')}>
+          <Button variant="ghost" onClick={() => navigate(getSalesOrdersReturnRoute())}>
             ← Voltar aos pedidos
           </Button>
         }

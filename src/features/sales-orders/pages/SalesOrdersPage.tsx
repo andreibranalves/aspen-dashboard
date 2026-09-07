@@ -165,6 +165,94 @@ function projectDashboardSummary(value: unknown): DashboardSummary | null {
   };
 }
 
+function SalesOrderExportMenu({
+  period,
+  status,
+  search,
+}: {
+  period: string;
+  status: string;
+  search: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const dismiss = useCallback((restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    });
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
+        dismiss(false);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      dismiss(true);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [dismiss, open]);
+
+  return (
+    <div className="relative w-full sm:w-auto">
+      <Button
+        ref={triggerRef}
+        type="button"
+        variant="outline"
+        className="w-full sm:w-auto"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="sales-order-export-menu"
+        onClick={() => setOpen((current) => !current)}
+      >
+        Exportar <span aria-hidden="true">▾</span>
+      </Button>
+      {open && (
+        <div
+          ref={menuRef}
+          id="sales-order-export-menu"
+          role="menu"
+          aria-label="Exportar dados"
+          className="absolute left-0 top-full z-20 mt-2 flex w-max min-w-48 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0"
+        >
+          <ExportCsvButton
+            resource="sales-orders"
+            filters={{ period, status, search }}
+            className="w-full justify-start"
+          >
+            Exportar pedidos
+          </ExportCsvButton>
+          <ExportCsvButton
+            resource="sales-order-items"
+            filters={{ period, status, search }}
+            className="w-full justify-start"
+          >
+            Exportar itens
+          </ExportCsvButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const [items, setItems] = useState<SalesOrderItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -177,7 +265,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const [searchDraft, setSearchDraft] = useHashQueryState('searchDraft', search, parseHashString);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [totalPages, setTotalPages] = useState<number>(1);
+  const [hasMore, setHasMore] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestGenerationRef = useRef(0);
   const summaryRequestGenerationRef = useRef(0);
@@ -225,7 +313,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         throw new Error('Resposta inválida ao carregar pedidos.');
       }
       setItems(projectedRows as SalesOrderItem[]);
-      setTotalPages(data.has_more ? page + 1 : page);
+      setHasMore(data.has_more);
     } catch {
       if (requestGeneration !== requestGenerationRef.current) return;
       setError('Não foi possível carregar os pedidos. Tente novamente.');
@@ -313,29 +401,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
-        actions={
-          <details className="group relative">
-            <summary className="flex h-9 cursor-pointer list-none items-center justify-center gap-2 rounded-sm border border-line bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&::-webkit-details-marker]:hidden">
-              Exportar <span aria-hidden="true">▾</span>
-            </summary>
-            <div className="absolute right-0 top-full z-20 mt-2 flex min-w-48 flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-lg">
-              <ExportCsvButton
-                resource="sales-orders"
-                filters={{ period, status, search }}
-                className="w-full justify-start"
-              >
-                Exportar pedidos
-              </ExportCsvButton>
-              <ExportCsvButton
-                resource="sales-order-items"
-                filters={{ period, status, search }}
-                className="w-full justify-start"
-              >
-                Exportar itens
-              </ExportCsvButton>
-            </div>
-          </details>
-        }
+        actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
       />
 
       {/* Secondary summary: available on demand without competing with the list. */}
@@ -630,9 +696,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* Pagination */}
       {!loading && !error && items.length > 0 && (
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2 text-sm text-fg-muted">
-            Página {page} de {totalPages}
-          </div>
+          <div className="flex items-center gap-2 text-sm text-fg-muted">Página {page}</div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -642,13 +706,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             >
               ‹ Anterior
             </Button>
-            <span className="text-sm text-fg-muted px-2">
-              {page} / {totalPages}
-            </span>
+            <span className="text-sm text-fg-muted px-2">{page}</span>
             <Button
               variant="outline"
               size="sm"
-              disabled={page >= totalPages}
+              disabled={!hasMore}
               onClick={() => setPage((p) => p + 1)}
             >
               Próximo ›
