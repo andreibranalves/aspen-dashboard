@@ -66,9 +66,9 @@ function evidence(overrides: Partial<OfflineOrderEvidence> = {}): OfflineOrderEv
         consent: {
           adUserData: 'CONSENT_GRANTED',
           adPersonalization: 'CONSENT_GRANTED',
-          policyVersion: 'ads-policy-v1',
+          policyVersion: '2026-08-18',
           reviewedAt: '2026-08-31T12:00:00.000Z',
-          source: 'site_quote_form',
+          source: 'site_cookie_preferences',
           evidenceId: 'synthetic-consent-1',
         },
       },
@@ -136,9 +136,9 @@ test('offline selection preserves opaque identifiers and deterministic money/tim
           consent: {
             adUserData: 'CONSENT_GRANTED',
             adPersonalization: 'CONSENT_GRANTED',
-            policyVersion: 'ads-policy-v1',
+            policyVersion: '2026-08-18',
             reviewedAt: '2026-08-31T12:00:00.000Z',
-            source: 'site_quote_form',
+            source: 'site_cookie_preferences',
           },
         },
       },
@@ -222,15 +222,50 @@ test('offline payload rejects money whose cents change during JSON serialization
           consentEvidence: {
             adUserData: 'CONSENT_GRANTED',
             adPersonalization: 'CONSENT_GRANTED',
-            policyVersion: 'ads-policy-v1',
+            policyVersion: '2026-08-18',
             reviewedAt: NOW.toISOString(),
-            source: 'site_quote_form',
+            source: 'site_cookie_preferences',
           },
         },
         DESTINATION
       ),
     /safe API number range/
   );
+});
+
+test('offline selection blocks legacy and generic grant variants at the ads boundary', () => {
+  const strictGrant = {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policyVersion: '2026-08-18',
+    reviewedAt: '2026-08-31T12:00:00.000Z',
+    source: 'site_cookie_preferences',
+  };
+  const selected = selectOfflineOrder(evidence({ raw: { siteSubmission: {
+    payloadFingerprint: 'a'.repeat(64),
+    originalCreatedAt: '2026-08-31T12:00:00.000Z',
+    primaryAdIdentifier: 'gclid',
+    consent: strictGrant,
+  } } }), { approvedOrderIds: new Set([ORDER_ID]) });
+  assert.equal(selected.status, 'eligible');
+  for (const consent of [
+    { ...strictGrant, policyVersion: '2025-01-01' },
+    { ...strictGrant, source: 'site_quote_form' },
+    { given: true, source: 'site_quote_form' },
+    { ...strictGrant, adUserData: 'CONSENT_DENIED' },
+    { ...strictGrant, reviewedAt: '2026-08-31T12:00:00Z' },
+    null,
+  ]) {
+    const blocked = selectOfflineOrder(evidence({ raw: { siteSubmission: {
+      payloadFingerprint: 'a'.repeat(64),
+      originalCreatedAt: '2026-08-31T12:00:00.000Z',
+      primaryAdIdentifier: 'gclid',
+      consent,
+    } } }), { approvedOrderIds: new Set([ORDER_ID]) });
+    assert.equal(blocked.status, 'needs_review', JSON.stringify(consent));
+    assert.equal(blocked.reviewReason, 'consent_review_required', JSON.stringify(consent));
+    assert.equal(blocked.consentEvidence, null, JSON.stringify(consent));
+  }
 });
 
 test('preflight is fail-closed and binds target metadata to Data Manager destination', () => {

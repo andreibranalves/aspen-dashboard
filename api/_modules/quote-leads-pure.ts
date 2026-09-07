@@ -69,6 +69,12 @@ function nullableCleanText(value: unknown): string | null {
   return text || null;
 }
 
+// Click identifiers are opaque Google values: preserved byte a byte, no
+// trim/normalization/truncation. Absent is valid; non-string is ignored.
+function verbatimClickId(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
 function normalizeEmail(value: unknown): string {
   return cleanText(value).toLowerCase();
 }
@@ -128,10 +134,10 @@ function buildAttribution(input: Record<string, unknown>): QuoteLeadAttribution 
     utm_campaign: nullableCleanText(input.utm_campaign || input.campaign),
     utm_content: nullableCleanText(input.utm_content || input.utmContent),
     utm_term: nullableCleanText(input.utm_term || input.utmTerm),
-    gclid: nullableCleanText(input.gclid),
-    gbraid: nullableCleanText(input.gbraid),
-    wbraid: nullableCleanText(input.wbraid),
-    fbclid: nullableCleanText(input.fbclid),
+    gclid: verbatimClickId(input.gclid),
+    gbraid: verbatimClickId(input.gbraid),
+    wbraid: verbatimClickId(input.wbraid),
+    fbclid: verbatimClickId(input.fbclid),
     source_cta: nullableCleanText(input.source_cta || input.sourceCta),
     result_id: nullableCleanText(input.result_id || input.resultId),
   };

@@ -8,6 +8,10 @@ const MAX_BODY_BYTES = 16_384;
 const SANITY_ID_PATTERN =
   /^siteQuote\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const AD_CONSENT_POLICY_VERSION = '2026-08-18';
+const AD_CONSENT_SOURCE = 'site_cookie_preferences';
+const CLICK_ID_MAX_LENGTH = 500;
+const EVIDENCE_ID_PATTERN = /^[\w-]{1,128}$/;
 const ALLOWED_FIELDS = new Set([
   'externalId',
   'payloadFingerprint',
@@ -74,6 +78,80 @@ function optionalText(body: Record<string, unknown>, key: string, max: number): 
   return normalized;
 }
 
+// Click identifiers are opaque Google values: preserved verbatim with no trim,
+// normalization or truncation. Absent/empty is valid; oversized is rejected.
+function verbatimClickId(body: Record<string, unknown>, key: string): string | null {
+  const value = body[key];
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.length > CLICK_ID_MAX_LENGTH)
+    throw new Error('invalid_payload');
+  return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function canonicalRfc3339(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length === 24 &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
+    new Date(value).toISOString() === value
+  );
+}
+
+/**
+ * Strict ad-consent contract per issue #208. The payload is either the generic
+ * `{given:true, source:'site_quote_form'}` (insufficient for ads export) or the
+ * full evidence grant; anything else — old policy versions, malformed shapes,
+ * mixed fields — is rejected and never silently demoted to generic consent.
+ */
+function parseConsent(value: unknown): Record<string, unknown> {
+  if (!isPlainObject(value)) throw new Error('invalid_payload');
+  const keys = Object.keys(value);
+  if (
+    keys.length === 2 &&
+    value.given === true &&
+    value.source === 'site_quote_form'
+  ) {
+    return { given: true, source: 'site_quote_form' };
+  }
+  const evidenceKeys = new Set([
+    'adUserData',
+    'adPersonalization',
+    'policyVersion',
+    'reviewedAt',
+    'source',
+    'evidenceId',
+  ]);
+  if (
+    keys.some((key) => !evidenceKeys.has(key)) ||
+    value.adUserData !== 'CONSENT_GRANTED' ||
+    value.adPersonalization !== 'CONSENT_GRANTED' ||
+    value.policyVersion !== AD_CONSENT_POLICY_VERSION ||
+    !canonicalRfc3339(value.reviewedAt) ||
+    value.source !== AD_CONSENT_SOURCE
+  ) {
+    throw new Error('invalid_payload');
+  }
+  const evidenceId = value.evidenceId;
+  if (
+    evidenceId !== undefined &&
+    (typeof evidenceId !== 'string' || !EVIDENCE_ID_PATTERN.test(evidenceId))
+  ) {
+    throw new Error('invalid_payload');
+  }
+  return {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policyVersion: AD_CONSENT_POLICY_VERSION,
+    reviewedAt: value.reviewedAt,
+    source: AD_CONSENT_SOURCE,
+    ...(evidenceId !== undefined ? { evidenceId } : {}),
+  };
+}
+
 function parsePayload(raw: string): SiteQuoteLeadInput {
   if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) throw new Error('payload_too_large');
   let value: unknown;
@@ -115,17 +193,7 @@ function parsePayload(raw: string): SiteQuoteLeadInput {
   if (!nome || !email || !whatsapp || !/^\d{10,15}$/.test(whatsapp) || !produto || !quantidade) {
     throw new Error('invalid_payload');
   }
-  const consent = body.consent;
-  if (!consent || typeof consent !== 'object' || Array.isArray(consent))
-    throw new Error('invalid_payload');
-  const consentRecord = consent as Record<string, unknown>;
-  if (
-    Object.keys(consentRecord).some((key) => key !== 'given' && key !== 'source') ||
-    consentRecord.given !== true ||
-    consentRecord.source !== 'site_quote_form'
-  ) {
-    throw new Error('invalid_payload');
-  }
+  const consent = parseConsent(body.consent);
 
   return {
     source: 'site_form',
@@ -144,12 +212,12 @@ function parsePayload(raw: string): SiteQuoteLeadInput {
     utm_campaign: optionalText(body, 'utm_campaign', 500),
     utm_content: optionalText(body, 'utm_content', 500),
     utm_term: optionalText(body, 'utm_term', 500),
-    gclid: optionalText(body, 'gclid', 500),
-    gbraid: optionalText(body, 'gbraid', 500),
-    wbraid: optionalText(body, 'wbraid', 500),
+    gclid: verbatimClickId(body, 'gclid'),
+    gbraid: verbatimClickId(body, 'gbraid'),
+    wbraid: verbatimClickId(body, 'wbraid'),
     fbclid: optionalText(body, 'fbclid', 500),
     page_url: optionalText(body, 'page_url', 2048),
-    consent: { given: true, source: 'site_quote_form' },
+    consent,
   };
 }
 

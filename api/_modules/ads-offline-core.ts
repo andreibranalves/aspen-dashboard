@@ -5,6 +5,8 @@ import { canonicalizeNonNegativeDecimal } from '../_shared/decimal-money.js';
 export const OFFLINE_EVENT_TYPE = 'pedido_iniciado' as const;
 export const OFFLINE_CURRENCY = 'BRL' as const;
 export const OFFLINE_EVENT_SOURCE = 'OTHER' as const;
+export const AD_CONSENT_POLICY_VERSION = '2026-08-18' as const;
+export const AD_CONSENT_SOURCE = 'site_cookie_preferences' as const;
 export const GOOGLE_DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -318,12 +320,14 @@ function consentEvidenceFrom(raw: unknown): OfflineConsentEvidence | null {
   const reviewedAt = verifiedIsoString(consent.reviewedAt ?? consent.reviewed_at);
   const source = clean(consent.source);
   const evidenceId = clean(consent.evidenceId ?? consent.evidence_id);
+  // Strict #208 grant: only the canonical policy version and site cookie
+  // source are acceptable; generic and legacy grants never promote.
   if (
     consent.adUserData !== 'CONSENT_GRANTED' ||
     consent.adPersonalization !== 'CONSENT_GRANTED' ||
-    !policyVersion ||
+    policyVersion !== AD_CONSENT_POLICY_VERSION ||
     !reviewedAt ||
-    !source
+    source !== AD_CONSENT_SOURCE
   ) {
     return null;
   }

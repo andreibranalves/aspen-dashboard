@@ -1,4 +1,5 @@
 [
+  "tests/unit/ad-consent-chain-postgres.test.ts",
   "tests/unit/backup.test.ts",
   "tests/unit/beta-cleanup-postgres.test.ts",
   "tests/unit/crm-deals-postgres.test.ts",
