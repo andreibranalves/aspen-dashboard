@@ -43,6 +43,7 @@ import { routePath } from '@/app/match-route';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
+import PageShell from '@/components/shared/PageShell';
 import {
   type QuotationSectionsSnapshot,
 } from '@/features/quotations/components/QuotationSectionsEditor';
@@ -1183,7 +1184,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             : '';
 
   return (
-    <div ref={detailTopRef} className="mx-auto w-full max-w-[1060px] pb-4">
+    <PageShell ref={detailTopRef} className="space-y-0 pb-4">
       <fieldset disabled={saving} className="contents">
         <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -2143,7 +2144,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
 export default function QuotationDetailPage({ id, navigate }: QuotationDetailPageProps) {
@@ -2200,7 +2201,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
         ? 'Histórico de envios'
         : 'Orçamentos';
     return (
-      <div className="space-y-4 animate-fade-in">
+      <PageShell className="space-y-4">
         <button
           onClick={() => navigate(returnRoute)}
           className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
@@ -2218,12 +2219,12 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
           </p>
           <Button variant="outline" onClick={() => void loadDetail()}>Tentar novamente</Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
   if (!data) return null;
   return (
-    <div className="space-y-3">
+      <PageShell className="space-y-3">
       {reloadWarning && (
         <div
           role="status"
@@ -2241,6 +2242,6 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
         onReload={loadDetail}
         concurrencyTokenRef={concurrencyTokenRef}
       />
-    </div>
+      </PageShell>
   );
 }

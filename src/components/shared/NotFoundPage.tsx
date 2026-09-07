@@ -1,5 +1,6 @@
 import { Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import PageShell from '@/components/shared/PageShell';
 
 interface NotFoundPageProps {
   navigate: (hash: string) => void;
@@ -8,8 +9,8 @@ interface NotFoundPageProps {
 /** Tela 404 para rotas sem match — nunca cair silenciosamente no fluxo Auto. */
 export default function NotFoundPage({ navigate }: NotFoundPageProps) {
   return (
-    <section
-      className="flex min-h-[50vh] flex-col items-center justify-center px-4 py-16 text-center animate-fade-in sm:py-24"
+    <PageShell
+      className="flex min-h-[50vh] flex-col items-center justify-center px-4 py-16 text-center space-y-0 sm:py-24"
       aria-labelledby="not-found-title"
     >
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-md bg-surface-muted">
@@ -36,6 +37,6 @@ export default function NotFoundPage({ navigate }: NotFoundPageProps) {
           Abrir Auto
         </Button>
       </div>
-    </section>
+    </PageShell>
   );
 }

@@ -1,4 +1,5 @@
 import Skeleton from '@/components/shared/Skeleton';
+import PageShell from '@/components/shared/PageShell';
 
 /**
  * SkeletonDetail — simula uma página de detalhe durante o carregamento.
@@ -6,8 +7,7 @@ import Skeleton from '@/components/shared/Skeleton';
  */
 export default function SkeletonDetail() {
   return (
-    <div
-      className="space-y-4 max-w-[1060px] mx-auto"
+    <PageShell
       aria-busy="true"
       aria-label="Carregando detalhes"
     >
@@ -87,6 +87,6 @@ export default function SkeletonDetail() {
           <Skeleton className="h-8 w-28" />
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

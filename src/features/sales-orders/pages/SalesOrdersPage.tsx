@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { Search, ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
@@ -228,7 +228,7 @@ function SalesOrderExportMenu({
         id="sales-order-export-menu"
         hidden={!open}
         aria-label="Exportar dados"
-        className={`absolute left-0 top-full z-20 mt-2 w-max min-w-48 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-sm border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
       >
         <ExportCsvButton
           resource="sales-orders"
@@ -399,7 +399,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const summaryData = summary;
 
   return (
-    <PageShell className="max-w-none">
+    <PageShell>
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
@@ -407,27 +407,27 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       />
 
       {/* Filter row */}
-      <PageToolbar>
+      <PageToolbar className="items-end gap-2">
         {/* Search */}
-        <div className="relative min-w-[200px] max-w-md flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
+          <span className="text-xs font-medium text-fg-muted">Buscar</span>
           <Input
             placeholder="Buscar por Nº ou Cliente…"
             value={searchDraft}
             onChange={onSearchChange}
-            className="pl-9"
             aria-label="Buscar pedidos"
           />
-        </div>
+        </label>
 
         {/* Status select */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-fg-muted whitespace-nowrap">Status</span>
+        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
+          <span className="text-xs font-medium text-fg-muted">Status</span>
           <Select
             aria-label="Filtrar por status"
             value={status}
             onChange={onStatusChange}
             title="Status do pedido"
+            className="w-full"
           >
             {STATUSES.map((s, i) => (
               <option key={s} value={s}>
@@ -435,15 +435,16 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               </option>
             ))}
           </Select>
-        </div>
+        </label>
 
         {/* Period select */}
-        <div className="flex items-center gap-2">
-          <span className="whitespace-nowrap text-xs font-medium text-fg-muted">Período</span>
+        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
+          <span className="text-xs font-medium text-fg-muted">Período</span>
           <Select
             aria-label="Filtrar por período"
             value={period}
             onChange={(event) => onPeriodChange(event.target.value)}
+            className="w-full"
           >
             {PERIODS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -451,19 +452,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               </option>
             ))}
           </Select>
-        </div>
-
-        {/* Limit selector */}
-        <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <span className="whitespace-nowrap">Itens por página</span>
-          <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
-            {[10, 25, 50, 100].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </Select>
-        </div>
+        </label>
       </PageToolbar>
 
       {/* Loading */}
@@ -534,13 +523,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                   aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="font-mono text-sm">
+                  <TableCell className="py-1 font-mono text-sm">
                     <div>{row.id}</div>
                     <div className="mt-1 font-sans text-xs font-normal text-fg-muted">
                       {row.date ? formatSalesOrderDate(row.date) : 'Data não informada'}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-1">
                     <div>{row.customer_name || 'Cliente não identificado'}</div>
                     <div className="mt-1 text-xs text-fg-muted">
                       <span>Origem: </span>
@@ -551,14 +540,14 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="py-1">
                     <StatusBadge
                       status={row.status || ''}
                       label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                     />
                   </TableCell>
-                  <TableCell className="text-sm text-fg-muted">{formatDelivery(row)}</TableCell>
-                  <TableCell className="text-right font-mono">
+                  <TableCell className="py-1 text-sm text-fg-muted">{formatDelivery(row)}</TableCell>
+                  <TableCell className="py-1 text-right font-sans tabular-nums">
                     {formatBRL(row.grand_total)}
                   </TableCell>
                 </TableRow>
@@ -603,7 +592,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono font-semibold">{formatBRL(row.grand_total)}</span>
+                <span className="font-sans font-semibold tabular-nums">{formatBRL(row.grand_total)}</span>
                 <div className="text-xs text-fg-muted">{formatDelivery(row)}</div>
               </div>
               <div className="flex items-center justify-between text-xs text-fg-muted">
@@ -616,7 +605,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                         e.stopPropagation();
                         navigate(`/quotations/${encodeURIComponent(row.source_quotation || '')}`);
                       }}
-                      className="text-primary hover:underline"
+                      className="text-link hover:underline"
                     >
                       {row.source_quotation}
                     </button>
@@ -633,7 +622,16 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* Pagination */}
       {!loading && !error && items.length > 0 && (
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2 text-sm text-fg-muted">Página {page}</div>
+          <label className="flex items-center gap-2 text-sm text-fg-muted">
+            <span>Itens por página</span>
+            <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
+              {[10, 25, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </Select>
+          </label>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -643,7 +641,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             >
               ‹ Anterior
             </Button>
-            <span className="text-sm text-fg-muted px-2">{page}</span>
+            <span className="px-2 text-sm text-fg-muted">Página {page}</span>
             <Button
               variant="outline"
               size="sm"

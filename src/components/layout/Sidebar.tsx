@@ -136,7 +136,7 @@ export default function Sidebar({
                     type="button"
                     onClick={() => onNavigate(hash)}
                     className={cn(
-                      'flex min-h-9 w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                      'mx-4 flex min-h-10 w-[calc(100%-2rem)] items-center gap-3 rounded-sm px-3 py-2 text-sm transition-colors',
                       collapsed && 'justify-center gap-0 px-0',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-shell-primary',
                       'hover:bg-shell-hover',
