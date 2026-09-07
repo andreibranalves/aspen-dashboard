@@ -31,6 +31,9 @@
     --warning: 154 91 19;
     --destructive: 184 58 57;
     --info: 22 92 216;
+    --link: 22 92 216;
+    --primary-text: 22 92 216;
+    --border-control: 107 114 128;
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -41,7 +44,7 @@
     --shell: 15 20 32;
     --shell-border: 35 45 61;
     --shell-text: 242 245 250;
-    --shell-muted: 180 191 208;
+    --shell-muted: 181 191 206;
     --shell-hover: 29 39 54;
     --shell-active: 37 48 64;
     --shell-primary: 139 184 255;
@@ -78,8 +81,8 @@
     --border-default: 51 64 86;
     --border-strong: 70 84 108;
     --text-primary: 242 245 250;
-    --text-secondary: 180 191 208;
-    --text-tertiary: 142 157 181;
+    --text-secondary: 181 191 206;
+    --text-tertiary: 146 158 176;
     --text-disabled: 102 116 138;
     --primary: 47 111 219;
     --on-primary: 255 255 255;
@@ -87,6 +90,9 @@
     --warning: 240 168 87;
     --destructive: 226 105 106;
     --info: 111 156 236;
+    --link: 138 180 255;
+    --primary-text: 138 180 255;
+    --border-control: 101 115 140;
   }
 
   * {
@@ -203,7 +209,7 @@
 @layer components {
   /* Status and semantic badges are the only normal use of full-radius pills. */
   .tone-primary-soft {
-    @apply rounded-full border border-transparent bg-primary/10 text-primary;
+    @apply rounded-full border border-transparent bg-primary/10 text-primary-text;
   }
 
   .tone-success-soft {
@@ -219,7 +225,7 @@
   }
 
   .tone-info-soft {
-    @apply rounded-full border border-transparent bg-info/10 text-info;
+    @apply rounded-full border border-transparent bg-info/10 text-primary-text;
   }
 
   .tone-neutral-soft {

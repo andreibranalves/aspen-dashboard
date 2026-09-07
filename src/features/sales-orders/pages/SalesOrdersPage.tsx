@@ -18,7 +18,6 @@ import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
-import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -218,37 +217,34 @@ function SalesOrderExportMenu({
         type="button"
         variant="outline"
         className="w-full sm:w-auto"
-        aria-haspopup="menu"
         aria-expanded={open}
         aria-controls="sales-order-export-menu"
         onClick={() => setOpen((current) => !current)}
       >
         Exportar <span aria-hidden="true">▾</span>
       </Button>
-      {open && (
-        <div
-          ref={menuRef}
-          id="sales-order-export-menu"
-          role="menu"
-          aria-label="Exportar dados"
-          className="absolute left-0 top-full z-20 mt-2 flex w-max min-w-48 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0"
+      <div
+        ref={menuRef}
+        id="sales-order-export-menu"
+        hidden={!open}
+        aria-label="Exportar dados"
+        className={`absolute left-0 top-full z-20 mt-2 w-max min-w-48 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+      >
+        <ExportCsvButton
+          resource="sales-orders"
+          filters={{ period, status, search }}
+          className="w-full justify-start"
         >
-          <ExportCsvButton
-            resource="sales-orders"
-            filters={{ period, status, search }}
-            className="w-full justify-start"
-          >
-            Exportar pedidos
-          </ExportCsvButton>
-          <ExportCsvButton
-            resource="sales-order-items"
-            filters={{ period, status, search }}
-            className="w-full justify-start"
-          >
-            Exportar itens
-          </ExportCsvButton>
-        </div>
-      )}
+          Exportar pedidos
+        </ExportCsvButton>
+        <ExportCsvButton
+          resource="sales-order-items"
+          filters={{ period, status, search }}
+          className="w-full justify-start"
+        >
+          Exportar itens
+        </ExportCsvButton>
+      </div>
     </div>
   );
 }
@@ -382,7 +378,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             e.stopPropagation();
             navigate(`/quotations/${encodeURIComponent(item.source_quotation!)}`);
           }}
-          className="text-primary hover:underline text-sm"
+          className="text-link text-sm hover:underline"
         >
           {item.source_quotation}
         </button>
@@ -403,95 +399,25 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const summaryData = summary;
 
   return (
-    <PageShell>
+    <PageShell className="max-w-none">
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
         actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
       />
 
-      {/* Secondary summary: available on demand without competing with the list. */}
-      <details className="group rounded-lg border border-line bg-surface">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
-          <span>Resumo comercial · últimos 30 dias</span>
-          <span className="text-xs font-normal text-fg-muted" aria-live="polite">
-            {summaryError ? 'indisponível' : summaryData ? 'disponível' : 'carregando'}
-          </span>
-        </summary>
-        <div className="border-t border-line p-4">
-          {summaryError && (
-            <div
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-surface-subtle px-3 py-3"
-              role="alert"
-            >
-              <p className="text-sm text-destructive">
-                Não foi possível carregar as métricas de vendas.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
-                Tentar novamente
-              </Button>
-            </div>
-          )}
-          {summaryData && (
-            <div className="flex flex-wrap gap-3">
-              <StatCard
-                icon={DollarSign}
-                label="Receita"
-                className="flex-1"
-                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-                metadata={
-                  summaryData.revenue_delta === null ||
-                  (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
-                    ? undefined
-                    : summaryData.revenue_delta === 0
-                      ? 'sem variação vs período anterior'
-                      : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
-                }
-              />
-              <StatCard
-                icon={ShoppingCart}
-                label="Pedidos"
-                className="flex-1"
-                value={String(summaryData.orders_count)}
-              />
-              <StatCard
-                icon={TrendingUp}
-                label="Ticket Médio"
-                className="flex-1"
-                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-                metadata={
-                  summaryData.avg_ticket_delta === null ||
-                  (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
-                    ? undefined
-                    : summaryData.avg_ticket_delta === 0
-                      ? 'sem variação vs período anterior'
-                      : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
-                }
-              />
-              <StatCard
-                icon={Package}
-                label="Pedidos em aberto"
-                className="flex-1"
-                value={String(summaryData.open_orders)}
-              />
-            </div>
-          )}
-        </div>
-      </details>
-
       {/* Filter row */}
       <PageToolbar>
-        {/* Period chips */}
-        <div className="flex flex-wrap gap-1.5">
-          {PERIODS.map((p) => (
-            <FilterChip
-              key={p.value}
-              selected={period === p.value}
-              onClick={() => onPeriodChange(p.value)}
-            >
-              {p.label}
-            </FilterChip>
-          ))}
+        {/* Search */}
+        <div className="relative min-w-[200px] max-w-md flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          <Input
+            placeholder="Buscar por Nº ou Cliente…"
+            value={searchDraft}
+            onChange={onSearchChange}
+            className="pl-9"
+            aria-label="Buscar pedidos"
+          />
         </div>
 
         {/* Status select */}
@@ -511,16 +437,20 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           </Select>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-md flex-1 min-w-[200px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-          <Input
-            placeholder="Buscar por Nº ou Cliente…"
-            value={searchDraft}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label="Buscar pedidos"
-          />
+        {/* Period select */}
+        <div className="flex items-center gap-2">
+          <span className="whitespace-nowrap text-xs font-medium text-fg-muted">Período</span>
+          <Select
+            aria-label="Filtrar por período"
+            value={period}
+            onChange={(event) => onPeriodChange(event.target.value)}
+          >
+            {PERIODS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
         </div>
 
         {/* Limit selector */}
@@ -537,7 +467,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       </PageToolbar>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={7} rows={8} />}
+      {loading && <SkeletonTable cols={5} rows={8} />}
 
       {/* Error */}
       {!loading && error && (
@@ -590,12 +520,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[160px]">Pedido</TableHead>
-                <TableHead>Data</TableHead>
                 <TableHead>Cliente</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Entrega</TableHead>
-                <TableHead>Origem</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -606,13 +534,22 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                   aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                  <TableCell className="whitespace-nowrap text-fg-muted">
-                    {row.date ? formatSalesOrderDate(row.date) : '—'}
+                  <TableCell className="font-mono text-sm">
+                    <div>{row.id}</div>
+                    <div className="mt-1 font-sans text-xs font-normal text-fg-muted">
+                      {row.date ? formatSalesOrderDate(row.date) : 'Data não informada'}
+                    </div>
                   </TableCell>
-                  <TableCell>{row.customer_name || 'Cliente não identificado'}</TableCell>
-                  <TableCell className="text-right font-mono">
-                    {formatBRL(row.grand_total)}
+                  <TableCell>
+                    <div>{row.customer_name || 'Cliente não identificado'}</div>
+                    <div className="mt-1 text-xs text-fg-muted">
+                      <span>Origem: </span>
+                      {row.source_quotation ? (
+                        <span>{formatQuotation(row)}</span>
+                      ) : (
+                        <span>não informada</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <StatusBadge
@@ -621,7 +558,9 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                     />
                   </TableCell>
                   <TableCell className="text-sm text-fg-muted">{formatDelivery(row)}</TableCell>
-                  <TableCell className="text-sm">{formatQuotation(row)}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatBRL(row.grand_total)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -716,6 +655,75 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           </div>
         </div>
       )}
+
+      {/* Secondary summary: available on demand after the list journey. */}
+      <details className="group rounded-lg border border-line bg-surface">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
+          <span>Resumo comercial · últimos 30 dias</span>
+          <span className="text-xs font-normal text-fg-muted" aria-live="polite">
+            {summaryError ? 'indisponível' : summaryData ? 'disponível' : 'carregando'}
+          </span>
+        </summary>
+        <div className="border-t border-line p-4">
+          {summaryError && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-surface-subtle px-3 py-3"
+              role="alert"
+            >
+              <p className="text-sm text-destructive">
+                Não foi possível carregar as métricas de vendas.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+          {summaryData && (
+            <div className="flex flex-wrap gap-3">
+              <StatCard
+                icon={DollarSign}
+                label="Receita"
+                className="flex-1"
+                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+                metadata={
+                  summaryData.revenue_delta === null ||
+                  (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
+                    ? undefined
+                    : summaryData.revenue_delta === 0
+                      ? 'sem variação vs período anterior'
+                      : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
+                }
+              />
+              <StatCard
+                icon={ShoppingCart}
+                label="Pedidos"
+                className="flex-1"
+                value={String(summaryData.orders_count)}
+              />
+              <StatCard
+                icon={TrendingUp}
+                label="Ticket Médio"
+                className="flex-1"
+                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+                metadata={
+                  summaryData.avg_ticket_delta === null ||
+                  (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
+                    ? undefined
+                    : summaryData.avg_ticket_delta === 0
+                      ? 'sem variação vs período anterior'
+                      : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
+                }
+              />
+              <StatCard
+                icon={Package}
+                label="Pedidos em aberto"
+                className="flex-1"
+                value={String(summaryData.open_orders)}
+              />
+            </div>
+          )}
+        </div>
+      </details>
     </PageShell>
   );
 }

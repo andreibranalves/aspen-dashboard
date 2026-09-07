@@ -21,6 +21,7 @@ export default {
           DEFAULT: 'rgb(var(--border-default))',
           subtle: 'rgb(var(--border-subtle))',
           strong: 'rgb(var(--border-strong))',
+          control: 'rgb(var(--border-control))',
         },
         text: {
           primary: 'rgb(var(--text-primary))',
@@ -48,6 +49,8 @@ export default {
           DEFAULT: 'rgb(var(--info))',
           foreground: 'rgb(var(--on-primary))',
         },
+        link: 'rgb(var(--link))',
+        'primary-text': 'rgb(var(--primary-text))',
 
         // Compatibility aliases retained while consumers migrate.
         line: 'rgb(var(--line))',

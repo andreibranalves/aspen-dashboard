@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { Menu, ChevronRight, Moon, Sun } from 'lucide-react';
 import BackButton from '@/components/ui/back-button';
+import { routePath } from '@/app/match-route';
 import type { BreadcrumbItem } from './Layout';
 
 export interface TopBarProps {
@@ -20,6 +21,7 @@ export interface TopBarProps {
  * Page-specific actions belong to PageHeader on the rendered screen.
  */
 export default function TopBar({
+  route,
   onMenuClick,
   sidebarOpen = false,
   isMobile = false,
@@ -30,11 +32,11 @@ export default function TopBar({
 }: TopBarProps) {
   // Show back button on detail pages (e.g. Início > Orçamentos > ORC-1234).
   const parentItem = breadcrumbItems.length >= 3 ? breadcrumbItems[1] : null;
+  const backLabel =
+    route && routePath(route).startsWith('/sales-orders/') ? 'Voltar aos pedidos' : undefined;
 
   return (
-    <header
-      className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4 md:px-6"
-    >
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4 md:px-6">
       <div className="flex min-w-0 items-center gap-3">
         {isMobile && (
           <button
@@ -48,7 +50,9 @@ export default function TopBar({
             <Menu size={20} aria-hidden="true" />
           </button>
         )}
-        {parentItem?.hash && <BackButton onClick={() => onNavigate(parentItem.hash!)} />}
+        {parentItem?.hash && (
+          <BackButton label={backLabel} onClick={() => onNavigate(parentItem.hash!)} />
+        )}
         <nav
           className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
           aria-label="Trilha de navegação"

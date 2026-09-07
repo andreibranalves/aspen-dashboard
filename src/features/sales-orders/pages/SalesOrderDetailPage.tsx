@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, Check, DollarSign, FileText, Truck } from 'lucide-react';
 import { apiGet, apiPatch } from '@/lib/api/api';
-import { routePath } from '@/app/match-route';
-import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -43,13 +41,6 @@ interface SalesOrderDetailPageProps {
 function formatSalesOrderDate(value: string): string {
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
-}
-
-function getSalesOrdersReturnRoute(): string {
-  const previousRoute = getHashHistoryPreviousRoute();
-  return previousRoute && routePath(previousRoute) === '/sales-orders'
-    ? previousRoute
-    : '/sales-orders';
 }
 
 function ProgressMetric({
@@ -143,10 +134,8 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         const projected = projectSalesOrderDetail(result);
         if (!projected) throw new Error('Resposta inválida ao atualizar pedido.');
         setData(projected);
-      } catch (caught) {
-        setActionError(
-          caught instanceof Error ? caught.message : 'Não foi possível atualizar o pedido.'
-        );
+      } catch {
+        setActionError('Não foi possível atualizar o pedido. Tente novamente.');
       } finally {
         setUpdating(null);
       }
@@ -163,14 +152,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
   if (error) {
     return (
       <PageShell>
-        <PageHeader
-          title="Pedido"
-          actions={
-            <Button variant="ghost" onClick={() => navigate(getSalesOrdersReturnRoute())}>
-              ← Voltar
-            </Button>
-          }
-        />
+        <PageHeader title="Pedido" />
         <div
           className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
           role="alert"
@@ -212,15 +194,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
 
   return (
     <PageShell>
-      <PageHeader
-        title={data.id}
-        description={`${data.customer_name || 'Cliente não identificado'}${data.source_quotation ? ` · originado de ${data.source_quotation}` : ''}`}
-        actions={
-          <Button variant="ghost" onClick={() => navigate(getSalesOrdersReturnRoute())}>
-            ← Voltar aos pedidos
-          </Button>
-        }
-      />
+      <PageHeader title={data.id} />
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -237,28 +211,46 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           >
             <div className="border-b border-line px-5 py-4">
               <h2 id="sales-order-execution-title" className="text-base font-semibold">
-                Execução do pedido
+                Dados do pedido
               </h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-md bg-surface-subtle px-3 py-3">
-                  <span className="text-xs text-fg-muted">Data do pedido</span>
-                  <p className="mt-1 text-sm font-medium">
-                    {orderDate ? formatSalesOrderDate(orderDate) : '—'}
-                  </p>
+              <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-fg-muted">Cliente</dt>
+                  <dd className="mt-1 text-sm font-medium">
+                    {data.customer_name || 'Cliente não identificado'}
+                  </dd>
                 </div>
-                {data.quotation_origin && (
-                  <div className="rounded-md bg-surface-subtle px-3 py-3">
-                    <span className="text-xs text-fg-muted">Origem</span>
-                    <p
-                      className={`mt-1 text-sm font-medium ${data.quotation_origin.status === 'conflict' ? 'text-destructive' : ''}`}
-                    >
-                      {data.quotation_origin.sourceLabel}
-                    </p>
-                  </div>
-                )}
-                <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
-                <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
-              </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Data do pedido</dt>
+                  <dd className="mt-1 text-sm font-medium">
+                    {orderDate ? formatSalesOrderDate(orderDate) : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Prazo de entrega</dt>
+                  <dd className="mt-1 text-sm font-medium">
+                    {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Origem</dt>
+                  <dd className="mt-1 text-sm font-medium">
+                    {data.quotation_origin ? (
+                      <span
+                        className={
+                          data.quotation_origin.status === 'conflict' ? 'text-destructive' : ''
+                        }
+                      >
+                        {data.quotation_origin.sourceLabel}
+                      </span>
+                    ) : data.source_quotation ? (
+                      data.source_quotation
+                    ) : (
+                      'Não informada'
+                    )}
+                  </dd>
+                </div>
+              </dl>
             </div>
 
             <div className="px-5 py-4">
@@ -294,7 +286,12 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               Atualizar pedido
             </h2>
 
-            <div className="mt-4 flex flex-wrap gap-2 xl:flex-col xl:items-stretch">
+            <div className="mt-4 space-y-4 border-b border-line pb-4">
+              <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
+              <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
+            </div>
+
+            <div className="mt-4 flex flex-col items-stretch gap-2">
               {billedBlockedReason && (
                 <span id="sales-order-billed-reason" className="sr-only">
                   {billedBlockedReason}
@@ -303,7 +300,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               <Button
                 variant="outline"
                 size="sm"
-                className="xl:w-full"
+                className="w-full"
                 aria-label="Marcar faturado"
                 aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
                 title={billedBlockedReason}
@@ -320,7 +317,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               <Button
                 variant="outline"
                 size="sm"
-                className="xl:w-full"
+                className="w-full"
                 aria-label="Marcar entregue"
                 aria-describedby={
                   deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined
@@ -346,14 +343,14 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             </p>
             {data.source_quotation && (
               <Button
-                variant="default"
+                variant="link"
                 size="sm"
-                className="mt-4 w-full"
+                className="mt-4 h-auto w-full justify-start px-0"
                 onClick={() =>
                   navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
                 }
               >
-                <FileText size={14} aria-hidden="true" /> Voltar ao orçamento
+                <FileText size={14} aria-hidden="true" /> Abrir orçamento {data.source_quotation}
               </Button>
             )}
             {data.status === 'Completed' && (
