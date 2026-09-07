@@ -60,7 +60,7 @@ function renderTemplateText(text: string, templates: OrderTemplate[]): ReactNode
     nodes.push(
       <span
         key={`${template.id}-${pillIndex++}`}
-        title={`Template: ${template.name}`}
+        title={`Modelo: ${template.name}`}
         className="whitespace-nowrap bg-surface font-semibold text-fg"
       >
         {token}
@@ -109,7 +109,7 @@ export default function AutoQuotePage() {
       setOrderTemplates(available);
     } catch {
       setOrderTemplates([]);
-      setOrderTemplatesError('Não foi possível carregar os templates de pedido.');
+      setOrderTemplatesError('Não foi possível carregar os modelos de pedido.');
     }
   }, []);
 
@@ -126,7 +126,7 @@ export default function AutoQuotePage() {
       setTemplates(available);
       setTemplateKey(response.default_key || available.find((template) => template.is_default)?.key || '');
     } catch {
-      setTemplateError('Não foi possível carregar os modelos HTML.');
+      setTemplateError('Não foi possível carregar os modelos de orçamento.');
     } finally {
       setTemplateLoading(false);
     }
@@ -313,7 +313,7 @@ export default function AutoQuotePage() {
     if (!text.trim() && !imageData) return;
     const inline = inlineTemplateSelections(text, orderTemplates);
     if (inline.unknown.length) {
-      setError(`Template não encontrado: ${inline.unknown.join(', ')}.`);
+      setError(`Modelo não encontrado: ${inline.unknown.join(', ')}.`);
       return;
     }
     const generation = ++extractionGenerationRef.current;
@@ -692,7 +692,7 @@ export default function AutoQuotePage() {
             <div className="space-y-1">
               <h1 className="text-lg font-semibold tracking-tight text-fg">Pedido do cliente</h1>
               <p className="text-sm leading-5 text-fg-muted">
-                Cole a conversa ou envie uma imagem. O conteúdo só vira orçamento depois da sua revisão.
+                Cole a conversa ou uma imagem. O conteúdo só vira orçamento depois da sua revisão.
               </p>
             </div>
             {templateError && (
@@ -807,7 +807,7 @@ export default function AutoQuotePage() {
                         <span className="text-xs text-fg-muted">@{templateSlug(template.name)}</span>
                       </button>
                     )) : (
-                      <p className="px-3 py-2 text-sm text-fg-muted">Nenhum template encontrado.</p>
+                      <p className="px-3 py-2 text-sm text-fg-muted">Nenhum modelo encontrado.</p>
                     )}
                   </div>
                 )}
@@ -865,7 +865,7 @@ export default function AutoQuotePage() {
               onClick={() => setOrderTemplateManagerOpen(true)}
             >
               <Settings size={14} />
-              Gerenciar templates
+              Gerenciar modelos
             </Button>
           </div>
         </div>
@@ -885,7 +885,7 @@ export default function AutoQuotePage() {
                 <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>
                 <p className="mt-1 max-w-sm text-sm text-fg-muted">
                   Cole a mensagem do cliente no painel esquerdo e clique em <strong>Extrair</strong> para
-                  gerar orçamentos.
+                  preparar orçamentos.
                 </p>
               </div>
             </div>
@@ -933,7 +933,7 @@ export default function AutoQuotePage() {
                         <AlertTriangle size={18} className="mt-0.5 shrink-0" />
                         <div>
                           <p className="font-medium">
-                            Falha ao criar orçamento para {capitalize(draft.edited.nome)}
+                            Falha ao emitir orçamento para {capitalize(draft.edited.nome)}
                           </p>
                           <p>{draft.result?.error || 'Falha desconhecida'}</p>
                         </div>

@@ -13,6 +13,7 @@ import {
   productPricingTiers,
   quoteRevisionItems,
   quoteRevisions,
+  quoteLeads,
   quoteSequences,
   quotations,
   quotationTemplateVersions,
@@ -119,6 +120,10 @@ export interface QuoteDraftCreateInput {
   clienteId?: unknown;
   client?: Record<string, unknown> | null;
   cliente?: Record<string, unknown> | null;
+  quote_lead_id?: unknown;
+  quoteLeadId?: unknown;
+  crm_deal_id?: unknown;
+  crmDealId?: unknown;
   template_key?: unknown;
   template_version_id?: unknown;
   template?: unknown;
@@ -273,6 +278,11 @@ interface ProductWithPricing {
   pricing: ReturnType<typeof normalizeProductPricing>;
 }
 
+interface QuoteOriginInput {
+  quoteLeadId: string;
+  crmDealId: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -390,6 +400,83 @@ function normalizeClientId(input: QuoteDraftCreateInput): string | null {
   if (values.some((value) => value !== values[0]))
     throw new QuoteDraftInputError('Os identificadores do cliente entram em conflito.');
   return values[0];
+}
+
+function optionalUuidAliases(
+  input: QuoteDraftCreateInput,
+  aliases: Array<keyof QuoteDraftCreateInput>,
+  label: string,
+): string | null {
+  const values = aliases
+    .map((key) => input[key])
+    .filter((value) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map((value) => String(value).trim());
+  if (values.length === 0) return null;
+  if (values.some((value) => !isUuid(value))) {
+    throw new QuoteDraftInputError(`${label} inválido.`);
+  }
+  if (values.some((value) => value !== values[0])) {
+    throw new QuoteDraftInputError(`Os valores de ${label.toLowerCase()} entram em conflito.`);
+  }
+  return values[0];
+}
+
+function normalizeQuoteOriginInput(input: QuoteDraftCreateInput): QuoteOriginInput | null {
+  const quoteLeadId = optionalUuidAliases(
+    input,
+    ['quote_lead_id', 'quoteLeadId'],
+    'Identificador do lead de origem',
+  );
+  const crmDealId = optionalUuidAliases(
+    input,
+    ['crm_deal_id', 'crmDealId'],
+    'Identificador da oportunidade de origem',
+  );
+  if (!quoteLeadId && !crmDealId) return null;
+  if (!quoteLeadId || !crmDealId) {
+    throw new QuoteDraftInputError('Lead e oportunidade de origem devem ser informados juntos.');
+  }
+  return { quoteLeadId, crmDealId };
+}
+
+function timestampAfter(candidate: Date, previous: Date | string): Date {
+  const prior = previous instanceof Date ? previous : new Date(previous);
+  return Number.isFinite(prior.getTime()) && candidate.getTime() <= prior.getTime()
+    ? new Date(prior.getTime() + 1)
+    : candidate;
+}
+
+async function validateQuoteOrigin(
+  tx: QuoteTransaction,
+  origin: QuoteOriginInput,
+): Promise<{
+  lead: typeof quoteLeads.$inferSelect;
+  deal: typeof crmDeals.$inferSelect;
+}> {
+  const [lead] = await tx
+    .select()
+    .from(quoteLeads)
+    .where(eq(quoteLeads.id, origin.quoteLeadId))
+    .for('update')
+    .limit(1);
+  const [deal] = await tx
+    .select()
+    .from(crmDeals)
+    .where(eq(crmDeals.id, origin.crmDealId))
+    .for('update')
+    .limit(1);
+  if (!lead || !deal) {
+    throw new QuoteDraftNotFoundError('Origem do orçamento não encontrada.');
+  }
+  if (
+    lead.status === 'discarded' ||
+    deal.status === 'Perdido' ||
+    lead.crmDealId !== deal.id ||
+    deal.quoteLeadId !== lead.id
+  ) {
+    throw new QuoteDraftConflictError('Lead e oportunidade de origem não são coerentes.');
+  }
+  return { lead, deal };
 }
 
 function formatQuantity(quantityScaled: bigint): string {
@@ -880,6 +967,7 @@ export function createPostgresQuoteDraftRepository(
       throw new QuoteDraftInputError('Envie os dados do orçamento em um objeto válido.');
     const items = normalizeItems(input.items);
     const clientId = normalizeClientId(input);
+    const originInput = normalizeQuoteOriginInput(input);
     const requestUrgent = input.urgente === true;
     const requestObservations = hasOwn(input as unknown as Record<string, unknown>, 'observacoes') && input.observacoes !== undefined
       ? input.observacoes
@@ -907,6 +995,7 @@ export function createPostgresQuoteDraftRepository(
       const createdAt = ensureDate(now());
       const result = await database.transaction(async (tx) => {
         await acquireQuotationWriteLock(tx);
+        const origin = originInput ? await validateQuoteOrigin(tx, originInput) : null;
         let client: QuoteDraftClientSnapshot;
         if (clientId) {
           const [existing] = await tx
@@ -1143,10 +1232,30 @@ export function createPostgresQuoteDraftRepository(
           id: quotationId,
           businessNumber,
           clientId: client.id,
+          quoteLeadId: origin?.lead.id ?? null,
           status: 'rascunho',
           createdAt,
           updatedAt: createdAt,
         });
+
+        if (origin) {
+          await tx
+            .update(quoteLeads)
+            .set({
+              status: 'converted',
+              quotationId,
+              updatedAt: timestampAfter(createdAt, origin.lead.updatedAt),
+            })
+            .where(eq(quoteLeads.id, origin.lead.id));
+          await tx
+            .update(crmDeals)
+            .set({
+              clientId: client.id,
+              quotationId,
+              updatedAt: timestampAfter(createdAt, origin.deal.updatedAt),
+            })
+            .where(eq(crmDeals.id, origin.deal.id));
+        }
 
         await tx.insert(quoteRevisions).values({
           id: revisionId,
@@ -1353,6 +1462,7 @@ export function createPostgresQuoteDraftRepository(
           id: quotationId,
           businessNumber,
           clientId: sourceQuotation.clientId,
+          quoteLeadId: sourceQuotation.quoteLeadId,
           status: 'rascunho',
           createdAt,
           updatedAt: createdAt,

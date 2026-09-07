@@ -22,6 +22,8 @@ const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;
 const MAX_SEARCH_LENGTH = 200;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const SAFE_SANITY_ID = /^[A-Za-z0-9_.-]{1,255}$/;
 
 export type QuoteLeadInput = Record<string, unknown>;
 
@@ -45,9 +47,19 @@ export interface QuoteLeadRecord extends QuoteLead {
 
 export interface QuoteLeadRepository {
   upsert(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
+  ingestSiteSubmission(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
   findByExternalId(externalId: string, source?: string): Promise<QuoteLeadRecord | null>;
   list(options?: QuoteLeadListOptions): Promise<Array<QuoteLeadRecord & { texto: string }>>;
   update(id: string, patch: QuoteLeadPatch): Promise<(QuoteLeadRecord & { texto: string }) | null>;
+}
+
+function siteSubmissionMetadata(
+  raw: unknown
+): { payloadFingerprint: string; originalCreatedAt: string } | null {
+  if (!isRecord(raw) || !isRecord(raw.siteSubmission)) return null;
+  const payloadFingerprint = cleanText(raw.siteSubmission.payloadFingerprint);
+  const originalCreatedAt = cleanText(raw.siteSubmission.originalCreatedAt);
+  return payloadFingerprint && originalCreatedAt ? { payloadFingerprint, originalCreatedAt } : null;
 }
 
 export interface QuoteLeadRepositoryOptions {
@@ -468,6 +480,82 @@ export function createPostgresQuoteLeadRepository(
             lead = rowToRecord(updated, false);
           }
 
+          const dealId = await ensureDeal(transaction, lead, timestamp, idFactory);
+          if (lead.crmDealId !== dealId) {
+            await transaction
+              .update(quoteLeads)
+              .set({ crmDealId: dealId, updatedAt: normalizeTimestamp(lead.updatedAt) })
+              .where(eq(quoteLeads.id, lead.id));
+            lead.crmDealId = dealId;
+          }
+          return { ...lead, created: Boolean(inserted) };
+        });
+      } catch (error) {
+        return safeError(error);
+      }
+    },
+
+    async ingestSiteSubmission(input: QuoteLeadInput): Promise<QuoteLeadRecord> {
+      const timestamp = nowDate(now);
+      const externalId = cleanText(input.externalId);
+      const payloadFingerprint = cleanText(input.payloadFingerprint);
+      const originalCreatedAt = cleanText(input.originalCreatedAt);
+      const originalDate = new Date(originalCreatedAt);
+      if (
+        !SAFE_SANITY_ID.test(externalId) ||
+        !SHA256_PATTERN.test(payloadFingerprint) ||
+        !Number.isFinite(originalDate.getTime()) ||
+        originalDate.toISOString() !== originalCreatedAt
+      ) {
+        throw createHttpError(400, 'Identidade durável da solicitação é obrigatória.');
+      }
+      const incoming = normalizedInput(
+        {
+          ...input,
+          source: 'site_form',
+          externalId,
+          raw: {
+            siteSubmission: {
+              payloadFingerprint,
+              originalCreatedAt,
+              consent: isRecord(input.consent) ? input.consent : null,
+              primaryAdIdentifier: cleanText(input.gclid)
+                ? 'gclid'
+                : cleanText(input.wbraid)
+                  ? 'wbraid'
+                  : cleanText(input.gbraid)
+                    ? 'gbraid'
+                    : null,
+            },
+          },
+        },
+        idFactory,
+        timestamp
+      );
+      const identityKey = quoteLeadIdentityKey(incoming);
+      try {
+        return await getDb().transaction(async (transaction) => {
+          const incomingRecord = {
+            ...incoming,
+            identityKey,
+            crmDealId: null,
+          } as QuoteLeadRecord;
+          const [inserted] = await transaction
+            .insert(quoteLeads)
+            .values({
+              ...rowValues(incomingRecord, timestamp, timestamp),
+              id: incoming.id,
+            } as never)
+            .onConflictDoNothing({ target: quoteLeads.identityKey })
+            .returning();
+          const row = await selectLeadForUpdate(transaction, identityKey);
+          if (!row) throw createHttpError(503, 'Não foi possível salvar o lead de orçamento.');
+
+          const existingMetadata = siteSubmissionMetadata(row.raw);
+          if (!inserted && existingMetadata?.payloadFingerprint !== payloadFingerprint) {
+            throw createHttpError(409, 'A submissão já existe com conteúdo diferente.');
+          }
+          const lead = rowToRecord(row, Boolean(inserted));
           const dealId = await ensureDeal(transaction, lead, timestamp, idFactory);
           if (lead.crmDealId !== dealId) {
             await transaction

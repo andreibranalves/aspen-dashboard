@@ -5,7 +5,7 @@ const draft = {
   index: 0,
   original: { nome: 'Cliente' },
   edited: {
-    nome: 'Cliente', email: '', telefone: '', urgente: false, origem: 'Site', cnpj: '',
+    nome: 'Cliente', email: '', telefone: '', urgente: false, origem: 'Google Ads', cnpj: '',
     endereco: { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
     items: [{ item_code: 'SKU-1', item_name: 'Produto', qty: 2, rate: 10 }], prazo_producao: '',
   },
@@ -60,8 +60,8 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
 
 test('preview and emission use explicit UI clicks with one stable idempotent POST @quotations @critical', async ({ page }) => {
   const { requests, releasePost } = await setup(page, null, {
-    quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1,
-    status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
+    quotationId: 'q-1', businessNumber: 'ORC-20260001', revisionId: 'r-1', revisionNumber: 1,
+    status: 'emitido', issuedAt: '2026-08-13T00:00:00.000Z', validUntil: '2026-08-28', pdfUrl: '/api/quotation-preview?id=q-1&format=pdf',
   }, { deferPost: true });
   await page.addInitScript(() => {
     const value = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts'));
@@ -80,7 +80,7 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   await expect.poll(() => previewWrites).toBe(1);
   expect(previewWrites).toBe(1);
   const postRequestPromise = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Gerar orçamento' }).dblclick();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).dblclick();
   const postRequest = await postRequestPromise;
   const postKey = postRequest.headers()['idempotency-key'];
   expect(postKey).toMatch(/^[0-9a-f-]{8}-[0-9a-f-]{27}$/i);
@@ -101,8 +101,8 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
 
 test('active emission does not show a recovery error while POST is pending @quotations @critical', async ({ page }) => {
   const { releasePost } = await setup(page, null, {
-    quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1,
-    status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
+    quotationId: 'q-1', businessNumber: 'ORC-20260001', revisionId: 'r-1', revisionNumber: 1,
+    status: 'emitido', issuedAt: '2026-08-13T00:00:00.000Z', validUntil: '2026-08-28', pdfUrl: '/api/quotation-preview?id=q-1&format=pdf',
   }, { deferPost: true });
   await page.addInitScript(() => {
     const value = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts'));
@@ -111,7 +111,7 @@ test('active emission does not show a recovery error while POST is pending @quot
   });
   await page.goto('/#/auto');
   const postRequest = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await postRequest;
   try {
     await expect(page.getByText('Não foi possível consultar a emissão. Tente novamente.', { exact: true })).toHaveCount(0);
@@ -122,7 +122,7 @@ test('active emission does not show a recovery error while POST is pending @quot
 });
 
 test('GET recovery is read-only after a lost POST response @quotations @critical', async ({ page }) => {
-  const { requests } = await setup(page, { state: 'completed', quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1, status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf' });
+  const { requests } = await setup(page, { state: 'completed', quotationId: 'q-1', businessNumber: 'ORC-20260001', revisionId: 'r-1', revisionNumber: 1, status: 'emitido', issuedAt: '2026-08-13T00:00:00.000Z', validUntil: '2026-08-28', pdfUrl: '/api/quotation-preview?id=q-1&format=pdf' });
   await page.goto('/#/auto');
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
   expect(requests.some((request) => request.method() === 'GET')).toBe(true);

@@ -405,9 +405,32 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(
       page.getByText('Produto com atividade local', { exact: true }).first()
     ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Produto com atividade local', exact: true })
+    ).toHaveCount(1);
+    const productHeader = page.locator('header').filter({
+      has: page.getByRole('heading', { name: 'Produto com atividade local', exact: true }),
+    });
+    await expect(productHeader.getByText('Ativo', { exact: true })).toBeVisible();
+    await expect(productHeader.getByRole('button', { name: 'Arquivar produto' })).toBeVisible();
+    await expect(page.getByText('Nome', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Produto criado', { exact: true })).toBeVisible();
     await expect(page.getByText(/10,00/).first()).toBeVisible();
     await expect.poll(() => activityRequests).toBe(1);
+
+    const initiallyDark = await page
+      .locator('html')
+      .evaluate((element) => element.classList.contains('dark'));
+    await page.getByRole('button', { name: /Ativar modo (claro|escuro)/ }).click();
+    await expect
+      .poll(() => page.locator('html').evaluate((element) => element.classList.contains('dark')))
+      .toBe(!initiallyDark);
+    await expect(productHeader).toBeVisible();
+
+    await productHeader.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(page.getByPlaceholder('Nome do produto')).toHaveValue(
+      'Produto com atividade local'
+    );
   });
 
   test('consulta atividade local uma única vez após salvar um produto existente', async ({
@@ -844,14 +867,69 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(requests.filter((request) => request.method === 'GET')).toHaveLength(0);
   });
 
-  test('distingue busca sem resultado e mantém a ação primária acessível por teclado', async ({
+  test('separa seleção, arquivamento e abertura da linha ao operar a tabela por teclado', async ({
     page,
   }) => {
-    await mockProductApi(page, [product('A11Y-SKU', 'Produto acessível')]);
+    const longName = 'Camiseta algodão premium coleção primavera azul-marinho';
+    const row = product('A11Y-SKU', longName);
+    row.preco_minimo = '19.90';
+    row.pricing_available = true;
+    const { requests } = await mockProductApi(page, [row]);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/#/products');
-    await expect(
-      page.getByRole('button', { name: 'Abrir produto A11Y-SKU' }).first()
-    ).toBeVisible();
+
+    const productRow = page.getByRole('row', { name: new RegExp('Abrir produto A11Y-SKU') });
+    const checkbox = page.getByRole('checkbox', { name: 'Selecionar produto A11Y-SKU' });
+    const archiveButton = page.getByRole('button', { name: 'Arquivar produto A11Y-SKU' });
+    const displayedName = page.getByText(longName, { exact: true }).first();
+
+    await expect(productRow).toBeVisible();
+    await expect(productRow).toHaveAttribute('tabindex', '0');
+    await checkbox.focus();
+    await checkbox.press('Space');
+    await expect(checkbox).toBeChecked();
+    await expect(page).toHaveURL(/#\/products$/);
+
+    await archiveButton.focus();
+    await archiveButton.press('Enter');
+    await expect(page.getByRole('dialog')).toContainText('Arquivar produto');
+    await expect(page).toHaveURL(/#\/products$/);
+    expect(requests.filter((request) => request.method === 'DELETE')).toHaveLength(0);
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click();
+
+    await expect(displayedName).toBeVisible();
+    expect(await displayedName.evaluate((element) => element.clientWidth > 250)).toBe(true);
+    expect(
+      await displayedName.evaluate((element) => element.scrollWidth <= element.clientWidth)
+    ).toBe(true);
+    await expect(productRow.getByText('A11Y-SKU', { exact: true })).toBeVisible();
+    await expect(productRow.getByText('R$ 19,90', { exact: true })).toBeVisible();
+    await expect(archiveButton).toBeVisible();
+
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect(productRow).toBeVisible();
+    await expect(productRow.getByText('A11Y-SKU', { exact: true })).toBeVisible();
+    await expect(archiveButton).toBeVisible();
+
+    await productRow.focus();
+    await expect(productRow).toBeFocused();
+    await productRow.press('Enter');
+    await expect(page).toHaveURL(/#\/products\/A11Y-SKU$/);
+  });
+
+  test('preserva busca e ações dos cards mobile por mouse', async ({ page }) => {
+    await mockProductApi(page, [product('MOBILE-SKU', 'Produto acessível no celular')]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#/products');
+
+    const checkbox = page.getByRole('checkbox', { name: 'Selecionar produto MOBILE-SKU' });
+    await expect(checkbox).toBeVisible();
+    await checkbox.click();
+    await expect(checkbox).toBeChecked();
+
+    await page.getByRole('button', { name: 'Arquivar produto MOBILE-SKU' }).click();
+    await expect(page.getByRole('dialog')).toContainText('Arquivar produto');
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click();
 
     await page.getByRole('textbox', { name: 'Buscar produtos' }).fill('SEM-RESULTADO');
     await expect(
@@ -859,9 +937,11 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Limpar filtros' }).last()).toBeVisible();
     await page.getByRole('button', { name: 'Limpar filtros' }).last().click();
-    await expect(page.getByText('Produto acessível', { exact: true }).first()).toBeVisible();
+    await expect(
+      page.locator('article').getByText('Produto acessível no celular', { exact: true })
+    ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Abrir produto A11Y-SKU' }).first().press('Enter');
-    await expect(page).toHaveURL(/#\/products\/A11Y-SKU$/);
+    await page.getByRole('button', { name: 'Abrir produto MOBILE-SKU' }).click();
+    await expect(page).toHaveURL(/#\/products\/MOBILE-SKU$/);
   });
 });

@@ -546,7 +546,7 @@ export default function ProductsPage() {
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
-            <Table className="min-w-[720px]">
+            <Table className="min-w-[720px] table-fixed">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12 px-3">
@@ -560,9 +560,9 @@ export default function ProductsPage() {
                     />
                   </TableHead>
                   <TableHead>Produto</TableHead>
-                  <TableHead className="whitespace-nowrap">SKU</TableHead>
-                  <TableHead className="hidden xl:table-cell">Unidade</TableHead>
-                  <TableHead className="text-right">Preço mínimo</TableHead>
+                  <TableHead className="w-[160px] whitespace-nowrap">SKU</TableHead>
+                  <TableHead className="hidden w-[90px] xl:table-cell">Unidade</TableHead>
+                  <TableHead className="w-[150px] text-right">Preço mínimo</TableHead>
                   <TableHead className="w-[100px] text-center">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -583,10 +583,9 @@ export default function ProductsPage() {
                       className="group cursor-pointer"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
                       onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          navigate(`/products/${encodeURIComponent(sku)}`);
-                        }
+                        if (event.target !== event.currentTarget || event.key !== 'Enter') return;
+                        event.preventDefault();
+                        navigate(`/products/${encodeURIComponent(sku)}`);
                       }}
                     >
                       <TableCell className="w-12 px-3" onClick={(event) => event.stopPropagation()}>
@@ -598,19 +597,19 @@ export default function ProductsPage() {
                           className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                         />
                       </TableCell>
-                      <TableCell className="max-w-[360px]">
+                      <TableCell>
                         <button
                           type="button"
-                          className="min-w-0 max-w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                          className="w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                           onClick={(event) => {
                             event.stopPropagation();
                             navigate(`/products/${encodeURIComponent(sku)}`);
                           }}
                           aria-label={`Abrir produto ${sku}: ${name}`}
                         >
-                          <span className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span className="flex min-w-0 items-center gap-2">
                             <span
-                              className="max-w-[250px] truncate text-sm font-medium text-primary hover:underline"
+                              className="min-w-0 flex-1 truncate text-sm font-medium text-primary hover:underline"
                               title={name}
                             >
                               {name}
@@ -618,7 +617,7 @@ export default function ProductsPage() {
                             <StatusBadge status={state.status} label={state.label} />
                           </span>
                           <span
-                            className="mt-1 block max-w-[320px] truncate text-xs text-fg-muted"
+                            className="mt-1 block truncate text-xs text-fg-muted"
                             title={description || undefined}
                           >
                             {description || 'Sem descrição cadastrada'}

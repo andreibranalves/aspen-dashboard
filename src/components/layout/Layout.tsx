@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
+import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
 
 export interface BreadcrumbItem {
   label: string;
@@ -32,6 +33,20 @@ function getParentRoute(fallback: string): string {
   return previousRoute && routePath(previousRoute) === fallback ? previousRoute : fallback;
 }
 
+function getQuotationParent(): BreadcrumbItem {
+  const previousRoute = getHashHistoryPreviousRoute();
+  if (previousRoute && routePath(previousRoute) === '/follow-ups') {
+    return { label: 'Follow-ups', hash: previousRoute };
+  }
+  if (previousRoute && routePath(previousRoute) === '/comunicacao') {
+    const query = previousRoute.split('?')[1] || '';
+    if (new URLSearchParams(query).get('tab') === 'history') {
+      return { label: 'Histórico de envios', hash: previousRoute };
+    }
+  }
+  return { label: 'Orçamentos', hash: getParentRoute('/quotations') };
+}
+
 function decodeLabel(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -40,7 +55,7 @@ function decodeLabel(value: string): string {
   }
 }
 
-function getBreadcrumb(route: string): BreadcrumbItem[] {
+function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbItem[] {
   const path = routePath(route);
   if (path === '/dashboard')
     return [
@@ -51,7 +66,7 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
   if (path.startsWith('/quotations/')) {
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Orçamentos', hash: getParentRoute('/quotations') },
+      getQuotationParent(),
       { label: 'Orçamento', hash: null },
     ];
   }
@@ -76,7 +91,7 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Clientes', hash: getParentRoute('/leads') },
-      { label: id === 'new' ? 'Novo cliente' : decodeLabel(id), hash: null },
+      { label: id === 'new' ? 'Novo cliente' : detailLabel || 'Detalhes do cliente', hash: null },
     ];
   }
 
@@ -98,6 +113,9 @@ export interface LayoutProps {
   children: ReactNode;
 }
 
+const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
+const COMPACT_MEDIA_QUERY = '(max-width: 1024px)';
+
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const { darkMode, toggleDarkMode } = useDarkMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -107,16 +125,33 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < 768
   );
+  const [detailBreadcrumb, setDetailBreadcrumb] = useState<{
+    route: string;
+    label: string | null;
+  }>({ route, label: null });
 
   const toggleSidebar = useCallback(() => setSidebarCollapsed((previous) => !previous), []);
+  const setDetailBreadcrumbLabel = useCallback(
+    (label: string | null) => setDetailBreadcrumb({ route, label }),
+    [route]
+  );
+  const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
-    const media = window.matchMedia('(max-width: 767px)');
-    const update = () => setIsMobile(media.matches);
-    update();
-    media.addEventListener?.('change', update);
-    return () => media.removeEventListener?.('change', update);
+    const mobileMedia = window.matchMedia(MOBILE_MEDIA_QUERY);
+    const compactMedia = window.matchMedia(COMPACT_MEDIA_QUERY);
+    const updateMobile = () => setIsMobile(mobileMedia.matches);
+    const collapseAtCompactWidth = () => {
+      if (compactMedia.matches) setSidebarCollapsed(true);
+    };
+    updateMobile();
+    mobileMedia.addEventListener?.('change', updateMobile);
+    compactMedia.addEventListener?.('change', collapseAtCompactWidth);
+    return () => {
+      mobileMedia.removeEventListener?.('change', updateMobile);
+      compactMedia.removeEventListener?.('change', collapseAtCompactWidth);
+    };
   }, []);
 
   useEffect(() => {
@@ -144,17 +179,19 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           onMenuClick={toggleSidebar}
           sidebarOpen={!sidebarCollapsed}
           isMobile={isMobile}
-          breadcrumbItems={getBreadcrumb(route)}
+          breadcrumbItems={getBreadcrumb(route, detailLabel)}
           onNavigate={onNavigate}
           darkMode={darkMode}
           toggleDarkMode={toggleDarkMode}
         />
-        <main
-          className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
-          inert={isMobile && !sidebarCollapsed ? true : undefined}
-        >
-          {children}
-        </main>
+        <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
+          <main
+            className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
+            inert={isMobile && !sidebarCollapsed ? true : undefined}
+          >
+            {children}
+          </main>
+        </BreadcrumbLabelProvider>
       </div>
     </div>
   );

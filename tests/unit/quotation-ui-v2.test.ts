@@ -13,8 +13,14 @@ describe('quotation Aspen v2 surfaces', () => {
 
     assert.match(page, />Pedido do cliente</);
     assert.match(page, />Resultado</);
-    assert.match(card, /Confirme cliente, itens, quantidades e preços/);
     assert.match(page, /aria-label="Mensagem do cliente para extração"/);
+    assert.match(page, /Cole a conversa ou uma imagem/);
+    assert.match(card, /Emitir orçamento/);
+    assert.match(card, /Rascunho salvo\. Continue a revisão ou emita o orçamento/);
+    assert.doesNotMatch(
+      card,
+      /Nada será criado|Gerar orçamento|Modelo HTML|Revise cliente, itens, quantidades e preços/
+    );
   });
 
   it('keeps manual quotation entry visibly editable and staged', () => {
@@ -24,6 +30,9 @@ describe('quotation Aspen v2 surfaces', () => {
     assert.match(page, /1\. Cliente/);
     assert.match(page, /2\. Itens do orçamento/);
     assert.match(page, /3\. Condições e fechamento/);
+    assert.match(page, /aria-label="Emitir orçamento"/);
+    assert.match(page, /Orçamento emitido/);
+    assert.doesNotMatch(page, /Enviar orçamento|Orçamento enviado com sucesso|Modelo HTML/);
     assert.doesNotMatch(page, /section[^>]+shadow-sm/);
   });
 
@@ -36,7 +45,7 @@ describe('quotation Aspen v2 surfaces', () => {
     assert.match(page, /Tentar novamente/);
     assert.match(page, /Sem etapas/);
     assert.match(page, /aria-label=\{`Estado: \$\{projection\.label\}[^`]+`\}/);
-    assert.match(page, /min-w-\[760px\]/);
+    assert.match(page, /min-w-\[680px\]/);
     assert.match(status, /Etapas entregues: \$\{delivered\} de \$\{total\}/);
     assert.match(status, /aria-busy=\{pending\}/);
     assert.match(sendPanel, /Nenhum fluxo de WhatsApp disponível/);

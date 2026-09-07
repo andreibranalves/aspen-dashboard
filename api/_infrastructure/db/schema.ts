@@ -310,6 +310,9 @@ export const quotations = pgTable(
     clientId: uuid('client_id')
       .notNull()
       .references(() => clients.id),
+    quoteLeadId: uuid('quote_lead_id').references((): AnyPgColumn => quoteLeads.id, {
+      onDelete: 'restrict',
+    }),
     status: varchar('status', { length: 32 }).$type<QuotationStatus>().notNull().default('rascunho'),
     issuedAt: timestamp('issued_at', { withTimezone: true }),
     lossReason: text('loss_reason'),
@@ -319,6 +322,9 @@ export const quotations = pgTable(
   (table) => [
     uniqueIndex('quotations_business_number_unique').on(table.businessNumber),
     index('quotations_client_created_idx').on(table.clientId, table.createdAt),
+    index('quotations_quote_lead_id_idx')
+      .on(table.quoteLeadId)
+      .where(sql`${table.quoteLeadId} IS NOT NULL`),
     check(
       'quotations_business_number_format_check',
       sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`
@@ -765,6 +771,151 @@ export const salesOrderItems = pgTable(
     check(
       'sales_order_items_custo_unitario_nonnegative_check',
       sql`${table.custoUnitario} IS NULL OR ${table.custoUnitario} >= 0`
+    ),
+  ]
+);
+
+export const salesOrderOfflineExports = pgTable(
+  'sales_order_offline_exports',
+  {
+    id: uuid('id').primaryKey(),
+    salesOrderId: uuid('sales_order_id')
+      .notNull()
+      .references(() => salesOrders.id, { onDelete: 'restrict' }),
+    quoteLeadId: uuid('quote_lead_id')
+      .notNull()
+      .references(() => quoteLeads.id, { onDelete: 'restrict' }),
+    originSource: varchar('origin_source', { length: 80 }).notNull(),
+    eventType: varchar('event_type', { length: 32 }).notNull().default('pedido_iniciado'),
+    destinationAccountId: varchar('destination_account_id', { length: 64 }).notNull(),
+    destinationActionId: varchar('destination_action_id', { length: 64 }).notNull(),
+    transactionId: varchar('transaction_id', { length: 255 }).notNull(),
+    eventTimestamp: timestamp('event_timestamp', { withTimezone: true }).notNull(),
+    conversionValue: numeric('conversion_value', { precision: 20, scale: 2 }).notNull(),
+    currency: varchar('currency', { length: 3 }).notNull().default('BRL'),
+    eventSource: varchar('event_source', { length: 16 }).notNull().default('OTHER'),
+    adIdentifierType: varchar('ad_identifier_type', { length: 8 }).notNull(),
+    adIdentifier: varchar('ad_identifier', { length: 500 }).notNull(),
+    consentEvidence: jsonb('consent_evidence').$type<Record<string, unknown>>().notNull(),
+    payloadFingerprint: varchar('payload_fingerprint', { length: 64 }).notNull(),
+    state: varchar('state', { length: 32 }).notNull().default('prepared'),
+    reviewReason: varchar('review_reason', { length: 64 }),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('sales_order_offline_exports_identity_unique').on(
+      table.salesOrderId,
+      table.eventType,
+      table.destinationAccountId,
+      table.destinationActionId
+    ),
+    index('sales_order_offline_exports_state_due_idx').on(table.state, table.nextAttemptAt),
+    check('sales_order_offline_exports_event_type_check', sql`${table.eventType} = 'pedido_iniciado'`),
+    check(
+      'sales_order_offline_exports_destination_check',
+      sql`char_length(btrim(${table.destinationAccountId})) > 0 AND char_length(btrim(${table.destinationActionId})) > 0`
+    ),
+    check(
+      'sales_order_offline_exports_transaction_id_check',
+      sql`${table.transactionId} = 'aspen-pedido-iniciado:' || ${table.salesOrderId}::text`
+    ),
+    check('sales_order_offline_exports_conversion_value_check', sql`${table.conversionValue} > 0`),
+    check('sales_order_offline_exports_currency_check', sql`${table.currency} = 'BRL'`),
+    check('sales_order_offline_exports_event_source_check', sql`${table.eventSource} = 'OTHER'`),
+    check(
+      'sales_order_offline_exports_identifier_type_check',
+      sql`${table.adIdentifierType} IN ('gclid', 'wbraid', 'gbraid')`
+    ),
+    check(
+      'sales_order_offline_exports_identifier_check',
+      sql`char_length(btrim(${table.adIdentifier})) > 0`
+    ),
+    check(
+      'sales_order_offline_exports_consent_check',
+      sql`jsonb_typeof(${table.consentEvidence}) = 'object'`
+    ),
+    check(
+      'sales_order_offline_exports_fingerprint_check',
+      sql`${table.payloadFingerprint} ~ '^[0-9a-f]{64}$'`
+    ),
+    check(
+      'sales_order_offline_exports_state_check',
+      sql`${table.state} IN ('prepared', 'sending', 'accepted_pending_diagnostic', 'processed', 'failed', 'needs_review')`
+    ),
+    check(
+      'sales_order_offline_exports_review_reason_check',
+      sql`(
+        (${table.state} = 'needs_review' AND ${table.reviewReason} IS NOT NULL AND ${table.reviewReason} IN (
+          'consent_review_required', 'result_unknown', 'diagnostic_partial_success',
+          'lease_expired_after_transport', 'cancellation_after_attempt',
+          'correction_after_attempt', 'substitution_after_attempt'
+        ))
+        OR (${table.state} <> 'needs_review' AND ${table.reviewReason} IS NULL)
+      )`
+    ),
+    check(
+      'sales_order_offline_exports_lease_check',
+      sql`(${table.leaseToken} IS NULL AND ${table.leaseUntil} IS NULL) OR (${table.leaseToken} IS NOT NULL AND ${table.leaseUntil} IS NOT NULL)`
+    ),
+  ]
+);
+
+export const salesOrderOfflineExportAttempts = pgTable(
+  'sales_order_offline_export_attempts',
+  {
+    id: uuid('id').primaryKey(),
+    exportId: uuid('export_id')
+      .notNull()
+      .references(() => salesOrderOfflineExports.id, { onDelete: 'restrict' }),
+    attemptNo: integer('attempt_no').notNull(),
+    correlationId: varchar('correlation_id', { length: 128 }).notNull(),
+    attemptState: varchar('attempt_state', { length: 24 }).notNull().default('started'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    requestId: varchar('request_id', { length: 255 }),
+    httpStatus: integer('http_status'),
+    errorCode: varchar('error_code', { length: 128 }),
+    errorDetail: varchar('error_detail', { length: 1000 }),
+    fieldWarnings: jsonb('field_warnings').$type<unknown[]>(),
+    diagnosticStatus: varchar('diagnostic_status', { length: 24 }),
+    diagnosticCheckedAt: timestamp('diagnostic_checked_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('sales_order_offline_export_attempts_identity_unique').on(
+      table.exportId,
+      table.attemptNo
+    ),
+    index('sales_order_offline_export_attempts_request_idx')
+      .on(table.requestId)
+      .where(sql`${table.requestId} IS NOT NULL`),
+    check('sales_order_offline_export_attempts_no_check', sql`${table.attemptNo} > 0`),
+    check(
+      'sales_order_offline_export_attempts_state_check',
+      sql`${table.attemptState} IN ('started', 'accepted', 'failed', 'unknown')`
+    ),
+    check(
+      'sales_order_offline_export_attempts_finished_check',
+      sql`(${table.attemptState} = 'started' AND ${table.finishedAt} IS NULL) OR (${table.attemptState} <> 'started' AND ${table.finishedAt} IS NOT NULL)`
+    ),
+    check(
+      'sales_order_offline_export_attempts_http_status_check',
+      sql`${table.httpStatus} IS NULL OR ${table.httpStatus} BETWEEN 100 AND 599`
+    ),
+    check(
+      'sales_order_offline_export_attempts_warnings_check',
+      sql`${table.fieldWarnings} IS NULL OR jsonb_typeof(${table.fieldWarnings}) = 'array'`
+    ),
+    check(
+      'sales_order_offline_export_attempts_diagnostic_check',
+      sql`${table.diagnosticStatus} IS NULL OR ${table.diagnosticStatus} IN ('processing', 'success', 'partial_success', 'failure')`
+    ),
+    check(
+      'sales_order_offline_export_attempts_diagnostic_pair_check',
+      sql`(${table.diagnosticStatus} IS NULL AND ${table.diagnosticCheckedAt} IS NULL) OR (${table.diagnosticStatus} IS NOT NULL AND ${table.diagnosticCheckedAt} IS NOT NULL)`
     ),
   ]
 );

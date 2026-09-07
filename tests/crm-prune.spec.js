@@ -12,7 +12,9 @@ const CRM_DEALS_INITIAL = {
         {
           id: 'DEAL-OLD',
           lead_name: 'Cliente Antigo',
+          client_id: '11111111-1111-4111-8111-111111111111',
           email: 'antigo@example.com',
+          telefone: '5511999990000',
           quotation: 'QTN-OLD',
           follow_up_stage: 0,
           modificado_em: '2026-06-01T10:00:00.000Z',
@@ -109,6 +111,7 @@ test('reviews and marks stale Kanban deals as Perdido @crm', async ({ page }) =>
 
   await page.goto('/#/crm');
 
+  await expect(page.getByText('(11) 99999-0000', { exact: true })).toBeVisible();
   await expect(page.getByText('Revisar pipeline', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Revisar pipeline (1)' }).click();
 
@@ -172,7 +175,7 @@ test('moves a deal from the accessible Mover para menu and restores focus @crm',
   );
 
   await page.getByRole('link', { name: 'Abrir lead Cliente Antigo' }).click();
-  await expect(page).toHaveURL(/#\/leads\?search=Cliente(?:%20|\s)Antigo&status=all/);
+  await expect(page).toHaveURL(/#\/leads\/cliente\/11111111-1111-4111-8111-111111111111$/);
 });
 
 test('refetches the server state after a failed deal move @crm', async ({ page }) => {

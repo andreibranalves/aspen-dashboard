@@ -375,7 +375,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       </section>
 
       <section aria-labelledby="dashboard-summary-title">
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-fg-muted">
               Situação comercial
@@ -384,6 +384,39 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               Resumo de {selectedPeriodLabel.toLowerCase()}
             </h2>
           </div>
+          {summary?.meta_editable ? (
+            <form className="flex flex-wrap items-center justify-end gap-2" onSubmit={saveMeta}>
+              <label
+                htmlFor="dashboard-meta-spend"
+                className="text-xs font-medium uppercase tracking-wide text-fg-muted"
+              >
+                Gasto Meta (R$)
+              </label>
+              <Input
+                id="dashboard-meta-spend"
+                className="w-32"
+                inputMode="decimal"
+                value={metaDraft}
+                onChange={(event) => setMetaDraft(event.target.value)}
+                disabled={metaSaving}
+                placeholder="0,00"
+                aria-invalid={metaError ? true : undefined}
+                aria-describedby={metaError ? 'dashboard-meta-spend-error' : undefined}
+              />
+              <Button type="submit" size="sm" disabled={metaSaving}>
+                Salvar gasto
+              </Button>
+              {metaError ? (
+                <p
+                  id="dashboard-meta-spend-error"
+                  className="basis-full text-right text-xs text-destructive"
+                  role="alert"
+                >
+                  {metaError}
+                </p>
+              ) : null}
+            </form>
+          ) : null}
         </div>
         {summary ? (
           <div className="space-y-3">
@@ -413,35 +446,9 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                 icon={BarChart3}
                 label="Ads"
                 value={formatBRL(summary.ads)}
-                footer={
-                  <div className="space-y-2">
-                    <p>
-                      Google:{' '}
-                      {summary.ads_google_unavailable ? 'indisponível' : formatBRL(summary.ads_google)}
-                    </p>
-                    {summary.meta_editable ? (
-                      <form className="flex flex-wrap items-end gap-2" onSubmit={saveMeta}>
-                        <label className="min-w-[8rem] space-y-1">
-                          <span className="block text-[11px] font-medium uppercase tracking-wide">
-                            Meta do mês
-                          </span>
-                          <Input
-                            inputMode="decimal"
-                            value={metaDraft}
-                            onChange={(event) => setMetaDraft(event.target.value)}
-                            aria-label="Gasto da Meta no mês"
-                            disabled={metaSaving}
-                            placeholder="0.00"
-                          />
-                        </label>
-                        <Button type="submit" size="sm" disabled={metaSaving}>
-                          Salvar Meta
-                        </Button>
-                      </form>
-                    ) : null}
-                    {metaError ? <p className="text-destructive">{metaError}</p> : null}
-                  </div>
-                }
+                metadata={`Google: ${
+                  summary.ads_google_unavailable ? 'indisponível' : formatBRL(summary.ads_google)
+                }`}
               />
               <StatCard icon={Percent} label="Imposto" value={formatBRL(summary.imposto)} />
               <StatCard

@@ -1,6 +1,7 @@
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres, { type Sql } from 'postgres';
 
+import { parsePostgresRuntimeUrl, postgresRuntimeOptions } from '../../_shared/postgres-target.js';
 import * as schema from './schema.js';
 
 export type AppDatabase = PostgresJsDatabase<typeof schema>;
@@ -12,6 +13,7 @@ export interface DatabaseConnection {
 
 export interface DatabaseConnectionOptions {
   idle_timeout?: number;
+  strictTarget?: boolean;
 }
 
 /**
@@ -24,12 +26,17 @@ export function createDatabaseConnection(
   databaseUrl: string,
   options: DatabaseConnectionOptions = {}
 ): DatabaseConnection {
+  const { strictTarget = false, ...poolOptions } = options;
+  const targetOptions = strictTarget
+    ? postgresRuntimeOptions(parsePostgresRuntimeUrl(databaseUrl))
+    : {};
   const client = postgres(databaseUrl, {
     max: 1,
     prepare: false,
     connect_timeout: 10,
     idle_timeout: 20,
-    ...options,
+    ...poolOptions,
+    ...targetOptions,
   });
 
   return {
@@ -81,9 +88,11 @@ function getDatabaseUrl(): string {
  * Module-level caching lets warm Vercel invocations reuse one conservative
  * connection pool instead of opening a new pool per request.
  */
-export function getDatabase(): AppDatabase {
+export function getDatabase(options: { strictTarget?: boolean } = {}): AppDatabase {
+  const databaseUrl = getDatabaseUrl();
+  if (options.strictTarget) parsePostgresRuntimeUrl(databaseUrl);
   if (!cachedConnection) {
-    cachedConnection = createDatabaseConnection(getDatabaseUrl());
+    cachedConnection = createDatabaseConnection(databaseUrl, options);
   }
   return cachedConnection.db;
 }

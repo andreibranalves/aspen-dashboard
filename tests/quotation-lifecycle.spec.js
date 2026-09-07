@@ -2,59 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
+import { withCanonicalQuotationDetail } from './fixtures/quotation-detail.js';
 
 const id = 'ORC-20260012';
 const token = '2026-07-01T12:00:00.000Z';
 const hash = 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e';
 
-function withCanonicalDetail(value) {
-  return {
-    ...value,
-    canonical: {
-      id: value.quotation_uuid,
-      businessNumber: value.quotation_id,
-      name: value.quotation_name || value.quotation_id,
-      revisionId: value.revision_id,
-      revision: value.revision_number ?? value.revision,
-      status: value.status_canonical,
-      clienteId: value.client_id,
-      cliente: value.cliente,
-      data: value.data,
-      validade: value.validade,
-      validadeDias: value.validade_dias,
-      subtotal: value.subtotal,
-      total: value.total,
-      frete: value.frete,
-      expired: value.derived_expired,
-      concurrencyToken: value.concurrency_token,
-      updatedAt: value.updated_at,
-      emailSent: value.email_sent,
-      emailSentAt: value.email_sent_at,
-      pagamento: value.pagamento,
-      entrega: value.entrega,
-      observacoes: value.observacoes,
-      prazoProducao: value.prazo_producao,
-      templateKey: value.template_key,
-      templateHash: value.template_hash,
-      items: [],
-      revisionHistory: (value.revision_history || []).map((entry) => ({
-        revisionId: entry.revision_id,
-        revision: entry.revision_number ?? entry.revision,
-        createdAt: entry.created_at,
-        validadeDias: entry.validade_dias,
-        subtotal: entry.subtotal,
-        total: entry.total,
-        status: entry.status_canonical,
-        expired: entry.derived_expired,
-      })),
-    },
-  };
-}
-
 function detail(overrides = {}) {
-  return withCanonicalDetail({
+  return withCanonicalQuotationDetail({
     id,
     quotation_id: id,
+    quotation_name: id,
     quotation_uuid: '11111111-1111-4111-8111-111111111111',
     revision_id: '22222222-2222-4222-8222-222222222222',
     revision: 1,
@@ -387,6 +345,31 @@ test('quotation email dialog traps focus, validates, cancels, and locks while se
   await expect(opener).toBeFocused();
 });
 
+test('technical details traps focus, closes with Escape and restores the actions trigger', async ({ page }) => {
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail()));
+
+  await page.goto(`/#/quotations/${id}`);
+  const opener = page.getByRole('button', { name: 'Mais ações' });
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Detalhes técnicos' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Detalhes técnicos' });
+  const close = dialog.getByRole('button', { name: 'Fechar' });
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(close).toBeFocused();
+  await opener.focus();
+  await expect(close).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
 test('quotation email preserves ambiguous recipient and rotates attempt when changed', async ({ page }) => {
   const sentBodies = [];
   let sendCount = 0;
@@ -577,7 +560,7 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
   const itemRow = page.locator('tr').filter({ hasText: 'Produto lifecycle' }).first();
   await expect(itemRow.getByText('10', { exact: true })).toBeVisible();
   await expect(itemRow.getByText('10.000', { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
+  await expect(page.getByLabel('Título da seção Dados para pagamento')).toHaveCount(0);
 });
 
 test('core lifecycle emission uses the current reviewed commercial fields and template @quotations @critical', async ({ page }) => {
@@ -595,14 +578,14 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          quotation_id: id,
-          quotation_uuid: detail().quotation_uuid,
-          revision_id: detail().revision_id,
-          revision_number: 1,
+          quotationId: detail().quotation_uuid,
+          businessNumber: id,
+          revisionId: detail().revision_id,
+          revisionNumber: 1,
           status: 'emitido',
-          issued_at: token,
-          valid_until: '2026-08-12',
-          pdf_url: `/api/quotation-preview?id=${detail().quotation_uuid}&format=pdf`,
+          issuedAt: token,
+          validUntil: '2026-08-12',
+          pdfUrl: `/api/quotation-preview?id=${detail().quotation_uuid}&format=pdf`,
         }),
       });
       return;
@@ -655,13 +638,13 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
   await page.getByRole('button', { name: 'Editar' }).click();
   await page.getByLabel('Condição de pagamento').fill('30 dias após emissão');
   await page.getByLabel('Entrega do orçamento').fill('7 dias úteis');
-  await page.getByLabel('Observações padrão').fill('Conteúdo revisado pelo operador');
+  await page.getByRole('textbox', { name: 'Condições gerais', exact: true }).fill('Conteúdo revisado pelo operador');
   await page.getByLabel('Modelo do orçamento').selectOption('minimalista');
-  await page.getByLabel('Título - Pagamento').fill('Pagamento revisado');
+  await page.getByLabel('Título da seção Dados para pagamento').fill('Pagamento revisado');
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText('Orçamento salvo.').first()).toBeVisible();
   await page.getByRole('button', { name: 'Editar' }).click();
-  await page.getByLabel('Validade do orçamento').fill('42');
+  await page.getByLabel('Validade do orçamento em dias').fill('42');
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText('Orçamento salvo.').first()).toBeVisible();
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
@@ -759,7 +742,7 @@ test('expired detail blocks send, loss requires reason and emitted deletion rema
   await routeTemplates(page);
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeDisabled();
-  await expect(page.getByText('Orçamento vencido. Crie uma nova revisão.')).toBeVisible();
+  await expect(page.getByText('Validade expirada — crie uma nova revisão para reenviar.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Excluir' })).toHaveCount(0);
   // motivo da perda agora é dialog dedicado (sem window.prompt)
   await page.getByRole('button', { name: 'Marcar como perdido' }).click();
@@ -846,6 +829,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   const pdfPreview = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Visualizar PDF' }).click();
   const pdfPopup = await pdfPreview;
+  await pdfPopup.waitForURL('**/api/quotation-preview**');
   const pdfUrl = new globalThis.URL(pdfPopup.url());
   expect(pdfUrl.pathname).toBe('/api/quotation-preview');
   expect(pdfUrl.searchParams.get('id')).toBe('22222222-2222-4222-8222-222222222222');
@@ -857,6 +841,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   const historyPreview = page.waitForEvent('popup');
   await page.locator('tbody tr').filter({ hasText: 'R1' }).getByRole('button', { name: 'Visualizar', exact: true }).click();
   const historyPopup = await historyPreview;
+  await historyPopup.waitForURL('**/api/quotation-preview**');
   const historyUrl = new globalThis.URL(historyPopup.url());
   expect(historyUrl.searchParams.get('id')).toBe('22222222-2222-4222-8222-222222222222');
   await historyPopup.close();
@@ -941,14 +926,15 @@ test('new revision prices a product selected from an added item row @quotations 
   });
 
   await page.goto(`/#/quotations/${id}`);
+  await page.getByText('Ver histórico completo').click();
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
   await page.getByRole('button', { name: 'Editar' }).click();
   await page.getByRole('button', { name: 'Item', exact: true }).click();
 
   const row = page.locator('table').first().locator('tbody tr').last();
-  await row.getByRole('textbox').first().fill('SKU-NEW');
-  await page.getByRole('button', { name: /SKU-NEW/ }).click();
+  await row.getByLabel(/^SKU do item/).fill('SKU-NEW');
+  await page.getByRole('button', { name: /SKU-NEW.*Produto novo/ }).click();
 
   await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('12.34');
   const quantity = row.locator('input[type="number"]').first();
@@ -991,27 +977,74 @@ test('frontend source guard rejects removed external files, tokens, and app URLs
   expect(violations).toEqual([]);
 });
 
-test('local sales order detail has no external app link and keeps local quotation navigation @quotations @critical', async ({ page }) => {
+test('sales order detail presents one origin, one progress summary, and protected peer actions @quotations @critical', async ({ page }) => {
+  const states = {
+    'LOCAL-PENDING': {
+      status: 'To Deliver and Bill',
+      per_delivered: 0,
+      per_billed: 0,
+    },
+    'LOCAL-PARTIAL': {
+      status: 'To Deliver and Bill',
+      per_delivered: 60,
+      per_billed: 40,
+      source_quotation: 'ORC-LOCAL-1',
+    },
+    'LOCAL-COMPLETED': {
+      status: 'Completed',
+      per_delivered: 100,
+      per_billed: 100,
+    },
+  };
+
   await page.route('**/api/sales-orders**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     const id = url.searchParams.get('id');
+    const state = states[id];
     await fulfillJson(route, {
       id,
-      status: 'Completed',
       customer_name: 'Cliente local',
       date: '2026-07-01',
-      source_quotation: id === 'LOCAL-WITH-QUOTE' ? 'ORC-LOCAL-1' : undefined,
       grand_total: 100,
       items: [{ item_code: 'SKU-1', item_name: 'Produto local', qty: 1, rate: 100, amount: 100, uom: 'und' }],
+      ...state,
     });
   });
-  await page.goto('/#/sales-orders/LOCAL-NO-QUOTE');
-  await expect(page.getByText('Cliente local', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
-  await expect(page.getByText('Voltar ao orçamento', { exact: true })).toHaveCount(0);
 
-  await page.goto('/#/sales-orders/LOCAL-WITH-QUOTE');
-  await expect(page.getByRole('button', { name: 'Voltar ao orçamento' }).last()).toBeVisible();
+  await page.goto('/#/sales-orders/LOCAL-PENDING');
+  await expect(page.getByText('A entregar e faturar', { exact: true })).toBeVisible();
+  await expect(page.getByText('Produto local', { exact: true })).toBeVisible();
+  await expect(page.locator('strong').filter({ hasText: 'R$ 100,00' })).toBeVisible();
+  const pendingProgress = page.getByRole('region', { name: 'Progresso do pedido' });
+  await expect(pendingProgress.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(pendingProgress.getByText('Faturado', { exact: true })).toBeVisible();
+  await expect(pendingProgress.getByText('0%', { exact: true })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Abrir orçamento de origem' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '← Voltar aos pedidos' })).toHaveCount(1);
+
+  const pendingActions = page.getByLabel('Ações operacionais do pedido');
+  const billButton = pendingActions.getByRole('button', { name: 'Marcar faturado' });
+  const deliverButton = pendingActions.getByRole('button', { name: 'Marcar entregue' });
+  await expect(billButton).toBeEnabled();
+  await expect(deliverButton).toBeEnabled();
+  await expect(billButton).toHaveAttribute('data-variant', 'outline');
+  await expect(deliverButton).toHaveAttribute('data-variant', 'outline');
+
+  await page.goto('/#/sales-orders/LOCAL-PARTIAL');
+  const partialProgress = page.getByRole('region', { name: 'Progresso do pedido' });
+  await expect(partialProgress.getByText('60%', { exact: true })).toBeVisible();
+  await expect(partialProgress.getByText('40%', { exact: true })).toBeVisible();
+  const sourceButton = page.getByRole('button', { name: 'Abrir orçamento de origem' });
+  await expect(sourceButton).toHaveCount(1);
+  await expect(sourceButton).toHaveAttribute('data-variant', 'ghost');
+  await sourceButton.click();
+  await expect(page).toHaveURL(/\/#\/quotations\/ORC-LOCAL-1$/);
+
+  await page.goto('/#/sales-orders/LOCAL-COMPLETED');
+  await expect(page.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Progresso do pedido' }).getByText('100%', { exact: true })).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();
   await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
 });
 
@@ -1087,7 +1120,7 @@ test('manual quotation accepts metadata-free local responses @quotations @critic
   await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill('SKU-LOCAL');
   await page.getByRole('button', { name: 'Adicionar SKU-LOCAL ao orçamento' }).click();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho persistido com sucesso', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rascunho salvo', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
 });
 

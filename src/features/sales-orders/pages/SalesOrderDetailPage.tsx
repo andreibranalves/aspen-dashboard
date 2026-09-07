@@ -246,6 +246,16 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
                     {orderDate ? formatSalesOrderDate(orderDate) : '—'}
                   </p>
                 </div>
+                {data.quotation_origin && (
+                  <div className="rounded-md bg-surface-subtle px-3 py-3">
+                    <span className="text-xs text-fg-muted">Origem</span>
+                    <p
+                      className={`mt-1 text-sm font-medium ${data.quotation_origin.status === 'conflict' ? 'text-destructive' : ''}`}
+                    >
+                      {data.quotation_origin.sourceLabel}
+                    </p>
+                  </div>
+                )}
                 <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
                 <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
               </div>
@@ -333,7 +343,6 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             <span className="text-xs text-fg-muted">Total do pedido</span>
             <p className="mt-1 text-lg font-semibold">
               {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
-            </p>
             {data.source_quotation && (
               <Button
                 variant="default"

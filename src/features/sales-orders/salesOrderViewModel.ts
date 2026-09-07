@@ -1,3 +1,5 @@
+import { projectQuotationOrigin, type QuotationOriginView } from '../quotations/quotationOrigin.ts';
+
 export interface SalesOrderItemView {
   item_code: string;
   item_name?: string;
@@ -21,6 +23,7 @@ export interface SalesOrderDetailView {
   per_billed?: number;
   items?: SalesOrderItemView[];
   omitted_items: number;
+  quotation_origin?: QuotationOriginView;
 }
 
 type RecordValue = Record<string, unknown>;
@@ -102,5 +105,8 @@ export function projectSalesOrderDetail(value: unknown): SalesOrderDetailView | 
     ...(money(source.per_billed) !== undefined ? { per_billed: money(source.per_billed) } : {}),
     ...(items ? { items } : {}),
     omitted_items: omittedItems,
+    ...(projectQuotationOrigin(source.quotation_origin)
+      ? { quotation_origin: projectQuotationOrigin(source.quotation_origin)! }
+      : {}),
   };
 }

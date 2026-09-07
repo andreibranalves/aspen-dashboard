@@ -10,6 +10,7 @@ import {
   type DismissReason,
   type FollowUpView,
 } from '@/lib/api/followUpApi';
+import { fmtPhone, formatBRL, formatDateTime } from '@/lib/formatting/formatters';
 
 interface FollowUpReviewDrawerProps {
   followUp: FollowUpView | null;
@@ -44,13 +45,9 @@ function defaultMessage(followUp: FollowUpView): string {
   return `${greeting}\n\nPassando para saber se você teve a chance de ver o orçamento ${followUp.businessNumber}. Qualquer dúvida, estou à disposição.`;
 }
 
-
 function formatDate(value: string | null): string {
   if (!value) return 'Sem recibo';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? 'Data indisponível'
-    : new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+  return Number.isNaN(new Date(value).getTime()) ? 'Data indisponível' : formatDateTime(value);
 }
 
 function toneForState(value: string): string {
@@ -60,7 +57,11 @@ function toneForState(value: string): string {
   return 'tone-neutral-muted';
 }
 
-export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: FollowUpReviewDrawerProps) {
+export default function FollowUpReviewDrawer({
+  followUp,
+  onClose,
+  onChanged,
+}: FollowUpReviewDrawerProps) {
   const { toast } = useToast();
   const [message, setMessage] = useState('');
   const [reason, setReason] = useState<DismissReason>('already_handled');
@@ -77,7 +78,12 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
   useEffect(() => {
     setMessage(followUp?.messageSnapshot || (followUp ? defaultMessage(followUp) : ''));
     setReason('already_handled');
-  }, [followUp?.followUpId, followUp?.messageSnapshot, followUp?.clientName, followUp?.businessNumber]);
+  }, [
+    followUp?.followUpId,
+    followUp?.messageSnapshot,
+    followUp?.clientName,
+    followUp?.businessNumber,
+  ]);
   async function handleApprove() {
     if (!followUp) return;
     setPending('approve');
@@ -91,7 +97,10 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
       onClose();
       onChanged();
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível aprovar o follow-up.', 'error');
+      toast(
+        error instanceof Error ? error.message : 'Não foi possível aprovar o follow-up.',
+        'error'
+      );
     } finally {
       setPending(null);
     }
@@ -110,7 +119,10 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
       onClose();
       onChanged();
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível dispensar o follow-up.', 'error');
+      toast(
+        error instanceof Error ? error.message : 'Não foi possível dispensar o follow-up.',
+        'error'
+      );
     } finally {
       setPending(null);
     }
@@ -125,12 +137,22 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
         followUp && canDismiss ? (
           <div className="flex flex-wrap gap-2">
             {canApprove && (
-              <Button type="button" variant="success" onClick={handleApprove} disabled={pending !== null}>
+              <Button
+                type="button"
+                variant="success"
+                onClick={handleApprove}
+                disabled={pending !== null}
+              >
                 <Check aria-hidden="true" />
                 {pending === 'approve' ? 'Aprovando…' : 'Aprovar'}
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={handleDismiss} disabled={pending !== null}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDismiss}
+              disabled={pending !== null}
+            >
               <X aria-hidden="true" />
               {pending === 'dismiss' ? 'Dispensando…' : 'Dispensar'}
             </Button>
@@ -152,15 +174,19 @@ export default function FollowUpReviewDrawer({ followUp, onClose, onChanged }: F
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
             <div>
               <dt className="text-xs text-fg-muted">Orçamento</dt>
-              <dd className="font-medium text-fg">{followUp.businessNumber}</dd>
+              <dd className="break-words font-medium text-fg">{followUp.businessNumber}</dd>
             </div>
             <div>
               <dt className="text-xs text-fg-muted">Valor</dt>
-              <dd className="font-medium text-fg">R$ {followUp.amount}</dd>
+              <dd className="whitespace-nowrap font-medium tabular-nums text-fg">
+                {formatBRL(followUp.amount)}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-fg-muted">Destino</dt>
-              <dd className="font-medium text-fg">{followUp.canonicalPhone || 'Telefone indisponível'}</dd>
+              <dd className="whitespace-nowrap font-medium text-fg">
+                {fmtPhone(followUp.canonicalPhone) || 'Telefone indisponível'}
+              </dd>
             </div>
             <div>
               <dt className="text-xs text-fg-muted">Motivo</dt>

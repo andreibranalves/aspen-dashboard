@@ -91,6 +91,7 @@ async function setupAuto(page) {
       nome: 'Cliente teste',
       email: 'cliente@example.test',
       telefone: '11999990000',
+      origem: 'Google Ads',
       items: [{ item_code: 'CNG-001', qty: 1 }],
     }],
   }));
@@ -109,14 +110,14 @@ async function setupAuto(page) {
     concurrency_token: '2026-08-13T00:00:00.000Z',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
-    quotation_id: quotationUuid,
-    business_number: quotationId,
-    revision_id: revisionId,
-    revision_number: 1,
+    quotationId: quotationUuid,
+    businessNumber: quotationId,
+    revisionId,
+    revisionNumber: 1,
     status: 'emitido',
-    issued_at: updatedAt,
-    valid_until: '2026-08-28',
-    pdf_url: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
+    issuedAt: updatedAt,
+    validUntil: '2026-08-28',
+    pdfUrl: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
   }));
   await page.route('**/api/communication-flows**', (route) => json(route, {
     success: true,
@@ -157,7 +158,7 @@ async function setupAuto(page) {
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
 }
 

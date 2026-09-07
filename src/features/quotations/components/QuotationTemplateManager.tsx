@@ -53,7 +53,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       setDefaultKey(result.default_key || available.find((item) => item.is_default)?.key || '');
       setSelectedId((current) => current || (newFormIntentRef.current ? null : available[0]?.id || null));
     } catch (error) {
-      setListError(errorMessage(error, 'Não foi possível carregar os templates.'));
+      setListError(errorMessage(error, 'Não foi possível carregar os modelos.'));
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
     } catch (error) {
       if (requestId !== detailRequestRef.current) return;
       setDetail(null);
-      setDetailError(errorMessage(error, 'Não foi possível carregar o template.'));
+      setDetailError(errorMessage(error, 'Não foi possível carregar o modelo.'));
     } finally {
       if (requestId === detailRequestRef.current) setDetailLoading(false);
     }
@@ -106,13 +106,13 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
     try {
       setValidation(await validateQuotationTemplate(source, key));
     } catch (error) {
-      setMessage(errorMessage(error, 'Não foi possível validar o template.'));
+      setMessage(errorMessage(error, 'Não foi possível validar o modelo.'));
     }
   }
 
   async function save() {
     if (!name.trim() || !key.trim() || !source.trim()) {
-      setMessage('Informe chave, nome e fonte HTML completa.');
+      setMessage('Informe identificador, nome e conteúdo do modelo.');
       return;
     }
     setSaving(true);
@@ -126,10 +126,10 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
         setSelectedId(created.id);
       }
       await loadTemplates();
-      setMessage('Template salvo com sucesso.');
+      setMessage('Modelo salvo com sucesso.');
       onTemplatesChanged?.(defaultKey);
     } catch (error) {
-      setMessage(errorMessage(error, 'Não foi possível salvar o template.'));
+      setMessage(errorMessage(error, 'Não foi possível salvar o modelo.'));
     } finally {
       setSaving(false);
     }
@@ -143,9 +143,9 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       setDefaultKey(result.default_key);
       await loadTemplates();
       onTemplatesChanged?.(result.default_key);
-      setMessage('Template padrão alterado.');
+      setMessage('Modelo padrão alterado.');
     } catch (error) {
-      setMessage(errorMessage(error, 'Não foi possível alterar o template padrão.'));
+      setMessage(errorMessage(error, 'Não foi possível alterar o modelo padrão.'));
     } finally {
       setSaving(false);
     }
@@ -158,21 +158,17 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       await archiveQuotationTemplate(detail.id);
       await loadTemplates();
       await loadDetail(detail.id);
-      setMessage('Template arquivado.');
+      setMessage('Modelo arquivado.');
     } catch (error) {
-      setMessage(errorMessage(error, 'Não foi possível arquivar o template.'));
+      setMessage(errorMessage(error, 'Não foi possível arquivar o modelo.'));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <section className="rounded-lg border border-line bg-surface p-6 space-y-5">
-      <div>
-        <h2 className="text-sm font-semibold text-fg">Modelos de orçamento</h2>
-        <p className="mt-1 text-sm text-fg-muted">Gerencie modelos HTML e suas versões.</p>
-      </div>
-      {loading && !templates.length && <div aria-label="Carregando templates" className="text-sm text-fg-muted">Carregando templates...</div>}
+    <div className="space-y-5">
+      {loading && !templates.length && <div aria-label="Carregando modelos" className="text-sm text-fg-muted">Carregando modelos...</div>}
       {listError && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
@@ -206,7 +202,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
             ))}
           </div>
           <div className="space-y-4">
-            {detailLoading && <div aria-label="Carregando detalhe do template" className="text-sm text-fg-muted">Carregando detalhe...</div>}
+            {detailLoading && <div aria-label="Carregando detalhes do modelo" className="text-sm text-fg-muted">Carregando detalhes...</div>}
             {detailError && selectedId && (
               <div role="alert" className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm">
                 <p>{detailError}</p>
@@ -216,16 +212,16 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
             {!detailLoading && !detailError && <>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Nome</span><Input value={name} onChange={(event) => setName(event.target.value)} disabled={saving} /></label>
-              <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Chave imutável</span><Input value={key} onChange={(event) => setKey(event.target.value)} disabled={saving || !!detail} /></label>
+              <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Identificador</span><Input value={key} onChange={(event) => setKey(event.target.value)} disabled={saving || !!detail} /></label>
             </div>
             {detail && <p className="text-xs text-fg-muted">Versão atual: {detail.current_version || 1}</p>}
-            <label className="block space-y-1.5 text-sm text-fg"><span className="font-medium">Fonte HTML</span><textarea value={source} onChange={(event) => setSource(event.target.value)} disabled={saving} rows={14} className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 font-mono text-xs leading-[1.4] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50" /></label>
+            <label className="block space-y-1.5 text-sm text-fg"><span className="font-medium">Conteúdo do modelo</span><textarea value={source} onChange={(event) => setSource(event.target.value)} disabled={saving} rows={14} className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 font-mono text-xs leading-[1.4] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50" /></label>
             {validation?.warnings.map((warning) => <p key={warning} className="text-sm text-warning">Aviso: {warning}</p>)}
             {/* Fundo branco intencional: preview de e-mail é sempre renderizado em fundo claro */}
-            {validation?.preview && <iframe title="Preview do template" sandbox="" srcDoc={validation.preview} className="h-80 w-full rounded-lg border border-line bg-white" />}
+            {validation?.preview && <iframe title="Pré-visualização do modelo" sandbox="" srcDoc={validation.preview} className="h-80 w-full rounded-lg border border-line bg-white" />}
             {message && <p role="status" className="text-sm text-fg">{message}</p>}
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-              <Button type="button" variant="outline" onClick={() => void validate()} disabled={saving || !source || !key}><Eye size={14} /> Validar e visualizar preview</Button>
+              <Button type="button" variant="outline" onClick={() => void validate()} disabled={saving || !source || !key}><Eye size={14} /> Validar e visualizar</Button>
               <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : <Save />} {detail ? 'Salvar nova versão' : 'Criar modelo'}</Button>
               {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => setPendingConfirm('set_default')} disabled={saving}>Definir como padrão</Button>}
               {detail && !detail.is_default && !detail.archived && <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setPendingConfirm('archive')} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
@@ -254,6 +250,6 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
         }}
         onCancel={() => setPendingConfirm(null)}
       />
-    </section>
+    </div>
   );
 }

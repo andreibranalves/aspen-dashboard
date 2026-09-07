@@ -51,6 +51,11 @@ import {
   formatAddressSummary,
   type Address,
 } from '@/lib/clientMetadata';
+import {
+  clearQuotationOriginPrefill,
+  loadQuotationOriginPrefill,
+  type QuotationOriginPrefill,
+} from '@/features/crm/quotationOriginPrefill';
 
 // ── Constants ──
 const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' } as const;
@@ -118,6 +123,7 @@ interface ManualDraft {
   observacoes: string;
   urgente: boolean;
   templateKey: string;
+  originPrefill?: QuotationOriginPrefill;
 }
 
 function isNewClient(value: unknown): value is NewClient {
@@ -142,12 +148,24 @@ function isCartItem(value: unknown): value is CartItem {
 function isManualDraft(value: unknown): value is ManualDraft {
   if (typeof value !== 'object' || value === null) return false;
   const draft = value as Record<string, unknown>;
+  const originPrefill = draft.originPrefill;
+  const hasValidOriginPrefill = originPrefill === undefined || (
+    typeof originPrefill === 'object' &&
+    originPrefill !== null &&
+    typeof (originPrefill as Record<string, unknown>).quoteLeadId === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).crmDealId === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).leadName === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).email === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).telefone === 'string' &&
+    typeof (originPrefill as Record<string, unknown>).source === 'string'
+  );
   return (
     draft.version === MANUAL_DRAFT_STORAGE_VERSION &&
     typeof draft.clientType === 'string' &&
     isNewClient(draft.newClient) &&
     Array.isArray(draft.items) &&
-    draft.items.every(isCartItem)
+    draft.items.every(isCartItem) &&
+    hasValidOriginPrefill
   );
 }
 
@@ -185,6 +203,7 @@ export default function ManualOrcamentoPage() {
   const [clientSearching, setClientSearching] = useState<boolean>(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [newClient, setNewClient] = useState<NewClient>({ nome: '', email: '', telefone: '' });
+  const [originPrefill, setOriginPrefill] = useState<QuotationOriginPrefill | null>(null);
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Client metadata ──
@@ -229,7 +248,7 @@ export default function ManualOrcamentoPage() {
       const defaultKey = response.default_key || available.find((template) => template.is_default)?.key || '';
       setTemplateKey(templateOverrideRef.current ?? defaultKey);
     } catch {
-      setTemplateError('Não foi possível carregar os modelos HTML.');
+      setTemplateError('Não foi possível carregar os modelos de orçamento.');
     } finally {
       setTemplateLoading(false);
     }
@@ -241,9 +260,9 @@ export default function ManualOrcamentoPage() {
 
   // ── Submit state ──
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [sending, setSending] = useState<boolean>(false);
-  const manualSendInFlight = useRef(false);
-  const manualSendKey = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [issuing, setIssuing] = useState<boolean>(false);
+  const manualIssueInFlight = useRef(false);
+  const manualIssueKey = useRef<{ fingerprint: string; key: string } | null>(null);
   const pricingVersionsRef = useRef<Record<string, number>>({});
   const nextPricingVersion = useCallback((_key: string): number => {
     const version = (pricingVersionsRef.current[_key] || 0) + 1;
@@ -485,7 +504,20 @@ export default function ManualOrcamentoPage() {
     };
   }, [clientType, selectedClient, newClient]);
 
-  const canSubmit = Boolean(getClientInfo().nome) && Boolean(leadSource) && isValidLeadSource(leadSource) && items.length > 0 && !submitting;
+  const hasClient = Boolean(getClientInfo().nome);
+  const hasItems = items.length > 0;
+  const actionBlockMessage = !hasClient && !hasItems
+    ? 'Informe o cliente e adicione ao menos um item para continuar.'
+    : !hasClient
+      ? 'Informe o cliente para continuar.'
+      : !hasItems
+        ? 'Adicione ao menos um item para continuar.'
+        : !leadSource
+          ? 'Selecione a origem para continuar.'
+          : !isValidLeadSource(leadSource)
+            ? 'Selecione uma origem válida para continuar.'
+            : null;
+  const canSubmit = !actionBlockMessage && !submitting;
 
   const buildManualPayload = useCallback(() => {
     const { nome, email, telefone } = getClientInfo();
@@ -513,18 +545,21 @@ export default function ManualOrcamentoPage() {
         validade_dias: undefined,
         ...(templateKey ? { template_key: templateKey } : {}),
         ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
+        ...(originPrefill
+          ? { quote_lead_id: originPrefill.quoteLeadId, crm_deal_id: originPrefill.crmDealId }
+          : {}),
       },
     };
-  }, [address, cnpj, clientType, getClientInfo, items, leadSource, observacoes, prazo, selectedClient, templateKey, urgente]);
+  }, [address, cnpj, clientType, getClientInfo, items, leadSource, observacoes, originPrefill, prazo, selectedClient, templateKey, urgente]);
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
     const { nome } = getClientInfo();
-    if (!nome) { toast('Informe o nome do cliente.', 'error'); return; }
-    if (!leadSource) { toast('Selecione a origem antes de criar o orçamento.', 'error'); return; }
+    if (!nome) { toast('Informe o cliente para continuar.', 'error'); return; }
+    if (items.length === 0) { toast('Adicione ao menos um item para continuar.', 'error'); return; }
+    if (!leadSource) { toast('Selecione a origem para continuar.', 'error'); return; }
     if (!isValidLeadSource(leadSource)) { toast('Origem selecionada não é válida.', 'error'); return; }
     if (cnpj && !isValidCnpj(cnpj)) { toast('CNPJ informado é inválido. Corrija ou deixe em branco.', 'error'); return; }
-    if (items.length === 0) { toast('Adicione ao menos um produto.', 'error'); return; }
 
     setSubmitting(true);
     setError(null);
@@ -534,8 +569,9 @@ export default function ManualOrcamentoPage() {
       const res = await apiPost<OrcamentoResponse>('/orcamento', buildManualPayload());
       setResult(res);
       clearManualDraft();
+      clearQuotationOriginPrefill();
     } catch {
-      setError('Não foi possível criar o orçamento. Tente novamente.');
+      setError('Não foi possível salvar o rascunho. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -561,17 +597,20 @@ export default function ManualOrcamentoPage() {
     form.remove();
   }, [buildManualPayload, cnpj, getClientInfo, items.length, toast]);
 
-  const handleSend = useCallback(async () => {
+  const handleIssue = useCallback(async () => {
     const { nome } = getClientInfo();
-    if (!nome || items.length === 0) { toast('Informe cliente e ao menos um produto.', 'error'); return; }
-    if (manualSendInFlight.current) return;
+    if (!nome) { toast('Informe o cliente para continuar.', 'error'); return; }
+    if (items.length === 0) { toast('Adicione ao menos um item para continuar.', 'error'); return; }
+    if (!leadSource) { toast('Selecione a origem para continuar.', 'error'); return; }
+    if (!isValidLeadSource(leadSource)) { toast('Origem selecionada não é válida.', 'error'); return; }
+    if (manualIssueInFlight.current) return;
     const payload = buildManualPayload();
     const fingerprint = JSON.stringify(payload);
-    const current = manualSendKey.current;
+    const current = manualIssueKey.current;
     const key = current?.fingerprint === fingerprint ? current.key : globalThis.crypto.randomUUID();
-    manualSendKey.current = { fingerprint, key };
-    manualSendInFlight.current = true;
-    setSending(true);
+    manualIssueKey.current = { fingerprint, key };
+    manualIssueInFlight.current = true;
+    setIssuing(true);
     setError(null);
     try {
       // Same transition as every other flow: persist the draft first, then
@@ -582,18 +621,19 @@ export default function ManualOrcamentoPage() {
       if (!revisionId || !concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho do orçamento.');
       const issue = await issuePersistedDraft(revisionId, concurrencyToken, key);
       clearManualDraft();
+      clearQuotationOriginPrefill();
       setResult({ success: true, quotation_id: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision: issue.revisionNumber, status: issue.status });
     } catch {
-      setError('Não foi possível enviar o orçamento. Tente novamente.');
+      setError('Não foi possível emitir o orçamento. Tente novamente.');
     } finally {
-      manualSendInFlight.current = false;
-      setSending(false);
+      manualIssueInFlight.current = false;
+      setIssuing(false);
     }
-  }, [buildManualPayload, getClientInfo, items.length, toast]);
+  }, [buildManualPayload, getClientInfo, items.length, leadSource, toast]);
 
   // ── Reset all ──
   const resetForm = useCallback(() => {
-    manualSendKey.current = null;
+    manualIssueKey.current = null;
     setItems([]);
     setResult(null);
     setError(null);
@@ -614,6 +654,9 @@ export default function ManualOrcamentoPage() {
     setAddingSku(null);
     setPricingRows(new Set());
     clearManualDraft();
+    clearQuotationOriginPrefill();
+    setOriginPrefill(null);
+    if (window.location.hash.includes('?')) window.history.replaceState(null, '', '#/manual');
   }, []);
 
   // ── Draft persistence ──
@@ -621,6 +664,17 @@ export default function ManualOrcamentoPage() {
   useEffect(() => {
     if (draftRestoredRef.current) return;
     draftRestoredRef.current = true;
+    const prefill = loadQuotationOriginPrefill();
+    if (prefill) {
+      setOriginPrefill(prefill);
+      setClientType(CLIENT_TYPE.NEW);
+      setNewClient({
+        nome: prefill.leadName,
+        email: prefill.email,
+        telefone: formatPhoneInput(prefill.telefone),
+      });
+      return;
+    }
     const draft = loadManualDraft();
     if (!draft) return;
     if (Array.isArray(draft.items)) setItems(draft.items);
@@ -635,6 +689,7 @@ export default function ManualOrcamentoPage() {
     if (draft.prazo) setPrazo(draft.prazo);
     if (draft.observacoes) setObservacoes(draft.observacoes);
     setUrgente(Boolean(draft.urgente));
+    if (draft.originPrefill) setOriginPrefill(draft.originPrefill);
     if (draft.templateKey) {
       templateOverrideRef.current = draft.templateKey;
       setTemplateKey(draft.templateKey);
@@ -672,8 +727,9 @@ export default function ManualOrcamentoPage() {
       observacoes,
       urgente,
       templateKey,
+      originPrefill: originPrefill || undefined,
     });
-  }, [result, hasFormData, clientType, clientSearch, selectedClient, newClient, leadSource, cnpj, address, showAddress, items, prazo, observacoes, urgente, templateKey]);
+  }, [result, hasFormData, clientType, clientSearch, selectedClient, newClient, leadSource, cnpj, address, showAddress, items, prazo, observacoes, urgente, templateKey, originPrefill]);
 
   // ── Navigation guard: filled form must never die silently ──
   const { setNavigationGuard } = useRouteGuardContext();
@@ -696,6 +752,11 @@ export default function ManualOrcamentoPage() {
       {!result && (
         <header>
           <h1 className="text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
+          {originPrefill && (
+            <p className="mt-2 text-sm text-fg-muted" role="status">
+              Origem: {originPrefill.source === 'site_form' ? 'Formulário do site' : originPrefill.source || 'Oportunidade CRM'}
+            </p>
+          )}
         </header>
       )}
 
@@ -711,7 +772,7 @@ export default function ManualOrcamentoPage() {
               <Check size={18} className="text-on-solid" />
             </div>
             <div>
-              <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento enviado com sucesso' : 'Rascunho persistido com sucesso'}</p>
+              <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento emitido' : 'Rascunho salvo'}</p>
               <p className="text-sm text-success">
                 {capitalize(result.cliente || '')} · {businessNumber}
                 {result.revision ? ` · Revisão ${result.revision}` : ''}
@@ -745,7 +806,7 @@ export default function ManualOrcamentoPage() {
         <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3" role="alert">
           <AlertTriangle size={20} className="text-destructive shrink-0" />
           <div>
-            <p className="font-medium text-destructive">Erro ao salvar ou enviar orçamento</p>
+            <p className="font-medium text-destructive">Erro ao salvar ou emitir orçamento</p>
             <p className="text-sm text-destructive">{error}</p>
           </div>
         </div>
@@ -892,9 +953,10 @@ export default function ManualOrcamentoPage() {
 
                 {/* ── Origem (obrigatória para compatibilidade com CRM) ── */}
                 <div className="space-y-1 pt-3 border-t border-line">
-                  <label className="text-xs font-medium text-fg-muted">Origem *</label>
+                  <label htmlFor="manual-lead-source" className="text-xs font-medium text-fg-muted">Origem *</label>
                   <div className="relative">
                   <select
+                    id="manual-lead-source"
                     className="w-full appearance-none rounded-sm border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
@@ -1266,17 +1328,14 @@ export default function ManualOrcamentoPage() {
 
               {/* ══ 3. Condições ══ */}
               <section aria-label="Condições do orçamento" className="rounded-lg border border-line bg-surface p-5 space-y-4">
-                <div>
-                  <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
-                    <FileText size={18} /> 3. Condições e fechamento
-                  </h2>
-                  <p className="text-sm text-fg-muted mt-1">Defina prazo, urgência e observações antes de criar.</p>
-                </div>
+                <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
+                  <FileText size={18} /> 3. Condições e fechamento
+                </h2>
 
                 {hasZeroPrice && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-500/10 dark:text-red-200 flex items-start gap-2">
                     <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                    Existe item com preço R$ 0,00. Revise o preço unitário antes de criar o orçamento.
+                    Existe item com preço R$ 0,00. Revise o preço unitário antes de salvar ou emitir.
                   </div>
                 )}
 
@@ -1298,8 +1357,9 @@ export default function ManualOrcamentoPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-fg-muted mb-1 block">Modelo HTML</label>
+                    <label htmlFor="manual-quotation-template" className="text-xs text-fg-muted mb-1 block">Modelo de orçamento</label>
                     <select
+                      id="manual-quotation-template"
                       className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                       value={templateKey}
                       onChange={(event) => {
@@ -1307,9 +1367,9 @@ export default function ManualOrcamentoPage() {
                         setTemplateKey(event.target.value);
                       }}
                       disabled={templateLoading || templates.length === 0}
-                      aria-label="Modelo HTML"
+                      aria-label="Modelo de orçamento"
                     >
-                      {!templateKey && <option value="">Padrão do servidor</option>}
+                      {!templateKey && <option value="">Modelo padrão</option>}
                       {templates.map((template) => (
                         <option key={template.key} value={template.key}>{template.name}</option>
                       ))}
@@ -1389,7 +1449,7 @@ export default function ManualOrcamentoPage() {
                   </span>
                 </div>
                 <p className="text-xs text-fg-muted mt-2">
-                  Os preços e totais são confirmados pelo servidor no momento da criação.
+                  Os preços e totais são confirmados ao salvar ou emitir.
                 </p>
               </div>
 
@@ -1400,14 +1460,16 @@ export default function ManualOrcamentoPage() {
                   disabled={!canSubmit}
                   className="min-h-[44px] w-full"
                   aria-label="Pré-visualizar orçamento"
+                  aria-describedby="manual-quotation-action-status"
                 >
                   Pré-visualizar
                 </Button>
                 <Button
                   onClick={handleSubmit}
-                  disabled={!canSubmit || sending}
+                  disabled={!canSubmit || issuing}
                   className="min-h-[44px] w-full"
                   aria-label="Salvar rascunho"
+                  aria-describedby="manual-quotation-action-status"
                 >
                   {submitting ? (
                     <>
@@ -1420,19 +1482,20 @@ export default function ManualOrcamentoPage() {
                 </Button>
                 <Button
                   variant="success"
-                  onClick={handleSend}
-                  disabled={!canSubmit || submitting || sending}
+                  onClick={handleIssue}
+                  disabled={!canSubmit || submitting || issuing}
                   className="min-h-[44px] w-full"
-                  aria-label="Enviar orçamento"
+                  aria-label="Emitir orçamento"
+                  aria-describedby="manual-quotation-action-status"
                 >
-                  {sending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-                  {sending ? 'Enviando…' : 'Enviar orçamento'}
+                  {issuing ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                  {issuing ? 'Emitindo…' : 'Emitir orçamento'}
                 </Button>
-                <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting || sending} className="w-full">
+                <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting || issuing} className="w-full">
                   Limpar tudo
                 </Button>
-                <p className="text-xs text-fg-muted text-left">
-                  {canSubmit ? 'Pronto para criar o orçamento.' : 'Cliente e itens são obrigatórios.'}
+                <p id="manual-quotation-action-status" className="text-xs text-fg-muted text-left">
+                  {actionBlockMessage || 'Pronto para salvar ou emitir.'}
                 </p>
               </div>
             </aside>

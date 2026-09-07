@@ -38,7 +38,8 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
-import { useRouteGuardContext } from '@/hooks/useHashRoute';
+import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
+import { routePath } from '@/app/match-route';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
@@ -214,6 +215,7 @@ function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
 }
 
 function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrencyTokenRef }: CoreQuotationDetailProps) {
+  const detailTopRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<QuotationData>(initialData);
   const draftEditable = data.status === 'rascunho';
   const [editing, setEditing] = useState(false);
@@ -243,12 +245,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [techDetailsOpen, setTechDetailsOpen] = useState(false);
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
+  const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
+  const techDetailsDialogRef = useRef<HTMLDivElement>(null);
+  const techDetailsCloseRef = useRef<HTMLButtonElement>(null);
   const lossReasonDialogRef = useRef<HTMLDivElement>(null);
   const lossReasonSelectRef = useRef<HTMLSelectElement>(null);
   const lossReasonRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [conflict, setConflict] = useState('');
   const { toast } = useToast();
   const { setNavigationGuard } = useRouteGuardContext();
+
+  useEffect(() => {
+    if (!editing) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      detailTopRef.current?.closest('main')?.scrollTo({ top: 0, left: 0 });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editing]);
   const showMessage = useCallback((text: string, tone: 'info' | 'error' = 'info') => {
     setMessage(text);
     setMessageTone(tone);
@@ -417,7 +430,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         setTemplateError('');
       })
       .catch(() => {
-        if (active) setTemplateError('Não foi possível carregar os templates. Tente novamente.');
+        if (active) setTemplateError('Não foi possível carregar os modelos. Tente novamente.');
       });
     return () => {
       active = false;
@@ -1035,6 +1048,56 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     };
   }, [closeLossReasonDialog, lossReasonOpen]);
 
+  const closeTechDetailsDialog = useCallback(() => {
+    setTechDetailsOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!techDetailsOpen) return undefined;
+
+    techDetailsCloseRef.current?.focus();
+    const dialog = techDetailsDialogRef.current;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeTechDetailsDialog();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR)
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (dialog && !dialog.contains(event.target as Node)) techDetailsCloseRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('focusin', handleFocusIn);
+      if (moreActionsButtonRef.current && document.contains(moreActionsButtonRef.current)) {
+        moreActionsButtonRef.current.focus();
+      }
+    };
+  }, [closeTechDetailsDialog, techDetailsOpen]);
+
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
@@ -1120,7 +1183,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             : '';
 
   return (
-    <div className="mx-auto w-full max-w-[1060px] pb-4">
+    <div ref={detailTopRef} className="mx-auto w-full max-w-[1060px] pb-4">
       <fieldset disabled={saving} className="contents">
         <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
@@ -1143,6 +1206,22 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 </>
               )}
             </div>
+            {data.quotationOrigin && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" aria-label="Origem do orçamento">
+                <span className={data.quotationOrigin.status === 'conflict' ? 'text-destructive' : 'text-fg-muted'}>
+                  Origem: {data.quotationOrigin.sourceLabel}
+                </span>
+                {data.quotationOrigin.salesOrderNumber && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate(`/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`)}
+                  >
+                    <ShoppingCart size={14} /> Abrir pedido
+                  </Button>
+                )}
+              </div>
+            )}
             {editing && (
               <p
                 role="status"
@@ -1203,6 +1282,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
                 <div className="relative">
                   <button
+                    ref={moreActionsButtonRef}
                     type="button"
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
@@ -1335,6 +1415,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           {whatsappDisabledReason && (
             <p role="status" className="mt-2 text-xs text-fg-muted">
               {whatsappDisabledReason}
+            </p>
+          )}
+          {delivery && deliveryError && (
+            <p role="status" className="mt-2 text-xs text-warning">
+              {deliveryError}
             </p>
           )}
           {deliveryFlows.length === 0 && !deliveryError && (
@@ -1939,10 +2024,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setTechDetailsOpen(false)}
+            onClick={closeTechDetailsDialog}
             aria-hidden="true"
           />
           <div
+            ref={techDetailsDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="tech-details-title"
@@ -1977,7 +2063,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               </div>
             </dl>
             <div className="mt-5 flex justify-end">
-              <Button variant="outline" onClick={() => setTechDetailsOpen(false)}>
+              <Button ref={techDetailsCloseRef} variant="outline" onClick={closeTechDetailsDialog}>
                 Fechar
               </Button>
             </div>
@@ -2067,13 +2153,15 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   const [reloadWarning, setReloadWarning] = useState(false);
   const concurrencyTokenRef = useRef('');
   const dataRef = useRef<QuotationData | null>(null);
+  const loadedRouteIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     dataRef.current = null;
+    loadedRouteIdRef.current = null;
   }, [id]);
 
   const loadDetail = useCallback(async () => {
-    const hasExistingDetail = dataRef.current?.id === id;
+    const hasExistingDetail = dataRef.current !== null && loadedRouteIdRef.current === id;
     setLoading(true);
     setError(null);
     setReloadWarning(false);
@@ -2084,6 +2172,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       if (!projection) throw new Error('Resposta inválida ao carregar orçamento.');
       concurrencyTokenRef.current = projection.concurrencyToken;
       dataRef.current = projection.data;
+      loadedRouteIdRef.current = id;
       setData(projection.data);
     } catch {
       if (!hasExistingDetail) {
@@ -2100,13 +2189,23 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
 
   if (loading && !data) return <SkeletonDetail />;
   if (error) {
+    const previousRoute = getHashHistoryPreviousRoute();
+    const fromFollowUps = previousRoute && routePath(previousRoute) === '/follow-ups';
+    const fromSendHistory = previousRoute && routePath(previousRoute) === '/comunicacao' &&
+      new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
+    const returnRoute = fromFollowUps || fromSendHistory ? previousRoute : '/quotations';
+    const returnLabel = fromFollowUps
+      ? 'Follow-ups'
+      : fromSendHistory
+        ? 'Histórico de envios'
+        : 'Orçamentos';
     return (
       <div className="space-y-4 animate-fade-in">
         <button
-          onClick={() => navigate('/quotations')}
+          onClick={() => navigate(returnRoute)}
           className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
         >
-          ← Voltar para Orçamentos
+          ← Voltar para {returnLabel}
         </button>
         <div
           role="alert"

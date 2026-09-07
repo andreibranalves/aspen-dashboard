@@ -225,6 +225,20 @@
       "when": 1788203348747,
       "tag": "0031_quotation_follow_up_queue_expand",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788652800000,
+      "tag": "0032_quotation_origin",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788739200000,
+      "tag": "0033_sales_order_offline_exports",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,8 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
+import { fmtPhone } from '@/lib/formatting/formatters';
+import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
 
 interface Deal {
   id: string;
@@ -21,6 +23,7 @@ interface Deal {
   telefone?: string;
   client_id?: string | null;
   quote_lead_id?: string | null;
+  lead_source?: string | null;
   quotation_id?: string | null;
   quotation?: string;
   follow_up_stage?: number;
@@ -115,6 +118,7 @@ export default function CrmKanbanPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
+  const pendingMoveMenuFocusRef = useRef<string | null>(null);
   const pruneDialogRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async (searchVal: string) => {
@@ -168,9 +172,12 @@ export default function CrmKanbanPage() {
     else moveMenuRefs.current.delete(dealId);
   }, []);
 
-  const restoreMoveMenuFocus = useCallback((dealId: string) => {
-    window.requestAnimationFrame(() => moveMenuRefs.current.get(dealId)?.focus());
-  }, []);
+  useEffect(() => {
+    const dealId = pendingMoveMenuFocusRef.current;
+    if (!dealId || movingDealIds.has(dealId)) return;
+    pendingMoveMenuFocusRef.current = null;
+    moveMenuRefs.current.get(dealId)?.focus();
+  }, [movingDealIds]);
 
   // Prune modal: Esc para fechar, foco inicial no diálogo, focus trap e
   // restauração de foco — mesmo comportamento do ConfirmDialog compartilhado.
@@ -314,17 +321,16 @@ export default function CrmKanbanPage() {
         await fetchData(search); // rollback via server truth after a failed mutation
         setAnnouncement(`Não foi possível mover ${leadName}. O pipeline foi restaurado.`);
       } finally {
+        pendingMoveMenuFocusRef.current = dealId;
         setMovingDealIds((previous) => {
           const next = new Set(previous);
           next.delete(dealId);
           return next;
         });
-        restoreMoveMenuFocus(dealId);
       }
     },
-    [columns, fetchData, restoreMoveMenuFocus, search, toast]
+    [columns, fetchData, search, toast]
   );
-
 
   const orderedColumns = [
     ...PIPELINE.map(
@@ -583,7 +589,7 @@ export default function CrmKanbanPage() {
                               )}
                               {deal.telefone && (
                                 <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {deal.telefone}
+                                  {fmtPhone(deal.telefone) || deal.telefone}
                                 </p>
                               )}
                               {deal.next_step && (
@@ -651,6 +657,27 @@ export default function CrmKanbanPage() {
                                   ))}
                                 </Select>
                               </div>
+                              {deal.quote_lead_id && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="mt-2 w-full"
+                                  onClick={() => {
+                                    storeQuotationOriginPrefill({
+                                      quoteLeadId: deal.quote_lead_id!,
+                                      crmDealId: deal.id,
+                                      leadName,
+                                      email: deal.email || '',
+                                      telefone: deal.telefone || '',
+                                      source: deal.lead_source || '',
+                                    });
+                                    window.location.hash = `#/manual?quoteLeadId=${encodeURIComponent(deal.quote_lead_id!)}&crmDealId=${encodeURIComponent(deal.id)}`;
+                                  }}
+                                >
+                                  <PlusCircle />
+                                  Novo orçamento
+                                </Button>
+                              )}
                             </article>
                           );
                         })}

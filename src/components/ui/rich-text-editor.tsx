@@ -9,7 +9,12 @@ import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
-import { $getRoot, $insertNodes, FORMAT_TEXT_COMMAND } from 'lexical';
+import {
+  $getRoot,
+  $insertNodes,
+  FORMAT_TEXT_COMMAND,
+  SKIP_DOM_SELECTION_TAG,
+} from 'lexical';
 import { Bold, Italic, List, ListOrdered } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -39,13 +44,16 @@ function SynchronizePlugin({
     const synchronize = () => {
       if (editorVersion.current !== scheduledVersion || value === lastEditorValue.current) return;
       lastEditorValue.current = value;
-      editor.update(() => {
-        const root = $getRoot();
-        root.clear();
-        const document = new DOMParser().parseFromString(value || '<p></p>', 'text/html');
-        root.select();
-        $insertNodes($generateNodesFromDOM(editor, document));
-      });
+      editor.update(
+        () => {
+          const root = $getRoot();
+          root.clear();
+          const document = new DOMParser().parseFromString(value || '<p></p>', 'text/html');
+          root.select();
+          $insertNodes($generateNodesFromDOM(editor, document));
+        },
+        { tag: SKIP_DOM_SELECTION_TAG }
+      );
     };
     const containerElement = container.current;
     if (!containerElement?.contains(document.activeElement)) {

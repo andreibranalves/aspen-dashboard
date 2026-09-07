@@ -158,17 +158,17 @@ test.describe('Configurações de orçamento @quotations', () => {
     await expect(page.getByRole('button', { name: /Padrão padrao/ })).toContainText('Padrão');
     await expect(page.getByText('Usado por 2 revisões')).toBeVisible();
     await page.getByRole('button', { name: /Alternativo alternativo/ }).click();
-    await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
-    await page.getByRole('button', { name: 'Validar e visualizar preview' }).click();
+    await expect(page.getByLabel('Conteúdo do modelo')).toHaveValue(source);
+    await page.getByRole('button', { name: 'Validar e visualizar' }).click();
     await expect(page.getByText('Aviso: A seção prazo_producao não é usada pelo template.')).toBeVisible();
-    await expect(page.getByTitle('Preview do template')).toBeVisible();
+    await expect(page.getByTitle('Pré-visualização do modelo')).toBeVisible();
     await page.getByRole('button', { name: 'Salvar nova versão' }).click();
-    await expect(page.getByText('Template salvo com sucesso.')).toBeVisible();
+    await expect(page.getByText('Modelo salvo com sucesso.')).toBeVisible();
     await expect(page.getByText('Versão atual: 2')).toBeVisible();
     await page.getByRole('button', { name: 'Definir como padrão' }).click();
     // confirmações migradas para ConfirmDialog (sem confirm() nativo)
     await page.getByRole('dialog').getByRole('button', { name: 'Definir como padrão' }).click();
-    await expect(page.getByText('Template padrão alterado.')).toBeVisible();
+    await expect(page.getByText('Modelo padrão alterado.')).toBeVisible();
     await page.getByText('Conteúdo do documento', { exact: true }).first().click();
     await page.getByLabel('Condição de pagamento').fill('novo padrão');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
@@ -179,7 +179,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     expect(settingsPayload).not.toHaveProperty('template_padrao');
     await page.getByRole('button', { name: 'Arquivar' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Arquivar' }).click();
-    await expect(page.getByText('Template arquivado.')).toBeVisible();
+    await expect(page.getByText('Modelo arquivado.')).toBeVisible();
     await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toContainText('Arquivado');
   });
 
@@ -226,12 +226,12 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.getByRole('button', { name: 'Recarregar modelos' }).click();
     await page.getByRole('button', { name: 'Novo modelo' }).click();
     await page.getByLabel('Nome').fill('Novo');
-    await page.getByLabel('Chave imutável').fill('novo');
-    await page.getByLabel('Fonte HTML').fill(source);
+    await page.getByLabel('Identificador').fill('novo');
+    await page.getByLabel('Conteúdo do modelo').fill(source);
     await page.getByRole('button', { name: 'Criar modelo' }).click();
-    await expect(page.getByRole('alert')).toContainText('Não foi possível carregar o template.');
+    await expect(page.getByRole('alert')).toContainText('Não foi possível carregar o modelo.');
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
-    await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
+    await expect(page.getByLabel('Conteúdo do modelo')).toHaveValue(source);
     expect(detailCalls).toBe(2);
   });
 

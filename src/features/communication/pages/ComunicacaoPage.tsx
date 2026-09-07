@@ -29,7 +29,11 @@ const TABS: TabItem[] = [
 ];
 const parseCommunicationTab = parseHashOption<string>(TABS.map((tab) => tab.id));
 
-export default function ComunicacaoPage() {
+interface ComunicacaoPageProps {
+  navigate: (path: string) => void;
+}
+
+export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'flows', parseCommunicationTab);
   const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
   const [flowsDirty, setFlowsDirty] = useState(false);
@@ -127,7 +131,13 @@ export default function ComunicacaoPage() {
           </div>
         )}
 
-        {activeTab === 'history' && <SendHistoryTab />}
+        {activeTab === 'history' && (
+          <SendHistoryTab
+            onOpenQuotation={(quotationId) =>
+              navigate(`/quotations/${encodeURIComponent(quotationId)}`)
+            }
+          />
+        )}
 
         {activeTab === 'channels' && <ChannelsTab />}
       </div>

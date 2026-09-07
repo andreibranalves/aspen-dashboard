@@ -231,3 +231,164 @@ test(
     }
   }
 );
+
+test(
+  'ingestão do site é idempotente sob concorrência, preserva snapshot e separa submissões do mesmo contato',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const options = {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    } as const;
+    const clientA = postgres(TEST_DATABASE_URL!, options);
+    const clientB = postgres(TEST_DATABASE_URL!, options);
+    const dbA = drizzle(clientA, { schema });
+    const dbB = drizzle(clientB, { schema });
+    const externalA = `siteQuote.${randomUUID()}`;
+    const externalB = `siteQuote.${randomUUID()}`;
+    const input = {
+      externalId: externalA,
+      payloadFingerprint: 'a'.repeat(64),
+      originalCreatedAt: '2026-09-01T10:00:00.000Z',
+      nome: 'Cliente Sintético',
+      email: 'synthetic@example.invalid',
+      whatsapp: '21999990000',
+      produto: 'Cangas',
+      quantidade: '100',
+      mensagem: 'Evento sintético',
+      utm_source: 'google',
+      gclid: 'OpaqueClickValue',
+      consent: { given: true, source: 'site_quote_form' },
+    };
+    try {
+      await migrate(dbA, { migrationsFolder });
+      const repositoryA = createPostgresQuoteLeadRepository(() => dbA, {
+        now: () => NOW,
+        idFactory: randomUUID,
+      });
+      const repositoryB = createPostgresQuoteLeadRepository(() => dbB, {
+        now: () => NOW,
+        idFactory: randomUUID,
+      });
+      const [first, retry] = await Promise.all([
+        repositoryA.ingestSiteSubmission(input),
+        repositoryB.ingestSiteSubmission(input),
+      ]);
+      assert.equal(first.id, retry.id);
+      assert.equal([first.created, retry.created].filter(Boolean).length, 1);
+
+      const secondSubmission = await repositoryA.ingestSiteSubmission({
+        ...input,
+        externalId: externalB,
+        payloadFingerprint: 'b'.repeat(64),
+      });
+      assert.notEqual(secondSubmission.id, first.id);
+
+      const rows = await dbA
+        .select()
+        .from(schema.quoteLeads)
+        .where(inArray(schema.quoteLeads.externalId, [externalA, externalB]));
+      assert.equal(rows.length, 2);
+      assert.equal(
+        rows.every((row) => row.createdAt.toISOString() === NOW.toISOString()),
+        true
+      );
+      const metadata = (
+        rows.find((row) => row.externalId === externalA)?.raw as Record<
+          string,
+          Record<string, unknown>
+        >
+      ).siteSubmission;
+      assert.equal(metadata.originalCreatedAt, input.originalCreatedAt);
+      assert.equal(metadata.primaryAdIdentifier, 'gclid');
+      assert.equal(
+        rows.find((row) => row.externalId === externalA)?.attribution?.gclid,
+        'OpaqueClickValue'
+      );
+      const deals = await dbA
+        .select()
+        .from(schema.crmDeals)
+        .where(
+          inArray(
+            schema.crmDeals.quoteLeadId,
+            rows.map((row) => row.id)
+          )
+        );
+      assert.equal(deals.length, 2);
+
+      await assert.rejects(
+        repositoryA.ingestSiteSubmission({
+          ...input,
+          payloadFingerprint: 'c'.repeat(64),
+          utm_source: 'later-visit',
+        }),
+        (error: unknown) => (error as { statusCode?: number }).statusCode === 409
+      );
+      const preserved = await dbA
+        .select()
+        .from(schema.quoteLeads)
+        .where(eq(schema.quoteLeads.externalId, externalA));
+      assert.equal(preserved[0]?.attribution?.utm_source, 'google');
+    } finally {
+      const rows = await dbA
+        .select({ id: schema.quoteLeads.id })
+        .from(schema.quoteLeads)
+        .where(inArray(schema.quoteLeads.externalId, [externalA, externalB]));
+      if (rows.length) {
+        const ids = rows.map((row) => row.id);
+        await dbA
+          .update(schema.quoteLeads)
+          .set({ crmDealId: null })
+          .where(inArray(schema.quoteLeads.id, ids));
+        await dbA.delete(schema.crmDeals).where(inArray(schema.crmDeals.quoteLeadId, ids));
+        await dbA.delete(schema.quoteLeads).where(inArray(schema.quoteLeads.id, ids));
+      }
+      await Promise.all([clientA.end({ timeout: 5 }), clientB.end({ timeout: 5 })]);
+    }
+  }
+);
+
+test(
+  'falha ao criar oportunidade reverte integralmente o lead do site',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, {
+      max: 1,
+      prepare: false,
+      onnotice: () => undefined,
+    });
+    const db = drizzle(client, { schema });
+    const externalId = `siteQuote.${randomUUID()}`;
+    const ids = [randomUUID(), 'invalid-deal-id'];
+    try {
+      await migrate(db, { migrationsFolder });
+      const repository = createPostgresQuoteLeadRepository(() => db, {
+        now: () => NOW,
+        idFactory: () => ids.shift() || 'invalid-id',
+      });
+      await assert.rejects(
+        repository.ingestSiteSubmission({
+          externalId,
+          payloadFingerprint: 'd'.repeat(64),
+          originalCreatedAt: '2026-09-01T10:00:00.000Z',
+          nome: 'Cliente Sintético',
+          email: 'synthetic@example.invalid',
+          whatsapp: '21999990000',
+          produto: 'Cangas',
+          quantidade: '100',
+          consent: { given: true, source: 'site_quote_form' },
+        })
+      );
+      const rows = await db
+        .select()
+        .from(schema.quoteLeads)
+        .where(eq(schema.quoteLeads.externalId, externalId));
+      assert.equal(rows.length, 0);
+    } finally {
+      await client.end({ timeout: 5 });
+    }
+  }
+);

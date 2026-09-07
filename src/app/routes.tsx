@@ -117,7 +117,7 @@ export const routes: AppRoute[] = [
   {
     path: '/follow-ups',
     suspense: true,
-    render: () => <FollowUpsPage />,
+    render: ({ navigate }) => <FollowUpsPage navigate={navigate} />,
     nav: { label: 'Follow-ups', icon: MessageSquare, section: 'Operacional' },
   },
   {
@@ -141,7 +141,7 @@ export const routes: AppRoute[] = [
   {
     path: '/comunicacao',
     suspense: true,
-    render: () => <ComunicacaoPage />,
+    render: ({ navigate }) => <ComunicacaoPage navigate={navigate} />,
     nav: { label: 'Comunicação', icon: Radio, section: 'Outros' },
   },
   {

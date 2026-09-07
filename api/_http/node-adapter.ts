@@ -3,6 +3,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { VercelResponseLike } from './types.js';
 import { handleApiRequest } from '../_app/handle-request.js';
+import { getRouteName } from '../_shared/auth.js';
+import { MAX_SITE_QUOTE_BODY_BYTES, readRawBody, RequestBodyTooLargeError } from './raw-body.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -10,26 +12,18 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-function parseBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve) => {
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', () => {
-      const mediaType = String(req.headers['content-type'] || '')
-        .split(';', 1)[0]
-        .trim()
-        .toLowerCase();
-      if (mediaType === 'application/x-www-form-urlencoded') {
-        resolve(body);
-        return;
-      }
-      try {
-        resolve(JSON.parse(body));
-      } catch {
-        resolve({});
-      }
-    });
-  });
+function parseBody(body: Buffer, req: IncomingMessage): unknown {
+  const text = body.toString('utf8');
+  const mediaType = String(req.headers['content-type'] || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  if (mediaType === 'application/x-www-form-urlencoded') return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
 }
 
 function normalizeQueryParams(url: string): Record<string, string> {
@@ -66,15 +60,35 @@ function adaptResponse(res: ServerResponse): VercelResponseLike {
 export function createNodeHandler() {
   return async function nodeApiHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     for (const [key, value] of Object.entries(CORS_HEADERS)) res.setHeader(key, value);
-    const routeName = new URL(req.url || '/', 'http://localhost').pathname.replace(/^\/api\/?/, '').split('/')[0];
+    const requestRecord = req as IncomingMessage & {
+      query?: Record<string, string>;
+      body?: unknown;
+    };
+    requestRecord.query = normalizeQueryParams(req.url || '');
+    const routeName = getRouteName(requestRecord);
     if (req.method === 'OPTIONS' && routeName !== 'whatsapp-context') {
       res.writeHead(204);
       res.end();
       return;
     }
-    const requestRecord = req as IncomingMessage & { query?: Record<string, string>; body?: unknown };
-    requestRecord.query = normalizeQueryParams(req.url || '');
-    if (req.method !== 'GET') requestRecord.body = await parseBody(req);
+    if (req.method !== 'GET') {
+      try {
+        const rawBody = await readRawBody(
+          req,
+          routeName === 'site-quote-leads' ? MAX_SITE_QUOTE_BODY_BYTES : Number.POSITIVE_INFINITY
+        );
+        requestRecord.body =
+          routeName === 'site-quote-leads' ? rawBody.toString('utf8') : parseBody(rawBody, req);
+      } catch (error) {
+        if (error instanceof RequestBodyTooLargeError) {
+          res.statusCode = 413;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Corpo da requisição excede o limite permitido.' }));
+          return;
+        }
+        throw error;
+      }
+    }
     await handleApiRequest(req, adaptResponse(res));
   };
 }
