@@ -242,6 +242,32 @@ These are adaptations of the medium-fidelity frames, not new business rules.
 The sketches' fictional names, totals, item counts, and statuses are not app
 fixtures and are never copied into production data.
 
+## Approved Orçamentos consultation slice
+
+The Orçamentos consultation journey applies this same contract to the list and
+detail/revision views. The implementation uses the current Figma structural
+references `8:2` (list), `79:186` (two-item review), `81:265` (new draft
+revision), and `81:599` (issued revision and preparation for delivery). The
+related confirmation references `86:38` and `89:51` were consulted but do not
+define additional UI in this slice.
+
+The list keeps the existing status/search query state, batch selection and
+actions, export behavior, pagination, and API response semantics. Its visual
+hierarchy is title/count, status filters with authoritative counts, compact
+search, fluid table, and secondary row actions. E-mail delivery remains
+available as row context without becoming a primary table column.
+
+The detail keeps the existing draft/revision, emission, PDF, WhatsApp, e-mail,
+approval/order, loss, deletion, and history workflows. Issued views use the
+Resumo/Itens/Histórico navigation: Resumo is a compact synthesis of items,
+quantities, essential conditions, totals, client, and metadata; the complete
+table is in Itens. The tabs use the WAI-ARIA tab pattern and keep delivery and
+commercial outcome in the existing 320px side panel. Draft review and editing
+use the same detail shell with totals and consequential emission actions in the
+side panel, except that editing recovers the full table width. No business
+rule, endpoint, persistence model, or data source is introduced by this visual
+slice.
+
 ## Out of scope
 
 This contract does not redesign complete feature journeys, introduce new

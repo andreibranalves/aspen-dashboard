@@ -286,7 +286,100 @@ test('detalhe mantém conteúdo longo legível em modo somente leitura @quotatio
   await expect(page.getByText('Este orçamento está somente para leitura porque já foi emitido.')).toBeVisible();
   await expect(page.getByText(longText)).toBeVisible();
   await expect(page.getByText('Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Itens' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Itens e condições' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Itens', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Itens', exact: true })).toBeVisible();
+});
+
+test('menu de ações e abas mantêm fechamento, foco e semântica acessíveis @quotations', async ({ page }) => {
+  const firstRow = withCanonicalListRow({
+    id: 'ORC-MENU-1',
+    data: '2026-08-20',
+    cliente: 'Cliente do menu 1',
+    valor: '100.00',
+    status: 'Enviado',
+    status_canonical: 'emitido',
+    revision_id: '11111111-1111-4222-8222-222222222221',
+  }, '11111111-1111-4111-8111-111111111121');
+  const secondRow = withCanonicalListRow({
+    id: 'ORC-MENU-2',
+    data: '2026-08-21',
+    cliente: 'Cliente do menu 2',
+    valor: '200.00',
+    status: 'Enviado',
+    status_canonical: 'emitido',
+    revision_id: '22222222-2222-4222-8222-222222222222',
+  }, '22222222-2222-4222-8222-222222222222');
+  await page.route('**/api/quotations**', async (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('id')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail({ status: 'Enviado', status_canonical: 'emitido' })) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [firstRow, secondRow],
+        pagination: { page: 1, limit: 10, total: 2, total_pages: 1 },
+        status_summary: { Enviado: 2 },
+      }),
+    });
+  });
+  await page.route('**/api/communication-flows**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }) });
+  });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [] }) });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/quotations');
+  const firstAction = page.getByRole('button', { name: 'Ações do orçamento ORC-MENU-1' });
+  const secondAction = page.getByRole('button', { name: 'Ações do orçamento ORC-MENU-2' });
+  await firstAction.click();
+  const firstMenu = page.locator('#quotation-actions-mobile-11111111-1111-4111-8111-111111111121');
+  await expect(firstMenu).toBeVisible();
+  await expect(firstMenu.locator('[role="menuitem"]')).toHaveCount(0);
+  expect(await firstMenu.evaluate((element) => globalThis.getComputedStyle(element).position)).toBe('fixed');
+  const firstMenuBottom = await firstMenu.evaluate((element) => element.getBoundingClientRect().bottom);
+  expect(firstMenuBottom).toBeLessThanOrEqual(844);
+
+  await secondAction.click();
+  await expect(firstMenu).toBeHidden();
+  const secondMenu = page.locator('#quotation-actions-mobile-22222222-2222-4222-8222-222222222222');
+  await expect(secondMenu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(secondMenu).toBeHidden();
+  await expect(secondAction).toBeFocused();
+  await secondAction.click();
+  await secondMenu.getByRole('button', { name: 'Duplicar' }).click();
+  await expect(page.getByRole('dialog', { name: 'Duplicar orçamento?' })).toBeVisible();
+  await expect(secondMenu).toBeHidden();
+  await page.getByRole('dialog', { name: 'Duplicar orçamento?' }).getByRole('button', { name: 'Cancelar' }).click();
+  await secondAction.click();
+  await page.getByRole('heading', { name: 'Orçamentos', exact: true }).click();
+  await expect(secondMenu).toBeHidden();
+
+  await page.goto('/#/quotations/q-emitido');
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(3);
+  const summaryTab = page.getByRole('tab', { name: 'Resumo', exact: true });
+  const itemsTab = page.getByRole('tab', { name: 'Itens', exact: true });
+  const historyTab = page.getByRole('tab', { name: 'Histórico', exact: true });
+  await expect(summaryTab).toHaveAttribute('aria-selected', 'true');
+  await expect(summaryTab).toHaveAttribute('aria-controls', 'quotation-panel');
+  await expect(page.locator('#quotation-panel')).toHaveAttribute('role', 'tabpanel');
+  await expect(page.locator('#quotation-panel table')).toHaveCount(0);
+  await itemsTab.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(historyTab).toHaveAttribute('aria-selected', 'true');
+  await expect(historyTab).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(summaryTab).toHaveAttribute('aria-selected', 'true');
+  await expect(summaryTab).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(historyTab).toHaveAttribute('aria-selected', 'true');
 });
 
 test('detalhe mantém um único scroll vertical no shell @quotations @smoke', async ({ page }) => {
