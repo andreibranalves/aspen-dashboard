@@ -355,12 +355,15 @@ test(
       assert.equal(grantRow.category, 'reviewed_uuid_required');
       assert.ok(grantRow.reasons.includes('reviewed_uuid_required'));
       assert.equal(grantRow.adIdentifierType, 'gclid');
-      // With the allowTestMarker path absent, preview read-only: no ledger writes.
-      const afterExports = await database
-        .select({ id: salesOrders.id })
-        .from(salesOrders)
-        .where(inArray(salesOrders.id, [order.id, grantOrder[0].id]));
-      assert.equal(afterExports.length, 2);
+      // Preview is read-only: neither ledger table receives a row.
+      const [exportRows, attemptRows] = await Promise.all([
+        database.select({ id: schema.salesOrderOfflineExports.id }).from(schema.salesOrderOfflineExports),
+        database
+          .select({ id: schema.salesOrderOfflineExportAttempts.id })
+          .from(schema.salesOrderOfflineExportAttempts),
+      ]);
+      assert.equal(exportRows.length, 0);
+      assert.equal(attemptRows.length, 0);
 
       // -- Zero OAuth / zero transport: the fake client with blocked fetch proves the seam
       const blockedFetch = async () => {

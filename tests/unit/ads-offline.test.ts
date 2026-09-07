@@ -78,6 +78,24 @@ function evidence(overrides: Partial<OfflineOrderEvidence> = {}): OfflineOrderEv
   };
 }
 
+test('offline selection rejects legacy snake_case consent aliases', () => {
+  const legacy = evidence();
+  const siteSubmission = (legacy.raw as { siteSubmission: Record<string, unknown> }).siteSubmission;
+  siteSubmission.consent = {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policy_version: '2026-08-18',
+    reviewed_at: '2026-08-31T12:00:00.000Z',
+    source: 'site_cookie_preferences',
+    evidence_id: 'legacy-synthetic',
+  };
+  const selected = selectOfflineOrder(legacy, {
+    approvedOrderIds: new Set([ORDER_ID]),
+  });
+  assert.notEqual(selected.status, 'eligible');
+  assert.ok(selected.reasons.includes('consent_review_required'));
+});
+
 test('offline selection accepts every approved order status only with reviewed UUID and lineage', () => {
   for (const status of ['To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed']) {
     const selected = selectOfflineOrder(evidence({ status }), {

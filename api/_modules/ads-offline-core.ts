@@ -316,10 +316,10 @@ function rawSiteSubmission(raw: unknown): Record<string, unknown> | null {
 function consentEvidenceFrom(raw: unknown): OfflineConsentEvidence | null {
   const consent = rawSiteSubmission(raw)?.consent;
   if (!isRecord(consent)) return null;
-  const policyVersion = clean(consent.policyVersion ?? consent.policy_version);
-  const reviewedAt = verifiedIsoString(consent.reviewedAt ?? consent.reviewed_at);
+  const policyVersion = clean(consent.policyVersion);
+  const reviewedAt = verifiedIsoString(consent.reviewedAt);
   const source = clean(consent.source);
-  const evidenceId = clean(consent.evidenceId ?? consent.evidence_id);
+  const evidenceId = clean(consent.evidenceId);
   // Strict #208 grant: only the canonical policy version and site cookie
   // source are acceptable; generic and legacy grants never promote.
   if (
