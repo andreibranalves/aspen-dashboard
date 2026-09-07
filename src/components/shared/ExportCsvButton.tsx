@@ -14,9 +14,15 @@ interface ExportCsvButtonProps {
   resource: CommercialExportResource;
   filters: CommercialExportFilters;
   children: ReactNode;
+  className?: string;
 }
 
-export default function ExportCsvButton({ resource, filters, children }: ExportCsvButtonProps) {
+export default function ExportCsvButton({
+  resource,
+  filters,
+  children,
+  className,
+}: ExportCsvButtonProps) {
   const [exporting, setExporting] = useState(false);
   const { toast } = useToast();
 
@@ -36,6 +42,7 @@ export default function ExportCsvButton({ resource, filters, children }: ExportC
     <Button
       type="button"
       variant="outline"
+      className={className}
       onClick={() => void exportCsv()}
       disabled={exporting}
       aria-busy={exporting}

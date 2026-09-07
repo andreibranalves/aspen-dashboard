@@ -13,10 +13,12 @@ const variants = {
     'bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] disabled:bg-primary/10 disabled:text-primary disabled:hover:bg-primary/10',
   destructive:
     'bg-destructive text-on-solid dark:text-page hover:bg-destructive/90 active:scale-[0.97] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
-  outline: 'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.97]',
-  secondary: 'border border-line bg-surface text-fg hover:bg-surface-hover active:scale-[0.97]',
+  outline:
+    'border border-border-control bg-transparent text-fg hover:bg-surface-hover active:scale-[0.97]',
+  secondary:
+    'border border-border-control bg-surface text-fg hover:bg-surface-hover active:scale-[0.97]',
   ghost: 'text-fg hover:bg-surface-hover',
-  link: 'text-primary underline-offset-4 hover:underline',
+  link: 'text-link underline-offset-4 hover:underline',
   success:
     'bg-success text-on-solid dark:text-page hover:bg-success/90 active:scale-[0.97] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
 } as const;

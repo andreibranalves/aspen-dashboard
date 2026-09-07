@@ -171,7 +171,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         className={cn(
           'flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-200',
           'md:ml-16',
-          !sidebarCollapsed && 'md:ml-64'
+          !sidebarCollapsed && 'md:ml-[216px]'
         )}
       >
         <TopBar

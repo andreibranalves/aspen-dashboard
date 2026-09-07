@@ -20,7 +20,7 @@ export default function PageHeader({ title, description, actions, className }: P
   return (
     <div className={cn('flex items-start justify-between gap-4 flex-wrap', className)}>
       <div className="min-w-0 space-y-1">
-        <h1 className="text-xl font-semibold leading-7 tracking-[-0.2px] text-fg">{title}</h1>
+        <h1 className="text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg">{title}</h1>
         {description && <p className="text-sm text-fg-muted">{description}</p>}
       </div>
       {actions && (

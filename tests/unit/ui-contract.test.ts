@@ -7,7 +7,7 @@ const root = path.resolve(import.meta.dirname, '../..');
 const read = (relativePath: string) => readFileSync(path.join(root, relativePath), 'utf8');
 
 const canonicalLight = {
-  page: '255 255 255',
+  page: '247 248 250',
   surface: '255 255 255',
   'surface-subtle': '250 250 250',
   'surface-hover': '247 247 248',
@@ -37,8 +37,8 @@ const canonicalDark = {
   'border-default': '51 64 86',
   'border-strong': '70 84 108',
   'text-primary': '242 245 250',
-  'text-secondary': '180 191 208',
-  'text-tertiary': '142 157 181',
+  'text-secondary': '181 191 206',
+  'text-tertiary': '146 158 176',
   'text-disabled': '102 116 138',
   primary: '47 111 219',
   'on-primary': '255 255 255',
@@ -112,9 +112,9 @@ describe('Aspen UI v2 visual contract', () => {
     }
   });
 
-  it('keeps the shell compatibility alias on the Phase-0 page token', () => {
+  it('keeps shell chrome on the approved dark foundation in both themes', () => {
     const css = read('src/index.css');
-    assert.match(css, /--shell:\s*var\(--page\)/);
+    assert.match(css, /--shell:\s*15 20 32/);
     assert.doesNotMatch(css, /--shell:\s*var\(--surface\)/);
   });
 

@@ -12,7 +12,7 @@ const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElem
       <select
         ref={ref}
         className={cn(
-          'h-9 min-w-0 appearance-none rounded-sm border border-line bg-surface pl-3 pr-8 text-sm text-fg',
+          'h-9 min-w-0 appearance-none rounded-sm border border-border-control bg-surface pl-3 pr-8 text-sm text-fg',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
           'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',
           'disabled:cursor-not-allowed disabled:opacity-50',
