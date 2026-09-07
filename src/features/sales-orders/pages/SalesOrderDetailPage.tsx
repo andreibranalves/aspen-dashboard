@@ -151,7 +151,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
 
   if (error) {
     return (
-      <PageShell>
+      <PageShell className="max-w-none">
         <PageHeader title="Pedido" />
         <div
           className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
@@ -193,7 +193,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       : undefined;
 
   return (
-    <PageShell>
+    <PageShell className="max-w-none">
       <PageHeader title={data.id} />
 
       <div className="space-y-3">
