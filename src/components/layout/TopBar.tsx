@@ -33,8 +33,7 @@ export default function TopBar({
 
   return (
     <header
-      className="flex shrink-0 items-center justify-between border-b border-line bg-page px-4 md:px-6"
-      style={{ height: '4rem' }}
+      className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4 md:px-6"
     >
       <div className="flex min-w-0 items-center gap-3">
         {isMobile && (

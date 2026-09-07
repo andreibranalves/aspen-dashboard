@@ -51,7 +51,15 @@ export default {
 
         // Compatibility aliases retained while consumers migrate.
         line: 'rgb(var(--line))',
-        shell: 'rgb(var(--shell))',
+        shell: {
+          DEFAULT: 'rgb(var(--shell))',
+          border: 'rgb(var(--shell-border))',
+          text: 'rgb(var(--shell-text))',
+          muted: 'rgb(var(--shell-muted))',
+          hover: 'rgb(var(--shell-hover))',
+          active: 'rgb(var(--shell-active))',
+          primary: 'rgb(var(--shell-primary))',
+        },
         fg: {
           DEFAULT: 'rgb(var(--fg))',
           muted: 'rgb(var(--fg-muted))',

@@ -84,37 +84,28 @@ export default function Sidebar({
         aria-hidden={mobile && collapsed ? true : undefined}
         aria-modal={mobile && sidebarOpen ? true : undefined}
         className={cn(
-          'fixed left-0 top-0 z-30 flex h-full flex-col overflow-hidden bg-shell text-fg',
-          'border-r border-line transition-[width,transform] duration-200',
-          collapsed ? 'w-0 md:w-16' : 'w-64',
+          'fixed left-0 top-0 z-30 flex h-full flex-col overflow-hidden bg-shell text-shell-text',
+          'border-r border-shell-border transition-[width,transform] duration-200',
+          collapsed ? 'w-0 md:w-16' : 'w-[216px]',
           mobile && collapsed && 'hidden',
           mobile && sidebarOpen && 'shadow-2xl'
         )}
       >
         <div
-          className="flex shrink-0 items-center justify-between border-b border-line px-4"
-          style={{ height: '4rem' }}
+          className="flex h-14 shrink-0 items-center justify-between border-b border-shell-border px-4"
         >
           {!collapsed && (
             <img
-              src="/logo_marinho.svg"
-              alt="Aspen Estamparia"
-              className="h-8 w-auto dark:hidden"
-            />
-          )}
-          {!collapsed && (
-            <img
               src="/logo_branca.svg"
-              alt=""
-              aria-hidden="true"
-              className="hidden h-8 w-auto dark:block"
+              alt="Aspen Estamparia"
+              className="h-8 w-auto"
             />
           )}
           {(!mobile || sidebarOpen) && (
             <button
               type="button"
               onClick={onToggle}
-              className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-shell-primary"
               aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
               aria-expanded={sidebarOpen}
               aria-controls="aspen-sidebar"
@@ -132,11 +123,11 @@ export default function Sidebar({
           {NAV_SECTIONS.map((section) => (
             <div key={section.title} className="mb-2">
               {!collapsed && (
-                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-fg-muted">
+                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-shell-muted">
                   {section.title}
                 </div>
               )}
-              {collapsed && <div className="mx-3 my-2 border-t border-line" aria-hidden="true" />}
+              {collapsed && <div className="mx-3 my-2 border-t border-shell-border" aria-hidden="true" />}
               {section.items.map(({ hash, label, icon: Icon }) => {
                 const isActive = effectivePath === hash || effectivePath.startsWith(`${hash}/`);
                 return (
@@ -147,16 +138,16 @@ export default function Sidebar({
                     className={cn(
                       'flex min-h-9 w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                       collapsed && 'justify-center gap-0 px-0',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary',
-                      'hover:bg-primary/5',
-                      isActive ? 'bg-primary/10 font-medium text-primary' : 'text-fg-muted'
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-shell-primary',
+                      'hover:bg-shell-hover',
+                      isActive ? 'bg-shell-active font-medium text-shell-text' : 'text-shell-muted'
                     )}
                     title={collapsed ? label : undefined}
                     aria-current={isActive ? 'page' : undefined}
                   >
                     <Icon
                       size={20}
-                      className={cn('shrink-0', isActive ? 'text-primary' : 'text-fg-muted')}
+                      className={cn('shrink-0', isActive ? 'text-shell-primary' : 'text-shell-muted')}
                       aria-hidden="true"
                     />
                     {!collapsed && <span className="truncate">{label}</span>}

@@ -327,6 +327,12 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     fetchOrders();
   }, [fetchOrders]);
 
+  useEffect(() => {
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+  }, []);
+
   // ── Debounced search ────────────────────────────────────────────────────────
   const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -597,16 +603,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 <TableRow
                   key={row.id}
                   className="cursor-pointer bg-surface"
-                  tabIndex={0}
                   aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
-                  onKeyDown={(event: KeyboardEvent<HTMLTableRowElement>) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    const target = event.target as HTMLElement;
-                    if (target.closest('button, a, input, select')) return;
-                    event.preventDefault();
-                    navigate(`/sales-orders/${encodeURIComponent(row.id)}`);
-                  }}
                 >
                   <TableCell className="font-mono text-sm">{row.id}</TableCell>
                   <TableCell className="whitespace-nowrap text-fg-muted">

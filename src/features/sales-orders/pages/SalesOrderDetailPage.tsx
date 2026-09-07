@@ -82,7 +82,7 @@ function ProgressMetric({
 
 function ItemTable({ items }: { items: SalesOrderItemView[] }) {
   return (
-    <Table className="min-w-[680px]">
+    <Table className="min-w-[600px] xl:min-w-0">
       <TableHeader>
         <TableRow>
           <TableHead>SKU</TableHead>
@@ -230,7 +230,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           </span>
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <section
             className="min-w-0 rounded-lg border border-line bg-surface shadow-sm"
             aria-labelledby="sales-order-execution-title"
@@ -294,7 +294,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               Atualizar pedido
             </h2>
 
-            <div className="mt-4 flex flex-wrap gap-2 lg:flex-col lg:items-stretch">
+            <div className="mt-4 flex flex-wrap gap-2 xl:flex-col xl:items-stretch">
               {billedBlockedReason && (
                 <span id="sales-order-billed-reason" className="sr-only">
                   {billedBlockedReason}
@@ -303,7 +303,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               <Button
                 variant="outline"
                 size="sm"
-                className="lg:w-full"
+                className="xl:w-full"
                 aria-label="Marcar faturado"
                 aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
                 title={billedBlockedReason}
@@ -320,7 +320,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               <Button
                 variant="outline"
                 size="sm"
-                className="lg:w-full"
+                className="xl:w-full"
                 aria-label="Marcar entregue"
                 aria-describedby={
                   deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined
@@ -343,6 +343,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             <span className="text-xs text-fg-muted">Total do pedido</span>
             <p className="mt-1 text-lg font-semibold">
               {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
+            </p>
             {data.source_quotation && (
               <Button
                 variant="default"
