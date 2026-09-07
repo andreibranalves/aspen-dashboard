@@ -96,6 +96,26 @@ test('offline selection rejects legacy snake_case consent aliases', () => {
   assert.ok(selected.reasons.includes('consent_review_required'));
 });
 
+test('offline selection rejects mixed consent aliases and multiple click IDs', () => {
+  const mixed = evidence();
+  const mixedConsent = (
+    (mixed.raw as { siteSubmission: { consent: Record<string, unknown> } }).siteSubmission.consent
+  );
+  mixedConsent.reviewed_at = '2025-01-01T00:00:00.000Z';
+  const mixedSelection = selectOfflineOrder(mixed, {
+    approvedOrderIds: new Set([ORDER_ID]),
+  });
+  assert.notEqual(mixedSelection.status, 'eligible');
+  assert.ok(mixedSelection.reasons.includes('consent_review_required'));
+
+  const ambiguousSelection = selectOfflineOrder(
+    evidence({ attribution: { gclid: 'synthetic-gclid', wbraid: 'synthetic-wbraid' } }),
+    { approvedOrderIds: new Set([ORDER_ID]) }
+  );
+  assert.notEqual(ambiguousSelection.status, 'eligible');
+  assert.ok(ambiguousSelection.reasons.includes('ambiguous_ad_identifiers'));
+});
+
 test('offline selection accepts every approved order status only with reviewed UUID and lineage', () => {
   for (const status of ['To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed']) {
     const selected = selectOfflineOrder(evidence({ status }), {
@@ -160,7 +180,7 @@ test('offline selection preserves opaque identifiers and deterministic money/tim
           },
         },
       },
-      attribution: { gclid: 'wrong-priority', wbraid: 'opaque-wbraid-exact' },
+      attribution: { wbraid: 'opaque-wbraid-exact' },
     }),
     { approvedOrderIds: new Set([ORDER_ID]) }
   );

@@ -348,12 +348,13 @@ test(
       const dryRun = await service.preview({
         from: new Date('2026-09-01T00:00:00.000Z'),
         to: new Date('2026-09-02T00:00:00.000Z'),
+        approvedOrderIds: new Set([grantOrder[0].id]),
       });
       assert.equal(transportCalls.length, 0);
       const grantRow = dryRun.rows.find((row) => row.salesOrderId === grantOrder[0].id);
       assert.ok(grantRow);
-      assert.equal(grantRow.category, 'reviewed_uuid_required');
-      assert.ok(grantRow.reasons.includes('reviewed_uuid_required'));
+      assert.equal(grantRow.category, 'eligible');
+      assert.deepEqual(grantRow.reasons, []);
       assert.equal(grantRow.adIdentifierType, 'gclid');
       // Preview is read-only: neither ledger table receives a row.
       const [exportRows, attemptRows] = await Promise.all([

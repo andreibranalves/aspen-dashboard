@@ -316,6 +316,12 @@ function rawSiteSubmission(raw: unknown): Record<string, unknown> | null {
 function consentEvidenceFrom(raw: unknown): OfflineConsentEvidence | null {
   const consent = rawSiteSubmission(raw)?.consent;
   if (!isRecord(consent)) return null;
+  const keys = Object.keys(consent).sort();
+  const required = ['adPersonalization', 'adUserData', 'policyVersion', 'reviewedAt', 'source'];
+  const allowed = consent.evidenceId === undefined ? required : [...required, 'evidenceId'].sort();
+  if (keys.length !== allowed.length || keys.some((key, index) => key !== allowed[index])) {
+    return null;
+  }
   const policyVersion = clean(consent.policyVersion);
   const reviewedAt = verifiedIsoString(consent.reviewedAt);
   const source = clean(consent.source);
@@ -341,18 +347,20 @@ function consentEvidenceFrom(raw: unknown): OfflineConsentEvidence | null {
   };
 }
 
-function adIdentifierFrom(evidence: OfflineOrderEvidence): {
+function adIdentifiersFrom(evidence: OfflineOrderEvidence): Array<{
   type: AdIdentifierType;
   value: string;
-} | null {
+}> {
   const attribution = isRecord(evidence.attribution) ? evidence.attribution : {};
   const marker = rawSiteSubmission(evidence.raw)?.primaryAdIdentifier;
-  const candidates = isAdIdentifierType(marker) ? [marker] : AD_IDENTIFIER_TYPES;
-  for (const type of candidates) {
+  const identifiers = AD_IDENTIFIER_TYPES.flatMap((type) => {
     const value = attribution[type];
-    if (typeof value === 'string' && value.trim()) return { type, value };
+    return typeof value === 'string' && value.trim() ? [{ type, value }] : [];
+  });
+  if (identifiers.length === 1 && isAdIdentifierType(marker) && marker !== identifiers[0].type) {
+    return [];
   }
-  return null;
+  return identifiers;
 }
 
 function sourceSubmissionIsVerified(raw: unknown): boolean {
@@ -445,8 +453,10 @@ export function selectOfflineOrder(
     reasons.push('future_order_timestamp');
   }
 
-  const adIdentifier = adIdentifierFrom(evidence);
-  if (!adIdentifier) reasons.push('missing_ad_identifier');
+  const adIdentifiers = adIdentifiersFrom(evidence);
+  const adIdentifier = adIdentifiers.length === 1 ? adIdentifiers[0] : null;
+  if (adIdentifiers.length === 0) reasons.push('missing_ad_identifier');
+  if (adIdentifiers.length > 1) reasons.push('ambiguous_ad_identifiers');
   const consentEvidence = consentEvidenceFrom(evidence.raw);
   if (!consentEvidence) reasons.push('consent_review_required');
 
@@ -471,6 +481,7 @@ export function selectOfflineOrder(
       'invalid_order_timestamp',
       'future_order_timestamp',
       'missing_ad_identifier',
+      'ambiguous_ad_identifiers',
     ].includes(reason)
   );
   if (hasBlockingLineage) {
