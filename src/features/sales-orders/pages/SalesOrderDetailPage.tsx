@@ -135,14 +135,15 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         if (!projected) throw new Error('Resposta inválida ao atualizar pedido.');
         setData(projected);
       } catch (caught) {
-        setActionError(caught instanceof Error ? caught.message : 'Não foi possível atualizar o pedido.');
+        setActionError(
+          caught instanceof Error ? caught.message : 'Não foi possível atualizar o pedido.'
+        );
       } finally {
         setUpdating(null);
       }
     },
     [id]
   );
-
 
   useEffect(() => {
     void fetchDetail();
@@ -203,7 +204,8 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
   return (
     <PageShell>
       <PageHeader
-        title="Pedido"
+        title={data.id}
+        description={`${data.customer_name || 'Cliente não identificado'}${data.source_quotation ? ` · originado de ${data.source_quotation}` : ''}`}
         actions={
           <Button variant="ghost" onClick={() => navigate('/sales-orders')}>
             ← Voltar aos pedidos
@@ -211,141 +213,137 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         }
       />
 
-      <div className="rounded-lg border border-line bg-surface shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="truncate font-mono text-lg font-semibold">{data.id}</span>
-            <StatusBadge status={data.status} label={statusLabel} />
-          </div>
-          {data.source_quotation && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
-              }
-            >
-              <FileText size={14} aria-hidden="true" /> Voltar ao orçamento
-            </Button>
-          )}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={data.status} label={statusLabel} />
+          <span className="text-sm text-fg-muted">
+            Prazo: {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
+          </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 border-b border-line px-6 py-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <span className="text-xs text-fg-muted">Cliente</span>
-            <p className="mt-1 font-medium">{data.customer_name || 'Cliente não identificado'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-fg-muted">Data</span>
-            <p className="mt-1">{orderDate ? formatSalesOrderDate(orderDate) : '—'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-fg-muted">Entrega</span>
-            <p className="mt-1">
-              {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
-            <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
-          </div>
-        </div>
-
-        <div className="px-6 py-4">
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-semibold">Itens</h2>
-            {data.omitted_items > 0 && (
-              <span className="text-xs text-fg-muted">
-                {data.omitted_items}{' '}
-                {data.omitted_items === 1 ? 'item não exibido' : 'itens não exibidos'} por falta de
-                dados confirmados.
-              </span>
-            )}
-          </div>
-          {items === undefined ? (
-            <p className="py-6 text-sm text-fg-muted">Itens não disponíveis para este pedido.</p>
-          ) : items.length === 0 ? (
-            <p className="py-6 text-sm text-fg-muted">Nenhum item registrado neste pedido.</p>
-          ) : (
-            <ItemTable items={items} />
-          )}
-        </div>
-
-        <div className="flex items-baseline justify-end gap-3 border-t border-line px-6 py-4 text-right">
-          <span className="text-sm text-fg-muted">Total</span>
-          <strong className="text-lg font-semibold">
-            {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
-          </strong>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-4 border-t border-line px-6 py-4">
-          <div className="flex items-center gap-1.5 text-xs text-fg-muted">
-            <DollarSign size={14} aria-hidden="true" />
-            <span>Faturado: {data.per_billed === undefined ? '—' : `${data.per_billed}%`}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-fg-muted">
-            <Truck size={14} aria-hidden="true" />
-            <span>
-              Entregue: {data.per_delivered === undefined ? '—' : `${data.per_delivered}%`}
-            </span>
-          </div>
-          {data.status === 'Completed' && (
-            <div className="flex items-center gap-1.5 text-xs text-success">
-              <Check size={14} aria-hidden="true" />
-              <span>Concluído</span>
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <section
+            className="min-w-0 rounded-lg border border-line bg-surface shadow-sm"
+            aria-labelledby="sales-order-execution-title"
+          >
+            <div className="border-b border-line px-5 py-4">
+              <h2 id="sales-order-execution-title" className="text-base font-semibold">
+                Execução do pedido
+              </h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md bg-surface-subtle px-3 py-3">
+                  <span className="text-xs text-fg-muted">Data do pedido</span>
+                  <p className="mt-1 text-sm font-medium">
+                    {orderDate ? formatSalesOrderDate(orderDate) : '—'}
+                  </p>
+                </div>
+                <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
+                <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
+              </div>
             </div>
-          )}
-          {actionError && (
-            <p className="w-full text-sm text-destructive" role="alert">
-              {actionError}
+
+            <div className="px-5 py-4">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-base font-semibold">Itens</h2>
+                {data.omitted_items > 0 && (
+                  <span className="text-xs text-fg-muted">
+                    {data.omitted_items}{' '}
+                    {data.omitted_items === 1 ? 'item não exibido' : 'itens não exibidos'} por falta
+                    de dados confirmados.
+                  </span>
+                )}
+              </div>
+              {items === undefined ? (
+                <p className="py-6 text-sm text-fg-muted">
+                  Itens não disponíveis para este pedido.
+                </p>
+              ) : items.length === 0 ? (
+                <p className="py-6 text-sm text-fg-muted">Nenhum item registrado neste pedido.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <ItemTable items={items} />
+                </div>
+              )}
+            </div>
+          </section>
+
+          <aside
+            className="rounded-lg border border-line bg-surface p-5 shadow-sm"
+            aria-labelledby="sales-order-action-title"
+          >
+            <h2 id="sales-order-action-title" className="text-base font-semibold">
+              Atualizar pedido
+            </h2>
+
+            <div className="mt-4 flex flex-wrap gap-2 lg:flex-col lg:items-stretch">
+              {billedBlockedReason && (
+                <span id="sales-order-billed-reason" className="sr-only">
+                  {billedBlockedReason}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="lg:w-full"
+                aria-label="Marcar faturado"
+                aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
+                title={billedBlockedReason}
+                disabled={Boolean(billedBlockedReason) || updating !== null}
+                onClick={() => void markProgress('billed')}
+              >
+                <DollarSign size={14} aria-hidden="true" /> Marcar faturado
+              </Button>
+              {deliveredBlockedReason && (
+                <span id="sales-order-delivered-reason" className="sr-only">
+                  {deliveredBlockedReason}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="lg:w-full"
+                aria-label="Marcar entregue"
+                aria-describedby={
+                  deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined
+                }
+                title={deliveredBlockedReason}
+                disabled={Boolean(deliveredBlockedReason) || updating !== null}
+                onClick={() => void markProgress('delivered')}
+              >
+                <Truck size={14} aria-hidden="true" /> Marcar entregue
+              </Button>
+            </div>
+
+            {actionError && (
+              <p className="mt-3 text-sm text-destructive" role="alert">
+                {actionError}
+              </p>
+            )}
+
+            <div className="my-5 border-t border-line" />
+            <span className="text-xs text-fg-muted">Total do pedido</span>
+            <p className="mt-1 text-lg font-semibold">
+              {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
             </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            {billedBlockedReason && (
-              <span id="sales-order-billed-reason" className="sr-only">
-                {billedBlockedReason}
-              </span>
+            {data.source_quotation && (
+              <Button
+                variant="default"
+                size="sm"
+                className="mt-4 w-full"
+                onClick={() =>
+                  navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
+                }
+              >
+                <FileText size={14} aria-hidden="true" /> Voltar ao orçamento
+              </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Marcar faturado"
-              aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
-              title={billedBlockedReason}
-              disabled={Boolean(billedBlockedReason) || updating !== null}
-              onClick={() => void markProgress('billed')}
-            >
-              <DollarSign size={14} aria-hidden="true" /> Marcar faturado
-            </Button>
-            {deliveredBlockedReason && (
-              <span id="sales-order-delivered-reason" className="sr-only">
-                {deliveredBlockedReason}
-              </span>
+            {data.status === 'Completed' && (
+              <div className="mt-4 flex items-center gap-1.5 text-xs text-success">
+                <Check size={14} aria-hidden="true" />
+                <span>Concluído</span>
+              </div>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Marcar entregue"
-              aria-describedby={deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined}
-              title={deliveredBlockedReason}
-              disabled={Boolean(deliveredBlockedReason) || updating !== null}
-              onClick={() => void markProgress('delivered')}
-            >
-              <Truck size={14} aria-hidden="true" /> Marcar entregue
-            </Button>
-          </div>
-          <div className="flex-1" />
-          {data.source_quotation && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() =>
-                navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
-              }
-            >
-              <FileText size={14} aria-hidden="true" /> Voltar ao orçamento
-            </Button>
-          )}
+          </aside>
         </div>
       </div>
     </PageShell>

@@ -314,74 +314,98 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       <PageHeader
         title="Pedidos"
         actions={
-          <>
-            <ExportCsvButton resource="sales-orders" filters={{ period, status, search }}>
-              Exportar pedidos
-            </ExportCsvButton>
-            <ExportCsvButton resource="sales-order-items" filters={{ period, status, search }}>
-              Exportar itens
-            </ExportCsvButton>
-          </>
+          <details className="group relative">
+            <summary className="flex h-9 cursor-pointer list-none items-center justify-center gap-2 rounded-sm border border-line bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&::-webkit-details-marker]:hidden">
+              Exportar <span aria-hidden="true">▾</span>
+            </summary>
+            <div className="absolute right-0 top-full z-20 mt-2 flex min-w-48 flex-col gap-1 rounded-lg border border-line bg-surface p-2 shadow-lg">
+              <ExportCsvButton
+                resource="sales-orders"
+                filters={{ period, status, search }}
+                className="w-full justify-start"
+              >
+                Exportar pedidos
+              </ExportCsvButton>
+              <ExportCsvButton
+                resource="sales-order-items"
+                filters={{ period, status, search }}
+                className="w-full justify-start"
+              >
+                Exportar itens
+              </ExportCsvButton>
+            </div>
+          </details>
         }
       />
 
-      {/* Summary cards */}
-      {summaryError && (
-        <div
-          className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-6 text-fg-muted"
-          role="alert"
-        >
-          <p className="text-sm text-destructive">Erro ao carregar métricas de vendas</p>
-          <p className="text-sm">{summaryError}</p>
-          <Button variant="outline" onClick={() => void fetchSummary()}>
-            Tentar novamente
-          </Button>
+      {/* Secondary summary: available on demand without competing with the list. */}
+      <details className="group rounded-lg border border-line bg-surface">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
+          <span>Resumo comercial · últimos 30 dias</span>
+          <span className="text-xs font-normal text-fg-muted" aria-live="polite">
+            {summaryError ? 'indisponível' : summaryData ? 'disponível' : 'carregando'}
+          </span>
+        </summary>
+        <div className="border-t border-line p-4">
+          {summaryError && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-surface-subtle px-3 py-3"
+              role="alert"
+            >
+              <p className="text-sm text-destructive">
+                Não foi possível carregar as métricas de vendas.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
+                Tentar novamente
+              </Button>
+            </div>
+          )}
+          {summaryData && (
+            <div className="flex flex-wrap gap-3">
+              <StatCard
+                icon={DollarSign}
+                label="Receita"
+                className="flex-1"
+                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+                metadata={
+                  summaryData.revenue_delta === null ||
+                  (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
+                    ? undefined
+                    : summaryData.revenue_delta === 0
+                      ? 'sem variação vs período anterior'
+                      : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
+                }
+              />
+              <StatCard
+                icon={ShoppingCart}
+                label="Pedidos"
+                className="flex-1"
+                value={String(summaryData.orders_count)}
+              />
+              <StatCard
+                icon={TrendingUp}
+                label="Ticket Médio"
+                className="flex-1"
+                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+                metadata={
+                  summaryData.avg_ticket_delta === null ||
+                  (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
+                    ? undefined
+                    : summaryData.avg_ticket_delta === 0
+                      ? 'sem variação vs período anterior'
+                      : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
+                }
+              />
+              <StatCard
+                icon={Package}
+                label="Pedidos em aberto"
+                className="flex-1"
+                value={String(summaryData.open_orders)}
+              />
+            </div>
+          )}
         </div>
-      )}
-      {summaryData && (
-        <div className="flex flex-wrap gap-3">
-          <StatCard
-            icon={DollarSign}
-            label="Receita"
-            className="flex-1"
-            value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-            metadata={
-              summaryData.revenue_delta === null ||
-              (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
-                ? undefined
-                : summaryData.revenue_delta === 0
-                  ? 'sem variação vs período anterior'
-                  : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
-            }
-          />
-          <StatCard
-            icon={ShoppingCart}
-            label="Pedidos"
-            className="flex-1"
-            value={String(summaryData.orders_count)}
-          />
-          <StatCard
-            icon={TrendingUp}
-            label="Ticket Médio"
-            className="flex-1"
-            value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-            metadata={
-              summaryData.avg_ticket_delta === null ||
-              (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
-                ? undefined
-                : summaryData.avg_ticket_delta === 0
-                  ? 'sem variação vs período anterior'
-                  : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
-            }
-          />
-          <StatCard
-            icon={Package}
-            label="Pedidos em aberto"
-            className="flex-1"
-            value={String(summaryData.open_orders)}
-          />
-        </div>
-      )}
+      </details>
 
       {/* Filter row */}
       <PageToolbar>
@@ -401,11 +425,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         {/* Status select */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-fg-muted whitespace-nowrap">Status</span>
-          <span id="order-status-label" className="sr-only">
-            Status do pedido
-          </span>
           <Select
-            aria-labelledby="order-status-label"
+            aria-label="Filtrar por status"
             value={status}
             onChange={onStatusChange}
             title="Status do pedido"

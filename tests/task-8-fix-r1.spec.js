@@ -77,6 +77,7 @@ test('pedidos usa métricas canônicas, nomes neutros e somente status suportado
   });
 
   await page.goto('/#/sales-orders');
+  await page.getByText('Resumo comercial · últimos 30 dias', { exact: true }).click();
   await expect(page.getByText('R$ 1.234,50').first()).toBeVisible();
   await expect(page.getByText('2', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('R$ 617,25').first()).toBeVisible();
@@ -108,6 +109,65 @@ test('detalhe de pedido não expõe UUID quando customer_name falta @quotations 
   await page.goto('/#/sales-orders/PED-2026-0001');
   await expect(page.getByText('Cliente não identificado', { exact: true })).toBeVisible();
   await expect(page.getByText(uuid, { exact: true })).toHaveCount(0);
+});
+
+test('pedidos agrupa exportações e envia os filtros atuais', async ({ page }) => {
+  const exportUrls = [];
+  await page.route('**/api/sales-dashboard**', (route) => json(route, {
+    success: true,
+    summary: {
+      total_revenue: 100,
+      revenue_delta: null,
+      orders_count: 1,
+      orders_delta: null,
+      avg_ticket: 100,
+      avg_ticket_delta: null,
+      open_orders: 1,
+      conversion_rate: 0,
+      conversion_delta: null,
+    },
+  }));
+  await page.route('**/api/sales-orders**', (route) => json(route, {
+    success: true,
+    items: [{
+      id: 'PED-2026-0007',
+      date: '2026-08-10',
+      customer_name: 'Cliente exportação',
+      grand_total: 100,
+      status: 'Completed',
+      delivery_date: '2026-08-20',
+      per_delivered: 0,
+      per_billed: 0,
+      source_quotation: null,
+    }],
+    page: 1,
+    limit: 10,
+    has_more: false,
+  }));
+  await page.route('**/api/commercial-exports**', (route) => {
+    exportUrls.push(route.request().url());
+    return route.fulfill({
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="pedidos.csv"',
+      },
+      body: 'id;status\nPED-2026-0007;Completed',
+    });
+  });
+
+  await page.goto('/#/sales-orders?period=7d&status=Completed&search=Cliente');
+  await expect(page.getByText('PED-2026-0007', { exact: true }).first()).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'Exportar' }).click();
+  await expect(page.getByRole('button', { name: 'Exportar pedidos' })).toBeVisible();
+  await page.getByRole('button', { name: 'Exportar pedidos' }).click();
+  await expect.poll(() => exportUrls.length).toBe(1);
+
+  const url = new globalThis.URL(exportUrls[0]);
+  expect(url.searchParams.get('resource')).toBe('sales-orders');
+  expect(url.searchParams.get('period')).toBe('7d');
+  expect(url.searchParams.get('status')).toBe('Completed');
+  expect(url.searchParams.get('search')).toBe('Cliente');
 });
 
 test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations @critical', async ({ page }) => {
@@ -243,6 +303,7 @@ test('métricas ausentes ou contagens inválidas exibem erro e não inventam zer
   await page.route('**/api/sales-dashboard**', (route) => json(route, { success: true, summary }));
   await page.route('**/api/sales-orders**', (route) => json(route, { success: true, items: [], has_more: false }));
   await page.goto('/#/sales-orders');
+  await page.getByText('Resumo comercial · últimos 30 dias', { exact: true }).click();
   // sem pedidos, valores monetários desconhecidos usam traço em vez de inventar zero
   await expect(page.getByText('Receita').locator('..')).toContainText('—');
   await expect(page.getByText('Ticket Médio').locator('..')).toContainText('—');
@@ -254,7 +315,8 @@ test('métricas ausentes ou contagens inválidas exibem erro e não inventam zer
   ]) {
     summary = invalid;
     await page.reload();
-    await expect(page.getByRole('alert')).toContainText('Tente novamente');
+    await page.getByText('Resumo comercial · últimos 30 dias', { exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('Tentar novamente');
     await expect(page.getByText('R$ 0,00')).toHaveCount(0);
   }
 });
