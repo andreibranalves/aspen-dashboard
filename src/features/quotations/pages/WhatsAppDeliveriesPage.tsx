@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -394,7 +395,7 @@ export default function WhatsAppDeliveriesPage() {
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
   return (
-    <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
+    <PageShell className="space-y-4 pb-10">
       <PageHeader
         title="Envios WhatsApp"
         actions={
@@ -739,6 +740,6 @@ export default function WhatsAppDeliveriesPage() {
         }}
         onCancel={() => setClearConfirmOpen(false)}
       />
-    </div>
+    </PageShell>
   );
 }

@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
@@ -158,7 +159,7 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
   }, [loading, page, result, setPage, totalPages]);
 
   return (
-    <div className="space-y-6">
+    <PageShell className="space-y-6">
       <PageHeader
         title="Follow-ups"
         actions={
@@ -392,6 +393,6 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
         onClose={() => setSelected(null)}
         onChanged={() => void load()}
       />
-    </div>
+    </PageShell>
   );
 }

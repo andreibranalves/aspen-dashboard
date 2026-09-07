@@ -18,7 +18,7 @@ export default function BulkActionBar({ visible, children }: BulkActionBarProps)
         visible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none',
       )}
     >
-      <div className="mx-auto max-w-[1060px] px-4">
+      <div className="w-full px-4">
         <div className="overflow-hidden rounded-t-lg border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
           <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
             {children}

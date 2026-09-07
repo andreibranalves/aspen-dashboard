@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QuotationSectionsEditor } from '@/features/quotations/components/QuotationSectionsEditor';
@@ -169,7 +170,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
+    <PageShell className="space-y-6">
       <PageHeader title="Configurações" />
 
       <section
@@ -225,7 +226,7 @@ export default function SettingsPage() {
 
         {!loading && !loadError && (
           <form
-            className="space-y-6"
+            className="max-w-[1060px] space-y-6"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSave();
@@ -419,6 +420,6 @@ export default function SettingsPage() {
           </div>
         </details>
       </section>
-    </div>
+    </PageShell>
   );
 }

@@ -54,10 +54,12 @@ function ProgressMetric({
 }) {
   const width = value === undefined ? 0 : Math.min(100, Math.max(0, value));
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="text-fg-muted">{label}</span>
-        <span className="font-mono text-fg">{value === undefined ? '—' : `${value}%`}</span>
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span>{label}</span>
+        <span className="font-sans text-xs tabular-nums text-fg-muted">
+          {value === undefined ? '—' : `${value}%`}
+        </span>
       </div>
       {value !== undefined && (
         <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
@@ -93,8 +95,12 @@ function ItemTable({ items }: { items: SalesOrderItemView[] }) {
               <TableCell>{item.item_name || item.item_code}</TableCell>
               <TableCell className="text-right">{item.qty}</TableCell>
               <TableCell className="text-right text-fg-muted">{item.uom || 'und'}</TableCell>
-              <TableCell className="text-right font-mono">{formatBRL(item.rate)}</TableCell>
-              <TableCell className="text-right font-mono">{formatBRL(amount)}</TableCell>
+              <TableCell className="text-right font-sans tabular-nums">
+                {formatBRL(item.rate)}
+              </TableCell>
+              <TableCell className="text-right font-sans tabular-nums">
+                {formatBRL(amount)}
+              </TableCell>
             </TableRow>
           );
         })}
@@ -151,7 +157,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
 
   if (error) {
     return (
-      <PageShell className="max-w-none">
+      <PageShell>
         <PageHeader title="Pedido" />
         <div
           className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
@@ -193,7 +199,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       : undefined;
 
   return (
-    <PageShell className="max-w-none">
+    <PageShell>
       <PageHeader title={data.id} />
 
       <div className="space-y-3">
@@ -204,14 +210,14 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           </span>
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <section
             className="min-w-0 rounded-lg border border-line bg-surface shadow-sm"
             aria-labelledby="sales-order-execution-title"
           >
             <div className="border-b border-line px-5 py-4">
               <h2 id="sales-order-execution-title" className="text-base font-semibold">
-                Dados do pedido
+                Execução do pedido
               </h2>
               <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
                 <div>
@@ -338,7 +344,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
 
             <div className="my-5 border-t border-line" />
             <span className="text-xs text-fg-muted">Total do pedido</span>
-            <p className="mt-1 text-lg font-semibold">
+            <p className="mt-1 text-lg font-semibold tabular-nums">
               {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
             </p>
             {data.source_quotation && (

@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import PageShell from '@/components/shared/PageShell';
 import { useToast } from '@/components/shared/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -748,7 +749,7 @@ export default function ManualOrcamentoPage() {
 
   // ── Render ──
   return (
-    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
+    <PageShell className="space-y-6">
       {!result && (
         <header>
           <h1 className="text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
@@ -814,7 +815,7 @@ export default function ManualOrcamentoPage() {
 
       {!result && (
         <>
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+          <div className="w-full max-w-[1060px] grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
             <div className="space-y-5 min-w-0">
               {/* ══ 1. Cliente ══ */}
               <section aria-label="Seleção de cliente" className="rounded-lg border border-line bg-surface p-5 space-y-4">
@@ -1532,6 +1533,6 @@ export default function ManualOrcamentoPage() {
         }}
         onCancel={() => setPendingRoute(null)}
       />
-    </div>
+    </PageShell>
   );
 }

@@ -17,6 +17,7 @@ import { capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import PageShell from '@/components/shared/PageShell';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
@@ -678,7 +679,7 @@ export default function AutoQuotePage() {
   const visibleDrafts = [...activeDrafts].reverse();
 
   return (
-    <div className="mx-auto w-full max-w-[1060px] flex h-full flex-col overflow-hidden animate-fade-in">
+    <PageShell className="flex h-full w-full flex-col space-y-0 overflow-hidden">
       <OrderTemplateManager
         open={orderTemplateManagerOpen}
         templates={orderTemplates}
@@ -1023,6 +1024,6 @@ export default function AutoQuotePage() {
         }}
         onCancel={() => setConfirmClearResults(false)}
       />
-    </div>
+    </PageShell>
   );
 }
