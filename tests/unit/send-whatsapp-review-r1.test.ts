@@ -28,14 +28,15 @@ const businessNumber = 'ORC-20260001';
 const publicToken = 'A'.repeat(32);
 
 function snapshot() {
+  const issuedAt = new Date(Date.now() - 86_400_000);
   return {
     quotation: {
       id: quotationId,
       businessNumber,
       clientId: 'client-1',
       status: 'enviado',
-      createdAt: new Date('2026-08-08T10:00:00.000Z'),
-      updatedAt: new Date('2026-08-08T10:00:00.000Z'),
+      createdAt: issuedAt,
+      updatedAt: issuedAt,
     },
     revision: {
       id: revisionId,
@@ -65,7 +66,7 @@ function snapshot() {
       clienteNotas: null,
       subtotal: '20.00',
       total: '20.00',
-      createdAt: new Date('2026-08-08T10:00:00.000Z'),
+      createdAt: issuedAt,
       sectionsSnapshot: canonicalSectionsSnapshot(),
       templateVersionId: null,
       statusOriginal: null,

@@ -120,7 +120,7 @@ test('opportunity creates quotation whose origin remains visible through approva
   await expect(page.getByText(/Pedido PED-\d{4}-\d{4} criado\./)).toBeVisible();
   await page.getByRole('button', { name: /Abrir pedido/ }).click();
 
-  await expect(page.getByRole('heading', { name: 'Pedido' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^PED-\d{4}-\d{4}$/ })).toBeVisible();
   await expect(page.getByText('Formulário do site')).toBeVisible();
   await page.getByRole('button', { name: 'Abrir orçamento de origem' }).click();
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
