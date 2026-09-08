@@ -44,6 +44,7 @@ export interface OrcamentoResponse {
   success?: boolean;
   cliente?: string;
   quotation_id?: string;
+  quote_id?: string;
   quotation_uuid?: string;
   revision_id?: string;
   revision?: number;
@@ -98,6 +99,9 @@ export interface DraftEdited {
   validade_dias?: number;
   template_key?: string;
   _showAddr?: boolean;
+  client_id?: string;
+  quote_lead_id?: string;
+  crm_deal_id?: string;
 }
 
 export interface Draft {

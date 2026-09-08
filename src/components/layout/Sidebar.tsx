@@ -31,7 +31,10 @@ export default function Sidebar({
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const currentPath = routePath(currentRoute);
   // Fluxos filhos destacam o item-pai correspondente (ex.: /manual pertence a Orçamentos).
-  const activeAffinity: Record<string, string> = { '/manual': '/quotations' };
+  const activeAffinity: Record<string, string> = {
+    '/auto': '/novo-orcamento',
+    '/manual': '/novo-orcamento',
+  };
   const effectivePath = activeAffinity[currentPath] ?? currentPath;
   const sidebarOpen = !collapsed;
 

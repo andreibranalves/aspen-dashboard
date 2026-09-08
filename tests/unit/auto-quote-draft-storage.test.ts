@@ -56,13 +56,15 @@ test('does not restore unknown versions', () => {
   assert.deepEqual(loadAutoQuoteDrafts(storage), []);
 });
 
-test('discards drafts missing customer or items and non-UUID issue keys', () => {
+test('discards drafts missing customer or items and strips non-UUID issue keys', () => {
   const storage = createStorage();
   const missingCustomer = { ...validDraft, edited: { ...validDraft.edited, nome: '' } };
   const missingItems = { ...validDraft, edited: { ...validDraft.edited, items: [] } };
   const invalidKey = { ...validDraft, issueIdempotencyKey: 'not-a-uuid' };
   storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [missingCustomer, missingItems, invalidKey] }));
-  assert.deepEqual(loadAutoQuoteDrafts(storage), []);
+  const [restored] = loadAutoQuoteDrafts(storage);
+  assert.equal(restored.edited.nome, 'Cliente');
+  assert.equal(restored.issueIdempotencyKey, undefined);
 });
 
 test('validates optional item fields while preserving valid legacy values', () => {
@@ -104,4 +106,36 @@ test('saves drafts in a versioned shape without server synchronization', () => {
   const storage = createStorage();
   saveAutoQuoteDrafts(storage, [validIssueDraft]);
   assert.deepEqual(JSON.parse(storage.values.get('aspen_drafts')!), { version: 1, drafts: [validIssueDraft] });
+});
+
+test('sanitizes optional identity fields and malformed editable values field by field', () => {
+  const storage = createStorage();
+  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{
+    ...validDraft,
+    edited: {
+      ...validDraft.edited,
+      client_id: { bad: true },
+      quote_lead_id: 'lead-1',
+      crm_deal_id: 'deal-1',
+      observacoes: 42,
+      endereco: { ...validDraft.edited.endereco, cidade: { bad: true } },
+    },
+    saved: { quotationId: 'q-1', businessNumber: 'ORC-1', revisionId: 'r-1', concurrencyToken: '' },
+  }] }));
+
+  const [draft] = loadAutoQuoteDrafts(storage);
+  assert.equal(draft.edited.client_id, undefined);
+  assert.equal(draft.edited.quote_lead_id, 'lead-1');
+  assert.equal(draft.edited.crm_deal_id, 'deal-1');
+  assert.equal(draft.edited.observacoes, undefined);
+  assert.equal(draft.edited.endereco.cidade, '');
+  assert.equal(draft.saved, undefined);
+});
+
+test('malformed issue keys do not block restoring the draft', () => {
+  const storage = createStorage();
+  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{ ...validDraft, issueIdempotencyKey: 'old-key' }] }));
+  const [draft] = loadAutoQuoteDrafts(storage);
+  assert.ok(draft);
+  assert.equal(draft.issueIdempotencyKey, undefined);
 });
