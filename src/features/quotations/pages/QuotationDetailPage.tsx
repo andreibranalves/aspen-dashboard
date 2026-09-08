@@ -1288,7 +1288,10 @@ function CoreQuotationDetail({
     { label: 'Previsão de entrega', value: entrega, enabled: Boolean(entrega.trim()) },
   ].filter(({ value, enabled }) => enabled && quotationContentHasText(value));
   const issuedSummary = (
-    <section aria-labelledby="quotation-summary-content-title" className="border-t border-line py-5">
+    <section
+      aria-labelledby="quotation-summary-content-title"
+      className="border-t border-line py-5"
+    >
       <h2 id="quotation-summary-content-title" className="text-sm font-semibold text-fg">
         Itens e condições
       </h2>
@@ -1590,7 +1593,7 @@ function CoreQuotationDetail({
                   type="button"
                   role="tab"
                   aria-selected={isActive}
-                aria-controls="quotation-panel"
+                  aria-controls="quotation-panel"
                   tabIndex={isActive ? 0 : -1}
                   className={`border-b-2 px-0.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${isActive ? 'border-primary text-link' : 'border-transparent text-fg-muted hover:text-fg'}`}
                   onClick={() => setActiveTab(tab.id)}
@@ -2610,12 +2613,16 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       previousRoute &&
       routePath(previousRoute) === '/comunicacao' &&
       new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
-    const returnRoute = fromFollowUps || fromSendHistory ? previousRoute : '/quotations';
+    const fromDeliveries = previousRoute && routePath(previousRoute) === '/whatsapp-deliveries';
+    const returnRoute =
+      fromFollowUps || fromSendHistory || fromDeliveries ? previousRoute : '/quotations';
     const returnLabel = fromFollowUps
       ? 'Follow-ups'
       : fromSendHistory
         ? 'Histórico de envios'
-        : 'Orçamentos';
+        : fromDeliveries
+          ? 'Envios'
+          : 'Orçamentos';
     return (
       <PageShell className="space-y-4">
         <button

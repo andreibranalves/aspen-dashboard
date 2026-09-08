@@ -1,5 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
+import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonTable from '@/components/shared/SkeletonTable';
@@ -11,6 +13,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   cancelPendingDeliveries,
+  fetchDelivery,
   listDeliveries,
   projectDelivery,
   resolveDelivery,
@@ -23,6 +26,7 @@ import {
 import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
+  parseHashOption,
   parseHashPositiveInteger,
   useHashQueryState,
 } from '@/hooks/useHashQueryState';
@@ -70,7 +74,12 @@ function brDateDigitsToIso(digits: string): string {
   const month = Number(digits.slice(2, 4));
   const year = Number(digits.slice(4));
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  )
+    return '';
   return `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
 }
 
@@ -86,8 +95,14 @@ function parseDeliveryFilters(raw: string | null, fallback: DeliveryFilters): De
       ? candidate.states.filter((state) => STATE_FILTERS.some((filter) => filter.key === state))
       : fallback.states;
     return {
-      requiresAction: typeof candidate.requiresAction === 'boolean' ? candidate.requiresAction : fallback.requiresAction,
-      includeActive: typeof candidate.includeActive === 'boolean' ? candidate.includeActive : fallback.includeActive,
+      requiresAction:
+        typeof candidate.requiresAction === 'boolean'
+          ? candidate.requiresAction
+          : fallback.requiresAction,
+      includeActive:
+        typeof candidate.includeActive === 'boolean'
+          ? candidate.includeActive
+          : fallback.includeActive,
       states,
       delayed: typeof candidate.delayed === 'boolean' ? candidate.delayed : fallback.delayed,
       search: typeof candidate.search === 'string' ? candidate.search : fallback.search,
@@ -99,7 +114,10 @@ function parseDeliveryFilters(raw: string | null, fallback: DeliveryFilters): De
   }
 }
 
-function serializeDeliveryFilters(value: DeliveryFilters, fallback: DeliveryFilters): string | null {
+function serializeDeliveryFilters(
+  value: DeliveryFilters,
+  fallback: DeliveryFilters
+): string | null {
   return JSON.stringify(value) === JSON.stringify(fallback) ? null : JSON.stringify(value);
 }
 
@@ -178,10 +196,20 @@ function filterInputClass(active: boolean): string {
 interface DeliveryDetailsProps {
   delivery: DeliveryView;
   pending: boolean;
+  readOnly?: boolean;
   onResolve: (decision: DeliveryResolution, note: string) => Promise<void>;
 }
 
-function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps) {
+const DELIVERY_TABS = ['pending', 'history'] as const;
+type DeliveryTab = (typeof DELIVERY_TABS)[number];
+const parseDeliveryTab = parseHashOption<DeliveryTab>(DELIVERY_TABS);
+type HistoryStatus = 'all' | 'sent' | 'pending' | 'failed';
+
+function historyStatusLabel(status: SendEvent['status']): string {
+  return { sent: 'Entregue', pending: 'Pendente', failed: 'Falhou', skipped: 'Ignorado' }[status];
+}
+
+function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: DeliveryDetailsProps) {
   return (
     <div className="min-w-0 space-y-5">
       <dl className="grid gap-3 text-xs sm:grid-cols-3">
@@ -202,13 +230,29 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
           <dd className="mt-1 font-medium text-fg">{completionSourceLabel(delivery)}</dd>
         </div>
       </dl>
-      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <QuotationDeliveryStatus
-          delivery={delivery}
-          pending={pending}
-          onResolve={onResolve}
-          className="[&>div:first-child]:hidden"
-        />
+      <div className="grid min-w-0 gap-5">
+        {readOnly ? (
+          <div className="rounded-lg border border-line bg-surface p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+              Estado atual
+            </p>
+            <StatusBadge
+              status={delivery.state}
+              label={projectDelivery(delivery).label}
+              className={stateTone(delivery.state)}
+            />
+            <p className="mt-2 text-xs text-fg-muted">
+              Fonte de conclusão: {completionSourceLabel(delivery)}
+            </p>
+          </div>
+        ) : (
+          <QuotationDeliveryStatus
+            delivery={delivery}
+            pending={pending}
+            onResolve={onResolve}
+            className="[&>div:first-child]:hidden"
+          />
+        )}
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
             Passos da entrega
@@ -246,6 +290,13 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
                     Tentativas: {step.attemptCount} · Atualizado em{' '}
                     {formatDateTime(step.updatedAt) || '—'}
                   </p>
+                  {(step.acceptedAt || step.deliveredAt || step.readAt) && (
+                    <p className="mt-1 text-fg-muted">
+                      {step.acceptedAt && `Aceite ${formatDateTime(step.acceptedAt)}`}
+                      {step.deliveredAt && ` · Entrega ${formatDateTime(step.deliveredAt)}`}
+                      {step.readAt && ` · Leitura ${formatDateTime(step.readAt)}`}
+                    </p>
+                  )}
                   {step.publicError && <p className="mt-1 text-destructive">{step.publicError}</p>}
                 </div>
               </li>
@@ -258,16 +309,29 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
 }
 
 export default function WhatsAppDeliveriesPage() {
+  const [activeTab, setActiveTab] = useHashQueryState<DeliveryTab>(
+    'tab',
+    'pending',
+    parseDeliveryTab
+  );
   const [filters, setFilters] = useHashQueryState(
     'filters',
     DEFAULT_FILTERS,
     parseDeliveryFilters,
-    serializeDeliveryFilters,
+    serializeDeliveryFilters
   );
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [result, setResult] = useState<DeliveryPage | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedDelivery, setSelectedDelivery] = useState<DeliveryView | null>(null);
+  const [selectedHistoryEvent, setSelectedHistoryEvent] = useState<SendEvent | null>(null);
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+  const [historyDetailError, setHistoryDetailError] = useState('');
+  const historyDetailRequestRef = useRef(0);
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyFrom, setHistoryFrom] = useState('');
+  const [historyTo, setHistoryTo] = useState('');
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
@@ -303,17 +367,14 @@ export default function WhatsAppDeliveriesPage() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    if (activeTab === 'history') {
+      setLoading(false);
+      return undefined;
+    }
     listDeliveries(requestFilters)
       .then((nextResult) => {
         if (cancelled) return;
         setResult(nextResult);
-        setExpandedId((current) => {
-          if (current && nextResult.data.some((delivery) => delivery.id === current))
-            return current;
-          return (
-            nextResult.data.find((delivery) => projectDelivery(delivery).requiresAction)?.id || null
-          );
-        });
       })
       .catch(() => {
         if (cancelled) return;
@@ -325,7 +386,7 @@ export default function WhatsAppDeliveriesPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadVersion, requestFilters]);
+  }, [activeTab, reloadVersion, requestFilters]);
 
   const updateFilters = (update: (current: DeliveryFilters) => DeliveryFilters) => {
     setPage(1);
@@ -386,7 +447,7 @@ export default function WhatsAppDeliveriesPage() {
           summary: updateSummary(current.summary, before, resolved),
         };
       });
-      setExpandedId(null);
+      setSelectedDelivery(null);
     } finally {
       setResolvingId(null);
     }
@@ -394,10 +455,35 @@ export default function WhatsAppDeliveriesPage() {
 
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
+  const openHistoryDetails = async (event: SendEvent) => {
+    const requestId = ++historyDetailRequestRef.current;
+    setSelectedHistoryEvent(event);
+    setSelectedDelivery(null);
+    setHistoryDetailError('');
+    setHistoryDetailLoading(true);
+    try {
+      const delivery = await fetchDelivery({ id: event.id });
+      if (requestId !== historyDetailRequestRef.current) return;
+      setSelectedDelivery(delivery);
+    } catch {
+      if (requestId !== historyDetailRequestRef.current) return;
+      setHistoryDetailError('Não foi possível consultar o detalhe atual deste envio.');
+    } finally {
+      if (requestId === historyDetailRequestRef.current) setHistoryDetailLoading(false);
+    }
+  };
+
+  const closeDetails = () => {
+    historyDetailRequestRef.current += 1;
+    setSelectedDelivery(null);
+    setSelectedHistoryEvent(null);
+    setHistoryDetailError('');
+  };
+
   return (
     <PageShell className="space-y-4 pb-10">
       <PageHeader
-        title="Envios WhatsApp"
+        title="Envios"
         actions={
           <>
             <Button
@@ -410,234 +496,351 @@ export default function WhatsAppDeliveriesPage() {
               <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
               Atualizar
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setClearConfirmOpen(true)}
-              disabled={loading || clearing}
-              className="text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 size={14} />
-              {clearing ? 'Limpando…' : 'Limpar fila'}
-            </Button>
+            {activeTab === 'pending' && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setClearConfirmOpen(true)}
+                disabled={loading || clearing}
+                className="text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 size={14} />
+                {clearing ? 'Limpando…' : 'Limpar fila'}
+              </Button>
+            )}
           </>
         }
       />
 
-      <section className="space-y-4" aria-label="Filtros de entregas">
-        <div className="flex flex-wrap gap-2">
-          <label className={filterInputClass(filters.requiresAction)}>
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-primary"
-              checked={filters.requiresAction}
-              onChange={(event) =>
-                updateFilters((current) => ({ ...current, requiresAction: event.target.checked }))
-              }
-            />
-            Requer ação
-          </label>
-          <label className={filterInputClass(filters.includeActive)}>
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-primary"
-              checked={filters.includeActive}
-              onChange={(event) =>
-                updateFilters((current) => ({ ...current, includeActive: event.target.checked }))
-              }
-            />
-            Em processamento
-          </label>
-          <label className={filterInputClass(filters.delayed)}>
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-primary"
-              checked={filters.delayed}
-              onChange={(event) =>
-                updateFilters((current) => ({ ...current, delayed: event.target.checked }))
-              }
-            />
-            Atrasados
-          </label>
-          {STATE_FILTERS.map(({ key, label }) => (
-            <label key={key} className={filterInputClass(filters.states.includes(key))}>
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 accent-primary"
-                checked={filters.states.includes(key)}
-                onChange={() => toggleState(key)}
-              />
+      <div role="tablist" aria-label="Seções de envios" className="border-b border-line">
+        <div className="flex gap-1">
+          {(
+            [
+              ['pending', 'Pendências'],
+              ['history', 'Histórico'],
+            ] as const
+          ).map(([tab, label]) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              id={`delivery-tab-${tab}`}
+              aria-selected={activeTab === tab}
+              aria-controls="delivery-panel"
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                'min-h-10 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                activeTab === tab
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-fg-muted hover:text-fg'
+              )}
+            >
               {label}
-            </label>
+            </button>
           ))}
         </div>
+      </div>
 
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-          <label
-            className="relative block text-xs font-medium text-fg-muted"
-            htmlFor="delivery-search"
-          >
-            <span className="mb-1.5 block">Busca</span>
-            <Search
-              size={15}
-              className="pointer-events-none absolute left-3 top-[2.15rem] text-fg-muted"
-            />
-            <Input
-              id="delivery-search"
-              aria-label="Busca"
-              value={filters.search}
-              onChange={(event) =>
-                updateFilters((current) => ({ ...current, search: event.target.value }))
-              }
-              placeholder="Buscar orçamento, cliente, telefone ou fluxo"
-              className="pl-9"
-            />
-          </label>
-          <fieldset className="grid grid-cols-2 gap-3">
-            <legend className="sr-only">Período</legend>
-            <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-from">
-              <span className="mb-1.5 block">Data inicial</span>
-              <Input
-                id="delivery-from"
-                aria-label="Data inicial (dd/mm/aaaa)"
-                type="text"
-                inputMode="numeric"
-                placeholder="dd/mm/aaaa"
-                maxLength={10}
-                className="[color-scheme:light] dark:[color-scheme:dark]"
-                value={dateDraft.from}
-                onChange={(event) => {
-                  const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
-                  setDateDraft((current) => ({ ...current, from: formatBrDateDraft(digits) }));
-                  const iso = brDateDigitsToIso(digits);
-                  // filtro só muda com data válida ou campo limpo; edição parcial mantém o anterior
-                  if (iso || digits.length === 0) {
-                    updateFilters((current) => ({ ...current, from: iso }));
+      <div id="delivery-panel" role="tabpanel" aria-labelledby={`delivery-tab-${activeTab}`}>
+        {activeTab === 'history' && (
+          <section className="space-y-3" aria-label="Filtros do histórico">
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['all', 'Todos'],
+                  ['sent', 'Entregues'],
+                  ['pending', 'Pendentes'],
+                  ['failed', 'Falhas'],
+                ] as const
+              ).map(([status, label]) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setHistoryStatus(status)}
+                  className={filterInputClass(historyStatus === status)}
+                  aria-pressed={historyStatus === status}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <label
+                className="relative block text-xs font-medium text-fg-muted"
+                htmlFor="history-search"
+              >
+                <span className="mb-1.5 block">Busca</span>
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-[2.15rem] text-fg-muted"
+                />
+                <Input
+                  id="history-search"
+                  value={historySearch}
+                  onChange={(event) => setHistorySearch(event.target.value)}
+                  placeholder="Buscar envio, fluxo, orçamento ou telefone"
+                  className="pl-9"
+                />
+              </label>
+              <fieldset className="grid grid-cols-2 gap-3">
+                <legend className="sr-only">Período do histórico</legend>
+                <label className="block text-xs font-medium text-fg-muted" htmlFor="history-from">
+                  <span className="mb-1.5 block">Data inicial</span>
+                  <Input
+                    id="history-from"
+                    type="date"
+                    value={historyFrom}
+                    onChange={(event) => setHistoryFrom(event.target.value)}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-fg-muted" htmlFor="history-to">
+                  <span className="mb-1.5 block">Data final</span>
+                  <Input
+                    id="history-to"
+                    type="date"
+                    value={historyTo}
+                    onChange={(event) => setHistoryTo(event.target.value)}
+                  />
+                </label>
+              </fieldset>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'pending' && (
+          <section className="space-y-4" aria-label="Filtros de entregas">
+            <div className="flex flex-wrap gap-2">
+              <label className={filterInputClass(filters.requiresAction)}>
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-primary"
+                  checked={filters.requiresAction}
+                  onChange={(event) =>
+                    updateFilters((current) => ({
+                      ...current,
+                      requiresAction: event.target.checked,
+                    }))
                   }
-                }}
-              />
-            </label>
-            <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-to">
-              <span className="mb-1.5 block">Data final</span>
-              <Input
-                id="delivery-to"
-                aria-label="Data final (dd/mm/aaaa)"
-                type="text"
-                inputMode="numeric"
-                placeholder="dd/mm/aaaa"
-                maxLength={10}
-                className="[color-scheme:light] dark:[color-scheme:dark]"
-                value={dateDraft.to}
-                onChange={(event) => {
-                  const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
-                  setDateDraft((current) => ({ ...current, to: formatBrDateDraft(digits) }));
-                  const iso = brDateDigitsToIso(digits);
-                  if (iso || digits.length === 0) {
-                    updateFilters((current) => ({ ...current, to: iso }));
+                />
+                Requer ação
+              </label>
+              <label className={filterInputClass(filters.includeActive)}>
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-primary"
+                  checked={filters.includeActive}
+                  onChange={(event) =>
+                    updateFilters((current) => ({
+                      ...current,
+                      includeActive: event.target.checked,
+                    }))
                   }
-                }}
-              />
-            </label>
-          </fieldset>
-        </div>
-      </section>
+                />
+                Em processamento
+              </label>
+              <label className={filterInputClass(filters.delayed)}>
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-primary"
+                  checked={filters.delayed}
+                  onChange={(event) =>
+                    updateFilters((current) => ({ ...current, delayed: event.target.checked }))
+                  }
+                />
+                Atrasados
+              </label>
+              {STATE_FILTERS.map(({ key, label }) => (
+                <label key={key} className={filterInputClass(filters.states.includes(key))}>
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-primary"
+                    checked={filters.states.includes(key)}
+                    onChange={() => toggleState(key)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
 
-      {result && (
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-5" aria-label="Resumo das entregas">
-          {[
-            ['Ativos', result.summary.active],
-            ['Requer ação', result.summary.requiresAction],
-            ['Reagendado', result.summary.retryScheduled],
-            ['Atrasados', result.summary.delayed],
-            ['Entregues nas últimas 24 horas', result.summary.deliveredLast24Hours],
-          ].map(([label, value]) => (
-            <article key={label} className="rounded-lg border border-line bg-surface p-4 shadow-sm">
-              <p className="text-xs font-medium text-fg-muted min-h-[2rem] flex items-start">{label}</p>
-              <p className="mt-1 text-2xl font-semibold text-fg">{value}</p>
-            </article>
-          ))}
-        </section>
-      )}
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <label
+                className="relative block text-xs font-medium text-fg-muted"
+                htmlFor="delivery-search"
+              >
+                <span className="mb-1.5 block">Busca</span>
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-[2.15rem] text-fg-muted"
+                />
+                <Input
+                  id="delivery-search"
+                  aria-label="Busca"
+                  value={filters.search}
+                  onChange={(event) =>
+                    updateFilters((current) => ({ ...current, search: event.target.value }))
+                  }
+                  placeholder="Buscar orçamento, cliente, telefone ou fluxo"
+                  className="pl-9"
+                />
+              </label>
+              <fieldset className="grid grid-cols-2 gap-3">
+                <legend className="sr-only">Período</legend>
+                <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-from">
+                  <span className="mb-1.5 block">Data inicial</span>
+                  <Input
+                    id="delivery-from"
+                    aria-label="Data inicial (dd/mm/aaaa)"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="dd/mm/aaaa"
+                    maxLength={10}
+                    className="[color-scheme:light] dark:[color-scheme:dark]"
+                    value={dateDraft.from}
+                    onChange={(event) => {
+                      const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
+                      setDateDraft((current) => ({ ...current, from: formatBrDateDraft(digits) }));
+                      const iso = brDateDigitsToIso(digits);
+                      // filtro só muda com data válida ou campo limpo; edição parcial mantém o anterior
+                      if (iso || digits.length === 0) {
+                        updateFilters((current) => ({ ...current, from: iso }));
+                      }
+                    }}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-to">
+                  <span className="mb-1.5 block">Data final</span>
+                  <Input
+                    id="delivery-to"
+                    aria-label="Data final (dd/mm/aaaa)"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="dd/mm/aaaa"
+                    maxLength={10}
+                    className="[color-scheme:light] dark:[color-scheme:dark]"
+                    value={dateDraft.to}
+                    onChange={(event) => {
+                      const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
+                      setDateDraft((current) => ({ ...current, to: formatBrDateDraft(digits) }));
+                      const iso = brDateDigitsToIso(digits);
+                      if (iso || digits.length === 0) {
+                        updateFilters((current) => ({ ...current, to: iso }));
+                      }
+                    }}
+                  />
+                </label>
+              </fieldset>
+            </div>
+          </section>
+        )}
 
-      {error && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          <span className="flex items-center gap-2">
-            <AlertTriangle size={16} />
-            {error}
-          </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setReloadVersion((value) => value + 1)}
-            disabled={loading}
+        {activeTab === 'pending' && error && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+            role="alert"
           >
-            Tentar novamente
-          </Button>
-        </div>
-      )}
+            <span className="flex items-center gap-2">
+              <AlertTriangle size={16} />
+              {error}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReloadVersion((value) => value + 1)}
+              disabled={loading}
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        )}
 
-      {loading && !result ? (
-        <div role="status" aria-live="polite" aria-label="Carregando entregas">
-          <span className="sr-only">Carregando entregas…</span>
-          <SkeletonTable cols={8} rows={8} />
-        </div>
-      ) : result && result.data.length === 0 ? (
-        <div
-          className="rounded-lg border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
-          role="status"
-        >
-          Nenhuma entrega encontrada para os filtros selecionados.
-        </div>
-      ) : result ? (
-        <>
-          <Table
-            aria-label="Tabela de entregas WhatsApp"
-            aria-busy={loading}
-            className="table-fixed min-w-[680px]"
+        {activeTab === 'history' ? (
+          <SendHistoryTab
+            embedded
+            refreshKey={reloadVersion}
+            filters={{
+              status: historyStatus,
+              search: historySearch,
+              from: historyFrom,
+              to: historyTo,
+            }}
+            onOpenQuotation={(quotationId) => {
+              window.location.hash = `/quotations/${encodeURIComponent(quotationId)}`;
+            }}
+            onOpenDelivery={(event) => void openHistoryDetails(event)}
+          />
+        ) : loading && !result ? (
+          <div role="status" aria-live="polite" aria-label="Carregando entregas">
+            <span className="sr-only">Carregando entregas…</span>
+            <SkeletonTable cols={8} rows={8} />
+          </div>
+        ) : result && result.data.length === 0 ? (
+          <div
+            className="rounded-lg border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
+            role="status"
           >
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col" className="w-[38%]">
-                  Orçamento
-                </TableHead>
-                <TableHead scope="col" className="w-[26%]">
-                  Estado
-                </TableHead>
-                <TableHead scope="col" className="w-[18%] whitespace-nowrap">
-                  Atualização
-                </TableHead>
-                <TableHead scope="col" className="w-[18%]">
-                  Ação
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {result.data.map((delivery, index) => {
-                const expanded = expandedId === delivery.id;
-                const projection = projectDelivery(delivery);
-                const detailId = `whatsapp-delivery-details-${index}`;
-                const detailsActionLabel = `${expanded ? 'Ocultar detalhes de' : 'Detalhes de'} ${delivery.businessNumber}, linha ${index + 1}`;
-                return (
-                  <Fragment key={delivery.id}>
-                    <TableRow>
+            Nenhuma entrega encontrada para os filtros selecionados.
+          </div>
+        ) : result ? (
+          <>
+            <Table
+              aria-label="Tabela de entregas WhatsApp"
+              aria-busy={loading}
+              className="table-fixed min-w-[860px]"
+            >
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col" className="w-[22%]">
+                    Envio
+                  </TableHead>
+                  <TableHead scope="col" className="w-[18%]">
+                    Cliente
+                  </TableHead>
+                  <TableHead scope="col" className="w-[14%]">
+                    Documento
+                  </TableHead>
+                  <TableHead scope="col" className="w-[16%]">
+                    Estado
+                  </TableHead>
+                  <TableHead scope="col" className="w-[12%]">
+                    Etapas
+                  </TableHead>
+                  <TableHead scope="col" className="w-[12%] whitespace-nowrap">
+                    Atualização
+                  </TableHead>
+                  <TableHead scope="col" className="w-[10%]">
+                    Ação
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.data.map((delivery, index) => {
+                  const projection = projectDelivery(delivery);
+                  return (
+                    <TableRow key={delivery.id}>
+                      <TableCell className="min-w-0">
+                        <span className="block truncate font-medium text-fg" title={delivery.id}>
+                          {delivery.id}
+                        </span>
+                      </TableCell>
                       <TableCell className="min-w-0">
                         <span
-                          className="block truncate font-medium text-fg"
-                          title={delivery.businessNumber}
-                        >
-                          {delivery.businessNumber}
-                        </span>
-                        <span
-                          className="mt-1 block truncate text-xs text-fg-muted"
-                          title={delivery.clientName || 'Cliente não identificado'}
+                          className="block truncate text-sm text-fg"
+                          title={delivery.clientName}
                         >
                           {delivery.clientName || 'Cliente não identificado'}
                         </span>
+                        <span
+                          className="mt-1 block truncate text-xs text-fg-muted"
+                          title={fmtPhone(delivery.phone)}
+                        >
+                          {fmtPhone(delivery.phone) || 'Telefone não informado'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-fg-muted">
+                        {delivery.businessNumber}
                       </TableCell>
                       <TableCell className="min-w-0">
                         <span
@@ -651,10 +854,10 @@ export default function WhatsAppDeliveriesPage() {
                             label={projection.label}
                             className={stateTone(delivery.state)}
                           />
-                          <span className="mt-1 block truncate text-xs text-fg-muted">
-                            {formatDeliveryProgress(delivery)}
-                          </span>
                         </span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-xs text-fg-muted">
+                        {formatDeliveryProgress(delivery)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-fg-muted">
                         {formatDateTime(delivery.updatedAt) || '—'}
@@ -664,68 +867,58 @@ export default function WhatsAppDeliveriesPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          aria-label={detailsActionLabel}
-                          aria-controls={detailId}
-                          aria-expanded={expanded}
-                          onClick={() => setExpandedId(expanded ? null : delivery.id)}
+                          aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
+                          onClick={() => setSelectedDelivery(delivery)}
                         >
-                          {expanded ? 'Ocultar detalhes' : 'Detalhes'}
+                          Detalhes
                         </Button>
                       </TableCell>
                     </TableRow>
-                    <TableRow id={detailId} key={`${delivery.id}-details`} hidden={!expanded}>
-                      <TableCell colSpan={4} className="bg-surface-muted/40">
-                        {expanded && (
-                          <DeliveryDetails
-                            delivery={delivery}
-                            pending={resolvingId === delivery.id}
-                            onResolve={(decision, note) => resolve(delivery, decision, note)}
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  </Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
+                  );
+                })}
+              </TableBody>
+            </Table>
 
-          <div className="flex flex-wrap items-center justify-between gap-3" aria-label="Paginação">
-            <p className="text-sm text-fg-muted">
-              {result.total === 0
-                ? 'Nenhum resultado'
-                : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, result.total)} de ${result.total}`}
-            </p>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-fg-muted">
-                Página {page} de {totalPages}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label="Página anterior"
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                disabled={page <= 1 || loading}
-              >
-                <ChevronLeft size={15} />
-                Anterior
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label="Próxima página"
-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                disabled={page >= totalPages || loading}
-              >
-                Próximo
-                <ChevronRight size={15} />
-              </Button>
+            <div
+              className="flex flex-wrap items-center justify-between gap-3"
+              aria-label="Paginação"
+            >
+              <p className="text-sm text-fg-muted">
+                {result.total === 0
+                  ? 'Nenhum resultado'
+                  : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, result.total)} de ${result.total}`}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-fg-muted">
+                  Página {page} de {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Página anterior"
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  <ChevronLeft size={15} />
+                  Anterior
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Próxima página"
+                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Próximo
+                  <ChevronRight size={15} />
+                </Button>
+              </div>
             </div>
-          </div>
-        </>
-      ) : null}
+          </>
+        ) : null}
+      </div>
 
       <ConfirmDialog
         open={clearConfirmOpen}
@@ -740,6 +933,96 @@ export default function WhatsAppDeliveriesPage() {
         }}
         onCancel={() => setClearConfirmOpen(false)}
       />
+      <DetailDrawer
+        open={selectedDelivery !== null || selectedHistoryEvent !== null}
+        onClose={closeDetails}
+        title={selectedDelivery?.id || selectedHistoryEvent?.id || 'Detalhes do envio'}
+        description={
+          selectedDelivery
+            ? `${selectedDelivery.businessNumber} · ${selectedDelivery.clientName || 'Cliente não identificado'}`
+            : selectedHistoryEvent
+              ? `${selectedHistoryEvent.flow_name || 'Fluxo sem nome'} · registro do histórico`
+              : undefined
+        }
+        actions={
+          selectedDelivery?.businessNumber ? (
+            <a
+              href={`#/quotations/${encodeURIComponent(selectedDelivery.businessNumber)}`}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Abrir orçamento
+            </a>
+          ) : undefined
+        }
+      >
+        {selectedHistoryEvent ? (
+          <div className="space-y-5 text-sm">
+            <div className="rounded-lg border border-line bg-surface-muted/40 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+                Registro de origem
+              </p>
+              <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-fg-muted">Estado registrado</dt>
+                  <dd className="mt-1 font-medium text-fg">
+                    {historyStatusLabel(selectedHistoryEvent.status)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Telefone</dt>
+                  <dd className="mt-1 font-medium text-fg">
+                    {fmtPhone(selectedHistoryEvent.phone) || '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Etapas</dt>
+                  <dd className="mt-1 font-medium text-fg">
+                    {selectedHistoryEvent.steps_sent ?? '—'} /{' '}
+                    {selectedHistoryEvent.steps_planned ?? '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Atualizado</dt>
+                  <dd className="mt-1 font-medium text-fg">
+                    {formatDateTime(
+                      selectedHistoryEvent.sent_at || selectedHistoryEvent.created_at
+                    ) || '—'}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            {historyDetailLoading && (
+              <p role="status" className="text-fg-muted">
+                Consultando etapas e recibos…
+              </p>
+            )}
+            {historyDetailError && (
+              <p role="alert" className="text-destructive">
+                {historyDetailError}
+              </p>
+            )}
+            {selectedDelivery && (
+              <DeliveryDetails
+                delivery={selectedDelivery}
+                pending={false}
+                readOnly
+                onResolve={async () => undefined}
+              />
+            )}
+            {!historyDetailLoading && !historyDetailError && !selectedDelivery && (
+              <p className="text-fg-muted">
+                O registro histórico não possui um detalhe operacional disponível.
+              </p>
+            )}
+          </div>
+        ) : selectedDelivery ? (
+          <DeliveryDetails
+            delivery={selectedDelivery}
+            pending={resolvingId === selectedDelivery.id}
+            onResolve={(decision, note) => resolve(selectedDelivery, decision, note)}
+          />
+        ) : null}
+      </DetailDrawer>
     </PageShell>
   );
 }
