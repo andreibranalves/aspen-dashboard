@@ -5,7 +5,7 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 ## Base e checkpoint
 
 - Base verificada: `origin/master` em `90fe00054c395e71b7241d50d9fe97966dfc7958`, merge do PR #216.
-- Branch atual: `feat/redesign-impeccable-commercial`, encadeada sobre o bloco A.
+- Branch atual: `feat/redesign-impeccable-settings`, encadeada sobre o bloco C.
 - Trabalho anterior não relacionado preservado na branch `fix/quotation-stuck-issuing`, checkpoint local `7d61db6`.
 - Alteração local de Andrei em `/opt/data/aspen-dashboard/.gitignore` permanece intocada.
 - Goal vigente: `/opt/data/cache/documents/doc_25d697b60cf0_GOAL-ASPEN-DASHBOARD-REDESIGN-COM-IMPECCABLE.md`.
@@ -57,6 +57,16 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 - Critique/audit/polish: conferidos hierarquia, estados, foco, overflow, responsive, filtros e separação de fontes; o detalhe foi empilhado para evitar colisão entre resolução e etapas.
 - Evidências: `docs/design/evidence/envios/` contém referências Figma e capturas mockadas de Pendências, Histórico e drawer. `verify:fast` PASS; teste unitário focado de entregas 9/9; smoke manual Playwright com mocks isolados validou abas, filtros, drawer e overflow 1440px.
 
+### BLOCO D — Configurações — 08/09/2026
+
+- Figma conferido anteriormente pelo worker: padrões `19:2`, modelos `19:88`, HTML `19:166`, fluxos `19:221`, etapas `54:7`, `54:127`, `54:238`, empresa `19:315` e canais `75:46`. Nesta continuação, o contexto visual canônico foi preservado sem nova busca ampla.
+- Implementação: `/settings` reúne Padrões, Modelos de documento, Fluxos WhatsApp, Empresa e Canais em abas com estado na URL. O sidebar mantém Configurações como destino canônico; `/comunicacao` continua acessível para compatibilidade dos consumidores existentes, sem item duplicado de navegação.
+- Capacidades preservadas: padrões e seções editáveis, modelos com criação/edição/validação/prévia/versões/padrão/arquivamento, fluxos com tipos Texto/Orçamento/Mídia, ordem, intervalos, duplicação/remoção e salvamento explícito, empresa com os seis campos existentes e Canais somente leitura. Nenhum campo ou contagem foi inventado.
+- Salvaguardas: troca de aba, fluxo/modelo e navegação externa preservam o guard de alterações pendentes; não há autosave. A prévia usa apenas `iframe sandbox=""` com HTML retornado pela validação; não há `dangerouslySetInnerHTML` na integração de modelos, scripts ou dados reais nas evidências.
+- Acabamento manual único: conferidos hierarquia, foco, estados de carregamento/erro/vazio, overflow, responsividade nos tamanhos 390/1024/1280/1440, temas claro/escuro e recolhimento de detalhes técnicos. O detector final foi executado uma vez: `/opt/data/home/.agents/skills/impeccable/scripts/impeccable detect --json src/app/routes.tsx src/features/settings/pages/SettingsPage.tsx src/features/communication/components/ChannelsTab.tsx src/features/communication/components/FlowEditorTab.tsx src/features/quotations/components/QuotationTemplateManager.tsx` → `[]`.
+- Evidências: `docs/design/evidence/configuracoes/` contém capturas controladas de Padrões nos quatro tamanhos e temas, abas, foco, confirmação/Escape, vazio, erro, Empresa e Canais. `tests/settings-evidence.spec.js` recriou/confirmou essas capturas com APIs mockadas e sem gravação externa.
+- Validação exata: `npm run verify:fast` PASS; `npm run test:unit:focused -- tests/unit/settings.test.ts tests/unit/communication-api.test.ts tests/unit/communication-send-events.test.ts` PASS, 31/31; Playwright `tests/settings.spec.js tests/settings-evidence.spec.js tests/ui-v2-settings-login-notfound.spec.js tests/communication-ui-v2.spec.js tests/communication-email-settings.spec.js --project=chromium --workers=1` PASS, 16/16, com `DOTENV_CONFIG_PATH=/dev/null PLAYWRIGHT_BROWSERS_PATH=/opt/data/.playwright`.
+
 ## Inventário curto
 
 | Bloco            | Rotas/superfícies atuais                                                                             | Destino                                      | Capacidades/dependências principais                                         | Estado   |
@@ -69,7 +79,7 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 | A Catálogo       | `/catalog`, alias `/products`, `/products/:sku`; uso de mídias em `/comunicacao` e modelos de pedido | Catálogo: Produtos, Conjuntos, Mídias        | CRUD real, preços, modelos de pedido, biblioteca/upload                     | validado |
 | B Comercial      | `/crm`, alias `/follow-ups`; atalho em `/dashboard`                                                  | Comercial: Negócios, Retornos                | lista/quadro, etapas, duas filas e estados pós-envio                        | validado |
 | C Envios         | `/whatsapp-deliveries`; histórico em `/comunicacao`; detalhe de orçamento                            | Envios: Pendências, Histórico                | fontes/IDs, etapas, recibos, resolução, manual e retry                      | validado |
-| D Configurações  | `/settings`; fluxos/canais em `/comunicacao`                                                         | Configurações                                | padrões, modelos, fluxos, empresa e canais                                  | pendente |
+| D Configurações  | `/settings`; fluxos/canais em `/comunicacao`                                                         | Configurações                                | padrões, modelos, fluxos, empresa e canais                                  | validado |
 | E Resultados     | `/dashboard`                                                                                         | Resultados                                   | período, indicadores, produtos, clientes, financeiro e gasto Meta           | pendente |
 | Integração       | `src/app/routes.tsx`, `Layout`, sidebar, breadcrumbs                                                 | navegação final com 8 destinos + ação global | aliases, retorno contextual, guards e estados globais                       | pendente |
 
@@ -77,27 +87,29 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 
 Registrar por jornada: comando realmente executado, alvo/estados, achados, decisão, correção, SHA e evidência. Estados permitidos: pendente, avaliado, em correção, validado, bloqueado.
 
-| Jornada                     | Critique           | Audit              | Comandos corretivos                                                                                          | Polish         | Evidência/SHA                                                               | Estado   |
-| --------------------------- | ------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------ | -------------- | --------------------------------------------------------------------------- | -------- |
-| Fundação compartilhada      | manual 08/09       | manual 08/09       | nenhum além do shell                                                                                         | preservado     | `TopBar.tsx`; detector `[]`                                                 | validado |
-| Pedidos                     | manual 08/09       | manual 08/09       | retorno duplicado corrigido                                                                                  | preservado     | capturas `pedidos-pos-211`; Playwright bloqueado                            | validado |
-| Consulta de Orçamentos      | manual 08/09       | manual 08/09       | retorno contextual preservado                                                                                | preservado     | capturas `orcamentos-consulta`; Playwright bloqueado                        | validado |
-| Novo orçamento              | manual 08/09       | manual 08/09       | nenhum                                                                                                       | preservado     | capturas `novo-orcamento`; Playwright bloqueado                             | validado |
-| Clientes                    | manual 08/09       | manual 08/09       | retorno contextual preservado                                                                                | preservado     | capturas `clientes`; Playwright bloqueado                                   | validado |
-| Catálogo                    | independente 08/09 | independente 08/09 | alias único, foco/tabs, exportações filtradas, tabela de preços                                              | preservado     | `evidence/catalogo`; detector `[]`; `verify:fast`                           | validado |
-| Comercial                   | independente 08/09 | independente 08/09 | shell único, lista/quadro, filas, CTA explícito, validação de envelopes, layout responsivo sem DOM duplicado | preservado     | `evidence/comercial`; detector `[]`; `verify:fast`; smoke 15/15; unit 12/12 | validado |
-| Envios                      | independente 08/09 | independente 08/09 | tabs, tabela densa, histórico por fonte, drawer e timestamps                                                 | aplicado 08/09 | `evidence/envios`; `verify:fast`; unit 9/9; smoke mockado                   | validado |
-| Configurações               | pendente           | pendente           | pendente                                                                                                     | pendente       | pendente                                                                    | pendente |
-| Resultados                  | pendente           | pendente           | pendente                                                                                                     | pendente       | pendente                                                                    | pendente |
-| Navegação e estados globais | manual 08/09       | manual 08/09       | item pai sem segunda ação                                                                                    | preservado     | `TopBar.tsx`; `verify:fast` PASS                                            | validado |
+| Jornada                     | Critique           | Audit              | Comandos corretivos                                                                                          | Polish                  | Evidência/SHA                                                                        | Estado   |
+| --------------------------- | ------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------ | -------- |
+| Fundação compartilhada      | manual 08/09       | manual 08/09       | nenhum além do shell                                                                                         | preservado              | `TopBar.tsx`; detector `[]`                                                          | validado |
+| Pedidos                     | manual 08/09       | manual 08/09       | retorno duplicado corrigido                                                                                  | preservado              | capturas `pedidos-pos-211`; Playwright bloqueado                                     | validado |
+| Consulta de Orçamentos      | manual 08/09       | manual 08/09       | retorno contextual preservado                                                                                | preservado              | capturas `orcamentos-consulta`; Playwright bloqueado                                 | validado |
+| Novo orçamento              | manual 08/09       | manual 08/09       | nenhum                                                                                                       | preservado              | capturas `novo-orcamento`; Playwright bloqueado                                      | validado |
+| Clientes                    | manual 08/09       | manual 08/09       | retorno contextual preservado                                                                                | preservado              | capturas `clientes`; Playwright bloqueado                                            | validado |
+| Catálogo                    | independente 08/09 | independente 08/09 | alias único, foco/tabs, exportações filtradas, tabela de preços                                              | preservado              | `evidence/catalogo`; detector `[]`; `verify:fast`                                    | validado |
+| Comercial                   | independente 08/09 | independente 08/09 | shell único, lista/quadro, filas, CTA explícito, validação de envelopes, layout responsivo sem DOM duplicado | preservado              | `evidence/comercial`; detector `[]`; `verify:fast`; smoke 15/15; unit 12/12          | validado |
+| Envios                      | independente 08/09 | independente 08/09 | tabs, tabela densa, histórico por fonte, drawer e timestamps                                                 | aplicado 08/09          | `evidence/envios`; `verify:fast`; unit 9/9; smoke mockado                            | validado |
+| Configurações               | manual 08/09       | manual 08/09       | abas/URL, guards, prévia sandbox, estados e capacidades preservadas                                          | acabamento manual 08/09 | `evidence/configuracoes`; detector `[]`; `verify:fast`; unit 31/31; Playwright 16/16 | validado |
+| Resultados                  | pendente           | pendente           | pendente                                                                                                     | pendente                | pendente                                                                             | pendente |
+| Navegação e estados globais | manual 08/09       | manual 08/09       | item pai sem segunda ação                                                                                    | preservado              | `TopBar.tsx`; `verify:fast` PASS                                                     | validado |
 
 ## Branches e ordem de integração
 
 1. `feat/redesign-impeccable-retro`, base `origin/master@90fe000`, bloco R.
 2. `feat/redesign-impeccable-catalog`, encadeada sobre o bloco R, Catálogo validado.
 3. `feat/redesign-impeccable-commercial`, encadeada sobre o bloco A, Comercial validado.
-4. Próximas branches serão encadeadas na ordem Envios → Configurações → Resultados → integração final, usando como base o HEAD validado do bloco anterior enquanto não houver merge.
+4. `feat/redesign-impeccable-shipping`, encadeada sobre o bloco B, Envios validado.
+5. `feat/redesign-impeccable-settings`, encadeada sobre o bloco C, Configurações validado.
+6. Próxima branch: Resultados → integração final, usando como base o HEAD validado do bloco anterior enquanto não houver merge.
 
 ## Próxima ação
 
-Continuar para Configurações na próxima branch coesa; não reabrir Catálogo, Comercial ou Envios fora de defeitos concretos.
+Continuar para Resultados na próxima branch coesa; não reabrir Catálogo, Comercial, Envios ou Configurações fora de defeitos concretos.

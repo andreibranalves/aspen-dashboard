@@ -5,7 +5,6 @@ import {
   Columns3,
   FileText,
   Package,
-  Radio,
   Settings,
   Send,
   ShoppingCart,
@@ -166,7 +165,6 @@ export const routes: AppRoute[] = [
     path: '/comunicacao',
     suspense: true,
     render: ({ navigate }) => <ComunicacaoPage navigate={navigate} />,
-    nav: { label: 'Comunicação', icon: Radio, section: 'Outros' },
   },
   {
     path: '/settings',
