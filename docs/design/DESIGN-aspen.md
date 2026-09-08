@@ -268,10 +268,28 @@ side panel, except that editing recovers the full table width. No business
 rule, endpoint, persistence model, or data source is introduced by this visual
 slice.
 
+## Approved Novo orçamento entry slice
+
+The new-entry journey uses one page at `#/novo-orcamento` with the existing
+`#/auto` and `#/manual` aliases. Its header owns the WAI-ARIA mode tabs
+`Da conversa` and `Manual`; both modes share client identity, origin, address,
+items, terms, review, and summary state. Desktop uses a main column with a
+320px summary/action column for Manual and a two-panel input/result layout for
+conversation. Client and address editing use a right-side dialog with Escape,
+focus placement, and focus restoration.
+
+Auto drafts remain in the versioned `sessionStorage` envelope and Manual drafts
+remain in versioned `localStorage`; existing legacy reads and TTL behavior are
+unchanged. A new extraction result is isolated for explicit review when the
+active draft has work. Existing pricing, preview, draft-save, idempotent issue,
+concurrency-token, origin-prefill, and quotation-detail contracts remain the
+source of truth. This slice changes presentation and in-memory coordination,
+not commercial calculations, persistence schema, emission, or transport rules.
+
 ## Out of scope
 
-This contract does not redesign complete feature journeys, introduce new
-routes, add a state library or dependency, alter API/schema/database/auth/
+This contract does not redesign complete feature journeys outside the approved
+entry slice, add a state library or dependency, alter API/schema/database/auth/
 integrations, change official calculations, emit documents, send messages, or
 implement Figma's future navigation map. A later journey must update this
 document before changing its normative visual rules.

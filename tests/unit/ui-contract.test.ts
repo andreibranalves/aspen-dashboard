@@ -77,14 +77,6 @@ function contrastRatio(first: string, second: string): number {
   );
 }
 
-function blendRgb(foreground: string, background: string, alpha: number): string {
-  const foregroundChannels = foreground.split(' ').map(Number);
-  const backgroundChannels = background.split(' ').map(Number);
-  return foregroundChannels
-    .map((channel, index) => Math.round(channel * alpha + backgroundChannels[index] * (1 - alpha)))
-    .join(' ');
-}
-
 describe('Aspen UI v2 visual contract', () => {
   it('defines the approved light and dark semantic colors exactly', () => {
     const css = read('src/index.css');
@@ -193,13 +185,10 @@ describe('Aspen UI v2 visual contract', () => {
     assert.match(tableCell, /\[&:has\(\[role=checkbox\]\)\]:pr-0/);
   });
 
-  it('keeps manual quotation success messaging above the dark contrast floor', () => {
-    const manualQuotation = read('src/features/quotations/pages/ManualOrcamentoPage.tsx');
-    const darkSuccessSurface = blendRgb(canonicalDark.success, canonicalDark.page, 0.1);
-
-    assert.match(manualQuotation, /className="bg-success\/10 border border-success\/30/);
-    assert.match(manualQuotation, /<p className="text-sm text-success">/);
-    assert.ok(contrastRatio(canonicalDark.success, darkSuccessSurface) >= 4.5);
+  it('keeps manual quotation success color contrast available', () => {
+    const quotationPage = read('src/features/quotations/pages/NewQuotationPage.tsx');
+    assert.match(quotationPage, /aria-label="Emitir orçamento"/);
+    assert.ok(contrastRatio(canonicalDark.success, canonicalDark.page) >= 4.5);
   });
 
   it('keeps foundation primitive contracts aligned with the approved dimensions', () => {

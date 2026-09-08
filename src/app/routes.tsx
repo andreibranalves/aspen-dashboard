@@ -10,13 +10,11 @@ import {
   Settings,
   Send,
   ShoppingCart,
-  Sparkles,
   Users,
 } from 'lucide-react';
 import { matchSegments, prefix } from '@/app/match-route';
 import LoginPage from '@/app/LoginPage';
 import NotFoundPage from '@/components/shared/NotFoundPage';
-import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
 import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
 
 const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage'));
@@ -30,10 +28,10 @@ const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDe
 const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
 const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
 const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
-const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
 const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
 const FollowUpsPage = lazy(() => import('@/features/follow-ups/pages/FollowUpsPage'));
+const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
 
 export interface RouteContext {
   navigate: (hash: string) => void;
@@ -86,9 +84,15 @@ export const routes: AppRoute[] = [
     render: ({ navigate, params }) => <LeadDetailPage key={`${params.tipo}:${params.id}`} tipo={params.tipo} id={params.id} navigate={navigate} />,
   },
   {
+    path: '/novo-orcamento',
+    suspense: true,
+    render: () => <NewQuotationPage initialMode="conversation" />,
+    nav: { label: 'Novo orçamento', icon: FileText, section: 'Operacional' },
+  },
+  {
     path: '/auto',
-    render: () => <AutoQuotePage />,
-    nav: { label: 'Auto', icon: Sparkles, section: 'Operacional' },
+    suspense: true,
+    render: () => <NewQuotationPage initialMode="conversation" />,
   },
   {
     path: '/whatsapp-deliveries',
@@ -153,7 +157,7 @@ export const routes: AppRoute[] = [
   {
     path: '/manual',
     suspense: true,
-    render: () => <ManualOrcamentoPage />,
+    render: () => <NewQuotationPage initialMode="manual" />,
   },
   {
     path: '/404',

@@ -8,13 +8,13 @@ const read = (relativePath: string) => readFileSync(path.join(root, relativePath
 
 describe('quotation Aspen v2 surfaces', () => {
   it('keeps auto quotations in an understood, review, and creation hierarchy', () => {
-    const page = read('src/features/quotations/pages/AutoQuotePage.tsx');
+    const page = read('src/features/quotations/pages/NewQuotationPage.tsx');
     const card = read('src/features/quotations/components/SplitResultCard.tsx');
 
-    assert.match(page, />Pedido do cliente</);
+    assert.match(page, />Conversa</);
     assert.match(page, />Resultado</);
     assert.match(page, /aria-label="Mensagem do cliente para extração"/);
-    assert.match(page, /Cole a conversa ou uma imagem/);
+    assert.match(page, /Cole aqui a mensagem do cliente/);
     assert.match(card, /Emitir orçamento/);
     assert.match(card, /Rascunho salvo\. Continue a revisão ou emita o orçamento/);
     assert.doesNotMatch(
@@ -24,14 +24,13 @@ describe('quotation Aspen v2 surfaces', () => {
   });
 
   it('keeps manual quotation entry visibly editable and staged', () => {
-    const page = read('src/features/quotations/pages/ManualOrcamentoPage.tsx');
+    const page = read('src/features/quotations/pages/NewQuotationPage.tsx');
 
     assert.match(page, /aria-label="Seleção de cliente"/);
-    assert.match(page, /1\. Cliente/);
-    assert.match(page, /2\. Itens do orçamento/);
-    assert.match(page, /3\. Condições e fechamento/);
+    assert.match(page, /Dados do orçamento/);
+    assert.match(page, /Itens do orçamento/);
+    assert.match(page, /Condições e fechamento/);
     assert.match(page, /aria-label="Emitir orçamento"/);
-    assert.match(page, /Orçamento emitido/);
     assert.doesNotMatch(page, /Enviar orçamento|Orçamento enviado com sucesso|Modelo HTML/);
     assert.doesNotMatch(page, /section[^>]+shadow-sm/);
   });

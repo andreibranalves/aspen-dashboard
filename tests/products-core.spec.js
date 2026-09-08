@@ -296,7 +296,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     const updateCountBeforeManual = updates.length;
     await page.goto('/#/manual');
     await page
-      .getByPlaceholder('Digite SKU ou nome para adicionar um produto…')
+      .getByPlaceholder('Buscar SKU ou nome…')
       .fill('CORE-PRICED');
     await page.getByRole('button', { name: 'Adicionar CORE-PRICED ao orçamento' }).click();
     const quantity = page.getByLabel('Quantidade de CORE-PRICED').first();
@@ -364,7 +364,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/manual');
     await page
-      .getByPlaceholder('Digite SKU ou nome para adicionar um produto…')
+      .getByPlaceholder('Buscar SKU ou nome…')
       .fill('CORE-UNPRICED');
     const addButton = page.getByRole('button', { name: 'Adicionar CORE-UNPRICED ao orçamento' });
     await expect(addButton).toBeVisible();
