@@ -109,8 +109,7 @@ test('opportunity creates quotation whose origin remains visible through approva
   await page.getByRole('button', { name: `Adicionar ${sku} ao orçamento` }).click();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
-  await expect(page.getByText('Rascunho salvo')).toBeVisible();
-  await page.getByRole('button', { name: 'Abrir orçamento' }).click();
+  await expect.poll(() => page.url()).toContain('#/quotations/');
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
@@ -144,8 +143,7 @@ test('restoring a manual draft without hash parameters preserves its direct orig
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
-  await expect(page.getByText('Rascunho salvo')).toBeVisible();
-  await page.getByRole('button', { name: 'Abrir orçamento' }).click();
+  await expect.poll(() => page.url()).toContain('#/quotations/');
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 });
 
