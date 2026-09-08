@@ -62,7 +62,7 @@ export default function TopBar({
               {i > 0 && (
                 <ChevronRight size={14} className="shrink-0 text-fg-muted" aria-hidden="true" />
               )}
-              {item.hash ? (
+              {item.hash && !(i === 1 && parentItem?.hash) ? (
                 <button
                   type="button"
                   onClick={() => onNavigate(item.hash!)}
@@ -70,6 +70,8 @@ export default function TopBar({
                 >
                   {item.label}
                 </button>
+              ) : item.hash && i === 1 && parentItem?.hash ? (
+                <span className="truncate text-fg-muted">{item.label}</span>
               ) : (
                 <span className="truncate font-medium text-fg" aria-current="page">
                   {item.label}
