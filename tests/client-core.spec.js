@@ -135,7 +135,7 @@ test.describe('Clientes locais @crm @smoke', () => {
       'href',
       `https://wa.me/${CLIENT.telefone}`
     );
-    await expect(page.getByRole('button', { name: 'Criar orçamento' })).toBeVisible();
+    await expect(page.locator('main').getByRole('button', { name: 'Novo orçamento' })).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
@@ -346,7 +346,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.getByRole('button', { name: 'Novo contato' }).click();
     await expect(page).toHaveURL(/#\/leads\/cliente\/new/);
-    await expect(page.getByText('Novo cliente', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Novo cliente', exact: true })).toBeVisible();
     await page.getByPlaceholder('Nome do cliente').fill('Ana Cliente');
     await page.getByRole('button', { name: 'Criar cliente' }).last().click();
 
@@ -393,7 +393,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     page.on('request', (request) => requests.push(request.url()));
 
     await page.goto('/#/leads/cliente/new');
-    await expect(page.getByText('Novo cliente', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Novo cliente', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Criar cliente' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
     expect(requests.some((url) => url.includes('/api/leads-clients'))).toBe(false);
@@ -633,6 +633,17 @@ test.describe('Clientes locais @crm @smoke', () => {
     page,
   }) => {
     const requests = [];
+    /** @type {URL | undefined} */
+    let exportRequest;
+    await page.route('**/api/commercial-exports**', async (route) => {
+      exportRequest = new globalThis.URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/csv',
+        headers: { 'Content-Disposition': 'attachment; filename="clientes.csv"' },
+        body: 'nome\nMaria\n',
+      });
+    });
     await page.route('**/api/leads-clients**', async (route) => {
       const requestUrl = new globalThis.URL(route.request().url());
       requests.push(requestUrl);
@@ -662,6 +673,12 @@ test.describe('Clientes locais @crm @smoke', () => {
     expect(requests.every((requestUrl) => requestUrl.searchParams.get('limit') === '25')).toBe(
       true
     );
+
+    await page.getByRole('button', { name: 'Exportar CSV' }).click();
+    await expect.poll(() => exportRequest?.searchParams.get('resource')).toBe('clients');
+    if (!exportRequest) throw new Error('A exportação controlada não foi solicitada.');
+    expect(exportRequest.searchParams.get('search')).toBe('Maria');
+    expect(exportRequest.searchParams.get('status')).toBe('all');
 
     await page.getByRole('button', { name: /Mais ações para Cliente com nome longo/ }).click();
     await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
@@ -712,5 +729,42 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByRole('button', { name: /Mais ações para Cliente no servidor/ }).click();
     await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Cancelar', exact: true }).click();
+  });
+
+  test('drawer preserva o formulário após falha e protege alterações ao fechar', async ({ page }) => {
+    await page.route('**/api/leads-clients**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [CLIENT],
+          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        }),
+      })
+    );
+    await page.route('**/api/client-detail**', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(DETAIL) })
+        : route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'falha controlada' }) })
+    );
+
+    await page.goto('/#/leads');
+    const trigger = page.getByRole('button', { name: `Visualização rápida ${CLIENT.nome}` });
+    await trigger.click();
+    await page.getByRole('button', { name: 'Editar', exact: true }).click();
+    const name = page.getByRole('textbox', { name: 'Nome', exact: true });
+    await name.fill('Alteração preservada');
+    await page.getByRole('button', { name: 'Salvar', exact: true }).click();
+    await expect(page.getByText('Não foi possível salvar as alterações. Tente novamente.')).toBeVisible();
+    await expect(name).toHaveValue('Alteração preservada');
+
+    await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+    const discard = page.getByRole('dialog', { name: 'Descartar alterações?' });
+    await expect(discard).toBeVisible();
+    await discard.getByRole('button', { name: 'Continuar editando' }).click();
+    await expect(name).toHaveValue('Alteração preservada');
+    await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Descartar alterações?' }).getByRole('button', { name: 'Descartar' }).click();
+    await expect(trigger).toBeFocused();
   });
 });
