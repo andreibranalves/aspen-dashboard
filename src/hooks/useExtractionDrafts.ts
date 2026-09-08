@@ -74,7 +74,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         '/pricing-lookup',
         { items: allItems, urgent },
       );
-      if (!res.success || !Array.isArray(res.items)) return draftsList;
+      if (res.success === false || !Array.isArray(res.items)) return draftsList;
 
       const next = draftsList.map(d => ({
         ...d,
