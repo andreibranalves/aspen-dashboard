@@ -27,7 +27,7 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 - Achado confirmado: `TopBar` mostrava o `BackButton` e mantinha o item pai da trilha como uma segunda ação para o mesmo retorno nas páginas de detalhe.
 - Correção mínima: preservar o botão contextual, tornar o item pai da trilha informativo e manter os demais itens navegáveis. Nenhuma mudança de tokens, densidade, copy, contrato de rota, backend ou dependência.
 - Polish/craft-floor: revisão de contraste, foco, estados, overflow e responsividade nos consumidores compartilhados; detector mecânico executado uma vez após o acabamento: `detect --json src/components/layout/TopBar.tsx` → `[]`.
-- Evidências: Figma e capturas existentes para os estados claro/escuro e larguras 390/1024/1280/1440; tentativa de Playwright permanece bloqueada porque o executável Chromium não existe neste ambiente e não deve ser instalado.
+- Evidências: Figma e capturas existentes para os estados claro/escuro e larguras 390/1024/1280/1440; commit `115fb55`; tentativa de Playwright permanece bloqueada porque o executável Chromium não existe neste ambiente e não deve ser instalado.
 
 ## Inventário curto
 
