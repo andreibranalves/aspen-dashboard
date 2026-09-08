@@ -4,7 +4,6 @@ import {
   BarChart3,
   Columns3,
   FileText,
-  MessageSquare,
   Package,
   Radio,
   Settings,
@@ -21,15 +20,19 @@ const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPag
 const QuotationsPage = lazy(() => import('@/features/quotations/pages/QuotationsPage'));
 const QuotationDetailPage = lazy(() => import('@/features/quotations/pages/QuotationDetailPage'));
 const SalesOrdersPage = lazy(() => import('@/features/sales-orders/pages/SalesOrdersPage'));
-const SalesOrderDetailPage = lazy(() => import('@/features/sales-orders/pages/SalesOrderDetailPage'));
-const CrmKanbanPage = lazy(() => import('@/features/crm/pages/CrmKanbanPage'));
+const SalesOrderDetailPage = lazy(
+  () => import('@/features/sales-orders/pages/SalesOrderDetailPage')
+);
+const CommercialPage = lazy(() => import('@/features/commercial/pages/CommercialPage'));
 const CatalogPage = lazy(() => import('@/features/products/pages/CatalogPage'));
 const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDetailPage'));
 const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
 const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
 const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
 const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
-const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
+const WhatsAppDeliveriesPage = lazy(
+  () => import('@/features/quotations/pages/WhatsAppDeliveriesPage')
+);
 const FollowUpsPage = lazy(() => import('@/features/follow-ups/pages/FollowUpsPage'));
 const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
 
@@ -60,19 +63,25 @@ export const routes: AppRoute[] = [
     path: '/quotations/:id',
     match: prefix('/quotations/'),
     suspense: true,
-    render: ({ navigate, params }) => <QuotationDetailPage key={params.id} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <QuotationDetailPage key={params.id} id={params.id} navigate={navigate} />
+    ),
   },
   {
     path: '/sales-orders/:id',
     match: prefix('/sales-orders/'),
     suspense: true,
-    render: ({ navigate, params }) => <SalesOrderDetailPage key={params.id} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <SalesOrderDetailPage key={params.id} id={params.id} navigate={navigate} />
+    ),
   },
   {
     path: '/products/:sku',
     match: prefix('/products/'),
     suspense: true,
-    render: ({ navigate, params }) => <ProductDetailPage key={params.id} sku={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <ProductDetailPage key={params.id} sku={params.id} navigate={navigate} />
+    ),
   },
   {
     path: '/leads/:tipo/:id',
@@ -81,7 +90,14 @@ export const routes: AppRoute[] = [
       return params && params.tipo && params.id ? params : null;
     },
     suspense: true,
-    render: ({ navigate, params }) => <LeadDetailPage key={`${params.tipo}:${params.id}`} tipo={params.tipo} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <LeadDetailPage
+        key={`${params.tipo}:${params.id}`}
+        tipo={params.tipo}
+        id={params.id}
+        navigate={navigate}
+      />
+    ),
   },
   {
     path: '/novo-orcamento',
@@ -115,14 +131,13 @@ export const routes: AppRoute[] = [
   {
     path: '/crm',
     suspense: true,
-    render: () => <CrmKanbanPage />,
-    nav: { label: 'CRM', icon: Columns3, section: 'Operacional' },
+    render: ({ navigate }) => <CommercialPage navigate={navigate} />,
+    nav: { label: 'Comercial', icon: Columns3, section: 'Operacional' },
   },
   {
     path: '/follow-ups',
     suspense: true,
     render: ({ navigate }) => <FollowUpsPage navigate={navigate} />,
-    nav: { label: 'Follow-ups', icon: MessageSquare, section: 'Operacional' },
   },
   {
     path: '/quotations',

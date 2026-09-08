@@ -137,15 +137,20 @@ export default function FollowUpReviewDrawer({
         followUp && canDismiss ? (
           <div className="flex flex-wrap gap-2">
             {canApprove && (
-              <Button
-                type="button"
-                variant="success"
-                onClick={handleApprove}
-                disabled={pending !== null}
-              >
-                <Check aria-hidden="true" />
-                {pending === 'approve' ? 'Aprovando…' : 'Aprovar'}
-              </Button>
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  type="button"
+                  variant="success"
+                  onClick={handleApprove}
+                  disabled={pending !== null}
+                >
+                  <Check aria-hidden="true" />
+                  {pending === 'approve' ? 'Aprovando…' : 'Aprovar e enviar retorno'}
+                </Button>
+                <span className="text-right text-xs text-fg-muted">
+                  A aprovação autoriza o envio desta mensagem.
+                </span>
+              </div>
             )}
             <Button
               type="button"

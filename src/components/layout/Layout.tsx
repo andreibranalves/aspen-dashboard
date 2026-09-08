@@ -19,7 +19,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/auto': 'Auto',
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
-  '/crm': 'CRM',
+  '/crm': 'Comercial',
   '/follow-ups': 'Follow-ups',
   '/products': 'Produtos',
   '/catalog': 'Catálogo',
@@ -37,6 +37,9 @@ function getParentRoute(fallback: string): string {
 
 function getQuotationParent(): BreadcrumbItem {
   const previousRoute = getHashHistoryPreviousRoute();
+  if (previousRoute && routePath(previousRoute) === '/crm') {
+    return { label: 'Comercial', hash: previousRoute };
+  }
   if (previousRoute && routePath(previousRoute) === '/follow-ups') {
     return { label: 'Follow-ups', hash: previousRoute };
   }

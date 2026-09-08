@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent } from 'react';
-import { Search, AlertTriangle, Columns3, Clipboard, Send, X, PlusCircle } from 'lucide-react';
+import {
+  Search,
+  AlertTriangle,
+  Columns3,
+  Clipboard,
+  Send,
+  X,
+  PlusCircle,
+  Rows3,
+} from 'lucide-react';
 import { apiGet, apiPost, apiPut } from '@/lib/api/api';
 import { pipelineLabel } from '@/lib/statusLabels';
 import { useToast } from '@/components/shared/toast';
@@ -9,10 +18,19 @@ import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { StatusBadge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
-import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
+import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
 
@@ -98,12 +116,34 @@ function formatDateBR(value?: string): string {
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export default function CrmKanbanPage() {
+type CrmView = 'list' | 'board';
+const parseCrmView = parseHashOption<CrmView>(['list', 'board']);
+const STAGE_FILTERS = ['all', ...PIPELINE] as const;
+type StageFilter = (typeof STAGE_FILTERS)[number];
+const parseStageFilter = parseHashOption<StageFilter>(STAGE_FILTERS);
+
+function dealName(deal: Deal): string {
+  return String(deal.lead_name || '').trim() || 'Sem nome';
+}
+
+function dealHref(deal: Deal): string | null {
+  if (deal.client_id) return `#/leads/cliente/${deal.client_id}`;
+  if (deal.quote_lead_id) return `#/leads/lead/${deal.quote_lead_id}`;
+  return null;
+}
+
+interface CrmKanbanPageProps {
+  embedded?: boolean;
+}
+
+export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) {
   const { toast } = useToast();
   const [columns, setColumns] = useState<Column[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useHashQueryState('search', '', parseHashString);
+  const [view, setView] = useHashQueryState<CrmView>('view', 'list', parseCrmView);
+  const [stage, setStage] = useHashQueryState<StageFilter>('stage', 'all', parseStageFilter);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [movingDealIds, setMovingDealIds] = useState<Set<string>>(new Set());
   const [announcement, setAnnouncement] = useState('');
@@ -115,6 +155,9 @@ export default function CrmKanbanPage() {
   const [pruneSubmitting, setPruneSubmitting] = useState<boolean>(false);
   const [pruneSummary, setPruneSummary] = useState<string | null>(null);
   const [visiblePerColumn, setVisiblePerColumn] = useState<Record<string, number>>({});
+  const [narrowLayout, setNarrowLayout] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 1024
+  );
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
@@ -129,6 +172,15 @@ export default function CrmKanbanPage() {
       const url = searchVal ? `/crm-deals?search=${encodeURIComponent(searchVal)}` : '/crm-deals';
       const data = await apiGet<CrmDealsResponse>(url);
       if (requestGeneration !== requestGenerationRef.current) return;
+      if (
+        !data ||
+        !Array.isArray(data.columns) ||
+        data.columns.some(
+          (column) => !column || typeof column.status !== 'string' || !Array.isArray(column.deals)
+        )
+      ) {
+        throw new Error('Resposta inválida ao carregar o pipeline CRM.');
+      }
       setColumns(data.columns || []);
     } catch {
       if (requestGeneration !== requestGenerationRef.current) return;
@@ -143,6 +195,9 @@ export default function CrmKanbanPage() {
     setPruneError(null);
     try {
       const data = await apiGet<PruneCandidatesResponse>('/crm-prune-candidates');
+      if (!data || !Array.isArray(data.candidates)) {
+        throw new Error('Resposta inválida ao carregar a revisão do pipeline.');
+      }
       const candidates = data.candidates || [];
       setPruneCandidates(candidates);
       setSelectedPruneIds(new Set(candidates.map((candidate) => candidate.deal_id)));
@@ -165,6 +220,14 @@ export default function CrmKanbanPage() {
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1024px)');
+    const updateLayout = () => setNarrowLayout(!media.matches);
+    updateLayout();
+    media.addEventListener?.('change', updateLayout);
+    return () => media.removeEventListener?.('change', updateLayout);
   }, []);
 
   const setMoveMenuRef = useCallback((dealId: string, element: HTMLSelectElement | null) => {
@@ -339,25 +402,84 @@ export default function CrmKanbanPage() {
     ),
     ...columns.filter((column) => !PIPELINE.includes(column.status as (typeof PIPELINE)[number])),
   ];
-  const hasDeals = orderedColumns.some((column) => column.count > 0);
+  const displayColumns =
+    stage === 'all' ? orderedColumns : orderedColumns.filter((column) => column.status === stage);
+  const allDeals = orderedColumns.flatMap((column) => column.deals);
+  const visibleDeals = displayColumns.flatMap((column) =>
+    column.deals.map((deal) => ({ deal, currentStatus: deal.status || column.status }))
+  );
+  const hasDeals = visibleDeals.length > 0;
+  const hasAnyDeals = allDeals.length > 0;
   const hasSearch = search.trim().length > 0;
-  const hasSearchResults = hasDeals || !hasSearch;
+  const hasSearchResults = hasAnyDeals || !hasSearch;
 
   return (
     <PageShell>
-      <PageHeader
-        title="CRM"
-        actions={
-          <Button
-            onClick={(): void => {
-              window.location.hash = '#/manual';
-            }}
-          >
-            <PlusCircle />
-            Novo orçamento
-          </Button>
-        }
-      />
+      {!embedded && (
+        <PageHeader
+          title="CRM"
+          actions={
+            <Button
+              onClick={(): void => {
+                window.location.hash = '#/manual';
+              }}
+            >
+              <PlusCircle />
+              Novo orçamento
+            </Button>
+          }
+        />
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          className="flex rounded-sm border border-line bg-surface p-0.5"
+          role="tablist"
+          aria-label="Visualização dos negócios"
+        >
+          {(
+            [
+              ['list', 'Lista', Rows3],
+              ['board', 'Quadro', Columns3],
+            ] as const
+          ).map(([nextView, label, Icon]) => (
+            <button
+              key={nextView}
+              type="button"
+              role="tab"
+              id={`crm-view-tab-${nextView}`}
+              aria-controls="crm-view-panel"
+              aria-selected={view === nextView}
+              tabIndex={view === nextView ? 0 : -1}
+              className={cn(
+                'inline-flex h-8 items-center gap-2 rounded-sm px-3 text-sm transition-colors',
+                view === nextView
+                  ? 'bg-surface-muted font-medium text-fg'
+                  : 'text-fg-muted hover:text-fg'
+              )}
+              onClick={() => setView(nextView)}
+            >
+              <Icon aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <Select
+          aria-label="Filtrar por etapa"
+          value={stage}
+          onChange={(event) => setStage(event.target.value as StageFilter)}
+        >
+          <option value="all">Todas as etapas ({allDeals.length})</option>
+          {PIPELINE.map((status) => {
+            const count =
+              orderedColumns.find((column) => column.status === status)?.deals.length || 0;
+            return (
+              <option key={status} value={status}>
+                {pipelineLabel(status)} ({count})
+              </option>
+            );
+          })}
+        </Select>
+      </div>
       {/* Search stays available for an active query so a zero-result filter can be cleared. */}
       {!loading && !error && (hasDeals || hasSearch) && (
         <div className="relative max-w-md">
@@ -466,8 +588,12 @@ export default function CrmKanbanPage() {
       {!loading && !error && !hasDeals && hasSearchResults && (
         <EmptyState
           icon={Columns3}
-          title="Nenhum negócio no pipeline."
-          description="Um negócio nasce quando um orçamento é enviado a um cliente. Depois, acompanhe cada etapa aqui no funil."
+          title={stage === 'all' ? 'Nenhum negócio no pipeline.' : 'Nenhum negócio nesta etapa.'}
+          description={
+            stage === 'all'
+              ? 'Um negócio nasce quando um orçamento é enviado a um cliente. Depois, acompanhe cada etapa aqui no funil.'
+              : 'Ajuste o filtro de etapa para ver outros negócios.'
+          }
           actions={
             <>
               <Button asChild>
@@ -481,16 +607,224 @@ export default function CrmKanbanPage() {
         />
       )}
 
+      {!loading && !error && hasDeals && view === 'list' && (
+        <div className="space-y-3" id="crm-view-panel" aria-hidden={pruneOpen || undefined}>
+          {!narrowLayout && (
+            <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+              <Table className="min-w-[900px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Negócio</TableHead>
+                    <TableHead>Contato</TableHead>
+                    <TableHead>Orçamento</TableHead>
+                    <TableHead>Etapa</TableHead>
+                    <TableHead>Próximo passo</TableHead>
+                    <TableHead>Atualizado</TableHead>
+                    <TableHead className="text-right">Mover</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleDeals.map(({ deal, currentStatus }) => {
+                    const leadName = dealName(deal);
+                    const href = dealHref(deal);
+                    const moving = movingDealIds.has(deal.id);
+                    const lastUpdate = deal.modificado_em || deal.criado_em;
+                    return (
+                      <TableRow key={deal.id}>
+                        <TableCell className="max-w-56 font-medium">
+                          {href && leadName !== 'Sem nome' ? (
+                            <a
+                              href={href}
+                              className="block truncate text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              aria-label={`Abrir lead ${leadName}`}
+                            >
+                              {leadName}
+                            </a>
+                          ) : (
+                            <span className="block truncate">{leadName}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="max-w-56 text-sm">
+                          {deal.email && (
+                            <span className="block truncate text-fg-muted">{deal.email}</span>
+                          )}
+                          {deal.telefone && (
+                            <span className="block whitespace-nowrap text-xs text-fg-muted">
+                              {fmtPhone(deal.telefone) || deal.telefone}
+                            </span>
+                          )}
+                          {!deal.email && !deal.telefone && (
+                            <span className="text-fg-muted">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {deal.quotation ? (
+                            deal.quotation_id ? (
+                              <a
+                                href={`#/quotations/${deal.quotation_id}`}
+                                className="text-primary hover:underline"
+                                aria-label={`Abrir orçamento ${deal.quotation}`}
+                              >
+                                {deal.quotation}
+                              </a>
+                            ) : (
+                              <span>{deal.quotation}</span>
+                            )
+                          ) : (
+                            <span className="text-fg-muted">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={currentStatus}
+                            label={pipelineLabel(currentStatus)}
+                            className="tone-neutral-muted"
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-48 truncate text-sm text-fg-muted">
+                          {deal.next_step || '—'}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-fg-muted">
+                          {lastUpdate ? `Atualizado ${daysAgo(lastUpdate)}` : '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Select
+                            ref={(element) => setMoveMenuRef(deal.id, element)}
+                            value={currentStatus}
+                            disabled={moving}
+                            aria-label={`Mover para ${leadName}`}
+                            className="h-8 max-w-44 py-1 text-xs"
+                            onChange={(event) => moveDeal(deal.id, event.target.value)}
+                          >
+                            {orderedColumns.map((destinationColumn) => (
+                              <option
+                                key={destinationColumn.status}
+                                value={destinationColumn.status}
+                              >
+                                {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
+                                {pipelineLabel(destinationColumn.status)}
+                              </option>
+                            ))}
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {narrowLayout && (
+            <div className="grid gap-3">
+              {visibleDeals.map(({ deal, currentStatus }) => {
+                const leadName = dealName(deal);
+                const href = dealHref(deal);
+                const moving = movingDealIds.has(deal.id);
+                const lastUpdate = deal.modificado_em || deal.criado_em;
+                return (
+                  <article key={deal.id} className="rounded-lg border border-line bg-surface p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {href && leadName !== 'Sem nome' ? (
+                          <a
+                            href={href}
+                            className="block truncate font-medium text-primary hover:underline"
+                            aria-label={`Abrir lead ${leadName}`}
+                          >
+                            {leadName}
+                          </a>
+                        ) : (
+                          <h2 className="truncate font-medium">{leadName}</h2>
+                        )}
+                        {deal.email && (
+                          <p className="mt-1 truncate text-xs text-fg-muted">{deal.email}</p>
+                        )}
+                        {deal.telefone && (
+                          <p className="mt-0.5 text-xs text-fg-muted">
+                            {fmtPhone(deal.telefone) || deal.telefone}
+                          </p>
+                        )}
+                      </div>
+                      <StatusBadge
+                        status={currentStatus}
+                        label={pipelineLabel(currentStatus)}
+                        className="tone-neutral-muted shrink-0"
+                      />
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <dt className="text-xs text-fg-muted">Orçamento</dt>
+                        <dd className="mt-1 truncate">
+                          {deal.quotation ? (
+                            deal.quotation_id ? (
+                              <a
+                                href={`#/quotations/${deal.quotation_id}`}
+                                className="text-primary hover:underline"
+                                aria-label={`Abrir orçamento ${deal.quotation}`}
+                              >
+                                {deal.quotation}
+                              </a>
+                            ) : (
+                              deal.quotation
+                            )
+                          ) : (
+                            '—'
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-fg-muted">Atualizado</dt>
+                        <dd className="mt-1 text-xs text-fg-muted">
+                          {lastUpdate ? daysAgo(lastUpdate) : '—'}
+                        </dd>
+                      </div>
+                      {deal.next_step && (
+                        <div className="col-span-2">
+                          <dt className="text-xs text-fg-muted">Próximo passo</dt>
+                          <dd className="mt-1 truncate">{deal.next_step}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <div className="mt-4 border-t border-line/60 pt-3">
+                      <label htmlFor={`mobile-move-deal-${deal.id}`} className="sr-only">
+                        Mover para {leadName}
+                      </label>
+                      <Select
+                        id={`mobile-move-deal-${deal.id}`}
+                        value={currentStatus}
+                        disabled={moving}
+                        aria-label={`Mover para ${leadName}`}
+                        className="w-full text-sm"
+                        onChange={(event) => moveDeal(deal.id, event.target.value)}
+                      >
+                        {orderedColumns.map((destinationColumn) => (
+                          <option key={destinationColumn.status} value={destinationColumn.status}>
+                            {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
+                            {pipelineLabel(destinationColumn.status)}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* The board scrolls horizontally on narrow screens; drag/drop is only an enhancement. */}
-      {!loading && !error && hasDeals && (
+      {!loading && !error && hasDeals && view === 'board' && (
         <div
           role="region"
           aria-label="Pipeline CRM"
+          id="crm-view-panel"
           tabIndex={0}
+          aria-hidden={pruneOpen || undefined}
           className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-lg border border-line bg-page [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
         >
           <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
-            {orderedColumns.map((col) => (
+            {displayColumns.map((col) => (
               <div
                 key={col.status}
                 className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg border border-line bg-surface"

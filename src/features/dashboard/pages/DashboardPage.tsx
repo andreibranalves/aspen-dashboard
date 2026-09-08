@@ -4,7 +4,6 @@ import {
   BarChart3,
   Clock,
   DollarSign,
-  ExternalLink,
   Package,
   Percent,
   ShoppingCart,
@@ -12,14 +11,12 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { apiGet, apiPut } from '@/lib/api/api';
 import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
-import { StatusBadge } from '@/components/ui/badge';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { Input } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
@@ -83,7 +80,9 @@ function formatDashboardDate(value: string): string {
 }
 
 function formatPercent(value: number): string {
-  return `${Number((value * 100).toFixed(1)).toString().replace('.', ',')}%`;
+  return `${Number((value * 100).toFixed(1))
+    .toString()
+    .replace('.', ',')}%`;
 }
 
 export default function DashboardPage({ navigate }: DashboardPageProps) {
@@ -105,7 +104,8 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       const result = await apiGet<unknown>(`/sales-dashboard?period=${period}`);
       if (requestGeneration !== requestGenerationRef.current) return;
       const projected = projectDashboardView(result);
-      if (!projected || !projected.summary) throw new Error('Resposta inválida ao carregar o dashboard.');
+      if (!projected || !projected.summary)
+        throw new Error('Resposta inválida ao carregar o dashboard.');
       setData(projected);
     } catch (error) {
       if (requestGeneration !== requestGenerationRef.current) return;
@@ -139,10 +139,13 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       setMetaSaving(true);
       setMetaError(null);
       try {
-        const result = await apiPut<unknown>(`/sales-dashboard?period=${encodeURIComponent(period)}`, {
-          period,
-          meta_spend: metaDraft,
-        });
+        const result = await apiPut<unknown>(
+          `/sales-dashboard?period=${encodeURIComponent(period)}`,
+          {
+            period,
+            meta_spend: metaDraft,
+          }
+        );
         const projected = projectDashboardView(result);
         if (!projected || !projected.summary) {
           throw new Error('Resposta inválida ao salvar o gasto da Meta.');
@@ -190,7 +193,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           <div className="h-4 w-48 animate-pulse rounded-sm bg-surface-muted" />
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {Array.from({ length: 5 }).map((_, index) => (
-              <div key={`profit-skeleton-${index}`} className="space-y-3 rounded-lg border border-line p-4">
+              <div
+                key={`profit-skeleton-${index}`}
+                className="space-y-3 rounded-lg border border-line p-4"
+              >
                 <div className="h-4 w-24 animate-pulse rounded-sm bg-surface-muted" />
                 <div className="h-8 w-32 animate-pulse rounded-sm bg-surface-muted" />
               </div>
@@ -198,7 +204,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           </div>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div key={`ops-skeleton-${index}`} className="space-y-3 rounded-lg border border-line p-4">
+              <div
+                key={`ops-skeleton-${index}`}
+                className="space-y-3 rounded-lg border border-line p-4"
+              >
                 <div className="h-4 w-24 animate-pulse rounded-sm bg-surface-muted" />
                 <div className="h-8 w-32 animate-pulse rounded-sm bg-surface-muted" />
               </div>
@@ -308,68 +317,23 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
         </div>
         {!attention ? (
           <Unavailable>Esta fila não está disponível para o período selecionado.</Unavailable>
-        ) : attention.items.length === 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 py-6 text-sm text-fg-muted">
-            <span>Nenhum orçamento parado no momento.</span>
-            <Button variant="outline" size="sm" onClick={() => navigate('/quotations')}>
-              Ver orçamentos
-            </Button>
-          </div>
         ) : (
-          <div className="mt-4">
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Orçamento</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Idade</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {attention.items.map((quotation) => (
-                  <TableRow key={quotation.id}>
-                    <TableCell>
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
-                        className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
-                      >
-                        {quotation.id}
-                        <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      </button>
-                    </TableCell>
-                    <TableCell className="max-w-[220px] truncate">
-                      {capitalize(quotation.customer)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-fg-muted">
-                      há {quotation.age} {quotation.age === 1 ? 'dia' : 'dias'}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatBRL(quotation.value)}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge
-                        status={quotationStatusBadgeKey(quotation.status)}
-                        label={quotationStatusLabel(quotation.status)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
-                      >
-                        Abrir
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            <OmittedRowsNote omitted={attention.omitted} />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-md border border-line bg-surface-muted px-4 py-4">
+            <div>
+              <p className="font-medium text-fg">
+                {attention.items.length === 0
+                  ? 'Nenhum orçamento parado no momento.'
+                  : `${attention.items.length} ${attention.items.length === 1 ? 'orçamento' : 'orçamentos'} aguardando retorno`}
+              </p>
+              {attention.omitted > 0 && <OmittedRowsNote omitted={attention.omitted} />}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/crm?tab=returns&return=unanswered')}
+            >
+              Abrir
+            </Button>
           </div>
         )}
       </section>
@@ -435,7 +399,12 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                 value={formatBRL(summary.faturamento)}
                 metadata={
                   formatDelta(summary.revenue_delta) ? (
-                    <span className={cn('whitespace-nowrap text-xs font-medium', deltaClass(summary.revenue_delta as number))}>
+                    <span
+                      className={cn(
+                        'whitespace-nowrap text-xs font-medium',
+                        deltaClass(summary.revenue_delta as number)
+                      )}
+                    >
                       {formatDelta(summary.revenue_delta)}
                     </span>
                   ) : undefined
@@ -539,7 +508,9 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                         <TableCell className="text-right font-medium">
                           {formatBRL(product.revenue)}
                         </TableCell>
-                        <TableCell className="text-right">{formatPercent(product.margem)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatPercent(product.margem)}
+                        </TableCell>
                         <TableCell className="text-right">{product.orders}</TableCell>
                       </TableRow>
                     ))}

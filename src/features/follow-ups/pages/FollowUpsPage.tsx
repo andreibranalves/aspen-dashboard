@@ -13,6 +13,12 @@ import EmptyState from '@/components/shared/EmptyState';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
+import { apiGet } from '@/lib/api/api';
+import {
+  projectDashboardView,
+  type DashboardListView,
+  type DashboardQuotationView,
+} from '@/features/dashboard/dashboardViewModel';
 import {
   listFollowUps,
   type FollowUpListView,
@@ -96,31 +102,57 @@ function toneForState(value: string): string {
 
 interface FollowUpsPageProps {
   navigate: (hash: string) => void;
+  embedded?: boolean;
+  returnView?: FollowUpReturnView;
 }
 
-export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
+export type FollowUpReturnView = 'unanswered' | 'sent';
+
+export default function FollowUpsPage({
+  navigate,
+  embedded = false,
+  returnView = 'sent',
+}: FollowUpsPageProps) {
   const [view, setView] = useHashQueryState<FollowUpListView>('view', 'ready', parseFollowUpView);
   const [page, setPage] = useHashQueryState('page', 1, parseFollowUpPage);
   const [result, setResult] = useState<FollowUpPage | null>(null);
   const [selected, setSelected] = useState<FollowUpView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unanswered, setUnanswered] = useState<DashboardListView<DashboardQuotationView> | null>(
+    null
+  );
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await listFollowUps({ view, page, pageSize: PAGE_SIZE }));
+      if (returnView === 'unanswered') {
+        const projected = projectDashboardView(
+          await apiGet<unknown>('/sales-dashboard?period=month')
+        );
+        if (!projected?.attention) throw new Error('Resposta inválida ao carregar retornos.');
+        setUnanswered(projected.attention);
+        setResult(null);
+      } else {
+        setUnanswered(null);
+        setResult(await listFollowUps({ view, page, pageSize: PAGE_SIZE }));
+      }
     } catch (reason) {
       setResult(null);
+      setUnanswered(null);
       setError(
-        reason instanceof Error ? reason.message : 'Não foi possível carregar os follow-ups.'
+        reason instanceof Error && returnView === 'sent'
+          ? reason.message
+          : returnView === 'unanswered'
+            ? 'Não foi possível carregar os retornos sem resposta.'
+            : 'Não foi possível carregar os follow-ups.'
       );
     } finally {
       setLoading(false);
     }
-  }, [page, view]);
+  }, [page, returnView, view]);
 
   useEffect(() => {
     void load();
@@ -153,57 +185,63 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
 
   const totalPages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   const rows = result?.data || [];
+  const unansweredRows = unanswered?.items || [];
 
   useEffect(() => {
     if (!loading && result && page > totalPages) setPage(1);
   }, [loading, page, result, setPage, totalPages]);
 
   return (
-    <PageShell className="space-y-6">
-      <PageHeader
-        title="Follow-ups"
-        actions={
-          <Button type="button" variant="outline" onClick={() => void load()} disabled={loading}>
-            <RefreshCw aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
-            Atualizar
-          </Button>
-        }
-      />
+    <PageShell className={embedded ? 'space-y-4' : 'space-y-6'}>
+      {!embedded && (
+        <PageHeader
+          title="Follow-ups"
+          actions={
+            <Button type="button" variant="outline" onClick={() => void load()} disabled={loading}>
+              <RefreshCw aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
+              Atualizar
+            </Button>
+          }
+        />
+      )}
 
-      <div
-        className="flex flex-wrap gap-1 border-b border-line"
-        role="tablist"
-        aria-label="Filtrar follow-ups"
-      >
-        {TABS.map((tab, index) => (
-          <button
-            key={tab.view}
-            ref={(element) => {
-              tabRefs.current[index] = element;
-            }}
-            type="button"
-            role="tab"
-            id={`follow-ups-tab-${tab.view}`}
-            aria-controls="follow-ups-panel"
-            aria-selected={view === tab.view}
-            tabIndex={view === tab.view ? 0 : -1}
-            className={
-              view === tab.view
-                ? 'border-b-2 border-primary px-3 py-2 text-sm font-semibold text-primary'
-                : 'border-b-2 border-transparent px-3 py-2 text-sm text-fg-muted hover:text-fg'
-            }
-            onClick={() => changeView(tab.view)}
-            onKeyDown={(event) => handleTabKeyDown(event, index)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {(!embedded || returnView === 'sent') && (
+        <div
+          className="flex flex-wrap gap-1 border-b border-line"
+          role="tablist"
+          aria-label="Filtrar follow-ups"
+        >
+          {TABS.map((tab, index) => (
+            <button
+              key={tab.view}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
+              type="button"
+              role="tab"
+              id={`follow-ups-tab-${tab.view}`}
+              aria-controls="follow-ups-panel"
+              aria-selected={view === tab.view}
+              tabIndex={view === tab.view ? 0 : -1}
+              className={
+                view === tab.view
+                  ? 'border-b-2 border-primary px-3 py-2 text-sm font-semibold text-primary'
+                  : 'border-b-2 border-transparent px-3 py-2 text-sm text-fg-muted hover:text-fg'
+              }
+              onClick={() => changeView(tab.view)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div
         id="follow-ups-panel"
         role="tabpanel"
-        aria-labelledby={`follow-ups-tab-${view}`}
+        aria-labelledby={returnView === 'sent' ? `follow-ups-tab-${view}` : undefined}
+        aria-label={returnView === 'unanswered' ? 'Retornos sem resposta' : undefined}
         tabIndex={0}
         className="space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
@@ -226,7 +264,125 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
           </div>
         )}
 
-        {loading ? (
+        {returnView === 'unanswered' ? (
+          loading ? (
+            <SkeletonTable rows={5} cols={5} />
+          ) : unanswered === null ? null : unansweredRows.length === 0 ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Nenhum retorno sem resposta"
+              description="Não há orçamentos sem resposta no período selecionado."
+            />
+          ) : (
+            <>
+              <div className="hidden lg:block overflow-x-auto rounded-lg border border-line bg-surface">
+                <Table className="min-w-[760px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Orçamento</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Idade</TableHead>
+                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {unansweredRows.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <a
+                            href={`#/quotations/${encodeURIComponent(item.id)}`}
+                            className="font-mono text-xs text-primary hover:underline"
+                            aria-label={`Abrir orçamento ${item.id}`}
+                            onClick={(event) => openQuotation(event, item.id)}
+                          >
+                            {item.id}
+                          </a>
+                        </TableCell>
+                        <TableCell className="max-w-64 truncate">{item.customer}</TableCell>
+                        <TableCell className="whitespace-nowrap text-fg-muted">
+                          {item.age === 0
+                            ? 'Hoje'
+                            : `há ${item.age} ${item.age === 1 ? 'dia' : 'dias'}`}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                          {formatBRL(item.value)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            status={item.status}
+                            label={item.status}
+                            className="tone-neutral-muted"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/quotations/${encodeURIComponent(item.id)}`)}
+                          >
+                            Abrir
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="grid gap-3 lg:hidden">
+                {unansweredRows.map((item) => (
+                  <article key={item.id} className="rounded-md border border-line bg-surface p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <a
+                          href={`#/quotations/${encodeURIComponent(item.id)}`}
+                          className="font-mono text-xs text-primary hover:underline"
+                          aria-label={`Abrir orçamento ${item.id}`}
+                          onClick={(event) => openQuotation(event, item.id)}
+                        >
+                          {item.id}
+                        </a>
+                        <p className="mt-2 truncate font-medium">{item.customer}</p>
+                        <p className="mt-1 text-xs text-fg-muted">
+                          {item.age === 0
+                            ? 'Hoje'
+                            : `há ${item.age} ${item.age === 1 ? 'dia' : 'dias'}`}
+                        </p>
+                        <p className="mt-1 text-xs font-medium tabular-nums text-fg-muted">
+                          {formatBRL(item.value)}
+                        </p>
+                      </div>
+                      <StatusBadge
+                        status={item.status}
+                        label={item.status}
+                        className="tone-neutral-muted shrink-0"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 w-full"
+                      onClick={() => navigate(`/quotations/${encodeURIComponent(item.id)}`)}
+                    >
+                      Abrir orçamento
+                    </Button>
+                  </article>
+                ))}
+              </div>
+              {unanswered.omitted > 0 && (
+                <p className="text-xs text-fg-muted">
+                  {unanswered.omitted}{' '}
+                  {unanswered.omitted === 1
+                    ? 'registro não foi exibido por falta de dados confirmados.'
+                    : 'registros não foram exibidos por falta de dados confirmados.'}
+                </p>
+              )}
+            </>
+          )
+        ) : loading ? (
           <SkeletonTable rows={5} cols={5} />
         ) : rows.length === 0 ? (
           <EmptyState
@@ -283,11 +439,14 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
                         )}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge
-                          status={item.state}
-                          label={STATE_LABELS[item.state] || item.state}
-                          className={toneForState(item.state)}
-                        />
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge
+                            status={item.state}
+                            label={STATE_LABELS[item.state] || item.state}
+                            className={toneForState(item.state)}
+                          />
+                          <span className="text-xs text-fg-muted">{item.reasonLabel}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -340,6 +499,9 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
                       <span className="mt-0.5 block whitespace-nowrap text-xs tabular-nums text-fg-muted">
                         {formatBRL(item.amount)}
                       </span>
+                      <span className="mt-1 block truncate text-xs text-fg-muted">
+                        {item.reasonLabel}
+                      </span>
                     </div>
                     <Button
                       type="button"
@@ -357,7 +519,7 @@ export default function FollowUpsPage({ navigate }: FollowUpsPageProps) {
           </>
         )}
 
-        {!loading && result && result.total > result.pageSize && (
+        {returnView === 'sent' && !loading && result && result.total > result.pageSize && (
           <div className="flex items-center justify-between text-sm text-fg-muted">
             <span>
               Página {result.page} de {totalPages}
