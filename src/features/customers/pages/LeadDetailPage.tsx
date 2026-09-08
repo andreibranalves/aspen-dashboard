@@ -23,6 +23,7 @@ import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { QualityBadges, type QualityBadge } from '@/features/customers/components/QualityBadges';
@@ -413,20 +414,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       href: `mailto:${current.email}`,
       title: 'Enviar e-mail',
     });
-  if (detail && !isNewClient)
-    contextActions.push({
-      label: 'Criar orçamento',
-      icon: Sparkles,
-      onClick: () => createQuoteForClient(current, navigate),
-      title: 'Criar orçamento com os dados deste cliente',
-    });
-  if (current.latest_quotation)
-    contextActions.push({
-      label: 'Orçamento recente',
-      icon: FileText,
-      onClick: () => navigate(`/quotations/${encodeURIComponent(current.latest_quotation!.name)}`),
-      title: `Abrir ${current.latest_quotation.name}`,
-    });
 
   const headerActions = editing ? (
     <>
@@ -441,7 +428,9 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   ) : (
     <>
       <Button
+        variant="outline"
         size="sm"
+        className="px-2 sm:px-3"
         onClick={() => {
           if (detail) {
             setFields(fieldsFromDetail(detail));
@@ -450,6 +439,13 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         }}
       >
         <Edit3 size={14} /> Editar cadastro
+      </Button>
+      <Button
+        size="sm"
+        className="px-2 sm:px-3"
+        onClick={() => createQuoteForClient(current, navigate)}
+      >
+        <Sparkles size={14} /> Novo orçamento
       </Button>
       <CustomerActionMenu
         archived={archived}
@@ -462,66 +458,33 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   return (
     <PageShell className="space-y-5">
       <fieldset disabled={saving} className="space-y-5">
-        {isNewClient ? (
-          <PageHeader
-            title={title}
-            actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
-          />
-        ) : (
-          <section
-            className="rounded-md border border-line bg-surface p-4 md:p-5"
-            aria-labelledby="customer-identity"
-          >
-            <div className="flex flex-wrap items-start gap-4">
-              <div
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-primary/10 text-lg font-semibold text-primary"
-                aria-hidden="true"
-              >
-                {title
-                  .trim()
-                  .split(/\s+/)
-                  .slice(0, 2)
-                  .map((part) => part[0]?.toUpperCase())
-                  .join('') || 'CL'}
-              </div>
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 id="customer-identity" className="break-words text-xl font-semibold text-fg">
-                    {title}
-                  </h1>
-                  <StatusBadge
-                    status={archived ? 'Archived' : 'Active'}
-                    label={archived ? 'Arquivado' : 'Ativo'}
-                  />
-                  <span className="text-xs text-fg-muted">Cliente</span>
-                </div>
-                {qualityBadges(current as ClientDetail).length > 0 && (
-                  <QualityBadges badges={qualityBadges(current as ClientDetail)} />
-                )}
-              </div>
-              {confirmDiscardEdits || pendingRoute !== null ? null : (
-                <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-                  {headerActions}
-                </div>
-              )}
-            </div>
-            <div className="mt-4 flex flex-col gap-4 border-t border-line pt-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
-                <InfoField label="E-mail" value={current.email || 'E-mail não informado'} />
-                <InfoField
-                  label="Telefone"
-                  value={fmtPhone(current.telefone) || 'Telefone não informado'}
-                />
-              </div>
-              {contextActions.length > 0 && (
-                <ContextActions actions={contextActions} className="shrink-0" />
-              )}
-            </div>
-          </section>
+        <PageHeader
+          title={editing && !isNewClient ? 'Editar cliente' : title}
+          description={
+            editing && !isNewClient
+              ? title
+              : isNewClient
+                ? undefined
+                : current.modified
+                  ? `Atualizado ${formatDate(current.modified)}`
+                  : undefined
+          }
+          actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
+        />
+
+        {!isNewClient && !editing && (
+          <div className="flex flex-wrap items-center gap-3">
+            <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
+            <span className="text-xs text-fg-muted">Cliente</span>
+            {qualityBadges(current as ClientDetail).length > 0 && (
+              <QualityBadges badges={qualityBadges(current as ClientDetail)} />
+            )}
+            {contextActions.length > 0 && <ContextActions actions={contextActions} />}
+          </div>
         )}
 
         {editing ? (
-          <>
+          <div className="grid items-start gap-5 lg:grid-cols-2">
             <SectionCard title="Dados do cliente" icon={UserRound}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="text-xs text-fg-muted">
@@ -567,13 +530,12 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 </label>
                 <label className="text-xs text-fg-muted md:col-span-2">
                   Observações
-                  <textarea
+                  <Textarea
                     aria-label="Observações"
                     value={fields.observacoes}
                     onChange={(event) =>
                       setFields((value) => ({ ...value, observacoes: event.target.value }))
                     }
-                    className="mt-1 min-h-24 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   />
                 </label>
               </div>
@@ -628,7 +590,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 )}
               </div>
             </SectionCard>
-          </>
+          </div>
         ) : (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
             <div className="space-y-5 lg:order-2">
@@ -724,6 +686,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
             </div>
             <SectionCard title="Cadastro" icon={UserRound} className="lg:order-1">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <InfoField
+                  label="Telefone"
+                  value={fmtPhone(current.telefone) || 'Telefone não informado'}
+                />
+                <InfoField
+                  label="E-mail"
+                  value={current.email || 'E-mail não informado'}
+                />
                 <InfoField
                   label="Documento"
                   value={formatDocument(current.tax_id || current.documento)}

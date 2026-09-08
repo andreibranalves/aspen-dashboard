@@ -510,9 +510,9 @@ test.describe('Leads — Página single e visualização rápida @crm', () => {
     await page.getByRole('button', { name: /Visualização rápida João Silva/i }).click();
 
     await expect(page).toHaveURL(/#\/leads$/);
-    await expect(page.getByRole('dialog').getByText('Nome', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('dialog', { name: 'João Silva' })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: /Editar/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Página completa/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Abrir ficha completa/i })).toBeVisible();
   });
 
   test('página própria permite editar e salvar o cadastro', async ({ page }) => {

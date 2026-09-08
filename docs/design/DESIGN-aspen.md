@@ -286,6 +286,42 @@ concurrency-token, origin-prefill, and quotation-detail contracts remain the
 source of truth. This slice changes presentation and in-memory coordination,
 not commercial calculations, persistence schema, emission, or transport rules.
 
+## Approved Clientes journey
+
+The Clientes journey applies the shared contract to the list, quick-view drawer,
+full profile, and edit states. The implementation uses the current Figma
+structural references `13:2` (list), `13:119` (quick view), `13:247` (profile),
+`13:334` (edit), `213:50` (export/actions), and `213:171` (archived state).
+
+The list keeps the existing `/leads-clients` search, status, pagination, CSV
+export, selection, archive, restore, create, and detail navigation contracts.
+It uses the fields the endpoint actually provides: client, contact, document,
+status, and row actions. The Figma examples' quotation counts and monetary
+metrics are illustrative and are not displayed without an authoritative data
+contract. WhatsApp and e-mail remain available through the contact cell and
+context actions.
+
+The quick-view drawer keeps the reusable `DetailDrawer` API and exposes the
+projected client identity once in its header, contact, document, address, notes, latest quotation,
+and the existing contextual actions. The latest quotation has one access point
+in its content instead of a duplicate header action. Missing relationships
+remain absent. The
+full profile separates cadastro from recent commercial activity and links to
+the existing quotation, CRM, and order routes when those records exist.
+
+The edit state uses the existing create/update endpoints, one save action, the
+complete address fields, notes, validation, and navigation guards for unsaved
+changes. New quotation keeps the existing client prefill. Archive and restore
+remain confirmed, reversible actions through the existing API contracts; no
+new persistence, UUID identity, fake history, metrics, tabs, or actions are
+introduced by this visual slice.
+
+Responsive evidence covers both themes at `1280x800`, `1440x900`, `1024x800`,
+and `390x844`. The desktop profile uses a two-column cadastro/activity layout;
+the narrow layout places recent activity before cadastro and keeps the drawer
+full-width. The details and evidence are recorded in
+`docs/design/evidence/clientes/validacao.md`.
+
 ## Out of scope
 
 This contract does not redesign complete feature journeys outside the approved
