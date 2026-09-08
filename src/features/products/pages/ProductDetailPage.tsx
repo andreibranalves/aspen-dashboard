@@ -33,6 +33,14 @@ import { useToast } from '@/components/shared/toast';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
 
 interface Produto {
   sku: string;
@@ -127,6 +135,14 @@ function formatActivityDate(value: string): string {
     timeStyle: 'short',
   }).format(date);
 }
+
+function decodeSku(value: string): string {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return value || '';
+  }
+}
 function formatQuantity(value: number | string | undefined): string {
   if (value == null) return '—';
   const numeric = Number(value);
@@ -215,7 +231,7 @@ interface ProductDetailPageProps {
 }
 
 export default function ProductDetailPage({ sku, navigate }: ProductDetailPageProps) {
-  const decodedSku = decodeURIComponent(sku || '');
+  const decodedSku = decodeSku(sku);
   const isNewProduct = decodedSku === 'new';
   const [duplicateFrom] = useHashQueryState('duplicate', '', parseHashString);
   const duplicateSku = duplicateFrom.trim();
@@ -1079,24 +1095,31 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 </div>
               ) : null}
               {hasTiers ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {product?.precos?.map((tier, index) => {
-                    const quantity = tier.minimum_quantity ?? tier.faixa ?? tier.qty;
-                    const rate = tier.unit_price ?? tier.rate;
-                    return (
-                      <div
-                        key={`saved-tier-${index}`}
-                        className="rounded-lg border border-line bg-surface/50 p-3"
-                      >
-                        <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                          A partir de {formatQuantity(quantity)} un.
-                        </p>
-                        <p className="mt-2 text-sm font-medium text-fg font-mono">
-                          {rate != null ? formatBRL(rate) : '—'}
-                        </p>
-                      </div>
-                    );
-                  })}
+                <div className="overflow-x-auto rounded-md border border-line">
+                  <Table className="min-w-[360px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Quantidade mínima</TableHead>
+                        <TableHead className="text-right">Preço unitário</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {product?.precos?.map((tier, index) => {
+                        const quantity = tier.minimum_quantity ?? tier.faixa ?? tier.qty;
+                        const rate = tier.unit_price ?? tier.rate;
+                        return (
+                          <TableRow key={`saved-tier-${index}`}>
+                            <TableCell className="font-mono text-sm">
+                              A partir de {formatQuantity(quantity)} un.
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm font-medium">
+                              {rate != null ? formatBRL(rate) : '—'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : !hasBasePrice ? (
                 <p

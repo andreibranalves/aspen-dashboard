@@ -22,6 +22,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/crm': 'CRM',
   '/follow-ups': 'Follow-ups',
   '/products': 'Produtos',
+  '/catalog': 'Catálogo',
   '/leads': 'Clientes',
   '/settings': 'Configurações',
   '/whatsapp-deliveries': 'Envios WhatsApp',

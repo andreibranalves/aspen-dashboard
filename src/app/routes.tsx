@@ -23,7 +23,7 @@ const QuotationDetailPage = lazy(() => import('@/features/quotations/pages/Quota
 const SalesOrdersPage = lazy(() => import('@/features/sales-orders/pages/SalesOrdersPage'));
 const SalesOrderDetailPage = lazy(() => import('@/features/sales-orders/pages/SalesOrderDetailPage'));
 const CrmKanbanPage = lazy(() => import('@/features/crm/pages/CrmKanbanPage'));
-const ProductsPage = lazy(() => import('@/features/products/pages/ProductsPage'));
+const CatalogPage = lazy(() => import('@/features/products/pages/CatalogPage'));
 const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDetailPage'));
 const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
 const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
@@ -131,10 +131,15 @@ export const routes: AppRoute[] = [
     nav: { label: 'Orçamentos', icon: FileText, section: 'Operacional' },
   },
   {
+    path: '/catalog',
+    suspense: true,
+    render: () => <CatalogPage />,
+    nav: { label: 'Catálogo', icon: Package, section: 'Cadastros' },
+  },
+  {
     path: '/products',
     suspense: true,
-    render: () => <ProductsPage />,
-    nav: { label: 'Produtos', icon: Package, section: 'Cadastros' },
+    render: () => <CatalogPage legacy />,
   },
   {
     path: '/leads',

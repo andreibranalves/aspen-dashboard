@@ -5,7 +5,7 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 ## Base e checkpoint
 
 - Base verificada: `origin/master` em `90fe00054c395e71b7241d50d9fe97966dfc7958`, merge do PR #216.
-- Branch atual: `feat/redesign-impeccable-retro`, criada diretamente dessa base.
+- Branch atual: `feat/redesign-impeccable-catalog`, encadeada sobre o bloco R.
 - Trabalho anterior não relacionado preservado na branch `fix/quotation-stuck-issuing`, checkpoint local `7d61db6`.
 - Alteração local de Andrei em `/opt/data/aspen-dashboard/.gitignore` permanece intocada.
 - Goal vigente: `/opt/data/cache/documents/doc_25d697b60cf0_GOAL-ASPEN-DASHBOARD-REDESIGN-COM-IMPECCABLE.md`.
@@ -29,6 +29,15 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 - Polish/craft-floor: revisão de contraste, foco, estados, overflow e responsividade nos consumidores compartilhados; detector mecânico executado uma vez após o acabamento: `detect --json src/components/layout/TopBar.tsx` → `[]`.
 - Evidências: Figma e 41 capturas versionadas para estados claro/escuro e larguras 390/1024/1280/1440; commit `115fb55`; Chromium existente em `/opt/data/.playwright` foi usado com `PLAYWRIGHT_BROWSERS_PATH=/opt/data/.playwright` e `DOTENV_CONFIG_PATH=/dev/null`. Foram aprovados 27/27 testes de Novo orçamento/Orçamentos e 17/17 de Clientes/Pedidos; o último grupo apresentou uma falha de isolamento ao rodar em paralelo e passou na repetição focada, sem mudança de código.
 
+### BLOCO A — Catálogo — 08/09/2026
+
+- Figma conferido: lista de produtos `14:2`, detalhe/edição/novo/duplicação `108:264`, `60:6`, `109:412`, `108:353`, preços `14:86`/`111:194`, conjunto `60:257`, biblioteca `14:284` e upload `64:55`.
+- Implementação: `/catalog` é a entrada canônica com abas Produtos, Conjuntos de produtos e Mídias; `/products` renderiza o mesmo Catálogo com título legado para preservar links/testes; `/products/:sku` permanece o detalhe real. Modelos de pedido, `@modelo`, biblioteca, upload, filtro, remoção e contratos de API foram reutilizados.
+- Critique independente: apontou duplicação potencial de superfície, edição indireta de conjunto, densidade e contexto de retorno. Correções aplicadas: alias para a mesma página, painel de mídia sob ação explícita, tabs navegáveis por teclado e contagem de mídia filtrada.
+- Audit independente: apontou exportação sem filtros, contraste dos links de produto e SKU malformado. Correções aplicadas: exportações refletem `search/status/order_by` da URL, links usam token `primary-text` e decode de SKU é tolerante a valor inválido. Upload, paginação de mídia e simulação de preço ficaram fora por exigirem contrato/infraestrutura não autorizados.
+- Polish/craft-floor: estados de loading, vazio, erro/retry, foco, overlays, long content, dark/light e larguras 390/1024/1280/1440 conferidos; detector mecânico final executado uma vez sobre os alvos alterados: `detect --json ...` → `[]`.
+- Evidências: `docs/design/evidence/catalogo/` contém capturas controladas de produtos nos quatro tamanhos e temas, conjunto vazio/erro/modal e mídias/upload. Validação: `verify:fast` PASS; `tests/catalogo.spec.js` 2/2, `tests/products-core.spec.js` 16/16 e `tests/communication-ui-v2.spec.js` 5/5 com worker único.
+
 ## Inventário curto
 
 | Bloco            | Rotas/superfícies atuais                                                    | Destino                                      | Capacidades/dependências principais                                         | Estado   |
@@ -38,7 +47,7 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 | R Orçamentos     | `/quotations`, `/quotations/:id`                                            | Orçamentos                                   | ações de linha/lote, revisões, itens, histórico e diálogos                  | pendente |
 | R Novo orçamento | `/novo-orcamento`, aliases `/auto` e `/manual`                              | Novo orçamento global                        | modos conversa/manual, rascunhos, prefill, recuperação, validação e emissão | pendente |
 | R Clientes       | `/leads`, `/leads/:tipo/:id`                                                | Clientes                                     | lista, quick view, ficha, manutenção, exportação e arquivamento             | pendente |
-| A Catálogo       | `/products`, `/products/:sku`; partes de `/comunicacao` e modelos de pedido | Catálogo: Produtos, Conjuntos, Mídias        | CRUD real, preços, modelos de pedido, biblioteca/upload                     | pendente |
+| A Catálogo       | `/catalog`, alias `/products`, `/products/:sku`; uso de mídias em `/comunicacao` e modelos de pedido | Catálogo: Produtos, Conjuntos, Mídias        | CRUD real, preços, modelos de pedido, biblioteca/upload                     | validado |
 | B Comercial      | `/crm`, `/follow-ups`; pendências em `/dashboard`                           | Comercial: Negócios, Retornos                | lista/quadro, etapas, duas filas e estados pós-envio                        | pendente |
 | C Envios         | `/whatsapp-deliveries`; histórico em `/comunicacao`; detalhe de orçamento   | Envios: Pendências, Histórico                | fontes/IDs, etapas, recibos, resolução, manual e retry                      | pendente |
 | D Configurações  | `/settings`; fluxos/canais em `/comunicacao`                                | Configurações                                | padrões, modelos, fluxos, empresa e canais                                  | pendente |
@@ -56,7 +65,7 @@ Registrar por jornada: comando realmente executado, alvo/estados, achados, decis
 | Consulta de Orçamentos      | manual 08/09 | manual 08/09 | retorno contextual preservado | preservado | capturas `orcamentos-consulta`; Playwright bloqueado | validado |
 | Novo orçamento              | manual 08/09 | manual 08/09 | nenhum                        | preservado | capturas `novo-orcamento`; Playwright bloqueado      | validado |
 | Clientes                    | manual 08/09 | manual 08/09 | retorno contextual preservado | preservado | capturas `clientes`; Playwright bloqueado            | validado |
-| Catálogo                    | pendente     | pendente     | pendente                      | pendente   | pendente                                             | pendente |
+| Catálogo                    | independente 08/09 | independente 08/09 | alias único, foco/tabs, exportações filtradas, tabela de preços | preservado | `evidence/catalogo`; detector `[]`; `verify:fast` | validado |
 | Comercial                   | pendente     | pendente     | pendente                      | pendente   | pendente                                             | pendente |
 | Envios                      | pendente     | pendente     | pendente                      | pendente   | pendente                                             | pendente |
 | Configurações               | pendente     | pendente     | pendente                      | pendente   | pendente                                             | pendente |
@@ -66,8 +75,9 @@ Registrar por jornada: comando realmente executado, alvo/estados, achados, decis
 ## Branches e ordem de integração
 
 1. `feat/redesign-impeccable-retro`, base `origin/master@90fe000`, bloco R.
-2. Próximas branches serão encadeadas na ordem Catálogo → Comercial → Envios → Configurações → Resultados → integração final, usando como base o HEAD validado do bloco anterior enquanto não houver merge.
+2. `feat/redesign-impeccable-catalog`, encadeada sobre o bloco R, Catálogo validado.
+3. Próximas branches serão encadeadas na ordem Comercial → Envios → Configurações → Resultados → integração final, usando como base o HEAD validado do bloco anterior enquanto não houver merge.
 
 ## Próxima ação
 
-Registrar a revisão independente e continuar para Catálogo sem reiniciar entregas concluídas.
+Continuar para Comercial na próxima branch coesa; não reabrir Catálogo fora de defeitos concretos.

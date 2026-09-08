@@ -2,7 +2,7 @@
 // Delete confirmation and the existing media API calls are preserved.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AlertCircle, Filter, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { AlertCircle, Filter, Image as ImageIcon, PlusCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
@@ -14,13 +14,14 @@ import SkeletonComunicacao from '@/features/communication/components/SkeletonCom
 
 export interface MediaLibraryProps {
   refreshKey?: number | string;
+  onAdd?: () => void;
 }
 
 function errorMessage(_error: unknown, fallback: string): string {
   return fallback;
 }
 
-export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
+export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
   const { toast } = useToast();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,9 +80,16 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
             Arquivos disponíveis para etapas de mídia dos fluxos.
           </p>
         </div>
-        <span className="text-xs text-fg-muted">
-          {items.length} {items.length === 1 ? 'mídia' : 'mídias'}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-fg-muted">
+            {filtered.length} {filtered.length === 1 ? 'mídia' : 'mídias'}
+          </span>
+          {onAdd && (
+            <Button size="sm" onClick={onAdd}>
+              <PlusCircle size={15} /> Adicionar mídia
+            </Button>
+          )}
+        </div>
       </div>
 
       <fieldset className="flex flex-wrap items-center gap-2" disabled={loading}>
@@ -154,7 +162,9 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
           description={
             filterGroup
               ? 'Limpe o filtro para consultar os demais grupos.'
-              : 'Use o formulário acima para enviar imagens ou vídeos.'
+              : onAdd
+                ? 'Use Adicionar mídia para enviar imagens ou vídeos.'
+                : 'Use o formulário acima para enviar imagens ou vídeos.'
           }
           actions={
             filterGroup ? (
