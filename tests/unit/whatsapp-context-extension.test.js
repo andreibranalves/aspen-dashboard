@@ -20,11 +20,12 @@ function settled(value) {
   return { promise: Promise.resolve(value) };
 }
 
-function createHarness({ conversations, lookupResults = [] }) {
+function createHarness({ conversations, lookupResults = [], visibleKeys = [] }) {
   const elements = new Map();
   const lookups = [];
   const observers = [];
   let conversationIndex = 0;
+  let visibleIndex = 0;
   let appendCount = 0;
 
   class Element {
@@ -44,6 +45,7 @@ function createHarness({ conversations, lookupResults = [] }) {
     observe() {}
   }
   const provider = {
+    visibleConversationKey: () => visibleKeys[Math.min(visibleIndex, visibleKeys.length - 1)] || '',
     resolveConversation: async () => {
       const value = conversations[Math.min(conversationIndex++, conversations.length - 1)];
       return value && typeof value.then === 'function' ? value : value;
@@ -66,7 +68,7 @@ function createHarness({ conversations, lookupResults = [] }) {
     get lookupCount() { return lookups.length; },
     get appendCount() { return appendCount; },
     lookup: index => lookups[index],
-    mutate: () => observers[0].callback(),
+    mutate: () => { visibleIndex += 1; observers[0].callback(); },
     reload: () => vm.runInContext(contentSource, context, { filename: 'content.js' }),
   };
 }
@@ -125,6 +127,25 @@ test('switching A to B rejects A response and renders only B', async () => {
   await flush();
   assert.match(harness.html, /Contato B/);
   assert.doesNotMatch(harness.html, /Contato A/);
+});
+
+test('visible conversation switch hides A and invalidates its lookup before slow B identity resolves', async () => {
+  const responseA = deferred();
+  const conversationB = deferred();
+  const harness = createHarness({
+    conversations: [conversationA, conversationB.promise],
+    lookupResults: [responseA],
+    visibleKeys: ['Contato A|Digite para A', 'Contato B|Digite para B'],
+  });
+  await flush();
+  harness.mutate();
+  await flush(275);
+  responseA.resolve(matchedA);
+  await flush();
+  assert.doesNotMatch(harness.html, /Contato A/);
+  assert.match(harness.html, /Identificando conversa/);
+  conversationB.resolve({ status: 'ready', phone: '5511999999999', technicalId: 'b@c.us', displayName: 'Contato B' });
+  await flush();
 });
 
 test('same conversation avoids request storms and mount is idempotent', async () => {

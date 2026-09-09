@@ -6,7 +6,7 @@ Uma correspondência exata com o telefone do JID pode mostrar contexto. Telefone
 
 `whatsapp_client_links` guarda conta conectada, JID da conversa, cliente, telefone observado, telefone do cadastro, origem operator, datas e versão. A chave composta separa contas. Alterações usam compare-and-swap; nome e telefone apresentados na confirmação são comparados sob lock com o cadastro atual. Mudança posterior de telefone pede revisão. Exclusão do cliente remove o vínculo por FK; orçamentos não são afetados.
 
-A extensão lê o JID somente de atributos da conversa aberta e a conta do `last-wid-md` do WhatsApp Web. Estes são detalhes internos, sem contrato público estável: se não estiverem disponíveis, o vínculo fica indisponível, sem varrer registros arbitrários ou converter LID em telefone. PN e LID distintos não são unidos automaticamente. A integração Evolution e os destinatários de mensagens não são alterados.
+A extensão lê a conversa ativa e a conta conectada no modelo do WhatsApp Web. Para conversas LID, usa apenas o mapeamento exato fornecido pelo próprio modelo. O bridge não lê mensagens nem faz chamadas de rede. Estes são detalhes internos, sem contrato público estável: se não estiverem disponíveis, o vínculo fica indisponível, com ações para tentar novamente e pesquisar no Aspen, sem varrer registros arbitrários ou converter LID em telefone. PN e LID distintos não são unidos automaticamente. A integração Evolution e os destinatários de mensagens não são alterados.
 
 ## Implantação
 

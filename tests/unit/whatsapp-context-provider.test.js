@@ -41,3 +41,66 @@ test('a changed header is observed immediately for the same LID', async () => {
   assert.notEqual(first.phone, next.phone);
   assert.equal(next.phone, '5511988881234');
 });
+
+test('active model supplies identity when DOM only contains opaque message IDs', async () => {
+  const { provider, documentRef } = setup('Contato exemplo', ['ABCD1234', 'EFGH5678']);
+  const result = await provider.resolveConversation({ documentRef, readActiveIdentity: async () => ({ status: 'resolved', accountId: '5511988881234:2@c.us', technicalId: '123456789@lid', phone: '554191234567' }) });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.technicalId, '123456789@lid');
+  assert.equal(result.accountId, '5511988881234@s.whatsapp.net');
+  assert.equal(result.phone, '554191234567');
+});
+
+test('provider refuses a stale active model while DOM has already switched conversations', async () => {
+  const { provider, documentRef } = setup('Contato B', ['false_12025550124@c.us_message']);
+  const stale = { status: 'resolved', accountId: '5511988881234:2@c.us', technicalId: '12025550123@c.us', phone: '12025550123' };
+  const result = await provider.resolveConversation({ documentRef, readActiveIdentity: async () => stale });
+  assert.equal(result.status, 'resolving');
+  assert.equal(result.phone, undefined);
+  assert.equal(result.technicalId, undefined);
+});
+
+test('provider refuses identity that changes between consecutive model reads', async () => {
+  const { provider, documentRef } = setup('Contato exemplo', ['opaque-message-id']);
+  const values = [
+    { status: 'resolved', accountId: '5511988881234:2@c.us', technicalId: '12025550123@c.us', phone: '12025550123' },
+    { status: 'resolved', accountId: '5511988881234:2@c.us', technicalId: '12025550124@c.us', phone: '12025550124' },
+  ];
+  const result = await provider.resolveConversation({ documentRef, readActiveIdentity: async () => values.shift() });
+  assert.equal(result.status, 'resolving');
+});
+
+test('visible key includes header and composer recipient', () => {
+  const { provider, documentRef } = setup('Contato exemplo', []);
+  const original = documentRef.querySelector;
+  documentRef.querySelector = selector => selector.includes('contenteditable')
+    ? { getAttribute: () => 'Digite uma mensagem para +55 41 9123-4567' }
+    : original(selector);
+  assert.match(provider.visibleConversationKey(documentRef), /Contato exemplo\|Digite uma mensagem/);
+});
+
+test('provider rechecks DOM after the final model read', async () => {
+  const state = { id: 'false_12025550123@c.us_message', title: 'Contato A' };
+  const element = { getAttribute: name => name === 'data-id' ? state.id : null };
+  const header = { getAttribute: () => state.title, textContent: state.title, querySelector: () => null };
+  const main = { getAttribute: () => null, querySelectorAll: () => [element] };
+  const documentRef = { querySelector: selector => selector.includes('header') || selector.includes('chat-title') ? header : selector === '[role="main"]' ? main : null };
+  const runtime = vm.createContext({});
+  vm.runInContext(source, runtime);
+  let reads = 0;
+  const result = await runtime.AspenWhatsappProvider.resolveConversation({ documentRef, readActiveIdentity: async () => {
+    reads++;
+    if (reads === 2) { state.id = 'false_12025550124@c.us_message'; state.title = 'Contato B'; header.textContent = state.title; }
+    return { status: 'resolved', accountId: '5511988881234:2@c.us', technicalId: '12025550123@c.us', phone: '12025550123' };
+  } });
+  assert.equal(result.status, 'resolving');
+});
+
+test('exact LID to PN mapping may match the same PN found in DOM', async () => {
+  const { provider, documentRef } = setup('Contato exemplo', ['false_12025550123@c.us_message']);
+  const active = { status: 'resolved', accountId: '5511988881234:2@c.us', technicalId: '987654321@lid', phone: '12025550123' };
+  const result = await provider.resolveConversation({ documentRef, readActiveIdentity: async () => active });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.technicalId, '987654321@lid');
+  assert.equal(result.phone, '12025550123');
+});
