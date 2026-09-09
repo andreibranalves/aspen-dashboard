@@ -53,6 +53,6 @@ Google Ads indisponível e gasto Meta editável foram verificados sem gravação
   `DOTENV_CONFIG_PATH=/dev/null PLAYWRIGHT_BROWSERS_PATH=/opt/data/.playwright` e
   `NO_PROXY=localhost,127.0.0.1` para manter o alvo local fora do proxy do ambiente.
 
-Limitação conhecida: o servidor Vite local usa `publicDir: static`, que não serve o
-logo expandido existente no checkout; a imagem quebrada nas capturas é preexistente e
-não foi alterada por este bloco.
+Após a inspeção das capturas, o logo foi corrigido para ser resolvido pelo pipeline de
+assets do Vite. A verificação no servidor local confirmou `complete: true` e dimensões
+naturais `300×77`; o build emitiu o SVG versionado em `public/assets/`.

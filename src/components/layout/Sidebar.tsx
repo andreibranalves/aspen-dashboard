@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
 
+const logoUrl = new URL('../../../public/logo_branca.svg', import.meta.url).href;
+
 export interface SidebarProps {
   collapsed: boolean;
   /** True below the mobile breakpoint, where the sidebar is an overlay. */
@@ -131,7 +133,7 @@ export default function Sidebar({
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-shell-border px-4">
           {!collapsed && (
-            <img src="/logo_branca.svg" alt="Aspen Estamparia" className="h-8 w-auto" />
+            <img src={logoUrl} alt="Aspen Estamparia" className="h-8 w-auto" />
           )}
           {(!mobile || sidebarOpen) && (
             <button
