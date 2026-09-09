@@ -15,6 +15,7 @@
   let host;
   let root;
   let lastFingerprint = '';
+  let lastVisibleFingerprint = '';
   let observer;
   let syncTimer;
   let syncSequence = 0;
@@ -44,7 +45,10 @@
   function openApp(path) { send({ type: 'aspen-context:open', path }); }
 
   function linkControls(context) {
-    if (!context || !context.linking || !context.linking.available) return '<p>Vínculo indisponível até identificar a conta e a conversa.</p>';
+    if (!context || !context.linking || !context.linking.available) {
+      const missing = !state.conversation.accountId ? 'a conta conectada' : 'a conversa aberta';
+      return '<p>Não foi possível identificar ' + missing + ' para salvar o vínculo.</p><button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>';
+    }
     return '<div class="aspen-link-search"><input data-search aria-label="Pesquisar cliente" placeholder="Nome ou telefone do cliente" maxlength="100"><button data-action="find">Pesquisar cliente</button>' + (context.linking.version ? '<button data-action="unlink">Desvincular cliente</button>' : '') + '</div>';
   }
 
@@ -138,11 +142,31 @@
 
   async function sync(force) {
     if (!provider) { state.conversation = { status: 'unsupported' }; render(); return; }
+    const visibleFingerprint = provider.visibleConversationKey ? provider.visibleConversationKey(document) : '';
+    if (lastVisibleFingerprint && visibleFingerprint && visibleFingerprint !== lastVisibleFingerprint) {
+      ++state.generation;
+      state.context = null;
+      state.loading = false;
+      state.error = '';
+      state.conversation = { status: 'resolving' };
+      render();
+    }
+    if (visibleFingerprint) lastVisibleFingerprint = visibleFingerprint;
     const sequence = ++syncSequence;
     const previousConversation = state.conversation;
     let conversation;
     try { conversation = await provider.resolveConversation({ force: Boolean(force) }); } catch { conversation = { status: 'error' }; }
     if (sequence !== syncSequence) return;
+    if (visibleFingerprint && provider.visibleConversationKey && provider.visibleConversationKey(document) !== visibleFingerprint) {
+      ++state.generation;
+      state.context = null;
+      state.loading = false;
+      state.conversation = { status: 'resolving' };
+      render();
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(function () { sync(true); }, 0);
+      return;
+    }
     const fingerprint = JSON.stringify([conversation.status, conversation.phone, conversation.technicalId, conversation.accountId, conversation.displayName]);
     if (!force && fingerprint === lastFingerprint) {
       state.conversation = state.loading || state.context ? conversation : previousConversation;

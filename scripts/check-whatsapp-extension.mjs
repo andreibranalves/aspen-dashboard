@@ -37,11 +37,15 @@ export function validateWhatsappExtension() {
   if (!content.js?.includes('provider.js') || !content.js?.includes('content.js')) {
     throw new Error('provider.js e content.js devem ser carregados juntos.');
   }
+  const identity = manifest.content_scripts?.find((script) => script.js?.includes('identity.js'));
+  if (!identity || identity.world !== 'MAIN' || identity.run_at !== 'document_start') {
+    throw new Error('identity.js deve iniciar no MAIN world antes do drawer.');
+  }
   if (manifest.background?.service_worker !== 'background.js') throw new Error('service worker inválido.');
-  for (const file of ['README.md', 'background.js', 'config.js', 'content.js', 'provider.js', 'styles.css']) {
+  for (const file of ['README.md', 'background.js', 'config.js', 'content.js', 'identity.js', 'provider.js', 'styles.css']) {
     if (!existsSync(resolve(EXTENSION, file))) throw new Error(`Arquivo da extensão ausente: ${file}.`);
   }
-  return { origin, files: 6, permissions: 0 };
+  return { origin, files: 7, permissions: 0 };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
