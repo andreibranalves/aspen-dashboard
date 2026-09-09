@@ -1069,10 +1069,12 @@ test('empty local dashboard renders zero metrics @quotations @critical', async (
     stale_quotations: [],
   }));
   await page.goto('/#/dashboard');
-  await expect(page.getByText('Dashboard', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Resultados', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('R$ 0,00', { exact: true }).first()).toBeVisible();
+  await page.getByRole('tab', { name: 'Produtos' }).click();
   await expect(page.getByText('Nenhum produto vendido no período.', { exact: true })).toBeVisible();
-  await expect(page.getByText('Nenhuma venda no período.', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Visão geral' }).click();
+  await expect(page.getByText('Nenhum movimento neste período.', { exact: true })).toBeVisible();
 });
 
 test('products page uses local controls without response mode metadata @quotations @critical', async ({ page }) => {

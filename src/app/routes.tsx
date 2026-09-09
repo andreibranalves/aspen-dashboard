@@ -49,7 +49,12 @@ export interface AppRoute {
   suspense?: boolean;
   /** Renderiza dentro do Layout shell (default: true). */
   layout?: boolean;
-  nav?: { label: string; icon: LucideIcon; section: string };
+  nav?: {
+    label: string;
+    icon: LucideIcon;
+    placement: 'action' | 'destination' | 'footer';
+    order: number;
+  };
 }
 
 export const routes: AppRoute[] = [
@@ -102,7 +107,7 @@ export const routes: AppRoute[] = [
     path: '/novo-orcamento',
     suspense: true,
     render: () => <NewQuotationPage initialMode="conversation" />,
-    nav: { label: 'Novo orçamento', icon: FileText, section: 'Operacional' },
+    nav: { label: 'Novo orçamento', icon: FileText, placement: 'action', order: 0 },
   },
   {
     path: '/auto',
@@ -113,25 +118,25 @@ export const routes: AppRoute[] = [
     path: '/whatsapp-deliveries',
     suspense: true,
     render: () => <WhatsAppDeliveriesPage />,
-    nav: { label: 'Envios WhatsApp', icon: Send, section: 'Operacional' },
+    nav: { label: 'Envios', icon: Send, placement: 'destination', order: 6 },
   },
   {
     path: '/dashboard',
     suspense: true,
     render: ({ navigate }) => <DashboardPage navigate={navigate} />,
-    nav: { label: 'Dashboard', icon: BarChart3, section: 'Operacional' },
+    nav: { label: 'Resultados', icon: BarChart3, placement: 'destination', order: 7 },
   },
   {
     path: '/sales-orders',
     suspense: true,
     render: ({ navigate }) => <SalesOrdersPage navigate={navigate} />,
-    nav: { label: 'Pedidos', icon: ShoppingCart, section: 'Operacional' },
+    nav: { label: 'Pedidos', icon: ShoppingCart, placement: 'destination', order: 3 },
   },
   {
     path: '/crm',
     suspense: true,
     render: ({ navigate }) => <CommercialPage navigate={navigate} />,
-    nav: { label: 'Comercial', icon: Columns3, section: 'Operacional' },
+    nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2 },
   },
   {
     path: '/follow-ups',
@@ -142,13 +147,13 @@ export const routes: AppRoute[] = [
     path: '/quotations',
     suspense: true,
     render: ({ navigate }) => <QuotationsPage navigate={navigate} />,
-    nav: { label: 'Orçamentos', icon: FileText, section: 'Operacional' },
+    nav: { label: 'Orçamentos', icon: FileText, placement: 'destination', order: 1 },
   },
   {
     path: '/catalog',
     suspense: true,
     render: () => <CatalogPage />,
-    nav: { label: 'Catálogo', icon: Package, section: 'Cadastros' },
+    nav: { label: 'Catálogo', icon: Package, placement: 'destination', order: 5 },
   },
   {
     path: '/products',
@@ -159,7 +164,7 @@ export const routes: AppRoute[] = [
     path: '/leads',
     suspense: true,
     render: ({ navigate }) => <LeadsPage navigate={navigate} />,
-    nav: { label: 'Clientes', icon: Users, section: 'Operacional' },
+    nav: { label: 'Clientes', icon: Users, placement: 'destination', order: 4 },
   },
   {
     path: '/comunicacao',
@@ -170,7 +175,7 @@ export const routes: AppRoute[] = [
     path: '/settings',
     suspense: true,
     render: () => <SettingsPage />,
-    nav: { label: 'Configurações', icon: Settings, section: 'Outros' },
+    nav: { label: 'Configurações', icon: Settings, placement: 'footer', order: 8 },
   },
   {
     path: '/manual',

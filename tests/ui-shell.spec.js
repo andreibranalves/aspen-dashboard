@@ -31,7 +31,7 @@ async function openDashboard(page, viewport) {
     });
   });
   await page.goto('/#/dashboard');
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
 }
 
 function contrastRatio(foreground, background) {
@@ -59,7 +59,7 @@ async function waitForThemeToSettle(page) {
 }
 
 async function expectSidebarCategoryContrast(page) {
-  for (const category of ['Operacional', 'Cadastros', 'Outros']) {
+  for (const category of ['Operação']) {
     const label = page.getByText(category, { exact: true });
     const colors = await label.evaluate((element) => ({
       foreground: globalThis.getComputedStyle(element).color,
@@ -77,7 +77,7 @@ test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page 
   await menu.click();
   await expect(page.locator('#aspen-sidebar')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fechar menu' })).toBeFocused();
-  await expect(page.getByRole('button', { name: 'Dashboard' })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: 'Resultados' })).toHaveAttribute(
     'aria-current',
     'page'
   );

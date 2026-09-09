@@ -56,6 +56,8 @@ export interface DashboardListView<T> {
 
 export interface DashboardViewData {
   periodLabel: string | null;
+  periodFrom: string | null;
+  periodTo: string | null;
   summary: DashboardSummaryView | null;
   topProducts: DashboardListView<DashboardProductView> | null;
   topCustomers: DashboardListView<DashboardCustomerView> | null;
@@ -166,7 +168,8 @@ function projectProduct(value: unknown): DashboardProductView | null {
   const quantity = nonnegativeNumber(source.quantity);
   const revenue = nonnegativeNumber(source.revenue);
   const custo = nonnegativeNumber(source.custo) ?? 0;
-  const margem = finiteNumber(source.margem) ?? (revenue && revenue > 0 ? (revenue - custo) / revenue : 0);
+  const margem =
+    finiteNumber(source.margem) ?? (revenue && revenue > 0 ? (revenue - custo) / revenue : 0);
   const orders = safeCount(source.orders);
   if (!sku || !product || quantity === undefined || revenue === undefined || orders === undefined)
     return null;
@@ -215,6 +218,8 @@ export function projectDashboardView(value: unknown): DashboardViewData | null {
   const period = asRecord(source.period);
   return {
     periodLabel: identifier(period?.label),
+    periodFrom: identifier(period?.from),
+    periodTo: identifier(period?.to),
     summary: projectSummary(source.summary),
     topProducts: projectList(source.top_products, projectProduct),
     topCustomers: projectList(source.top_customers, projectCustomer),

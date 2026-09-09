@@ -13,7 +13,7 @@ export interface BreadcrumbItem {
 }
 
 const PAGE_LABELS: Record<string, string> = {
-  '/dashboard': 'Início',
+  '/dashboard': 'Resultados',
   '/quotations': 'Orçamentos',
   '/novo-orcamento': 'Novo orçamento',
   '/auto': 'Auto',
@@ -25,7 +25,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/catalog': 'Catálogo',
   '/leads': 'Clientes',
   '/settings': 'Configurações',
-  '/whatsapp-deliveries': 'Envios WhatsApp',
+  '/whatsapp-deliveries': 'Envios',
   '/comunicacao': 'Comunicação',
   '/404': 'Página não encontrada',
 };
@@ -65,7 +65,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
   if (path === '/dashboard')
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Dashboard', hash: null },
+      { label: 'Resultados', hash: null },
     ];
 
   if (path.startsWith('/quotations/')) {

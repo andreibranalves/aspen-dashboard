@@ -5,7 +5,7 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 ## Base e checkpoint
 
 - Base verificada: `origin/master` em `90fe00054c395e71b7241d50d9fe97966dfc7958`, merge do PR #216.
-- Branch atual: `feat/redesign-impeccable-settings`, encadeada sobre o bloco C.
+- Branch atual: `feat/redesign-impeccable-results`, encadeada sobre o bloco D.
 - Trabalho anterior não relacionado preservado na branch `fix/quotation-stuck-issuing`, checkpoint local `7d61db6`.
 - Alteração local de Andrei em `/opt/data/aspen-dashboard/.gitignore` permanece intocada.
 - Goal vigente: `/opt/data/cache/documents/doc_25d697b60cf0_GOAL-ASPEN-DASHBOARD-REDESIGN-COM-IMPECCABLE.md`.
@@ -80,8 +80,8 @@ Atualizado em 08/09/2026. Registro operacional, não contrato visual.
 | B Comercial      | `/crm`, alias `/follow-ups`; atalho em `/dashboard`                                                  | Comercial: Negócios, Retornos                | lista/quadro, etapas, duas filas e estados pós-envio                        | validado |
 | C Envios         | `/whatsapp-deliveries`; histórico em `/comunicacao`; detalhe de orçamento                            | Envios: Pendências, Histórico                | fontes/IDs, etapas, recibos, resolução, manual e retry                      | validado |
 | D Configurações  | `/settings`; fluxos/canais em `/comunicacao`                                                         | Configurações                                | padrões, modelos, fluxos, empresa e canais                                  | validado |
-| E Resultados     | `/dashboard`                                                                                         | Resultados                                   | período, indicadores, produtos, clientes, financeiro e gasto Meta           | pendente |
-| Integração       | `src/app/routes.tsx`, `Layout`, sidebar, breadcrumbs                                                 | navegação final com 8 destinos + ação global | aliases, retorno contextual, guards e estados globais                       | pendente |
+| E Resultados     | `/dashboard`                                                                                         | Resultados                                   | período, indicadores, produtos, clientes, financeiro e gasto Meta           | validado |
+| Integração       | `src/app/routes.tsx`, `Layout`, sidebar, breadcrumbs                                                 | navegação final com 8 destinos + ação global | aliases, retorno contextual, guards e estados globais                       | validado |
 
 ## Cobertura Impeccable e validação
 
@@ -98,7 +98,7 @@ Registrar por jornada: comando realmente executado, alvo/estados, achados, decis
 | Comercial                   | independente 08/09 | independente 08/09 | shell único, lista/quadro, filas, CTA explícito, validação de envelopes, layout responsivo sem DOM duplicado | preservado              | `evidence/comercial`; detector `[]`; `verify:fast`; smoke 15/15; unit 12/12          | validado |
 | Envios                      | independente 08/09 | independente 08/09 | tabs, tabela densa, histórico por fonte, drawer e timestamps                                                 | aplicado 08/09          | `evidence/envios`; `verify:fast`; unit 9/9; smoke mockado                            | validado |
 | Configurações               | manual 08/09       | manual 08/09       | abas/URL, guards, prévia sandbox, estados e capacidades preservadas                                          | acabamento manual 08/09 | `evidence/configuracoes`; detector `[]`; `verify:fast`; unit 31/31; Playwright 16/16 | validado |
-| Resultados                  | pendente           | pendente           | pendente                                                                                                     | pendente                | pendente                                                                             | pendente |
+| Resultados                  | avaliado 08/09     | avaliado 08/09     | estados, tabelas, gráfico real, tabs/URL, edição Meta, adapt/responsive                                      | aplicado 08/09          | `evidence/resultados-integracao`; detector `[]`; Playwright focado 12/12             | validado |
 | Navegação e estados globais | manual 08/09       | manual 08/09       | item pai sem segunda ação                                                                                    | preservado              | `TopBar.tsx`; `verify:fast` PASS                                                     | validado |
 
 ## Branches e ordem de integração
@@ -108,8 +108,8 @@ Registrar por jornada: comando realmente executado, alvo/estados, achados, decis
 3. `feat/redesign-impeccable-commercial`, encadeada sobre o bloco A, Comercial validado.
 4. `feat/redesign-impeccable-shipping`, encadeada sobre o bloco B, Envios validado.
 5. `feat/redesign-impeccable-settings`, encadeada sobre o bloco C, Configurações validado.
-6. Próxima branch: Resultados → integração final, usando como base o HEAD validado do bloco anterior enquanto não houver merge.
+6. `feat/redesign-impeccable-results`: Resultados e integração final sobre o HEAD validado do bloco anterior.
 
 ## Próxima ação
 
-Continuar para Resultados na próxima branch coesa; não reabrir Catálogo, Comercial, Envios ou Configurações fora de defeitos concretos.
+Resultados e navegação final validados nesta branch; não reabrir Catálogo, Comercial, Envios ou Configurações fora de defeitos concretos.
