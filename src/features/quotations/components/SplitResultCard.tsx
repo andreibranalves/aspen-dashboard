@@ -9,9 +9,7 @@ import {
   Loader2,
   AlertTriangle,
   Send,
-  FileText,
   Check,
-  Phone,
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -21,11 +19,16 @@ import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPanel';
-import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
-import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection, StoredAutoQuoteDraft } from '@/types/domain';
-import type { CommunicationFlow } from '@/lib/api/communicationApi';
-import type { DeliveryResolution, DeliveryView } from '@/lib/api/quotationDeliveryApi';
+import { Select } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import type {
+  Draft,
+  DraftEdited,
+  DraftItem,
+  QuotationIssueProjection,
+  QuotationSavedSnapshot,
+  StoredAutoQuoteDraft,
+} from '@/types/domain';
 import type { QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 
 export interface SplitResultCardProps {
@@ -33,33 +36,31 @@ export interface SplitResultCardProps {
   displayIdx: number;
   totalDrafts: number;
   isProcessing?: boolean;
+  issueBlocked?: boolean;
+  editingBlocked?: boolean;
   onUpdateField: (draftIdx: number, field: keyof DraftEdited, value: unknown) => void;
   onUpdateItem: (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => void;
   onRemoveItem: (draftIdx: number, itemIdx: number) => void;
   onAddItem: (draftIdx: number) => void;
-  selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
+  selectProduct: (draftIdx: number, itemIdx: number, product: Product) => Promise<void>;
   onRefetchPricing: (draftIdx: number) => Promise<Draft | undefined>;
   onCreateQuote: (draftIdx: number) => void;
+  onRecoverIssue?: (draftIdx: number) => void;
+  onClearIssueRecovery?: (draftIdx: number) => void;
+  onPricingPendingChange?: (draftIdx: number, pending: boolean) => void;
   onSaveDraft?: (draftIdx: number) => void;
   isSavingDraft?: boolean;
-  onPreviewQuote: (draftIdx: number) => void;
+  onReviewQuote: (draftIdx: number) => void;
+  reviewOnly?: boolean;
+  onApply?: () => void;
+  onDiscard?: () => void;
   issue?: QuotationIssueProjection;
   issueError?: string;
   pricingConflictItems?: string[];
-  viewUrl?: string;
-  delivery?: DeliveryView | null;
-  deliveryPending?: boolean;
-  deliveryError?: string;
-  waSendEnabled?: boolean;
-  waFlows?: CommunicationFlow[];
-  waSelectedFlowId?: string;
   templates?: QuotationTemplateMetadata[];
   templateLoading?: boolean;
   templateError?: string | null;
   onRetryTemplates?: () => void;
-  onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
-  onSendWhatsApp?: (draftIdx: number) => void;
-  onResolveDelivery?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
 }
 
 export default function SplitResultCard({
@@ -67,6 +68,8 @@ export default function SplitResultCard({
   displayIdx,
   totalDrafts,
   isProcessing,
+  issueBlocked = false,
+  editingBlocked: parentEditingBlocked = false,
   onUpdateField,
   onUpdateItem,
   onRemoveItem,
@@ -74,29 +77,26 @@ export default function SplitResultCard({
   selectProduct,
   onRefetchPricing,
   onCreateQuote,
+  onRecoverIssue,
+  onClearIssueRecovery,
+  onPricingPendingChange,
   onSaveDraft,
   isSavingDraft = false,
-  onPreviewQuote,
+  onReviewQuote,
+  reviewOnly = false,
+  onApply,
+  onDiscard,
   issue,
   issueError,
   pricingConflictItems = [],
-  viewUrl,
-  delivery = null,
-  deliveryPending = false,
-  deliveryError,
-  waSendEnabled = true,
-  waFlows = [],
-  waSelectedFlowId = '',
   templates = [],
   templateLoading = false,
   templateError = null,
   onRetryTemplates,
-  onSelectWhatsAppFlow,
-  onSendWhatsApp,
-  onResolveDelivery,
 }: SplitResultCardProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(reviewOnly);
   const cardRef = useRef<HTMLDivElement>(null);
+  const editingBlocked = Boolean(isProcessing || isSavingDraft || parentEditingBlocked);
 
   useEffect(() => {
     if (!pricingConflictItems.length) return;
@@ -117,6 +117,46 @@ export default function SplitResultCard({
   const [activeSearchIdx, setActiveSearchIdx] = useState<number | null>(null);
   const searchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const qtyPricingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pricingGenerationRef = useRef(0);
+  const [pricingPending, setPricingPending] = useState(false);
+  const beginPricing = useCallback(() => {
+    if (qtyPricingTimer.current) clearTimeout(qtyPricingTimer.current);
+    qtyPricingTimer.current = null;
+    const generation = ++pricingGenerationRef.current;
+    setPricingPending(true);
+    return generation;
+  }, []);
+  const settlePricing = useCallback((generation: number) => {
+    if (pricingGenerationRef.current === generation) setPricingPending(false);
+  }, []);
+  const actionBlocked = Boolean(editingBlocked || issueBlocked || pricingPending);
+
+  useEffect(() => {
+    onPricingPendingChange?.(draft.index, pricingPending);
+    return () => onPricingPendingChange?.(draft.index, false);
+  }, [draft.index, onPricingPendingChange, pricingPending]);
+
+  useEffect(() => {
+    if (!editingBlocked) return;
+    setEditing(false);
+    Object.values(searchTimers.current).forEach((timer) => clearTimeout(timer));
+    searchTimers.current = {};
+    setItemSearchTerms({});
+    setItemResults({});
+    setItemSearching({});
+    setActiveSearchIdx(null);
+    if (!isProcessing && !isSavingDraft) return;
+    pricingGenerationRef.current += 1;
+    setPricingPending(false);
+    if (qtyPricingTimer.current) {
+      clearTimeout(qtyPricingTimer.current);
+      qtyPricingTimer.current = null;
+    }
+  }, [editingBlocked, isProcessing, isSavingDraft]);
+
+  useEffect(() => () => {
+    if (qtyPricingTimer.current) clearTimeout(qtyPricingTimer.current);
+  }, []);
 
   // Click outside closes the active dropdown
   useEffect(() => {
@@ -133,6 +173,7 @@ export default function SplitResultCard({
   // Debounced product search per item index
   const onItemSkuChange = useCallback(
     (ii: number, value: string) => {
+      if (editingBlocked) return;
       setItemSearchTerms((prev) => ({ ...prev, [ii]: value }));
       onUpdateItem(draft.index, ii, 'item_code', value);
       if (searchTimers.current[ii]) clearTimeout(searchTimers.current[ii]);
@@ -153,15 +194,21 @@ export default function SplitResultCard({
         setItemSearching((prev) => ({ ...prev, [ii]: false }));
       }
     },
-    [draft.index, onUpdateItem]
+    [draft.index, editingBlocked, onUpdateItem]
   );
 
   // Select product from dropdown
   const handleSelectProduct = useCallback(
-    (ii: number, product: Product) => {
+    async (ii: number, product: Product) => {
+      if (editingBlocked) return;
       if (!product?.sku) return;
       if (isUnpricedProduct(product)) return;
-      selectProduct(draft.index, ii, product);
+      const pricingGeneration = beginPricing();
+      try {
+        await selectProduct(draft.index, ii, product);
+      } finally {
+        settlePricing(pricingGeneration);
+      }
       setItemSearchTerms((prev) => ({
         ...prev,
         [ii]: product.sku,
@@ -169,12 +216,13 @@ export default function SplitResultCard({
       setItemResults((prev) => ({ ...prev, [ii]: [] }));
       setActiveSearchIdx(null);
     },
-    [draft.index, selectProduct]
+    [beginPricing, draft.index, editingBlocked, selectProduct, settlePricing]
   );
 
   // Remove item with local state cleanup
   const handleRemoveItem = useCallback(
     (ii: number) => {
+      if (editingBlocked) return;
       onRemoveItem(draft.index, ii);
       setItemSearchTerms((prev) => {
         const n = { ...prev };
@@ -193,18 +241,21 @@ export default function SplitResultCard({
       });
       if (activeSearchIdx === ii) setActiveSearchIdx(null);
     },
-    [draft.index, onRemoveItem, activeSearchIdx]
+    [activeSearchIdx, draft.index, editingBlocked, onRemoveItem]
   );
 
   const savedDraft = draft as StoredAutoQuoteDraft;
   const saved = savedDraft.saved;
+  const hasSavedSnapshot = Boolean(saved?.snapshot);
   const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
   const resultData = draft.result?.data;
+  const snapshot = saved?.snapshot || (resultData?.snapshot as QuotationSavedSnapshot | undefined);
   const items = isDone
-    ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || []
+    ? snapshot?.items || []
     : draft.edited.items || [];
-  const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
-  const totalUrgente = total;
+  const calculatedTotal = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
+  const total = isDone ? snapshot?.total : calculatedTotal;
+  const totalDisplay = total === undefined ? '—' : formatBRL(total);
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const hasClient = Boolean(draft.edited.nome?.trim());
   const actionBlockMessage = !hasClient && validItems === 0
@@ -219,17 +270,15 @@ export default function SplitResultCard({
             ? 'Selecione uma origem válida para continuar.'
             : null;
   const canCreate = actionBlockMessage === null;
+  const canApply = canCreate && items.every((item) => Number.isFinite(Number(item.rate)) && Number(item.rate) > 0);
   const actionStatusId = `quotation-action-status-${draft.index}`;
   const displayItems = editing ? items : items.filter((it) => it.item_code);
   const immutableIssue = Boolean(issue);
-  const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
-  const deliveryBlocksSend = Boolean(delivery);
-  const failedDelivery = delivery?.state === 'failed';
 
   function toggleEditing() {
+    if (editingBlocked || immutableIssue) return;
     if (!editing) {
-      if (immutableIssue) return;
       // Pre-fill search terms with existing item codes
       const terms: Record<number, string> = {};
       items.forEach((item, ii) => {
@@ -249,10 +298,10 @@ export default function SplitResultCard({
   return (
     <div
       ref={cardRef}
-      aria-busy={isProcessing}
+      aria-busy={isProcessing || issueBlocked || parentEditingBlocked || pricingPending}
       className={cn(
         'rounded-lg border border-line bg-surface',
-        isProcessing && !immutableIssue && 'opacity-60 pointer-events-none'
+        isProcessing && !immutableIssue && 'opacity-60'
       )}
     >
       {/* ── Header ── */}
@@ -278,7 +327,7 @@ export default function SplitResultCard({
                 <Check size={10} /> Emitido
               </span>
             )}
-            {!isDone && saved && (
+            {!isDone && hasSavedSnapshot && (
               <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-fg-muted">
                 <Check size={10} /> Rascunho salvo
               </span>
@@ -292,17 +341,19 @@ export default function SplitResultCard({
                   aria-label="Nome"
                   value={draft.edited.nome || ''}
                   onChange={(e) => onUpdateField(draft.index, 'nome', e.target.value)}
+                  disabled={editingBlocked}
                   placeholder="Nome"
                   className="h-7 text-xs"
                 />
               </label>
-              <div className="grid grid-cols-[4fr_3fr_3fr] gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[4fr_3fr_3fr]">
                 <label className="block space-y-1">
                   <span className="text-[10px] font-medium text-fg-muted">E-mail</span>
                   <Input
                     aria-label="E-mail"
                     value={draft.edited.email || ''}
                     onChange={(e) => onUpdateField(draft.index, 'email', e.target.value)}
+                    disabled={editingBlocked}
                     placeholder="E-mail"
                     className="h-7 text-xs"
                   />
@@ -313,16 +364,18 @@ export default function SplitResultCard({
                     aria-label="Telefone"
                     value={draft.edited.telefone || ''}
                     onChange={(e) => onUpdateField(draft.index, 'telefone', e.target.value)}
+                    disabled={editingBlocked}
                     placeholder="Telefone"
                     className="h-7 text-xs"
                   />
                 </label>
-                <label className="block space-y-1">
+                <label className="block space-y-1 [&>div]:flex [&>div]:w-full">
                   <span className="text-[10px] font-medium text-fg-muted">Origem</span>
-                  <select
+                  <Select
                     aria-label="Origem"
                     value={draft.edited.origem || ''}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
+                    disabled={editingBlocked}
                     className="h-7 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                   >
                     <option value="">Selecione a origem…</option>
@@ -331,7 +384,7 @@ export default function SplitResultCard({
                         {source.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               </div>
             </div>
@@ -354,15 +407,16 @@ export default function SplitResultCard({
         </div>
         <div className="text-right shrink-0">
           <p className="text-[10px] font-medium text-fg-muted uppercase">Total</p>
-          <p className="text-lg font-bold text-fg">{formatBRL(totalUrgente)}</p>
+          <p className="text-lg font-bold text-fg">{totalDisplay}</p>
+          {isDone && snapshot && <p className="text-[10px] text-fg-muted">Frete: {formatBRL(snapshot.frete)}</p>}
           {draft.edited.urgente && (
-            <p className="text-[10px] text-fg-muted">Base: {formatBRL(total)}</p>
+            <p className="text-[10px] text-fg-muted">Base: {totalDisplay}</p>
           )}
         </div>
       </div>
 
       {/* ── Stage 2: extracted values remain editable until creation. ── */}
-      {!isDone && saved && (
+      {!isDone && hasSavedSnapshot && (
         <div className="border-b border-line bg-primary/5 px-4 py-3">
           <p className="text-xs leading-5 text-fg-muted">
             Rascunho salvo. Continue a revisão ou emita o orçamento.
@@ -379,20 +433,20 @@ export default function SplitResultCard({
               <Button type="button" variant="outline" size="sm" onClick={onRetryTemplates}>Tentar novamente</Button>
             </div>
           ) : (
-            <label className="block space-y-1">
+            <label className="block space-y-1 [&>div]:flex [&>div]:w-full">
               <span className="text-[10px] font-medium text-fg-muted">Modelo de orçamento</span>
-              <select
+              <Select
                 aria-label="Modelo de orçamento"
                 value={draft.edited.template_key || ''}
                 onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
-                disabled={templateLoading || templates.length === 0}
+                disabled={editingBlocked || templateLoading || templates.length === 0}
                 className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
                 {!draft.edited.template_key && <option value="">Modelo padrão</option>}
                 {templates.map((template) => (
                   <option key={template.key} value={template.key}>{template.name}</option>
                 ))}
-              </select>
+              </Select>
             </label>
           )}
         </div>
@@ -400,8 +454,7 @@ export default function SplitResultCard({
 
       {/* ── Items table ── */}
       {!isDone && (
-        <div className="overflow-x-auto">
-          <table
+        <Table
             className="w-full min-w-[520px] table-fixed text-xs"
             aria-label={`Itens do pedido ${displayIdx + 1}`}
           >
@@ -412,16 +465,16 @@ export default function SplitResultCard({
               <col className="w-28" />
               <col className="w-8" />
             </colgroup>
-            <thead>
-              <tr className="border-b border-line text-fg-muted">
-                <th scope="col" className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
-                <th scope="col" className="px-3 py-2 text-center font-medium">Qtd</th>
-                <th scope="col" className="px-3 py-2 text-center font-medium">Preço</th>
-                <th scope="col" className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
-                <th scope="col" className="py-2 pr-4" />
-              </tr>
-            </thead>
-            <tbody>
+            <TableHeader>
+              <TableRow className="border-b border-line text-fg-muted">
+                <TableHead scope="col" className="py-2 pl-4 pr-3 text-left font-medium">Produto</TableHead>
+                <TableHead scope="col" className="px-3 py-2 text-center font-medium">Qtd</TableHead>
+                <TableHead scope="col" className="px-3 py-2 text-center font-medium">Preço</TableHead>
+                <TableHead scope="col" className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</TableHead>
+                <TableHead scope="col" className="py-2 pr-4" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {displayItems.map((item, ii) => {
                 const hasCode = !!item.item_code;
                 const results = itemResults[ii] || [];
@@ -431,14 +484,14 @@ export default function SplitResultCard({
                   itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : item.item_code || '';
 
                 return (
-                  <tr
+                  <TableRow
                     key={ii}
                     className={cn(
                       'border-b border-line last:border-b-0 hover:bg-surface/30',
                       pricingConflictItems.includes(item.item_code) && 'bg-amber-50 dark:bg-amber-500/10',
                     )}
                   >
-                    <td className="py-2 pl-4 pr-3">
+                    <TableCell className="py-2 pl-4 pr-3">
                       {editing ? (
                         <div className="relative item-search-cell">
                           <Input
@@ -447,6 +500,7 @@ export default function SplitResultCard({
                             value={searchValue}
                             onChange={(e) => onItemSkuChange(ii, e.target.value)}
                             onFocus={() => setActiveSearchIdx(ii)}
+                            disabled={editingBlocked}
                           />
                           {searching && (
                             <Loader2
@@ -460,7 +514,7 @@ export default function SplitResultCard({
                                 <button
                                   key={p.sku || p.item_code}
                                   type="button"
-                                  disabled={isUnpricedProduct(p)}
+                                  disabled={editingBlocked || isUnpricedProduct(p)}
                                   title={
                                     isUnpricedProduct(p)
                                       ? 'Preço indisponível para este produto.'
@@ -473,7 +527,7 @@ export default function SplitResultCard({
                                       : 'hover:bg-surface-muted'
                                   )}
                                   onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => handleSelectProduct(ii, p)}
+                          onClick={() => void handleSelectProduct(ii, p)}
                                 >
                                   <span className="font-mono text-[10px] text-fg-muted shrink-0">
                                     {p.sku || p.item_code}
@@ -498,6 +552,7 @@ export default function SplitResultCard({
                               onChange={(event) =>
                                 onUpdateItem(draft.index, ii, 'item_name', event.target.value)
                               }
+                              disabled={editingBlocked}
                             />
                           </label>
                         </div>
@@ -509,22 +564,28 @@ export default function SplitResultCard({
                           {item.item_name || item.item_code || '—'}
                         </span>
                       )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-center">
                       {editing ? (
                         <Input
                           type="number"
                           aria-label={`Quantidade do item ${item.item_code || ii + 1}`}
                           value={item.qty}
                           onChange={(e) => {
+                            if (editingBlocked) return;
                             const val = Math.max(1, Number(e.target.value));
                             onUpdateItem(draft.index, ii, 'qty', val);
-                            if (qtyPricingTimer.current) clearTimeout(qtyPricingTimer.current);
-                            qtyPricingTimer.current = setTimeout(
-                              () => onRefetchPricing(draft.index),
-                              600
-                            );
+                            const pricingGeneration = beginPricing();
+                            qtyPricingTimer.current = setTimeout(async () => {
+                              qtyPricingTimer.current = null;
+                              try {
+                                await onRefetchPricing(draft.index);
+                              } finally {
+                                settlePricing(pricingGeneration);
+                              }
+                            }, 600);
                           }}
+                          disabled={editingBlocked}
                           className="mx-auto h-7 w-16 text-center text-xs"
                         />
                       ) : hasCode ? (
@@ -532,8 +593,8 @@ export default function SplitResultCard({
                       ) : (
                         '—'
                       )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-center">
                       {editing ? (
                         <Input
                           type="number"
@@ -543,6 +604,7 @@ export default function SplitResultCard({
                           onChange={(e) =>
                             onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))
                           }
+                          disabled={editingBlocked}
                           data-conflict-sku={item.item_code || undefined}
                           className="mx-auto h-7 w-20 text-center text-xs"
                         />
@@ -551,34 +613,34 @@ export default function SplitResultCard({
                       ) : (
                         '—'
                       )}
-                    </td>
-                    <td className="py-2 pl-3 pr-4 text-right font-medium">
+                    </TableCell>
+                    <TableCell className="py-2 pl-3 pr-4 text-right font-medium">
                       {formatBRL((item.qty || 0) * (item.rate || 0))}
-                    </td>
-                    <td className="py-2 pr-4">
+                    </TableCell>
+                    <TableCell className="py-2 pr-4">
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
+                        disabled={editingBlocked}
                         className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                         aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
                         title="Excluir produto"
                       >
                         <X size={13} />
                       </button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
               {displayItems.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center text-xs text-fg-muted">
+                <TableRow>
+                  <TableCell colSpan={5} className="py-4 text-center text-xs text-fg-muted">
                     Nenhum item adicionado
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
       )}
 
       {isDone && (
@@ -590,25 +652,6 @@ export default function SplitResultCard({
               <span>Validade: {formatDate(issue.validUntil)}</span>
             </div>
           )}
-          <WhatsAppSendPanel
-            selectedFlowId={waSelectedFlowId}
-            flows={waFlows}
-            delivery={delivery}
-            pending={deliveryPending}
-            onSelectFlow={(flowId) => onSelectWhatsAppFlow?.(draft.index, flowId)}
-            onSend={() => onSendWhatsApp?.(draft.index)}
-            hideButton
-          />
-          <QuotationDeliveryStatus
-            delivery={delivery}
-            pending={deliveryPending}
-            onResolve={onResolveDelivery}
-          />
-          {deliveryError && (
-            <p role="status" className="text-xs leading-5 text-warning">
-              {deliveryError}
-            </p>
-          )}
         </div>
       )}
 
@@ -619,9 +662,9 @@ export default function SplitResultCard({
             {actionBlockMessage}
           </p>
         )}
-        {!isDone && (
+        {!isDone && !reviewOnly && (
           <>
-            <Button variant="ghost" size="sm" onClick={toggleEditing}>
+            <Button variant="ghost" size="sm" onClick={toggleEditing} disabled={editingBlocked}>
               <Pencil size={13} />
               {editing ? 'Concluir' : 'Editar'}
             </Button>
@@ -630,6 +673,7 @@ export default function SplitResultCard({
                 variant="ghost"
                 size="sm"
                 onClick={() => onAddItem(draft.index)}
+                disabled={editingBlocked}
               >
                 <Plus size={13} />
                 Item
@@ -641,49 +685,11 @@ export default function SplitResultCard({
         <div className="flex-1" />
 
         {isDone ? (
+          null
+        ) : reviewOnly ? (
           <>
-            {issueViewUrl ? (
-              <a
-                href={issueViewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
-              >
-                <FileText size={13} />
-                Abrir PDF
-              </a>
-            ) : (
-              <span
-                aria-disabled="true"
-                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-surface px-3 text-xs font-medium text-fg opacity-40"
-              >
-                <FileText size={13} />
-                Abrir PDF
-              </span>
-            )}
-            {failedDelivery && issue?.businessNumber && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  window.location.hash = `/quotations/${encodeURIComponent(issue.businessNumber)}`;
-                }}
-              >
-                Nova revisão
-              </Button>
-            )}
-            {waSendEnabled ? (
-              <Button
-                size="sm"
-                disabled={deliveryPending || deliveryBlocksSend}
-                onClick={() => onSendWhatsApp?.(draft.index)}
-              >
-                <Phone size={13} />
-                Enviar WhatsApp
-              </Button>
-            ) : (
-              <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>
-            )}
+            <Button variant="outline" size="sm" onClick={onDiscard} disabled={actionBlocked}>Descartar resultado</Button>
+            <Button size="sm" onClick={onApply} disabled={actionBlocked || !canApply}>Aplicar ao orçamento ativo</Button>
           </>
         ) : (
           <>
@@ -691,21 +697,21 @@ export default function SplitResultCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onPreviewQuote(draft.index)}
-                disabled={isProcessing || !canCreate}
-                title="Pré-visualização temporária; não salva nem envia."
+                onClick={() => onReviewQuote(draft.index)}
+                disabled={actionBlocked || !canCreate}
+                title="Salva o rascunho e abre o detalhe do orçamento."
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
                 <Eye size={13} />
-                Ver
+                Revisar
               </Button>
             )}
-            {onSaveDraft && !saved && !editing && (
+            {onSaveDraft && !hasSavedSnapshot && !editing && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onSaveDraft(draft.index)}
-                disabled={isProcessing || isSavingDraft || !canCreate}
+                disabled={actionBlocked || !canCreate}
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
                 {isSavingDraft ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
@@ -716,11 +722,29 @@ export default function SplitResultCard({
               <Button
                 size="sm"
                 onClick={() => onCreateQuote(draft.index)}
-                disabled={isProcessing || !canCreate}
+                disabled={actionBlocked || !canCreate}
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
                 {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                 {isProcessing ? 'Emitindo…' : 'Emitir orçamento'}
+              </Button>
+            )}
+            {isProcessing && draft.result?.error && savedDraft.issueRecoveryRequired && onClearIssueRecovery && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onClearIssueRecovery(draft.index)}
+              >
+                Confirmar ausência e liberar nova tentativa
+              </Button>
+            )}
+            {isProcessing && draft.result?.error && !savedDraft.issueRecoveryRequired && onRecoverIssue && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onRecoverIssue(draft.index)}
+              >
+                Consultar novamente
               </Button>
             )}
           </>

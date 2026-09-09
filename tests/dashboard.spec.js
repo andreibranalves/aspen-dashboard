@@ -50,11 +50,13 @@ function dashboardResponse({
 const conversionScenarios = [
   { ratio: 0.29, expected: '29%', artifact: '28.999999999999996%' },
   { ratio: 0.57, expected: '57%', artifact: '56.99999999999999%' },
-  { ratio: 0.1234, expected: '12.34%', artifact: '12%' },
+  { ratio: 0.1234, expected: '12%', artifact: '12.34%' },
 ];
 
 for (const scenario of conversionScenarios) {
-  test(`renders ${scenario.ratio} conversion ratio as ${scenario.expected} @smoke`, async ({ page }) => {
+  test(`renders ${scenario.ratio} conversion ratio as ${scenario.expected} @smoke`, async ({
+    page,
+  }) => {
     await page.route('**/api/settings**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -72,7 +74,7 @@ for (const scenario of conversionScenarios) {
           summary: {
             total_revenue: 0,
             revenue_delta: 0,
-            orders_count: 0,
+            orders_count: 1,
             orders_delta: 0,
             avg_ticket: 0,
             avg_ticket_delta: 0,
@@ -89,7 +91,7 @@ for (const scenario of conversionScenarios) {
     });
 
     await page.goto(`${BASE_URL}/#/dashboard`);
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
 
     const conversionCard = page.getByText('Conversão', { exact: true }).locator('..').locator('..');
     await expect(conversionCard).toContainText(scenario.expected);
@@ -141,38 +143,94 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
 
   await page.goto(`${BASE_URL}/#/dashboard`);
 
-  await expect(page.getByRole('heading', { name: 'Orçamentos para follow-up' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Abrir' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Desempenho comercial' })).toBeInViewport();
+  await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '1 orçamento sem resposta' })).toBeVisible();
+  await page.getByRole('button', { name: 'Ver gasto mensal' }).click();
+  await expect(page.getByRole('heading', { name: 'Composição financeira' })).toBeVisible();
 
-  const metaInput = page.getByLabel('Gasto Meta (R$)');
+  const metaInput = page.getByLabel('Valor informado de gasto Meta');
   await expect(metaInput).toHaveValue('200');
-  await expect(page.getByRole('button', { name: 'Salvar gasto' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Salvar' })).toBeVisible();
   await page.getByRole('button', { name: 'Ativar modo escuro' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
   await expect(metaInput).toBeVisible();
   await page.getByRole('button', { name: 'Ativar modo claro' }).click();
 
   await metaInput.fill('1.234,56');
-  await page.getByRole('button', { name: 'Salvar gasto' }).click();
+  await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByRole('alert')).toHaveText('Informe um gasto Meta válido.');
   expect(savedPayloads[0]).toEqual({ period: 'month', meta_spend: '1.234,56' });
 
-  await page.getByRole('button', { name: 'Salvar gasto' }).click();
+  await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(metaInput).toHaveValue('1234.56');
-  const adsCard = page.getByText('Ads', { exact: true }).locator('..').locator('..');
-  await expect(adsCard).toContainText('R$\u00a01.384,56');
+  await expect(page.getByRole('cell', { name: '− R$\u00a01.234,56' })).toBeVisible();
   expect(savedPayloads[1]).toEqual({ period: 'month', meta_spend: '1.234,56' });
 
-  await page.getByRole('button', { name: '30 dias' }).click();
+  await page.getByLabel('Período dos resultados').selectOption('30d');
   await expect(page).toHaveURL(/period=30d/);
-  await expect(page.getByLabel('Gasto Meta (R$)')).toHaveCount(0);
+  await expect(page.getByLabel('Valor informado de gasto Meta')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Mês passado' }).click();
+  await page.getByLabel('Período dos resultados').selectOption('last_month');
   await expect(page).toHaveURL(/period=last_month/);
-  await expect(page.getByLabel('Gasto Meta (R$)')).toBeVisible();
+  await expect(page.getByLabel('Valor informado de gasto Meta')).toBeVisible();
   expect(requestedPeriods).toContain('month');
   expect(requestedPeriods).toContain('30d');
   expect(requestedPeriods).toContain('last_month');
+});
+
+test('mantém as quatro abas de Resultados e os destinos finais da navegação @smoke', async ({
+  page,
+}) => {
+  await page.route('**/api/settings**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  );
+  await page.route('**/api/sales-dashboard**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(dashboardResponse()),
+    })
+  );
+
+  await page.goto(`${BASE_URL}/#/dashboard?period=month`);
+  await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(4);
+  await page.getByRole('tab', { name: 'Visão geral' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Produtos' })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Produtos' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/#\/dashboard\?tab=products$/);
+
+  for (const [key, label, heading] of [
+    ['overview', 'Visão geral', 'Resultados'],
+    ['products', 'Produtos', 'Produtos por receita'],
+    ['customers', 'Clientes', 'Clientes por receita'],
+    ['finance', 'Financeiro', 'Composição financeira'],
+  ]) {
+    await page.getByRole('tab', { name: label }).click();
+    const query = key === 'overview' ? '' : `?tab=${key}`;
+    await expect(page).toHaveURL(new RegExp(`#\\/dashboard${query.replace('?', '\\?')}$`));
+    const panel = page.getByRole('tabpanel');
+    await expect(panel).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+  }
+
+  const sidebar = page.getByRole('complementary', { name: 'Navegação principal' });
+  await expect(sidebar.getByRole('button', { name: 'Novo orçamento' })).toBeVisible();
+  for (const label of [
+    'Orçamentos',
+    'Comercial',
+    'Pedidos',
+    'Clientes',
+    'Catálogo',
+    'Envios',
+    'Resultados',
+    'Configurações',
+  ]) {
+    await expect(sidebar.getByRole('button', { name: label })).toBeVisible();
+  }
+
+  await sidebar.getByRole('button', { name: 'Orçamentos' }).click();
+  await expect(page).toHaveURL(/#\/quotations$/);
 });

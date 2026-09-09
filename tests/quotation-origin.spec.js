@@ -97,9 +97,9 @@ test.beforeAll(async () => {
 
 test('opportunity creates quotation whose origin remains visible through approval and order', async ({ page }) => {
   await page.goto(`/#/crm?search=${encodeURIComponent(leadName)}`);
-  const card = page.getByRole('article', { name: new RegExp(`Negócio ${leadName}`) });
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: 'Novo orçamento' }).click();
+  const dealRow = page.getByRole('row', { name: new RegExp(`Abrir lead ${leadName}`) });
+  await expect(dealRow).toBeVisible();
+  await dealRow.getByRole('button', { name: 'Novo orçamento' }).click();
 
   await expect(page.getByRole('heading', { name: 'Novo orçamento' })).toBeVisible();
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
@@ -109,8 +109,7 @@ test('opportunity creates quotation whose origin remains visible through approva
   await page.getByRole('button', { name: `Adicionar ${sku} ao orçamento` }).click();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
-  await expect(page.getByText('Rascunho salvo')).toBeVisible();
-  await page.getByRole('button', { name: 'Abrir orçamento' }).click();
+  await expect.poll(() => page.url()).toContain('#/quotations/');
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
@@ -120,17 +119,17 @@ test('opportunity creates quotation whose origin remains visible through approva
   await expect(page.getByText(/Pedido PED-\d{4}-\d{4} criado\./)).toBeVisible();
   await page.getByRole('button', { name: /Abrir pedido/ }).click();
 
-  await expect(page.getByRole('heading', { name: 'Pedido' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^PED-\d{4}-\d{4}$/ })).toBeVisible();
   await expect(page.getByText('Formulário do site')).toBeVisible();
-  await page.getByRole('button', { name: 'Abrir orçamento de origem' }).click();
+  await page.getByRole('button', { name: /^Abrir orçamento ORC-\d{8}$/ }).click();
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 });
 
 test('restoring a manual draft without hash parameters preserves its direct origin', async ({ page }) => {
   await page.goto(`/#/crm?search=${encodeURIComponent(leadName)}`);
-  const card = page.getByRole('article', { name: new RegExp(`Negócio ${leadName}`) });
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: 'Novo orçamento' }).click();
+  const dealRow = page.getByRole('row', { name: new RegExp(`Abrir lead ${leadName}`) });
+  await expect(dealRow).toBeVisible();
+  await dealRow.getByRole('button', { name: 'Novo orçamento' }).click();
 
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
   await page.getByLabel('Origem *').selectOption('Google Ads');
@@ -144,8 +143,7 @@ test('restoring a manual draft without hash parameters preserves its direct orig
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
-  await expect(page.getByText('Rascunho salvo')).toBeVisible();
-  await page.getByRole('button', { name: 'Abrir orçamento' }).click();
+  await expect.poll(() => page.url()).toContain('#/quotations/');
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 });
 

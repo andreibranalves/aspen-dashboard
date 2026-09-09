@@ -12,9 +12,23 @@ const INITIAL_SETTINGS = {
   settings_version: 1,
   empresa: {
     schema_version: 1,
-    identity: { legal_name: 'ASPEN COMÉRCIO DE ARTIGOS PERSONALIZADOS LTDA', document: '55.458.072/0001-79' },
-    banking: { bank_name: 'Stone Pagamentos S.A.', bank_code: '197', branch: '0001', account: '35207618-6', pix_key: '55.458.072/0001-79' },
-    contacts: { website: 'https://www.aspenestamparia.com', phone: '(21) 96924-1265', email: 'contato@aspenestamparia.com', instagram: 'https://www.instagram.com/aspenestamparia' },
+    identity: {
+      legal_name: 'ASPEN COMÉRCIO DE ARTIGOS PERSONALIZADOS LTDA',
+      document: '55.458.072/0001-79',
+    },
+    banking: {
+      bank_name: 'Stone Pagamentos S.A.',
+      bank_code: '197',
+      branch: '0001',
+      account: '35207618-6',
+      pix_key: '55.458.072/0001-79',
+    },
+    contacts: {
+      website: 'https://www.aspenestamparia.com',
+      phone: '(21) 96924-1265',
+      email: 'contato@aspenestamparia.com',
+      instagram: 'https://www.instagram.com/aspenestamparia',
+    },
   },
   secoes: {
     schema_version: 1,
@@ -34,9 +48,7 @@ test.describe('Configurações de orçamento @quotations', () => {
 
     await page.route('/api/settings**', async (route) => {
       if (route.request().method() === 'GET') {
-        const response = route.request().url().includes('scope=operational')
-          ? {}
-          : settings;
+        const response = route.request().url().includes('scope=operational') ? {} : settings;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -100,17 +112,42 @@ test.describe('Configurações de orçamento @quotations', () => {
     });
     expect(receivedPayload.secoes.prazo_producao.value).toContain('7 dias úteis');
     expect(receivedPayload.secoes.pagamento.body).toContain('Pagamento em duas parcelas');
-    expect(receivedPayload.secoes.condicoes_gerais.body).toContain('Aprovar arte antes da produção.');
+    expect(receivedPayload.secoes.condicoes_gerais.body).toContain(
+      'Aprovar arte antes da produção.'
+    );
     expect(savedResponse.pagamento).toContain('Pagamento em duas parcelas');
     expect(savedResponse.observacoes).toContain('Aprovar arte antes da produção.');
     await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
   });
 
   test('gerencia modelos, preview, versões, padrão e arquivamento', async ({ page }) => {
-    const source = '<html><body>{{ quote.name }} {{ secoes.pagamento.body }} {{ secoes.condicoes_gerais.body }} {{ secoes.prazo_producao.body }}</body></html>';
+    const source =
+      '<html><body>{{ quote.name }} {{ secoes.pagamento.body }} {{ secoes.condicoes_gerais.body }} {{ secoes.prazo_producao.body }}</body></html>';
     const templates = [
-      { id: 'one', key: 'padrao', name: 'Padrão', archived: false, is_default: true, current_version_id: 'v1', current_version: 1, current_hash: 'hash', usage_count: 2, updated_at: '2026-01-01T00:00:00.000Z' },
-      { id: 'two', key: 'alternativo', name: 'Alternativo', archived: false, is_default: false, current_version_id: 'v2', current_version: 1, current_hash: 'hash2', usage_count: 0, updated_at: '2026-01-01T00:00:00.000Z' },
+      {
+        id: 'one',
+        key: 'padrao',
+        name: 'Padrão',
+        archived: false,
+        is_default: true,
+        current_version_id: 'v1',
+        current_version: 1,
+        current_hash: 'hash',
+        usage_count: 2,
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'two',
+        key: 'alternativo',
+        name: 'Alternativo',
+        archived: false,
+        is_default: false,
+        current_version_id: 'v2',
+        current_version: 1,
+        current_hash: 'hash2',
+        usage_count: 0,
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
     ];
     let defaultKey = 'padrao';
     let version = 1;
@@ -118,27 +155,70 @@ test.describe('Configurações de orçamento @quotations', () => {
     /** @type {{ template_padrao?: string } | undefined} */
     let savedSettings;
     await page.route('/api/settings?scope=operational**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({}),
+      });
     });
     await page.route('**/api/settings', async (route) => {
       if (route.request().method() === 'GET') {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(INITIAL_SETTINGS),
+        });
       } else {
         settingsPayload = route.request().postDataJSON();
         savedSettings = { ...INITIAL_SETTINGS, ...settingsPayload, template_padrao: defaultKey };
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedSettings) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(savedSettings),
+        });
       }
     });
     await page.route('**/api/quotation-templates**', async (route) => {
       const request = route.request();
       const url = new globalThis.URL(request.url());
       if (request.method() === 'GET' && url.searchParams.has('id')) {
-        const item = templates.find((template) => template.id === url.searchParams.get('id')) || templates[1];
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...item, current_version: version, current_source: source, versions: [{ id: `v${version}`, version, source_hash: 'hash', created_at: '2026-01-01T00:00:00.000Z' }] } }) });
+        const item =
+          templates.find((template) => template.id === url.searchParams.get('id')) || templates[1];
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              ...item,
+              current_version: version,
+              current_source: source,
+              versions: [
+                {
+                  id: `v${version}`,
+                  version,
+                  source_hash: 'hash',
+                  created_at: '2026-01-01T00:00:00.000Z',
+                },
+              ],
+            },
+          }),
+        });
       } else if (request.method() === 'GET') {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates, default_key: defaultKey }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ templates, default_key: defaultKey }),
+        });
       } else if (url.pathname.endsWith('/validate')) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ valid: true, warnings: ['A seção prazo_producao não é usada pelo template.'], preview: '<p>preview</p>' }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            valid: true,
+            warnings: ['A seção prazo_producao não é usada pelo template.'],
+            preview: '<p>preview</p>',
+          }),
+        });
       } else if (request.method() === 'PUT') {
         const payload = request.postDataJSON();
         if (payload.action === 'set_default') defaultKey = 'alternativo';
@@ -147,21 +227,37 @@ test.describe('Configurações de orçamento @quotations', () => {
           const archivedTemplate = templates.find((template) => template.id === 'two');
           if (archivedTemplate) archivedTemplate.archived = true;
         }
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload.action === 'archive' ? { archived: true } : { default_key: defaultKey, id: 'v2' }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(
+            payload.action === 'archive'
+              ? { archived: true }
+              : { default_key: defaultKey, id: 'v2' }
+          ),
+        });
       } else {
-        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'two' }) });
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'two' }),
+        });
       }
     });
 
     await page.goto('/#/settings');
+    await page.getByRole('tab', { name: 'Modelos de documento' }).click();
     await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Padrão padrao/ })).toContainText('Padrão');
     await expect(page.getByText('Usado por 2 revisões')).toBeVisible();
     await page.getByRole('button', { name: /Alternativo alternativo/ }).click();
-    await expect(page.getByLabel('Conteúdo do modelo')).toHaveValue(source);
     await page.getByRole('button', { name: 'Validar e visualizar' }).click();
-    await expect(page.getByText('Aviso: A seção prazo_producao não é usada pelo template.')).toBeVisible();
+    await expect(
+      page.getByText('Aviso: A seção prazo_producao não é usada pelo template.')
+    ).toBeVisible();
     await expect(page.getByTitle('Pré-visualização do modelo')).toBeVisible();
+    await page.getByRole('button', { name: 'Editar avançado' }).click();
+    await expect(page.getByLabel('Conteúdo do modelo')).toHaveValue(source);
     await page.getByRole('button', { name: 'Salvar nova versão' }).click();
     await expect(page.getByText('Modelo salvo com sucesso.')).toBeVisible();
     await expect(page.getByText('Versão atual: 2')).toBeVisible();
@@ -169,18 +265,25 @@ test.describe('Configurações de orçamento @quotations', () => {
     // confirmações migradas para ConfirmDialog (sem confirm() nativo)
     await page.getByRole('dialog').getByRole('button', { name: 'Definir como padrão' }).click();
     await expect(page.getByText('Modelo padrão alterado.')).toBeVisible();
-    await page.getByText('Conteúdo do documento', { exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Padrões' }).click();
     await page.getByLabel('Condição de pagamento').fill('novo padrão');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Configurações salvas com sucesso.' })).toBeVisible();
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Configurações salvas com sucesso.' })
+    ).toBeVisible();
+    await page.getByRole('tab', { name: 'Modelos de documento' }).click();
     await expect(page.getByText('Modelo padrão: alternativo')).toBeVisible();
+    await page.getByRole('button', { name: /Alternativo alternativo/ }).click();
+    await expect(page.getByRole('button', { name: 'Arquivar' })).toBeVisible();
     expect(savedSettings).toBeDefined();
     expect(savedSettings?.template_padrao).toBe('alternativo');
     expect(settingsPayload).not.toHaveProperty('template_padrao');
     await page.getByRole('button', { name: 'Arquivar' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Arquivar' }).click();
     await expect(page.getByText('Modelo arquivado.')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toContainText('Arquivado');
+    await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toContainText(
+      'Arquivado'
+    );
   });
 
   test('cria modelo e recupera falha de detalhe com nova requisição', async ({ page }) => {
@@ -190,7 +293,11 @@ test.describe('Configurações de orçamento @quotations', () => {
     let created = false;
     await page.route('/api/settings**', async (route) => {
       const response = route.request().method() === 'GET' ? INITIAL_SETTINGS : INITIAL_SETTINGS;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(response),
+      });
     });
     await page.route('**/api/quotation-templates**', async (route) => {
       const request = route.request();
@@ -198,30 +305,84 @@ test.describe('Configurações de orçamento @quotations', () => {
       if (request.method() === 'GET' && url.searchParams.has('id')) {
         detailCalls += 1;
         if (detailCalls === 1) {
-          await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha temporária.' }) });
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Falha temporária.' }),
+          });
           return;
         }
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: 'new', key: 'novo', name: 'Novo', archived: false, is_default: false, current_version_id: 'v1', current_version: 1, current_hash: 'hash', usage_count: 0, updated_at: '', current_source: source, versions: [] } }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              id: 'new',
+              key: 'novo',
+              name: 'Novo',
+              archived: false,
+              is_default: false,
+              current_version_id: 'v1',
+              current_version: 1,
+              current_hash: 'hash',
+              usage_count: 0,
+              updated_at: '',
+              current_source: source,
+              versions: [],
+            },
+          }),
+        });
         return;
       }
       if (request.method() === 'GET') {
         listCalls += 1;
         if (listCalls === 1) {
-          await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha temporária.' }) });
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Falha temporária.' }),
+          });
           return;
         }
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: created ? [{ id: 'new', key: 'novo', name: 'Novo', archived: false, is_default: false, current_version_id: 'v1', current_version: 1, current_hash: 'hash', usage_count: 0, updated_at: '' }] : [], default_key: '' }) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            templates: created
+              ? [
+                  {
+                    id: 'new',
+                    key: 'novo',
+                    name: 'Novo',
+                    archived: false,
+                    is_default: false,
+                    current_version_id: 'v1',
+                    current_version: 1,
+                    current_hash: 'hash',
+                    usage_count: 0,
+                    updated_at: '',
+                  },
+                ]
+              : [],
+            default_key: '',
+          }),
+        });
         return;
       }
       if (request.method() === 'POST') {
         created = true;
-        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'new' }) });
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'new' }),
+        });
         return;
       }
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     });
 
     await page.goto('/#/settings');
+    await page.getByRole('tab', { name: 'Modelos de documento' }).click();
     await expect(page.getByRole('button', { name: 'Recarregar modelos' })).toBeVisible();
     await page.getByRole('button', { name: 'Recarregar modelos' }).click();
     await page.getByRole('button', { name: 'Novo modelo' }).click();
@@ -231,6 +392,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.getByRole('button', { name: 'Criar modelo' }).click();
     await expect(page.getByRole('alert')).toContainText('Não foi possível carregar o modelo.');
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
+    await page.getByRole('button', { name: 'Editar avançado' }).click();
     await expect(page.getByLabel('Conteúdo do modelo')).toHaveValue(source);
     expect(detailCalls).toBe(2);
   });

@@ -7,21 +7,17 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-export interface NavSection {
-  title: string;
-  items: NavItem[];
+function navItems(placement: 'action' | 'destination' | 'footer'): NavItem[] {
+  return routes
+    .filter((route) => route.nav?.placement === placement)
+    .sort((a, b) => (a.nav?.order ?? 0) - (b.nav?.order ?? 0))
+    .map((route) => ({
+      hash: route.path,
+      label: route.nav!.label,
+      icon: route.nav!.icon,
+    }));
 }
 
-export const NAV_SECTIONS: NavSection[] = routes.reduce<NavSection[]>((sections, route) => {
-  if (!route.nav) return sections;
-  const section = sections.find((s) => s.title === route.nav!.section);
-  if (section) {
-    section.items.push({ hash: route.path, label: route.nav!.label, icon: route.nav!.icon });
-  } else {
-    sections.push({
-      title: route.nav!.section,
-      items: [{ hash: route.path, label: route.nav!.label, icon: route.nav!.icon }],
-    });
-  }
-  return sections;
-}, []);
+export const NAV_ACTION = navItems('action')[0] ?? null;
+export const NAV_DESTINATIONS = navItems('destination');
+export const NAV_FOOTER = navItems('footer');

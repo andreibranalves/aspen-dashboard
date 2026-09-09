@@ -32,7 +32,16 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
-import { useRouteGuardContext } from '@/hooks/useHashRoute';
+import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
+import { routePath } from '@/app/match-route';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
 
 interface Produto {
   sku: string;
@@ -127,6 +136,14 @@ function formatActivityDate(value: string): string {
     timeStyle: 'short',
   }).format(date);
 }
+
+function decodeSku(value: string): string {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return value || '';
+  }
+}
 function formatQuantity(value: number | string | undefined): string {
   if (value == null) return '—';
   const numeric = Number(value);
@@ -215,10 +232,15 @@ interface ProductDetailPageProps {
 }
 
 export default function ProductDetailPage({ sku, navigate }: ProductDetailPageProps) {
-  const decodedSku = decodeURIComponent(sku || '');
+  const decodedSku = decodeSku(sku);
   const isNewProduct = decodedSku === 'new';
   const [duplicateFrom] = useHashQueryState('duplicate', '', parseHashString);
   const duplicateSku = duplicateFrom.trim();
+
+  const returnToCatalog = useCallback(() => {
+    const previousRoute = getHashHistoryPreviousRoute();
+    navigate(previousRoute && routePath(previousRoute) === '/catalog' ? previousRoute : '/catalog');
+  }, [navigate]);
   const isDuplicateDraft = isNewProduct && Boolean(duplicateSku);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -447,13 +469,13 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     setConfirmDiscardEdits(false);
     if (isNewProduct) {
       setNavigationGuard(null);
-      navigate('/products');
+      returnToCatalog();
       return;
     }
 
     setEditing(false);
     setEdited({});
-  }, [isNewProduct, navigate, setNavigationGuard]);
+  }, [isNewProduct, returnToCatalog, setNavigationGuard]);
 
   const cancelEditing = useCallback(() => {
     if (hasUnsavedChanges) {
@@ -629,7 +651,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <p className="max-w-md break-words text-sm">
             O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.
           </p>
-          <Button variant="outline" onClick={() => navigate('/products')}>
+          <Button variant="outline" onClick={returnToCatalog}>
             Voltar ao catálogo
           </Button>
         </div>
@@ -665,7 +687,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <Package size={40} className="text-fg-muted/40" aria-hidden="true" />
           <h1 className="text-lg font-semibold text-fg">Dados do produto indisponíveis</h1>
           <p className="max-w-md text-sm">Não há conteúdo suficiente para exibir este cadastro.</p>
-          <Button variant="outline" onClick={() => navigate('/products')}>
+          <Button variant="outline" onClick={returnToCatalog}>
             Voltar ao catálogo
           </Button>
         </div>
@@ -793,8 +815,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {editing && (
               <div className="md:col-span-2">
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
+                <label htmlFor="product-name" className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
                 <Input
+                  id="product-name"
                   value={edited.nome || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, nome: e.target.value }))}
                   className="mt-1 text-sm"
@@ -805,10 +828,11 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="md:col-span-2">
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">
+                <label htmlFor="product-description" className="text-fg-muted text-[11px] uppercase tracking-wide">
                   Descrição
                 </label>
                 <textarea
+                  id="product-description"
                   value={edited.descricao || ''}
                   onChange={(event) =>
                     setEdited((previous) => ({ ...previous, descricao: event.target.value }))
@@ -824,8 +848,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">SKU</label>
+                <label htmlFor="product-sku" className="text-fg-muted text-[11px] uppercase tracking-wide">SKU</label>
                 <Input
+                  id="product-sku"
                   value={isNewProduct ? edited.sku || '' : produto.sku || ''}
                   disabled={!isNewProduct}
                   onChange={(e) => setEdited((prev) => ({ ...prev, sku: e.target.value }))}
@@ -840,8 +865,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="flex min-w-0 flex-col">
-                <label className="block text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
+                <label htmlFor="product-status" className="block text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
                 <Select
+                  id="product-status"
                   value={edited.ativo ? 'ativo' : 'inativo'}
                   onChange={(event) =>
                     setEdited((previous) => ({
@@ -861,10 +887,11 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">
+                <label htmlFor="product-category" className="text-fg-muted text-[11px] uppercase tracking-wide">
                   Categoria
                 </label>
                 <Input
+                  id="product-category"
                   value={edited.categoria || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, categoria: e.target.value }))}
                   className="mt-1 text-sm"
@@ -878,8 +905,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">Marca</label>
+                <label htmlFor="product-brand" className="text-fg-muted text-[11px] uppercase tracking-wide">Marca</label>
                 <Input
+                  id="product-brand"
                   value={edited.marca || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, marca: e.target.value }))}
                   className="mt-1 text-sm"
@@ -893,10 +921,11 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">
+                <label htmlFor="product-unit-cost" className="text-fg-muted text-[11px] uppercase tracking-wide">
                   Custo unitário (R$)
                 </label>
                 <Input
+                  id="product-unit-cost"
                   inputMode="decimal"
                   aria-label="Custo unitário"
                   value={edited.custoUnitario ?? ''}
@@ -916,8 +945,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label className="text-fg-muted text-[11px] uppercase tracking-wide">Unidade</label>
+                <label htmlFor="product-unit" className="text-fg-muted text-[11px] uppercase tracking-wide">Unidade</label>
                 <Input
+                  id="product-unit"
                   value={edited.unidade || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, unidade: e.target.value }))}
                   className="mt-1 text-sm"
@@ -951,8 +981,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 </p>
               )}
               <div className="max-w-xs">
-                <label className="text-xs font-medium text-fg-muted">Preço base (opcional)</label>
+                <label htmlFor="product-base-price" className="text-xs font-medium text-fg-muted">Preço base (opcional)</label>
                 <Input
+                  id="product-base-price"
                   type="number"
                   step="0.01"
                   min="0.01"
@@ -1079,24 +1110,31 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 </div>
               ) : null}
               {hasTiers ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {product?.precos?.map((tier, index) => {
-                    const quantity = tier.minimum_quantity ?? tier.faixa ?? tier.qty;
-                    const rate = tier.unit_price ?? tier.rate;
-                    return (
-                      <div
-                        key={`saved-tier-${index}`}
-                        className="rounded-lg border border-line bg-surface/50 p-3"
-                      >
-                        <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                          A partir de {formatQuantity(quantity)} un.
-                        </p>
-                        <p className="mt-2 text-sm font-medium text-fg font-mono">
-                          {rate != null ? formatBRL(rate) : '—'}
-                        </p>
-                      </div>
-                    );
-                  })}
+                <div className="overflow-x-auto rounded-md border border-line">
+                  <Table className="min-w-[360px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Quantidade mínima</TableHead>
+                        <TableHead className="text-right">Preço unitário</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {product?.precos?.map((tier, index) => {
+                        const quantity = tier.minimum_quantity ?? tier.faixa ?? tier.qty;
+                        const rate = tier.unit_price ?? tier.rate;
+                        return (
+                          <TableRow key={`saved-tier-${index}`}>
+                            <TableCell className="font-mono text-sm">
+                              A partir de {formatQuantity(quantity)} un.
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm font-medium">
+                              {rate != null ? formatBRL(rate) : '—'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : !hasBasePrice ? (
                 <p

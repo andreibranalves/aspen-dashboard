@@ -1,20 +1,53 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
   AlertCircle,
   Building2,
   CheckCircle2,
-  ChevronDown,
+  FileCode2,
   Loader2,
+  MessageSquare,
   RefreshCw,
   Save,
+  Settings2,
   SlidersHorizontal,
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QuotationSectionsEditor } from '@/features/quotations/components/QuotationSectionsEditor';
 import { QuotationTemplateManager } from '@/features/quotations/components/QuotationTemplateManager';
+import FlowEditorTab from '@/features/communication/components/FlowEditorTab';
+import ChannelsTab from '@/features/communication/components/ChannelsTab';
 import { getSettings, saveSettings, type DashboardSettings } from '@/lib/api/settingsApi';
+import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
+
+type SettingsTab = 'patterns' | 'templates' | 'flows' | 'company' | 'channels';
+
+interface TabItem {
+  id: SettingsTab;
+  label: string;
+  icon: LucideIcon;
+}
+
+const TABS: TabItem[] = [
+  { id: 'patterns', label: 'Padrões', icon: SlidersHorizontal },
+  { id: 'templates', label: 'Modelos de documento', icon: FileCode2 },
+  { id: 'flows', label: 'Fluxos WhatsApp', icon: MessageSquare },
+  { id: 'company', label: 'Empresa', icon: Building2 },
+  { id: 'channels', label: 'Canais', icon: Settings2 },
+];
+const TAB_DESCRIPTIONS: Record<SettingsTab, string> = {
+  patterns: 'Padrões aplicados a novos orçamentos',
+  templates: 'Modelos de documento e suas versões',
+  flows: 'Fluxos operacionais do WhatsApp',
+  company: 'Dados da empresa usados nos documentos',
+  channels: 'Conexões configuradas fora do painel',
+};
+const parseSettingsTab = parseHashOption<SettingsTab>(TABS.map((tab) => tab.id));
 
 interface SettingsForm {
   validade_dias: string;
@@ -82,18 +115,31 @@ function formatApiError(error: unknown, fallback: string): string {
 }
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useHashQueryState<SettingsTab>(
+    'tab',
+    'patterns',
+    parseSettingsTab
+  );
   const [form, setForm] = useState<SettingsForm>(EMPTY_FORM);
+  const [savedForm, setSavedForm] = useState<SettingsForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [flowsDirty, setFlowsDirty] = useState(false);
+  const [templatesDirty, setTemplatesDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<SettingsTab | null>(null);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  const { setNavigationGuard } = useRouteGuardContext();
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      setForm(toForm(await getSettings()));
+      const nextForm = toForm(await getSettings());
+      setForm(nextForm);
+      setSavedForm(nextForm);
     } catch (error) {
       setLoadError(formatApiError(error, 'Não foi possível carregar as configurações.'));
     } finally {
@@ -105,7 +151,48 @@ export default function SettingsPage() {
     void loadSettings();
   }, [loadSettings]);
 
-  function updateField(field: 'validade_dias' | 'entrega' | 'frete_padrao' | 'aliquota', value: string) {
+  const formDirty = !loading && !loadError && JSON.stringify(form) !== JSON.stringify(savedForm);
+  const isDirty = formDirty || flowsDirty || templatesDirty;
+
+  const handleTabChange = useCallback(
+    (nextTab: SettingsTab) => {
+      if (nextTab === activeTab) return;
+      if (isDirty) {
+        setPendingTab(nextTab);
+        return;
+      }
+      setActiveTab(nextTab);
+    },
+    [activeTab, isDirty, setActiveTab]
+  );
+
+  useEffect(() => {
+    if (!isDirty) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return () => setNavigationGuard(null);
+    }
+    setNavigationGuard((nextRoute) => {
+      setPendingRoute(nextRoute);
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, [isDirty, setNavigationGuard]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const preventUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', preventUnload);
+    return () => window.removeEventListener('beforeunload', preventUnload);
+  }, [isDirty]);
+
+  function updateField(
+    field: 'validade_dias' | 'entrega' | 'frete_padrao' | 'aliquota',
+    value: string
+  ) {
     setForm((current) => ({ ...current, [field]: value }));
     setSaveError(null);
     setSavedMessage(null);
@@ -126,14 +213,11 @@ export default function SettingsPage() {
   function updateCompanyField(
     group: 'identity' | 'banking' | 'contacts',
     field: string,
-    value: string,
+    value: string
   ) {
     setForm((current) => ({
       ...current,
-      empresa: {
-        ...current.empresa,
-        [group]: { ...current.empresa[group], [field]: value },
-      },
+      empresa: { ...current.empresa, [group]: { ...current.empresa[group], [field]: value } },
     }));
     setSaveError(null);
     setSavedMessage(null);
@@ -145,7 +229,6 @@ export default function SettingsPage() {
       setSaveError('Informe uma validade em dias entre 1 e 365.');
       return;
     }
-
     setSaving(true);
     setSaveError(null);
     setSavedMessage(null);
@@ -159,8 +242,12 @@ export default function SettingsPage() {
         empresa: form.empresa,
         settings_version: form.settings_version,
       });
-      setForm(toForm(saved));
-      setSavedMessage('Configurações salvas com sucesso.');
+      const nextForm = toForm(saved);
+      setForm(nextForm);
+      setSavedForm(nextForm);
+      setSavedMessage(
+        activeTab === 'company' ? 'Dados da empresa salvos.' : 'Configurações salvas com sucesso.'
+      );
     } catch (error) {
       setSaveError(formatApiError(error, 'Não foi possível salvar as configurações.'));
     } finally {
@@ -168,26 +255,73 @@ export default function SettingsPage() {
     }
   }
 
+  function tabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const direction =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? 1
+        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          ? -1
+          : 0;
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      const tab = event.key === 'Home' ? TABS[0] : TABS.at(-1)!;
+      handleTabChange(tab.id);
+      document.getElementById(`settings-tab-${tab.id}`)?.focus();
+      return;
+    }
+    if (!direction) return;
+    event.preventDefault();
+    const tab = TABS[(index + direction + TABS.length) % TABS.length];
+    handleTabChange(tab.id);
+    document.getElementById(`settings-tab-${tab.id}`)?.focus();
+  }
+
   return (
-    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
-      <PageHeader title="Configurações" />
-
-      <section
-        className="space-y-6 rounded-lg border border-line bg-surface p-4 sm:p-6"
-        aria-labelledby="quotation-settings-title"
+    <PageShell className="space-y-6 pb-24">
+      <PageHeader title="Configurações" description={TAB_DESCRIPTIONS[activeTab]} />
+      <div
+        role="tablist"
+        aria-label="Seções de configurações"
+        className="-mx-1 overflow-x-auto px-1"
       >
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-            <SlidersHorizontal size={18} className="text-primary" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <h2 id="quotation-settings-title" className="text-base font-semibold text-fg">
-              Padrões de orçamento
-            </h2>
-          </div>
+        <div className="flex min-w-max gap-2 border-b border-line pb-2">
+          {TABS.map((tab, index) => {
+            const Icon = tab.icon;
+            const selected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                id={`settings-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`settings-panel-${tab.id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => handleTabChange(tab.id)}
+                onKeyDown={(event) => tabKeyDown(event, index)}
+                className={[
+                  'flex min-h-9 items-center gap-2 whitespace-nowrap rounded-sm border px-3 py-2 text-sm font-medium transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                  selected
+                    ? 'border-primary bg-primary/5 text-primary'
+                    : 'border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg',
+                ].join(' ')}
+              >
+                <Icon size={15} aria-hidden="true" /> {tab.label}
+              </button>
+            );
+          })}
         </div>
+      </div>
 
-        {loading && (
+      <div
+        id={`settings-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeTab}`}
+        tabIndex={-1}
+        className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+      >
+        {loading && (activeTab === 'patterns' || activeTab === 'company') && (
           <div className="space-y-3" aria-label="Carregando configurações">
             <div className="skeleton h-10" />
             <div className="skeleton h-10" />
@@ -195,7 +329,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {!loading && loadError && (
+        {!loading && loadError && (activeTab === 'patterns' || activeTab === 'company') && (
           <div
             className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-fg"
             role="alert"
@@ -215,126 +349,175 @@ export default function SettingsPage() {
                   size="sm"
                   onClick={() => void loadSettings()}
                 >
-                  <RefreshCw size={14} aria-hidden="true" />
-                  Tentar novamente
+                  <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
                 </Button>
               </div>
             </div>
           </div>
         )}
 
-        {!loading && !loadError && (
+        {!loading && !loadError && activeTab === 'patterns' && (
           <form
-            className="space-y-6"
             onSubmit={(event) => {
               event.preventDefault();
               void handleSave();
             }}
+            className="space-y-6"
           >
-            <details name="quotation-settings" open className="group overflow-hidden rounded-lg border border-line bg-surface">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
-                <span><span className="text-sm font-semibold text-fg">Prazos e valores</span><span className="ml-3 text-xs text-fg-muted">Validade, frete, alíquota e produção</span></span>
-                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
-              </summary>
-              <fieldset className="space-y-4 p-5">
-                <legend className="sr-only">Prazos e valores</legend>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Validade padrão (dias)</span>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="365"
-                    step="1"
-                    value={form.validade_dias}
-                    onChange={(event) => updateField('validade_dias', event.target.value)}
-                    disabled={saving}
-                    required
-                  />
-                </label>
-
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Frete padrão (R$)</span>
-                  <Input
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={form.frete_padrao}
-                    onChange={(event) => updateField('frete_padrao', event.target.value)}
-                    disabled={saving}
-                    required
-                  />
-                </label>
-
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Alíquota de imposto (%)</span>
-                  <Input
-                    inputMode="decimal"
-                    placeholder="4.00"
-                    value={form.aliquota}
-                    onChange={(event) => updateField('aliquota', event.target.value)}
-                    disabled={saving}
-                    required
-                    aria-label="Alíquota de imposto (%)"
-                  />
-                </label>
-              </div>
-              </fieldset>
-            </details>
-
-            <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
-                <span><span className="text-sm font-semibold text-fg">Conteúdo do documento</span><span className="ml-3 text-xs text-fg-muted">{Object.values(form.secoes).filter((section) => typeof section === 'object' && 'enabled' in section && section.enabled).length} seções ativas · resumo {form.secoes.show_summary ? 'visível' : 'oculto'}</span></span>
-                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
-              </summary>
-              <fieldset className="space-y-5 p-5">
-                <legend className="sr-only">Conteúdo do documento</legend>
-              <QuotationSectionsEditor
-                mode="settings"
-                sections={form.secoes}
-                editable={!saving}
-                onChange={updateSections}
-              />
-              <label className="flex items-start gap-3 rounded-md border border-line bg-surface-muted p-4 text-sm text-fg">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  aria-label="Exibir resumo financeiro"
-                  checked={form.secoes.show_summary}
-                  onChange={(event) => updateSections({ ...form.secoes, show_summary: event.target.checked })}
-                  disabled={saving}
-                />
-                <span className="block font-medium">Exibir resumo financeiro</span>
-              </label>
-              </fieldset>
-            </details>
-
-            <details name="quotation-settings" className="group overflow-hidden rounded-lg border border-line bg-surface">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 bg-surface-muted px-5 py-4 [&::-webkit-details-marker]:hidden">
-                <span><span className="text-sm font-semibold text-fg">Identidade e contatos</span><span className="ml-3 text-xs text-fg-muted">Dados institucionais</span></span>
-                <ChevronDown size={18} className="text-fg-muted transition-transform group-open:rotate-180" aria-hidden="true" />
-              </summary>
-              <section className="space-y-4 p-5">
-                <div className="flex items-start gap-3"><Building2 size={20} className="mt-0.5 text-primary" /><p className="text-xs text-fg-muted">Capturados em novos orçamentos sem alterar revisões emitidas.</p></div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Razão social</span><Input value={form.empresa.identity.legal_name} onChange={(event) => updateCompanyField('identity', 'legal_name', event.target.value)} disabled={saving} maxLength={255} required /></label>
-                  <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">CNPJ</span><Input value={form.empresa.identity.document} onChange={(event) => updateCompanyField('identity', 'document', event.target.value)} disabled={saving} maxLength={18} required /></label>
+            <section
+              className="space-y-5 rounded-lg border border-line bg-surface p-4 sm:p-6"
+              aria-labelledby="patterns-title"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                  <SlidersHorizontal size={18} className="text-primary" aria-hidden="true" />
                 </div>
+                <h2 id="patterns-title" className="text-base font-semibold text-fg">
+                  Padrões de orçamento
+                </h2>
+              </div>
+              <fieldset className="space-y-4">
+                <legend className="text-sm font-semibold text-fg">Prazos e valores</legend>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="space-y-1.5 text-sm text-fg">
+                    <span className="font-medium">Validade padrão (dias)</span>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="365"
+                      step="1"
+                      value={form.validade_dias}
+                      onChange={(event) => updateField('validade_dias', event.target.value)}
+                      disabled={saving}
+                      required
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-sm text-fg">
+                    <span className="font-medium">Frete padrão (R$)</span>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={form.frete_padrao}
+                      onChange={(event) => updateField('frete_padrao', event.target.value)}
+                      disabled={saving}
+                      required
+                    />
+                  </label>
+                  <label className="space-y-1.5 text-sm text-fg">
+                    <span className="font-medium">Alíquota de imposto (%)</span>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="4.00"
+                      value={form.aliquota}
+                      onChange={(event) => updateField('aliquota', event.target.value)}
+                      disabled={saving}
+                      required
+                    />
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset className="space-y-5 border-t border-line pt-5">
+                <legend className="text-sm font-semibold text-fg">Conteúdo do documento</legend>
+                <QuotationSectionsEditor
+                  mode="settings"
+                  sections={form.secoes}
+                  editable={!saving}
+                  onChange={updateSections}
+                />
+                <label className="flex min-h-9 items-center gap-3 text-sm text-fg">
+                  <input
+                    type="checkbox"
+                    aria-label="Exibir resumo financeiro"
+                    checked={form.secoes.show_summary}
+                    onChange={(event) =>
+                      updateSections({ ...form.secoes, show_summary: event.target.checked })
+                    }
+                    disabled={saving}
+                  />
+                  <span className="font-medium">Exibir resumo financeiro</span>
+                </label>
+              </fieldset>
+            </section>
+            <SettingsFeedback error={saveError} success={savedMessage} />
+            <SaveBar saving={saving} label="Salvar configurações" />
+          </form>
+        )}
+
+        {activeTab === 'templates' && (
+          <section
+            className="rounded-lg border border-line bg-surface p-4 sm:p-6"
+            aria-labelledby="document-templates-title"
+          >
+            <h2 id="document-templates-title" className="sr-only">
+              Modelos de documento
+            </h2>
+            <QuotationTemplateManager onDirtyChange={setTemplatesDirty} />
+          </section>
+        )}
+        {activeTab === 'flows' && <FlowEditorTab onDirtyChange={setFlowsDirty} />}
+
+        {!loading && !loadError && activeTab === 'company' && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSave();
+            }}
+            className="space-y-6"
+          >
+            <section
+              className="space-y-5 rounded-lg border border-line bg-surface p-4 sm:p-6"
+              aria-labelledby="company-title"
+            >
+              <div className="flex items-start gap-3">
+                <Building2 size={20} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                <h2 id="company-title" className="text-base font-semibold text-fg">
+                  Empresa
+                </h2>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Site</span>
+                  <span className="font-medium">Razão social</span>
                   <Input
-                    type="url"
-                    value={form.empresa.contacts.website}
-                    onChange={(event) => updateCompanyField('contacts', 'website', event.target.value)}
+                    value={form.empresa.identity.legal_name}
+                    onChange={(event) =>
+                      updateCompanyField('identity', 'legal_name', event.target.value)
+                    }
                     disabled={saving}
-                    maxLength={500}
+                    maxLength={255}
+                    required
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">CNPJ</span>
+                  <Input
+                    value={form.empresa.identity.document}
+                    onChange={(event) =>
+                      updateCompanyField('identity', 'document', event.target.value)
+                    }
+                    disabled={saving}
+                    maxLength={18}
+                    required
                   />
                 </label>
                 <label className="space-y-1.5 text-sm text-fg">
                   <span className="font-medium">Telefone</span>
                   <Input
                     value={form.empresa.contacts.phone}
-                    onChange={(event) => updateCompanyField('contacts', 'phone', event.target.value)}
+                    onChange={(event) =>
+                      updateCompanyField('contacts', 'phone', event.target.value)
+                    }
+                    disabled={saving}
+                    maxLength={500}
+                  />
+                </label>
+                <label className="space-y-1.5 text-sm text-fg">
+                  <span className="font-medium">Site</span>
+                  <Input
+                    type="url"
+                    value={form.empresa.contacts.website}
+                    onChange={(event) =>
+                      updateCompanyField('contacts', 'website', event.target.value)
+                    }
                     disabled={saving}
                     maxLength={500}
                   />
@@ -344,7 +527,9 @@ export default function SettingsPage() {
                   <Input
                     type="email"
                     value={form.empresa.contacts.email}
-                    onChange={(event) => updateCompanyField('contacts', 'email', event.target.value)}
+                    onChange={(event) =>
+                      updateCompanyField('contacts', 'email', event.target.value)
+                    }
                     disabled={saving}
                     maxLength={500}
                   />
@@ -354,71 +539,98 @@ export default function SettingsPage() {
                   <Input
                     type="url"
                     value={form.empresa.contacts.instagram}
-                    onChange={(event) => updateCompanyField('contacts', 'instagram', event.target.value)}
+                    onChange={(event) =>
+                      updateCompanyField('contacts', 'instagram', event.target.value)
+                    }
                     disabled={saving}
                     maxLength={500}
                   />
                 </label>
               </div>
-              </section>
-            </details>
-
-            {saveError && (
-              <div
-                className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-                role="alert"
-              >
-                <AlertCircle
-                  size={18}
-                  className="mt-0.5 shrink-0 text-destructive"
-                  aria-hidden="true"
-                />
-                <span>{saveError}</span>
-              </div>
-            )}
-
-            {savedMessage && (
-              <div
-                className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-fg"
-                role="status"
-                aria-live="polite"
-              >
-                <CheckCircle2 size={18} className="shrink-0 text-success" aria-hidden="true" />
-                <span>{savedMessage}</span>
-              </div>
-            )}
-
-            <div className="sticky bottom-4 z-10 flex justify-end rounded-lg border border-line bg-surface/95 p-3 shadow-sm backdrop-blur">
-              <Button type="submit" disabled={saving} aria-busy={saving}>
-                {saving ? (
-                  <Loader2 className="animate-spin" aria-hidden="true" />
-                ) : (
-                  <Save aria-hidden="true" />
-                )}
-                {saving ? 'Salvando...' : 'Salvar configurações'}
-              </Button>
-            </div>
+            </section>
+            <SettingsFeedback error={saveError} success={savedMessage} />
+            <SaveBar saving={saving} label="Salvar empresa" />
           </form>
         )}
-      </section>
+        {activeTab === 'channels' && <ChannelsTab />}
+      </div>
 
-      <section aria-labelledby="quotation-models-title">
-        <details open className="group overflow-hidden rounded-lg border border-line bg-surface">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
-            <h2 id="quotation-models-title" className="text-base font-semibold text-fg">
-              Modelos de orçamento
-            </h2>
-            <ChevronDown
-              size={18}
-              className="shrink-0 text-fg-muted transition-transform group-open:rotate-180"
-              aria-hidden="true"
-            />
-          </summary>
-          <div className="border-t border-line p-4 sm:p-6">
-            <QuotationTemplateManager />
-          </div>
-        </details>
-      </section>
+      <ConfirmDialog
+        open={pendingTab !== null}
+        title="Sair sem salvar?"
+        message="As alterações não salvas serão perdidas."
+        confirmLabel="Sair da aba"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingTab;
+          setPendingTab(null);
+          setForm(savedForm);
+          setFlowsDirty(false);
+          setTemplatesDirty(false);
+          if (target) setActiveTab(target);
+        }}
+        onCancel={() => setPendingTab(null)}
+      />
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem salvar?"
+        message="As alterações não salvas serão perdidas."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setForm(savedForm);
+          setFlowsDirty(false);
+          setTemplatesDirty(false);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
+      />
+    </PageShell>
+  );
+}
+
+function SettingsFeedback({ error, success }: { error: string | null; success: string | null }) {
+  return (
+    <>
+      {error && (
+        <div
+          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+      {success && (
+        <div
+          className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-fg"
+          role="status"
+          aria-live="polite"
+        >
+          <CheckCircle2 size={18} className="shrink-0 text-success" aria-hidden="true" />
+          <span>{success}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+function SaveBar({ saving, label }: { saving: boolean; label: string }) {
+  return (
+    <div className="sticky bottom-4 z-10 flex justify-end rounded-lg border border-line bg-surface/95 p-3 shadow-sm backdrop-blur">
+      <Button type="submit" disabled={saving} aria-busy={saving}>
+        {saving ? (
+          <Loader2 className="animate-spin" aria-hidden="true" />
+        ) : (
+          <Save aria-hidden="true" />
+        )}
+        {saving ? 'Salvando...' : label}
+      </Button>
     </div>
   );
 }

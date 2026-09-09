@@ -64,7 +64,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     expect(templateAttempts).toBeGreaterThanOrEqual(2);
   });
 
-  test('envia ID do cliente existente e mostra apenas a confirmação do rascunho', async ({ page }) => {
+  test('envia ID do cliente existente e navega ao detalhe após salvar', async ({ page }) => {
     /** @type {any} */
     let quoteRequest;
 
@@ -106,10 +106,17 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
           quotation_name: 'ORC-20260042',
           quote_id: '00000000-0000-4000-8000-000000000201',
           revision_id: '00000000-0000-4000-8000-000000000202',
+          concurrency_token: '2026-09-05T11:59:00.000Z',
           revision_number: 1,
           status: 'rascunho',
           cliente: CLIENT.nome,
-          items: [],
+          items: [{
+            item_code: PRODUCT.sku,
+            qty: '30',
+            nome: PRODUCT.nome,
+            applied_unit_price: '9.00',
+            manual_rate: false,
+          }],
           subtotal: '270.00',
           frete: '0.00',
           total: '270.00',
@@ -122,6 +129,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Maria');
     await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
+    await page.getByRole('button', { name: 'Aplicar ao rascunho' }).click();
 
     await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
     await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
@@ -131,8 +139,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
     await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
-    await expect(page.getByText('Rascunho salvo')).toBeVisible();
-    await expect(page.getByText(/ORC-20260042/)).toBeVisible();
+    await expect(page).toHaveURL(/#\/quotations\/00000000-0000-4000-8000-000000000201$/);
     await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
     await expect(page.getByRole('link', { name: /^WhatsApp$/ })).toHaveCount(0);
     expect(quoteRequest?.extracted?.client_id).toBe(CLIENT.id);
@@ -180,6 +187,15 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
           revision_number: 1,
           concurrency_token: concurrencyToken,
           status: 'rascunho',
+          items: [{
+            item_code: PRODUCT.sku,
+            qty: '30',
+            nome: PRODUCT.nome,
+            applied_unit_price: '9.00',
+            manual_rate: false,
+          }],
+          frete: '0.00',
+          total: '270.00',
         }),
       });
     });
@@ -225,11 +241,9 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await expect(issueButton).toBeDisabled();
     releaseIssue();
 
-    await expect(page.getByText('Orçamento emitido', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`#/quotations/${quotationUuid}$`));
     await expect(page.getByText(/Orçamento enviado/i)).toHaveCount(0);
     expect(transportRequests).toBe(0);
-    await page.getByRole('button', { name: 'Abrir orçamento' }).click();
-    await expect(page).toHaveURL(new RegExp(`#/quotations/${quotationUuid}$`));
   });
 
   test('envia o mesmo preço exibido para o fluxo local com sinal não manual', async ({ page }) => {
@@ -267,8 +281,17 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
           quotation_id: 'ORC-LOCAL-0001',
           quote_id: 'quote-local-0001',
           revision_id: 'revision-local-0001',
+          concurrency_token: '2026-09-05T11:59:00.000Z',
           cliente: CLIENT.nome,
-          items: [{ sku: PRODUCT.sku, qty: 30, rate: 9 }],
+          items: [{
+            item_code: PRODUCT.sku,
+            qty: '30',
+            nome: PRODUCT.nome,
+            applied_unit_price: '9.00',
+            manual_rate: false,
+          }],
+          frete: '0.00',
+          total: '270.00',
         }),
       });
     });
@@ -278,6 +301,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Maria');
     await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
+    await page.getByRole('button', { name: 'Aplicar ao rascunho' }).click();
     await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
     await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
@@ -285,8 +309,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await expect(page.getByText(PRODUCT.sku, { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
-    await expect(page.getByText('Rascunho salvo')).toBeVisible();
-    await expect(page.getByText(/ORC-LOCAL-0001/)).toBeVisible();
+    await expect(page).toHaveURL(/#\/quotations\/quote-local-0001$/);
     expect(quoteRequest?.extracted?.items?.[0]?.rate).toBe(9);
     expect(quoteRequest?.extracted?.items?.[0]?.manual_rate).toBe(false);
   });

@@ -54,6 +54,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
   );
   const [resolvedKeys, setResolvedKeys] = useState<string[]>([]);
   const [errorByKey, setErrorByKey] = useState<DeliveryErrorsByKey>({});
+  const [enqueueErrorByKey, setEnqueueErrorByKey] = useState<DeliveryErrorsByKey>({});
   const [pollVersion, setPollVersion] = useState(0);
 
   const refreshOne = useCallback(async (identity: DeliveryIdentity): Promise<void> => {
@@ -122,6 +123,12 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
           delete next[key];
           return next;
         });
+        setEnqueueErrorByKey((previous) => {
+          if (!(key in previous)) return previous;
+          const next = { ...previous };
+          delete next[key];
+          return next;
+        });
         try {
           const delivery = await enqueueDelivery(input);
           if (
@@ -136,7 +143,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
             mountedRef.current &&
             identitiesRef.current.some((current) => deliveryIdentityKey(current) === key)
           ) {
-            setErrorByKey((previous) => ({
+            setEnqueueErrorByKey((previous) => ({
               ...previous,
               [key]: errorMessage(error, 'Não foi possível iniciar o envio.'),
             }));
@@ -203,6 +210,9 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     setErrorByKey((previous) =>
       Object.fromEntries(Object.entries(previous).filter(([key]) => validKeys.has(key)))
     );
+    setEnqueueErrorByKey((previous) =>
+      Object.fromEntries(Object.entries(previous).filter(([key]) => validKeys.has(key)))
+    );
     void refresh();
     return () => {
       if (timerRef.current) {
@@ -265,6 +275,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     deliveriesByKey,
     pendingKeys: pendingKeysForReturn,
     errorByKey,
+    enqueueErrorByKey,
     enqueue,
     resolve,
     refresh,

@@ -30,7 +30,7 @@ const TEMPLATE = {
 };
 
 test.describe('Aspen v2 settings and recovery screens', () => {
-  test('groups settings and opens quote models without repeated headings', async ({ page }) => {
+  test('groups settings into focused tabs without repeated headings', async ({ page }) => {
     await page.route('**/api/settings', async (route) => {
       if (route.request().method() === 'GET') {
         await route.fulfill({
@@ -73,17 +73,18 @@ test.describe('Aspen v2 settings and recovery screens', () => {
     await page.goto('/#/settings');
 
     await expect(page.getByRole('heading', { name: 'Padrões de orçamento' })).toBeVisible();
-    await expect(page.locator('summary').filter({ hasText: 'Prazos e valores' })).toBeVisible();
-    await expect(page.locator('summary').filter({ hasText: 'Conteúdo do documento' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Padrões' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await expect(page.getByRole('tab', { name: 'Modelos de documento' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Configurações avançadas' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: 'Modelos de orçamento' })).toHaveCount(1);
-
-    const modelsAccordion = page.locator('summary').filter({ hasText: 'Modelos de orçamento' });
-    await expect(page.getByLabel('Conteúdo do modelo')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Salvar nova versão' })).toBeVisible();
-    await modelsAccordion.click();
-    await expect(page.getByLabel('Conteúdo do modelo')).toBeHidden();
-    await modelsAccordion.click();
+    await page.getByRole('tab', { name: 'Modelos de documento' }).click();
+    await expect(page.getByRole('heading', { name: 'Modelos de documento' })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Novo modelo' })).toBeVisible();
+    await page.getByRole('button', { name: /Padrão padrao/ }).click();
+    await expect(page.getByText('Valide o modelo para gerar a prévia.')).toBeVisible();
+    await page.getByRole('button', { name: 'Editar avançado' }).click();
     await expect(page.getByLabel('Conteúdo do modelo')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Salvar nova versão' })).toBeVisible();
   });

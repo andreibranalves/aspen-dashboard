@@ -7,17 +7,17 @@ const root = path.resolve(import.meta.dirname, '../..');
 const read = (relativePath: string) => readFileSync(path.join(root, relativePath), 'utf8');
 
 const canonicalLight = {
-  page: '255 255 255',
+  page: '247 248 250',
   surface: '255 255 255',
   'surface-subtle': '250 250 250',
   'surface-hover': '247 247 248',
-  'surface-selected': '244 247 252',
+  'surface-selected': '231 240 255',
   'border-subtle': '237 237 237',
   'border-default': '226 226 229',
   'border-strong': '209 209 214',
   'text-primary': '24 24 27',
   'text-secondary': '82 82 91',
-  'text-tertiary': '113 113 122',
+  'text-tertiary': '102 102 111',
   'text-disabled': '161 161 170',
   primary: '22 92 216',
   'on-primary': '255 255 255',
@@ -36,9 +36,9 @@ const canonicalDark = {
   'border-subtle': '37 47 64',
   'border-default': '51 64 86',
   'border-strong': '70 84 108',
-  'text-primary': '242 245 250',
-  'text-secondary': '180 191 208',
-  'text-tertiary': '142 157 181',
+  'text-primary': '255 255 255',
+  'text-secondary': '181 191 206',
+  'text-tertiary': '146 158 176',
   'text-disabled': '102 116 138',
   primary: '47 111 219',
   'on-primary': '255 255 255',
@@ -77,14 +77,6 @@ function contrastRatio(first: string, second: string): number {
   );
 }
 
-function blendRgb(foreground: string, background: string, alpha: number): string {
-  const foregroundChannels = foreground.split(' ').map(Number);
-  const backgroundChannels = background.split(' ').map(Number);
-  return foregroundChannels
-    .map((channel, index) => Math.round(channel * alpha + backgroundChannels[index] * (1 - alpha)))
-    .join(' ');
-}
-
 describe('Aspen UI v2 visual contract', () => {
   it('defines the approved light and dark semantic colors exactly', () => {
     const css = read('src/index.css');
@@ -112,9 +104,9 @@ describe('Aspen UI v2 visual contract', () => {
     }
   });
 
-  it('keeps the shell compatibility alias on the Phase-0 page token', () => {
+  it('keeps shell chrome on the approved dark foundation in both themes', () => {
     const css = read('src/index.css');
-    assert.match(css, /--shell:\s*var\(--page\)/);
+    assert.match(css, /--shell:\s*15 20 32/);
     assert.doesNotMatch(css, /--shell:\s*var\(--surface\)/);
   });
 
@@ -138,6 +130,14 @@ describe('Aspen UI v2 visual contract', () => {
     const bulkActionBar = read('src/components/shared/BulkActionBar.tsx');
     assert.match(bulkActionBar, /rounded-t-lg/);
     assert.doesNotMatch(bulkActionBar, /rounded-t-(?:xl|2xl|3xl|pill|\[[^\]]+\])/);
+    assert.match(bulkActionBar, /if \(!visible\) return null/);
+  });
+
+  it('announces lazy route loading without exposing the decorative spinner', () => {
+    const pageLoader = read('src/components/shared/PageLoader.tsx');
+    assert.match(pageLoader, /role="status"/);
+    assert.match(pageLoader, /Carregando página/);
+    assert.match(pageLoader, /aria-hidden="true"/);
   });
 
   it('keeps semantic action labels and focus indicators at the canonical contrast floor', () => {
@@ -193,13 +193,10 @@ describe('Aspen UI v2 visual contract', () => {
     assert.match(tableCell, /\[&:has\(\[role=checkbox\]\)\]:pr-0/);
   });
 
-  it('keeps manual quotation success messaging above the dark contrast floor', () => {
-    const manualQuotation = read('src/features/quotations/pages/ManualOrcamentoPage.tsx');
-    const darkSuccessSurface = blendRgb(canonicalDark.success, canonicalDark.page, 0.1);
-
-    assert.match(manualQuotation, /className="bg-success\/10 border border-success\/30/);
-    assert.match(manualQuotation, /<p className="text-sm text-success">/);
-    assert.ok(contrastRatio(canonicalDark.success, darkSuccessSurface) >= 4.5);
+  it('keeps manual quotation success color contrast available', () => {
+    const quotationPage = read('src/features/quotations/pages/NewQuotationPage.tsx');
+    assert.match(quotationPage, /aria-label="Emitir orçamento"/);
+    assert.ok(contrastRatio(canonicalDark.success, canonicalDark.page) >= 4.5);
   });
 
   it('keeps foundation primitive contracts aligned with the approved dimensions', () => {

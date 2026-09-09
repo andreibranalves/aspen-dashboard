@@ -4,36 +4,36 @@ import {
   BarChart3,
   Columns3,
   FileText,
-  MessageSquare,
   Package,
-  Radio,
   Settings,
   Send,
   ShoppingCart,
-  Sparkles,
   Users,
 } from 'lucide-react';
 import { matchSegments, prefix } from '@/app/match-route';
 import LoginPage from '@/app/LoginPage';
 import NotFoundPage from '@/components/shared/NotFoundPage';
-import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
 import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
 
 const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage'));
 const QuotationsPage = lazy(() => import('@/features/quotations/pages/QuotationsPage'));
 const QuotationDetailPage = lazy(() => import('@/features/quotations/pages/QuotationDetailPage'));
 const SalesOrdersPage = lazy(() => import('@/features/sales-orders/pages/SalesOrdersPage'));
-const SalesOrderDetailPage = lazy(() => import('@/features/sales-orders/pages/SalesOrderDetailPage'));
-const CrmKanbanPage = lazy(() => import('@/features/crm/pages/CrmKanbanPage'));
-const ProductsPage = lazy(() => import('@/features/products/pages/ProductsPage'));
+const SalesOrderDetailPage = lazy(
+  () => import('@/features/sales-orders/pages/SalesOrderDetailPage')
+);
+const CommercialPage = lazy(() => import('@/features/commercial/pages/CommercialPage'));
+const CatalogPage = lazy(() => import('@/features/products/pages/CatalogPage'));
 const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDetailPage'));
 const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
 const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
 const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
-const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
-const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
+const WhatsAppDeliveriesPage = lazy(
+  () => import('@/features/quotations/pages/WhatsAppDeliveriesPage')
+);
 const FollowUpsPage = lazy(() => import('@/features/follow-ups/pages/FollowUpsPage'));
+const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
 
 export interface RouteContext {
   navigate: (hash: string) => void;
@@ -49,7 +49,12 @@ export interface AppRoute {
   suspense?: boolean;
   /** Renderiza dentro do Layout shell (default: true). */
   layout?: boolean;
-  nav?: { label: string; icon: LucideIcon; section: string };
+  nav?: {
+    label: string;
+    icon: LucideIcon;
+    placement: 'action' | 'destination' | 'footer';
+    order: number;
+  };
 }
 
 export const routes: AppRoute[] = [
@@ -62,19 +67,25 @@ export const routes: AppRoute[] = [
     path: '/quotations/:id',
     match: prefix('/quotations/'),
     suspense: true,
-    render: ({ navigate, params }) => <QuotationDetailPage key={params.id} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <QuotationDetailPage key={params.id} id={params.id} navigate={navigate} />
+    ),
   },
   {
     path: '/sales-orders/:id',
     match: prefix('/sales-orders/'),
     suspense: true,
-    render: ({ navigate, params }) => <SalesOrderDetailPage key={params.id} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <SalesOrderDetailPage key={params.id} id={params.id} navigate={navigate} />
+    ),
   },
   {
     path: '/products/:sku',
     match: prefix('/products/'),
     suspense: true,
-    render: ({ navigate, params }) => <ProductDetailPage key={params.id} sku={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <ProductDetailPage key={params.id} sku={params.id} navigate={navigate} />
+    ),
   },
   {
     path: '/leads/:tipo/:id',
@@ -83,77 +94,93 @@ export const routes: AppRoute[] = [
       return params && params.tipo && params.id ? params : null;
     },
     suspense: true,
-    render: ({ navigate, params }) => <LeadDetailPage key={`${params.tipo}:${params.id}`} tipo={params.tipo} id={params.id} navigate={navigate} />,
+    render: ({ navigate, params }) => (
+      <LeadDetailPage
+        key={`${params.tipo}:${params.id}`}
+        tipo={params.tipo}
+        id={params.id}
+        navigate={navigate}
+      />
+    ),
+  },
+  {
+    path: '/novo-orcamento',
+    suspense: true,
+    render: () => <NewQuotationPage initialMode="conversation" />,
+    nav: { label: 'Novo orçamento', icon: FileText, placement: 'action', order: 0 },
   },
   {
     path: '/auto',
-    render: () => <AutoQuotePage />,
-    nav: { label: 'Auto', icon: Sparkles, section: 'Operacional' },
+    suspense: true,
+    render: () => <NewQuotationPage initialMode="conversation" />,
   },
   {
     path: '/whatsapp-deliveries',
     suspense: true,
     render: () => <WhatsAppDeliveriesPage />,
-    nav: { label: 'Envios WhatsApp', icon: Send, section: 'Operacional' },
+    nav: { label: 'Envios', icon: Send, placement: 'destination', order: 6 },
   },
   {
     path: '/dashboard',
     suspense: true,
     render: ({ navigate }) => <DashboardPage navigate={navigate} />,
-    nav: { label: 'Dashboard', icon: BarChart3, section: 'Operacional' },
+    nav: { label: 'Resultados', icon: BarChart3, placement: 'destination', order: 7 },
   },
   {
     path: '/sales-orders',
     suspense: true,
     render: ({ navigate }) => <SalesOrdersPage navigate={navigate} />,
-    nav: { label: 'Pedidos', icon: ShoppingCart, section: 'Operacional' },
+    nav: { label: 'Pedidos', icon: ShoppingCart, placement: 'destination', order: 3 },
   },
   {
     path: '/crm',
     suspense: true,
-    render: () => <CrmKanbanPage />,
-    nav: { label: 'CRM', icon: Columns3, section: 'Operacional' },
+    render: ({ navigate }) => <CommercialPage navigate={navigate} />,
+    nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2 },
   },
   {
     path: '/follow-ups',
     suspense: true,
     render: ({ navigate }) => <FollowUpsPage navigate={navigate} />,
-    nav: { label: 'Follow-ups', icon: MessageSquare, section: 'Operacional' },
   },
   {
     path: '/quotations',
     suspense: true,
     render: ({ navigate }) => <QuotationsPage navigate={navigate} />,
-    nav: { label: 'Orçamentos', icon: FileText, section: 'Operacional' },
+    nav: { label: 'Orçamentos', icon: FileText, placement: 'destination', order: 1 },
+  },
+  {
+    path: '/catalog',
+    suspense: true,
+    render: () => <CatalogPage />,
+    nav: { label: 'Catálogo', icon: Package, placement: 'destination', order: 5 },
   },
   {
     path: '/products',
     suspense: true,
-    render: () => <ProductsPage />,
-    nav: { label: 'Produtos', icon: Package, section: 'Cadastros' },
+    render: () => <CatalogPage legacy />,
   },
   {
     path: '/leads',
     suspense: true,
     render: ({ navigate }) => <LeadsPage navigate={navigate} />,
-    nav: { label: 'Clientes', icon: Users, section: 'Operacional' },
+    nav: { label: 'Clientes', icon: Users, placement: 'destination', order: 4 },
   },
   {
     path: '/comunicacao',
     suspense: true,
     render: ({ navigate }) => <ComunicacaoPage navigate={navigate} />,
-    nav: { label: 'Comunicação', icon: Radio, section: 'Outros' },
   },
   {
     path: '/settings',
     suspense: true,
     render: () => <SettingsPage />,
-    nav: { label: 'Configurações', icon: Settings, section: 'Outros' },
+    nav: { label: 'Configurações', icon: Settings, placement: 'footer', order: 8 },
   },
   {
     path: '/manual',
     suspense: true,
-    render: () => <ManualOrcamentoPage />,
+    render: () => <NewQuotationPage initialMode="manual" />,
   },
   {
     path: '/404',

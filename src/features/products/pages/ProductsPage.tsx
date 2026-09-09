@@ -57,8 +57,8 @@ interface SortOption {
 
 const SORT_OPTIONS: SortOption[] = [
   { value: 'item_name asc', label: 'Nome (A–Z)' },
-  { value: DEFAULT_SORT, label: 'Criação (mais recente)' },
-  { value: 'modified asc', label: 'Criação (mais antiga)' },
+  { value: DEFAULT_SORT, label: 'Atualização (mais recente)' },
+  { value: 'modified asc', label: 'Atualização (mais antiga)' },
   { value: 'item_code asc', label: 'Código SKU (A–Z)' },
 ];
 
@@ -112,7 +112,11 @@ function productStatus(product: Product): { status: string; label: string } {
     : { status: 'Active', label: 'Ativo' };
 }
 
-export default function ProductsPage() {
+interface ProductsPageProps {
+  showHeader?: boolean;
+}
+
+export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
   const [data, setData] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -370,27 +374,29 @@ export default function ProductsPage() {
 
   return (
     <PageShell className="pb-28">
-      <PageHeader
-        className="[&_h1]:text-xl [&_h1]:tracking-[-0.2px]"
-        title="Produtos"
-        actions={
-          <>
-            <ExportCsvButton resource="products" filters={{ search, status, order_by: sort }}>
-              Exportar produtos
-            </ExportCsvButton>
-            <ExportCsvButton
-              resource="product-pricing"
-              filters={{ search, status, order_by: sort }}
-            >
-              Exportar faixas de preço
-            </ExportCsvButton>
-            <Button size="md" onClick={() => navigate('/products/new')}>
-              <PlusCircle />
-              Novo produto
-            </Button>
-          </>
-        }
-      />
+      {showHeader && (
+        <PageHeader
+          className="[&_h1]:text-xl [&_h1]:tracking-[-0.2px]"
+          title="Produtos"
+          actions={
+            <>
+              <ExportCsvButton resource="products" filters={{ search, status, order_by: sort }}>
+                Exportar produtos
+              </ExportCsvButton>
+              <ExportCsvButton
+                resource="product-pricing"
+                filters={{ search, status, order_by: sort }}
+              >
+                Exportar faixas de preço
+              </ExportCsvButton>
+              <Button size="md" onClick={() => navigate('/products/new')}>
+                <PlusCircle />
+                Novo produto
+              </Button>
+            </>
+          }
+        />
+      )}
 
       <PageToolbar className="w-full items-end gap-3 rounded-md border border-line bg-surface p-3">
         <div className="min-w-0 flex-1 basis-full lg:basis-auto">
@@ -609,7 +615,7 @@ export default function ProductsPage() {
                         >
                           <span className="flex min-w-0 items-center gap-2">
                             <span
-                              className="min-w-0 flex-1 truncate text-sm font-medium text-primary hover:underline"
+                              className="min-w-0 flex-1 truncate text-sm font-medium text-primary-text hover:underline"
                               title={name}
                             >
                               {name}
@@ -719,7 +725,9 @@ export default function ProductsPage() {
                         {description || 'Sem descrição cadastrada'}
                       </span>
                       <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
-                        <span className="font-mono text-primary">{sku || 'SKU não informado'}</span>
+                        <span className="font-mono text-primary-text">
+                          {sku || 'SKU não informado'}
+                        </span>
                         <span aria-hidden="true">·</span>
                         <span>{normalizeUom(product.unidade || product.stock_uom)}</span>
                         <span aria-hidden="true">·</span>

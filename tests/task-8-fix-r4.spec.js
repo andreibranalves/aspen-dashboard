@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { withCanonicalQuotationDetail } from './fixtures/quotation-detail.js';
 
 const revisionId = '22222222-2222-4222-8222-222222222201';
 const quotationId = 'ORC-20260001';
@@ -78,13 +79,92 @@ function enqueueResponse(state, flowId = 'flow-1', { omitPhone = false } = {}) {
   };
 }
 
+function issuedQuotationDetail() {
+  return withCanonicalQuotationDetail({
+    id: quotationId,
+    quotation_id: quotationId,
+    quotation_name: quotationId,
+    quotation_uuid: quotationUuid,
+    revision_id: revisionId,
+    revision: 1,
+    revision_number: 1,
+    status: 'Emitido',
+    status_canonical: 'emitido',
+    cliente: 'Cliente teste',
+    client_id: '33333333-3333-4333-8333-333333333201',
+    cliente_snapshot: {
+      id: '33333333-3333-4333-8333-333333333201',
+      nome: 'Cliente teste',
+      email: 'cliente@example.test',
+      telefone: '5511999990000',
+    },
+    validade_dias: 15,
+    validade: '2026-08-28',
+    data: '2026-08-17',
+    pagamento: '',
+    entrega: '',
+    frete_padrao: '0.00',
+    frete: '0.00',
+    observacoes: '',
+    prazo_producao: '',
+    template_key: 'padrao',
+    template_hash: 'a'.repeat(64),
+    template_version_id: null,
+    template_version: null,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo de produção', value: '' },
+        current: { enabled: true, title: 'Prazo de produção', value: '' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: '' },
+        current: { enabled: true, title: 'Pagamento', body: '' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições gerais', body: '' },
+        current: { enabled: true, title: 'Condições gerais', body: '' },
+      },
+    },
+    items: [{
+      item_code: 'CNG-001',
+      sku: 'CNG-001',
+      item_name: 'Canga',
+      nome: 'Canga',
+      qty: '1.000',
+      suggested_unit_price: '9.00',
+      applied_unit_price: '9.00',
+      price_difference: '0.00',
+      line_total: '9.00',
+      manual_rate: false,
+    }],
+    subtotal: '9.00',
+    total: '9.00',
+    valor: '9.00',
+    revision_history: [],
+    derived_expired: false,
+    concurrency_token: updatedAt,
+    updated_at: updatedAt,
+    email_sent: false,
+    email_sent_at: null,
+  });
+}
+
 async function setupAuto(page) {
   await page.route('**/api/settings**', (route) => json(route, {}));
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true }],
     default_key: 'padrao',
   }));
-  await page.route('**/api/quotations**', (route) => json(route, { data: [] }));
+  await page.route('**/api/quotations**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return json(
+      route,
+      route.request().method() === 'GET' && url.searchParams.has('id')
+        ? issuedQuotationDetail()
+        : { data: [] }
+    );
+  });
   await page.route('**/api/quote-leads**', (route) => json(route, { data: [] }));
   await page.route('**/api/extract**', (route) => json(route, {
     orders: [{
@@ -241,7 +321,7 @@ test('flow switch keeps an independent exact revision and flow identity', async 
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await page.getByText('Fluxo de WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
+  await page.getByText('Fluxo WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
   await expect(send).toBeEnabled();
   await send.click();
   await expect(page.getByText('Na fila', { exact: true })).toBeVisible();

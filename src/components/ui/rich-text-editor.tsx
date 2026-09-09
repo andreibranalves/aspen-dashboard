@@ -104,10 +104,12 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
     <LexicalComposer initialConfig={{ namespace: ariaLabel, nodes: [ListNode, ListItemNode], editable: !disabled, onError: (error) => { throw error; }, theme: { paragraph: 'mb-2 last:mb-0', list: { ul: 'ml-5 list-disc', ol: 'ml-5 list-decimal', listitem: 'my-1' }, text: { bold: 'font-semibold', italic: 'italic' } } }}>
       <div ref={container} className={cn('overflow-hidden rounded-md border border-line bg-surface focus-within:ring-2 focus-within:ring-primary', disabled && 'opacity-50')}>
         <Toolbar disabled={disabled} />
-        <RichTextPlugin
-          contentEditable={<ContentEditable aria-label={ariaLabel} aria-placeholder={placeholder} placeholder={<span className="pointer-events-none absolute left-3 top-3 text-sm text-fg-muted">{placeholder}</span>} className="relative min-h-28 px-3 py-2.5 text-sm leading-6 text-fg outline-none" />}
-          ErrorBoundary={LexicalErrorBoundary}
-        />
+        <div className="relative">
+          <RichTextPlugin
+            contentEditable={<ContentEditable aria-label={ariaLabel} aria-placeholder={placeholder} placeholder={<span className="pointer-events-none absolute left-3 top-3 text-sm text-fg-muted">{placeholder}</span>} className="relative min-h-28 px-3 py-2.5 text-sm leading-6 text-fg outline-none" />}
+            ErrorBoundary={LexicalErrorBoundary}
+          />
+        </div>
         <HistoryPlugin />
         <ListPlugin />
         <SynchronizePlugin value={value} lastEditorValue={lastEditorValue} editorVersion={editorVersion} container={container} />

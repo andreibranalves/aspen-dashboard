@@ -37,6 +37,7 @@ function invalidateSavedDraft(draft: Draft): Draft {
   const next = { ...draft } as StoredAutoQuoteDraft;
   delete next.saved;
   delete next.issueIdempotencyKey;
+  delete next.issueDispatchStarted;
   delete next.issue;
   delete next.result;
   delete next.status;
@@ -61,7 +62,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       const items = draftsList[di].edited.items;
       for (let ii = 0; ii < items.length; ii++) {
         const it = items[ii];
-        if (it.item_code && it.qty > 0) {
+        if (it.item_code && it.qty > 0 && !it._rateManual) {
           allItems.push({ item_code: it.item_code, qty: it.qty });
           refs.push({ di, ii });
         }
@@ -74,7 +75,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         '/pricing-lookup',
         { items: allItems, urgent },
       );
-      if (!res.success || !Array.isArray(res.items)) return draftsList;
+      if (res.success === false || !Array.isArray(res.items)) return draftsList;
 
       const next = draftsList.map(d => ({
         ...d,
@@ -92,8 +93,8 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         }
       }
       return next;
-    } catch (err) {
-      console.warn('[pricing]', (err as Error).message);
+    } catch {
+      console.warn('[pricing] lookup failed');
       return draftsList;
     }
   }, []);
@@ -135,6 +136,10 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     [],
   );
 
+  const invalidatePricing = useCallback((draftIndices: readonly number[]) => {
+    for (const draftIdx of draftIndices) nextPricingVersion(draftIdx);
+  }, [nextPricingVersion]);
+
   // ── Draft item mutations ──
   const updateDraftItem = useCallback(
     (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => {
@@ -148,7 +153,6 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         items[itemIdx] = { ...items[itemIdx], [field]: value } as DraftItem;
         if (field === 'rate') items[itemIdx]._rateManual = true;
         if (field === 'item_code') delete items[itemIdx]._rateManual;
-        if (field === 'qty') delete items[itemIdx]._rateManual;
         const next = [...prev];
         next[draftIndex] = { ...draft, edited: { ...draft.edited, items } };
         return next;
@@ -191,8 +195,10 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     (draftIdx: number, field: keyof DraftEdited, value: unknown) => {
       setDrafts(prev => {
         const next = [...prev];
-        const draft = invalidateSavedDraft(next[draftIdx]);
-        next[draftIdx] = {
+        const draftIndex = next.findIndex((draft) => draft.index === draftIdx);
+        if (draftIndex < 0) return prev;
+        const draft = invalidateSavedDraft(next[draftIndex]);
+        next[draftIndex] = {
           ...draft,
           edited: { ...draft.edited, [field]: value },
         };
@@ -206,9 +212,11 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     (draftIdx: number, field: keyof Address, value: unknown) => {
       setDrafts(prev => {
         const next = [...prev];
-        const draft = invalidateSavedDraft(next[draftIdx]);
+        const draftIndex = next.findIndex((draft) => draft.index === draftIdx);
+        if (draftIndex < 0) return prev;
+        const draft = invalidateSavedDraft(next[draftIndex]);
         const addr = normalizeAddress({ ...draft.edited.endereco, [field]: value });
-        next[draftIdx] = { ...draft, edited: { ...draft.edited, endereco: addr } };
+        next[draftIndex] = { ...draft, edited: { ...draft.edited, endereco: addr } };
         return next;
       });
     },
@@ -377,10 +385,16 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
           origem: normalizeLeadSource(order.origem) || '',
           cnpj: normalizeCnpj(order.cnpj || ''),
           endereco: normalizeAddress(order.endereco),
+          client_id: typeof order.client_id === 'string' ? order.client_id : undefined,
+          quote_lead_id: typeof order.quote_lead_id === 'string' ? order.quote_lead_id : undefined,
+          crm_deal_id: typeof order.crm_deal_id === 'string' ? order.crm_deal_id : undefined,
           items: (Array.isArray(order.items) ? order.items : []).map((it: unknown) => ({
             item_code: String((it as Record<string, unknown>).item_code || ''),
             qty: Number((it as Record<string, unknown>).qty || 0),
             rate: (it as Record<string, unknown>).rate != null ? Number((it as Record<string, unknown>).rate) : null,
+            item_name: typeof (it as Record<string, unknown>).item_name === 'string'
+              ? (it as Record<string, unknown>).item_name as string
+              : undefined,
           })),
           prazo_producao: prazoVal || String(order.prazo_producao || order.prazo || ''),
           pagamento: typeof order.pagamento === 'string' ? order.pagamento : undefined,
@@ -405,6 +419,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     productTimer,
     // Pricing
     fetchPricing,
+    invalidatePricing,
     refetchDraftPricing,
     // Item mutations
     updateDraftItem,

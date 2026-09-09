@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
 import FlowEditorTab from '@/features/communication/components/FlowEditorTab';
 import MediaUploader from '@/features/communication/components/MediaUploader';
 import MediaLibrary from '@/features/communication/components/MediaLibrary';
@@ -73,7 +74,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
   const activeTabPanelId = `communication-panel-${activeTab}`;
 
   return (
-    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
+    <PageShell className="space-y-6">
       <PageHeader title="Comunicação" />
 
       <div
@@ -136,6 +137,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
             onOpenQuotation={(quotationId) =>
               navigate(`/quotations/${encodeURIComponent(quotationId)}`)
             }
+            onOpenDeliveries={() => navigate('/whatsapp-deliveries?tab=history')}
           />
         )}
 
@@ -172,6 +174,6 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
         }}
         onCancel={() => setPendingRoute(null)}
       />
-    </div>
+    </PageShell>
   );
 }

@@ -152,11 +152,19 @@ interface FlowEditorTabProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
+interface PendingTypeChange {
+  flowId: string;
+  stepId: string;
+  type: StepType;
+}
+
 export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
   const [flows, setFlows] = useState<EditableFlow[]>([]);
   const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
+  const [activeStepId, setActiveStepId] = useState('');
   const [confirmDeleteFlowId, setConfirmDeleteFlowId] = useState<string | null>(null);
+  const [pendingTypeChange, setPendingTypeChange] = useState<PendingTypeChange | null>(null);
   const [expandedFlow, setExpandedFlow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -167,6 +175,9 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
   const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
   const selectedFlow = flows.find((flow) => flow.id === selectedFlowId) || flows[0];
+  const delayRangeInvalid = Boolean(
+    selectedFlow && selectedFlow.delay_max_seconds < selectedFlow.delay_min_seconds
+  );
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -190,6 +201,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       setSavedFlows(loaded);
       setSelectedFlowId(nextSelectedId);
       setExpandedFlow(nextSelectedId || null);
+      setActiveStepId(loaded.find((flow) => flow.id === nextSelectedId)?.steps.at(-1)?.id || '');
     } catch (error) {
       setLoadError(errorMessage(error, 'Não foi possível carregar os fluxos.'));
     } finally {
@@ -222,6 +234,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setFlows((current) => [...current, newFlow]);
     setSelectedFlowId(newFlow.id);
     setExpandedFlow(newFlow.id);
+    setActiveStepId(newFlow.steps[0]?.id || '');
     setActionError('');
     setSaveError('');
     setSuccessMsg('');
@@ -238,6 +251,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setFlows(next);
     setSelectedFlowId(duplicate.id);
     setExpandedFlow(duplicate.id);
+    setActiveStepId(duplicate.steps.at(-1)?.id || '');
     setActionError('');
     setSaveError('');
     setSuccessMsg('');
@@ -253,6 +267,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     if (selectedFlowId === flowId) {
       setSelectedFlowId(next[0]?.id || '');
       setExpandedFlow(next[0]?.id || null);
+      setActiveStepId(next[0]?.steps.at(-1)?.id || '');
     }
     setActionError('');
     setSaveError('');
@@ -268,11 +283,11 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
   };
 
   const addStep = (flowId: string) => {
+    const step = createStep(STEP_TYPES.TEXT);
     setFlows((current) =>
-      current.map((flow) =>
-        flow.id === flowId ? { ...flow, steps: [...flow.steps, createStep(STEP_TYPES.TEXT)] } : flow
-      )
+      current.map((flow) => (flow.id === flowId ? { ...flow, steps: [...flow.steps, step] } : flow))
     );
+    setActiveStepId(step.id);
     setSaveError('');
     setSuccessMsg('');
   };
@@ -320,7 +335,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setSuccessMsg('');
   };
 
-  const handleStepTypeChange = (flowId: string, stepId: string, newType: StepType) => {
+  const applyStepTypeChange = (flowId: string, stepId: string, newType: StepType) => {
     setFlows((current) =>
       current.map((flow) => {
         if (flow.id !== flowId) return flow;
@@ -337,6 +352,30 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setSaveError('');
     setSuccessMsg('');
   };
+
+  const handleStepTypeChange = (flowId: string, stepId: string, newType: StepType) => {
+    const step = flows.find((flow) => flow.id === flowId)?.steps.find((item) => item.id === stepId);
+    const hasContent =
+      step?.type === STEP_TYPES.TEXT
+        ? Boolean(step.template?.trim())
+        : step?.type === STEP_TYPES.DOCUMENT
+          ? Boolean(step.caption?.trim())
+          : Boolean(step?.caption_template?.trim());
+    if (hasContent) setPendingTypeChange({ flowId, stepId, type: newType });
+    else applyStepTypeChange(flowId, stepId, newType);
+  };
+
+  useEffect(() => {
+    if (!selectedFlow?.steps.length) {
+      setActiveStepId('');
+      return;
+    }
+    setActiveStepId((current) =>
+      selectedFlow.steps.some((step) => step.id === current)
+        ? current
+        : selectedFlow.steps.at(-1)!.id
+    );
+  }, [selectedFlow]);
 
   if (loading) return <SkeletonComunicacao />;
 
@@ -373,506 +412,580 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         </div>
       )}
 
-      <section aria-labelledby="flows-list-title" className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 id="flows-list-title" className="text-base font-semibold text-fg">
-              Fluxos cadastrados
-            </h2>
-          </div>
-          <span className="text-xs text-fg-muted">
-            {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}
-          </span>
-        </div>
-
-        {flows.length === 0 ? (
-          <EmptyState
-            icon={MessageSquare}
-            title="Nenhum fluxo criado ainda"
-            description="Crie um fluxo para organizar mensagens, documentos e mídias enviados pelo WhatsApp."
-            actions={
-              <Button onClick={addFlow}>
-                <Plus size={14} aria-hidden="true" /> Novo fluxo
-              </Button>
-            }
-            className="rounded-md border border-dashed border-line bg-surface py-12"
-          />
-        ) : (
-          <div className="grid gap-2 md:grid-cols-2">
-            {flows.map((flow) => {
-              const isSelected = flow.id === selectedFlow?.id;
-              const date = formatDate(flow.updated_at || flow.created_at);
-              return (
-                <button
-                  key={flow.id}
-                  type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => {
-                    setSelectedFlowId(flow.id);
-                    setExpandedFlow(flow.id);
-                  }}
-                  className={[
-                    'min-w-0 rounded-md border p-3 text-left transition-colors',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
-                    isSelected
-                      ? 'border-primary bg-primary/5'
-                      : 'border-line bg-surface hover:border-primary/40 hover:bg-surface-hover',
-                  ].join(' ')}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-2">
-                      {flow.enabled ? (
-                        <CheckCircle2
-                          size={17}
-                          className="mt-0.5 shrink-0 text-success"
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <CircleOff
-                          size={17}
-                          className="mt-0.5 shrink-0 text-fg-muted"
-                          aria-hidden="true"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-fg">
-                          {displayName(flow)}
-                        </p>
-                        <p className="mt-1 truncate text-xs text-fg-muted">
-                          {contextLabel(flow.context)} · {channelLabel(flow.channel)}
-                        </p>
-                      </div>
-                    </div>
-                    <StatusBadge
-                      status={flow.enabled ? 'Active' : 'Archived'}
-                      label={flow.enabled ? 'Ativo' : 'Inativo'}
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-xs text-fg-muted">
-                    <span>{stepCountLabel(flow.steps?.length || 0)}</span>
-                    <span className="text-fg-muted/60">·</span>
-                    <span className="truncate">
-                      {flow.steps?.length
-                        ? flow.steps
-                            .map((step) => STEP_TYPE_LABELS[step.type] || step.type)
-                            .join(' · ')
-                        : 'Sem etapas'}
-                    </span>
-                    {date && (
-                      <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
-                        <CalendarDays size={13} aria-hidden="true" />
-                        <time dateTime={flow.updated_at || flow.created_at}>{date}</time>
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {selectedFlow && (
-        <section
-          className="rounded-md border border-line bg-surface"
-          aria-labelledby="selected-flow-title"
-        >
-          <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-md border-b border-line bg-surface/95 p-4 shadow-sm backdrop-blur">
-            <button
-              type="button"
-              onClick={() =>
-                setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
-              }
-              aria-expanded={expandedFlow === selectedFlow.id}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-            >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                <MessageSquare size={18} className="text-primary" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
-                  {displayName(selectedFlow)}
-                </h2>
-              </div>
-              {expandedFlow === selectedFlow.id ? (
-                <ChevronUp size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
-              ) : (
-                <ChevronDown size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
-              )}
-            </button>
-
-            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => duplicateFlow(selectedFlow.id)}
-                aria-label={`Duplicar ${displayName(selectedFlow)}`}
-                title="Duplicar fluxo"
-              >
-                <Copy aria-hidden="true" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setConfirmDeleteFlowId(selectedFlow.id)}
-                aria-label={`Remover ${displayName(selectedFlow)}`}
-                title="Remover fluxo"
-              >
-                <Trash2 aria-hidden="true" />
-              </Button>
-              <span
-                className={[
-                  'order-last flex w-full items-center justify-end gap-1.5 text-xs sm:order-none sm:w-auto',
-                  saveError
-                    ? 'text-destructive'
-                    : successMsg
-                      ? 'text-success'
-                      : isDirty
-                        ? 'text-warning'
-                        : 'text-fg-muted',
-                ].join(' ')}
-                role={saveError ? 'alert' : 'status'}
-                aria-live="polite"
-              >
-                {saving ? (
-                  <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-                ) : successMsg ? (
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                ) : isDirty ? (
-                  <AlertCircle size={14} aria-hidden="true" />
-                ) : (
-                  <CheckCircle2 size={14} aria-hidden="true" />
-                )}
-                {saving
-                  ? 'Salvando alterações…'
-                  : saveError ||
-                    successMsg ||
-                    (isDirty ? 'Alterações não salvas' : 'Sem alterações pendentes')}
-              </span>
-              <Button type="button" onClick={handleSave} size="sm" disabled={!isDirty || saving}>
-                <Save size={14} aria-hidden="true" />
-                Salvar
-              </Button>
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+        <section aria-labelledby="flows-list-title" className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 id="flows-list-title" className="text-base font-semibold text-fg">
+                Fluxos cadastrados
+              </h2>
             </div>
+            <span className="text-xs text-fg-muted">
+              {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}
+            </span>
           </div>
 
-          {expandedFlow === selectedFlow.id && (
-            <div className="space-y-5 p-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label
-                  htmlFor={`flow-name-${selectedFlow.id}`}
-                  className="space-y-1.5 text-sm text-fg"
-                >
-                  <span className="font-medium">Nome do fluxo</span>
-                  <Input
-                    id={`flow-name-${selectedFlow.id}`}
-                    type="text"
-                    value={selectedFlow.name || ''}
-                    onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
-                  />
-                </label>
-                <label
-                  htmlFor={`flow-vendor-${selectedFlow.id}`}
-                  className="space-y-1.5 text-sm text-fg"
-                >
-                  <span className="font-medium">Vendedora</span>
-                  <Input
-                    id={`flow-vendor-${selectedFlow.id}`}
-                    type="text"
-                    value={selectedFlow.vendor_name || ''}
-                    onChange={(event) =>
-                      updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
-                    }
-                  />
-                </label>
-                <label
-                  htmlFor={`flow-delay-min-${selectedFlow.id}`}
-                  className="space-y-1.5 text-sm text-fg"
-                >
-                  <span className="font-medium">Delay mínimo (segundos)</span>
-                  <Input
-                    id={`flow-delay-min-${selectedFlow.id}`}
-                    type="number"
-                    min="0"
-                    max="30"
-                    value={selectedFlow.delay_min_seconds ?? ''}
-                    onChange={(event) =>
-                      updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
-                    }
-                  />
-                </label>
-                <label
-                  htmlFor={`flow-delay-max-${selectedFlow.id}`}
-                  className="space-y-1.5 text-sm text-fg"
-                >
-                  <span className="font-medium">Delay máximo (segundos)</span>
-                  <Input
-                    id={`flow-delay-max-${selectedFlow.id}`}
-                    type="number"
-                    min="0"
-                    max="45"
-                    value={selectedFlow.delay_max_seconds ?? ''}
-                    onChange={(event) =>
-                      updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
-                    }
-                  />
-                </label>
-              </div>
-
-              <section
-                className="space-y-3 border-t border-line pt-4"
-                aria-labelledby="flow-steps-title"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h3 id="flow-steps-title" className="text-sm font-semibold text-fg">
-                      Etapas do fluxo
-                    </h3>
-                    <p className="mt-1 text-xs text-fg-muted">
-                      A ordem abaixo é a ordem usada no envio.
-                    </p>
-                  </div>
-                  <Button
+          {flows.length === 0 ? (
+            <EmptyState
+              icon={MessageSquare}
+              title="Nenhum fluxo criado ainda"
+              description="Crie um fluxo para organizar mensagens, documentos e mídias enviados pelo WhatsApp."
+              actions={
+                <Button onClick={addFlow}>
+                  <Plus size={14} aria-hidden="true" /> Novo fluxo
+                </Button>
+              }
+              className="rounded-md border border-dashed border-line bg-surface py-12"
+            />
+          ) : (
+            <div className="grid gap-2">
+              {flows.map((flow) => {
+                const isSelected = flow.id === selectedFlow?.id;
+                const date = formatDate(flow.updated_at || flow.created_at);
+                return (
+                  <button
+                    key={flow.id}
                     type="button"
-                    onClick={() => addStep(selectedFlow.id)}
-                    size="sm"
-                    variant="outline"
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      setSelectedFlowId(flow.id);
+                      setExpandedFlow(flow.id);
+                      setActiveStepId(flow.steps?.at(-1)?.id || '');
+                    }}
+                    className={[
+                      'min-w-0 rounded-md border p-3 text-left transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                      isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-line bg-surface hover:border-primary/40 hover:bg-surface-hover',
+                    ].join(' ')}
                   >
-                    <Plus size={14} aria-hidden="true" /> Etapa
-                  </Button>
-                </div>
-
-                {selectedFlow.steps?.map((step, index) => {
-                  const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
-                  const isFirst = index === 0;
-                  const isLast = index === selectedFlow.steps.length - 1;
-                  return (
-                    <article
-                      key={step.id}
-                      className="space-y-3 rounded-md border border-line bg-surface-muted/40 p-3"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface text-xs font-semibold text-fg-muted"
-                          aria-hidden="true"
-                        >
-                          {index + 1}
-                        </span>
-                        <StepIcon size={16} className="shrink-0 text-fg-muted" aria-hidden="true" />
-                        <span className="text-sm font-medium text-fg">Etapa {index + 1}</span>
-                        <Select
-                          aria-label={`Tipo da etapa ${index + 1}`}
-                          value={step.type}
-                          onChange={(event) =>
-                            handleStepTypeChange(
-                              selectedFlow.id,
-                              step.id,
-                              event.target.value as StepType
-                            )
-                          }
-                          className="min-w-0 flex-1 sm:max-w-xs"
-                        >
-                          {STEP_TYPE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <div className="ml-auto flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveStep(selectedFlow.id, step.id, -1)}
-                            disabled={isFirst}
-                            aria-label={`Mover etapa ${index + 1} para cima`}
-                            title="Mover para cima"
-                          >
-                            <ChevronUp aria-hidden="true" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveStep(selectedFlow.id, step.id, 1)}
-                            disabled={isLast}
-                            aria-label={`Mover etapa ${index + 1} para baixo`}
-                            title="Mover para baixo"
-                          >
-                            <ChevronDown aria-hidden="true" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => removeStep(selectedFlow.id, step.id)}
-                            disabled={selectedFlow.steps.length <= 1}
-                            aria-label={`Remover etapa ${index + 1}`}
-                            title="Remover etapa"
-                          >
-                            <Trash2 aria-hidden="true" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {step.type === STEP_TYPES.TEXT && (
-                        <div className="space-y-1.5">
-                          <label
-                            htmlFor={`step-template-${step.id}`}
-                            className="text-xs font-medium text-fg-muted"
-                          >
-                            Mensagem
-                          </label>
-                          <textarea
-                            id={`step-template-${step.id}`}
-                            value={step.template || ''}
-                            onChange={(event) =>
-                              updateStep(selectedFlow.id, step.id, 'template', event.target.value)
-                            }
-                            placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
-                            className="min-h-[96px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-2">
+                        {flow.enabled ? (
+                          <CheckCircle2
+                            size={17}
+                            className="mt-0.5 shrink-0 text-success"
+                            aria-hidden="true"
                           />
-                        </div>
-                      )}
-
-                      {step.type === STEP_TYPES.DOCUMENT && (
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <label
-                            htmlFor={`step-source-${step.id}`}
-                            className="space-y-1.5 text-sm text-fg"
-                          >
-                            <span className="text-xs font-medium text-fg-muted">
-                              Formato do orçamento
-                            </span>
-                            <Select
-                              id={`step-source-${step.id}`}
-                              value={step.source}
-                              onChange={(event) =>
-                                updateStep(selectedFlow.id, step.id, 'source', event.target.value)
-                              }
-                              className="w-full"
-                            >
-                              <option value="quotation_pdf">PDF (documento)</option>
-                              <option value="quotation_webp">WebP (imagem)</option>
-                            </Select>
-                          </label>
-                          <label
-                            htmlFor={`step-caption-${step.id}`}
-                            className="space-y-1.5 text-sm text-fg"
-                          >
-                            <span className="text-xs font-medium text-fg-muted">
-                              Legenda (opcional)
-                            </span>
-                            <Input
-                              id={`step-caption-${step.id}`}
-                              type="text"
-                              value={step.caption || ''}
-                              onChange={(event) =>
-                                updateStep(selectedFlow.id, step.id, 'caption', event.target.value)
-                              }
-                              placeholder="Legenda do documento"
-                            />
-                          </label>
-                        </div>
-                      )}
-
-                      {step.type === STEP_TYPES.PRODUCT_MEDIA && (
-                        <div className="grid gap-3 md:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
-                          <label
-                            htmlFor={`step-max-items-${step.id}`}
-                            className="space-y-1.5 text-sm text-fg"
-                          >
-                            <span className="text-xs font-medium text-fg-muted">
-                              Máx. mídias por grupo
-                            </span>
-                            <Input
-                              id={`step-max-items-${step.id}`}
-                              type="number"
-                              min="1"
-                              max="5"
-                              value={step.max_items ?? ''}
-                              onChange={(event) =>
-                                updateStep(
-                                  selectedFlow.id,
-                                  step.id,
-                                  'max_items',
-                                  Number(event.target.value)
-                                )
-                              }
-                            />
-                          </label>
-                          <label
-                            htmlFor={`step-caption-template-${step.id}`}
-                            className="space-y-1.5 text-sm text-fg"
-                          >
-                            <span className="text-xs font-medium text-fg-muted">
-                              Template de legenda (opcional)
-                            </span>
-                            <Input
-                              id={`step-caption-template-${step.id}`}
-                              type="text"
-                              value={step.caption_template || ''}
-                              onChange={(event) =>
-                                updateStep(
-                                  selectedFlow.id,
-                                  step.id,
-                                  'caption_template',
-                                  event.target.value
-                                )
-                              }
-                              placeholder="Ex.: Referência de (grupo_produto)"
-                            />
-                          </label>
-                          <p className="text-xs text-fg-muted md:col-span-2">
-                            Seleciona mídias existentes na biblioteca conforme os produtos do
-                            orçamento.
+                        ) : (
+                          <CircleOff
+                            size={17}
+                            className="mt-0.5 shrink-0 text-fg-muted"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-fg">
+                            {displayName(flow)}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-fg-muted">
+                            {contextLabel(flow.context)} · {channelLabel(flow.channel)}
                           </p>
                         </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </section>
-
-              <section
-                className="space-y-2 border-t border-line pt-4"
-                aria-labelledby="flow-summary-title"
-              >
-                <h3 id="flow-summary-title" className="text-sm font-semibold text-fg">
-                  Resumo das etapas
-                </h3>
-                <ol className="space-y-1.5">
-                  {(selectedFlow.steps || []).map((step, index) => {
-                    const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
-                    return (
-                      <li key={step.id} className="flex min-w-0 items-start gap-2 text-sm text-fg">
-                        <span className="w-5 shrink-0 text-right text-xs text-fg-muted">
-                          {index + 1}.
+                      </div>
+                      <StatusBadge
+                        status={flow.enabled ? 'Active' : 'Archived'}
+                        label={flow.enabled ? 'Ativo' : 'Inativo'}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2 text-xs text-fg-muted">
+                      <span>{stepCountLabel(flow.steps?.length || 0)}</span>
+                      <span className="text-fg-muted/60">·</span>
+                      <span className="truncate">
+                        {flow.steps?.length
+                          ? flow.steps
+                              .map((step) => STEP_TYPE_LABELS[step.type] || step.type)
+                              .join(' · ')
+                          : 'Sem etapas'}
+                      </span>
+                      {date && (
+                        <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
+                          <CalendarDays size={13} aria-hidden="true" />
+                          <time dateTime={flow.updated_at || flow.created_at}>{date}</time>
                         </span>
-                        <StepIcon
-                          size={15}
-                          className="mt-0.5 shrink-0 text-fg-muted"
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 truncate">{stepLabel(step)}</span>
-                      </li>
-                    );
-                  })}
-                </ol>
-                <p className="text-xs text-fg-muted">
-                  Nenhum valor de exemplo é aplicado nesta prévia; tokens serão resolvidos durante o
-                  envio.
-                </p>
-              </section>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </section>
-      )}
 
+        {selectedFlow && (
+          <section
+            className="rounded-md border border-line bg-surface"
+            aria-labelledby="selected-flow-title"
+          >
+            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-md border-b border-line bg-surface/95 p-4 shadow-sm backdrop-blur">
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
+                }
+                aria-expanded={expandedFlow === selectedFlow.id}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
+                  <MessageSquare size={18} className="text-primary" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
+                    {displayName(selectedFlow)}
+                  </h2>
+                </div>
+                {expandedFlow === selectedFlow.id ? (
+                  <ChevronUp size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
+                ) : (
+                  <ChevronDown
+                    size={18}
+                    className="mt-1 shrink-0 text-fg-muted"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+
+              <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => duplicateFlow(selectedFlow.id)}
+                  aria-label={`Duplicar ${displayName(selectedFlow)}`}
+                  title="Duplicar fluxo"
+                >
+                  <Copy aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setConfirmDeleteFlowId(selectedFlow.id)}
+                  aria-label={`Remover ${displayName(selectedFlow)}`}
+                  title="Remover fluxo"
+                >
+                  <Trash2 aria-hidden="true" />
+                </Button>
+                <span
+                  className={[
+                    'order-last flex w-full items-center justify-end gap-1.5 text-xs sm:order-none sm:w-auto',
+                    saveError
+                      ? 'text-destructive'
+                      : successMsg
+                        ? 'text-success'
+                        : isDirty
+                          ? 'text-warning'
+                          : 'text-fg-muted',
+                  ].join(' ')}
+                  role={saveError ? 'alert' : 'status'}
+                  aria-live="polite"
+                >
+                  {saving ? (
+                    <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                  ) : successMsg ? (
+                    <CheckCircle2 size={14} aria-hidden="true" />
+                  ) : isDirty ? (
+                    <AlertCircle size={14} aria-hidden="true" />
+                  ) : (
+                    <CheckCircle2 size={14} aria-hidden="true" />
+                  )}
+                  {saving
+                    ? 'Salvando alterações…'
+                    : saveError ||
+                      successMsg ||
+                      (isDirty ? 'Alterações não salvas' : 'Sem alterações pendentes')}
+                </span>
+                <Button
+                  type="button"
+                  onClick={handleSave}
+                  size="sm"
+                  disabled={!isDirty || saving || delayRangeInvalid}
+                >
+                  <Save size={14} aria-hidden="true" />
+                  Salvar
+                </Button>
+              </div>
+            </div>
+
+            {expandedFlow === selectedFlow.id && (
+              <div className="space-y-5 p-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label
+                    htmlFor={`flow-name-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Nome do fluxo</span>
+                    <Input
+                      id={`flow-name-${selectedFlow.id}`}
+                      type="text"
+                      value={selectedFlow.name || ''}
+                      onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-vendor-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Vendedora</span>
+                    <Input
+                      id={`flow-vendor-${selectedFlow.id}`}
+                      type="text"
+                      value={selectedFlow.vendor_name || ''}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
+                      }
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-delay-min-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Delay mínimo (segundos)</span>
+                    <Input
+                      id={`flow-delay-min-${selectedFlow.id}`}
+                      type="number"
+                      min="0"
+                      max="30"
+                      value={selectedFlow.delay_min_seconds ?? ''}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-delay-max-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Delay máximo (segundos)</span>
+                    <Input
+                      id={`flow-delay-max-${selectedFlow.id}`}
+                      type="number"
+                      min="0"
+                      max="45"
+                      value={selectedFlow.delay_max_seconds ?? ''}
+                      aria-invalid={delayRangeInvalid}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
+                      }
+                    />
+                    {delayRangeInvalid && (
+                      <span className="text-xs text-destructive" role="alert">
+                        O máximo deve ser maior ou igual ao mínimo.
+                      </span>
+                    )}
+                  </label>
+                </div>
+
+                <section
+                  className="space-y-3 border-t border-line pt-4"
+                  aria-labelledby="flow-steps-title"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 id="flow-steps-title" className="text-sm font-semibold text-fg">
+                        Etapas do fluxo
+                      </h3>
+                      <p className="mt-1 text-xs text-fg-muted">
+                        A ordem abaixo é a ordem usada no envio.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => addStep(selectedFlow.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      <Plus size={14} aria-hidden="true" /> Etapa
+                    </Button>
+                  </div>
+
+                  {selectedFlow.steps?.map((step, index) => {
+                    const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
+                    const isFirst = index === 0;
+                    const isLast = index === selectedFlow.steps.length - 1;
+                    const isActive = activeStepId === step.id;
+                    return (
+                      <article
+                        key={step.id}
+                        className={[
+                          'space-y-3 rounded-md border p-3',
+                          isActive
+                            ? 'border-primary bg-primary/5'
+                            : 'border-line bg-surface-muted/40',
+                        ].join(' ')}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setActiveStepId(step.id)}
+                            className="flex min-h-9 min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                            aria-label={`Editar etapa ${index + 1}`}
+                            aria-pressed={isActive}
+                          >
+                            <span
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface text-xs font-semibold text-fg-muted"
+                              aria-hidden="true"
+                            >
+                              {index + 1}
+                            </span>
+                            <StepIcon
+                              size={16}
+                              className="shrink-0 text-fg-muted"
+                              aria-hidden="true"
+                            />
+                            <span className="text-sm font-medium text-fg">Etapa {index + 1}</span>
+                          </button>
+                          <Select
+                            aria-label={`Tipo da etapa ${index + 1}`}
+                            value={step.type}
+                            onChange={(event) =>
+                              handleStepTypeChange(
+                                selectedFlow.id,
+                                step.id,
+                                event.target.value as StepType
+                              )
+                            }
+                            className="min-w-0 flex-1 sm:max-w-xs"
+                          >
+                            {STEP_TYPE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </Select>
+                          <div className="ml-auto flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveStep(selectedFlow.id, step.id, -1)}
+                              disabled={isFirst}
+                              aria-label={`Mover etapa ${index + 1} para cima`}
+                              title="Mover para cima"
+                            >
+                              <ChevronUp aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => moveStep(selectedFlow.id, step.id, 1)}
+                              disabled={isLast}
+                              aria-label={`Mover etapa ${index + 1} para baixo`}
+                              title="Mover para baixo"
+                            >
+                              <ChevronDown aria-hidden="true" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => removeStep(selectedFlow.id, step.id)}
+                              disabled={selectedFlow.steps.length <= 1}
+                              aria-label={`Remover etapa ${index + 1}`}
+                              title="Remover etapa"
+                            >
+                              <Trash2 aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {isActive && step.type === STEP_TYPES.TEXT && (
+                          <div className="space-y-1.5">
+                            <label
+                              htmlFor={`step-template-${step.id}`}
+                              className="text-xs font-medium text-fg-muted"
+                            >
+                              Mensagem
+                            </label>
+                            <textarea
+                              id={`step-template-${step.id}`}
+                              value={step.template || ''}
+                              onChange={(event) =>
+                                updateStep(selectedFlow.id, step.id, 'template', event.target.value)
+                              }
+                              placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
+                              className="min-h-[96px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                            />
+                          </div>
+                        )}
+
+                        {isActive && step.type === STEP_TYPES.DOCUMENT && (
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <label
+                              htmlFor={`step-source-${step.id}`}
+                              className="space-y-1.5 text-sm text-fg"
+                            >
+                              <span className="text-xs font-medium text-fg-muted">
+                                Formato do orçamento
+                              </span>
+                              <Select
+                                id={`step-source-${step.id}`}
+                                value={step.source}
+                                onChange={(event) =>
+                                  updateStep(selectedFlow.id, step.id, 'source', event.target.value)
+                                }
+                                className="w-full"
+                              >
+                                <option value="quotation_pdf">PDF (documento)</option>
+                                <option value="quotation_webp">WebP (imagem)</option>
+                              </Select>
+                            </label>
+                            <label
+                              htmlFor={`step-caption-${step.id}`}
+                              className="space-y-1.5 text-sm text-fg"
+                            >
+                              <span className="text-xs font-medium text-fg-muted">
+                                Legenda (opcional)
+                              </span>
+                              <Input
+                                id={`step-caption-${step.id}`}
+                                type="text"
+                                value={step.caption || ''}
+                                onChange={(event) =>
+                                  updateStep(
+                                    selectedFlow.id,
+                                    step.id,
+                                    'caption',
+                                    event.target.value
+                                  )
+                                }
+                                placeholder="Legenda do documento"
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        {isActive && step.type === STEP_TYPES.PRODUCT_MEDIA && (
+                          <div className="grid gap-3 md:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
+                            <label
+                              htmlFor={`step-max-items-${step.id}`}
+                              className="space-y-1.5 text-sm text-fg"
+                            >
+                              <span className="text-xs font-medium text-fg-muted">
+                                Máx. mídias por grupo
+                              </span>
+                              <Input
+                                id={`step-max-items-${step.id}`}
+                                type="number"
+                                min="1"
+                                max="5"
+                                value={step.max_items ?? ''}
+                                onChange={(event) =>
+                                  updateStep(
+                                    selectedFlow.id,
+                                    step.id,
+                                    'max_items',
+                                    Number(event.target.value)
+                                  )
+                                }
+                              />
+                            </label>
+                            <label
+                              htmlFor={`step-caption-template-${step.id}`}
+                              className="space-y-1.5 text-sm text-fg"
+                            >
+                              <span className="text-xs font-medium text-fg-muted">
+                                Template de legenda (opcional)
+                              </span>
+                              <Input
+                                id={`step-caption-template-${step.id}`}
+                                type="text"
+                                value={step.caption_template || ''}
+                                onChange={(event) =>
+                                  updateStep(
+                                    selectedFlow.id,
+                                    step.id,
+                                    'caption_template',
+                                    event.target.value
+                                  )
+                                }
+                                placeholder="Ex.: Referência de (grupo_produto)"
+                              />
+                            </label>
+                            <p className="text-xs text-fg-muted md:col-span-2">
+                              Seleciona mídias existentes na biblioteca conforme os produtos do
+                              orçamento.
+                            </p>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </section>
+
+                <section
+                  className="space-y-2 border-t border-line pt-4"
+                  aria-labelledby="flow-summary-title"
+                >
+                  <h3 id="flow-summary-title" className="text-sm font-semibold text-fg">
+                    Resumo das etapas
+                  </h3>
+                  <ol className="space-y-1.5">
+                    {(selectedFlow.steps || []).map((step, index) => {
+                      const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
+                      return (
+                        <li
+                          key={step.id}
+                          className="flex min-w-0 items-start gap-2 text-sm text-fg"
+                        >
+                          <span className="w-5 shrink-0 text-right text-xs text-fg-muted">
+                            {index + 1}.
+                          </span>
+                          <StepIcon
+                            size={15}
+                            className="mt-0.5 shrink-0 text-fg-muted"
+                            aria-hidden="true"
+                          />
+                          <button
+                            type="button"
+                            className="min-w-0 truncate text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            onClick={() => setActiveStepId(step.id)}
+                            aria-pressed={activeStepId === step.id}
+                          >
+                            {stepLabel(step)}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  <p className="text-xs text-fg-muted">
+                    Nenhum valor de exemplo é aplicado nesta prévia; tokens serão resolvidos durante
+                    o envio.
+                  </p>
+                </section>
+              </div>
+            )}
+          </section>
+        )}
+
+        {selectedFlow && (
+          <FlowPreview
+            step={
+              selectedFlow.steps?.find((step) => step.id === activeStepId) ||
+              selectedFlow.steps?.at(-1)
+            }
+          />
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={pendingTypeChange !== null}
+        title="Trocar tipo da etapa?"
+        message="O conteúdo específico atual será substituído pelo novo tipo."
+        confirmLabel="Trocar tipo"
+        cancelLabel="Cancelar"
+        variant="default"
+        onConfirm={() => {
+          const pending = pendingTypeChange;
+          setPendingTypeChange(null);
+          if (pending) applyStepTypeChange(pending.flowId, pending.stepId, pending.type);
+        }}
+        onCancel={() => setPendingTypeChange(null)}
+      />
       <ConfirmDialog
         open={confirmDeleteFlowId !== null}
         title="Remover fluxo?"
@@ -887,5 +1000,38 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         onCancel={() => setConfirmDeleteFlowId(null)}
       />
     </div>
+  );
+}
+
+function FlowPreview({ step }: { step?: FlowStep }) {
+  let title = 'Prévia da etapa';
+  let content = 'Selecione uma etapa para consultar a prévia.';
+  let note = 'Tokens permanecem sem resolver até o envio.';
+
+  if (step?.type === STEP_TYPES.TEXT) {
+    content = step.template?.trim() || 'Mensagem sem conteúdo.';
+  } else if (step?.type === STEP_TYPES.DOCUMENT) {
+    title = 'Prévia do orçamento';
+    content = `${step.source === 'quotation_webp' ? 'Documento WebP' : 'Documento PDF'}\n${step.caption?.trim() || 'Orçamento selecionado no envio.'}`;
+    note = 'O documento é gerado no fluxo de envio.';
+  } else if (step?.type === STEP_TYPES.PRODUCT_MEDIA) {
+    title = 'Prévia da mídia';
+    content = `Mídia da biblioteca\nAté ${step.max_items || 1} arquivo por grupo${step.caption_template?.trim() ? `\n${step.caption_template.trim()}` : ''}`;
+    note = 'A seleção depende dos produtos do orçamento.';
+  }
+
+  return (
+    <aside
+      className="min-w-0 rounded-md border border-line bg-surface p-4"
+      aria-labelledby="flow-preview-title"
+    >
+      <h3 id="flow-preview-title" className="text-base font-semibold text-fg">
+        {title}
+      </h3>
+      <div className="mt-3 min-h-48 whitespace-pre-line rounded-md border border-line bg-surface-muted p-4 text-sm leading-5 text-fg">
+        {content}
+      </div>
+      <p className="mt-3 text-xs text-fg-muted">{note}</p>
+    </aside>
   );
 }

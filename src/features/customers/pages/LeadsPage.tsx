@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Eye,
   Mail,
-  MessageCircle,
   Phone,
   ReceiptText,
   Search,
@@ -21,6 +20,7 @@ import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
@@ -480,7 +480,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     if (!detail) return [];
     const actions: ContextAction[] = [
       {
-        label: 'Página completa',
+        label: 'Abrir ficha completa',
         icon: ChevronRight,
         onClick: () => requestDrawerClose(() => navigateToDetail(detail.id)),
         title: 'Abrir página completa do cadastro',
@@ -501,21 +501,11 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         title: 'Enviar e-mail',
       });
     actions.push({
-      label: 'Criar orçamento',
+      label: 'Novo orçamento',
       icon: Sparkles,
       onClick: () => requestDrawerClose(() => createQuoteForClient(detail, navigate)),
-      title: 'Criar orçamento com os dados deste cliente',
+      title: 'Novo orçamento com os dados deste cliente',
     });
-    if (detail.latest_quotation)
-      actions.push({
-        label: 'Orçamento recente',
-        icon: ChevronRight,
-        onClick: () =>
-          requestDrawerClose(() =>
-            navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`)
-          ),
-        title: `Abrir ${detail.latest_quotation.name}`,
-      });
     return actions;
   }, [detail, navigate, navigateToDetail, requestDrawerClose]);
 
@@ -618,10 +608,13 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     <PageShell className="pb-28">
       <PageHeader
         title="Clientes"
+        description={
+          !loading && !error ? `${totalRecords} cliente${totalRecords === 1 ? '' : 's'}` : undefined
+        }
         actions={
           <>
             <ExportCsvButton resource="clients" filters={{ search, status }}>
-              Exportar clientes
+              Exportar CSV
             </ExportCsvButton>
             <Button onClick={() => navigate?.('/leads/cliente/new')}>
               <UserPlus />
@@ -632,14 +625,14 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       />
 
       <PageToolbar className="items-end">
-        <div className="relative min-w-[220px] flex-1">
+        <div className="relative w-full max-w-[286px] flex-1">
           <Search
             size={16}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
             aria-hidden="true"
           />
           <Input
-            placeholder="Buscar por nome, documento, e-mail ou telefone…"
+            placeholder="Buscar clientes"
             value={search}
             onChange={onSearchChange}
             className="pl-9"
@@ -844,27 +837,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                           >
                             <Eye />
                           </Button>
-                          {row.telefone && (
-                            <Button variant="ghost" size="icon" asChild>
-                              <a
-                                href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-success hover:bg-success/10"
-                                title="Abrir conversa no WhatsApp"
-                                aria-label={`WhatsApp ${label}`}
-                              >
-                                <MessageCircle />
-                              </a>
-                            </Button>
-                          )}
-                          {row.email && (
-                            <Button variant="ghost" size="icon" asChild>
-                              <a href={`mailto:${row.email}`} aria-label={`E-mail ${label}`}>
-                                <Mail />
-                              </a>
-                            </Button>
-                          )}
                           <CustomerActionMenu
                             archived={isArchivedRow(row)}
                             customerName={label}
@@ -955,27 +927,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                     >
                       <Eye />
                     </Button>
-                    {row.telefone && (
-                      <Button variant="ghost" size="icon" asChild>
-                        <a
-                          href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`WhatsApp ${label}`}
-                          title="Abrir conversa no WhatsApp"
-                          className="text-success"
-                        >
-                          <MessageCircle />
-                        </a>
-                      </Button>
-                    )}
-                    {row.email && (
-                      <Button variant="ghost" size="icon" asChild>
-                        <a href={`mailto:${row.email}`} aria-label={`E-mail ${label}`}>
-                          <Mail />
-                        </a>
-                      </Button>
-                    )}
                   </div>
                 </article>
               );
@@ -1057,7 +1008,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         open={drawerOpen}
         onClose={() => requestDrawerClose()}
         title={detail?.display_name || detail?.nome || 'Carregando…'}
-        description={selectedId ? `Cliente · ${selectedId}` : undefined}
+        description={detail ? 'Cliente' : undefined}
+        className="lg:max-w-[420px]"
         actions={
           detail && (
             <div className="space-y-3">
@@ -1126,12 +1078,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         )}
         {detail && !detailLoading && !editMode && (
           <div className="space-y-4 text-sm">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-fg-muted">Nome</p>
-              <p className="break-words font-medium">
-                {detail.display_name || detail.nome || 'Cliente sem nome'}
-              </p>
-            </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-fg-muted">E-mail</p>
               <p className="break-words">{detail.email || 'E-mail não informado'}</p>
@@ -1227,13 +1173,12 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             </label>
             <label className="block text-xs text-fg-muted">
               Observações
-              <textarea
+              <Textarea
                 aria-label="Observações"
                 value={editFields.observacoes}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, observacoes: event.target.value }))
                 }
-                className="mt-1 min-h-24 w-full rounded-sm border border-line bg-surface p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </label>
             <p className="break-words text-xs text-fg-muted">

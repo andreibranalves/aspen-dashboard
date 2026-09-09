@@ -49,6 +49,16 @@ const MOCK_ORCAMENTO = {
   deal_id: 'CRM-DEAL-2026-00001',
   customer_id: 'CUST-001',
   customer_new: true,
+  items: [{
+    item_code: 'LNC-SED-70',
+    qty: '50',
+    nome: 'Lenço Sedoso 70cm',
+    applied_unit_price: '10.00',
+    manual_rate: false,
+  }],
+  subtotal: '500.00',
+  frete: '0.00',
+  total: '500.00',
 };
 
 const MOCK_ISSUE = {
@@ -358,40 +368,10 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await setupApiMocks(page);
     /** @type {any} */
     const orcamentoRequests = [];
-    /** @type {any} */
-    let issueRequest;
-    let transportRequests = 0;
-    page.on('request', (request) => {
-      if (request.url().includes('/api/quotation-issues') && request.method() === 'POST') {
-        issueRequest = request.postDataJSON();
-      }
-      if (request.url().includes('/api/send-whatsapp-flow')) transportRequests += 1;
-    });
-    const revisedOrcamento = {
-      ...MOCK_ORCAMENTO,
-      quotation_uuid: '11111111-1111-4111-8111-111111111102',
-      revision_id: '22222222-2222-4222-8222-222222222202',
-      revision_number: 2,
-      concurrency_token: '2026-08-13T00:00:01.000Z',
-    };
     await page.route('**/api/orcamento**', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       orcamentoRequests.push(route.request().postDataJSON());
-      const response = orcamentoRequests.length === 1 ? MOCK_ORCAMENTO : revisedOrcamento;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
-    });
-    await page.route('**/api/quotation-issues**', async (route) => {
-      issueRequest = route.request().postDataJSON();
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ...MOCK_ISSUE,
-          quotationId: revisedOrcamento.quotation_uuid,
-          revisionId: revisedOrcamento.revision_id,
-          revisionNumber: revisedOrcamento.revision_number,
-        }),
-      });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ORCAMENTO) });
     });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
@@ -426,88 +406,20 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
     await page.getByRole('button', { name: 'Concluir' }).click();
 
-    const previewRequestPromise = page.context().waitForEvent('request', {
-      predicate: (request) => request.url().includes('/api/quotation-preview'),
-    });
-    await page.getByRole('button', { name: 'Ver', exact: true }).click();
-    const previewRequest = await previewRequestPromise;
-    const previewPayload = JSON.parse(new globalThis.URLSearchParams(previewRequest.postData() || '').get('payload') || '{}');
-    expect(previewPayload.extracted.items[0].item_name).toBe(customItemName);
-    expect(previewPayload.extracted.template_key).toBe('minimalista');
-
-    await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-    await expect(page.getByText('Rascunho salvo. Continue a revisão ou emita o orçamento.', { exact: true })).toBeVisible();
-    await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
-
-    const revisedItemName = 'Lenço 100 x 100 cm — revisão final';
-    await page.getByRole('button', { name: 'Editar' }).click();
-    await page.getByLabel(`Nome exibido no orçamento ${MOCK_EXTRACT.orders[0].items[0].item_code}`).fill(revisedItemName);
-    await page.getByRole('button', { name: 'Concluir' }).click();
-    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeVisible();
-
-    await page.getByRole('button', { name: 'Emitir orçamento' }).click();
-    // Emission persists the draft first and then issues it by reference; the
-    // reviewed commercial content travels in the draft-save POST only.
-    await expect.poll(() => orcamentoRequests.length, { timeout: 10000 }).toBe(2);
-    expect(orcamentoRequests[0].extracted.items[0].item_name).toBe(customItemName);
-    expect(orcamentoRequests[1].extracted.items[0].item_name).toBe(revisedItemName);
-    expect(orcamentoRequests[1].extracted.template_key).toBe('minimalista');
-    const pdfLink = page.getByRole('link', { name: 'Abrir PDF' });
-    await expect(pdfLink).toBeVisible();
-    await expect(pdfLink).toHaveAttribute('href', MOCK_ISSUE.pdfUrl);
-    await expect(pdfLink).toHaveAttribute('target', '_blank');
-    await expect(page.getByText(MOCK_ISSUE.businessNumber, { exact: true })).toBeVisible();
-    await expect(page.getByText('Validade: 28/08/2026', { exact: true })).toBeVisible();
-    expect(issueRequest).toEqual({
-      revision_id: revisedOrcamento.revision_id,
-      concurrency_token: revisedOrcamento.concurrency_token,
-    });
-    expect(transportRequests).toBe(0);
+    const draftSaveRequest = page.waitForRequest(
+      (request) => request.url().endsWith('/api/orcamento') && request.method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Revisar', exact: true }).click();
+    const draftSave = await draftSaveRequest;
+    expect(orcamentoRequests).toHaveLength(1);
+    expect(draftSave.postDataJSON().extracted.items[0].item_name).toBe(customItemName);
+    expect(draftSave.postDataJSON().extracted.template_key).toBe('minimalista');
+    await expect(page).toHaveURL(/#\/quotations\/11111111-1111-4111-8111-111111111101$/);
+    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
   });
 
-  test('ação atual de WhatsApp envia somente referências exatas da cotação e revisão', async ({ page }) => {
+  test('emissão navega ao detalhe e não oferece transporte nesta página', async ({ page }) => {
     await setupApiMocks(page);
-    await page.route('**/api/communication-flows**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          flows: [{
-            id: 'flow-test', name: 'Fluxo de teste', context: 'manual', channel: 'whatsapp',
-            vendor_name: 'Juliana', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0,
-            max_media_per_product_group: 1, steps: [{ id: 'step-1', type: 'text', template: 'Olá' }],
-          }],
-          selectedFlowId: 'flow-test', source: 'test',
-        }),
-      });
-    });
-    let sendRequest;
-    await page.route('**/api/send-whatsapp-flow', async (route) => {
-      sendRequest = route.request().postDataJSON();
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          dry_run: false,
-          send_status: 'completed',
-          duplicate_warning: false,
-          duplicate_message: '',
-          flow_id: 'flow-test',
-          flow_name: 'Fluxo de teste',
-          quotation_id: 'ORC-20260001',
-          deal_id: null,
-          phone: '55119999990001',
-          product_summary: 'cangas',
-          categories: ['canga'],
-          steps_count: 1,
-          steps: [],
-          evolution: [],
-          send_event_id: null,
-        }),
-      });
-    });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
     await page.locator('textarea').first().fill(TEST_INPUT);
@@ -517,22 +429,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByLabel('Origem').selectOption('Google Ads');
     await page.getByRole('button', { name: 'Concluir' }).click();
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
-    await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible({ timeout: 10000 });
-    await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
-    await expect.poll(() => sendRequest, { timeout: 10000 }).toBeTruthy();
-    expect(sendRequest).toEqual({
-      quotation_id: 'ORC-20260001',
-      revision_id: '22222222-2222-4222-8222-222222222201',
-      flow_id: 'flow-test',
-    });
-    if (!sendRequest) throw new Error('WhatsApp send request was not captured');
-    /** @type {any} */
-    const captured = sendRequest;
-    expect(captured.source).toBeUndefined();
-    expect(captured.nome).toBeUndefined();
-    expect(captured.phone).toBeUndefined();
-    expect(captured.provider).toBeUndefined();
+    await expect(page).toHaveURL(/#\/quotations\/11111111-1111-4111-8111-111111111101$/);
+    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toHaveCount(0);
   });
 
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {
@@ -622,9 +520,9 @@ test.describe('Leads — Página single e visualização rápida @crm', () => {
     await page.getByRole('button', { name: /Visualização rápida João Silva/i }).click();
 
     await expect(page).toHaveURL(/#\/leads$/);
-    await expect(page.getByRole('dialog').getByText('Nome', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('dialog', { name: 'João Silva' })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: /Editar/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Página completa/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Abrir ficha completa/i })).toBeVisible();
   });
 
   test('página própria permite editar e salvar o cadastro', async ({ page }) => {

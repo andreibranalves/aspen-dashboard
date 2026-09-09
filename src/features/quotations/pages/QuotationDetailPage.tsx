@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
 } from 'react';
 import {
@@ -41,20 +42,34 @@ import { useToast } from '@/components/shared/toast';
 import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import {
-  type QuotationSectionsSnapshot,
-} from '@/features/quotations/components/QuotationSectionsEditor';
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import SkeletonDetail from '@/components/shared/SkeletonDetail';
+import PageShell from '@/components/shared/PageShell';
+import { type QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import { QuotationSectionsDocument } from '@/features/quotations/components/QuotationSectionsDocument';
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
 import {
+  quotationContentHasText,
   quotationContentsMatch,
   quotationDisplayTitle,
   quotationItemCountLabel,
 } from '@/lib/quotationDisplay';
-import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
+import {
+  projectClientRow,
+  projectProduct,
+  projectQuotationDetail,
+  projectQuotationTemplate,
+  type ProjectedQuotationData,
+  type ProjectedQuotationItem,
+} from '@/lib/localProjections';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
 const LEGACY_CONVERSATION_STATUS: Record<string, { label: string; badge: string }> = {
@@ -93,6 +108,12 @@ function readCreatedSalesOrderId(value: unknown): string {
 }
 const DIALOG_FOCUSABLE_SELECTOR =
   'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const QUOTATION_TABS = [
+  { id: 'resumo', label: 'Resumo' },
+  { id: 'itens', label: 'Itens' },
+  { id: 'historico', label: 'Histórico' },
+] as const;
+type QuotationTab = (typeof QUOTATION_TABS)[number]['id'];
 
 type QuotationItem = ProjectedQuotationItem & {
   _key?: string;
@@ -214,7 +235,12 @@ function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
   }));
 }
 
-function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrencyTokenRef }: CoreQuotationDetailProps) {
+function CoreQuotationDetail({
+  data: initialData,
+  navigate,
+  onReload,
+  concurrencyTokenRef,
+}: CoreQuotationDetailProps) {
   const detailTopRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<QuotationData>(initialData);
   const draftEditable = data.status === 'rascunho';
@@ -245,6 +271,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [techDetailsOpen, setTechDetailsOpen] = useState(false);
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
+  const [activeTab, setActiveTab] = useState<QuotationTab>('resumo');
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
   const techDetailsDialogRef = useRef<HTMLDivElement>(null);
   const techDetailsCloseRef = useRef<HTMLButtonElement>(null);
@@ -266,6 +294,24 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setMessage(text);
     setMessageTone(tone);
   }, []);
+  const handleTabKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+      const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      const targetIndex =
+        event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? QUOTATION_TABS.length - 1
+            : direction
+              ? (index + direction + QUOTATION_TABS.length) % QUOTATION_TABS.length
+              : -1;
+      if (targetIndex < 0) return;
+      event.preventDefault();
+      setActiveTab(QUOTATION_TABS[targetIndex].id);
+      tabRefs.current[targetIndex]?.focus();
+    },
+    []
+  );
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
   const [clientId, setClientId] = useState(data.clienteId || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
@@ -276,12 +322,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [validadeDias, setValidadeDias] = useState(String(data.validadeDias ?? ''));
   const [entrega, setEntrega] = useState(data.entrega || '');
   const [frete, setFrete] = useState(String(data.frete));
-  const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
+  const [sections, setSections] = useState<QuotationSectionsSnapshot>(() =>
+    normalizeSections(data)
+  );
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState(data.templateVersionId || '');
-  const [selectedTemplate, setSelectedTemplate] = useState(
-    data.templateKey || 'padrao'
-  );
+  const [selectedTemplate, setSelectedTemplate] = useState(data.templateKey || 'padrao');
+  const templateBaselineRef = useRef({
+    key: data.templateKey || 'padrao',
+    versionId: data.templateVersionId || '',
+  });
   const clientSnapshot = useMemo(
     () => ({
       id: clientId || undefined,
@@ -302,13 +352,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     pricingVersionsRef.current[key] = version;
     return version;
   }, []);
-  const deliveryIdentity = data.status !== 'rascunho' && data.revisionId && deliveryFlowId
-    ? { revisionId: data.revisionId, flowId: deliveryFlowId }
-    : null;
+  const deliveryIdentity =
+    data.status !== 'rascunho' && data.revisionId && deliveryFlowId
+      ? { revisionId: data.revisionId, flowId: deliveryFlowId }
+      : null;
   const {
     deliveriesByKey,
     pendingKeys,
     errorByKey,
+    enqueueErrorByKey,
     enqueue,
     resolve,
   } = useQuotationDeliveries(deliveryIdentity ? [deliveryIdentity] : []);
@@ -316,6 +368,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const delivery = deliveryKey ? deliveriesByKey[deliveryKey] || null : null;
   const deliveryPending = deliveryKey ? pendingKeys.includes(deliveryKey) : false;
   const deliveryError = deliveryKey ? errorByKey[deliveryKey] : undefined;
+  const enqueueError = deliveryKey ? enqueueErrorByKey[deliveryKey] : undefined;
 
   const handleResolveDelivery = useCallback(
     async (decision: DeliveryResolution, note: string) => {
@@ -338,6 +391,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.templateKey || 'padrao');
     setSelectedVersionId(initialData.templateVersionId || '');
+    templateBaselineRef.current = {
+      key: initialData.templateKey || 'padrao',
+      versionId: initialData.templateVersionId || '',
+    };
     setClientResults([]);
     setClientSearching(false);
     if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -351,6 +408,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setConflict('');
     setMenuOpen(false);
     setTechDetailsOpen(false);
+    setActiveTab('resumo');
   }, [initialData]);
 
   useEffect(() => {
@@ -366,21 +424,25 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
 
   useEffect(() => {
     let active = true;
-    fetchFlows().then((result) => {
-      if (!active) return;
-      const flows = Array.isArray(result.flows) ? result.flows : [];
-      setDeliveryFlows(flows);
-      const preferred = flows.find((flow) => flow.context === 'already_talking');
-      const fallbackFlowId = preferred?.id || result.selectedFlowId || flows[0]?.id || '';
-      setDeliveryFlowId((current) =>
-        current && flows.some((flow) => flow.id === current) ? current : fallbackFlowId
-      );
-    }).catch(() => {
-      if (!active) return;
-      setDeliveryFlows([]);
-      setDeliveryFlowId('');
-    });
-    return () => { active = false; };
+    fetchFlows()
+      .then((result) => {
+        if (!active) return;
+        const flows = Array.isArray(result.flows) ? result.flows : [];
+        setDeliveryFlows(flows);
+        const preferred = flows.find((flow) => flow.context === 'already_talking');
+        const fallbackFlowId = preferred?.id || result.selectedFlowId || flows[0]?.id || '';
+        setDeliveryFlowId((current) =>
+          current && flows.some((flow) => flow.id === current) ? current : fallbackFlowId
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setDeliveryFlows([]);
+        setDeliveryFlowId('');
+      });
+    return () => {
+      active = false;
+    };
   }, [initialData.id]);
 
   useEffect(() => {
@@ -388,14 +450,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     apiGet<unknown>('/quotation-templates')
       .then((result) => {
         if (!active) return;
-        const payload = result && typeof result === 'object' && !Array.isArray(result)
-          ? result as Record<string, unknown>
-          : null;
-        const rawTemplates = payload && Array.isArray(payload.templates)
-          ? payload.templates
-          : payload && Array.isArray(payload.data)
-            ? payload.data
-            : [];
+        const payload =
+          result && typeof result === 'object' && !Array.isArray(result)
+            ? (result as Record<string, unknown>)
+            : null;
+        const rawTemplates =
+          payload && Array.isArray(payload.templates)
+            ? payload.templates
+            : payload && Array.isArray(payload.data)
+              ? payload.data
+              : [];
         const projected = rawTemplates.map(projectQuotationTemplate);
         if (projected.some((template): template is null => template === null)) {
           throw new Error('Resposta inválida ao carregar templates.');
@@ -410,22 +474,26 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         const persisted = initialData.templateKey || '';
         const persistedTemplate = available.find((template) => template.key === persisted);
         setTemplates(available);
-        if (persistedTemplate?.archived) {
-          setSelectedTemplate(persisted);
-          setSelectedVersionId(
-            initialData.templateVersionId || persistedTemplate.current_version_id || ''
-          );
-        } else if (initialData.status === 'rascunho' && fallback) {
-          setSelectedTemplate(fallback.key);
-          setSelectedVersionId(fallback.current_version_id || '');
-        } else if (persistedTemplate) {
-          setSelectedTemplate(persisted);
-          setSelectedVersionId(
-            initialData.templateVersionId || persistedTemplate.current_version_id || ''
-          );
-        } else if (fallback) {
-          setSelectedTemplate(fallback.key);
-          setSelectedVersionId(fallback.current_version_id || '');
+        const selection = persistedTemplate?.archived
+          ? {
+              key: persisted,
+              versionId: initialData.templateVersionId || persistedTemplate.current_version_id || '',
+            }
+          : initialData.status === 'rascunho' && fallback
+            ? { key: fallback.key, versionId: fallback.current_version_id || '' }
+            : persistedTemplate
+              ? {
+                  key: persisted,
+                  versionId:
+                    initialData.templateVersionId || persistedTemplate.current_version_id || '',
+                }
+              : fallback
+                ? { key: fallback.key, versionId: fallback.current_version_id || '' }
+                : null;
+        if (selection) {
+          setSelectedTemplate(selection.key);
+          setSelectedVersionId(selection.versionId);
+          templateBaselineRef.current = selection;
         }
         setTemplateError('');
       })
@@ -447,11 +515,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       const response = await apiGet<unknown>(
         `/leads-clients?search=${encodeURIComponent(term)}&limit=10`
       );
-      const payload = response && typeof response === 'object' && !Array.isArray(response)
-        ? response as Record<string, unknown>
-        : {};
+      const payload =
+        response && typeof response === 'object' && !Array.isArray(response)
+          ? (response as Record<string, unknown>)
+          : {};
       const results = Array.isArray(payload.data)
-        ? payload.data.map(projectClientRow).filter((client): client is CoreClientResult => client !== null)
+        ? payload.data
+            .map(projectClientRow)
+            .filter((client): client is CoreClientResult => client !== null)
         : [];
       setClientResults(results);
     } catch {
@@ -474,12 +545,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     [searchClients]
   );
 
-  const updateItem = useCallback((key: string, patch: Partial<CoreQuotationItem>) => {
-    nextPricingVersion(key);
-    setItems((previous) =>
-      previous.map((item) => (item._key === key ? { ...item, ...patch } : item))
-    );
-  }, [nextPricingVersion]);
+  const updateItem = useCallback(
+    (key: string, patch: Partial<CoreQuotationItem>) => {
+      nextPricingVersion(key);
+      setItems((previous) =>
+        previous.map((item) => (item._key === key ? { ...item, ...patch } : item))
+      );
+    },
+    [nextPricingVersion]
+  );
 
   const searchItemProducts = useCallback(async (key: string, term: string) => {
     if (term.trim().length < 2) {
@@ -518,10 +592,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   );
 
   const lookupProductPrice = useCallback(async (sku: string, qty: string) => {
-    const response = await apiPost<{ items?: Array<{ rate?: string | number }> }>('/pricing-lookup', {
-      items: [{ item_code: sku, qty }],
-      urgent: false,
-    });
+    const response = await apiPost<{ items?: Array<{ rate?: string | number }> }>(
+      '/pricing-lookup',
+      {
+        items: [{ item_code: sku, qty }],
+        urgent: false,
+      }
+    );
     const rawRate = response.items?.[0]?.rate;
     const rate = Number(rawRate);
     if (!Number.isFinite(rate) || rate <= 0) {
@@ -554,14 +631,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   price_difference: '0.00',
                   line_total: String(Number(quantity) * Number(rate)),
                 }
-              : current,
-          ),
+              : current
+          )
         );
       } catch {
         setMessage('Não foi possível consultar o preço. Tente novamente.');
       }
     },
-    [items, lookupProductPrice, nextPricingVersion],
+    [items, lookupProductPrice, nextPricingVersion]
   );
 
   const selectProduct = useCallback(
@@ -598,8 +675,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   price_difference: '0.00',
                   line_total: String(Number(qty) * Number(rate)),
                 }
-              : current,
-          ),
+              : current
+          )
         );
       } catch {
         toast('Não foi possível consultar o preço. Tente novamente.', 'error');
@@ -629,10 +706,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     ]);
   }, []);
 
-  const removeItem = useCallback((key: string) => {
-    nextPricingVersion(key);
-    setItems((previous) => previous.filter((item) => item._key !== key));
-  }, [nextPricingVersion]);
+  const removeItem = useCallback(
+    (key: string) => {
+      nextPricingVersion(key);
+      setItems((previous) => previous.filter((item) => item._key !== key));
+    },
+    [nextPricingVersion]
+  );
 
   const resetEditor = useCallback(
     (authoritative: QuotationData = data) => {
@@ -655,6 +735,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.templateKey || 'padrao');
       setSelectedVersionId(authoritative.templateVersionId || '');
+      templateBaselineRef.current = {
+        key: authoritative.templateKey || 'padrao',
+        versionId: authoritative.templateVersionId || '',
+      };
       showMessage('');
       setConflict('');
       setEditing(false);
@@ -665,16 +749,31 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   // ── Dirty detection for the edit form ──
   const isDirty = useMemo(() => {
     if (!editing) return false;
-    if (JSON.stringify(comparableItems(items)) !== JSON.stringify(comparableItems(asCoreItems(data.items)))) return true;
+    if (
+      JSON.stringify(comparableItems(items)) !==
+      JSON.stringify(comparableItems(asCoreItems(data.items)))
+    )
+      return true;
     if (clientId !== (data.clienteId || '')) return true;
     if (validadeDias !== String(data.validadeDias ?? '')) return true;
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
-    if (selectedTemplate !== (data.templateKey || 'padrao')) return true;
-    if (selectedVersionId !== (data.templateVersionId || '')) return true;
+    if (selectedTemplate !== templateBaselineRef.current.key) return true;
+    if (selectedVersionId !== templateBaselineRef.current.versionId) return true;
     return false;
-  }, [editing, items, data, clientId, validadeDias, entrega, frete, sections, selectedTemplate, selectedVersionId]);
+  }, [
+    editing,
+    items,
+    data,
+    clientId,
+    validadeDias,
+    entrega,
+    frete,
+    sections,
+    selectedTemplate,
+    selectedVersionId,
+  ]);
 
   useEffect(() => {
     if (!isDirty) {
@@ -682,12 +781,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setPendingRoute(null);
       return () => setNavigationGuard(null);
     }
-    setNavigationGuard(saving
-      ? () => true
-      : (nextRoute) => {
-          setPendingRoute(nextRoute);
-          return false;
-        });
+    setNavigationGuard(
+      saving
+        ? () => true
+        : (nextRoute) => {
+            setPendingRoute(nextRoute);
+            return false;
+          }
+    );
     return () => setNavigationGuard(null);
   }, [isDirty, saving, setNavigationGuard]);
 
@@ -701,29 +802,26 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     showMessage('Salvando…');
     setConflict('');
     try {
-      const refreshed = await apiPut<unknown>(
-        `/quotations?id=${encodeURIComponent(data.id)}`,
-        {
-          concurrency_token: token,
-          client_id: clientId,
-          items: items.map((item) => ({
-            item_code: item.sku || item.item_code,
-            item_name: item.item_name,
-            qty: item.qty,
-            rate: item.applied_unit_price,
-            manual_rate: item.manual_rate,
-          })),
-          validade_dias: Number(validadeDias),
-          entrega,
-          frete,
-          prazo_producao: sections.prazo_producao.current.enabled
-            ? sections.prazo_producao.current.value
-            : '',
-          template_key: selectedTemplate,
-          template_version_id: selectedVersionId || undefined,
-          secoes: sections,
-        }
-      );
+      const refreshed = await apiPut<unknown>(`/quotations?id=${encodeURIComponent(data.id)}`, {
+        concurrency_token: token,
+        client_id: clientId,
+        items: items.map((item) => ({
+          item_code: item.sku || item.item_code,
+          item_name: item.item_name,
+          qty: item.qty,
+          rate: item.applied_unit_price,
+          manual_rate: item.manual_rate,
+        })),
+        validade_dias: Number(validadeDias),
+        entrega,
+        frete,
+        prazo_producao: sections.prazo_producao.current.enabled
+          ? sections.prazo_producao.current.value
+          : '',
+        template_key: selectedTemplate,
+        template_version_id: selectedVersionId || undefined,
+        secoes: sections,
+      });
       const projection = projectQuotationDetail(refreshed);
       if (!projection) throw new Error('Resposta inválida ao salvar orçamento.');
       concurrencyTokenRef.current = projection.concurrencyToken;
@@ -734,9 +832,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 409) {
-        const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
-          ? error.message
-          : 'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.';
+        const safeMessage =
+          error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+            ? error.message
+            : 'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.';
         setConflict(safeMessage);
         showMessage('');
       } else {
@@ -781,7 +880,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const displayItems = items;
   const editingSubtotal = items.reduce(
     (sum, item) => sum + Number(item.qty) * Number(item.applied_unit_price),
-    0,
+    0
   );
   const displayedSubtotal = editing ? editingSubtotal : data.subtotal;
   const displayedTotal = editing
@@ -832,12 +931,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     }
     const params = new URLSearchParams({ id: data.revisionId || data.id });
     if (draftEditable && selectedVersionId) params.set('template_version_id', selectedVersionId);
-    window.open(
-      `/api/quotation-preview?${params.toString()}`,
-      '_blank',
-      'noopener,noreferrer'
-    );
-  }, [clientSnapshot, data.id, data.revisionId, draftEditable, entrega, frete, isDirty, items, sections, selectedTemplate, selectedVersionId, validadeDias]);
+    window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  }, [
+    clientSnapshot,
+    data.id,
+    data.revisionId,
+    draftEditable,
+    entrega,
+    frete,
+    isDirty,
+    items,
+    sections,
+    selectedTemplate,
+    selectedVersionId,
+    validadeDias,
+  ]);
   const runIssue = useCallback(async () => {
     setConfirmIssueOpen(false);
     setIssuing(true);
@@ -861,15 +969,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 409) {
-        const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
-          ? error.message
-          : 'O orçamento mudou ou não pode mais ser emitido. Recarregue para conferir.';
+        const safeMessage =
+          error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+            ? error.message
+            : 'O orçamento mudou ou não pode mais ser emitido. Recarregue para conferir.';
         setConflict(safeMessage);
         showMessage('');
       } else {
         showMessage('Não foi possível emitir o orçamento. Tente novamente.', 'error');
       }
-
     } finally {
       setIssuing(false);
     }
@@ -919,13 +1027,17 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
-          const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
-            ? error.message
-            : 'O orçamento mudou. Recarregue para conferir o estado atual.';
+          const safeMessage =
+            error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+              ? error.message
+              : 'O orçamento mudou. Recarregue para conferir o estado atual.';
           setConflict(safeMessage);
           showMessage('');
         } else {
-          showMessage('Não foi possível atualizar o estado do orçamento. Tente novamente.', 'error');
+          showMessage(
+            'Não foi possível atualizar o estado do orçamento. Tente novamente.',
+            'error'
+          );
         }
       } finally {
         setLifecycleAction(null);
@@ -964,9 +1076,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
-          const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
-            ? error.message
-            : 'A revisão mudou ou já existe um rascunho. Recarregue para conferir.';
+          const safeMessage =
+            error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+              ? error.message
+              : 'A revisão mudou ou já existe um rascunho. Recarregue para conferir.';
           setConflict(safeMessage);
           showMessage('');
         } else {
@@ -1016,9 +1129,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         return;
       }
       if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR)
-      );
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
       if (focusable.length === 0) {
         event.preventDefault();
         dialog.focus();
@@ -1065,9 +1176,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         return;
       }
       if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR)
-      );
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
       if (focusable.length === 0) {
         event.preventDefault();
         dialog.focus();
@@ -1109,7 +1218,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       deliveryPending ||
       Boolean(delivery) ||
       Boolean(data.expired)
-    ) return;
+    )
+      return;
     try {
       await enqueue({
         quotationId: data.businessNumber,
@@ -1119,45 +1229,56 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch {
       console.error('[QuotationDetailPage] failed to enqueue WhatsApp delivery');
     }
-  }, [data.businessNumber, data.expired, data.revisionId, delivery, deliveryFlowId, deliveryPending, enqueue]);
-  const sendQuotationEmail = useCallback(async (recipient: string) => {
-    if (!data.revisionId) return;
-    const recipientValue = recipient.trim();
-    const sameRecipient =
-      emailAttemptId &&
-      emailAttemptRecipient &&
-      normalizeEmailRecipient(emailAttemptRecipient) === normalizeEmailRecipient(recipientValue);
-    const attemptId = sameRecipient ? emailAttemptId : globalThis.crypto.randomUUID();
-    setEmailAttemptId(attemptId);
-    setEmailAttemptRecipient(recipientValue);
-    setEmailSending(true);
-    setEmailError('');
-    setEmailSuccess('');
-    try {
-      await apiPost('/send-quotation-email', {
-        revision_id: data.revisionId,
-        recipient: recipientValue,
-        attempt_id: attemptId,
-      });
-      setConfirmedEmailAcceptedKey(`${data.id}:${data.revisionId}`);
-      setEmailSuccess('E-mail aceito para envio.');
-      setEmailDialogOpen(false);
-      setEmailAttemptId('');
-      setEmailAttemptRecipient('');
-      await onReload();
-    } catch (error) {
-      const apiError = error as ApiError;
-      const response = apiError.data as { retry_same_attempt?: unknown } | undefined;
-      const retrySameAttempt = response?.retry_same_attempt === true;
-      if (!retrySameAttempt) {
+  }, [
+    data.businessNumber,
+    data.expired,
+    data.revisionId,
+    delivery,
+    deliveryFlowId,
+    deliveryPending,
+    enqueue,
+  ]);
+  const sendQuotationEmail = useCallback(
+    async (recipient: string) => {
+      if (!data.revisionId) return;
+      const recipientValue = recipient.trim();
+      const sameRecipient =
+        emailAttemptId &&
+        emailAttemptRecipient &&
+        normalizeEmailRecipient(emailAttemptRecipient) === normalizeEmailRecipient(recipientValue);
+      const attemptId = sameRecipient ? emailAttemptId : globalThis.crypto.randomUUID();
+      setEmailAttemptId(attemptId);
+      setEmailAttemptRecipient(recipientValue);
+      setEmailSending(true);
+      setEmailError('');
+      setEmailSuccess('');
+      try {
+        await apiPost('/send-quotation-email', {
+          revision_id: data.revisionId,
+          recipient: recipientValue,
+          attempt_id: attemptId,
+        });
+        setConfirmedEmailAcceptedKey(`${data.id}:${data.revisionId}`);
+        setEmailSuccess('E-mail aceito para envio.');
+        setEmailDialogOpen(false);
         setEmailAttemptId('');
         setEmailAttemptRecipient('');
+        await onReload();
+      } catch (error) {
+        const apiError = error as ApiError;
+        const response = apiError.data as { retry_same_attempt?: unknown } | undefined;
+        const retrySameAttempt = response?.retry_same_attempt === true;
+        if (!retrySameAttempt) {
+          setEmailAttemptId('');
+          setEmailAttemptRecipient('');
+        }
+        setEmailError(retrySameAttempt ? EMAIL_AMBIGUOUS_ERROR : EMAIL_SEND_ERROR);
+      } finally {
+        setEmailSending(false);
       }
-      setEmailError(retrySameAttempt ? EMAIL_AMBIGUOUS_ERROR : EMAIL_SEND_ERROR);
-    } finally {
-      setEmailSending(false);
-    }
-  }, [data.id, data.revisionId, emailAttemptId, emailAttemptRecipient, onReload]);
+    },
+    [data.id, data.revisionId, emailAttemptId, emailAttemptRecipient, onReload]
+  );
   const cancelEmailDialog = useCallback(() => {
     setEmailError('');
     setEmailDialogOpen(false);
@@ -1168,6 +1289,98 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     (entry) => entry.revision === data.revision
   );
   const displayTitle = quotationDisplayTitle(data.businessNumber);
+  const issuedView = !draftEditable && !editing;
+  const totalUnits = displayItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+  const summaryConditions = [
+    {
+      label: 'Prazo de produção',
+      value: String(sections.prazo_producao.current.value || ''),
+      enabled: sections.prazo_producao.current.enabled,
+    },
+    {
+      label: 'Pagamento',
+      value: String(sections.pagamento.current.body || ''),
+      enabled: sections.pagamento.current.enabled,
+    },
+    {
+      label: 'Condições gerais',
+      value: String(sections.condicoes_gerais.current.body || ''),
+      enabled: sections.condicoes_gerais.current.enabled,
+    },
+    { label: 'Previsão de entrega', value: entrega, enabled: Boolean(entrega.trim()) },
+  ].filter(({ value, enabled }) => enabled && quotationContentHasText(value));
+  const issuedSummary = (
+    <section
+      aria-labelledby="quotation-summary-content-title"
+      className="border-t border-line py-5"
+    >
+      <h2 id="quotation-summary-content-title" className="text-sm font-semibold text-fg">
+        Itens e condições
+      </h2>
+      <div className="mt-3 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.65fr)]">
+        <div className="min-w-0">
+          <h3 className="text-xs font-medium text-fg-muted">Itens e quantidades</h3>
+          {displayItems.length > 0 ? (
+            <ul className="mt-2 divide-y divide-line border-y border-line">
+              {displayItems.map((item) => (
+                <li key={item._key} className="flex items-start justify-between gap-4 py-2 text-sm">
+                  <span className="min-w-0 break-words">
+                    <span className="block">
+                      {item.nome || item.item_name || item.sku || 'Produto não informado'}
+                    </span>
+                    {item.sku && (
+                      <span className="block font-mono text-xs text-fg-muted">{item.sku}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 tabular-nums">{Number(item.qty)} un.</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-fg-muted">Nenhum item registrado.</p>
+          )}
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-xs font-medium text-fg-muted">Condições essenciais</h3>
+          {summaryConditions.length > 0 ? (
+            <dl className="mt-2 space-y-3 text-sm">
+              {summaryConditions.map((condition) => (
+                <div key={condition.label}>
+                  <dt className="text-xs text-fg-muted">{condition.label}</dt>
+                  <dd
+                    className="rich-text-read mt-0.5 break-words leading-5 text-fg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:my-0.5 [&_ul]:list-disc"
+                    dangerouslySetInnerHTML={{ __html: condition.value }}
+                  />
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-2 text-sm text-fg-muted">Nenhuma condição adicional registrada.</p>
+          )}
+        </div>
+      </div>
+      <dl className="mt-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-t border-line pt-4 text-sm tabular-nums">
+        <div>
+          <dt className="text-xs text-fg-muted">Quantidade total</dt>
+          <dd className="mt-0.5">
+            {quotationItemCountLabel(displayItems.length)} · {totalUnits} unidades
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-fg-muted">Subtotal</dt>
+          <dd className="mt-0.5">{formatBRL(data.subtotal)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-fg-muted">Frete</dt>
+          <dd className="mt-0.5">{formatBRL(data.frete)}</dd>
+        </div>
+        <div className="text-right">
+          <dt className="text-xs text-fg-muted">Total</dt>
+          <dd className="mt-0.5 text-lg font-semibold">{formatBRL(data.total)}</dd>
+        </div>
+      </dl>
+    </section>
+  );
   const productionDeadline = sections.prazo_producao.current.value || '';
   const hideDuplicateProductionDeadline = quotationContentsMatch(entrega, productionDeadline);
   const whatsappDisabledReason = deliveryPending
@@ -1183,22 +1396,30 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             : '';
 
   return (
-    <div ref={detailTopRef} className="mx-auto w-full max-w-[1060px] pb-4">
+    <div ref={detailTopRef} className="space-y-0">
       <fieldset disabled={saving} className="contents">
         <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-[1.55rem] font-semibold tracking-[-0.025em] text-fg">
-              {displayTitle}
+            {draftEditable && !editing && (
+              <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
+            )}
+            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg">
+              {data.businessNumber || displayTitle}
             </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
-              <StatusBadge {...statusBadgeProps(data.status)} />
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
+              <span className="font-medium text-fg">{data.cliente || 'Cliente não informado'}</span>
+              <span aria-hidden="true">·</span>
               <span>Revisão {data.revision}</span>
               {currentRevision?.createdAt && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span>criada em {formatDate(currentRevision.createdAt)}</span>
+                  <span>{formatDate(currentRevision.createdAt) || '—'}</span>
                 </>
               )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
+              <StatusBadge {...statusBadgeProps(data.status)} />
+              <span>Validade: {formatDate(data.validade) || '—'}</span>
               {data.expired && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -1207,15 +1428,28 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               )}
             </div>
             {data.quotationOrigin && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm" aria-label="Origem do orçamento">
-                <span className={data.quotationOrigin.status === 'conflict' ? 'text-destructive' : 'text-fg-muted'}>
+              <div
+                className="mt-2 flex flex-wrap items-center gap-2 text-sm"
+                aria-label="Origem do orçamento"
+              >
+                <span
+                  className={
+                    data.quotationOrigin.status === 'conflict'
+                      ? 'text-destructive'
+                      : 'text-fg-muted'
+                  }
+                >
                   Origem: {data.quotationOrigin.sourceLabel}
                 </span>
                 {data.quotationOrigin.salesOrderNumber && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => navigate(`/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`)}
+                    onClick={() =>
+                      navigate(
+                        `/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`
+                      )
+                    }
                   >
                     <ShoppingCart size={14} /> Abrir pedido
                   </Button>
@@ -1226,9 +1460,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <p
                 role="status"
                 aria-live="polite"
-                className={isDirty ? 'mt-2 text-xs font-medium text-warning' : 'mt-2 text-xs text-fg-muted'}
+                className={
+                  isDirty ? 'mt-2 text-xs font-medium text-warning' : 'mt-2 text-xs text-fg-muted'
+                }
               >
-                {saving ? 'Salvando…' : isDirty ? 'Alterações não salvas' : 'Nenhuma alteração pendente'}
+                {saving
+                  ? 'Salvando…'
+                  : isDirty
+                    ? 'Alterações não salvas'
+                    : 'Nenhuma alteração pendente'}
               </p>
             )}
           </div>
@@ -1264,14 +1504,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                       }}
                     >
                       <Pencil size={14} /> Editar
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={issuing || lifecycleAction !== null}
-                      onClick={() => setConfirmIssueOpen(true)}
-                    >
-                      {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
-                      {issuing ? 'Emitindo…' : 'Emitir orçamento'}
                     </Button>
                   </>
                 ) : (
@@ -1346,622 +1578,822 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             {message || emailSuccess}
           </p>
         )}
-      {!draftEditable && !editing && (
-        <p className="mt-4 max-w-prose rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
-          Este orçamento está somente para leitura porque já foi emitido. Alterações criam uma nova revisão.
-        </p>
-      )}
-
-      {conflict && (
-        <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <span className="min-w-0 break-words">{conflict}</span>
-          <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
-            Recarregar
-          </Button>
-        </div>
-      )}
-
-      {data.status !== 'rascunho' && !editing && (
-        <section aria-labelledby="delivery-outcome-title" className="border-t border-line py-5">
-          <h2 id="delivery-outcome-title" className="text-sm font-semibold text-fg">
-            Entrega e resultado
-          </h2>
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <label className="min-w-52 text-xs font-medium text-fg-muted">
-              <span className="mb-1 block">Fluxo do WhatsApp</span>
-              <Select
-                className="w-full"
-                value={deliveryFlowId}
-                onChange={(event) => setDeliveryFlowId(event.target.value)}
-                disabled={deliveryPending}
-              >
-                {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
-                {deliveryFlows.map((flow) => (
-                  <option key={flow.id} value={flow.id}>
-                    {flow.name}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <Button
-              size="sm"
-              title={whatsappDisabledReason || undefined}
-              disabled={Boolean(whatsappDisabledReason)}
-              onClick={sendIssuedQuotation}
-            >
-              <Phone size={14} /> Enviar WhatsApp
-            </Button>
-            {data.expired && data.revisionId && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={lifecycleAction !== null}
-                onClick={() => createRevision(data.revisionId)}
-              >
-                Nova revisão
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setEmailError('');
-                setEmailDialogOpen(true);
-              }}
-            >
-              <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
-            </Button>
-          </div>
-          {whatsappDisabledReason && (
-            <p role="status" className="mt-2 text-xs text-fg-muted">
-              {whatsappDisabledReason}
-            </p>
-          )}
-          {delivery && deliveryError && (
-            <p role="status" className="mt-2 text-xs text-warning">
-              {deliveryError}
-            </p>
-          )}
-          {deliveryFlows.length === 0 && !deliveryError && (
-            <p role="status" className="mt-2 text-xs text-fg-muted">
-              Não foi possível carregar os fluxos. Tente novamente mais tarde.
-            </p>
-          )}
-          <QuotationDeliveryStatus
-            delivery={delivery}
-            pending={deliveryPending}
-            onResolve={handleResolveDelivery}
-            className="mt-3"
-          />
-
-          <div className="mt-5">
-            <p className="text-xs font-medium text-fg-muted">Resultado comercial</p>
-            {data.status === 'emitido' ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  variant="success"
-                  size="sm"
-                  disabled={lifecycleAction !== null}
-                  onClick={() => void markCommercialStatus('aprovado')}
-                >
-                  {lifecycleAction === 'aprovado' ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <CheckCircle2 size={14} />
-                  )}
-                  Aprovar e criar pedido
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={lifecycleAction !== null}
-                  onClick={openLossReasonDialog}
-                >
-                  Marcar como perdido
-                </Button>
-              </div>
-            ) : (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <StatusBadge {...statusBadgeProps(data.status)} />
-                {createdSalesOrderId ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/sales-orders/${encodeURIComponent(createdSalesOrderId)}`)}
-                  >
-                    <ShoppingCart size={14} />
-                    Ver pedido {createdSalesOrderId}
-                  </Button>
-                ) : null}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Cliente */}
-      <section aria-labelledby="cliente-title" className="border-t border-line py-5">
-        <h2 id="cliente-title" className="text-sm font-semibold text-fg">
-          Cliente
-        </h2>
-        <div className="mt-2">
-          {editing ? (
-            <div className="relative max-w-md">
-              <span className="text-xs font-medium text-fg-muted">Cliente</span>
-              <div className="relative mt-1">
-                <Search size={14} className="absolute left-2 top-2 text-fg-muted" />
-                <Input
-                  aria-label="Cliente do orçamento"
-                  value={clientSearch}
-                  onChange={onClientSearch}
-                  className="pl-7"
-                  placeholder="Buscar cliente…"
-                />
-                {clientSearching && (
-                  <Loader2 size={14} className="absolute right-2 top-2 animate-spin text-fg-muted" />
-                )}
-              </div>
-              {clientResults.length > 0 && (
-                <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
-                  {clientResults.map((client) => (
-                    <button
-                      key={client.id}
-                      type="button"
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-primary/10"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        setClientId(client.id);
-                        setClientSearch(client.nome);
-                        setClientEmail(client.email || '');
-                        setClientTelefone(client.telefone || '');
-                        setClientResults([]);
-                      }}
-                    >
-                      <span className="font-medium">{client.nome}</span>
-                      <span className="block text-xs text-fg-muted">
-                        {client.email || client.telefone || client.id}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <p className="text-base font-semibold">{data.cliente || 'Cliente não informado'}</p>
-              {(data.email || data.telefone) && (
-                <p className="mt-1 break-words text-sm text-fg-muted">
-                  {[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}
-                </p>
-              )}
-              {data.clienteId && (
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
-                  >
-                    Ver cliente
-                  </button>
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => navigate('/crm')}
-                  >
-                    Abrir no CRM
-                  </button>
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => navigate('/quotations')}
-                  >
-                    Ver orçamentos anteriores
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-
-      {/* Dados do orçamento */}
-      <section aria-labelledby="dados-title" className="border-t border-line py-5">
-        <h2 id="dados-title" className="text-sm font-semibold text-fg">
-          Dados do orçamento
-        </h2>
-        <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Data do orçamento</span>
-            <p className="mt-1 whitespace-nowrap tabular-nums">{formatDate(data.data) || '—'}</p>
-          </div>
-          <div className="min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Validade da revisão</span>
-            {editing ? (
-              <>
-                <Input
-                  aria-label="Validade do orçamento em dias"
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={validadeDias}
-                  onChange={(event) => setValidadeDias(event.target.value)}
-                  className="mt-1 w-28"
-                />
-                <p className="mt-1 text-xs text-fg-tertiary">
-                  {Number(validadeDias) !== Number(data.validadeDias)
-                    ? 'A data final será recalculada ao salvar.'
-                    : formatDate(data.validade)
-                      ? `Válida até ${formatDate(data.validade)}`
-                      : undefined}
-                </p>
-              </>
-            ) : (
-              <p className="mt-1 break-words">
-                {data.validadeDias ?? '—'} dias configurados
-                {formatDate(data.validade) && (
-                  <span className="block text-xs text-fg-tertiary">Válida até {formatDate(data.validade)}</span>
-                )}
-              </p>
-            )}
-          </div>
-          <div className="min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Modelo</span>
-            {editing && draftEditable && templates.length > 0 ? (
-              <select
-                aria-label="Modelo do orçamento"
-                className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
-                value={selectedTemplate}
-                onChange={(event) => {
-                  const key = event.target.value;
-                  const template = templates.find((item) => item.key === key);
-                  setSelectedTemplate(key);
-                  setSelectedVersionId(template?.current_version_id || '');
-                }}
-              >
-                {visibleTemplates.map((template) => (
-                  <option key={template.key} value={template.key}>
-                    {template.name}
-                    {template.archived ? ' (arquivado)' : ''}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <p className="mt-1 break-words">
-                {selectedTemplateMetadata?.name || selectedTemplate || '—'}
-              </p>
-            )}
-            {templateError && <p className="mt-1 text-xs text-destructive">{templateError}</p>}
-          </div>
-          <div className="min-w-0">
-            <span className="text-xs font-medium text-fg-muted">Frete</span>
-            {editing ? (
-              <Input
-                aria-label="Frete do orçamento"
-                type="number"
-                min="0"
-                step="0.01"
-                value={frete}
-                onChange={(event) => setFrete(event.target.value)}
-                className="mt-1 w-32"
-              />
-            ) : (
-              <p className="mt-1 whitespace-nowrap tabular-nums">{formatBRL(data.frete)}</p>
-            )}
-          </div>
-          {(editing || entrega) && (
-            <div className="min-w-0 sm:col-span-2 lg:col-span-4">
-              <span className="text-xs font-medium text-fg-muted">Previsão de entrega</span>
-              {editing ? (
-                <Input
-                  aria-label="Entrega do orçamento"
-                  value={entrega}
-                  onChange={(event) => setEntrega(event.target.value)}
-                  className="mt-1"
-                />
-              ) : (
-                <p className="mt-1 max-w-[68ch] break-words whitespace-pre-wrap">{entrega}</p>
-              )}
-            </div>
-          )}
-        </div>
-        {data.expired && (
-          <p className="mt-3 text-xs text-warning">Validade expirada — crie uma nova revisão para reenviar.</p>
+        {!draftEditable && !editing && (
+          <p className="mt-4 max-w-prose rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
+            Este orçamento está somente para leitura porque já foi emitido. Alterações criam uma
+            nova revisão.
+          </p>
         )}
-      </section>
 
-      {/* Itens */}
-      <section aria-labelledby="quotation-items-title" className="border-t border-line py-5">
-        <div className="mb-3 flex flex-wrap items-baseline gap-2">
-          <h2 id="quotation-items-title" className="text-sm font-semibold text-fg">
-            Itens
-          </h2>
-          <span className="text-xs text-fg-muted">
-            {quotationItemCountLabel(displayItems.length)}
-          </span>
-        </div>
-        {displayItems.length > 0 ? (
-          <Table className="min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="h-8 w-full min-w-[280px]">Produto</TableHead>
-                {editing && <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>}
-                <TableHead className="h-9 whitespace-nowrap text-center">Qtd</TableHead>
-                {editing && <TableHead className="h-9 whitespace-nowrap text-right">Sugerido</TableHead>}
-                <TableHead className="h-9 whitespace-nowrap text-right">Preço un.</TableHead>
-                {editing && <TableHead className="h-9 whitespace-nowrap text-right">Diferença</TableHead>}
-                <TableHead className="h-9 whitespace-nowrap text-right">Total</TableHead>
-                {editing && <TableHead />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayItems.map((item) => {
-                const results = productResults[item._key] || [];
-                return (
-                  <TableRow key={item._key}>
-                    <TableCell className="max-w-[480px] break-words leading-5">
-                      {editing ? (
-                        <label className="block space-y-1">
+        {conflict && (
+          <div
+            role="alert"
+            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            <span className="min-w-0 break-words">{conflict}</span>
+            <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
+              Recarregar
+            </Button>
+          </div>
+        )}
+
+        {issuedView && (
+          <div
+            className="mb-4 flex items-center gap-5 border-b border-line"
+            role="tablist"
+            aria-label="Seções do orçamento"
+          >
+            {QUOTATION_TABS.map((tab, index) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  ref={(element) => {
+                    tabRefs.current[index] = element;
+                  }}
+                  id={`quotation-tab-${tab.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls="quotation-panel"
+                  tabIndex={isActive ? 0 : -1}
+                  className={`border-b-2 px-0.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${isActive ? 'border-primary text-link' : 'border-transparent text-fg-muted hover:text-fg'}`}
+                  onClick={() => setActiveTab(tab.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div
+          className={
+            editing ? 'min-w-0 space-y-5' : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
+          }
+        >
+          <div
+            id={issuedView ? 'quotation-panel' : undefined}
+            role={issuedView ? 'tabpanel' : undefined}
+            aria-labelledby={issuedView ? `quotation-tab-${activeTab}` : undefined}
+            tabIndex={issuedView ? 0 : undefined}
+            className="min-w-0 rounded-lg border border-line bg-surface p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-5"
+          >
+            {draftEditable && !editing && (
+              <h2 className="mb-3 text-base font-semibold text-fg">Conferência</h2>
+            )}
+            {issuedView && activeTab === 'resumo' && (
+              <h2 className="mb-3 text-base font-semibold text-fg">Resumo do orçamento</h2>
+            )}
+            {issuedView && activeTab === 'resumo' && issuedSummary}
+
+            {(!issuedView || activeTab === 'resumo') && (
+              <>
+                {/* Cliente */}
+                <section aria-labelledby="cliente-title" className="border-t border-line py-5">
+                  <h2 id="cliente-title" className="text-sm font-semibold text-fg">
+                    Cliente
+                  </h2>
+                  <div className="mt-2">
+                    {editing ? (
+                      <div className="relative max-w-md">
+                        <span className="text-xs font-medium text-fg-muted">Cliente</span>
+                        <div className="relative mt-1">
+                          <Search size={14} className="absolute left-2 top-2 text-fg-muted" />
                           <Input
-                            aria-label={`Nome exibido no orçamento ${item.sku}`}
-                            className="h-8 text-sm"
-                            value={item.item_name}
-                            onChange={(event) =>
-                              updateItem(item._key, {
-                                item_name: event.target.value,
-                                nome: event.target.value,
-                              })
-                            }
+                            aria-label="Cliente do orçamento"
+                            value={clientSearch}
+                            onChange={onClientSearch}
+                            className="pl-7"
+                            placeholder="Buscar cliente…"
                           />
-                        </label>
-                      ) : (
-                        <>
-                          {item.nome || item.item_name || item.sku || 'Produto não informado'}
-                          {item.sku && <span className="block font-mono text-xs text-fg-tertiary">{item.sku}</span>}
-                        </>
-                      )}
-                    </TableCell>
-                    {editing && (
-                      <TableCell className="relative whitespace-nowrap py-2 font-mono">
-                        <Input
-                          value={productTerms[item._key] ?? item.sku}
-                          onChange={(event) => onProductTerm(item._key, event.target.value)}
-                          className="h-8 w-32"
-                          aria-label={`SKU do item ${item.item_name}`}
-                        />
-                        {results.length > 0 && (
-                          <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
-                            {results.map((product) => (
+                          {clientSearching && (
+                            <Loader2
+                              size={14}
+                              className="absolute right-2 top-2 animate-spin text-fg-muted"
+                            />
+                          )}
+                        </div>
+                        {clientResults.length > 0 && (
+                          <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
+                            {clientResults.map((client) => (
                               <button
+                                key={client.id}
                                 type="button"
-                                key={product.sku}
-                                className="block w-full px-2 py-1.5 text-left hover:bg-primary/10"
+                                className="w-full px-3 py-2 text-left text-sm hover:bg-primary/10"
                                 onMouseDown={(event) => {
                                   event.preventDefault();
-                                  selectProduct(item._key, product);
+                                  setClientId(client.id);
+                                  setClientSearch(client.nome);
+                                  setClientEmail(client.email || '');
+                                  setClientTelefone(client.telefone || '');
+                                  setClientResults([]);
                                 }}
                               >
-                                <span className="font-mono text-xs">{product.sku}</span> {product.nome}
+                                <span className="font-medium">{client.nome}</span>
+                                <span className="block text-xs text-fg-muted">
+                                  {client.email || client.telefone || client.id}
+                                </span>
                               </button>
                             ))}
                           </div>
                         )}
-                      </TableCell>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-base font-semibold">
+                          {data.cliente || 'Cliente não informado'}
+                        </p>
+                        {(data.email || data.telefone) && (
+                          <p className="mt-1 break-words text-sm text-fg-muted">
+                            {[data.email, fmtPhone(data.telefone) || data.telefone]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </p>
+                        )}
+                        {data.clienteId && (
+                          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                            <button
+                              type="button"
+                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              onClick={() =>
+                                navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)
+                              }
+                            >
+                              Ver cliente
+                            </button>
+                            <button
+                              type="button"
+                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              onClick={() => navigate('/crm')}
+                            >
+                              Abrir no CRM
+                            </button>
+                            <button
+                              type="button"
+                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              onClick={() => navigate('/quotations')}
+                            >
+                              Ver orçamentos anteriores
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
-                    <TableCell className="whitespace-nowrap py-2 text-center">
+                  </div>
+                </section>
+
+                {/* Dados do orçamento */}
+                <section aria-labelledby="dados-title" className="border-t border-line py-5">
+                  <h2 id="dados-title" className="text-sm font-semibold text-fg">
+                    Dados do orçamento
+                  </h2>
+                  <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium text-fg-muted">Data do orçamento</span>
+                      <p className="mt-1 whitespace-nowrap tabular-nums">
+                        {formatDate(data.data) || '—'}
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium text-fg-muted">Validade da revisão</span>
                       {editing ? (
-                        <Input
-                          aria-label={`Quantidade de ${item.sku}`}
-                          className="mx-auto h-8 w-20"
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={Number(item.qty)}
-                          onChange={(event) =>
-                            updateItem(item._key, { qty: event.target.value, line_total: '' })
-                          }
-                          onBlur={() => {
-                            void repriceItem(item._key);
+                        <>
+                          <Input
+                            aria-label="Validade do orçamento em dias"
+                            type="number"
+                            min="1"
+                            max="365"
+                            value={validadeDias}
+                            onChange={(event) => setValidadeDias(event.target.value)}
+                            className="mt-1 w-28"
+                          />
+                          <p className="mt-1 text-xs text-fg-tertiary">
+                            {Number(validadeDias) !== Number(data.validadeDias)
+                              ? 'A data final será recalculada ao salvar.'
+                              : formatDate(data.validade)
+                                ? `Válida até ${formatDate(data.validade)}`
+                                : undefined}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1 break-words">
+                          {data.validadeDias ?? '—'} dias configurados
+                          {formatDate(data.validade) && (
+                            <span className="block text-xs text-fg-tertiary">
+                              Válida até {formatDate(data.validade)}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium text-fg-muted">Modelo</span>
+                      {editing && draftEditable && templates.length > 0 ? (
+                        <select
+                          aria-label="Modelo do orçamento"
+                          className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
+                          value={selectedTemplate}
+                          onChange={(event) => {
+                            const key = event.target.value;
+                            const template = templates.find((item) => item.key === key);
+                            setSelectedTemplate(key);
+                            setSelectedVersionId(template?.current_version_id || '');
                           }}
-                        />
+                        >
+                          {visibleTemplates.map((template) => (
+                            <option key={template.key} value={template.key}>
+                              {template.name}
+                              {template.archived ? ' (arquivado)' : ''}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
-                        Number(item.qty)
+                        <p className="mt-1 break-words">
+                          {selectedTemplateMetadata?.name || selectedTemplate || '—'}
+                        </p>
                       )}
-                    </TableCell>
-                    {editing && (
-                      <TableCell className="whitespace-nowrap py-2 text-right">
-                        {formatBRL(item.suggested_unit_price)}
-                      </TableCell>
-                    )}
-                    <TableCell className="whitespace-nowrap py-2 text-right">
+                      {templateError && (
+                        <p className="mt-1 text-xs text-destructive">{templateError}</p>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-medium text-fg-muted">Frete</span>
                       {editing ? (
                         <Input
-                          aria-label={`Preço aplicado ${item.sku}`}
-                          className="ml-auto h-8 w-28"
+                          aria-label="Frete do orçamento"
                           type="number"
-                          min="0.01"
+                          min="0"
                           step="0.01"
-                          value={item.applied_unit_price}
-                          onChange={(event) =>
-                            updateItem(item._key, {
-                              applied_unit_price: event.target.value,
-                              manual_rate: true,
-                            })
-                          }
+                          value={frete}
+                          onChange={(event) => setFrete(event.target.value)}
+                          className="mt-1 w-32"
                         />
                       ) : (
-                        formatBRL(item.applied_unit_price)
+                        <p className="mt-1 whitespace-nowrap tabular-nums">
+                          {formatBRL(data.frete)}
+                        </p>
                       )}
-                    </TableCell>
-                    {editing && (
-                      <TableCell
-                        className={`whitespace-nowrap py-2 text-right ${
-                          Number(item.price_difference) > 0 ? 'text-destructive' : ''
-                        }`}
-                      >
-                        {formatBRL(item.price_difference)}
-                      </TableCell>
+                    </div>
+                    {(editing || entrega) && (
+                      <div className="min-w-0 sm:col-span-2 lg:col-span-4">
+                        <span className="text-xs font-medium text-fg-muted">
+                          Previsão de entrega
+                        </span>
+                        {editing ? (
+                          <Input
+                            aria-label="Entrega do orçamento"
+                            value={entrega}
+                            onChange={(event) => setEntrega(event.target.value)}
+                            className="mt-1"
+                          />
+                        ) : (
+                          <p className="mt-1 max-w-[68ch] break-words whitespace-pre-wrap">
+                            {entrega}
+                          </p>
+                        )}
+                      </div>
                     )}
-                    <TableCell className="whitespace-nowrap text-right tabular-nums">
-                      {formatBRL(
-                        editing
-                          ? Number(item.qty) * Number(item.applied_unit_price)
-                          : item.line_total || Number(item.qty) * Number(item.applied_unit_price)
-                      )}
-                    </TableCell>
-                    {editing && (
-                      <TableCell>
-                        <button
-                          type="button"
-                          className="text-fg-muted hover:text-destructive"
-                          onClick={() => removeItem(item._key)}
-                          aria-label={`Remover item ${item.item_name || item.sku}`}
-                        >
-                          <X size={15} />
-                        </button>
-                      </TableCell>
+                  </div>
+                  {data.expired && (
+                    <p className="mt-3 text-xs text-warning">
+                      Validade expirada — crie uma nova revisão para reenviar.
+                    </p>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* Itens */}
+            {(!issuedView || activeTab === 'itens') && (
+              <>
+                <section
+                  aria-labelledby="quotation-items-title"
+                  className="border-t border-line py-5"
+                >
+                  <div className="mb-3 flex flex-wrap items-baseline gap-2">
+                    <h2 id="quotation-items-title" className="text-sm font-semibold text-fg">
+                      Itens
+                    </h2>
+                    <span className="text-xs text-fg-muted">
+                      {quotationItemCountLabel(displayItems.length)}
+                    </span>
+                  </div>
+                  {displayItems.length > 0 ? (
+                    <Table className="min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="h-8 w-full min-w-[280px]">Produto</TableHead>
+                          {editing && <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>}
+                          <TableHead className="h-9 whitespace-nowrap text-center">Qtd</TableHead>
+                          {editing && (
+                            <TableHead className="h-9 whitespace-nowrap text-right">
+                              Sugerido
+                            </TableHead>
+                          )}
+                          <TableHead className="h-9 whitespace-nowrap text-right">
+                            Preço un.
+                          </TableHead>
+                          {editing && (
+                            <TableHead className="h-9 whitespace-nowrap text-right">
+                              Diferença
+                            </TableHead>
+                          )}
+                          <TableHead className="h-9 whitespace-nowrap text-right">Total</TableHead>
+                          {editing && <TableHead />}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {displayItems.map((item) => {
+                          const results = productResults[item._key] || [];
+                          return (
+                            <TableRow key={item._key}>
+                              <TableCell className="max-w-[480px] break-words leading-5">
+                                {editing ? (
+                                  <label className="block space-y-1">
+                                    <Input
+                                      aria-label={`Nome exibido no orçamento ${item.sku}`}
+                                      className="h-8 text-sm"
+                                      value={item.item_name}
+                                      onChange={(event) =>
+                                        updateItem(item._key, {
+                                          item_name: event.target.value,
+                                          nome: event.target.value,
+                                        })
+                                      }
+                                    />
+                                  </label>
+                                ) : (
+                                  <>
+                                    {item.nome ||
+                                      item.item_name ||
+                                      item.sku ||
+                                      'Produto não informado'}
+                                    {item.sku && (
+                                      <span className="block font-mono text-xs text-fg-tertiary">
+                                        {item.sku}
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </TableCell>
+                              {editing && (
+                                <TableCell className="relative whitespace-nowrap py-2 font-mono">
+                                  <Input
+                                    value={productTerms[item._key] ?? item.sku}
+                                    onChange={(event) =>
+                                      onProductTerm(item._key, event.target.value)
+                                    }
+                                    className="h-8 w-32"
+                                    aria-label={`SKU do item ${item.item_name}`}
+                                  />
+                                  {results.length > 0 && (
+                                    <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
+                                      {results.map((product) => (
+                                        <button
+                                          type="button"
+                                          key={product.sku}
+                                          className="block w-full px-2 py-1.5 text-left hover:bg-primary/10"
+                                          onMouseDown={(event) => {
+                                            event.preventDefault();
+                                            selectProduct(item._key, product);
+                                          }}
+                                        >
+                                          <span className="font-mono text-xs">{product.sku}</span>{' '}
+                                          {product.nome}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </TableCell>
+                              )}
+                              <TableCell className="whitespace-nowrap py-2 text-center">
+                                {editing ? (
+                                  <Input
+                                    aria-label={`Quantidade de ${item.sku}`}
+                                    className="mx-auto h-8 w-20"
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={Number(item.qty)}
+                                    onChange={(event) =>
+                                      updateItem(item._key, {
+                                        qty: event.target.value,
+                                        line_total: '',
+                                      })
+                                    }
+                                    onBlur={() => {
+                                      void repriceItem(item._key);
+                                    }}
+                                  />
+                                ) : (
+                                  Number(item.qty)
+                                )}
+                              </TableCell>
+                              {editing && (
+                                <TableCell className="whitespace-nowrap py-2 text-right">
+                                  {formatBRL(item.suggested_unit_price)}
+                                </TableCell>
+                              )}
+                              <TableCell className="whitespace-nowrap py-2 text-right">
+                                {editing ? (
+                                  <Input
+                                    aria-label={`Preço aplicado ${item.sku}`}
+                                    className="ml-auto h-8 w-28"
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={item.applied_unit_price}
+                                    onChange={(event) =>
+                                      updateItem(item._key, {
+                                        applied_unit_price: event.target.value,
+                                        manual_rate: true,
+                                      })
+                                    }
+                                  />
+                                ) : (
+                                  formatBRL(item.applied_unit_price)
+                                )}
+                              </TableCell>
+                              {editing && (
+                                <TableCell
+                                  className={`whitespace-nowrap py-2 text-right ${
+                                    Number(item.price_difference) > 0 ? 'text-destructive' : ''
+                                  }`}
+                                >
+                                  {formatBRL(item.price_difference)}
+                                </TableCell>
+                              )}
+                              <TableCell className="whitespace-nowrap text-right tabular-nums">
+                                {formatBRL(
+                                  editing
+                                    ? Number(item.qty) * Number(item.applied_unit_price)
+                                    : item.line_total ||
+                                        Number(item.qty) * Number(item.applied_unit_price)
+                                )}
+                              </TableCell>
+                              {editing && (
+                                <TableCell>
+                                  <button
+                                    type="button"
+                                    className="text-fg-muted hover:text-destructive"
+                                    onClick={() => removeItem(item._key)}
+                                    aria-label={`Remover item ${item.item_name || item.sku}`}
+                                  >
+                                    <X size={15} />
+                                  </button>
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div>
+                      <EmptyState
+                        icon={FileText}
+                        title="Nenhum item neste orçamento"
+                        description={
+                          editing
+                            ? 'Adicione um item para compor a proposta.'
+                            : 'Não há itens registrados nesta revisão.'
+                        }
+                      />
+                    </div>
+                  )}
+                  {editing && (
+                    <Button variant="outline" size="sm" className="mt-3" onClick={addItem}>
+                      <Plus size={14} /> Item
+                    </Button>
+                  )}
+                  {!draftEditable && (
+                    <div className="mt-4 flex justify-end">
+                      <dl className="w-full max-w-[300px] text-sm tabular-nums">
+                        <div className="flex items-center justify-between gap-6 py-0.5">
+                          <dt className="text-fg-muted">Subtotal</dt>
+                          <dd>{formatBRL(displayedSubtotal)}</dd>
+                        </div>
+                        <div className="flex items-center justify-between gap-6 py-0.5">
+                          <dt className="text-fg-muted">Frete</dt>
+                          <dd>{formatBRL(editing ? frete : data.frete)}</dd>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-6 border-t border-line pt-2.5 text-base font-semibold">
+                          <dt>Total</dt>
+                          <dd>{formatBRL(displayedTotal)}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {/* Seções textuais em documento */}
+            {(!issuedView || activeTab === 'itens') && (
+              <QuotationSectionsDocument
+                sections={sections}
+                editable={editing && draftEditable}
+                hideProductionDeadline={!editing && hideDuplicateProductionDeadline}
+                onChange={setSections}
+              />
+            )}
+
+            {/* Revisões */}
+            {(!issuedView || activeTab === 'historico') &&
+              (data.revisionHistory || []).length > 0 && (
+                <section className="border-t border-line py-5" aria-label="Revisões">
+                  <h2 className="text-sm font-semibold text-fg">Revisões</h2>
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+                    <span>
+                      Revisão atual: <b className="font-semibold">R{data.revision}</b>
+                    </span>
+                    {(data.revisionHistory || []).find((entry) => entry.revision === data.revision)
+                      ?.createdAt && (
+                      <span className="text-fg-muted">
+                        Criada em{' '}
+                        {formatDate(
+                          (data.revisionHistory || []).find(
+                            (entry) => entry.revision === data.revision
+                          )?.createdAt
+                        ) || '—'}
+                      </span>
                     )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        ) : (
-          <div>
-            <EmptyState
-              icon={FileText}
-              title="Nenhum item neste orçamento"
-              description={
-                editing
-                  ? 'Adicione um item para compor a proposta.'
-                  : 'Não há itens registrados nesta revisão.'
-              }
-            />
-          </div>
-        )}
-        {editing && (
-          <Button variant="outline" size="sm" className="mt-3" onClick={addItem}>
-            <Plus size={14} /> Item
-          </Button>
-        )}
-        <div className="mt-4 flex justify-end">
-          <dl className="w-full max-w-[300px] text-sm tabular-nums">
-            <div className="flex items-center justify-between gap-6 py-0.5">
-              <dt className="text-fg-muted">Subtotal</dt>
-              <dd>{formatBRL(displayedSubtotal)}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-6 py-0.5">
-              <dt className="text-fg-muted">Frete</dt>
-              <dd>{formatBRL(editing ? frete : data.frete)}</dd>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-6 border-t border-line pt-2.5 text-base font-semibold">
-              <dt>Total</dt>
-              <dd>{formatBRL(displayedTotal)}</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-
-      {/* Seções textuais em documento */}
-      <QuotationSectionsDocument
-        sections={sections}
-        editable={editing && draftEditable}
-        hideProductionDeadline={!editing && hideDuplicateProductionDeadline}
-        onChange={setSections}
-      />
-
-      {/* Revisões */}
-      {(data.revisionHistory || []).length > 0 && (
-        <section className="border-t border-line py-5" aria-label="Revisões">
-          <h2 className="text-sm font-semibold text-fg">Revisões</h2>
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
-            <span>
-              Revisão atual: <b className="font-semibold">R{data.revision}</b>
-            </span>
-            {(data.revisionHistory || []).find((entry) => entry.revision === data.revision)?.createdAt && (
-              <span className="text-fg-muted">
-                Criada em{' '}
-                {
-                  formatDate(
-                    (data.revisionHistory || []).find((entry) => entry.revision === data.revision)
-                      ?.createdAt
-                  ) || '—'
-                }
-              </span>
+                  </div>
+                  <details className="mt-3" open={issuedView && activeTab === 'historico'}>
+                    <summary className="mb-3 cursor-pointer text-sm font-medium text-primary hover:underline">
+                      Ver histórico completo
+                    </summary>
+                    <Table className="min-w-[720px] text-sm">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="h-9">Revisão</TableHead>
+                          <TableHead className="h-9">Criada em</TableHead>
+                          <TableHead className="h-9">Validade</TableHead>
+                          <TableHead className="h-9">Estado</TableHead>
+                          <TableHead className="h-9 text-right">Total</TableHead>
+                          <TableHead className="h-9">PDF</TableHead>
+                          <TableHead className="h-9" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(data.revisionHistory || []).map((entry) => {
+                          const expired = entry.expired;
+                          const eligible = entry.status !== 'rascunho' && !draftEditable;
+                          return (
+                            <TableRow key={entry.revisionId}>
+                              <TableCell className="whitespace-nowrap py-2 font-medium">
+                                R{entry.revision}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap py-2">
+                                {formatDate(entry.createdAt) || '—'}
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap py-2">
+                                {formatDate(entry.validade) || '—'}
+                                {expired && (
+                                  <span className="block text-xs text-warning">Expirada</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <StatusBadge {...statusBadgeProps(entry.status)} />
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
+                                {formatBRL(entry.total)}
+                              </TableCell>
+                              <TableCell>
+                                {entry.status !== 'rascunho' ? (
+                                  <button
+                                    type="button"
+                                    className="text-xs text-primary hover:underline"
+                                    onClick={() => {
+                                      window.open(
+                                        `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
+                                        '_blank',
+                                        'noopener,noreferrer'
+                                      );
+                                    }}
+                                  >
+                                    Visualizar
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-fg-muted">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {eligible && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={lifecycleAction !== null}
+                                    onClick={() => createRevision(entry.revisionId)}
+                                  >
+                                    Nova revisão
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </details>
+                </section>
+              )}
+            {issuedView && activeTab === 'resumo' && (data.revisionHistory || []).length > 0 && (
+              <button
+                type="button"
+                className="mt-3 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => setActiveTab('historico')}
+              >
+                Ver histórico completo
+              </button>
             )}
           </div>
-          <details className="mt-3">
-            <summary className="mb-3 cursor-pointer text-sm font-medium text-primary hover:underline">
-              Ver histórico completo
-            </summary>
-            <Table className="min-w-[720px] text-sm">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="h-9">Revisão</TableHead>
-                  <TableHead className="h-9">Criada em</TableHead>
-                  <TableHead className="h-9">Validade</TableHead>
-                  <TableHead className="h-9">Estado</TableHead>
-                  <TableHead className="h-9 text-right">Total</TableHead>
-                  <TableHead className="h-9">PDF</TableHead>
-                  <TableHead className="h-9" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data.revisionHistory || []).map((entry) => {
-                  const expired = entry.expired;
-                  const eligible = entry.status !== 'rascunho' && !draftEditable;
-                  return (
-                    <TableRow key={entry.revisionId}>
-                      <TableCell className="whitespace-nowrap py-2 font-medium">R{entry.revision}</TableCell>
-                      <TableCell className="whitespace-nowrap py-2">{formatDate(entry.createdAt) || '—'}</TableCell>
-                      <TableCell className="whitespace-nowrap py-2">
-                        {formatDate(entry.validade) || '—'}
-                        {expired && <span className="block text-xs text-warning">Expirada</span>}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge {...statusBadgeProps(entry.status)} />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
-                        {formatBRL(entry.total)}
-                      </TableCell>
-                      <TableCell>
-                        {entry.status !== 'rascunho' ? (
-                          <button
-                            type="button"
-                            className="text-xs text-primary hover:underline"
-                            onClick={() => {
-                              window.open(
-                                `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
-                                '_blank',
-                                'noopener,noreferrer'
-                              );
-                            }}
-                          >
-                            Visualizar
-                          </button>
-                        ) : (
-                          <span className="text-xs text-fg-muted">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {eligible && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={lifecycleAction !== null}
-                            onClick={() => createRevision(entry.revisionId)}
-                          >
-                            Nova revisão
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </details>
-        </section>
-      )}
+
+          {issuedView && (
+            <aside
+              className="min-w-0 rounded-lg border border-line bg-surface p-4 md:p-5"
+              aria-labelledby="delivery-outcome-title"
+            >
+              <h2 id="delivery-outcome-title" className="text-base font-semibold text-fg">
+                Entrega do orçamento
+              </h2>
+              <div className="mt-2 space-y-1 text-sm">
+                <p className="font-medium">
+                  {data.cliente || 'Cliente não informado'} · revisão {data.revision}
+                </p>
+                <p className="text-fg-muted">Total: {formatBRL(data.total)}</p>
+              </div>
+              <div className="mt-5 space-y-3">
+                <label className="block text-xs font-medium text-fg-muted">
+                  <span className="mb-1 block">Fluxo WhatsApp</span>
+                  <Select
+                    className="w-full"
+                    value={deliveryFlowId}
+                    onChange={(event) => setDeliveryFlowId(event.target.value)}
+                    disabled={deliveryPending}
+                  >
+                    {deliveryFlows.length === 0 && (
+                      <option value="">Nenhum fluxo disponível</option>
+                    )}
+                    {deliveryFlows.map((flow) => (
+                      <option key={flow.id} value={flow.id}>
+                        {flow.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <Button
+                  className="w-full"
+                  title={whatsappDisabledReason || undefined}
+                  disabled={Boolean(whatsappDisabledReason)}
+                  onClick={sendIssuedQuotation}
+                >
+                  <Phone size={14} /> Enviar WhatsApp
+                </Button>
+                {data.expired && data.revisionId && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={lifecycleAction !== null}
+                    onClick={() => createRevision(data.revisionId)}
+                  >
+                    Nova revisão
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setEmailError('');
+                    setEmailDialogOpen(true);
+                  }}
+                >
+                  <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+                </Button>
+              </div>
+              {whatsappDisabledReason && (
+                <p role="status" className="mt-2 text-xs text-fg-muted">
+                  {whatsappDisabledReason}
+                </p>
+              )}
+              {(delivery && deliveryError) || enqueueError ? (
+                <p role="status" className="mt-2 text-xs text-warning">
+                  {deliveryError || enqueueError}
+                </p>
+              ) : null}
+              {deliveryFlows.length === 0 && !deliveryError && (
+                <p role="status" className="mt-2 text-xs text-fg-muted">
+                  Não foi possível carregar os fluxos. Tente novamente mais tarde.
+                </p>
+              )}
+              <QuotationDeliveryStatus
+                delivery={delivery}
+                pending={deliveryPending}
+                onResolve={handleResolveDelivery}
+                className="mt-5 border-t border-line pt-4"
+              />
+              <div className="mt-5 border-t border-line pt-4">
+                <p className="text-xs font-medium text-fg-muted">Resultado comercial</p>
+                {data.status === 'emitido' ? (
+                  <div className="mt-2 space-y-2">
+                    <Button
+                      variant="success"
+                      className="w-full"
+                      disabled={lifecycleAction !== null}
+                      onClick={() => void markCommercialStatus('aprovado')}
+                    >
+                      {lifecycleAction === 'aprovado' ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Aprovar e criar pedido
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={lifecycleAction !== null}
+                      onClick={openLossReasonDialog}
+                    >
+                      Marcar como perdido
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <StatusBadge {...statusBadgeProps(data.status)} />
+                    {createdSalesOrderId ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          navigate(`/sales-orders/${encodeURIComponent(createdSalesOrderId)}`)
+                        }
+                      >
+                        <ShoppingCart size={14} /> Ver pedido {createdSalesOrderId}
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </aside>
+          )}
+
+          {draftEditable && (
+            <aside
+              className="min-w-0 rounded-lg border border-line bg-surface p-4 md:p-5"
+              aria-labelledby="quotation-summary-title"
+            >
+              <h2 id="quotation-summary-title" className="text-base font-semibold text-fg">
+                Resumo
+              </h2>
+              <dl className="mt-4 space-y-3 text-sm tabular-nums">
+                <div className="flex justify-between gap-4">
+                  <dt className="text-fg-muted">Subtotal</dt>
+                  <dd>{formatBRL(displayedSubtotal)}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt className="text-fg-muted">Frete</dt>
+                  <dd>{formatBRL(editing ? frete : data.frete)}</dd>
+                </div>
+                <div className="flex justify-between gap-4 border-t border-line pt-3 text-lg font-semibold">
+                  <dt>Total</dt>
+                  <dd>{formatBRL(displayedTotal)}</dd>
+                </div>
+              </dl>
+              <p className="mt-2 text-xs text-fg-muted">
+                {quotationItemCountLabel(displayItems.length)} · {totalUnits} unidades
+              </p>
+              {!editing && (
+                <div className="mt-5 space-y-2">
+                  <Button
+                    className="w-full"
+                    disabled={issuing || lifecycleAction !== null}
+                    onClick={() => setConfirmIssueOpen(true)}
+                  >
+                    {issuing ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <FileText size={14} />
+                    )}
+                    {issuing ? 'Emitindo…' : 'Emitir orçamento'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      showMessage('');
+                      setEditing(true);
+                    }}
+                  >
+                    Continuar editando
+                  </Button>
+                </div>
+              )}
+            </aside>
+          )}
+        </div>
       </fieldset>
 
       <QuotationEmailDialog
@@ -2041,16 +2473,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             <dl className="mt-4 space-y-3 text-sm">
               <div>
                 <dt className="text-xs text-fg-muted">Modelo</dt>
-                <dd className="mt-0.5 break-words">{selectedTemplateMetadata?.name || selectedTemplate || '—'}</dd>
+                <dd className="mt-0.5 break-words">
+                  {selectedTemplateMetadata?.name || selectedTemplate || '—'}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-fg-muted">Versão do modelo</dt>
-                <dd className="mt-0.5 break-words">{selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}</dd>
+                <dd className="mt-0.5 break-words">
+                  {selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}
+                </dd>
               </div>
               <div>
                 <dt className="text-xs text-fg-muted">Snapshot</dt>
                 <dd className="mt-0.5 break-all font-mono text-xs">
-                  {data.templateHash || selectedTemplateMetadata?.hash || selectedTemplateMetadata?.current_hash || '—'}
+                  {data.templateHash ||
+                    selectedTemplateMetadata?.hash ||
+                    selectedTemplateMetadata?.current_hash ||
+                    '—'}
                 </dd>
               </div>
               <div>
@@ -2132,8 +2571,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button
                 variant="destructive"
                 disabled={
-                  !lossReasonChoice ||
-                  (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
+                  !lossReasonChoice || (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
                 }
                 onClick={submitLossReason}
               >
@@ -2185,22 +2623,30 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
     }
   }, [id]);
 
-  useEffect(() => { void loadDetail(); }, [loadDetail]);
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
 
   if (loading && !data) return <SkeletonDetail />;
   if (error) {
     const previousRoute = getHashHistoryPreviousRoute();
     const fromFollowUps = previousRoute && routePath(previousRoute) === '/follow-ups';
-    const fromSendHistory = previousRoute && routePath(previousRoute) === '/comunicacao' &&
+    const fromSendHistory =
+      previousRoute &&
+      routePath(previousRoute) === '/comunicacao' &&
       new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
-    const returnRoute = fromFollowUps || fromSendHistory ? previousRoute : '/quotations';
+    const fromDeliveries = previousRoute && routePath(previousRoute) === '/whatsapp-deliveries';
+    const returnRoute =
+      fromFollowUps || fromSendHistory || fromDeliveries ? previousRoute : '/quotations';
     const returnLabel = fromFollowUps
       ? 'Follow-ups'
       : fromSendHistory
         ? 'Histórico de envios'
-        : 'Orçamentos';
+        : fromDeliveries
+          ? 'Envios'
+          : 'Orçamentos';
     return (
-      <div className="space-y-4 animate-fade-in">
+      <PageShell className="space-y-4">
         <button
           onClick={() => navigate(returnRoute)}
           className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
@@ -2216,14 +2662,16 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
           <p className="max-w-md text-sm text-fg-muted">
             Verifique sua conexão e tente novamente. Nenhuma alteração foi realizada.
           </p>
-          <Button variant="outline" onClick={() => void loadDetail()}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => void loadDetail()}>
+            Tentar novamente
+          </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
   if (!data) return null;
   return (
-    <div className="space-y-3">
+    <PageShell className="space-y-3">
       {reloadWarning && (
         <div
           role="status"
@@ -2241,6 +2689,6 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
         onReload={loadDetail}
         concurrencyTokenRef={concurrencyTokenRef}
       />
-    </div>
+    </PageShell>
   );
 }

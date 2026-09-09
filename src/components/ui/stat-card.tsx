@@ -25,7 +25,7 @@ export function StatCard({ icon: Icon, label, value, metadata, footer, className
         <div className="min-w-0">
           <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-2xl font-semibold text-fg">{value}</span>
+            <span className="text-2xl font-semibold tabular-nums text-fg">{value}</span>
             {metadata != null && (
               <span className="whitespace-nowrap text-xs font-medium text-fg-muted">
                 {metadata}
