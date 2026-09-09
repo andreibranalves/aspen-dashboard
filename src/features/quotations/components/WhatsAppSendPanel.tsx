@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
 import {
   communicationFlowSummary,
+  isQuotationDeliveryFlow,
   renderableFlowStepCount,
 } from '@/lib/api/communicationApi';
 import { projectDelivery, type DeliveryView } from '@/lib/api/quotationDeliveryApi';
@@ -35,6 +36,7 @@ export interface WhatsAppSendPanelProps {
   onSelectFlow?: (flowId: string) => void;
   onSend?: () => void;
   hideButton?: boolean;
+  selectionDisabled?: boolean;
 }
 
 export default function WhatsAppSendPanel({
@@ -46,12 +48,14 @@ export default function WhatsAppSendPanel({
   onSelectFlow,
   onSend,
   hideButton = false,
+  selectionDisabled = false,
 }: WhatsAppSendPanelProps) {
   const flowSelectId = useId();
   const selectedFlow = flows.length > 0
     ? flows.find((f) => f.id === selectedFlowId) || flows[0]
     : null;
-  const hasValidSteps = renderableFlowStepCount(selectedFlow) > 0;
+  const hasValidSteps = isQuotationDeliveryFlow(selectedFlow)
+    && renderableFlowStepCount(selectedFlow) > 0;
   const deliveryProjection = delivery ? projectDelivery(delivery) : null;
   const isPending = pending || status?.state === 'sending';
   const deliveryBlocksSend = Boolean(delivery);
@@ -74,7 +78,7 @@ export default function WhatsAppSendPanel({
           className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           value={selectedFlowId || ''}
           onChange={(e) => onSelectFlow?.(e.target.value)}
-          disabled={flows.length === 0}
+          disabled={flows.length === 0 || selectionDisabled}
         >
           {flows.map((flow) => (
             <option key={flow.id} value={flow.id}>
@@ -93,7 +97,7 @@ export default function WhatsAppSendPanel({
         <p className="mb-2 mt-3 text-xs leading-5 text-warning" role="status">
           {!selectedFlow
             ? 'Nenhum fluxo de WhatsApp disponível.'
-            : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}
+            : 'Este fluxo precisa estar ativo e conter exatamente um PDF ou WebP do orçamento.'}
         </p>
       )}
       {!hideButton && (

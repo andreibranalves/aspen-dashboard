@@ -23,13 +23,17 @@ import {
 import { apiGet, apiPost } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
-import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
+import { fetchFlows, isQuotationDeliveryFlow, type CommunicationFlow } from '@/lib/api/communicationApi';
 import { inlineTemplateSelections } from '@/features/quotations/orderTemplateSelections';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
-import { deliveryIdentityKey, useQuotationDeliveries } from '@/hooks/useQuotationDeliveries';
+import {
+  deliveryIdentityKey,
+  useQuotationDeliveries,
+  useQuotationRevisionDeliveries,
+} from '@/hooks/useQuotationDeliveries';
 import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/storage/autoQuoteDraftStorage';
 import { buildQuotePayload, getQuotationIssue, issuePersistedDraft, QuotationIssueApiError } from '@/lib/api/quotationIssueApi';
 import { isSendableQuotationStatus, type SendContext } from '@/lib/api/communicationSend';
@@ -495,17 +499,40 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const activeDrafts = useMemo(() => drafts.filter((draft) => !draft.discarded), [drafts]);
   const activeDraft = activeDrafts.find((draft) => draft.index === activeDraftIndex) || null;
   const draftCountLabel = activeDrafts.length === 1 ? '1 rascunho' : `${activeDrafts.length} rascunhos`;
-  const deliveryIdentities = useMemo(() => activeDrafts.flatMap((draft) => {
+  const issuedRevisionIds = useMemo(() => activeDrafts.flatMap((draft) => {
     const stored = draft as StoredAutoQuoteDraft;
     const issue = stored.issue;
     const resultData = draft.result?.data;
     const status = resultData?.status ?? issue?.status;
     const revisionId = typeof resultData?.revisionId === 'string' ? resultData.revisionId : issue?.revisionId || '';
-    const flowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
-    return revisionId && flowId && isSendableQuotationStatus(status)
-      ? [{ revisionId, flowId }]
+    return revisionId && isSendableQuotationStatus(status)
+      ? [revisionId]
       : [];
-  }), [activeDrafts, defaultWaFlowId, waFlowByDraft, waFlows]);
+  }), [activeDrafts]);
+  const {
+    deliveriesByRevision,
+    pendingRevisionIds,
+    errorsByRevision,
+  } = useQuotationRevisionDeliveries(issuedRevisionIds);
+  const deliveryIdentities = useMemo(() => {
+    const selectedIdentities = activeDrafts.flatMap((draft) => {
+      const stored = draft as StoredAutoQuoteDraft;
+      const resultData = draft.result?.data;
+      const status = resultData?.status ?? stored.issue?.status;
+      const revisionId = typeof resultData?.revisionId === 'string'
+        ? resultData.revisionId
+        : stored.issue?.revisionId || '';
+      const flowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
+      return revisionId && flowId && isSendableQuotationStatus(status)
+        ? [{ revisionId, flowId }]
+        : [];
+    });
+    const discoveredIdentities = Object.values(deliveriesByRevision).map((delivery) => ({
+      revisionId: delivery.revisionId,
+      flowId: delivery.flowId,
+    }));
+    return [...selectedIdentities, ...discoveredIdentities];
+  }, [activeDrafts, defaultWaFlowId, deliveriesByRevision, waFlowByDraft, waFlows]);
   const {
     deliveriesByKey,
     pendingKeys: deliveryPendingKeys,
@@ -549,10 +576,13 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const loadCommunicationFlows = useCallback(async () => {
     try {
       const result = await fetchFlows();
-      const flows = Array.isArray(result.flows) ? result.flows : [];
+      const flows = Array.isArray(result.flows)
+        ? result.flows.filter(isQuotationDeliveryFlow)
+        : [];
       setWaFlows(flows);
       const preferred = flows.find((flow) => flow.context === 'already_talking');
-      setDefaultWaFlowId(preferred?.id || result.selectedFlowId || flows[0]?.id || '');
+      const selected = flows.find((flow) => flow.id === result.selectedFlowId);
+      setDefaultWaFlowId(preferred?.id || selected?.id || flows[0]?.id || '');
     } catch {
       setWaFlows([]);
       setDefaultWaFlowId('');
@@ -705,7 +735,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     }
     const deliveryKey = deliveryIdentityKey(context);
     if (
-      deliveryPendingKeys.includes(deliveryKey)
+      pendingRevisionIds.includes(context.revisionId)
+      || Boolean(deliveriesByRevision[context.revisionId])
+      || Boolean(errorsByRevision[context.revisionId])
+      || deliveryPendingKeys.includes(deliveryKey)
       || Boolean(deliveriesByKey[deliveryKey])
       || Boolean(deliveryErrorsByKey[deliveryKey])
       || Boolean(enqueueErrorByKey[deliveryKey])
@@ -718,10 +751,13 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   }, [
     defaultWaFlowId,
     deliveriesByKey,
+    deliveriesByRevision,
     deliveryErrorsByKey,
     deliveryPendingKeys,
     enqueueDelivery,
     enqueueErrorByKey,
+    errorsByRevision,
+    pendingRevisionIds,
     sendContextForDraft,
     toast,
     waFlowByDraft,
@@ -787,7 +823,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           return;
         }
         finishOfficialIssue(key);
-        if (mode === 'manual') navigateToQuotation(state.quotationId);
+        if (recoveryDraft.issueOrigin === 'manual' || (!recoveryDraft.issueOrigin && mode === 'manual')) {
+          navigateToQuotation(state.quotationId);
+        }
         else setActiveDraftIndex(draft.index);
       } else {
         setIssueErrorByDraft((current) => ({ ...current, [draft.index]: state.error }));
@@ -1261,7 +1299,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     const sameExisting = existing ? sameEditableDraft(existing.edited, input.edited) : false;
     const key = (input as StoredAutoQuoteDraft).issueIdempotencyKey || (sameExisting ? existing?.issueIdempotencyKey : undefined) || globalThis.crypto.randomUUID();
     recoveryHandled.current.delete(`${draftIndex}:${key}`);
-    const requestDraft = { ...input, issueIdempotencyKey: key, issueDispatchStarted: (input as StoredAutoQuoteDraft).issueDispatchStarted === true, status: 'processing', result: undefined } as StoredAutoQuoteDraft;
+    const requestDraft = { ...input, issueIdempotencyKey: key, issueOrigin: mode, issueDispatchStarted: (input as StoredAutoQuoteDraft).issueDispatchStarted === true, status: 'processing', result: undefined } as StoredAutoQuoteDraft;
     setIssueErrorByDraft((current) => { const next = { ...current }; delete next[draftIndex]; return next; });
     const pendingDrafts = draftsRef.current.some((draft) => draft.index === draftIndex)
       ? draftsRef.current.map((draft) => draft.index === draftIndex ? requestDraft : draft)
@@ -1304,7 +1342,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       }
       clearManualQuoteDraft();
       clearQuotationOriginPrefill();
-      if (mode === 'manual') navigateToQuotation(issue.quotationId);
+      if (requestDraft.issueOrigin === 'manual') navigateToQuotation(issue.quotationId);
       else setActiveDraftIndex(draftIndex);
     } catch (error) {
       if (!mountedRef.current || unloadingRef.current) return;
@@ -1550,8 +1588,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     || drafts.some((draft) => draft.status === 'processing');
   const pricingPending = manualPricingPending || Object.values(conversationPricingPending).some(Boolean);
 
+  const clearResultsBlocked = extracting || liveDraftOperation || pricingPending;
+
   const clearResultQueue = useCallback(() => {
-    if (liveDraftOperation || pricingPending) return;
+    if (clearResultsBlocked) return;
     extractionGeneration.current += 1;
     recoveryTokens.current.clear();
     recoveryHandled.current.clear();
@@ -1568,11 +1608,14 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       setDrafts([]);
       toast('A fila foi limpa desta tela, mas o navegador não permitiu atualizar o armazenamento local.', 'error');
     }
-  }, [liveDraftOperation, persistDrafts, pricingPending, setDrafts, toast]);
+  }, [clearResultsBlocked, persistDrafts, setDrafts, toast]);
 
   const activeStoredDraft = activeDraft as StoredAutoQuoteDraft | null;
   const activeResultData = activeDraft?.result?.data;
   const activeIssueStatus = activeResultData?.status ?? activeStoredDraft?.issue?.status;
+  const activeRevisionId = typeof activeResultData?.revisionId === 'string'
+    ? activeResultData.revisionId
+    : activeStoredDraft?.issue?.revisionId || '';
   const activeSelectedWaFlowId = activeDraft
     ? waFlowByDraft[activeDraft.index] || defaultWaFlowId || waFlows[0]?.id || ''
     : '';
@@ -1580,14 +1623,23 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     && isSendableQuotationStatus(activeIssueStatus)
     ? sendContextForDraft(activeDraft, activeSelectedWaFlowId)
     : null;
+  const activeRevisionDelivery = activeRevisionId ? deliveriesByRevision[activeRevisionId] : null;
+  const activeRevisionDeliveryKey = activeRevisionDelivery
+    ? deliveryIdentityKey(activeRevisionDelivery)
+    : '';
   const activeDeliveryKey = activeWhatsAppContext ? deliveryIdentityKey(activeWhatsAppContext) : '';
-  const activeDelivery = activeDeliveryKey ? deliveriesByKey[activeDeliveryKey] || null : null;
-  const activeDeliveryPending = activeDeliveryKey
-    ? deliveryPendingKeys.includes(activeDeliveryKey)
-    : false;
-  const activeDeliveryError = activeDeliveryKey
-    ? deliveryErrorsByKey[activeDeliveryKey] || enqueueErrorByKey[activeDeliveryKey]
-    : undefined;
+  const activeDelivery = (activeRevisionDeliveryKey ? deliveriesByKey[activeRevisionDeliveryKey] : null)
+    || (activeDeliveryKey ? deliveriesByKey[activeDeliveryKey] : null)
+    || activeRevisionDelivery
+    || null;
+  const activeDeliveryPending = Boolean(activeRevisionId && pendingRevisionIds.includes(activeRevisionId))
+    || Boolean(activeRevisionDeliveryKey && deliveryPendingKeys.includes(activeRevisionDeliveryKey))
+    || Boolean(activeDeliveryKey && deliveryPendingKeys.includes(activeDeliveryKey));
+  const activeDeliveryError = (activeRevisionId ? errorsByRevision[activeRevisionId] : undefined)
+    || (activeRevisionDeliveryKey ? deliveryErrorsByKey[activeRevisionDeliveryKey] : undefined)
+    || (activeDeliveryKey
+      ? deliveryErrorsByKey[activeDeliveryKey] || enqueueErrorByKey[activeDeliveryKey]
+      : undefined);
 
   const headlineDescription = mode === 'conversation'
     ? activeDraft ? `Da conversa · ${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}` : 'Da conversa · revise antes de salvar ou emitir'
@@ -1735,7 +1787,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   variant="ghost"
                   size="sm"
                   className="shrink-0 text-fg-muted"
-                  disabled={liveDraftOperation || pricingPending}
+                  disabled={clearResultsBlocked}
                   onClick={() => setConfirmClearResults(true)}
                 >
                   <RotateCcw size={14} /> Limpar lista
@@ -1778,6 +1830,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 waSendEnabled={Boolean(activeWhatsAppContext)}
                 waFlows={waFlows}
                 waSelectedFlowId={activeSelectedWaFlowId}
+                waFlowSelectionDisabled={activeDeliveryPending || Boolean(activeDelivery) || Boolean(activeDeliveryError)}
                 onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
                 onSendWhatsApp={handleSendWhatsApp}
                 onResolveDelivery={async (decision, note) => {

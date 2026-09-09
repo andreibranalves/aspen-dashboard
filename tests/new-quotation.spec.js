@@ -212,6 +212,80 @@ test.describe('Novo orçamento unificado @quotations', () => {
     expect(unexpectedApiRequests).toEqual([]);
   });
 
+  test('bloqueia a limpeza da fila enquanto uma nova extração está em andamento', async ({ page }) => {
+    let extractionCount = 0;
+    let releaseExtraction;
+    const extractionGate = new Promise((resolve) => { releaseExtraction = resolve; });
+    await mockSharedApis(page, async (route) => {
+      extractionCount += 1;
+      if (extractionCount === 2) await extractionGate;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ orders: [order(`Cliente ${extractionCount}`)] }),
+      });
+    });
+
+    await page.goto('/#/novo-orcamento');
+    const input = page.getByLabel('Mensagem do cliente para extração');
+    await input.fill('primeiro pedido');
+    await page.getByRole('button', { name: 'Extrair dados' }).click();
+    await expect(page.getByText(/Resultados \(1\)/)).toBeVisible();
+
+    await input.fill('segundo pedido');
+    await page.getByRole('button', { name: 'Extrair dados' }).click();
+    await expect(page.getByRole('button', { name: 'Extraindo…' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Limpar lista' })).toBeDisabled();
+
+    releaseExtraction();
+    await expect(page.getByRole('button', { name: 'Extrair dados' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Limpar lista' })).toBeEnabled();
+  });
+
+  test('recupera emissão iniciada no modo manual e redireciona mesmo pela rota comum', async ({ page }) => {
+    const issueKey = '550e8400-e29b-41d4-a716-446655440001';
+    await mockSharedApis(page, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ orders: [] }),
+    }));
+    await page.addInitScript(({ key, product }) => {
+      globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{
+        index: 0,
+        original: { nome: 'Cliente recuperação manual' },
+        edited: {
+          nome: 'Cliente recuperação manual', email: '', telefone: '5511999990000', urgente: false,
+          origem: 'Google Ads', cnpj: '', prazo_producao: '',
+          endereco: { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
+          items: [{ item_code: product.sku, item_name: product.nome, qty: 1, rate: 12.5 }],
+        },
+        approved: true,
+        discarded: false,
+        status: 'processing',
+        issueIdempotencyKey: key,
+        issueDispatchStarted: true,
+        issueOrigin: 'manual',
+        saved: {
+          quotationId: 'quotation-recovered', businessNumber: 'ORC-RECOVERED', revisionId: 'revision-recovered', concurrencyToken: 'token-recovered',
+          snapshot: { items: [{ item_code: product.sku, item_name: product.nome, qty: 1, rate: 12.5 }], frete: '0.00', total: '12.50' },
+        },
+      }] }));
+    }, { key: issueKey, product: PRODUCT });
+    await page.route('**/api/quotation-issues**', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        state: 'completed', quotationId: 'quotation-recovered', businessNumber: 'ORC-RECOVERED',
+        revisionId: 'revision-recovered', revisionNumber: 1, status: 'emitido',
+        issuedAt: '2026-09-08T00:00:00.000Z', validUntil: '2026-09-23',
+        pdfUrl: '/api/quotation-preview?id=quotation-recovered&format=pdf',
+      }),
+    }));
+
+    await page.goto('/#/novo-orcamento');
+    await expect(page).toHaveURL(/#\/quotations\/quotation-recovered$/);
+  });
+
   test('restaura o rascunho manual do localStorage ao recarregar', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
       status: 200,

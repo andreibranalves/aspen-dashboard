@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { quoteRevisions, quotationDeliveries } from '../schema.js';
@@ -302,7 +302,19 @@ async function reserveInDatabase(
   const revisionId = uuid(input.revisionId, 'Identificador da revisão');
   const normalizedPhone = phone(input.phone);
   const normalizedFlow = flow(input.flowId);
+  await db.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${revisionId}, 0))
+  `);
   await assertEmittedRevision(db, revisionId, now);
+  const existing = await readRow(db, revisionId);
+  if (existing) {
+    if (existing.phone !== normalizedPhone || existing.flowId !== normalizedFlow) {
+      throw new QuotationDeliveryConflictError(
+        'A revisão já possui uma entrega. Para alterar o destinatário ou fluxo, crie uma nova revisão.'
+      );
+    }
+    return toDelivery(existing, now);
+  }
   const id = randomId();
   if (!UUID.test(id)) throw new QuotationDeliveryRepositoryError();
   const [inserted] = await db.insert(quotationDeliveries).values({

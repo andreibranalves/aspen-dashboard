@@ -188,6 +188,9 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     ...(issueIdempotencyKey ? { issueIdempotencyKey } : {}),
     ...(value.issueDispatchStarted === true && hasIssueIdentity ? { issueDispatchStarted: true } : {}),
     ...(value.issueRecoveryRequired === true && hasIssueIdentity ? { issueRecoveryRequired: true } : {}),
+    ...(value.issueOrigin === 'conversation' || value.issueOrigin === 'manual'
+      ? { issueOrigin: value.issueOrigin }
+      : {}),
     ...(isQuotationIssueProjection(value.issue) ? { issue: value.issue } : {}),
     ...(optionalString(value.sourceQuotationId) ? { sourceQuotationId: value.sourceQuotationId as string } : {}),
     ...(optionalString(value.sourceRevisionId) ? { sourceRevisionId: value.sourceRevisionId as string } : {}),

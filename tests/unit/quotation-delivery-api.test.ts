@@ -6,6 +6,7 @@ import {
   deliveryPollDelay,
   enqueueDelivery,
   fetchDelivery,
+  fetchDeliveryForRevision,
   listDeliveries,
   projectDelivery,
   resolveDelivery,
@@ -167,6 +168,35 @@ test('fetchDelivery resolves identity through the compatibility status endpoint'
     assert.match(requests[0], /revision_id=revision-1/);
     assert.match(requests[0], /flow_id=flow-1/);
     assert.match(requests[1], /quotation-deliveries\?id=delivery-1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchDeliveryForRevision finds a durable send independently of its flow configuration', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = '';
+  globalThis.fetch = (async (input) => {
+    requestUrl = String(input);
+    return response({
+      data: [fixture({ flowId: 'removed-flow' })],
+      total: 1,
+      page: 1,
+      page_size: 1,
+      summary: {
+        active: 0,
+        requires_action: 0,
+        retry_scheduled: 0,
+        delayed: 0,
+        delivered_last_24_hours: 1,
+      },
+    });
+  }) as typeof fetch;
+  try {
+    const delivery = await fetchDeliveryForRevision('revision-1');
+    assert.equal(delivery?.flowId, 'removed-flow');
+    assert.match(requestUrl, /quotation-deliveries\?revision_id=revision-1/);
+    assert.match(requestUrl, /page_size=1/);
   } finally {
     globalThis.fetch = originalFetch;
   }

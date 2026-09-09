@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { ensureFixtureTemplateVersion } from '../fixtures/quotation-revision-seeds.ts';
+import {
+  ensureFixtureTemplateVersion,
+  type FixtureRevisionFields,
+} from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 
@@ -20,9 +23,14 @@ import {
 } from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresQuotationDeliveryOutboxRepository,
+  QuotationDeliveryOutboxConflictError,
   type EnqueueDeliveryRecord,
   type FrozenDeliveryStep,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
+import {
+  createPostgresQuotationDeliveryRepository,
+  QuotationDeliveryConflictError,
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
@@ -62,6 +70,9 @@ let db: ReturnType<typeof drizzle<typeof schema>>;
 let repository: ReturnType<typeof createPostgresQuotationDeliveryOutboxRepository>;
 let integrationClock: Date;
 let integrationRepository: ReturnType<typeof createPostgresQuotationDeliveryOutboxRepository>;
+let fixtureFields: FixtureRevisionFields;
+let nextRevisionVersion = 1;
+const testRevisionIds = new Set([ids.revision]);
 
 const textStep = (position = 0, text = `step-${position}`) => ({
   position,
@@ -71,16 +82,40 @@ const textStep = (position = 0, text = `step-${position}`) => ({
 });
 
 function input(
-  options: Partial<Pick<EnqueueDeliveryRecord, 'flowId' | 'flowName' | 'phone' | 'steps'>> = {}
+  options: Partial<Pick<EnqueueDeliveryRecord, 'revisionId' | 'flowId' | 'flowName' | 'phone' | 'steps'>> = {}
 ): EnqueueDeliveryRecord {
   const flowId = options.flowId || `flow-${randomUUID().slice(0, 8)}`;
   return {
-    revisionId: ids.revision,
+    revisionId: options.revisionId || ids.revision,
     phone: options.phone || '5511999999999',
     flowId,
     flowName: options.flowName || `Flow ${flowId}`,
     steps: options.steps || [textStep(0), textStep(1)],
   };
+}
+
+async function createIssuedRevision(): Promise<string> {
+  const revisionId = randomUUID();
+  nextRevisionVersion += 1;
+  await db.insert(quoteRevisions).values({
+    ...fixtureFields,
+    id: revisionId,
+    quotationId: ids.quotation,
+    version: nextRevisionVersion,
+    status: 'emitido',
+    issuedAt: now,
+    validadeDias: 15,
+    entrega: '',
+    fretePadrao: '0.00',
+    frete: '0.00',
+    clienteNome: 'Cliente outbox',
+    companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+    subtotal: '0.00',
+    total: '0.00',
+    createdAt: now,
+  });
+  testRevisionIds.add(revisionId);
+  return revisionId;
 }
 
 async function setDelivery(id: string, values: Record<string, unknown>) {
@@ -118,7 +153,7 @@ test.before(async () => {
     createdAt: now,
     updatedAt: now,
   });
-  const fixtureFields = await ensureFixtureTemplateVersion(db as any);
+  fixtureFields = await ensureFixtureTemplateVersion(db as any);
   await db.insert(quoteRevisions).values({
     ...fixtureFields,
     id: ids.revision,
@@ -143,21 +178,37 @@ test.before(async () => {
   });
 });
 
+test.beforeEach(async () => {
+  if (!TEST_DATABASE_URL || !db) return;
+  for (const revisionId of testRevisionIds) {
+    await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
+    if (revisionId !== ids.revision) {
+      await db.delete(quoteRevisions).where(eq(quoteRevisions.id, revisionId));
+    }
+  }
+  testRevisionIds.clear();
+  testRevisionIds.add(ids.revision);
+});
+
 test.after(async () => {
   if (!TEST_DATABASE_URL || !db || !sqlClient) return;
-  await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, ids.revision));
-  await db.delete(quoteRevisions).where(eq(quoteRevisions.id, ids.revision));
+  for (const revisionId of testRevisionIds) {
+    await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
+  }
+  await db.delete(quoteRevisions).where(eq(quoteRevisions.quotationId, ids.quotation));
   await db.delete(quotations).where(eq(quotations.id, ids.quotation));
   await db.delete(clients).where(eq(clients.id, ids.client));
   await sqlClient.end({ timeout: 5 });
 });
 
-databaseTest('enqueue is idempotent by revision and flow but independent across flows', async () => {
+databaseTest('enqueue is idempotent by revision and rejects a second flow', async () => {
   const first = await repository.enqueue(input({ flowId: 'flow-a', flowName: 'Flow A' }));
   const replay = await repository.enqueue(input({ flowId: 'flow-a', flowName: 'Flow A' }));
-  const other = await repository.enqueue(input({ flowId: 'flow-b', flowName: 'Flow B' }));
   assert.equal(replay.id, first.id);
-  assert.notEqual(other.id, first.id);
+  await assert.rejects(
+    repository.enqueue(input({ flowId: 'flow-b', flowName: 'Flow B' })),
+    QuotationDeliveryOutboxConflictError,
+  );
   assert.equal((await repository.get(first.id))?.steps.length, 2);
   const changedInputReplay = await repository.enqueue(
     input({ flowId: 'flow-a', flowName: 'Flow A', phone: '5521999999999' })
@@ -181,14 +232,50 @@ databaseTest('enqueue is idempotent by revision and flow but independent across 
   );
 });
 
+databaseTest('single-revision policy atomically rejects concurrent cross-flow enqueue', async () => {
+  await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, ids.revision));
+  const results = await Promise.allSettled([
+    repository.enqueue(input({ flowId: 'guarded-a' })),
+    repository.enqueue(input({ flowId: 'guarded-b' })),
+  ]);
+  const fulfilled = results.filter((result) => result.status === 'fulfilled');
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.ok((rejected[0] as PromiseRejectedResult).reason instanceof QuotationDeliveryOutboxConflictError);
+});
+
+databaseTest('single-revision policy is atomic across current and legacy send repositories', async () => {
+  await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, ids.revision));
+  const legacyRepository = createPostgresQuotationDeliveryRepository(() => db, { now: () => now });
+  const results = await Promise.allSettled([
+    repository.enqueue(input({ flowId: 'current-flow' })),
+    legacyRepository.reserve({
+      revisionId: ids.revision,
+      phone: '5511999999999',
+      flowId: 'legacy-flow',
+    }),
+  ]);
+  const fulfilled = results.filter((result) => result.status === 'fulfilled');
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(fulfilled.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.ok(
+    (rejected[0] as PromiseRejectedResult).reason instanceof QuotationDeliveryOutboxConflictError
+      || (rejected[0] as PromiseRejectedResult).reason instanceof QuotationDeliveryConflictError,
+  );
+});
+
 databaseTest('claim and markAccepted enforce ordered predecessor gating after unsafe outcomes', async () => {
   for (const [suffix, kind] of [
     ['retry', 'transient_pre_transport'],
     ['failed', 'permanent_pre_transport'],
     ['ambiguous', 'ambiguous'],
   ] as const) {
+    const revisionId = await createIssuedRevision();
     const delivery = await repository.enqueue(
       input({
+        revisionId,
         flowId: `ordered-${suffix}`,
         steps: [textStep(0), textStep(1)],
       })
@@ -209,8 +296,13 @@ databaseTest('claim and markAccepted enforce ordered predecessor gating after un
     assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
   }
 
+  const manualRevisionId = await createIssuedRevision();
   const manual = await repository.enqueue(
-    input({ flowId: 'ordered-mark-accepted', steps: [textStep(0), textStep(1)] })
+    input({
+      revisionId: manualRevisionId,
+      flowId: 'ordered-mark-accepted',
+      steps: [textStep(0), textStep(1)],
+    })
   );
   const leaseToken = randomUUID();
   await setDelivery(manual.id, {
@@ -443,8 +535,10 @@ databaseTest('providerMessageId is unique and invalid leases cannot update a ste
     providerMessageId: 'provider-duplicate',
   });
 
+  const secondRevisionId = await createIssuedRevision();
   const second = await repository.enqueue(
     input({
+      revisionId: secondRevisionId,
       flowId: 'provider-unique-b',
       flowName: 'Provider unique B',
       steps: [textStep()],
@@ -560,15 +654,27 @@ databaseTest('READ before DELIVERY_ACK remains delivered without another transpo
 });
 
 databaseTest('list supports filtering and pagination without provider payloads', async () => {
+  const secondRevisionId = await createIssuedRevision();
+  const thirdRevisionId = await createIssuedRevision();
   const deliveries = await Promise.all([
     repository.enqueue(
       input({ flowId: 'list-unique-a', flowName: 'List unique A', steps: [textStep()] })
     ),
     repository.enqueue(
-      input({ flowId: 'list-unique-b', flowName: 'List unique B', steps: [textStep()] })
+      input({
+        revisionId: secondRevisionId,
+        flowId: 'list-unique-b',
+        flowName: 'List unique B',
+        steps: [textStep()],
+      })
     ),
     repository.enqueue(
-      input({ flowId: 'list-unique-c', flowName: 'List unique C', steps: [textStep()] })
+      input({
+        revisionId: thirdRevisionId,
+        flowId: 'list-unique-c',
+        flowName: 'List unique C',
+        steps: [textStep()],
+      })
     ),
   ]);
   await setDelivery(deliveries[1].id, {
@@ -633,8 +739,10 @@ databaseTest('markFailure schedules safe retries and expires ambiguous reconcili
   assert.equal(retry.steps[0]?.state, 'retry_scheduled');
   assert.equal(retry.steps[0]?.nextAttemptAt?.getTime(), now.getTime() + 60_000);
 
+  const ambiguousRevisionId = await createIssuedRevision();
   const ambiguousDelivery = await repository.enqueue(
     input({
+      revisionId: ambiguousRevisionId,
       flowId: 'failure-ambiguous',
       flowName: 'Failure ambiguous',
       steps: [textStep()],
@@ -657,16 +765,26 @@ databaseTest('markFailure schedules safe retries and expires ambiguous reconcili
 });
 
 databaseTest('cancelPending cancels only queued retries and preserves sent work', async () => {
+  const processingRevisionId = await createIssuedRevision();
+  const acceptedRevisionId = await createIssuedRevision();
   const pending = await repository.enqueue(
     input({ flowId: 'cancel-pending-postgres', steps: [textStep()] })
   );
   const processing = await repository.enqueue(
-    input({ flowId: 'cancel-processing-postgres', steps: [textStep()] })
+    input({
+      revisionId: processingRevisionId,
+      flowId: 'cancel-processing-postgres',
+      steps: [textStep()],
+    })
   );
   assert.ok(await repository.claim({ deliveryId: processing.id }));
 
   const accepted = await repository.enqueue(
-    input({ flowId: 'cancel-accepted-postgres', steps: [textStep()] })
+    input({
+      revisionId: acceptedRevisionId,
+      flowId: 'cancel-accepted-postgres',
+      steps: [textStep()],
+    })
   );
   const acceptedClaim = await repository.claim({ deliveryId: accepted.id });
   assert.ok(acceptedClaim);
@@ -745,8 +863,13 @@ databaseTest('legacy delivery without steps can be confirmed received without be
   assert.equal(resolved.completionSource, 'operator');
   assert.equal(resolved.steps.length, 0);
 
+  const noRetryRevisionId = await createIssuedRevision();
   const noRetry = await repository.enqueue(
-    input({ flowId: 'resolve-legacy-no-retry', steps: [textStep(0)] })
+    input({
+      revisionId: noRetryRevisionId,
+      flowId: 'resolve-legacy-no-retry',
+      steps: [textStep(0)],
+    })
   );
   await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.deliveryId, noRetry.id));
   await setDelivery(noRetry.id, { state: 'needs_review', updatedAt: old });

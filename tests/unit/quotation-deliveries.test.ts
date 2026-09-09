@@ -110,7 +110,11 @@ function moduleFixture(state = 'provider_accepted') {
 test('POST send returns durable state and omits recipient/provider details', async () => {
   const { deliveryModule, calls } = moduleFixture();
   const result = await sendWhatsappFlow(
-    event('POST', { quotation_id: 'quotation-1', revision_id: 'revision-1', flow_id: 'flow-1' }),
+    event('POST', {
+      quotation_id: 'quotation-1',
+      revision_id: 'revision-1',
+      flow_id: 'flow-1',
+    }),
     { deliveryModule },
   );
   const body = JSON.parse(result.body || '{}');
@@ -161,6 +165,7 @@ test('GET detail and list expose only sanitized delivery views and filters', asy
     requires_action: 'true',
     include_active: 'false',
     delayed: 'true',
+    revision_id: 'revision-1',
     page: '2',
     page_size: '10',
   }), { deliveryModule });
@@ -183,6 +188,7 @@ test('GET detail and list expose only sanitized delivery views and filters', asy
     requiresAction: true,
     includeActive: false,
     delayed: true,
+    revisionId: 'revision-1',
     page: 2,
     pageSize: 10,
   });

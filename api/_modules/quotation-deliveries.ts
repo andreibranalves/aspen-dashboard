@@ -315,6 +315,9 @@ export async function handler(
       }
       const filters: DeliveryListFilters = {
         states: statesQuery(queryValue(event, 'state', 'states')),
+        revisionId: queryValue(event, 'revision_id', 'revisionId')
+          ? localIdentifier(queryValue(event, 'revision_id', 'revisionId'), 'Identificador da revisão')
+          : undefined,
         search: safeSearch(queryValue(event, 'search')),
         from: dateQuery(queryValue(event, 'from'), 'Data inicial'),
         to: dateQuery(queryValue(event, 'to'), 'Data final'),

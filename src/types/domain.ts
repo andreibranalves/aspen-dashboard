@@ -135,6 +135,7 @@ export interface StoredAutoQuoteDraft extends Draft {
   issueIdempotencyKey?: string;
   issueDispatchStarted?: boolean;
   issueRecoveryRequired?: boolean;
+  issueOrigin?: 'conversation' | 'manual';
   issue?: QuotationIssueProjection;
   sourceQuotationId?: string;
   sourceRevisionId?: string;

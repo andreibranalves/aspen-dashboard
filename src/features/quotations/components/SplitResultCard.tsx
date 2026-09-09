@@ -70,6 +70,7 @@ export interface SplitResultCardProps {
   waSendEnabled?: boolean;
   waFlows?: CommunicationFlow[];
   waSelectedFlowId?: string;
+  waFlowSelectionDisabled?: boolean;
   templates?: QuotationTemplateMetadata[];
   templateLoading?: boolean;
   templateError?: string | null;
@@ -112,6 +113,7 @@ export default function SplitResultCard({
   waSendEnabled = false,
   waFlows = [],
   waSelectedFlowId = '',
+  waFlowSelectionDisabled = false,
   templates = [],
   templateLoading = false,
   templateError = null,
@@ -688,6 +690,7 @@ export default function SplitResultCard({
             onSelectFlow={(flowId) => onSelectWhatsAppFlow?.(draft.index, flowId)}
             onSend={() => onSendWhatsApp?.(draft.index)}
             hideButton
+            selectionDisabled={waFlowSelectionDisabled}
           />
           <QuotationDeliveryStatus
             delivery={delivery}
@@ -756,9 +759,7 @@ export default function SplitResultCard({
               >
                 <Phone size={13} /> Enviar WhatsApp
               </Button>
-            ) : (
-              <span className="text-xs text-fg-muted">Nenhum fluxo de WhatsApp disponível</span>
-            )}
+            ) : null}
           </>
         ) : reviewOnly ? (
           <>
