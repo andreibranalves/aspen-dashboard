@@ -642,8 +642,6 @@ export function createPostgresWhatsappCrmRepository(
           createdAt: quotations.createdAt,
           updatedAt: quotations.updatedAt,
           total: quoteRevisions.total,
-          revisionId: quoteRevisions.id,
-          revisionCreatedAt: quoteRevisions.createdAt,
         })
         .from(quotations)
         .innerJoin(quoteRevisions, eq(quoteRevisions.quotationId, quotations.id))
@@ -661,7 +659,7 @@ export function createPostgresWhatsappCrmRepository(
             id: row.id,
             businessNumber,
             status: historyQuotationStatus(row.status),
-            date: historyDate(row.updatedAt || row.revisionCreatedAt || row.createdAt),
+            date: historyDate(row.updatedAt || row.createdAt),
             total: rowText(row.total) || '0.00',
             url: historyQuotationUrl(businessNumber),
           };
