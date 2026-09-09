@@ -233,6 +233,16 @@ test('offline selection preserves opaque identifiers and deterministic money/tim
   );
 });
 
+test('offline selection preserves a lone gbraid identifier', () => {
+  const input = evidence({ attribution: { gbraid: 'opaque-gbraid-exact' } });
+  (input.raw as { siteSubmission: Record<string, unknown> }).siteSubmission.primaryAdIdentifier =
+    'gbraid';
+  const selected = selectOfflineOrder(input, { approvedOrderIds: new Set([ORDER_ID]) });
+  assert.equal(selected.status, 'eligible');
+  assert.equal(selected.adIdentifierType, 'gbraid');
+  assert.equal(selected.adIdentifier, 'opaque-gbraid-exact');
+});
+
 test('offline selection rejects an order timestamp in the future', () => {
   const selected = selectOfflineOrder(
     evidence({ createdAt: new Date('2099-01-01T00:00:00.000Z') }),
@@ -292,6 +302,7 @@ test('offline selection blocks legacy and generic grant variants at the ads boun
     { given: true, source: 'site_quote_form' },
     { ...strictGrant, adUserData: 'CONSENT_DENIED' },
     { ...strictGrant, reviewedAt: '2026-08-31T12:00:00Z' },
+    { ...strictGrant, reviewedAt: '2026-99-31T12:00:00.000Z' },
     null,
   ]) {
     const blocked = selectOfflineOrder(evidence({ raw: { siteSubmission: {

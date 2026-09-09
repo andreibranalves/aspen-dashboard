@@ -137,7 +137,7 @@ function buildAttribution(input: Record<string, unknown>): QuoteLeadAttribution 
     gclid: verbatimClickId(input.gclid),
     gbraid: verbatimClickId(input.gbraid),
     wbraid: verbatimClickId(input.wbraid),
-    fbclid: verbatimClickId(input.fbclid),
+    fbclid: nullableCleanText(input.fbclid),
     source_cta: nullableCleanText(input.source_cta || input.sourceCta),
     result_id: nullableCleanText(input.result_id || input.resultId),
   };

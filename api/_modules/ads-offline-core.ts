@@ -1,12 +1,15 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalizeNonNegativeDecimal } from '../_shared/decimal-money.js';
+import {
+  parseAdConsentEvidence,
+  type AdConsentEvidence,
+} from '../_shared/ad-consent.js';
 
 export const OFFLINE_EVENT_TYPE = 'pedido_iniciado' as const;
 export const OFFLINE_CURRENCY = 'BRL' as const;
 export const OFFLINE_EVENT_SOURCE = 'OTHER' as const;
-export const AD_CONSENT_POLICY_VERSION = '2026-08-18' as const;
-export const AD_CONSENT_SOURCE = 'site_cookie_preferences' as const;
+export { AD_CONSENT_POLICY_VERSION, AD_CONSENT_SOURCE } from '../_shared/ad-consent.js';
 export const GOOGLE_DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -149,14 +152,7 @@ export interface OfflineDestination {
   productDestinationType?: 'UPLOAD_CLICKS' | string;
 }
 
-export interface OfflineConsentEvidence {
-  adUserData: 'CONSENT_GRANTED';
-  adPersonalization: 'CONSENT_GRANTED';
-  policyVersion: string;
-  reviewedAt: string;
-  source: string;
-  evidenceId?: string;
-}
+export type OfflineConsentEvidence = AdConsentEvidence;
 
 export interface OfflineOrderEvidence {
   salesOrderId: string;
@@ -314,37 +310,7 @@ function rawSiteSubmission(raw: unknown): Record<string, unknown> | null {
 }
 
 function consentEvidenceFrom(raw: unknown): OfflineConsentEvidence | null {
-  const consent = rawSiteSubmission(raw)?.consent;
-  if (!isRecord(consent)) return null;
-  const keys = Object.keys(consent).sort();
-  const required = ['adPersonalization', 'adUserData', 'policyVersion', 'reviewedAt', 'source'];
-  const allowed = consent.evidenceId === undefined ? required : [...required, 'evidenceId'].sort();
-  if (keys.length !== allowed.length || keys.some((key, index) => key !== allowed[index])) {
-    return null;
-  }
-  const policyVersion = clean(consent.policyVersion);
-  const reviewedAt = verifiedIsoString(consent.reviewedAt);
-  const source = clean(consent.source);
-  const evidenceId = clean(consent.evidenceId);
-  // Strict #208 grant: only the canonical policy version and site cookie
-  // source are acceptable; generic and legacy grants never promote.
-  if (
-    consent.adUserData !== 'CONSENT_GRANTED' ||
-    consent.adPersonalization !== 'CONSENT_GRANTED' ||
-    policyVersion !== AD_CONSENT_POLICY_VERSION ||
-    !reviewedAt ||
-    source !== AD_CONSENT_SOURCE
-  ) {
-    return null;
-  }
-  return {
-    adUserData: 'CONSENT_GRANTED',
-    adPersonalization: 'CONSENT_GRANTED',
-    policyVersion,
-    reviewedAt,
-    source,
-    ...(evidenceId ? { evidenceId } : {}),
-  };
+  return parseAdConsentEvidence(rawSiteSubmission(raw)?.consent);
 }
 
 function adIdentifiersFrom(evidence: OfflineOrderEvidence): Array<{

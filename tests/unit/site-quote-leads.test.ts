@@ -158,9 +158,15 @@ test('strict ad-consent grant passes verbatim; generic and legacy variants never
     );
     assert.equal(response.statusCode, 400, JSON.stringify(consent));
   }
-  // Oversized click id rejected, never truncated.
+  // Oversized or ambiguous click ids are rejected before the immutable snapshot.
   const oversized = await handler(
     event({ body: JSON.stringify({ ...validPayload, gclid: 'a'.repeat(501) }) })
   );
   assert.equal(oversized.statusCode, 400);
+  const ambiguous = await handler(
+    event({
+      body: JSON.stringify({ ...validPayload, gclid: 'opaque-gclid', wbraid: 'opaque-wbraid' }),
+    })
+  );
+  assert.equal(ambiguous.statusCode, 400);
 });

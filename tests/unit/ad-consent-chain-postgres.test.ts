@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import test from 'node:test';
@@ -10,7 +12,8 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
-import { closeDatabase, getDatabase } from '../../api/_infrastructure/db/client.js';
+import { routes } from '../../api/_app/routes.js';
+import { closeDatabase } from '../../api/_infrastructure/db/client.js';
 import { createNodeHandler } from '../../api/_http/node-adapter.js';
 import { createSiteQuoteLeadsHandler } from '../../api/_modules/site-quote-leads.js';
 import { createPostgresQuoteLeadRepository } from '../../api/_infrastructure/db/repositories/quote-leads-repository.js';
@@ -18,11 +21,8 @@ import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db
 import { createPostgresQuoteDraftManagementRepository } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
 import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
 import { createPostgresSalesOrderOfflineExportRepository } from '../../api/_infrastructure/db/repositories/sales-order-offline-export-repository.js';
-import { createAdsOfflineService } from '../../api/_modules/ads-offline.js';
-import {
-  GOOGLE_DATA_MANAGER_SCOPE,
-  selectOfflineOrder,
-} from '../../api/_modules/ads-offline-core.js';
+import { selectOfflineOrder } from '../../api/_modules/ads-offline-core.js';
+import { runAdsOffline } from '../../scripts/ads-offline.mjs';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import {
   appSettings,
@@ -52,12 +52,7 @@ const SUBMISSION_ID = randomUUID();
 const EXTERNAL_ID = `siteQuote.${SUBMISSION_ID}`;
 // Byte-a-byte click id: leading/trailing whitespace must survive ingest intact.
 const GCLID = '  SyntheticOpaque Click 2026-09  ';
-const DESTINATION = {
-  operatingAccountId: '1234567890',
-  productDestinationId: '9876543210',
-  productDestinationType: 'UPLOAD_CLICKS' as const,
-};
-// Canonical grant per issue #208 contract (matches the Site sibling commit e22af21).
+// Canonical grant per issue #208 contract.
 const AD_CONSENT = {
   adUserData: 'CONSENT_GRANTED',
   adPersonalization: 'CONSENT_GRANTED',
@@ -126,6 +121,8 @@ test(
     const createdClientIds: string[] = [];
     const createdExportIds: string[] = [];
     let previousSettings: typeof appSettings.$inferSelect | undefined;
+    let apiServer: ReturnType<typeof createServer> | null = null;
+    const originalSiteQuoteRoute = routes['site-quote-leads'];
     let bodyError: unknown;
     let clock = NOW;
 
@@ -201,26 +198,45 @@ test(
         ativo: true,
       });
 
-      // -- Site boundary: generic consent still accepted; first snapshot immutable; old evidence blocked
-      const handler = createSiteQuoteLeadsHandler({
+      // -- Real HTTP boundary: generic consent accepted; first snapshot immutable; old evidence blocked
+      routes['site-quote-leads'] = createSiteQuoteLeadsHandler({
         environment: { QUOTE_LEADS_INGEST_TOKEN: TOKEN },
       });
+      apiServer = createServer(createNodeHandler());
+      apiServer.listen(0, '127.0.0.1');
+      await once(apiServer, 'listening');
+      const address = apiServer.address();
+      assert.ok(address && typeof address === 'object');
+      const postIngest = async (event: ReturnType<typeof ingestEvent>) =>
+        fetch(`http://127.0.0.1:${address.port}/api/site-quote-leads`, {
+          method: event.httpMethod,
+          headers: event.headers,
+          body: event.body,
+        });
       // 1. Generic submission is the first snapshot (fingerprint computed by the Site includes consent shape).
-      assert.equal((await handler(ingestEvent({ given: true, source: 'site_quote_form' }))).statusCode, 201);
+      assert.equal(
+        (await postIngest(ingestEvent({ given: true, source: 'site_quote_form' }))).status,
+        201
+      );
       // 2. Exact retry deduplicates.
-      assert.equal((await handler(ingestEvent({ given: true, source: 'site_quote_form' }))).statusCode, 200);
+      assert.equal(
+        (await postIngest(ingestEvent({ given: true, source: 'site_quote_form' }))).status,
+        200
+      );
       // 3. Evidence grant for the same externalId (necessarily a different fingerprint, as on the Site) is refused.
-      const conflict = await handler(ingestEvent(AD_CONSENT, { payloadFingerprint: 'b'.repeat(64) }));
-      assert.equal(conflict.statusCode, 409);
+      const conflict = await postIngest(
+        ingestEvent(AD_CONSENT, { payloadFingerprint: 'b'.repeat(64) })
+      );
+      assert.equal(conflict.status, 409);
       // 4. Old policyVersion evidence is rejected at the boundary, never demoted to generic.
-      const legacyGrant = await handler(
+      const legacyGrant = await postIngest(
         ingestEvent(AD_CONSENT, {
           externalId: `siteQuote.${randomUUID()}`,
           payloadFingerprint: 'd'.repeat(64),
           consent: { ...AD_CONSENT, policyVersion: '2025-01-01' },
         })
       );
-      assert.equal(legacyGrant.statusCode, 400);
+      assert.equal(legacyGrant.status, 400);
 
       // -- Durable state after ingest
       const leadRepository = createPostgresQuoteLeadRepository(() => database, {
@@ -269,10 +285,7 @@ test(
 
       // Second submission with the strict evidence grant ingested fresh.
       const grantExternalId = `siteQuote.${randomUUID()}`;
-      const grantHandler = createSiteQuoteLeadsHandler({
-        environment: { QUOTE_LEADS_INGEST_TOKEN: TOKEN },
-      });
-      const grantResponse = await grantHandler(
+      const grantResponse = await postIngest(
         ingestEvent(AD_CONSENT, {
           externalId: grantExternalId,
           payloadFingerprint: 'e'.repeat(64),
@@ -280,7 +293,7 @@ test(
           email: 'synthetic-208-grant@example.invalid',
         })
       );
-      assert.equal(grantResponse.statusCode, 201);
+      assert.equal(grantResponse.status, 201);
       const grantLead = await leadRepository.findByExternalId(grantExternalId, 'site_form');
       assert.ok(grantLead);
       assert.deepEqual(siteSubmissionOf(grantLead.raw).consent, AD_CONSENT);
@@ -328,97 +341,83 @@ test(
       assert.ok(grantOrder[0]);
       createdOrderIds.push(grantOrder[0].id);
 
-      // -- Dry-run: eligible only with direct lineage + verifiable origin + one id + full evidence
-      const transportCalls: string[] = [];
-      const service = createAdsOfflineService({
-        repository: offlineRepository,
-        destination: DESTINATION,
-        transport: {
-          ingest: async () => {
-            transportCalls.push('ingest');
-            throw new Error('Google bloqueado: dry-run não pode transportar');
-          },
-          retrieveStatus: async () => {
-            transportCalls.push('retrieve');
-            throw new Error('Google bloqueado: dry-run não pode diagnosticar');
-          },
-        },
-        now: () => clock,
-      });
-      const dryRun = await service.preview({
-        from: new Date('2026-09-01T00:00:00.000Z'),
-        to: new Date('2026-09-02T00:00:00.000Z'),
-        approvedOrderIds: new Set([grantOrder[0].id]),
-      });
-      assert.equal(transportCalls.length, 0);
-      const grantRow = dryRun.rows.find((row) => row.salesOrderId === grantOrder[0].id);
-      assert.ok(grantRow);
-      assert.equal(grantRow.category, 'eligible');
-      assert.deepEqual(grantRow.reasons, []);
-      assert.equal(grantRow.adIdentifierType, 'gclid');
-      // Preview is read-only: neither ledger table receives a row.
-      const [exportRows, attemptRows] = await Promise.all([
+      // -- Real ads:offline --dry-run wiring: read-only, zero OAuth, zero transport
+      const beforeLedgerCounts = await Promise.all([
         database.select({ id: schema.salesOrderOfflineExports.id }).from(schema.salesOrderOfflineExports),
         database
           .select({ id: schema.salesOrderOfflineExportAttempts.id })
           .from(schema.salesOrderOfflineExportAttempts),
       ]);
-      assert.equal(exportRows.length, 0);
-      assert.equal(attemptRows.length, 0);
-
-      // -- Zero OAuth / zero transport: the fake client with blocked fetch proves the seam
-      const blockedFetch = async () => {
-        throw new Error('fetch bloqueado no teste sintético');
-      };
-      const { getGoogleDataManagerClient } = await import(
-        '../../api/_infrastructure/integrations/google-data-manager/client.js'
-      );
-      const fakeTransport = getGoogleDataManagerClient({
-        getConfig: () => ({
-          clientId: 'synthetic-client-id',
-          clientSecret: 'synthetic-secret',
-          refreshToken: 'synthetic-refresh',
-          apiVersion: 'v1',
-          operatingAccountId: DESTINATION.operatingAccountId,
-          productDestinationId: DESTINATION.productDestinationId,
+      let transportCalls = 0;
+      let stdout = '';
+      let stderr = '';
+      const exitCode = await runAdsOffline({
+        argv: [
+          '--from',
+          '2026-09-01T00:00:00.000Z',
+          '--to',
+          '2026-09-02T00:00:00.000Z',
+          '--dry-run',
+        ],
+        env: {},
+        createRepository: () => offlineRepository,
+        createTransport: () => ({
+          ingest: async () => {
+            transportCalls += 1;
+            throw new Error('Google bloqueado: dry-run não pode transportar');
+          },
+          retrieveStatus: async () => {
+            transportCalls += 1;
+            throw new Error('Google bloqueado: dry-run não pode diagnosticar');
+          },
         }),
-        fetchImpl: blockedFetch as typeof fetch,
-        assertWritesAllowed: () => {
-          throw new Error('escrita externa bloqueada no teste sintético');
-        },
+        closeDatabase: async () => undefined,
+        stdout: {
+          write: (value: string) => {
+            stdout += value;
+            return true;
+          },
+        } as typeof process.stdout,
+        stderr: {
+          write: (value: string) => {
+            stderr += value;
+            return true;
+          },
+        } as typeof process.stderr,
       });
-      await assert.rejects(
-        () =>
-          fakeTransport.ingest({
-            destinations: [
-              {
-                operatingAccount: {
-                  accountType: 'GOOGLE_ADS',
-                  accountId: DESTINATION.operatingAccountId,
-                },
-                productDestinationId: DESTINATION.productDestinationId,
-              },
-            ],
-            events: [
-              {
-                transactionId: `aspen-pedido-iniciado:${order.id}`,
-                eventTimestamp: NOW.toISOString(),
-                conversionValue: 123.4,
-                currency: 'BRL',
-                eventSource: 'OTHER',
-                adIdentifiers: { gclid: GCLID },
-              },
-            ],
-          }),
-        /bloqueada no teste sintético/
-      );
-      assert.equal(transportCalls.length, 0);
+      assert.equal(exitCode, 0);
+      assert.equal(stderr, '');
+      assert.equal(transportCalls, 0);
+      const dryRun = JSON.parse(stdout) as {
+        rows: Array<{
+          salesOrderId: string;
+          category: string;
+          reasons: string[];
+          adIdentifierType: string | null;
+        }>;
+      };
+      const grantRow = dryRun.rows.find((row) => row.salesOrderId === grantOrder[0].id);
+      assert.ok(grantRow);
+      assert.equal(grantRow.adIdentifierType, 'gclid');
+      assert.ok(grantRow.reasons.includes('reviewed_uuid_required'));
+      const afterLedgerCounts = await Promise.all([
+        database.select({ id: schema.salesOrderOfflineExports.id }).from(schema.salesOrderOfflineExports),
+        database
+          .select({ id: schema.salesOrderOfflineExportAttempts.id })
+          .from(schema.salesOrderOfflineExportAttempts),
+      ]);
+      assert.deepEqual(afterLedgerCounts, beforeLedgerCounts);
     } catch (error) {
       bodyError = error;
       throw error;
     } finally {
       let cleanupError: unknown;
       try {
+        routes['site-quote-leads'] = originalSiteQuoteRoute;
+        if (apiServer) {
+          apiServer.close();
+          await once(apiServer, 'close');
+        }
         if (createdExportIds.length) {
           await database
             .delete(schema.salesOrderOfflineExportAttempts)

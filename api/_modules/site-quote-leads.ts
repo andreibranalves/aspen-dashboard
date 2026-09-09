@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { parseAdConsentEvidence } from '../_shared/ad-consent.js';
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { createPostgresQuoteLeadRepository } from '../_infrastructure/db/repositories/quote-leads-repository.js';
 import { isMachineBearerAuthorized, MIN_MACHINE_SECRET_BYTES } from '../_shared/machine-auth.js';
@@ -8,10 +9,7 @@ const MAX_BODY_BYTES = 16_384;
 const SANITY_ID_PATTERN =
   /^siteQuote\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const AD_CONSENT_POLICY_VERSION = '2026-08-18';
-const AD_CONSENT_SOURCE = 'site_cookie_preferences';
 const CLICK_ID_MAX_LENGTH = 500;
-const EVIDENCE_ID_PATTERN = /^[\w-]{1,128}$/;
 const ALLOWED_FIELDS = new Set([
   'externalId',
   'payloadFingerprint',
@@ -92,64 +90,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function canonicalRfc3339(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length === 24 &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) &&
-    new Date(value).toISOString() === value
-  );
-}
-
 /**
- * Strict ad-consent contract per issue #208. The payload is either the generic
- * `{given:true, source:'site_quote_form'}` (insufficient for ads export) or the
- * full evidence grant; anything else — old policy versions, malformed shapes,
- * mixed fields — is rejected and never silently demoted to generic consent.
+ * Generic form consent remains ingestible but insufficient for ads export.
+ * Any evidence-shaped payload must satisfy the canonical #208 contract.
  */
 function parseConsent(value: unknown): Record<string, unknown> {
   if (!isPlainObject(value)) throw new Error('invalid_payload');
   const keys = Object.keys(value);
-  if (
-    keys.length === 2 &&
-    value.given === true &&
-    value.source === 'site_quote_form'
-  ) {
+  if (keys.length === 2 && value.given === true && value.source === 'site_quote_form') {
     return { given: true, source: 'site_quote_form' };
   }
-  const evidenceKeys = new Set([
-    'adUserData',
-    'adPersonalization',
-    'policyVersion',
-    'reviewedAt',
-    'source',
-    'evidenceId',
-  ]);
-  if (
-    keys.some((key) => !evidenceKeys.has(key)) ||
-    value.adUserData !== 'CONSENT_GRANTED' ||
-    value.adPersonalization !== 'CONSENT_GRANTED' ||
-    value.policyVersion !== AD_CONSENT_POLICY_VERSION ||
-    !canonicalRfc3339(value.reviewedAt) ||
-    value.source !== AD_CONSENT_SOURCE
-  ) {
-    throw new Error('invalid_payload');
-  }
-  const evidenceId = value.evidenceId;
-  if (
-    evidenceId !== undefined &&
-    (typeof evidenceId !== 'string' || !EVIDENCE_ID_PATTERN.test(evidenceId))
-  ) {
-    throw new Error('invalid_payload');
-  }
-  return {
-    adUserData: 'CONSENT_GRANTED',
-    adPersonalization: 'CONSENT_GRANTED',
-    policyVersion: AD_CONSENT_POLICY_VERSION,
-    reviewedAt: value.reviewedAt,
-    source: AD_CONSENT_SOURCE,
-    ...(evidenceId !== undefined ? { evidenceId } : {}),
-  };
+  const evidence = parseAdConsentEvidence(value);
+  if (!evidence) throw new Error('invalid_payload');
+  return { ...evidence };
 }
 
 function parsePayload(raw: string): SiteQuoteLeadInput {
@@ -194,6 +147,10 @@ function parsePayload(raw: string): SiteQuoteLeadInput {
     throw new Error('invalid_payload');
   }
   const consent = parseConsent(body.consent);
+  const clickIdCount = ['gclid', 'gbraid', 'wbraid'].filter(
+    (key) => typeof body[key] === 'string' && body[key] !== ''
+  ).length;
+  if (clickIdCount > 1) throw new Error('invalid_payload');
 
   return {
     source: 'site_form',

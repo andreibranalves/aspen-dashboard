@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createSanityQuoteRequestsPageReader } from '../api/_infrastructure/integrations/sanity/quote-requests.js';
+import { parseAdConsentEvidence } from '../api/_shared/ad-consent.js';
 
 const PAGE_SIZE = 100;
 const MAX_RECORDS = 5_000;
@@ -54,28 +55,11 @@ function verbatimClickId(value) {
 }
 
 function advertisingConsent(document) {
-  const consent = document.adConsent;
-  if (consent === undefined || consent === null) {
+  if (document.adConsent === undefined || document.adConsent === null) {
     return { given: document.consentGiven === true, source: 'site_quote_form' };
   }
-  if (typeof consent !== 'object' || Array.isArray(consent)) throw new Error('invalid_document');
-  const keys = Object.keys(consent).sort();
-  const required = ['adPersonalization', 'adUserData', 'policyVersion', 'reviewedAt', 'source'];
-  const allowed = consent.evidenceId === undefined ? required : [...required, 'evidenceId'].sort();
-  if (
-    keys.length !== allowed.length ||
-    keys.some((key, index) => key !== allowed[index]) ||
-    consent.adUserData !== 'CONSENT_GRANTED' ||
-    consent.adPersonalization !== 'CONSENT_GRANTED' ||
-    consent.policyVersion !== '2026-08-18' ||
-    consent.source !== 'site_cookie_preferences' ||
-    typeof consent.reviewedAt !== 'string' ||
-    new Date(consent.reviewedAt).toISOString() !== consent.reviewedAt ||
-    (consent.evidenceId !== undefined &&
-      (typeof consent.evidenceId !== 'string' || !/^[\w-]{1,128}$/.test(consent.evidenceId)))
-  ) {
-    throw new Error('invalid_document');
-  }
+  const consent = parseAdConsentEvidence(document.adConsent);
+  if (!consent) throw new Error('invalid_document');
   return { ...consent };
 }
 
@@ -128,6 +112,10 @@ export function sanityDocumentToIngestInput(document) {
   const payloadFingerprint = /^[0-9a-f]{64}$/.test(suppliedFingerprint)
     ? suppliedFingerprint
     : legacyFingerprint(document);
+  const clickIdCount = [document.gclid, document.gbraid, document.wbraid].filter(
+    (value) => typeof value === 'string' && value !== ''
+  ).length;
+  if (clickIdCount > 1) throw new Error('invalid_document');
   return {
     source: 'site_form',
     externalId: id,

@@ -65,6 +65,10 @@ test('reconciliation preserves strict ad evidence and opaque click IDs verbatim'
     /invalid_document/
   );
   assert.throws(
+    () => sanityDocumentToIngestInput({ ...document, wbraid: 'opaque-wbraid' }),
+    /invalid_document/
+  );
+  assert.throws(
     () =>
       sanityDocumentToIngestInput({
         ...document,
