@@ -455,6 +455,25 @@ test('cancelar edição sem alterações não abre confirmação de descarte @qu
       body: JSON.stringify({ data: [withCanonicalListRow({ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }, '11111111-1111-4111-8111-111111111111')], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
     });
   });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        default_key: 'padrao',
+        templates: [
+          {
+            key: 'padrao',
+            name: 'Padrão Aspen',
+            archived: false,
+            is_default: true,
+            current_version_id: '99999999-9999-4999-8999-999999999999',
+            current_version: 2,
+          },
+        ],
+      }),
+    });
+  });
 
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Produto local')).toBeVisible();

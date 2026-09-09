@@ -97,9 +97,9 @@ test.beforeAll(async () => {
 
 test('opportunity creates quotation whose origin remains visible through approval and order', async ({ page }) => {
   await page.goto(`/#/crm?search=${encodeURIComponent(leadName)}`);
-  const card = page.getByRole('article', { name: new RegExp(`Negócio ${leadName}`) });
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: 'Novo orçamento' }).click();
+  const dealRow = page.getByRole('row', { name: new RegExp(`Abrir lead ${leadName}`) });
+  await expect(dealRow).toBeVisible();
+  await dealRow.getByRole('button', { name: 'Novo orçamento' }).click();
 
   await expect(page.getByRole('heading', { name: 'Novo orçamento' })).toBeVisible();
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
@@ -127,9 +127,9 @@ test('opportunity creates quotation whose origin remains visible through approva
 
 test('restoring a manual draft without hash parameters preserves its direct origin', async ({ page }) => {
   await page.goto(`/#/crm?search=${encodeURIComponent(leadName)}`);
-  const card = page.getByRole('article', { name: new RegExp(`Negócio ${leadName}`) });
-  await expect(card).toBeVisible();
-  await card.getByRole('button', { name: 'Novo orçamento' }).click();
+  const dealRow = page.getByRole('row', { name: new RegExp(`Abrir lead ${leadName}`) });
+  await expect(dealRow).toBeVisible();
+  await dealRow.getByRole('button', { name: 'Novo orçamento' }).click();
 
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
   await page.getByLabel('Origem *').selectOption('Google Ads');

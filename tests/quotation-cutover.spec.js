@@ -175,9 +175,9 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   await page.context().route('**/api/view**', async () => { throw new Error('Customer-facing path must not request /api/view'); });
 
   await page.goto(`/#/quotations/${CORE_ID}`);
-  await expect(page.getByRole('heading', { name: `Orçamento ${CORE_ID}` })).toBeVisible();
+  await expect(page.getByRole('heading', { name: CORE_ID })).toBeVisible();
   await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Revisão 1')).toBeVisible();
+  await expect(page.getByText('Revisão 1', { exact: true })).toBeVisible();
   await expect(page.getByText('Produto PostgreSQL')).toBeVisible();
 
   const pdfPopupPromise = page.waitForEvent('popup');

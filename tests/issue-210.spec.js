@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 
-const BASE_ORIGIN = 'http://localhost:5173';
+const BASE_ORIGIN = process.env.BASE_URL || 'http://localhost:5173';
 const INTER_REGULAR = readFileSync(new URL('./fixtures/fonts/Inter-Regular.woff', import.meta.url));
 const INTER_SEMIBOLD = readFileSync(
   new URL('./fixtures/fonts/Inter-SemiBold.woff', import.meta.url)

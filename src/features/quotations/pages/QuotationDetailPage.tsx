@@ -328,6 +328,10 @@ function CoreQuotationDetail({
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState(data.templateVersionId || '');
   const [selectedTemplate, setSelectedTemplate] = useState(data.templateKey || 'padrao');
+  const templateBaselineRef = useRef({
+    key: data.templateKey || 'padrao',
+    versionId: data.templateVersionId || '',
+  });
   const clientSnapshot = useMemo(
     () => ({
       id: clientId || undefined,
@@ -387,6 +391,10 @@ function CoreQuotationDetail({
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.templateKey || 'padrao');
     setSelectedVersionId(initialData.templateVersionId || '');
+    templateBaselineRef.current = {
+      key: initialData.templateKey || 'padrao',
+      versionId: initialData.templateVersionId || '',
+    };
     setClientResults([]);
     setClientSearching(false);
     if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -466,22 +474,26 @@ function CoreQuotationDetail({
         const persisted = initialData.templateKey || '';
         const persistedTemplate = available.find((template) => template.key === persisted);
         setTemplates(available);
-        if (persistedTemplate?.archived) {
-          setSelectedTemplate(persisted);
-          setSelectedVersionId(
-            initialData.templateVersionId || persistedTemplate.current_version_id || ''
-          );
-        } else if (initialData.status === 'rascunho' && fallback) {
-          setSelectedTemplate(fallback.key);
-          setSelectedVersionId(fallback.current_version_id || '');
-        } else if (persistedTemplate) {
-          setSelectedTemplate(persisted);
-          setSelectedVersionId(
-            initialData.templateVersionId || persistedTemplate.current_version_id || ''
-          );
-        } else if (fallback) {
-          setSelectedTemplate(fallback.key);
-          setSelectedVersionId(fallback.current_version_id || '');
+        const selection = persistedTemplate?.archived
+          ? {
+              key: persisted,
+              versionId: initialData.templateVersionId || persistedTemplate.current_version_id || '',
+            }
+          : initialData.status === 'rascunho' && fallback
+            ? { key: fallback.key, versionId: fallback.current_version_id || '' }
+            : persistedTemplate
+              ? {
+                  key: persisted,
+                  versionId:
+                    initialData.templateVersionId || persistedTemplate.current_version_id || '',
+                }
+              : fallback
+                ? { key: fallback.key, versionId: fallback.current_version_id || '' }
+                : null;
+        if (selection) {
+          setSelectedTemplate(selection.key);
+          setSelectedVersionId(selection.versionId);
+          templateBaselineRef.current = selection;
         }
         setTemplateError('');
       })
@@ -723,6 +735,10 @@ function CoreQuotationDetail({
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.templateKey || 'padrao');
       setSelectedVersionId(authoritative.templateVersionId || '');
+      templateBaselineRef.current = {
+        key: authoritative.templateKey || 'padrao',
+        versionId: authoritative.templateVersionId || '',
+      };
       showMessage('');
       setConflict('');
       setEditing(false);
@@ -743,8 +759,8 @@ function CoreQuotationDetail({
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
-    if (selectedTemplate !== (data.templateKey || 'padrao')) return true;
-    if (selectedVersionId !== (data.templateVersionId || '')) return true;
+    if (selectedTemplate !== templateBaselineRef.current.key) return true;
+    if (selectedVersionId !== templateBaselineRef.current.versionId) return true;
     return false;
   }, [
     editing,

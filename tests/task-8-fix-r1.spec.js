@@ -7,7 +7,7 @@ import {
 const revisionId = '22222222-2222-4222-8222-222222222222';
 const quotationId = 'ORC-20260001';
 const quotationUuid = '11111111-1111-4111-8111-111111111111';
-const TEST_ORIGIN = 'http://localhost:5173';
+const TEST_ORIGIN = process.env.BASE_URL || 'http://localhost:5173';
 const controlledOrderPages = new WeakMap();
 
 test.beforeEach(async ({ page }, testInfo) => {
