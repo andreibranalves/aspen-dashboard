@@ -51,7 +51,7 @@ export function QuotationDeliveryStatus({
 
   const projection = delivery ? projectDelivery(delivery) : null;
   const delayed = projection?.delayed === true;
-  const canResolve = Boolean(delivery && projection?.requiresAction && onResolve);
+  const canResolve = Boolean(delivery && !pending && projection?.requiresAction && onResolve);
   const statusLabel = pending && !delivery ? 'Enviando' : projection?.label || 'Enviando';
   const statusTone =
     delivery?.state === 'failed' || delivery?.state === 'needs_review'

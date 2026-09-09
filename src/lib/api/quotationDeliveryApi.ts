@@ -434,6 +434,21 @@ export async function fetchDelivery(
   return fetchDelivery({ id: status.deliveryId });
 }
 
+export async function fetchDeliveryForRevision(revisionId: string): Promise<DeliveryView | null> {
+  const normalizedRevisionId = inputIdentifier(revisionId, 'Identificador da revisão');
+  const params = new URLSearchParams({
+    revision_id: normalizedRevisionId,
+    page: '1',
+    page_size: '1',
+  });
+  const response = await fetch(`/api/quotation-deliveries?${params.toString()}`);
+  if (!response.ok) return requestError(response, 'Não foi possível consultar a entrega.');
+  const page = parsePage(await responseBody(response));
+  const delivery = page.data[0] || null;
+  if (delivery && delivery.revisionId !== normalizedRevisionId) invalidResponse();
+  return delivery;
+}
+
 export async function cancelPendingDeliveries(): Promise<number> {
   const response = await fetch('/api/quotation-deliveries', {
     method: 'POST',
@@ -522,7 +537,11 @@ export async function enqueueDelivery(
   const response = await fetch('/api/send-whatsapp-flow', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ quotation_id: quotationId, revision_id: revisionId, flow_id: flowId }),
+    body: JSON.stringify({
+      quotation_id: quotationId,
+      revision_id: revisionId,
+      flow_id: flowId,
+    }),
   });
   if (!response.ok) return requestError(response, 'Não foi possível iniciar o envio.');
   const body = await responseBody(response);

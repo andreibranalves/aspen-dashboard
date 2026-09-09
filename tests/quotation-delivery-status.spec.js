@@ -74,6 +74,22 @@ function statusResponse(state, selectedFlowId = flowId, selectedRevisionId = rev
   };
 }
 
+function deliveryPage(data = []) {
+  return {
+    data,
+    total: data.length,
+    page: 1,
+    page_size: 1,
+    summary: {
+      active: 0,
+      requires_action: 0,
+      retry_scheduled: 0,
+      delayed: 0,
+      delivered_last_24_hours: data.filter((item) => item.state === 'delivered').length,
+    },
+  };
+}
+
 function issuedQuotationDetail() {
   return withCanonicalQuotationDetail({
     id: quotationId,
@@ -183,6 +199,9 @@ async function routeCommonAuto(page) {
     quote_revision_id: revisionId,
     revision_number: 1,
     concurrency_token: '2026-08-13T00:00:00.000Z',
+    items: [{ item_code: 'CNG-001', nome: 'Canga', qty: 1, applied_unit_price: 9, manual_rate: false }],
+    frete: '0.00',
+    total: '9.00',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
     quotationId: quotationUuid,
@@ -207,7 +226,10 @@ async function routeCommonAuto(page) {
         delay_min_seconds: 0,
         delay_max_seconds: 0,
         max_media_per_product_group: 1,
-        steps: [{ id: 'step-1', type: 'text', template: 'Olá' }],
+        steps: [
+          { id: 'step-1', type: 'text', template: 'Olá' },
+          { id: 'document-1', type: 'document', source: 'quotation_pdf' },
+        ],
       },
       {
         id: 'flow-2',
@@ -219,28 +241,38 @@ async function routeCommonAuto(page) {
         delay_min_seconds: 0,
         delay_max_seconds: 0,
         max_media_per_product_group: 1,
-        steps: [{ id: 'step-2', type: 'text', template: 'Olá 2' }],
+        steps: [
+          { id: 'step-2', type: 'text', template: 'Olá 2' },
+          { id: 'document-2', type: 'document', source: 'quotation_pdf' },
+        ],
       },
     ],
     selectedFlowId: flowId,
   }));
+  await page.route('**/api/quotation-deliveries**', (route) => json(route, deliveryPage()));
 }
 
-async function issueAutoQuote(page) {
-  await page.goto('/#/auto');
+async function issueAutoQuote(page, { expectWhatsApp = true } = {}) {
+  await page.goto('/#/novo-orcamento');
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
+  await expect(page).toHaveURL(/#\/novo-orcamento$/);
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
+  if (expectWhatsApp) {
+    await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeVisible();
+  }
 }
 
 async function mockDeliveryLifecycle(page, states) {
   let stateIndex = -1;
   let providerAcceptedReads = 0;
   let sendCount = 0;
+  let lastSendBody = null;
   await page.route('**/api/send-whatsapp-flow', (route) => {
     sendCount += 1;
+    lastSendBody = route.request().postDataJSON();
     stateIndex = 0;
     const state = states[stateIndex];
     return json(route, {
@@ -261,12 +293,16 @@ async function mockDeliveryLifecycle(page, states) {
     return json(route, statusResponse(states[stateIndex]));
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('revision_id')) {
+      return json(route, deliveryPage(stateIndex < 0 ? [] : [delivery(states[stateIndex])]));
+    }
     if (stateIndex < 0) return json(route, { error: 'not found' }, 404);
     const state = states[stateIndex];
     if (state !== 'provider_accepted' && stateIndex < states.length - 1) stateIndex += 1;
     return json(route, delivery(state));
   });
-  return { getSendCount: () => sendCount };
+  return { getSendCount: () => sendCount, getLastSendBody: () => lastSendBody };
 }
 
 async function mockDetail(page, state = 'delivered', selectedFlowId = flowId) {
@@ -369,6 +405,111 @@ test('single click persists status across reload and never offers blind retry', 
   expect(lifecycle.getSendCount()).toBe(1);
 });
 
+test('does not offer delivery for inactive or invalid quotation flows', async ({ page }) => {
+  await routeCommonAuto(page);
+  await page.route('**/api/communication-flows**', (route) => json(route, {
+    success: true,
+    selectedFlowId: 'inactive',
+    flows: [
+      {
+        id: 'inactive', name: 'Inativo', context: 'manual', channel: 'whatsapp', vendor_name: 'Juliana', enabled: false,
+        delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1,
+        steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }],
+      },
+      {
+        id: 'text-only', name: 'Só texto', context: 'manual', channel: 'whatsapp', vendor_name: 'Juliana', enabled: true,
+        delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1,
+        steps: [{ id: 'text', type: 'text', template: 'Olá' }],
+      },
+      {
+        id: 'two-documents', name: 'Dois documentos', context: 'manual', channel: 'whatsapp', vendor_name: 'Juliana', enabled: true,
+        delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1,
+        steps: [
+          { id: 'pdf-1', type: 'document', source: 'quotation_pdf' },
+          { id: 'pdf-2', type: 'document', source: 'quotation_webp' },
+        ],
+      },
+    ],
+  }));
+
+  await issueAutoQuote(page, { expectWhatsApp: false });
+  await expect(page.getByText('Nenhum fluxo de WhatsApp disponível').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toHaveCount(0);
+});
+
+test('finds a delivery from another flow and locks the selector against duplicate sends', async ({ page }) => {
+  await routeCommonAuto(page);
+  let sendCount = 0;
+  await page.route('**/api/communication-flows**', (route) => json(route, {
+    success: true,
+    selectedFlowId: 'flow-2',
+    flows: [
+      {
+        id: 'flow-2', name: 'Fluxo 2', context: 'manual', channel: 'whatsapp', vendor_name: 'Juliana', enabled: true,
+        delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1,
+        steps: [{ id: 'pdf-2', type: 'document', source: 'quotation_pdf' }],
+      },
+    ],
+  }));
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    return json(route, { error: 'unexpected' }, 500);
+  });
+  await page.route('**/api/whatsapp-send-status**', (route) => {
+    const requestedFlow = new globalThis.URL(route.request().url()).searchParams.get('flow_id');
+    return requestedFlow === flowId
+      ? json(route, statusResponse('delivered', flowId))
+      : json(route, { error: 'not found' }, 404);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return url.searchParams.has('revision_id')
+      ? json(route, deliveryPage([delivery('delivered', flowId)]))
+      : json(route, delivery('delivered', flowId));
+  });
+
+  await issueAutoQuote(page);
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Fluxo WhatsApp')).toBeDisabled();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(sendCount).toBe(0);
+});
+
+test('polls and resolves a delivery found through a removed flow', async ({ page }) => {
+  await routeCommonAuto(page);
+  let state = 'needs_review';
+  await page.route('**/api/communication-flows**', (route) => json(route, {
+    success: true,
+    selectedFlowId: 'flow-2',
+    flows: [{
+      id: 'flow-2', name: 'Fluxo atual', context: 'manual', channel: 'whatsapp', vendor_name: 'Juliana', enabled: true,
+      delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1,
+      steps: [{ id: 'pdf-2', type: 'document', source: 'quotation_pdf' }],
+    }],
+  }));
+  await page.route('**/api/whatsapp-send-status**', (route) => json(route, statusResponse(state, 'removed-flow')));
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      state = 'delivered';
+      return json(route, delivery(state, 'removed-flow'));
+    }
+    return url.searchParams.has('revision_id')
+      ? json(route, deliveryPage([delivery(state, 'removed-flow')]))
+      : json(route, delivery(state, 'removed-flow'));
+  });
+
+  await issueAutoQuote(page);
+  await expect(page.getByText('Revisão necessária', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /cliente confirmou recebimento/i })).toHaveCount(0);
+});
+
 test('quotation detail loads the same durable delivery without clicking send', async ({ page }) => {
   await mockDetail(page);
   await page.goto(`/#/quotations/${quotationId}`);
@@ -431,62 +572,20 @@ test('initial identity lookup failure keeps warning and blocks blind send', asyn
   await expect(send).toBeDisabled();
 });
 
-test('flow switching uses a distinct revision and flow status', async ({ page }) => {
+test('completed delivery locks flow selection for the issued revision', async ({ page }) => {
   await routeCommonAuto(page);
-  const indexes = new Map();
-  let sendCount = 0;
-  let flow2LookupStarted = false;
-  let releaseFlow2Lookup;
-  const flow2LookupReleased = new Promise((resolve) => { releaseFlow2Lookup = resolve; });
-  const states = { [flowId]: ['delivered'], 'flow-2': ['queued'] };
-  await page.route('**/api/send-whatsapp-flow', (route) => {
-    const body = route.request().postDataJSON();
-    const selectedFlowId = body.flow_id;
-    sendCount += 1;
-    indexes.set(selectedFlowId, 0);
-    const state = states[selectedFlowId][0];
-    return json(route, {
-      success: true,
-      delivery_id: delivery(state, selectedFlowId).id,
-      revision_id: revisionId,
-      flow_id: selectedFlowId,
-      send_status: state,
-      delivery: delivery(state, selectedFlowId),
-    });
-  });
-  await page.route('**/api/whatsapp-send-status**', async (route) => {
-    const selectedFlowId = new globalThis.URL(route.request().url()).searchParams.get('flow_id');
-    const index = indexes.get(selectedFlowId);
-    if (index === undefined) {
-      if (selectedFlowId === 'flow-2') {
-        flow2LookupStarted = true;
-        await flow2LookupReleased;
-      }
-      return json(route, { error: 'not found' }, 404);
-    }
-    return json(route, statusResponse(states[selectedFlowId][index], selectedFlowId));
-  });
-  await page.route('**/api/quotation-deliveries**', (route) => {
-    const selectedFlowId = [...indexes.keys()].find((candidate) => route.request().url().includes(encodeURIComponent(`delivery-${revisionId}-${candidate}`)));
-    if (!selectedFlowId) return json(route, { error: 'not found' }, 404);
-    const index = indexes.get(selectedFlowId);
-    const state = states[selectedFlowId][index];
-    return json(route, delivery(state, selectedFlowId));
-  });
+  const lifecycle = await mockDeliveryLifecycle(page, ['delivered']);
   await issueAutoQuote(page);
   await page.getByRole('button', { name: /enviar whatsapp/i }).click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await page.getByText('Fluxo WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
-  await expect.poll(() => flow2LookupStarted).toBe(true);
-  await expect(send).toBeDisabled();
-  expect(sendCount).toBe(1);
-  releaseFlow2Lookup?.();
-  await expect(send).toBeEnabled();
-  await send.click();
-  await expect(page.getByText('Na fila', { exact: true })).toBeVisible();
-  await expect.poll(() => sendCount).toBe(2);
-  expect([...indexes.keys()]).toEqual([flowId, 'flow-2']);
+  await expect(page.getByLabel('Fluxo WhatsApp')).toBeDisabled();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(lifecycle.getSendCount()).toBe(1);
+  expect(lifecycle.getLastSendBody()).toEqual({
+    quotation_id: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+  });
 });
 
 test('needs_review exposes only the two explicit manual decisions', async ({ page }) => {

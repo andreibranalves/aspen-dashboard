@@ -3,6 +3,7 @@ import {
   deliveryPollDelay,
   enqueueDelivery,
   fetchDelivery,
+  fetchDeliveryForRevision,
   resolveDelivery,
   type DeliveryIdentity,
   type DeliveryResolution,
@@ -29,6 +30,67 @@ function addKey(keys: string[], key: string): string[] {
 
 function removeKey(keys: string[], key: string): string[] {
   return keys.filter((current) => current !== key);
+}
+
+export function useQuotationRevisionDeliveries(revisionIds: string[]) {
+  const revisionSignature = revisionIds.join('\u0001');
+  const uniqueRevisionIds = useMemo(() => [...new Set(revisionIds)], [revisionSignature]);
+  const [deliveriesByRevision, setDeliveriesByRevision] = useState<Record<string, DeliveryView>>({});
+  const [resolvedRevisionIds, setResolvedRevisionIds] = useState<string[]>([]);
+  const [errorsByRevision, setErrorsByRevision] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+    const validIds = new Set(uniqueRevisionIds);
+    setDeliveriesByRevision((previous) =>
+      Object.fromEntries(Object.entries(previous).filter(([key]) => validIds.has(key)))
+    );
+    setResolvedRevisionIds((previous) => previous.filter((key) => validIds.has(key)));
+    setErrorsByRevision((previous) =>
+      Object.fromEntries(Object.entries(previous).filter(([key]) => validIds.has(key)))
+    );
+
+    for (const revisionId of uniqueRevisionIds) {
+      void fetchDeliveryForRevision(revisionId)
+        .then((delivery) => {
+          if (!active) return;
+          setDeliveriesByRevision((previous) => {
+            if (delivery) return { ...previous, [revisionId]: delivery };
+            if (!(revisionId in previous)) return previous;
+            const next = { ...previous };
+            delete next[revisionId];
+            return next;
+          });
+          setErrorsByRevision((previous) => {
+            if (!(revisionId in previous)) return previous;
+            const next = { ...previous };
+            delete next[revisionId];
+            return next;
+          });
+        })
+        .catch((error) => {
+          if (!active) return;
+          setErrorsByRevision((previous) => ({
+            ...previous,
+            [revisionId]: errorMessage(error, 'Não foi possível atualizar a entrega.'),
+          }));
+        })
+        .finally(() => {
+          if (active) setResolvedRevisionIds((previous) => addKey(previous, revisionId));
+        });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [revisionSignature, uniqueRevisionIds]);
+
+  const pendingRevisionIds = useMemo(() => {
+    const resolved = new Set(resolvedRevisionIds);
+    return uniqueRevisionIds.filter((revisionId) => !resolved.has(revisionId));
+  }, [resolvedRevisionIds, uniqueRevisionIds]);
+
+  return { deliveriesByRevision, pendingRevisionIds, errorsByRevision };
 }
 
 export function useQuotationDeliveries(identities: DeliveryIdentity[]) {

@@ -418,8 +418,45 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
   });
 
-  test('emissão navega ao detalhe e não oferece transporte nesta página', async ({ page }) => {
+  test('emissão permanece na fila e oferece o envio por WhatsApp nesta página', async ({ page }) => {
     await setupApiMocks(page);
+    await page.route('**/api/communication-flows**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          flows: [{
+            id: 'flow-quotation',
+            name: 'Enviar orçamento',
+            context: 'already_talking',
+            channel: 'whatsapp',
+            enabled: true,
+            steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }],
+          }],
+          selectedFlowId: 'flow-quotation',
+        }),
+      });
+    });
+    await page.route('**/api/quotation-deliveries**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [],
+          total: 0,
+          page: 1,
+          page_size: 1,
+          summary: {
+            active: 0,
+            requires_action: 0,
+            retry_scheduled: 0,
+            delayed: 0,
+            delivered_last_24_hours: 0,
+          },
+        }),
+      });
+    });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
     await page.locator('textarea').first().fill(TEST_INPUT);
@@ -429,8 +466,9 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByLabel('Origem').selectOption('Google Ads');
     await page.getByRole('button', { name: 'Concluir' }).click();
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
-    await expect(page).toHaveURL(/#\/quotations\/11111111-1111-4111-8111-111111111101$/);
-    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/auto$/);
+    await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible();
   });
 
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {

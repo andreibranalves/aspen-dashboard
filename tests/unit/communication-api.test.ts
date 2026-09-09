@@ -8,6 +8,7 @@ import {
   executeFlow,
   fetchDeliveryStatus,
   fetchProductCategories,
+  isQuotationDeliveryFlow,
   mediaGroupPathSegment,
   projectDeliveryFailure,
   projectDeliveryState,
@@ -333,6 +334,19 @@ test('renderableFlowStepCount mirrors the backend delivery plan step semantics',
     } as never),
     3
   );
+});
+
+test('isQuotationDeliveryFlow accepts only enabled flows with exactly one quotation output', () => {
+  const flow = (enabled: boolean, steps: unknown[]) => ({ enabled, steps }) as never;
+  const pdf = { id: 'pdf', type: 'document', source: 'quotation_pdf' };
+  const webp = { id: 'webp', type: 'document', source: 'quotation_webp' };
+  const text = { id: 'text', type: 'text', template: 'Olá' };
+
+  assert.equal(isQuotationDeliveryFlow(flow(true, [text, pdf])), true);
+  assert.equal(isQuotationDeliveryFlow(flow(true, [webp])), true);
+  assert.equal(isQuotationDeliveryFlow(flow(false, [pdf])), false);
+  assert.equal(isQuotationDeliveryFlow(flow(true, [text])), false);
+  assert.equal(isQuotationDeliveryFlow(flow(true, [pdf, webp])), false);
 });
 
 test('communicationFlowSummary summarizes messages, documents and product media in PT-BR', () => {

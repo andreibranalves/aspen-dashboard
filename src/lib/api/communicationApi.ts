@@ -179,6 +179,18 @@ export function renderableFlowStepCount(flow: Pick<CommunicationFlow, 'steps'> |
   return flow.steps.filter(isRenderableStep).length;
 }
 
+/** A quotation delivery must be active and contain one, and only one,
+ * generated quotation document. This mirrors the durable backend plan gate. */
+export function isQuotationDeliveryFlow(
+  flow: Pick<CommunicationFlow, 'enabled' | 'steps'> | null | undefined,
+): boolean {
+  if (!flow || flow.enabled === false || !Array.isArray(flow.steps)) return false;
+  return flow.steps.filter(
+    (step) => step.type === 'document'
+      && (step.source === 'quotation_pdf' || step.source === 'quotation_webp'),
+  ).length === 1;
+}
+
 /** Operator-facing one-line summary of what a flow sends. */
 export function communicationFlowSummary(flow: Pick<CommunicationFlow, 'steps'> | null | undefined): string {
   if (!flow || !Array.isArray(flow.steps)) return '';

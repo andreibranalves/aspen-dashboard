@@ -229,6 +229,7 @@ function twoFlowDeliveryDatabase(revision: string) {
   };
   const db = {
     transaction: async (callback: (tx: unknown) => unknown) => callback(db),
+    execute: async () => undefined,
     select: () => ({
       from(table: unknown) {
         if (table === quoteRevisions) return query([revisionRow]);
@@ -281,12 +282,17 @@ function event(body: Record<string, unknown>) {
   } as any;
 }
 
-test('quotation delivery compatibility scopes reads, claims and updates by flow', async () => {
+test('quotation delivery rejects a second flow and scopes existing delivery reads and updates', async () => {
   const deliveryRevisionId = '22222222-2222-4222-8222-222222222222';
   const fixture = twoFlowDeliveryDatabase(deliveryRevisionId);
   const repository = createPostgresQuotationDeliveryRepository(() => fixture.db as any, { now: () => fixture.now });
   await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511999990000', flowId: 'flow-a' });
-  await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511888880000', flowId: 'flow-b' });
+  await assert.rejects(
+    repository.reserve({ revisionId: deliveryRevisionId, phone: '5511888880000', flowId: 'flow-b' }),
+    QuotationDeliveryConflictError,
+  );
+  // Historical rows remain addressable by their exact flow identity.
+  fixture.rows.push({ ...fixture.rows[0], id: 'historical-flow-b', phone: '5511888880000', flowId: 'flow-b' });
 
   await repository.recordState({ revisionId: deliveryRevisionId, flowId: 'flow-b', state: 'completed' });
   const claimed = await repository.claimTransport(deliveryRevisionId, 'flow-a');

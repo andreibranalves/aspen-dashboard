@@ -79,6 +79,22 @@ function enqueueResponse(state, flowId = 'flow-1', { omitPhone = false } = {}) {
   };
 }
 
+function deliveryPage(data = []) {
+  return {
+    data,
+    total: data.length,
+    page: 1,
+    page_size: 1,
+    summary: {
+      active: 0,
+      requires_action: 0,
+      retry_scheduled: 0,
+      delayed: 0,
+      delivered_last_24_hours: data.filter((item) => item.state === 'delivered').length,
+    },
+  };
+}
+
 function issuedQuotationDetail() {
   return withCanonicalQuotationDetail({
     id: quotationId,
@@ -188,6 +204,9 @@ async function setupAuto(page) {
     quote_revision_id: revisionId,
     revision_number: 1,
     concurrency_token: '2026-08-13T00:00:00.000Z',
+    items: [{ item_code: 'CNG-001', nome: 'Canga', qty: 1, applied_unit_price: 9, manual_rate: false }],
+    frete: '0.00',
+    total: '9.00',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
     quotationId: quotationUuid,
@@ -212,7 +231,10 @@ async function setupAuto(page) {
         delay_min_seconds: 0,
         delay_max_seconds: 0,
         max_media_per_product_group: 1,
-        steps: [{ id: 'step-1', type: 'text', template: 'Olá' }],
+        steps: [
+          { id: 'step-1', type: 'text', template: 'Olá' },
+          { id: 'document-1', type: 'document', source: 'quotation_pdf' },
+        ],
       },
       {
         id: 'flow-2',
@@ -224,7 +246,10 @@ async function setupAuto(page) {
         delay_min_seconds: 0,
         delay_max_seconds: 0,
         max_media_per_product_group: 1,
-        steps: [{ id: 'step-2', type: 'text', template: 'Olá 2' }],
+        steps: [
+          { id: 'step-2', type: 'text', template: 'Olá 2' },
+          { id: 'document-2', type: 'document', source: 'quotation_pdf' },
+        ],
       },
     ],
     selectedFlowId: 'flow-1',
@@ -233,7 +258,7 @@ async function setupAuto(page) {
   // possibly before a test registers its own delivery routes. Answer them
   // immediately so the send button is enabled once the lookup settles.
   await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
-  await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
+  await page.route('**/api/quotation-deliveries**', (route) => json(route, deliveryPage()));
   await page.goto('/#/auto');
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
@@ -259,7 +284,13 @@ async function installDurableRoutes(page, stateForFlow = () => 'delivered') {
     return json(route, statusResponse(state, flowId));
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
-    const deliveryId = new globalThis.URL(route.request().url()).searchParams.get('id');
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('revision_id')) {
+      const flowId = [...active.keys()][0];
+      const state = flowId ? active.get(flowId) : undefined;
+      return json(route, deliveryPage(flowId && state ? [delivery(state, flowId)] : []));
+    }
+    const deliveryId = url.searchParams.get('id');
     const flowId = [...active.keys()].find((candidate) => delivery('delivered', candidate).id === deliveryId);
     const state = flowId ? active.get(flowId) : undefined;
     if (!flowId || !state) return json(route, { error: 'not found' }, 404);
@@ -304,6 +335,10 @@ test('delivered replay without phone remains a durable completed UI status', asy
     return json(route, statusResponse(active.get('flow-1')));
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('revision_id')) {
+      return json(route, deliveryPage(active.has('flow-1') ? [delivery(active.get('flow-1'))] : []));
+    }
     if (!active.has('flow-1')) return json(route, { error: 'not found' }, 404);
     return json(route, delivery(active.get('flow-1')));
   });
@@ -315,37 +350,38 @@ test('delivered replay without phone remains a durable completed UI status', asy
   expect(sendCount).toBe(1);
 });
 
-test('flow switch keeps an independent exact revision and flow identity', async ({ page }) => {
+test('completed delivery locks the flow for the issued revision', async ({ page }) => {
   await setupAuto(page);
-  const { requests } = await installDurableRoutes(page, (selectedFlowId) => selectedFlowId === 'flow-1' ? 'delivered' : 'queued');
+  const { requests } = await installDurableRoutes(page, () => 'delivered');
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await page.getByText('Fluxo WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
-  await expect(send).toBeEnabled();
-  await send.click();
-  await expect(page.getByText('Na fila', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Fluxo WhatsApp')).toBeDisabled();
+  await expect(send).toBeDisabled();
   expect(requests).toEqual([
     { quotation_id: quotationId, revision_id: revisionId, flow_id: 'flow-1' },
-    { quotation_id: quotationId, revision_id: revisionId, flow_id: 'flow-2' },
   ]);
 });
 
-test('same component double click sends one backend request and failure cleanup re-enables button', async ({ page }) => {
+test('same component double click sends one backend request and unsafe failure stays blocked', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
-  let fail = true;
   let releaseFirst;
   await page.route('**/api/send-whatsapp-flow', async (route) => {
     sendCount += 1;
-    if (fail && sendCount === 1) {
+    if (sendCount === 1) {
       await new Promise((resolve) => { releaseFirst = resolve; });
       return json(route, { error: 'Falha temporária.' }, 503);
     }
     return json(route, enqueueResponse('delivered'));
   });
   await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
-  await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return url.searchParams.has('revision_id')
+      ? json(route, deliveryPage())
+      : json(route, { error: 'not found' }, 404);
+  });
   // The send button stays disabled while the delivery-status lookup settles.
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await expect(send).toBeEnabled();
@@ -356,11 +392,8 @@ test('same component double click sends one backend request and failure cleanup 
   await expect.poll(() => sendCount).toBe(1);
   releaseFirst?.();
   await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toBeVisible();
-  await expect(send).toBeEnabled();
-  fail = false;
-  await send.click();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  expect(sendCount).toBe(2);
+  await expect(send).toBeDisabled();
+  expect(sendCount).toBe(1);
 });
 
 test('malformed 2xx cannot render sent and leaves no local success authority', async ({ page }) => {
@@ -371,7 +404,12 @@ test('malformed 2xx cannot render sent and leaves no local success authority', a
     return json(route, { success: true });
   });
   await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
-  await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return url.searchParams.has('revision_id')
+      ? json(route, deliveryPage())
+      : json(route, { error: 'not found' }, 404);
+  });
   await page.evaluate(() => globalThis.localStorage.setItem(
     'aspen.whatsapp-send-locks-v1',
     JSON.stringify({ accepted: true }),
@@ -380,6 +418,6 @@ test('malformed 2xx cannot render sent and leaves no local success authority', a
   await send.click();
   await expect(page.getByText('Resposta inválida da entrega WhatsApp.', { exact: true })).toBeVisible();
   await expect(page.getByText('Entregue', { exact: true })).toHaveCount(0);
-  await expect(send).toBeEnabled();
+  await expect(send).toBeDisabled();
   expect(sendCount).toBe(1);
 });

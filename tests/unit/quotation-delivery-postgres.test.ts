@@ -103,6 +103,7 @@ function fakePreparationDatabase(options: {
   }
   const db: any = {
     transaction: async (callback: (tx: unknown) => unknown) => callback(db),
+    execute: async () => undefined,
     select: () => ({
       from: (table: unknown) => {
         if (table === quoteRevisions) {
@@ -413,13 +414,11 @@ test(
       assert.equal(first.flowId, 'already-talking');
       const retry = await repository.reserve({ revisionId: ids.revision, phone: '55 21 99541 9741', flowId: 'already-talking' });
       assert.equal(retry.id, first.id);
-      const otherFlow = await repository.reserve({
+      await assert.rejects(repository.reserve({
         revisionId: ids.revision,
         phone: '5511999999999',
         flowId: 'email-first-contact',
-      });
-      assert.notEqual(otherFlow.id, first.id);
-      assert.equal(otherFlow.flowId, 'email-first-contact');
+      }), QuotationDeliveryConflictError);
 
       const prepared = await repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId });
       assert.equal(prepared.pdfSize, pdfWithEof().length);

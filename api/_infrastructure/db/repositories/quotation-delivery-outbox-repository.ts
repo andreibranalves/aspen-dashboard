@@ -178,6 +178,7 @@ export interface EnqueueDeliveryRecord extends DeliveryIdentity {
 
 export interface DeliveryListFilters {
   states?: DeliveryState[];
+  revisionId?: string;
   search?: string;
   from?: Date;
   to?: Date;
@@ -537,6 +538,9 @@ function normalizeFilters(
   }
   let search: string | undefined;
   if (input.search !== undefined) search = text(input.search, 'Busca', MAX_FLOW_NAME, { min: 0 });
+  const revisionId = input.revisionId === undefined
+    ? undefined
+    : uuid(input.revisionId, 'Identificador da revisão');
   const from = input.from === undefined ? undefined : validDate(input.from, 'Data inicial');
   const to = input.to === undefined ? undefined : validDate(input.to, 'Data final');
   if (from && to && from > to) throw new QuotationDeliveryOutboxInputError('Período inválido.');
@@ -551,6 +555,7 @@ function normalizeFilters(
   }
   return {
     states: input.states,
+    revisionId,
     search,
     from,
     to,
@@ -793,6 +798,7 @@ function leaseUntil(now: Date, duration: number): Date {
 function listWhere(filters: ReturnType<typeof normalizeFilters>, now: Date): SQL | undefined {
   const conditions: SQL[] = [];
   if (filters.states?.length) conditions.push(inArray(quotationDeliveries.state, filters.states));
+  if (filters.revisionId) conditions.push(eq(quotationDeliveries.revisionId, filters.revisionId));
   if (filters.search !== undefined && filters.search !== '') {
     const pattern = `%${filters.search}%`;
     conditions.push(
@@ -895,6 +901,24 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     try {
       const db = getDb();
       return await db.transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${normalized.revisionId}, 0))
+        `);
+        const [existingRevisionDelivery] = await tx
+          .select({ id: quotationDeliveries.id, flowId: quotationDeliveries.flowId })
+          .from(quotationDeliveries)
+          .where(eq(quotationDeliveries.revisionId, normalized.revisionId))
+          .limit(1);
+        if (existingRevisionDelivery) {
+          if (existingRevisionDelivery.flowId !== normalized.flowId) {
+            throw new QuotationDeliveryOutboxConflictError(
+              'Este orçamento já possui uma entrega pelo WhatsApp.'
+            );
+          }
+          const existing = await readAggregate(tx, existingRevisionDelivery.id, now);
+          if (!existing) throw new QuotationDeliveryOutboxRepositoryError();
+          return existing;
+        }
         const deliveryId = randomUUID();
         const [inserted] = await tx
           .insert(quotationDeliveries)

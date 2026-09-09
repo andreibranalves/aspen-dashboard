@@ -108,6 +108,19 @@ test('saves drafts in a versioned shape without server synchronization', () => {
   assert.deepEqual(JSON.parse(storage.values.get('aspen_drafts')!), { version: 1, drafts: [validIssueDraft] });
 });
 
+test('preserves the issue origin used to recover manual navigation after reload', () => {
+  const storage = createStorage();
+  const pendingManualIssue = {
+    ...validDraft,
+    status: 'processing' as const,
+    issueIdempotencyKey: '550e8400-e29b-41d4-a716-446655440000',
+    issueDispatchStarted: true,
+    issueOrigin: 'manual' as const,
+  };
+  saveAutoQuoteDrafts(storage, [pendingManualIssue]);
+  assert.equal(loadAutoQuoteDrafts(storage)[0]?.issueOrigin, 'manual');
+});
+
 test('sanitizes optional identity fields and malformed editable values field by field', () => {
   const storage = createStorage();
   storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{
