@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Aspen — contexto comercial",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Mostra contexto comercial do Aspen na conversa atual do WhatsApp Web.",
   "permissions": [],
   "host_permissions": ["https://app.aspenestamparia.com/*"],

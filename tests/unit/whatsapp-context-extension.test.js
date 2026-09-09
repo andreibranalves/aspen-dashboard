@@ -162,6 +162,15 @@ test('same conversation avoids request storms and mount is idempotent', async ()
   assert.match(harness.html, /Contato A/);
 });
 
+test('matched customer shows context immediately and keeps correction secondary', async () => {
+  const harness = createHarness({ conversations: [conversationA], lookupResults: [settled({ ...matchedA, linking: { available: true, version: null } })] });
+  await flush();
+  assert.match(harness.html, /Contato A/);
+  assert.match(harness.html, /Corrigir cliente/);
+  assert.doesNotMatch(harness.html, /placeholder="Nome ou telefone do cliente"/);
+  assert.doesNotMatch(harness.html, /Vincular cliente/);
+});
+
 test('content panel renders explicit terminal states for login, API, and empty results', async () => {
   const cases = [
     [{ status: 'login_required', message: 'Faça login no Aspen para consultar o contexto.' }, /Faça login no Aspen/],

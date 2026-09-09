@@ -1,6 +1,6 @@
 # Extensão Aspen — contexto comercial
 
-Contexto comercial com vínculo de cliente confirmado pelo operador. Não lê nem envia corpo de mensagens ao Aspen.
+Contexto comercial resolvido automaticamente por telefone, com correção manual quando necessária. Não lê nem envia corpo de mensagens ao Aspen.
 
 ## Instalação interna
 
@@ -11,4 +11,4 @@ Contexto comercial com vínculo de cliente confirmado pelo operador. Não lê ne
 
 `manifest.json` restringe o content script a `https://web.whatsapp.com/*`. O service worker usa a sessão autenticada do Aspen (`credentials: include`); não há API key ou segredo no pacote.
 
-A versão 0.2.1 usa o modelo da conversa ativa do WhatsApp para obter a conta conectada, o identificador da conversa e o mapeamento exato de LID para telefone. O bridge `identity.js` roda no contexto da página e responde somente ao content script local; não lê mensagens nem faz chamadas de rede. Números presentes apenas no título e diferenças no nono dígito geram sugestões. O operador pesquisa, confirma ou desfaz vínculos; LID nunca é convertido em telefone. Requer a migration 0034 e o backend correspondente antes de recarregar a extensão. Veja docs/whatsapp-client-links.md no repositório.
+A versão 0.2.2 usa o modelo da conversa ativa do WhatsApp para obter a conta conectada, o identificador da conversa e o mapeamento exato de LID para telefone. O bridge `identity.js` roda no contexto da página e responde somente ao content script local; não lê mensagens nem faz chamadas de rede. Uma única correspondência por telefone confirmado, inclusive pela variação reversível do nono dígito brasileiro, abre o contexto automaticamente. Números presentes apenas no título e ambiguidades exigem escolha. O operador pode corrigir ou desfazer vínculos; LID nunca é convertido em telefone. Requer a migration 0034 e o backend correspondente antes de recarregar a extensão. Veja docs/whatsapp-client-links.md no repositório.

@@ -63,16 +63,54 @@ test('LID without phone supports manual search; invalid scope cannot persist', a
   assert.equal(h.saves, 0);
 });
 
-test('numeric header and ninth-digit discrepancy with JID require confirmation even for exact CRM match', async () => {
+test('numeric header needs confirmation while an authoritative JID variant auto-matches', async () => {
   const h = setup();
   const header = await h.call('GET', { phone: '5541999701234', phoneSource: 'visible-phone' });
   assert.equal(header.match, 'suggested');
   assert.equal(header.contact, undefined);
   const changed = await h.call('GET', { phone: '5541999701234', conversationId: '554199701234@s.whatsapp.net' });
-  assert.equal(changed.match, 'suggested');
-  assert.equal(changed.contact, undefined);
+  assert.equal(changed.match, 'matched');
+  assert.equal(changed.matchSource, 'phone');
   const exact = await h.call('GET', { phone: '5541999701234', conversationId: '5541999701234@s.whatsapp.net' });
   assert.equal(exact.match, 'matched');
+});
+
+test('active WhatsApp model auto-matches one exact LID client and one reversible phone variant', async () => {
+  const h = setup();
+  const exact = await h.call('GET', { phone: '5541999701234', phoneSource: 'active-model' });
+  assert.equal(exact.match, 'matched');
+  assert.equal(exact.matchSource, 'phone');
+  assert.equal(exact.contact.id, id);
+
+  const variant = await h.call('GET', { phoneSource: 'active-model' });
+  assert.equal(variant.match, 'matched');
+  assert.equal(variant.matchSource, 'phone-variant');
+  assert.equal(variant.contact.id, id);
+  assert.equal(h.saves, 0);
+});
+
+test('active WhatsApp model keeps multiple reversible phone variants ambiguous', async () => {
+  const handler = createWhatsappContextHandler({
+    findCandidatesByPhone: async phone => phone === '5541999701234' ? [
+      { ...client, tipo: 'cliente' },
+      { ...client, id: '00000000-0000-4000-8000-000000000003', nome: 'Outro cliente', tipo: 'cliente' },
+    ] : [],
+    links: {
+      get: async () => null,
+      search: async () => [],
+      save: async () => { throw new Error('unexpected save'); },
+      remove: async () => { throw new Error('unexpected remove'); },
+    },
+  });
+  const response = await handler({
+    httpMethod: 'GET',
+    headers: {},
+    queryStringParameters: { ...scope, phone: '554199701234', phoneSource: 'active-model' },
+    body: '',
+  });
+  const result = JSON.parse(response.body || '{}');
+  assert.equal(result.match, 'ambiguous');
+  assert.equal(result.candidates.length, 2);
 });
 
 test('auto-match checks the loaded client and projects that same validated read', async () => {
