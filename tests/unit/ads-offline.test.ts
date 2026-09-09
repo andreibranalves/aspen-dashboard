@@ -66,9 +66,9 @@ function evidence(overrides: Partial<OfflineOrderEvidence> = {}): OfflineOrderEv
         consent: {
           adUserData: 'CONSENT_GRANTED',
           adPersonalization: 'CONSENT_GRANTED',
-          policyVersion: 'ads-policy-v1',
+          policyVersion: '2026-08-18',
           reviewedAt: '2026-08-31T12:00:00.000Z',
-          source: 'site_quote_form',
+          source: 'site_cookie_preferences',
           evidenceId: 'synthetic-consent-1',
         },
       },
@@ -77,6 +77,44 @@ function evidence(overrides: Partial<OfflineOrderEvidence> = {}): OfflineOrderEv
     ...overrides,
   };
 }
+
+test('offline selection rejects legacy snake_case consent aliases', () => {
+  const legacy = evidence();
+  const siteSubmission = (legacy.raw as { siteSubmission: Record<string, unknown> }).siteSubmission;
+  siteSubmission.consent = {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policy_version: '2026-08-18',
+    reviewed_at: '2026-08-31T12:00:00.000Z',
+    source: 'site_cookie_preferences',
+    evidence_id: 'legacy-synthetic',
+  };
+  const selected = selectOfflineOrder(legacy, {
+    approvedOrderIds: new Set([ORDER_ID]),
+  });
+  assert.notEqual(selected.status, 'eligible');
+  assert.ok(selected.reasons.includes('consent_review_required'));
+});
+
+test('offline selection rejects mixed consent aliases and multiple click IDs', () => {
+  const mixed = evidence();
+  const mixedConsent = (
+    (mixed.raw as { siteSubmission: { consent: Record<string, unknown> } }).siteSubmission.consent
+  );
+  mixedConsent.reviewed_at = '2025-01-01T00:00:00.000Z';
+  const mixedSelection = selectOfflineOrder(mixed, {
+    approvedOrderIds: new Set([ORDER_ID]),
+  });
+  assert.notEqual(mixedSelection.status, 'eligible');
+  assert.ok(mixedSelection.reasons.includes('consent_review_required'));
+
+  const ambiguousSelection = selectOfflineOrder(
+    evidence({ attribution: { gclid: 'synthetic-gclid', wbraid: 'synthetic-wbraid' } }),
+    { approvedOrderIds: new Set([ORDER_ID]) }
+  );
+  assert.notEqual(ambiguousSelection.status, 'eligible');
+  assert.ok(ambiguousSelection.reasons.includes('ambiguous_ad_identifiers'));
+});
 
 test('offline selection accepts every approved order status only with reviewed UUID and lineage', () => {
   for (const status of ['To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed']) {
@@ -136,13 +174,13 @@ test('offline selection preserves opaque identifiers and deterministic money/tim
           consent: {
             adUserData: 'CONSENT_GRANTED',
             adPersonalization: 'CONSENT_GRANTED',
-            policyVersion: 'ads-policy-v1',
+            policyVersion: '2026-08-18',
             reviewedAt: '2026-08-31T12:00:00.000Z',
-            source: 'site_quote_form',
+            source: 'site_cookie_preferences',
           },
         },
       },
-      attribution: { gclid: 'wrong-priority', wbraid: 'opaque-wbraid-exact' },
+      attribution: { wbraid: 'opaque-wbraid-exact' },
     }),
     { approvedOrderIds: new Set([ORDER_ID]) }
   );
@@ -195,6 +233,16 @@ test('offline selection preserves opaque identifiers and deterministic money/tim
   );
 });
 
+test('offline selection preserves a lone gbraid identifier', () => {
+  const input = evidence({ attribution: { gbraid: 'opaque-gbraid-exact' } });
+  (input.raw as { siteSubmission: Record<string, unknown> }).siteSubmission.primaryAdIdentifier =
+    'gbraid';
+  const selected = selectOfflineOrder(input, { approvedOrderIds: new Set([ORDER_ID]) });
+  assert.equal(selected.status, 'eligible');
+  assert.equal(selected.adIdentifierType, 'gbraid');
+  assert.equal(selected.adIdentifier, 'opaque-gbraid-exact');
+});
+
 test('offline selection rejects an order timestamp in the future', () => {
   const selected = selectOfflineOrder(
     evidence({ createdAt: new Date('2099-01-01T00:00:00.000Z') }),
@@ -222,15 +270,51 @@ test('offline payload rejects money whose cents change during JSON serialization
           consentEvidence: {
             adUserData: 'CONSENT_GRANTED',
             adPersonalization: 'CONSENT_GRANTED',
-            policyVersion: 'ads-policy-v1',
+            policyVersion: '2026-08-18',
             reviewedAt: NOW.toISOString(),
-            source: 'site_quote_form',
+            source: 'site_cookie_preferences',
           },
         },
         DESTINATION
       ),
     /safe API number range/
   );
+});
+
+test('offline selection blocks legacy and generic grant variants at the ads boundary', () => {
+  const strictGrant = {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policyVersion: '2026-08-18',
+    reviewedAt: '2026-08-31T12:00:00.000Z',
+    source: 'site_cookie_preferences',
+  };
+  const selected = selectOfflineOrder(evidence({ raw: { siteSubmission: {
+    payloadFingerprint: 'a'.repeat(64),
+    originalCreatedAt: '2026-08-31T12:00:00.000Z',
+    primaryAdIdentifier: 'gclid',
+    consent: strictGrant,
+  } } }), { approvedOrderIds: new Set([ORDER_ID]) });
+  assert.equal(selected.status, 'eligible');
+  for (const consent of [
+    { ...strictGrant, policyVersion: '2025-01-01' },
+    { ...strictGrant, source: 'site_quote_form' },
+    { given: true, source: 'site_quote_form' },
+    { ...strictGrant, adUserData: 'CONSENT_DENIED' },
+    { ...strictGrant, reviewedAt: '2026-08-31T12:00:00Z' },
+    { ...strictGrant, reviewedAt: '2026-99-31T12:00:00.000Z' },
+    null,
+  ]) {
+    const blocked = selectOfflineOrder(evidence({ raw: { siteSubmission: {
+      payloadFingerprint: 'a'.repeat(64),
+      originalCreatedAt: '2026-08-31T12:00:00.000Z',
+      primaryAdIdentifier: 'gclid',
+      consent,
+    } } }), { approvedOrderIds: new Set([ORDER_ID]) });
+    assert.equal(blocked.status, 'needs_review', JSON.stringify(consent));
+    assert.equal(blocked.reviewReason, 'consent_review_required', JSON.stringify(consent));
+    assert.equal(blocked.consentEvidence, null, JSON.stringify(consent));
+  }
 });
 
 test('preflight is fail-closed and binds target metadata to Data Manager destination', () => {

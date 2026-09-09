@@ -23,7 +23,7 @@ export function buildSanityQuoteRequestsQuery(): string {
     | order(createdAt asc, _id asc)[0...$limit]{
       _id, createdAt, payloadFingerprint, name, email, whatsapp, product, quantity,
       deadline, message, consentGiven, utmSource, utmMedium, utmCampaign, utmContent,
-      utmTerm, gclid, gbraid, wbraid, fbclid, pageUrl
+      utmTerm, gclid, gbraid, wbraid, fbclid, pageUrl, adConsent
     }`;
 }
 

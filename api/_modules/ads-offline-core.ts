@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalizeNonNegativeDecimal } from '../_shared/decimal-money.js';
+import {
+  parseAdConsentEvidence,
+  type AdConsentEvidence,
+} from '../_shared/ad-consent.js';
 
 export const OFFLINE_EVENT_TYPE = 'pedido_iniciado' as const;
 export const OFFLINE_CURRENCY = 'BRL' as const;
 export const OFFLINE_EVENT_SOURCE = 'OTHER' as const;
+export { AD_CONSENT_POLICY_VERSION, AD_CONSENT_SOURCE } from '../_shared/ad-consent.js';
 export const GOOGLE_DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -147,14 +152,7 @@ export interface OfflineDestination {
   productDestinationType?: 'UPLOAD_CLICKS' | string;
 }
 
-export interface OfflineConsentEvidence {
-  adUserData: 'CONSENT_GRANTED';
-  adPersonalization: 'CONSENT_GRANTED';
-  policyVersion: string;
-  reviewedAt: string;
-  source: string;
-  evidenceId?: string;
-}
+export type OfflineConsentEvidence = AdConsentEvidence;
 
 export interface OfflineOrderEvidence {
   salesOrderId: string;
@@ -312,43 +310,23 @@ function rawSiteSubmission(raw: unknown): Record<string, unknown> | null {
 }
 
 function consentEvidenceFrom(raw: unknown): OfflineConsentEvidence | null {
-  const consent = rawSiteSubmission(raw)?.consent;
-  if (!isRecord(consent)) return null;
-  const policyVersion = clean(consent.policyVersion ?? consent.policy_version);
-  const reviewedAt = verifiedIsoString(consent.reviewedAt ?? consent.reviewed_at);
-  const source = clean(consent.source);
-  const evidenceId = clean(consent.evidenceId ?? consent.evidence_id);
-  if (
-    consent.adUserData !== 'CONSENT_GRANTED' ||
-    consent.adPersonalization !== 'CONSENT_GRANTED' ||
-    !policyVersion ||
-    !reviewedAt ||
-    !source
-  ) {
-    return null;
-  }
-  return {
-    adUserData: 'CONSENT_GRANTED',
-    adPersonalization: 'CONSENT_GRANTED',
-    policyVersion,
-    reviewedAt,
-    source,
-    ...(evidenceId ? { evidenceId } : {}),
-  };
+  return parseAdConsentEvidence(rawSiteSubmission(raw)?.consent);
 }
 
-function adIdentifierFrom(evidence: OfflineOrderEvidence): {
+function adIdentifiersFrom(evidence: OfflineOrderEvidence): Array<{
   type: AdIdentifierType;
   value: string;
-} | null {
+}> {
   const attribution = isRecord(evidence.attribution) ? evidence.attribution : {};
   const marker = rawSiteSubmission(evidence.raw)?.primaryAdIdentifier;
-  const candidates = isAdIdentifierType(marker) ? [marker] : AD_IDENTIFIER_TYPES;
-  for (const type of candidates) {
+  const identifiers = AD_IDENTIFIER_TYPES.flatMap((type) => {
     const value = attribution[type];
-    if (typeof value === 'string' && value.trim()) return { type, value };
+    return typeof value === 'string' && value.trim() ? [{ type, value }] : [];
+  });
+  if (identifiers.length === 1 && isAdIdentifierType(marker) && marker !== identifiers[0].type) {
+    return [];
   }
-  return null;
+  return identifiers;
 }
 
 function sourceSubmissionIsVerified(raw: unknown): boolean {
@@ -441,8 +419,10 @@ export function selectOfflineOrder(
     reasons.push('future_order_timestamp');
   }
 
-  const adIdentifier = adIdentifierFrom(evidence);
-  if (!adIdentifier) reasons.push('missing_ad_identifier');
+  const adIdentifiers = adIdentifiersFrom(evidence);
+  const adIdentifier = adIdentifiers.length === 1 ? adIdentifiers[0] : null;
+  if (adIdentifiers.length === 0) reasons.push('missing_ad_identifier');
+  if (adIdentifiers.length > 1) reasons.push('ambiguous_ad_identifiers');
   const consentEvidence = consentEvidenceFrom(evidence.raw);
   if (!consentEvidence) reasons.push('consent_review_required');
 
@@ -467,6 +447,7 @@ export function selectOfflineOrder(
       'invalid_order_timestamp',
       'future_order_timestamp',
       'missing_ad_identifier',
+      'ambiguous_ad_identifiers',
     ].includes(reason)
   );
   if (hasBlockingLineage) {

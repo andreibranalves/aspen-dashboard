@@ -116,3 +116,57 @@ test('machine ingestion enforces POST and actual 16 KiB body limit before mutati
   );
   assert.equal(writes, 0);
 });
+
+test('strict ad-consent grant passes verbatim; generic and legacy variants never promote', async () => {
+  const received: Array<Record<string, unknown>> = [];
+  const handler = createSiteQuoteLeadsHandler({
+    environment: { QUOTE_LEADS_INGEST_TOKEN: CURRENT_TOKEN },
+    ingest: async (input) => {
+      received.push(input);
+      return { result: 'created' };
+    },
+  });
+  const grant = {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policyVersion: '2026-08-18',
+    reviewedAt: '2026-09-05T11:30:00.000Z',
+    source: 'site_cookie_preferences',
+    evidenceId: '018f47a8-7b6c-7d3e-8f90-123456789abf',
+  };
+  const granted = await handler(
+    event({ body: JSON.stringify({ ...validPayload, consent: grant }) })
+  );
+  assert.equal(granted.statusCode, 201);
+  assert.deepEqual(received.at(-1)?.consent, grant);
+  // Click id byte-a-byte: whitespace preserved, never trimmed.
+  const padded = '  opaque click\t ';
+  await handler(event({ body: JSON.stringify({ ...validPayload, gclid: padded }) }));
+  assert.equal(received.at(-1)?.gclid, padded);
+  // Rejections: malformed/legacy evidence is never demoted to generic consent.
+  for (const consent of [
+    { ...grant, policyVersion: '2025-01-01' },
+    { ...grant, source: 'site_quote_form' },
+    { ...grant, adUserData: 'CONSENT_DENIED' },
+    { ...grant, reviewedAt: '2026-09-05T11:30:00Z' },
+    { given: true, source: 'site_quote_form', policyVersion: '2026-08-18' },
+    { given: false, source: 'site_quote_form' },
+    'granted',
+  ]) {
+    const response = await handler(
+      event({ body: JSON.stringify({ ...validPayload, consent }) })
+    );
+    assert.equal(response.statusCode, 400, JSON.stringify(consent));
+  }
+  // Oversized or ambiguous click ids are rejected before the immutable snapshot.
+  const oversized = await handler(
+    event({ body: JSON.stringify({ ...validPayload, gclid: 'a'.repeat(501) }) })
+  );
+  assert.equal(oversized.statusCode, 400);
+  const ambiguous = await handler(
+    event({
+      body: JSON.stringify({ ...validPayload, gclid: 'opaque-gclid', wbraid: 'opaque-wbraid' }),
+    })
+  );
+  assert.equal(ambiguous.statusCode, 400);
+});

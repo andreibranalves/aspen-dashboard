@@ -8,6 +8,7 @@ import {
   assertApplyPreflight,
   parseReconcileArgs,
   runReconciliation,
+  sanityDocumentToIngestInput,
 } from '../../scripts/leads-reconcile.mjs';
 
 const from = '2026-09-01T00:00:00.000Z';
@@ -31,6 +32,50 @@ test('Sanity query is deterministic and excludes drafts and versions', () => {
   assert.match(query, /versions\.\*\*/);
   assert.match(query, /createdAt >= \$from/);
   assert.match(query, /createdAt < \$to/);
+  assert.match(query, /adConsent/);
+});
+
+test('reconciliation preserves strict ad evidence and opaque click IDs verbatim', () => {
+  const consent = {
+    adUserData: 'CONSENT_GRANTED',
+    adPersonalization: 'CONSENT_GRANTED',
+    policyVersion: '2026-08-18',
+    reviewedAt: '2026-09-01T00:00:00.000Z',
+    source: 'site_cookie_preferences',
+    evidenceId: 'synthetic-evidence-208',
+  };
+  const document = {
+    _id: 'siteQuote.018f47a8-7b6c-7d3e-8f90-123456789abc',
+    createdAt: from,
+    payloadFingerprint: 'a'.repeat(64),
+    name: 'Cliente Sintético',
+    email: 'synthetic@example.invalid',
+    whatsapp: '21999990000',
+    product: 'Canga',
+    quantity: 100,
+    gclid: '  opaque-click-id\t',
+    consentGiven: true,
+    adConsent: consent,
+  };
+  const input = sanityDocumentToIngestInput(document);
+  assert.equal(input.gclid, document.gclid);
+  assert.deepEqual(input.consent, consent);
+  assert.throws(
+    () => sanityDocumentToIngestInput({ ...document, gclid: 'x'.repeat(501) }),
+    /invalid_document/
+  );
+  assert.throws(
+    () => sanityDocumentToIngestInput({ ...document, wbraid: 'opaque-wbraid' }),
+    /invalid_document/
+  );
+  assert.throws(
+    () =>
+      sanityDocumentToIngestInput({
+        ...document,
+        adConsent: { ...consent, policy_version: consent.policyVersion },
+      }),
+    /invalid_document/
+  );
 });
 
 test('dry-run paginates without writes and reports create, deduplicate, reject, conflict and errors', async () => {

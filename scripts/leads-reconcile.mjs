@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createSanityQuoteRequestsPageReader } from '../api/_infrastructure/integrations/sanity/quote-requests.js';
+import { parseAdConsentEvidence } from '../api/_shared/ad-consent.js';
 
 const PAGE_SIZE = 100;
 const MAX_RECORDS = 5_000;
@@ -45,6 +46,21 @@ export function parseReconcileArgs(argv) {
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function verbatimClickId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.length > 500) throw new Error('invalid_document');
+  return value;
+}
+
+function advertisingConsent(document) {
+  if (document.adConsent === undefined || document.adConsent === null) {
+    return { given: document.consentGiven === true, source: 'site_quote_form' };
+  }
+  const consent = parseAdConsentEvidence(document.adConsent);
+  if (!consent) throw new Error('invalid_document');
+  return { ...consent };
 }
 
 function legacyFingerprint(document) {
@@ -96,6 +112,10 @@ export function sanityDocumentToIngestInput(document) {
   const payloadFingerprint = /^[0-9a-f]{64}$/.test(suppliedFingerprint)
     ? suppliedFingerprint
     : legacyFingerprint(document);
+  const clickIdCount = [document.gclid, document.gbraid, document.wbraid].filter(
+    (value) => typeof value === 'string' && value !== ''
+  ).length;
+  if (clickIdCount > 1) throw new Error('invalid_document');
   return {
     source: 'site_form',
     externalId: id,
@@ -113,12 +133,12 @@ export function sanityDocumentToIngestInput(document) {
     utm_campaign: text(document.utmCampaign) || null,
     utm_content: text(document.utmContent) || null,
     utm_term: text(document.utmTerm) || null,
-    gclid: text(document.gclid) || null,
-    gbraid: text(document.gbraid) || null,
-    wbraid: text(document.wbraid) || null,
+    gclid: verbatimClickId(document.gclid),
+    gbraid: verbatimClickId(document.gbraid),
+    wbraid: verbatimClickId(document.wbraid),
     fbclid: text(document.fbclid) || null,
     page_url: text(document.pageUrl) || null,
-    consent: { given: document.consentGiven === true, source: 'site_quote_form' },
+    consent: advertisingConsent(document),
   };
 }
 

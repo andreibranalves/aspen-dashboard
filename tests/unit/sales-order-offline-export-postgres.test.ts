@@ -78,9 +78,9 @@ const PREFLIGHT_PROOF = {
 const CONSENT = {
   adUserData: 'CONSENT_GRANTED',
   adPersonalization: 'CONSENT_GRANTED',
-  policyVersion: 'ads-policy-v1',
+  policyVersion: '2026-08-18',
   reviewedAt: '2026-08-31T12:00:00.000Z',
-  source: 'site_quote_form',
+  source: 'site_cookie_preferences',
   evidenceId: 'synthetic-consent',
 };
 
