@@ -227,8 +227,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       setTotalRecords((prev) => prev - 1);
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       toast(`Orçamento ${id} excluído.`, 'success');
-    } catch {
-      toast('Não foi possível excluir o orçamento. Tente novamente.', 'error');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Não foi possível excluir o orçamento. Tente novamente.', 'error');
     }
   }, [deleteTarget, toast]);
 
@@ -793,7 +793,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Excluir orçamento?"
-        message={`Tem certeza que deseja excluir o orçamento ${deleteTarget || ''}? Esta ação não pode ser desfeita.`}
+        message={`Excluir ${deleteTarget || 'este orçamento'} e todas as suas revisões permanentemente? Mensagens e arquivos já recebidos pelo cliente não serão apagados.`}
         confirmLabel="Excluir"
         cancelLabel="Cancelar"
         variant="destructive"

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { URL } from 'node:url';
 
 const id = 'ORC-20260001';
 const token = '2026-07-01T12:00:00.000Z';
@@ -108,6 +109,32 @@ function detail(overrides = {}) {
     ...overrides,
   });
 }
+
+test('exclusão manual permite excluir enviado e exibe bloqueio de pedido', async ({ page }) => {
+  let attempts = 0;
+  await page.route('**/api/quotations**', async route => {
+    if (route.request().method() === 'DELETE') {
+      attempts += 1;
+      await route.fulfill({ status: attempts === 1 ? 409 : 200, json: attempts === 1 ? { error: 'Este orçamento possui pedido vinculado e não pode ser excluído.' } : { success: true } });
+    } else {
+      await route.fulfill({ json: new URL(route.request().url()).searchParams.has('id')
+        ? detail({ status: 'Enviado', status_canonical: 'emitido' })
+        : { data: [], pagination: { total: 0 } } });
+    }
+  });
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Mais ações', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Excluir orçamento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Excluir orçamento?' });
+  await expect(dialog).toContainText('todas as suas revisões');
+  await dialog.getByRole('button', { name: 'Excluir', exact: true }).click();
+  await expect(page.getByText('Este orçamento possui pedido vinculado e não pode ser excluído.')).toBeVisible();
+  await page.getByRole('button', { name: 'Mais ações', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Excluir orçamento' }).click();
+  await dialog.getByRole('button', { name: 'Excluir', exact: true }).click();
+  await expect(page).toHaveURL(/#\/quotations$/);
+  expect(attempts).toBe(2);
+});
 
 test('email markers render on desktop and mobile', async ({ page }) => {
   const rows = [

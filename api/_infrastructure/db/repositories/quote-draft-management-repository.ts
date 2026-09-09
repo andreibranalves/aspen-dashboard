@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
+import { prepareQuotationDeletion, QuotationDeletionConflictError } from './quotation-deletion.js';
 import {
   clients,
   products,
@@ -1535,20 +1536,18 @@ export function createPostgresQuoteDraftManagementRepository(
       try {
         const db = getDb();
         const result = await db.transaction(async (tx) => {
+          await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+          await acquireQuotationWriteLock(tx);
           const quotation = await readLockedQuotation(tx, normalizedId);
           if (!quotation) throw new QuoteManagementNotFoundError();
-          const revision = await readRevision(tx, quotation.id);
-          if (canonicalQuotationStatus(quotation.status) !== 'rascunho' || !revision || canonicalQuotationStatus(revision.status) !== 'rascunho') {
-            throw new QuoteManagementConflictError(
-              'Somente orçamentos com agregado e revisão em rascunho podem ser excluídos.'
-            );
-          }
+          await prepareQuotationDeletion(tx, quotation.id);
           const deletedAt = now().toISOString();
           await tx.delete(quotations).where(eq(quotations.id, quotation.id));
           return { id: quotation.businessNumber, deletedAt };
         });
         return result;
       } catch (error) {
+        if (error instanceof QuotationDeletionConflictError) throw new QuoteManagementConflictError(error.message);
         if (
           error instanceof QuoteManagementInputError ||
           error instanceof QuoteManagementNotFoundError ||

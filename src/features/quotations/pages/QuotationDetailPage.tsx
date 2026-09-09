@@ -864,18 +864,14 @@ function CoreQuotationDetail({
 
   const handleDelete = useCallback(async () => {
     setConfirmDeleteOpen(false);
-    if (data.status !== 'rascunho') {
-      toast('Somente rascunhos podem ser excluídos.', 'info');
-      return;
-    }
     try {
       await apiDelete(`/quotations?id=${encodeURIComponent(data.id)}`);
       toast(`Orçamento ${data.id} excluído.`, 'success');
       navigate('/quotations');
-    } catch {
-      showMessage('Não foi possível excluir o orçamento. Tente novamente.', 'error');
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Não foi possível excluir o orçamento. Tente novamente.', 'error');
     }
-  }, [data.id, data.status, navigate, showMessage, toast]);
+  }, [data.id, navigate, showMessage, toast]);
 
   const displayItems = items;
   const editingSubtotal = items.reduce(
@@ -1541,7 +1537,6 @@ function CoreQuotationDetail({
                       >
                         Detalhes técnicos
                       </button>
-                      {draftEditable && (
                         <button
                           type="button"
                           role="menuitem"
@@ -1553,7 +1548,6 @@ function CoreQuotationDetail({
                         >
                           <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
                         </button>
-                      )}
                     </div>
                   )}
                   {menuOpen && (
@@ -2445,7 +2439,7 @@ function CoreQuotationDetail({
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Excluir orçamento?"
-        message={`Tem certeza que deseja excluir ${data.businessNumber ? `o orçamento ${data.businessNumber}` : 'este orçamento'}? Esta ação não pode ser desfeita.`}
+        message={`Excluir ${data.businessNumber || 'este orçamento'} e todas as suas revisões permanentemente? Mensagens e arquivos já recebidos pelo cliente não serão apagados.`}
         confirmLabel="Excluir"
         cancelLabel="Cancelar"
         variant="destructive"

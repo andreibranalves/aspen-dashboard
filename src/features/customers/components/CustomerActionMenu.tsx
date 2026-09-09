@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, MoreHorizontal } from 'lucide-react';
+import { Archive, ArchiveRestore, MoreHorizontal, Trash2 } from 'lucide-react';
 
 export interface CustomerActionMenuProps {
   archived: boolean;
   onArchiveToggle: () => void;
   customerName?: string;
+  onDelete?: () => void;
 }
 
 /** Secondary customer actions stay available without competing with the name. */
@@ -12,6 +13,7 @@ export function CustomerActionMenu({
   archived,
   onArchiveToggle,
   customerName,
+  onDelete,
 }: CustomerActionMenuProps) {
   const actionLabel = archived ? 'Restaurar cliente' : 'Arquivar cliente';
   const accessibleLabel = `Mais ações${customerName ? ` para ${customerName}` : ''}`;
@@ -99,6 +101,13 @@ export function CustomerActionMenu({
             <Icon className="size-4" aria-hidden="true" />
             {actionLabel}
           </button>
+          {onDelete && (
+            <button type="button" role="menuitem"
+              onClick={() => { dismiss(true); onDelete(); }}
+              className="flex min-h-9 w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              <Trash2 className="size-4" aria-hidden="true" /> Excluir cliente
+            </button>
+          )}
         </div>
       )}
     </div>

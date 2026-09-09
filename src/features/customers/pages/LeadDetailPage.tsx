@@ -214,6 +214,8 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   const [fields, setFields] = useState<EditFields>(initialFields);
   const [saving, setSaving] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [confirmDiscardEdits, setConfirmDiscardEdits] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const { toast } = useToast();
@@ -351,6 +353,22 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     }
   }, [decodedId, detail, isNewClient, toast]);
 
+  const deleteClient = useCallback(async () => {
+    if (deleting || isNewClient) return;
+    setDeleting(true);
+    try {
+      await apiDelete(`/client-detail?name=${encodeURIComponent(decodedId)}`);
+      setNavigationGuard(null);
+      toast('Cliente excluído.', 'success');
+      navigate('/leads');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Não foi possível excluir o cliente.', 'error');
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  }, [decodedId, deleting, isNewClient, navigate, setNavigationGuard, toast]);
+
   const discardEditing = useCallback(() => {
     setConfirmDiscardEdits(false);
     if (isNewClient) {
@@ -451,6 +469,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         archived={archived}
         customerName={title}
         onArchiveToggle={() => setArchiveDialogOpen(true)}
+        onDelete={() => setDeleteDialogOpen(true)}
       />
     </>
   );
@@ -723,6 +742,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
           </div>
         )}
       </fieldset>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Excluir cliente?"
+        message={`Excluir ${title} e seus negócios sem orçamento permanentemente? Orçamentos e pedidos vinculados precisam ser removidos ou transferidos primeiro.`}
+        confirmLabel={deleting ? 'Excluindo…' : 'Excluir cliente'}
+        onConfirm={() => { void deleteClient(); }}
+        onCancel={() => { if (!deleting) setDeleteDialogOpen(false); }}
+      />
       <ConfirmDialog
         open={archiveDialogOpen}
         title={archived ? 'Restaurar cliente' : 'Arquivar cliente'}
