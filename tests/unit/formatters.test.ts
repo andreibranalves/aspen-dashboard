@@ -6,7 +6,27 @@ import {
   formatBRL,
   formatDate,
   formatDateTime,
+  whatsappContactUrl,
 } from '../../src/lib/formatting/formatters.ts';
+
+describe('whatsappContactUrl', () => {
+  it('adds Brazil country code to local numbers without inventing a ninth digit', () => {
+    assert.equal(whatsappContactUrl('(47) 9123-4567'), 'https://wa.me/554791234567');
+    assert.equal(whatsappContactUrl('47991234567'), 'https://wa.me/5547991234567');
+    assert.equal(whatsappContactUrl('(55) 9123-4567'), 'https://wa.me/555591234567');
+  });
+
+  it('preserves country codes already supplied', () => {
+    assert.equal(whatsappContactUrl('554791234567'), 'https://wa.me/554791234567');
+    assert.equal(whatsappContactUrl('+55 (47) 9123-4567'), 'https://wa.me/554791234567');
+    assert.equal(whatsappContactUrl('+1 202 555 0123'), 'https://wa.me/12025550123');
+    assert.equal(whatsappContactUrl('+47 912 34 567'), 'https://wa.me/4791234567');
+  });
+
+  it('does not create a destination for an empty phone', () => {
+    assert.equal(whatsappContactUrl(null), '');
+  });
+});
 
 describe('formatBRL', () => {
   it('formats integer with BRL', () => {

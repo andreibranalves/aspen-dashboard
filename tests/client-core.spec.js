@@ -72,6 +72,24 @@ const COMPLETE_DETAIL = {
 /** @typedef {typeof DETAIL & { id?: string, nome?: string, archived?: boolean, updated?: boolean }} ClientDetail */
 
 test.describe('Clientes locais @crm @smoke', () => {
+  test('links WhatsApp acrescentam país ao telefone local em todas as visualizações', async ({ page }) => {
+    const localClient = { ...CLIENT, telefone: '4791234567' };
+    const expectedUrl = 'https://wa.me/554791234567';
+    await page.route('**/api/client-detail**', route => route.fulfill({ json: { ...DETAIL, telefone: localClient.telefone } }));
+    await page.route('**/api/leads-clients**', route => route.fulfill({ json: {
+      data: [localClient], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+    } }));
+    await page.goto('/#/leads');
+    const phoneLinks = page.locator('a[href^="https://wa.me/"]');
+    await expect(phoneLinks).toHaveCount(2);
+    for (const link of await phoneLinks.all()) await expect(link).toHaveAttribute('href', expectedUrl);
+    await page.getByRole('button', { name: `Visualização rápida ${CLIENT.nome}`, exact: true }).click();
+    await expect(page.getByRole('link', { name: 'WhatsApp', exact: true })).toHaveAttribute('href', expectedUrl);
+    await page.goto(`/#/leads/cliente/${CLIENT.id}`);
+    await expect(page.getByRole('link', { name: 'WhatsApp', exact: true })).toHaveAttribute('href', expectedUrl);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole('link', { name: 'WhatsApp', exact: true })).toHaveAttribute('href', expectedUrl);
+  });
   test('exclusão manual confirma consequência, permite cancelar e remove cliente', async ({ page }) => {
     let deleted = 0;
     await page.route('**/api/client-detail**', async route => {
