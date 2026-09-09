@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiDelete, apiGet, apiPatch, apiPut } from '@/lib/api/api';
-import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { fmtPhone, formatBRL, formatDate, whatsappContactUrl } from '@/lib/formatting/formatters';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -490,7 +490,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       actions.push({
         label: 'WhatsApp',
         icon: Phone,
-        href: `https://wa.me/${detail.telefone.replace(/\D/g, '')}`,
+        href: whatsappContactUrl(detail.telefone),
         title: 'Abrir WhatsApp',
       });
     if (detail.email)
@@ -792,7 +792,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                           )}
                           {phone ? (
                             <a
-                              href={`https://wa.me/${row.telefone!.replace(/\D/g, '')}`}
+                              href={whatsappContactUrl(row.telefone)}
                               target="_blank"
                               rel="noopener noreferrer"
                               title="Abrir conversa no WhatsApp"
@@ -892,7 +892,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                     )}
                     {phone ? (
                       <a
-                        href={`https://wa.me/${row.telefone!.replace(/\D/g, '')}`}
+                        href={whatsappContactUrl(row.telefone)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block text-xs text-fg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

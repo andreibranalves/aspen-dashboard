@@ -17,6 +17,16 @@ export function normalizePhoneDigits(phone: unknown, maxDigits = 15): string {
     .slice(0, maxDigits);
 }
 
+/** Customer numbers without a country code use Brazil. Preserve explicit
+ * international prefixes and the supplied subscriber digits. */
+export function whatsappContactUrl(phone: unknown): string {
+  const raw = String(phone ?? '').trim();
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  const national = !raw.startsWith('+') && (digits.length === 10 || digits.length === 11);
+  return `https://wa.me/${national ? `55${digits}` : digits}`;
+}
+
 /** Formats Brazilian phone in local style: (XX) XXXXX-XXXX or (XX) XXXX-XXXX. */
 export function fmtPhone(phone: unknown): string {
   const digits = normalizePhoneDigits(phone);

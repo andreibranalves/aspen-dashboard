@@ -16,7 +16,7 @@ import {
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/lib/api/api';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import type { LeadCreateResponse } from '@/types/domain';
-import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { fmtPhone, formatBRL, formatDate, whatsappContactUrl } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
@@ -422,7 +422,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     contextActions.push({
       label: 'WhatsApp',
       icon: Phone,
-      href: `https://wa.me/${current.telefone.replace(/\D/g, '')}`,
+      href: whatsappContactUrl(current.telefone),
       title: 'Abrir WhatsApp',
     });
   if (current.email)
