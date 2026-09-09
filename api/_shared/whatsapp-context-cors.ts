@@ -14,7 +14,7 @@ export function whatsappContextCorsHeaders(
   return {
     'Access-Control-Allow-Origin': configured,
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Accept, Content-Type',
     Vary: 'Origin',
   };

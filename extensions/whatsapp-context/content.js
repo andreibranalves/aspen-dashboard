@@ -43,20 +43,28 @@
 
   function openApp(path) { send({ type: 'aspen-context:open', path }); }
 
+  function linkControls(context) {
+    if (!context || !context.linking || !context.linking.available) return '<p>Vínculo indisponível até identificar a conta e a conversa.</p>';
+    return '<div class="aspen-link-search"><input data-search aria-label="Pesquisar cliente" placeholder="Nome ou telefone do cliente" maxlength="100"><button data-action="find">Pesquisar cliente</button>' + (context.linking.version ? '<button data-action="unlink">Desvincular cliente</button>' : '') + '</div>';
+  }
+
   function renderContext(context) {
     if (!context || context.match === 'not_found') {
       const name = state.conversation.displayName || 'este contato';
       const link = context && context.actions && context.actions.createContact;
-      return `<section class="aspen-card"><strong>Nenhum cadastro encontrado</strong><p>Não há contato confirmado para ${escapeHtml(name)}.</p>${link ? `<button data-action="open" data-path="${escapeHtml(link)}">Criar cadastro</button>` : ''}</section>`;
+      return `<section class="aspen-card"><strong>Nenhum cadastro encontrado</strong><p>Não há contato confirmado para ${escapeHtml(name)}.</p>${link ? `<button data-action="open" data-path="${escapeHtml(link)}">Criar cadastro</button>` : ''}${linkControls(context)}</section>`;
     }
-    if (context.match === 'ambiguous') return '<section class="aspen-card"><strong>Match ambíguo</strong><p>Mais de um cadastro usa este telefone. Nenhum histórico foi exibido.</p></section>';
+    if (['suggested', 'ambiguous', 'conflict', 'unresolved'].includes(context.match)) {
+      const title = { suggested: 'Vincular cliente', ambiguous: 'Match ambíguo', conflict: 'Revisar vínculo', unresolved: 'Pesquisar cliente' }[context.match];
+      return '<section class="aspen-card"><strong>' + title + '</strong><p>' + escapeHtml(context.reason || 'Mais de um cadastro usa este telefone.') + '</p>' + (context.candidates || []).map(candidate => '<div class="aspen-contact"><strong>' + escapeHtml(candidate.nome) + '</strong><span>' + escapeHtml(candidate.telefone || '') + '</span>' + (candidate.tipo === 'cliente' && context.linking && context.linking.available ? '<button data-action="link" data-client="' + escapeHtml(candidate.id) + '" data-name="' + escapeHtml(candidate.nome) + '">Vincular cliente</button>' : '') + '</div>').join('') + linkControls(context) + '</section>';
+    }
     if (context.match !== 'matched' || !context.contact) return '<section class="aspen-card"><strong>Sem histórico</strong><p>Nenhum orçamento ainda.</p></section>';
     const contact = context.contact;
     const latest = context.latestQuotation;
     const previous = Array.isArray(context.quotations) ? context.quotations : [];
     const deliveries = Array.isArray(context.deliveries) ? context.deliveries : [];
     const quotation = (item, prominent) => `<a class="aspen-quote ${prominent ? 'aspen-quote-latest' : ''}" href="${escapeHtml(item.url || '#')}" target="_blank" rel="noopener noreferrer"><span><strong>${escapeHtml(item.businessNumber)}</strong><small>${escapeHtml(item.status || '')} · ${escapeHtml(item.date || '')}</small></span><span>${escapeHtml(item.total || '')}</span></a>`;
-    return `<section class="aspen-card"><div class="aspen-contact"><strong>${escapeHtml(contact.nome)}</strong><span>${escapeHtml(contact.tipo)} · ${escapeHtml(contact.telefone || '')}</span>${contact.email ? `<span>${escapeHtml(contact.email)}</span>` : ''}<div><button data-action="open" data-path="${escapeHtml(context.actions && context.actions.openContact || '#')}">Abrir cadastro</button><button data-action="copy" data-value="${escapeHtml(contact.telefone || '')}">Copiar telefone</button></div></div>${latest ? `<h3>Último orçamento</h3>${quotation(latest, true)}` : '<div class="aspen-empty">Nenhum orçamento ainda.</div>'}${previous.length > 0 ? `<h3>Histórico</h3><div class="aspen-list">${previous.filter(item => !latest || item.id !== latest.id).map(item => quotation(item, false)).join('')}</div>` : ''}${deliveries.length > 0 ? `<h3>Entregas</h3><div class="aspen-list">${deliveries.map(item => `<div class="aspen-delivery"><span>${escapeHtml(item.businessNumber || '')}</span><span>${escapeHtml(item.status || 'sem entrega registrada')}</span></div>`).join('')}</div>` : ''}</section>`;
+    return `<section class="aspen-card"><div class="aspen-contact"><strong>${escapeHtml(contact.nome)}</strong><span>${escapeHtml(contact.tipo)} · ${escapeHtml(contact.telefone || '')}</span>${contact.email ? `<span>${escapeHtml(contact.email)}</span>` : ''}<div><button data-action="open" data-path="${escapeHtml(context.actions && context.actions.openContact || '#')}">Abrir cadastro</button><button data-action="copy" data-value="${escapeHtml(contact.telefone || '')}">Copiar telefone</button></div></div>${linkControls(context)}${latest ? `<h3>Último orçamento</h3>${quotation(latest, true)}` : '<div class="aspen-empty">Nenhum orçamento ainda.</div>'}${previous.length > 0 ? `<h3>Histórico</h3><div class="aspen-list">${previous.filter(item => !latest || item.id !== latest.id).map(item => quotation(item, false)).join('')}</div>` : ''}${deliveries.length > 0 ? `<h3>Entregas</h3><div class="aspen-list">${deliveries.map(item => `<div class="aspen-delivery"><span>${escapeHtml(item.businessNumber || '')}</span><span>${escapeHtml(item.status || 'sem entrega registrada')}</span></div>`).join('')}</div>` : ''}</section>`;
   }
 
   function render() {
@@ -65,7 +73,7 @@
     const status = conversation.status || 'idle';
     const [title, description] = messageForStatus(status);
     const visible = state.open ? 'aspen-open' : 'aspen-closed';
-    root.innerHTML = `<button class="aspen-drawer-toggle ${visible}" data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel" aria-expanded="${state.open}" aria-controls="aspen-context-drawer" title="${state.open ? 'Recolher painel' : 'Abrir Aspen'}"><span aria-hidden="true">${state.open ? '»' : 'A'}</span></button><aside id="aspen-context-drawer" class="aspen-panel ${visible}" aria-label="Contexto comercial Aspen"><header><div><strong>Aspen</strong><small>Contexto comercial</small></div><button data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel">${state.open ? '×' : '‹'}</button></header>${state.open ? `<main>${conversation.status === 'ready' && state.loading ? '<div class="aspen-state"><strong>Consultando Aspen</strong><span>Carregando contexto comercial…</span></div>' : conversation.status === 'ready' && state.context ? renderContext(state.context) : `<div class="aspen-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${conversation.displayName ? `<small>${escapeHtml(conversation.displayName)}</small>` : ''}${conversation.status === 'unresolved' ? '<button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>' : conversation.status === 'login_required' ? '<button data-action="open" data-path="/">Abrir Aspen</button><button data-action="retry">Tentar novamente</button>' : conversation.status === 'error' ? '<button data-action="retry">Tentar novamente</button>' : ''}</div>`}</main>` : ''}</aside>`;
+    root.innerHTML = `<button class="aspen-drawer-toggle ${visible}" data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel" aria-expanded="${state.open}" aria-controls="aspen-context-drawer" title="${state.open ? 'Recolher painel' : 'Abrir Aspen'}"><span aria-hidden="true">${state.open ? '»' : 'A'}</span></button><aside id="aspen-context-drawer" class="aspen-panel ${visible}" aria-label="Contexto comercial Aspen"><header><div><strong>Aspen</strong><small>Contexto comercial</small></div><button data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel">${state.open ? '×' : '‹'}</button></header>${state.open ? `<main>${state.loading ? '<div class="aspen-state"><strong>Consultando Aspen</strong><span>Carregando contexto comercial…</span></div>' : state.context ? renderContext(state.context) : `<div class="aspen-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${conversation.displayName ? `<small>${escapeHtml(conversation.displayName)}</small>` : ''}${conversation.status === 'unresolved' ? '<button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>' : conversation.status === 'login_required' ? '<button data-action="open" data-path="/">Abrir Aspen</button><button data-action="retry">Tentar novamente</button>' : conversation.status === 'error' ? '<button data-action="retry">Tentar novamente</button>' : ''}</div>`}</main>` : ''}</aside>`;
   }
 
   function mount() {
@@ -79,6 +87,8 @@
       const target = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
       if (!target) return;
       const action = target.getAttribute('data-action');
+      if (action === 'find') { const query = root.querySelector('[data-search]')?.value.trim(); if (query && query.length >= 2) lookupContext(state.conversation, state.generation, query); return; }
+      if (action === 'link' || action === 'unlink') { confirmLink(action, target); return; }
       if (action === 'toggle') { state.open = !state.open; render(); return; }
       if (action === 'retry') { sync(true); return; }
       if (action === 'search') { openApp(`/#/leads?search=${encodeURIComponent(state.conversation.displayName || '')}`); return; }
@@ -90,9 +100,30 @@
     sync();
   }
 
-  function lookupContext(conversation, generation) {
+  function identityMessage(conversation) {
+    return { phone: conversation.phone, phoneSource: conversation.source, conversationId: conversation.technicalId, accountId: conversation.accountId };
+  }
+
+  async function confirmLink(action, target) {
+    const conversation = state.conversation;
+    const generation = state.generation;
+    const version = state.context && state.context.linking && state.context.linking.version;
+    const clientId = target.getAttribute('data-client');
+    const label = target.getAttribute('data-name') || '';
+    if (!global.confirm(action === 'link' ? 'Vincular esta conversa a ' + label + '?' : 'Remover o vínculo desta conversa com o cliente?')) return;
+    const fresh = await provider.resolveConversation({ force: true });
+    if (generation !== state.generation || JSON.stringify(identityMessage(fresh)) !== JSON.stringify(identityMessage(conversation))) { sync(true); return; }
+    state.loading = true; render();
+    send({ type: action === 'link' ? 'aspen-context:link' : 'aspen-context:unlink', ...identityMessage(conversation), clientId, expectedVersion: version || null, expectedClientName: label, expectedClientPhone: (state.context.candidates || []).find(candidate => candidate.id === clientId)?.telefone ?? null }, function (result) {
+      if (generation !== state.generation) return;
+      if (!result || !result.ok) { state.loading = false; state.context = null; state.error = result && result.message || 'Não foi possível salvar o vínculo.'; state.conversation = { ...conversation, status: 'error' }; render(); return; }
+      sync(true);
+    });
+  }
+
+  function lookupContext(conversation, generation, search) {
     state.loading = true; state.error = ''; render();
-    send({ type: 'aspen-context:lookup', phone: conversation.phone }, function (result) {
+    send({ type: 'aspen-context:lookup', ...identityMessage(conversation), search }, function (result) {
       if (generation !== state.generation) return;
       state.loading = false;
       if (!result || result.status === 'error' || result.status === 'login_required') {
@@ -109,15 +140,12 @@
     if (!provider) { state.conversation = { status: 'unsupported' }; render(); return; }
     const sequence = ++syncSequence;
     const previousConversation = state.conversation;
-    state.conversation = { status: 'resolving', displayName: state.conversation.displayName || null };
-    render();
     let conversation;
     try { conversation = await provider.resolveConversation({ force: Boolean(force) }); } catch { conversation = { status: 'error' }; }
     if (sequence !== syncSequence) return;
-    const fingerprint = JSON.stringify([conversation.status, conversation.phone, conversation.technicalId, conversation.displayName]);
+    const fingerprint = JSON.stringify([conversation.status, conversation.phone, conversation.technicalId, conversation.accountId, conversation.displayName]);
     if (!force && fingerprint === lastFingerprint) {
       state.conversation = state.loading || state.context ? conversation : previousConversation;
-      render();
       return;
     }
     const generation = ++state.generation;
@@ -127,7 +155,7 @@
     state.loading = false;
     state.error = '';
     render();
-    if (conversation.status === 'ready' && conversation.phone) lookupContext(conversation, generation);
+    if (['ready', 'unresolved'].includes(conversation.status) && (conversation.phone || conversation.technicalId)) lookupContext(conversation, generation);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });

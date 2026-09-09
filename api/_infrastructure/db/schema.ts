@@ -1009,6 +1009,21 @@ export const FOLLOW_UP_INGESTION_BLOCK_REASONS = ['unparsed_upsert'] as const;
  * One row per Evolution conversation. Stores monotonic inbound/outbound
  * watermarks and optional contact blocks. Message bodies are never persisted.
  */
+export const whatsappClientLinks = pgTable('whatsapp_client_links', {
+  accountId: varchar('account_id', { length: 64 }).notNull(),
+  conversationId: varchar('conversation_id', { length: 64 }).notNull(),
+  clientId: uuid('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  version: uuid('version').notNull(),
+  observedPhone: varchar('observed_phone', { length: 15 }),
+  clientPhone: varchar('client_phone', { length: 15 }),
+  source: varchar('source', { length: 32 }).notNull().default('operator'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.accountId, table.conversationId] }),
+  index('whatsapp_client_links_client_idx').on(table.clientId),
+]);
+
 export const whatsappContactActivity = pgTable(
   'whatsapp_contact_activity',
   {

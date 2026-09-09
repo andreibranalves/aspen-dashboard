@@ -61,7 +61,7 @@ test('WhatsApp context never matches by name and projects safe empty history', a
     findCandidatesByPhone: async () => [{ id, tipo: 'cliente', nome: 'Cliente', telefone: '5511999999999', email: 'cliente@example.com' }],
     getClient: async () => ({ id, nome: 'Cliente', telefone: '5511999999999', email: 'cliente@example.com', arquivado: false }),
   });
-  const matched = await handler(event({ phone: '5511999999999' }, { origin: 'chrome-extension://test-extension' }));
+  const matched = await handler(event({ phone: '5511999999999', conversationId: '5511999999999@s.whatsapp.net' }, { origin: 'chrome-extension://test-extension' }));
   assert.equal(matched.statusCode, 200);
   assert.equal(body(matched).match, 'matched');
   assert.equal(body(matched).quotations.length, 0);
