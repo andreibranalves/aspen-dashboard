@@ -30,6 +30,6 @@ test('context history exposes unambiguous SQL columns and maps the latest quotat
   assert.equal(queryChecked, true);
   assert.deepEqual(history, [{
     id: '00000000-0000-4000-8000-000000000002', businessNumber: 'ORC-20990001',
-    status: 'Enviado', date: '2099-01-02', total: '150.00', url: '/#/quotations/ORC-20990001',
+    status: 'Enviado', date: '2099-01-02', total: '150.00', url: '/#/quotations/00000000-0000-4000-8000-000000000002',
   }]);
 });

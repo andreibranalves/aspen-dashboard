@@ -323,8 +323,8 @@ function historyDeliveryStatus(value: unknown): LocalDeliveryHistoryRecord['stat
   return 'sem entrega registrada';
 }
 
-function historyQuotationUrl(businessNumber: string): string {
-  return `/#/quotations/${encodeURIComponent(businessNumber)}`;
+function historyQuotationUrl(quotationId: string): string {
+  return `/#/quotations/${encodeURIComponent(quotationId)}`;
 }
 
 function activeRows(rows: LocalRows): LocalRows {
@@ -661,7 +661,7 @@ export function createPostgresWhatsappCrmRepository(
             status: historyQuotationStatus(row.status),
             date: historyDate(row.updatedAt || row.createdAt),
             total: rowText(row.total) || '0.00',
-            url: historyQuotationUrl(businessNumber),
+            url: historyQuotationUrl(row.id),
           };
         });
     } catch (error) {
