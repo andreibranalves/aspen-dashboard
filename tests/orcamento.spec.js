@@ -49,6 +49,16 @@ const MOCK_ORCAMENTO = {
   deal_id: 'CRM-DEAL-2026-00001',
   customer_id: 'CUST-001',
   customer_new: true,
+  items: [{
+    item_code: 'LNC-SED-70',
+    qty: '50',
+    nome: 'Lenço Sedoso 70cm',
+    applied_unit_price: '10.00',
+    manual_rate: false,
+  }],
+  subtotal: '500.00',
+  frete: '0.00',
+  total: '500.00',
 };
 
 const MOCK_ISSUE = {

@@ -1,4 +1,9 @@
-import type { DraftItem, QuotationIssueProjection, StoredAutoQuoteDraft } from '../../types/domain.ts';
+import type {
+  DraftItem,
+  QuotationIssueProjection,
+  QuotationSavedSnapshot,
+  StoredAutoQuoteDraft,
+} from '../../types/domain.ts';
 import { EMPTY_ADDRESS, normalizeAddress } from '../clientMetadata.ts';
 
 export const AUTO_QUOTE_DRAFTS_STORAGE_KEY = 'aspen_drafts';
@@ -62,8 +67,36 @@ function savedReference(value: unknown): StoredAutoQuoteDraft['saved'] | undefin
   const revisionId = optionalString(value.revisionId);
   const concurrencyToken = optionalString(value.concurrencyToken);
   return quotationId && businessNumber && revisionId && concurrencyToken
-    ? { quotationId, businessNumber, revisionId, concurrencyToken }
+    ? {
+        quotationId,
+        businessNumber,
+        revisionId,
+        concurrencyToken,
+        ...(isQuotationSavedSnapshot(value.snapshot) ? { snapshot: value.snapshot } : {}),
+      }
     : undefined;
+}
+
+function isQuotationSavedSnapshot(value: unknown): value is QuotationSavedSnapshot {
+  const isMoney = (candidate: unknown) => (
+    typeof candidate === 'string' && candidate.trim() !== '' && Number.isFinite(Number(candidate)) && Number(candidate) >= 0
+  );
+  const isSnapshotItem = (candidate: unknown) => {
+    if (!isRecord(candidate)) return false;
+    return (
+      typeof candidate.item_code === 'string' && candidate.item_code.trim() !== '' &&
+      isFiniteNumber(candidate.qty) && candidate.qty > 0 &&
+      isFiniteNumber(candidate.rate) && candidate.rate >= 0 &&
+      (candidate.item_name === undefined || typeof candidate.item_name === 'string') &&
+      (candidate._rateManual === undefined || typeof candidate._rateManual === 'boolean')
+    );
+  };
+  return isRecord(value)
+    && isMoney(value.frete)
+    && isMoney(value.total)
+    && Array.isArray(value.items)
+    && value.items.length > 0
+    && value.items.every(isSnapshotItem);
 }
 
 function isStoredAutoQuoteDraft(value: unknown): value is StoredAutoQuoteDraft {
@@ -81,8 +114,20 @@ function isStoredAutoQuoteDraft(value: unknown): value is StoredAutoQuoteDraft {
     (value.result.data !== undefined && !isRecord(value.result.data)) ||
     (value.result.error !== undefined && typeof value.result.error !== 'string'))) return false;
   if (value.issue !== undefined && !isQuotationIssueProjection(value.issue)) return false;
+  if (value.saved !== undefined) {
+    if (!isRecord(value.saved)
+      || typeof value.saved.quotationId !== 'string'
+      || typeof value.saved.businessNumber !== 'string'
+      || typeof value.saved.revisionId !== 'string'
+      || typeof value.saved.concurrencyToken !== 'string'
+      || (value.saved.snapshot !== undefined && !isQuotationSavedSnapshot(value.saved.snapshot))) {
+      return false;
+    }
+  }
   if (value.sourceQuotationId !== undefined && typeof value.sourceQuotationId !== 'string') return false;
   if (value.sourceRevisionId !== undefined && typeof value.sourceRevisionId !== 'string') return false;
+  if (value.issueDispatchStarted !== undefined && typeof value.issueDispatchStarted !== 'boolean') return false;
+  if (value.issueRecoveryRequired !== undefined && typeof value.issueRecoveryRequired !== 'boolean') return false;
   // A stale key is omitted below so it never prevents restoring/editing a draft.
   return value.issueIdempotencyKey === undefined || typeof value.issueIdempotencyKey === 'string';
 }
@@ -121,6 +166,7 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.issueIdempotencyKey)
     ? value.issueIdempotencyKey
     : undefined;
+  const hasIssueIdentity = Boolean(issueIdempotencyKey);
   const result = isRecord(value.result)
     ? {
         success: value.result.success as boolean,
@@ -135,10 +181,13 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     edited: nextEdited,
     approved: value.approved,
     discarded: value.discarded,
-    ...(value.status && ['processing', 'done', 'error'].includes(value.status as string) ? { status: value.status } : {}),
+    ...(value.status && ['processing', 'done', 'error'].includes(value.status as string)
+      && (value.status !== 'processing' || hasIssueIdentity) ? { status: value.status } : {}),
     ...(result ? { result } : {}),
     ...(saved ? { saved } : {}),
     ...(issueIdempotencyKey ? { issueIdempotencyKey } : {}),
+    ...(value.issueDispatchStarted === true && hasIssueIdentity ? { issueDispatchStarted: true } : {}),
+    ...(value.issueRecoveryRequired === true && hasIssueIdentity ? { issueRecoveryRequired: true } : {}),
     ...(isQuotationIssueProjection(value.issue) ? { issue: value.issue } : {}),
     ...(optionalString(value.sourceQuotationId) ? { sourceQuotationId: value.sourceQuotationId as string } : {}),
     ...(optionalString(value.sourceRevisionId) ? { sourceRevisionId: value.sourceRevisionId as string } : {}),
@@ -159,10 +208,15 @@ export function loadAutoQuoteDrafts(storage: ReadStorage): StoredAutoQuoteDraft[
   }
 }
 
-export function saveAutoQuoteDrafts(storage: WriteStorage, drafts: StoredAutoQuoteDraft[]): void {
+export function saveAutoQuoteDrafts(storage: WriteStorage, drafts: StoredAutoQuoteDraft[]): boolean {
   try {
-    storage.setItem(AUTO_QUOTE_DRAFTS_STORAGE_KEY, JSON.stringify({ version: AUTO_QUOTE_DRAFTS_STORAGE_VERSION, drafts }));
+    storage.setItem(
+      AUTO_QUOTE_DRAFTS_STORAGE_KEY,
+      JSON.stringify({ version: AUTO_QUOTE_DRAFTS_STORAGE_VERSION, drafts }),
+    );
+    return true;
   } catch {
     // Browser storage can be unavailable or full; draft editing must continue.
+    return false;
   }
 }

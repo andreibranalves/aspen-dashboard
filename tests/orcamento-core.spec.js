@@ -110,7 +110,13 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
           revision_number: 1,
           status: 'rascunho',
           cliente: CLIENT.nome,
-          items: [],
+          items: [{
+            item_code: PRODUCT.sku,
+            qty: '30',
+            nome: PRODUCT.nome,
+            applied_unit_price: '9.00',
+            manual_rate: false,
+          }],
           subtotal: '270.00',
           frete: '0.00',
           total: '270.00',
@@ -181,6 +187,15 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
           revision_number: 1,
           concurrency_token: concurrencyToken,
           status: 'rascunho',
+          items: [{
+            item_code: PRODUCT.sku,
+            qty: '30',
+            nome: PRODUCT.nome,
+            applied_unit_price: '9.00',
+            manual_rate: false,
+          }],
+          frete: '0.00',
+          total: '270.00',
         }),
       });
     });
@@ -268,7 +283,15 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
           revision_id: 'revision-local-0001',
           concurrency_token: '2026-09-05T11:59:00.000Z',
           cliente: CLIENT.nome,
-          items: [{ sku: PRODUCT.sku, qty: 30, rate: 9 }],
+          items: [{
+            item_code: PRODUCT.sku,
+            qty: '30',
+            nome: PRODUCT.nome,
+            applied_unit_price: '9.00',
+            manual_rate: false,
+          }],
+          frete: '0.00',
+          total: '270.00',
         }),
       });
     });

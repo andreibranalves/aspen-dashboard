@@ -132,10 +132,66 @@ test('sanitizes optional identity fields and malformed editable values field by 
   assert.equal(draft.saved, undefined);
 });
 
-test('malformed issue keys do not block restoring the draft', () => {
+test('malformed or missing issue keys clear impossible recovery state atomically', () => {
   const storage = createStorage();
-  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{ ...validDraft, issueIdempotencyKey: 'old-key' }] }));
-  const [draft] = loadAutoQuoteDrafts(storage);
-  assert.ok(draft);
-  assert.equal(draft.issueIdempotencyKey, undefined);
+  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [
+    {
+      ...validDraft,
+      issueIdempotencyKey: 'old-key',
+      status: 'processing',
+      result: { success: false, error: 'recovery' },
+      issueDispatchStarted: true,
+      issueRecoveryRequired: true,
+    },
+    {
+      ...validDraft,
+      status: 'processing',
+      result: { success: false, error: 'recovery' },
+      issueDispatchStarted: true,
+      issueRecoveryRequired: true,
+    },
+  ] }));
+  const drafts = loadAutoQuoteDrafts(storage);
+  assert.equal(drafts.length, 2);
+  for (const draft of drafts) {
+    assert.equal(draft.issueIdempotencyKey, undefined);
+    assert.equal(draft.status, undefined);
+    assert.equal(draft.issueDispatchStarted, undefined);
+    assert.equal(draft.issueRecoveryRequired, undefined);
+  }
+});
+
+test('preserves the authoritative saved snapshot', () => {
+  const storage = createStorage();
+  const withSnapshot = {
+    ...validDraft,
+    saved: {
+      quotationId: 'q-1', businessNumber: 'ORC-1', revisionId: 'r-1', concurrencyToken: 'token-1',
+      snapshot: { items: [{ item_code: 'SKU-1', qty: 3, rate: 7.5 }], frete: '4.00', total: '26.50' },
+    },
+  };
+  saveAutoQuoteDrafts(storage, [withSnapshot]);
+  assert.deepEqual(loadAutoQuoteDrafts(storage), [withSnapshot]);
+});
+
+test('keeps legacy saved drafts but rejects incomplete authoritative snapshots', () => {
+  const storage = createStorage();
+  const legacySaved = {
+    ...validDraft,
+    saved: { quotationId: 'q-legacy', businessNumber: 'ORC-LEGACY', revisionId: 'r-legacy', concurrencyToken: 'token-legacy' },
+  };
+  const invalidSnapshot = {
+    ...validDraft,
+    saved: {
+      ...legacySaved.saved,
+      snapshot: { items: [{ item_code: '', qty: 0, rate: null }], frete: '', total: '0.00' },
+    },
+  };
+  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [legacySaved, invalidSnapshot] }));
+  assert.deepEqual(loadAutoQuoteDrafts(storage), [legacySaved]);
+});
+
+test('reports storage write failures', () => {
+  const storage = { setItem: () => { throw new Error('quota'); } };
+  assert.equal(saveAutoQuoteDrafts(storage, [validDraft]), false);
 });
