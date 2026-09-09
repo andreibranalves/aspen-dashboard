@@ -557,6 +557,7 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
+  await page.getByRole('tab', { name: 'Itens' }).click();
   const itemRow = page.locator('tr').filter({ hasText: 'Produto lifecycle' }).first();
   await expect(itemRow.getByText('10', { exact: true })).toBeVisible();
   await expect(itemRow.getByText('10.000', { exact: true })).toHaveCount(0);
@@ -1014,15 +1015,15 @@ test('sales order detail presents one origin, one progress summary, and protecte
   await page.goto('/#/sales-orders/LOCAL-PENDING');
   await expect(page.getByText('A entregar e faturar', { exact: true })).toBeVisible();
   await expect(page.getByText('Produto local', { exact: true })).toBeVisible();
-  await expect(page.locator('strong').filter({ hasText: 'R$ 100,00' })).toBeVisible();
+  await expect(page.getByLabel('Atualizar pedido').getByText('R$ 100,00', { exact: true })).toBeVisible();
   const pendingProgress = page.getByRole('region', { name: 'Progresso do pedido' });
   await expect(pendingProgress.getByText('Entregue', { exact: true })).toBeVisible();
   await expect(pendingProgress.getByText('Faturado', { exact: true })).toBeVisible();
   await expect(pendingProgress.getByText('0%', { exact: true })).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Abrir orçamento de origem' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '← Voltar aos pedidos' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Voltar aos pedidos' })).toHaveCount(1);
 
-  const pendingActions = page.getByLabel('Ações operacionais do pedido');
+  const pendingActions = page.getByRole('complementary', { name: 'Atualizar pedido' });
   const billButton = pendingActions.getByRole('button', { name: 'Marcar faturado' });
   const deliverButton = pendingActions.getByRole('button', { name: 'Marcar entregue' });
   await expect(billButton).toBeEnabled();
@@ -1113,17 +1114,83 @@ test('manual quotation accepts metadata-free local responses @quotations @critic
     revision_number: 1,
     cliente: 'Cliente local',
     status: 'rascunho',
+    concurrency_token: '2026-08-17T12:00:00.000Z',
   }, 201));
+  await page.route('**/api/quotations?id=*', async (route) => fulfillJson(route, withCanonicalQuotationDetail({
+    id: 'ORC-LOCAL-1',
+    quotation_id: 'ORC-LOCAL-1',
+    quotation_name: 'ORC-LOCAL-1',
+    quotation_uuid: 'quote-local-1',
+    revision_id: 'revision-local-1',
+    revision: 1,
+    revision_number: 1,
+    status: 'Rascunho',
+    status_canonical: 'rascunho',
+    cliente: 'Cliente local',
+    client_id: 'client-local',
+    cliente_snapshot: { id: 'client-local', nome: 'Cliente local', email: 'local@example.com', telefone: '5511999990000' },
+    validade_dias: 15,
+    validade: '2026-08-31',
+    data: '2026-08-17',
+    pagamento: '',
+    entrega: '',
+    frete_padrao: '0.00',
+    frete: '0.00',
+    observacoes: '',
+    prazo_producao: '',
+    template_key: 'padrao',
+    template_hash: 'a'.repeat(64),
+    template_version_id: null,
+    template_version: null,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo de produção', value: '' },
+        current: { enabled: true, title: 'Prazo de produção', value: '' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: '' },
+        current: { enabled: true, title: 'Pagamento', body: '' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições gerais', body: '' },
+        current: { enabled: true, title: 'Condições gerais', body: '' },
+      },
+    },
+    items: [{
+      item_code: 'SKU-LOCAL',
+      sku: 'SKU-LOCAL',
+      item_name: 'Produto local',
+      nome: 'Produto local',
+      qty: '30.000',
+      suggested_unit_price: '10.00',
+      applied_unit_price: '10.00',
+      price_difference: '0.00',
+      line_total: '300.00',
+      manual_rate: false,
+    }],
+    subtotal: '300.00',
+    total: '300.00',
+    valor: '300.00',
+    revision_history: [],
+    derived_expired: false,
+    concurrency_token: '2026-08-17T12:00:00.000Z',
+    updated_at: '2026-08-17T12:00:00.000Z',
+    email_sent: false,
+    email_sent_at: null,
+  })));
   await page.goto('/#/manual');
   await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
   await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Cliente');
   await page.getByRole('button', { name: 'Selecionar Cliente local' }).click();
+  await page.getByRole('dialog', { name: 'Cliente do orçamento' }).getByRole('button', { name: 'Aplicar ao rascunho' }).click();
   await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
   await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill('SKU-LOCAL');
   await page.getByRole('button', { name: 'Adicionar SKU-LOCAL ao orçamento' }).click();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
-  await expect(page.getByText('Rascunho salvo', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/quotations\/quote-local-1$/);
+  await expect(page.getByRole('heading', { name: 'ORC-LOCAL-1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Visualizar PDF' })).toHaveCount(0);
 });
 
 test('empty local CRM and leads retain loading/error/retry states @quotations @critical', async ({ page }) => {

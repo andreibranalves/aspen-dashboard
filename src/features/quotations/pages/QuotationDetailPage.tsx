@@ -352,13 +352,19 @@ function CoreQuotationDetail({
     data.status !== 'rascunho' && data.revisionId && deliveryFlowId
       ? { revisionId: data.revisionId, flowId: deliveryFlowId }
       : null;
-  const { deliveriesByKey, pendingKeys, errorByKey, enqueue, resolve } = useQuotationDeliveries(
-    deliveryIdentity ? [deliveryIdentity] : []
-  );
+  const {
+    deliveriesByKey,
+    pendingKeys,
+    errorByKey,
+    enqueueErrorByKey,
+    enqueue,
+    resolve,
+  } = useQuotationDeliveries(deliveryIdentity ? [deliveryIdentity] : []);
   const deliveryKey = deliveryIdentity ? deliveryIdentityKey(deliveryIdentity) : '';
   const delivery = deliveryKey ? deliveriesByKey[deliveryKey] || null : null;
   const deliveryPending = deliveryKey ? pendingKeys.includes(deliveryKey) : false;
   const deliveryError = deliveryKey ? errorByKey[deliveryKey] : undefined;
+  const enqueueError = deliveryKey ? enqueueErrorByKey[deliveryKey] : undefined;
 
   const handleResolveDelivery = useCallback(
     async (decision: DeliveryResolution, note: string) => {
@@ -2256,11 +2262,11 @@ function CoreQuotationDetail({
                   {whatsappDisabledReason}
                 </p>
               )}
-              {delivery && deliveryError && (
+              {(delivery && deliveryError) || enqueueError ? (
                 <p role="status" className="mt-2 text-xs text-warning">
-                  {deliveryError}
+                  {deliveryError || enqueueError}
                 </p>
-              )}
+              ) : null}
               {deliveryFlows.length === 0 && !deliveryError && (
                 <p role="status" className="mt-2 text-xs text-fg-muted">
                   Não foi possível carregar os fluxos. Tente novamente mais tarde.

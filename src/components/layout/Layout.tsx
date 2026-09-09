@@ -43,6 +43,9 @@ function getQuotationParent(): BreadcrumbItem {
   if (previousRoute && routePath(previousRoute) === '/follow-ups') {
     return { label: 'Follow-ups', hash: previousRoute };
   }
+  if (previousRoute && routePath(previousRoute) === '/whatsapp-deliveries') {
+    return { label: 'Envios', hash: previousRoute };
+  }
   if (previousRoute && routePath(previousRoute) === '/comunicacao') {
     const query = previousRoute.split('?')[1] || '';
     if (new URLSearchParams(query).get('tab') === 'history') {
@@ -50,6 +53,14 @@ function getQuotationParent(): BreadcrumbItem {
     }
   }
   return { label: 'Orçamentos', hash: getParentRoute('/quotations') };
+}
+
+function getProductParent(): BreadcrumbItem {
+  const previousRoute = getHashHistoryPreviousRoute();
+  if (previousRoute && routePath(previousRoute) === '/catalog') {
+    return { label: 'Catálogo', hash: previousRoute };
+  }
+  return { label: 'Catálogo', hash: '/catalog' };
 }
 
 function decodeLabel(value: string): string {
@@ -87,7 +98,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
     const sku = path.slice('/products/'.length);
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Produtos', hash: getParentRoute('/products') },
+      getProductParent(),
       { label: sku === 'new' ? 'Novo produto' : decodeLabel(sku), hash: null },
     ];
   }

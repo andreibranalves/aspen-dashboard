@@ -130,6 +130,14 @@ describe('Aspen UI v2 visual contract', () => {
     const bulkActionBar = read('src/components/shared/BulkActionBar.tsx');
     assert.match(bulkActionBar, /rounded-t-lg/);
     assert.doesNotMatch(bulkActionBar, /rounded-t-(?:xl|2xl|3xl|pill|\[[^\]]+\])/);
+    assert.match(bulkActionBar, /if \(!visible\) return null/);
+  });
+
+  it('announces lazy route loading without exposing the decorative spinner', () => {
+    const pageLoader = read('src/components/shared/PageLoader.tsx');
+    assert.match(pageLoader, /role="status"/);
+    assert.match(pageLoader, /Carregando página/);
+    assert.match(pageLoader, /aria-hidden="true"/);
   });
 
   it('keeps semantic action labels and focus indicators at the canonical contrast floor', () => {

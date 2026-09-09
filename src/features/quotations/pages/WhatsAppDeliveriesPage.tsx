@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
 import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
@@ -66,6 +66,25 @@ const STATE_FILTERS: Array<{ key: DeliveryState; label: string }> = [
   { key: 'delivered', label: 'Entregues' },
   { key: 'failed', label: 'Falhos' },
 ];
+
+const STEP_STATE_LABELS: Record<DeliveryView['steps'][number]['state'], string> = {
+  queued: 'Na fila',
+  sending: 'Enviando',
+  server_ack: 'Aceito pelo provedor',
+  reconciling: 'Confirmando entrega',
+  retry_scheduled: 'Nova tentativa agendada',
+  needs_review: 'Requer revisão',
+  delivered: 'Entregue',
+  read: 'Lido',
+  failed: 'Falhou',
+};
+
+function stepStateTone(state: DeliveryView['steps'][number]['state']): string {
+  if (state === 'delivered' || state === 'read') return 'tone-success-soft';
+  if (state === 'failed' || state === 'needs_review') return 'tone-destructive-soft';
+  if (state === 'retry_scheduled' || state === 'reconciling') return 'tone-warning-soft';
+  return 'tone-neutral-muted';
+}
 
 // Converte dígitos ddmmaaaa em ISO; só aceita data completa e válida.
 function brDateDigitsToIso(digits: string): string {
@@ -285,6 +304,11 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
                             ? 'Mídia'
                             : 'Mensagem'}
                     </span>
+                    <StatusBadge
+                      status={step.state}
+                      label={STEP_STATE_LABELS[step.state]}
+                      className={stepStateTone(step.state)}
+                    />
                   </div>
                   <p className="mt-1 text-fg-muted">
                     Tentativas: {step.attemptCount} · Atualizado em{' '}
@@ -328,6 +352,7 @@ export default function WhatsAppDeliveriesPage() {
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState('');
   const historyDetailRequestRef = useRef(0);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('all');
   const [historySearch, setHistorySearch] = useState('');
   const [historyFrom, setHistoryFrom] = useState('');
@@ -480,6 +505,19 @@ export default function WhatsAppDeliveriesPage() {
     setHistoryDetailError('');
   };
 
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % DELIVERY_TABS.length;
+    if (event.key === 'ArrowLeft')
+      nextIndex = (index - 1 + DELIVERY_TABS.length) % DELIVERY_TABS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = DELIVERY_TABS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    setActiveTab(DELIVERY_TABS[nextIndex]);
+    tabRefs.current[nextIndex]?.focus();
+  };
+
   return (
     <PageShell className="space-y-4 pb-10">
       <PageHeader
@@ -520,15 +558,20 @@ export default function WhatsAppDeliveriesPage() {
               ['pending', 'Pendências'],
               ['history', 'Histórico'],
             ] as const
-          ).map(([tab, label]) => (
+          ).map(([tab, label], index) => (
             <button
               key={tab}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
               type="button"
               role="tab"
               id={`delivery-tab-${tab}`}
               aria-selected={activeTab === tab}
               aria-controls="delivery-panel"
+              tabIndex={activeTab === tab ? 0 : -1}
               onClick={() => setActiveTab(tab)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
               className={cn(
                 'min-h-10 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
@@ -606,6 +649,9 @@ export default function WhatsAppDeliveriesPage() {
                 </label>
               </fieldset>
             </div>
+            <p className="text-xs text-fg-muted">
+              Busca e período consideram os 200 envios mais recentes.
+            </p>
           </section>
         )}
 

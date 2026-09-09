@@ -57,8 +57,8 @@ interface SortOption {
 
 const SORT_OPTIONS: SortOption[] = [
   { value: 'item_name asc', label: 'Nome (A–Z)' },
-  { value: DEFAULT_SORT, label: 'Criação (mais recente)' },
-  { value: 'modified asc', label: 'Criação (mais antiga)' },
+  { value: DEFAULT_SORT, label: 'Atualização (mais recente)' },
+  { value: 'modified asc', label: 'Atualização (mais antiga)' },
   { value: 'item_code asc', label: 'Código SKU (A–Z)' },
 ];
 

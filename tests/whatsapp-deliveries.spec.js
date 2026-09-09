@@ -144,32 +144,40 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
       })
     );
   });
+  await page.route('**/api/communication-send-events**', (route) =>
+    json(route, { success: true, items: [], total: 0, source: 'postgres' })
+  );
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/#/whatsapp-deliveries');
   await page.evaluate(() => globalThis.document.fonts.ready);
-  await expect(page.getByRole('heading', { name: 'Envios WhatsApp' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Envios WhatsApp' })).toBeVisible();
-  await expect(page.getByText(needsReviewDelivery.business_number)).toBeVisible();
-  await expect(page.getByText(processingDelivery.business_number)).toBeVisible();
-  await expect(page.getByText(deliveredDelivery.business_number)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Envios' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Envios', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Pendências' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Histórico' })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { name: 'Pendências' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('cell', { name: needsReviewDelivery.business_number, exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: processingDelivery.business_number, exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: deliveredDelivery.business_number, exact: true })).toHaveCount(0);
   const needsReviewDetails = page.getByRole('button', {
-    name: 'Ocultar detalhes de ORC-NEEDS, linha 1',
+    name: 'Abrir detalhes de ORC-NEEDS, linha 1',
   });
-  await expect(needsReviewDetails).toHaveAttribute('aria-controls', 'whatsapp-delivery-details-0');
-  await expect(page.locator('#whatsapp-delivery-details-0')).toBeVisible();
+  await needsReviewDetails.click();
+  const needsReviewDrawer = page.getByRole('dialog', { name: needsReviewDelivery.id });
+  await expect(needsReviewDrawer).toBeVisible();
+  await expect(needsReviewDrawer.getByText('Requer revisão', { exact: true })).toBeVisible();
+  await expect(needsReviewDrawer.getByText(needsReviewDelivery.flow_name)).toBeVisible();
+  await expect(needsReviewDrawer.getByText('Recibo', { exact: true })).toBeVisible();
+  await expect(needsReviewDrawer.getByText('—', { exact: true })).toBeVisible();
+  await expect(needsReviewDrawer.getByText('provider-message-raw-must-not-render')).toHaveCount(0);
+  await needsReviewDrawer.getByRole('button', { name: 'Fechar' }).click();
   const processingDetails = page.getByRole('button', {
-    name: 'Detalhes de ORC-PROCESSING, linha 2',
+    name: 'Abrir detalhes de ORC-PROCESSING, linha 2',
   });
-  await expect(processingDetails).toHaveAttribute('aria-controls', 'whatsapp-delivery-details-1');
-  await expect(page.locator('#whatsapp-delivery-details-1')).toBeHidden();
+  await expect(processingDetails).toBeVisible();
   await expect(page.getByText('(11) 99999-0000').first()).toBeVisible();
-  await expect(page.getByText(needsReviewDelivery.flow_name)).toBeVisible();
-  await expect(page.getByText('Recibo', { exact: true })).toBeVisible();
-  await expect(
-    page.locator('#whatsapp-delivery-details-0').getByText('—', { exact: true })
-  ).toBeVisible();
-  await expect(page.getByText('provider-message-raw-must-not-render')).toHaveCount(0);
   const tableScroll = await page
     .getByRole('table', { name: 'Tabela de entregas WhatsApp' })
     .evaluate((table) => {
@@ -200,7 +208,9 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   expect(firstQuery.get('page')).toBe('1');
   expect(firstQuery.get('page_size')).toBe('25');
 
-  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  await needsReviewDetails.click();
+  const resolutionDrawer = page.getByRole('dialog', { name: needsReviewDelivery.id });
+  await resolutionDrawer.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
   await page.getByLabel('Justificativa').fill('Cliente confirmou recebimento por ligação.');
   await page.getByRole('button', { name: 'Confirmar resolução' }).click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
@@ -313,15 +323,15 @@ test('filters expose Portuguese controls and query state, search, and period', a
   await expect(page.getByLabel('Data final')).toBeVisible();
 
   await page.getByLabel('Entregues').check();
-  await expect(page.getByText(deliveredDelivery.business_number)).toBeVisible();
+  await expect(page.getByRole('cell', { name: deliveredDelivery.business_number, exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Detalhes de ORC-DELIVERED, linha 1' }).click();
-  await expect(page.getByText('Recibo do provedor')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: deliveredDelivery.id }).getByText('Recibo do provedor')).toBeVisible();
   const deliveredQuery = queries.find((query) => query.get('state') === 'delivered');
   expect(deliveredQuery.get('requires_action')).toBe('false');
   expect(deliveredQuery.get('include_active')).toBe('false');
 
   await page.getByLabel('Busca').fill('Maria');
-  await expect(page.getByText(deliveredDelivery.client_name)).toBeVisible();
+  await expect(page.getByText(deliveredDelivery.client_name, { exact: true })).toBeVisible();
   const searchQuery = queries.find((query) => query.get('search') === 'Maria');
   expect(searchQuery).toBeTruthy();
 
@@ -373,16 +383,20 @@ test('pagination requests the next page and delayed accepted deliveries stay act
   });
 
   await page.goto('/#/whatsapp-deliveries');
-  await expect(page.getByText(pageOneDelivery.business_number)).toBeVisible();
+  await expect(page.getByRole('cell', { name: pageOneDelivery.business_number, exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Próxima página' }).click();
-  await expect(page.getByText(pageTwoDelivery.business_number)).toBeVisible();
+  await expect(page.getByRole('cell', { name: pageTwoDelivery.business_number, exact: true })).toBeVisible();
   expect(pages).toContain(2);
 
   await page.getByLabel('Atrasados').check();
-  await expect(page.getByText(delayedDelivery.business_number)).toBeVisible();
-  await expect(page.getByText(/aceitação do provedor está atrasada/i)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Confirmado que não recebeu, reenviar' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: delayedDelivery.business_number, exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Abrir detalhes de ORC-DELAYED, linha 1' }).click();
+  const delayedDrawer = page.getByRole('dialog', { name: delayedDelivery.id });
+  await expect(delayedDrawer.getByText(/aceitação do provedor está atrasada/i)).toBeVisible();
+  await expect(delayedDrawer.getByRole('button', { name: 'Cliente confirmou recebimento' })).toBeVisible();
+  await expect(
+    delayedDrawer.getByRole('button', { name: 'Confirmado que não recebeu, reenviar' })
+  ).toBeVisible();
 });
 
 test('empty state and API failure remain readable and actionable', async ({ page }) => {
@@ -399,5 +413,5 @@ test('empty state and API failure remain readable and actionable', async ({ page
   mode = 'failure';
   await page.getByRole('button', { name: 'Atualizar' }).click();
   await expect(page.getByRole('alert')).toContainText('Não foi possível consultar as entregas.');
-  await expect(page.getByRole('heading', { name: 'Envios WhatsApp' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Envios' })).toBeVisible();
 });

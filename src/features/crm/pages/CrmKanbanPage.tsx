@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ChangeEvent,
+  type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import {
   Search,
   AlertTriangle,
@@ -33,6 +42,7 @@ import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
+import { useHashRoute } from '@/hooks/useHashRoute';
 
 interface Deal {
   id: string;
@@ -118,6 +128,10 @@ const FOCUSABLE_SELECTOR =
 
 type CrmView = 'list' | 'board';
 const parseCrmView = parseHashOption<CrmView>(['list', 'board']);
+const CRM_VIEW_TABS = [
+  ['list', 'Lista', Rows3],
+  ['board', 'Quadro', Columns3],
+] as const;
 const STAGE_FILTERS = ['all', ...PIPELINE] as const;
 type StageFilter = (typeof STAGE_FILTERS)[number];
 const parseStageFilter = parseHashOption<StageFilter>(STAGE_FILTERS);
@@ -138,6 +152,7 @@ interface CrmKanbanPageProps {
 
 export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) {
   const { toast } = useToast();
+  const [, navigate] = useHashRoute();
   const [columns, setColumns] = useState<Column[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +178,38 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
   const pendingMoveMenuFocusRef = useRef<string | null>(null);
   const pruneDialogRef = useRef<HTMLDivElement>(null);
+  const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function navigateFromLink(event: MouseEvent<HTMLAnchorElement>, target: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(target.replace(/^#/, ''));
+  }
+
+  function handleViewTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % CRM_VIEW_TABS.length;
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + CRM_VIEW_TABS.length) % CRM_VIEW_TABS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = CRM_VIEW_TABS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    setView(CRM_VIEW_TABS[nextIndex][0]);
+    viewTabRefs.current[nextIndex]?.focus();
+  }
+
+  function startQuotation(deal: Deal, leadName: string) {
+    if (!deal.quote_lead_id) return;
+    storeQuotationOriginPrefill({
+      quoteLeadId: deal.quote_lead_id,
+      crmDealId: deal.id,
+      leadName,
+      email: deal.email || '',
+      telefone: deal.telefone || '',
+      source: deal.lead_source || '',
+    });
+    navigate(`/manual?quoteLeadId=${encodeURIComponent(deal.quote_lead_id)}&crmDealId=${encodeURIComponent(deal.id)}`);
+  }
 
   const fetchData = useCallback(async (searchVal: string) => {
     const requestGeneration = ++requestGenerationRef.current;
@@ -436,14 +483,12 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           role="tablist"
           aria-label="Visualização dos negócios"
         >
-          {(
-            [
-              ['list', 'Lista', Rows3],
-              ['board', 'Quadro', Columns3],
-            ] as const
-          ).map(([nextView, label, Icon]) => (
+          {CRM_VIEW_TABS.map(([nextView, label, Icon], index) => (
             <button
               key={nextView}
+              ref={(element) => {
+                viewTabRefs.current[index] = element;
+              }}
               type="button"
               role="tab"
               id={`crm-view-tab-${nextView}`}
@@ -457,6 +502,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                   : 'text-fg-muted hover:text-fg'
               )}
               onClick={() => setView(nextView)}
+              onKeyDown={(event) => handleViewTabKeyDown(event, index)}
             >
               <Icon aria-hidden="true" />
               {label}
@@ -635,6 +681,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                           {href && leadName !== 'Sem nome' ? (
                             <a
                               href={href}
+                              onClick={(event) => navigateFromLink(event, href)}
                               className="block truncate text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               aria-label={`Abrir lead ${leadName}`}
                             >
@@ -642,6 +689,17 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             </a>
                           ) : (
                             <span className="block truncate">{leadName}</span>
+                          )}
+                          {deal.quote_lead_id && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="mt-1 h-7 px-1 text-xs"
+                              onClick={() => startQuotation(deal, leadName)}
+                            >
+                              <PlusCircle aria-hidden="true" /> Novo orçamento
+                            </Button>
                           )}
                         </TableCell>
                         <TableCell className="max-w-56 text-sm">
@@ -662,6 +720,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             deal.quotation_id ? (
                               <a
                                 href={`#/quotations/${deal.quotation_id}`}
+                                onClick={(event) =>
+                                  navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
+                                }
                                 className="text-primary hover:underline"
                                 aria-label={`Abrir orçamento ${deal.quotation}`}
                               >
@@ -728,6 +789,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         {href && leadName !== 'Sem nome' ? (
                           <a
                             href={href}
+                            onClick={(event) => navigateFromLink(event, href)}
                             className="block truncate font-medium text-primary hover:underline"
                             aria-label={`Abrir lead ${leadName}`}
                           >
@@ -759,6 +821,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             deal.quotation_id ? (
                               <a
                                 href={`#/quotations/${deal.quotation_id}`}
+                                onClick={(event) =>
+                                  navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
+                                }
                                 className="text-primary hover:underline"
                                 aria-label={`Abrir orçamento ${deal.quotation}`}
                               >
@@ -785,6 +850,17 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         </div>
                       )}
                     </dl>
+                    {deal.quote_lead_id && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={() => startQuotation(deal, leadName)}
+                      >
+                        <PlusCircle aria-hidden="true" /> Novo orçamento
+                      </Button>
+                    )}
                     <div className="mt-4 border-t border-line/60 pt-3">
                       <label htmlFor={`mobile-move-deal-${deal.id}`} className="sr-only">
                         Mover para {leadName}
@@ -902,6 +978,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 {leadClickable ? (
                                   <a
                                     href={leadHref || '#'}
+                                    onClick={(event) =>
+                                      leadHref && navigateFromLink(event, leadHref)
+                                    }
                                     className="min-w-0 text-left text-sm font-medium text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
                                     aria-label={`Abrir lead ${displayLeadName}`}
                                   >
@@ -936,6 +1015,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                   (deal.quotation_id ? (
                                     <a
                                       href={`#/quotations/${deal.quotation_id}`}
+                                onClick={(event) =>
+                                  navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
+                                }
                                       className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
                                       aria-label={`Abrir orçamento ${deal.quotation}`}
                                     >
@@ -996,17 +1078,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                   variant="ghost"
                                   size="sm"
                                   className="mt-2 w-full"
-                                  onClick={() => {
-                                    storeQuotationOriginPrefill({
-                                      quoteLeadId: deal.quote_lead_id!,
-                                      crmDealId: deal.id,
-                                      leadName,
-                                      email: deal.email || '',
-                                      telefone: deal.telefone || '',
-                                      source: deal.lead_source || '',
-                                    });
-                                    window.location.hash = `#/manual?quoteLeadId=${encodeURIComponent(deal.quote_lead_id!)}&crmDealId=${encodeURIComponent(deal.id)}`;
-                                  }}
+                                  onClick={() => startQuotation(deal, leadName)}
                                 >
                                   <PlusCircle />
                                   Novo orçamento

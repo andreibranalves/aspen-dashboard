@@ -354,6 +354,9 @@ test.describe('issue #210 — fundação e pedidos', () => {
       if (url.pathname === '/api/quotation-templates') {
         return json(route, { templates: [], default_key: null });
       }
+      if (url.pathname === '/api/order-templates') {
+        return json(route, { data: [] });
+      }
       if (url.pathname === '/api/leads-clients') {
         return json(route, {
           data: [],

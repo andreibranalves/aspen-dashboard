@@ -26,6 +26,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [mutationError, setMutationError] = useState('');
   const [filterGroup, setFilterGroup] = useState<ProductGroup | ''>('');
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
   const deleteInFlightRef = useRef(false);
@@ -52,13 +53,14 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
     if (!target || deleteInFlightRef.current) return;
     deleteInFlightRef.current = true;
     setDeleteTarget(null);
+    setMutationError('');
     const removedTitle = target.title;
     try {
       await deleteMedia(target.id);
       setItems((current) => current.filter((item) => item.id !== target.id));
       toast(`Mídia “${removedTitle || 'selecionada'}” removida.`, 'success');
     } catch (deleteError) {
-      setError(errorMessage(deleteError, 'Não foi possível remover a mídia.'));
+      setMutationError(errorMessage(deleteError, 'Não foi possível remover a mídia.'));
     } finally {
       deleteInFlightRef.current = false;
     }
@@ -148,6 +150,16 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
               <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
             </Button>
           </div>
+        </div>
+      )}
+
+      {!loading && mutationError && (
+        <div
+          className="flex items-center gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="shrink-0 text-destructive" aria-hidden="true" />
+          <span>{mutationError}</span>
         </div>
       )}
 

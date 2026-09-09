@@ -74,13 +74,92 @@ function statusResponse(state, selectedFlowId = flowId, selectedRevisionId = rev
   };
 }
 
+function issuedQuotationDetail() {
+  return withCanonicalQuotationDetail({
+    id: quotationId,
+    quotation_id: quotationId,
+    quotation_name: quotationId,
+    quotation_uuid: quotationUuid,
+    revision_id: revisionId,
+    revision: 1,
+    revision_number: 1,
+    status: 'Emitido',
+    status_canonical: 'emitido',
+    cliente: 'Cliente teste',
+    client_id: '33333333-3333-4333-8333-333333333901',
+    cliente_snapshot: {
+      id: '33333333-3333-4333-8333-333333333901',
+      nome: 'Cliente teste',
+      email: 'cliente@example.test',
+      telefone: '5511999990000',
+    },
+    validade_dias: 15,
+    validade: '2026-08-28',
+    data: '2026-08-17',
+    pagamento: '',
+    entrega: '',
+    frete_padrao: '0.00',
+    frete: '0.00',
+    observacoes: '',
+    prazo_producao: '',
+    template_key: 'padrao',
+    template_hash: 'a'.repeat(64),
+    template_version_id: null,
+    template_version: null,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo de produção', value: '' },
+        current: { enabled: true, title: 'Prazo de produção', value: '' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: '' },
+        current: { enabled: true, title: 'Pagamento', body: '' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições gerais', body: '' },
+        current: { enabled: true, title: 'Condições gerais', body: '' },
+      },
+    },
+    items: [{
+      item_code: 'CNG-001',
+      sku: 'CNG-001',
+      item_name: 'Canga',
+      nome: 'Canga',
+      qty: '1.000',
+      suggested_unit_price: '9.00',
+      applied_unit_price: '9.00',
+      price_difference: '0.00',
+      line_total: '9.00',
+      manual_rate: false,
+    }],
+    subtotal: '9.00',
+    total: '9.00',
+    valor: '9.00',
+    revision_history: [],
+    derived_expired: false,
+    concurrency_token: updatedAt,
+    updated_at: updatedAt,
+    email_sent: false,
+    email_sent_at: null,
+  });
+}
+
 async function routeCommonAuto(page) {
   await page.route('**/api/settings**', (route) => json(route, {}));
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true }],
     default_key: 'padrao',
   }));
-  await page.route('**/api/quotations**', (route) => json(route, { data: [] }));
+  await page.route('**/api/quotations**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return json(
+      route,
+      route.request().method() === 'GET' && url.searchParams.has('id')
+        ? issuedQuotationDetail()
+        : { data: [] }
+    );
+  });
   await page.route('**/api/quote-leads**', (route) => json(route, { data: [] }));
   await page.route('**/api/extract**', (route) => json(route, {
     orders: [{
@@ -311,7 +390,7 @@ test('browser reload during processing keeps the durable processing state', asyn
   expect(transportCalls).toBe(0);
 });
 
-test('failed delivery stays blocked until a new revision', async ({ page }) => {
+test('failed delivery stays blocked without a blind retry', async ({ page }) => {
   await routeCommonAuto(page);
   const lifecycle = await mockDeliveryLifecycle(page, ['failed']);
   await issueAutoQuote(page);
@@ -319,7 +398,6 @@ test('failed delivery stays blocked until a new revision', async ({ page }) => {
   await send.click();
   await expect(page.getByText('Falhou', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Nova revisão' })).toBeVisible();
   await send.click({ force: true });
   expect(lifecycle.getSendCount()).toBe(1);
 });
@@ -399,7 +477,7 @@ test('flow switching uses a distinct revision and flow status', async ({ page })
   await page.getByRole('button', { name: /enviar whatsapp/i }).click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await page.getByText('Fluxo de WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
+  await page.getByText('Fluxo WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
   await expect.poll(() => flow2LookupStarted).toBe(true);
   await expect(send).toBeDisabled();
   expect(sendCount).toBe(1);

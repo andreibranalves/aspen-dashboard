@@ -292,7 +292,11 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               Atualizar pedido
             </h2>
 
-            <div className="mt-4 space-y-4 border-b border-line pb-4">
+            <div
+              role="region"
+              aria-label="Progresso do pedido"
+              className="mt-4 space-y-4 border-b border-line pb-4"
+            >
               <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
               <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
             </div>

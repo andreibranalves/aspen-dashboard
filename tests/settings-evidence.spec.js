@@ -117,6 +117,17 @@ async function mockSettings(page) {
   };
 }
 
+async function settleForEvidence(page) {
+  await page.evaluate(async () => {
+    await globalThis.document.fonts.ready;
+    await Promise.all(
+      globalThis.document
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined))
+    );
+  });
+}
+
 test('captura Configurações nos temas e tamanhos principais', async ({ page }) => {
   const state = await mockSettings(page);
   await page.goto('/#/settings');
@@ -129,6 +140,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
+    await settleForEvidence(page);
     await page.screenshot({
       path: `docs/design/evidence/configuracoes/padroes-light-${viewport.width}x${viewport.height}.png`,
       fullPage: true,
@@ -145,6 +157,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
+    await settleForEvidence(page);
     await page.screenshot({
       path: `docs/design/evidence/configuracoes/padroes-dark-${viewport.width}x${viewport.height}.png`,
       fullPage: true,
@@ -170,6 +183,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
                 : 'Canais',
       })
       .click();
+    await settleForEvidence(page);
     await page.screenshot({
       path: `docs/design/evidence/configuracoes/${name}-dark-1440x900.png`,
       fullPage: true,
@@ -178,6 +192,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
 
   await page.getByRole('tab', { name: 'Padrões' }).click();
   await page.getByLabel('Validade padrão (dias)').focus();
+  await settleForEvidence(page);
   await page.screenshot({
     path: 'docs/design/evidence/configuracoes/foco-dark-1440x900.png',
     fullPage: true,
@@ -188,6 +203,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   await page.getByLabel('Mensagem').fill('Alteração pendente');
   await page.getByRole('tab', { name: 'Canais' }).click();
   await expect(page.getByRole('dialog', { name: 'Sair sem salvar?' })).toBeVisible();
+  await settleForEvidence(page);
   await page.screenshot({
     path: 'docs/design/evidence/configuracoes/confirmacao-escape-dark-1440x900.png',
     fullPage: true,
@@ -200,6 +216,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   await page.getByRole('button', { name: 'Sair da aba' }).click();
   await page.getByRole('tab', { name: 'Fluxos WhatsApp' }).click();
   await expect(page.getByText('Nenhum fluxo criado ainda')).toBeVisible();
+  await settleForEvidence(page);
   await page.screenshot({
     path: 'docs/design/evidence/configuracoes/vazio-fluxos-dark-1440x900.png',
     fullPage: true,
@@ -211,6 +228,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   await expect(page.getByRole('alert')).toContainText(
     'Não foi possível carregar as configurações.'
   );
+  await settleForEvidence(page);
   await page.screenshot({
     path: 'docs/design/evidence/configuracoes/erro-configuracoes-dark-1440x900.png',
     fullPage: true,

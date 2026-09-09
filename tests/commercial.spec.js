@@ -17,6 +17,8 @@ const deal = {
   telefone: '5511999990000',
   quotation: 'ORC-COMERCIAL',
   quotation_id: 'quotation-commercial',
+  quote_lead_id: 'lead-commercial',
+  lead_source: 'site',
   next_step: 'Retomar contato',
   status: 'Orcamento Enviado',
   modificado_em: '2026-08-20T10:00:00.000Z',
@@ -79,10 +81,17 @@ test('comercial alterna negócios entre Lista e Quadro', async ({ page }) => {
   );
   await expect(page.getByRole('link', { name: 'Abrir lead Cliente Comercial' })).toBeVisible();
   await expect(page.getByText('(11) 99999-0000', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Novo orçamento' }).last()).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Quadro' }).click();
+  await page.getByRole('tab', { name: 'Lista' }).focus();
+  await page.keyboard.press('ArrowRight');
   await expect(page).toHaveURL(/#\/crm\?view=board$/);
   await expect(page.getByRole('region', { name: 'Pipeline CRM' })).toBeVisible();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { name: 'Lista' })).toHaveAttribute('aria-selected', 'true');
+
+  await page.getByRole('link', { name: 'Abrir orçamento ORC-COMERCIAL' }).click();
+  await expect(page).toHaveURL(/#\/quotations\/quotation-commercial$/);
 });
 
 test('comercial alterna Retornos entre Sem resposta e Após envio', async ({ page }) => {
@@ -96,9 +105,24 @@ test('comercial alterna Retornos entre Sem resposta e Após envio', async ({ pag
     'true'
   );
   await expect(page.getByRole('link', { name: 'Abrir orçamento ORC-SEM-RESPOSTA' })).toBeVisible();
+  await expect(page.getByRole('table').getByText('Emitido', { exact: true })).toBeVisible();
 
   await page.getByRole('tab', { name: 'Após envio' }).click();
   await expect(page).toHaveURL(/#\/crm\?tab=returns&return=sent$/);
   await expect(page.getByRole('tab', { name: 'Prontos' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Nenhum follow-up' })).toBeVisible();
+});
+
+test('ignora resposta atrasada ao trocar de Sem resposta para Após envio', async ({ page }) => {
+  await page.route('**/api/sales-dashboard**', async (route) => {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 300));
+    await json(route, dashboard());
+  });
+  await page.route('**/api/follow-ups**', (route) => json(route, followUpList()));
+
+  await page.goto('/#/crm?tab=returns&return=unanswered');
+  await page.getByRole('tab', { name: 'Após envio' }).click();
+  await expect(page.getByRole('heading', { name: 'Nenhum follow-up' })).toBeVisible();
+  await page.waitForTimeout(500);
   await expect(page.getByRole('heading', { name: 'Nenhum follow-up' })).toBeVisible();
 });

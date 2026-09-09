@@ -41,7 +41,10 @@ const media = {
   ],
 };
 
-async function mockCatalogApi(page, { templates = [], templateStatus = 200 } = {}) {
+async function mockCatalogApi(
+  page,
+  { templates = [], templateStatus = 200, deleteMediaStatus = 200 } = {}
+) {
   await page.route('**/api/products**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     if (url.searchParams.get('view') === 'categories') {
@@ -71,6 +74,16 @@ async function mockCatalogApi(page, { templates = [], templateStatus = 200 } = {
     });
   });
   await page.route('**/api/communication-media**', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      await route.fulfill({
+        status: deleteMediaStatus,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          deleteMediaStatus === 200 ? { success: true } : { error: 'Erro controlado' }
+        ),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -81,6 +94,7 @@ async function mockCatalogApi(page, { templates = [], templateStatus = 200 } = {
 
 test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
   test('preserva Produtos, Conjuntos e Mídias na mesma jornada', async ({ page }) => {
+    let exportUrl = '';
     await mockCatalogApi(page, {
       templates: [
         {
@@ -93,15 +107,27 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
         },
       ],
     });
+    await page.route('**/api/commercial-exports**', async (route) => {
+      exportUrl = route.request().url();
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/csv',
+        headers: { 'content-disposition': 'attachment; filename="produtos.csv"' },
+        body: 'sku,nome\nCAT-001,Lenço demonstrativo\n',
+      });
+    });
 
     await page.goto('/#/catalog');
     await expect(page.getByRole('heading', { name: 'Catálogo' })).toBeVisible();
     await expect(page.getByText('CAT-001').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Arquivados' }).click();
+    await page.getByRole('button', { name: 'Exportar produtos' }).click();
+    await expect.poll(() => exportUrl).toContain('status=archived');
 
     const setsTab = page.getByRole('tab', { name: 'Conjuntos de produtos' });
     await setsTab.focus();
     await setsTab.press('Enter');
-    await expect(page).toHaveURL(/#\/catalog\?tab=sets$/);
+    await expect(page).toHaveURL(/#\/catalog\?status=archived&tab=sets$/);
     await expect(page.getByText('Kit inverno')).toBeVisible();
     await page.getByRole('button', { name: 'Novo conjunto' }).click();
     await expect(page.getByRole('dialog', { name: 'Modelos de pedido' })).toBeVisible();
@@ -124,5 +150,15 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
     await page.goto('/#/catalog?tab=sets');
     await expect(page.getByRole('alert')).toContainText('Não foi possível carregar os conjuntos');
     await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
+  });
+
+  test('preserva a biblioteca quando a remoção falha', async ({ page }) => {
+    await mockCatalogApi(page, { deleteMediaStatus: 500 });
+    await page.goto('/#/catalog?tab=media');
+    await expect(page.getByText('Campanha de inverno')).toBeVisible();
+    await page.getByRole('button', { name: 'Remover Campanha de inverno' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Remover' }).click();
+    await expect(page.getByRole('alert')).toContainText('Não foi possível remover a mídia.');
+    await expect(page.getByText('Campanha de inverno')).toBeVisible();
   });
 });

@@ -37,7 +37,9 @@ export default function Sidebar({
     '/auto': '/novo-orcamento',
     '/manual': '/novo-orcamento',
   };
-  const effectivePath = activeAffinity[currentPath] ?? currentPath;
+  const effectivePath = currentPath.startsWith('/products')
+    ? '/catalog'
+    : activeAffinity[currentPath] ?? currentPath;
   const sidebarOpen = !collapsed;
 
   const renderItem = (item: NavItem, action = false) => {

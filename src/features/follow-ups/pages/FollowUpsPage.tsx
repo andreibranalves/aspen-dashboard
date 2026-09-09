@@ -40,6 +40,7 @@ import {
   useHashQueryState,
 } from '@/hooks/useHashQueryState';
 import { fmtPhone, formatBRL, formatDateTime } from '@/lib/formatting/formatters';
+import { quotationStatusBadgeKey, quotationStatusLabel } from '@/lib/statusLabels';
 
 const PAGE_SIZE = 25;
 const TABS: Array<{ view: FollowUpListView; label: string }> = [
@@ -123,8 +124,10 @@ export default function FollowUpsPage({
     null
   );
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const requestGenerationRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -132,14 +135,18 @@ export default function FollowUpsPage({
         const projected = projectDashboardView(
           await apiGet<unknown>('/sales-dashboard?period=month')
         );
+        if (requestGeneration !== requestGenerationRef.current) return;
         if (!projected?.attention) throw new Error('Resposta inválida ao carregar retornos.');
         setUnanswered(projected.attention);
         setResult(null);
       } else {
+        const nextResult = await listFollowUps({ view, page, pageSize: PAGE_SIZE });
+        if (requestGeneration !== requestGenerationRef.current) return;
         setUnanswered(null);
-        setResult(await listFollowUps({ view, page, pageSize: PAGE_SIZE }));
+        setResult(nextResult);
       }
     } catch (reason) {
+      if (requestGeneration !== requestGenerationRef.current) return;
       setResult(null);
       setUnanswered(null);
       setError(
@@ -150,7 +157,7 @@ export default function FollowUpsPage({
             : 'Não foi possível carregar os follow-ups.'
       );
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
     }
   }, [page, returnView, view]);
 
@@ -311,8 +318,8 @@ export default function FollowUpsPage({
                         </TableCell>
                         <TableCell>
                           <StatusBadge
-                            status={item.status}
-                            label={item.status}
+                            status={quotationStatusBadgeKey(item.status)}
+                            label={quotationStatusLabel(item.status)}
                             className="tone-neutral-muted"
                           />
                         </TableCell>
@@ -355,8 +362,8 @@ export default function FollowUpsPage({
                         </p>
                       </div>
                       <StatusBadge
-                        status={item.status}
-                        label={item.status}
+                        status={quotationStatusBadgeKey(item.status)}
+                        label={quotationStatusLabel(item.status)}
                         className="tone-neutral-muted shrink-0"
                       />
                     </div>

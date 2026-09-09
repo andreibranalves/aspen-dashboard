@@ -22,15 +22,15 @@ type SendStatus = 'sent' | 'failed' | 'skipped' | 'pending';
 export interface SendEvent {
   id: string;
   status: SendStatus;
-  flow_name?: string;
-  quotation_id?: string;
-  phone?: string;
+  flow_name?: string | null;
+  quotation_id?: string | null;
+  phone?: string | null;
   steps_sent?: number;
   steps_planned?: number;
-  sent_at?: string;
-  created_at?: string;
+  sent_at?: string | null;
+  created_at?: string | null;
   duplicate_warning?: boolean;
-  error_message?: string;
+  error_message?: string | null;
 }
 
 const STATUS_META: Record<
@@ -70,6 +70,50 @@ const STATUS_META: Record<
 
 function errorMessage(_error: unknown, fallback: string): string {
   return fallback;
+}
+
+const SEND_STATUSES = new Set<SendStatus>(['sent', 'failed', 'skipped', 'pending']);
+
+function parseSendEvents(value: unknown): SendEvent[] {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as { items?: unknown }).items)) {
+    throw new Error('Resposta inválida.');
+  }
+  return (value as { items: unknown[] }).items.map((item) => {
+    if (!item || typeof item !== 'object') throw new Error('Resposta inválida.');
+    const candidate = item as Record<string, unknown>;
+    if (
+      typeof candidate.id !== 'string' ||
+      !candidate.id.trim() ||
+      typeof candidate.status !== 'string' ||
+      !SEND_STATUSES.has(candidate.status as SendStatus)
+    ) {
+      throw new Error('Resposta inválida.');
+    }
+    for (const key of ['flow_name', 'quotation_id', 'phone', 'sent_at', 'created_at', 'error_message']) {
+      if (
+        candidate[key] !== undefined &&
+        candidate[key] !== null &&
+        typeof candidate[key] !== 'string'
+      ) {
+        throw new Error('Resposta inválida.');
+      }
+    }
+    for (const key of ['steps_sent', 'steps_planned']) {
+      if (
+        candidate[key] !== undefined &&
+        (typeof candidate[key] !== 'number' || !Number.isFinite(candidate[key]))
+      ) {
+        throw new Error('Resposta inválida.');
+      }
+    }
+    if (
+      candidate.duplicate_warning !== undefined &&
+      typeof candidate.duplicate_warning !== 'boolean'
+    ) {
+      throw new Error('Resposta inválida.');
+    }
+    return candidate as unknown as SendEvent;
+  });
 }
 
 interface SendHistoryTabProps {
@@ -131,8 +175,7 @@ export default function SendHistoryTab({
         const data = await response.json().catch(() => ({}));
         throw new Error(data.error || `Erro ${response.status}`);
       }
-      const data = await response.json();
-      setEvents(data.items || []);
+      setEvents(parseSendEvents(await response.json()));
     } catch (loadError) {
       setError(errorMessage(loadError, 'Não foi possível carregar o histórico de envios.'));
     } finally {
@@ -257,7 +300,7 @@ export default function SendHistoryTab({
                   return (
                     <tr key={event.id} className="align-top hover:bg-surface-hover">
                       <td className="px-4 py-3 font-mono text-xs text-fg">{event.id}</td>
-                      <td className="truncate px-4 py-3 text-sm text-fg" title={event.flow_name}>
+                      <td className="truncate px-4 py-3 text-sm text-fg" title={event.flow_name || undefined}>
                         {event.flow_name || 'Fluxo sem nome'}
                       </td>
                       <td className="px-4 py-3 text-xs text-fg-muted">

@@ -118,7 +118,7 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
               type="button"
               role="tab"
               id={`commercial-return-tab-${item.key}`}
-              aria-controls="commercial-panel"
+              aria-controls="follow-ups-panel"
               aria-selected={returnView === item.key}
               tabIndex={returnView === item.key ? 0 : -1}
               className={
