@@ -447,7 +447,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [addingSku, setAddingSku] = useState<string | null>(null);
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { imageData, imagePreview, clearImage, handleImageFile, imageInputRef } = useImageInput();
+  const { imageData, imagePreview, clearImage, handleImageFile } = useImageInput();
 
   const beginOfficialIssue = useCallback((key: string) => {
     officialIssueKeys.current.add(key);
@@ -1741,10 +1741,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <Button type="button" variant="outline" size="sm" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
                 <Settings size={14} /> Gerenciar modelos
               </Button>
-            </div>
-            <div className="mt-4">
-              <input ref={imageInputRef} id="new-quotation-image" type="file" accept="image/*" className="sr-only" disabled={liveDraftOperation} onChange={(event) => handleImageFile(event.target.files?.[0] || null)} />
-              <label htmlFor="new-quotation-image" className={cn('inline-flex h-9 items-center gap-2 rounded-sm border border-border-control bg-surface px-3 text-sm font-medium text-fg focus-within:outline-none focus-within:ring-2 focus-within:ring-primary', liveDraftOperation ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-surface-hover')}>Selecionar imagem</label>
             </div>
             {imageData && (
               <div className="mt-3 flex items-center gap-3 rounded-md bg-surface-subtle p-3">
