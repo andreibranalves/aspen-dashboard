@@ -111,13 +111,15 @@ Registrar por jornada: comando realmente executado, alvo/estados, achados, decis
 
 ## Branches e ordem de integração
 
-1. `feat/redesign-impeccable-retro`, base `origin/master@90fe000`, bloco R.
-2. `feat/redesign-impeccable-catalog`, encadeada sobre o bloco R, Catálogo validado.
-3. `feat/redesign-impeccable-commercial`, encadeada sobre o bloco A, Comercial validado.
-4. `feat/redesign-impeccable-shipping`, encadeada sobre o bloco B, Envios validado.
-5. `feat/redesign-impeccable-settings`, encadeada sobre o bloco C, Configurações validado.
-6. `feat/redesign-impeccable-results`: Resultados e integração final sobre o HEAD validado do bloco anterior.
+1. PR #217, `feat/redesign-impeccable-retro`, base `origin/master@90fe000`, bloco R.
+2. PR #218, `feat/redesign-impeccable-catalog`, encadeada sobre o bloco R, Catálogo validado.
+3. PR #219, `feat/redesign-impeccable-commercial`, encadeada sobre o bloco A, Comercial validado.
+4. PR #220, `feat/redesign-impeccable-shipping`, encadeada sobre o bloco B, Envios validado.
+5. PR #221, `feat/redesign-impeccable-settings`, encadeada sobre o bloco C, Configurações validado.
+6. PR #222, `feat/redesign-impeccable-results`, cumulativo contra `master`, contém Resultados, integração e todas as correções finais.
+
+Os PRs #217 a #221 permanecem drafts como fatias de revisão e não devem ser mergeados isoladamente. O PR #222 é o único candidato de merge da cadeia; isso evita integrar estados intermediários antes das correções finais.
 
 ## Próxima ação
 
-Publicar a cadeia de branches e abrir os PRs empilhados, sem merge ou deploy de produção.
+Aguardar revisão do PR cumulativo #222. Nenhum merge ou deploy de produção foi executado.
