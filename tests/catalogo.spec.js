@@ -107,6 +107,10 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
     await expect(page.getByRole('dialog', { name: 'Modelos de pedido' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Modelos de pedido' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Editar conjunto' }).click();
+    await expect(page.getByRole('heading', { name: 'Editar modelo' })).toBeVisible();
+    await expect(page.getByLabel('Nome')).toHaveValue('Kit inverno');
+    await page.keyboard.press('Escape');
 
     await page.getByRole('tab', { name: 'Mídias' }).click();
     await expect(page.getByRole('heading', { name: 'Biblioteca de mídias' })).toBeVisible();

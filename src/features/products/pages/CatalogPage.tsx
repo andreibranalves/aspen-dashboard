@@ -38,6 +38,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [templateManagerTarget, setTemplateManagerTarget] = useState<OrderTemplate | null>(null);
   const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [mediaUploadOpen, setMediaUploadOpen] = useState(false);
 
@@ -61,6 +62,16 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   const reloadTemplates = useCallback(async () => {
     await loadTemplates();
   }, [loadTemplates]);
+
+  const openTemplateManager = (template: OrderTemplate | null) => {
+    setTemplateManagerTarget(template);
+    setTemplateManagerOpen(true);
+  };
+
+  const closeTemplateManager = () => {
+    setTemplateManagerOpen(false);
+    setTemplateManagerTarget(null);
+  };
 
   return (
     <PageShell className="space-y-6 pb-28">
@@ -88,7 +99,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               </>
             )}
             {activeTab === 'sets' && (
-              <Button size="md" onClick={() => setTemplateManagerOpen(true)}>
+              <Button size="md" onClick={() => openTemplateManager(null)}>
                 <PlusCircle /> Novo conjunto
               </Button>
             )}
@@ -203,7 +214,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                 title="Nenhum conjunto criado"
                 description="Crie um conjunto para reutilizar uma seleção de produtos nos orçamentos."
                 actions={
-                  <Button onClick={() => setTemplateManagerOpen(true)}>
+                  <Button onClick={() => openTemplateManager(null)}>
                     <PlusCircle /> Novo conjunto
                   </Button>
                 }
@@ -231,7 +242,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                       className="mt-4 self-start"
                       variant="outline"
                       size="sm"
-                      onClick={() => setTemplateManagerOpen(true)}
+                      onClick={() => openTemplateManager(template)}
                     >
                       Editar conjunto
                     </Button>
@@ -242,7 +253,8 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             <OrderTemplateManager
               open={templateManagerOpen}
               templates={templates}
-              onClose={() => setTemplateManagerOpen(false)}
+              initialTemplate={templateManagerTarget}
+              onClose={closeTemplateManager}
               onChanged={reloadTemplates}
             />
           </section>

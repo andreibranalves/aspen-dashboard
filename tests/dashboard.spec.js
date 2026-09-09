@@ -196,6 +196,11 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
   await page.goto(`${BASE_URL}/#/dashboard?period=month`);
   await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(4);
+  await page.getByRole('tab', { name: 'Visão geral' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Produtos' })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'Produtos' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/#\/dashboard\?tab=products$/);
 
   for (const [key, label, heading] of [
     ['overview', 'Visão geral', 'Resultados'],

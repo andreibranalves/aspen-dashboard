@@ -15,6 +15,7 @@ import type { Product } from '@/types/domain';
 interface OrderTemplateManagerProps {
   open: boolean;
   templates: OrderTemplate[];
+  initialTemplate?: OrderTemplate | null;
   onClose: () => void;
   onChanged: () => Promise<void>;
 }
@@ -41,6 +42,7 @@ function focusableElements(container: HTMLElement): HTMLElement[] {
 export default function OrderTemplateManager({
   open,
   templates,
+  initialTemplate = null,
   onClose,
   onChanged,
 }: OrderTemplateManagerProps) {
@@ -128,16 +130,16 @@ export default function OrderTemplateManager({
 
   useEffect(() => {
     if (!open) return;
-    setEditingId(null);
-    setName('');
-    setSelectedItems([]);
+    setEditingId(initialTemplate?.id ?? null);
+    setName(initialTemplate?.name ?? '');
+    setSelectedItems(initialTemplate ? selectedFromTemplate(initialTemplate) : []);
     setSearchTerm('');
     setSearchResults([]);
     setError(null);
     setSaving(false);
     setArchiveTarget(null);
     operationRef.current = false;
-  }, [open]);
+  }, [initialTemplate, open]);
 
   useEffect(() => {
     const term = searchTerm.trim();

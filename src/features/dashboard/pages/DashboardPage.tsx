@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { apiGet, apiPut } from '@/lib/api/api';
@@ -134,9 +135,31 @@ function DashboardTabs({
   tab: DashboardTab;
   onChange: (tab: DashboardTab) => void;
 }) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = TABS.length - 1;
+    const next =
+      event.key === 'ArrowRight'
+        ? index === last
+          ? 0
+          : index + 1
+        : event.key === 'ArrowLeft'
+          ? index === 0
+            ? last
+            : index - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? last
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    onChange(TABS[next].key);
+    document.getElementById(`results-tab-${TABS[next].key}`)?.focus();
+  };
+
   return (
     <div className="flex flex-wrap gap-2" role="tablist" aria-label="Seções de resultados">
-      {TABS.map((option) => (
+      {TABS.map((option, index) => (
         <button
           key={option.key}
           id={`results-tab-${option.key}`}
@@ -144,7 +167,9 @@ function DashboardTabs({
           role="tab"
           aria-selected={tab === option.key}
           aria-controls={`results-panel-${option.key}`}
+          tabIndex={tab === option.key ? 0 : -1}
           onClick={() => onChange(option.key)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
           className={`inline-flex min-h-8 items-center rounded-sm border px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${
             tab === option.key
               ? 'border-primary bg-primary/10 text-primary'
