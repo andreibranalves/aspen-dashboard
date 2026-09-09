@@ -37,6 +37,7 @@ function invalidateSavedDraft(draft: Draft): Draft {
   const next = { ...draft } as StoredAutoQuoteDraft;
   delete next.saved;
   delete next.issueIdempotencyKey;
+  delete next.issueDispatchStarted;
   delete next.issue;
   delete next.result;
   delete next.status;
@@ -134,6 +135,10 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     },
     [],
   );
+
+  const invalidatePricing = useCallback((draftIndices: readonly number[]) => {
+    for (const draftIdx of draftIndices) nextPricingVersion(draftIdx);
+  }, [nextPricingVersion]);
 
   // ── Draft item mutations ──
   const updateDraftItem = useCallback(
@@ -414,6 +419,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     productTimer,
     // Pricing
     fetchPricing,
+    invalidatePricing,
     refetchDraftPricing,
     // Item mutations
     updateDraftItem,

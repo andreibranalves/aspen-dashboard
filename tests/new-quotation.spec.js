@@ -274,6 +274,64 @@ test.describe('Novo orçamento unificado @quotations', () => {
     expect(unexpectedApiRequests).toEqual([]);
   });
 
+  test('bloqueia a troca de modo enquanto o pricing da conversa está pendente', async ({ page }) => {
+    let releasePricing;
+    const pricingGate = new Promise((resolve) => { releasePricing = resolve; });
+    const pricingRequests = [];
+    await mockSharedApis(page, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ orders: [order('Cliente conversa')] }),
+    }), {
+      pricingHandler: async (route) => {
+        pricingRequests.push(route.request());
+        await pricingGate;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, rate: 12.5 }] }) });
+      },
+    });
+    await page.goto('/#/novo-orcamento');
+    await page.getByLabel('Mensagem do cliente para extração').fill('pedido');
+    await page.getByRole('button', { name: 'Extrair dados' }).click();
+    await expect.poll(() => pricingRequests.length).toBe(1);
+    const manualTab = page.getByRole('tab', { name: 'Manual' });
+    await expect(manualTab).toBeDisabled();
+    await expect(page.getByRole('tab', { name: 'Da conversa' })).toHaveAttribute('aria-selected', 'true');
+    releasePricing();
+    await expect(page.getByRole('heading', { name: 'Cliente conversa' })).toBeVisible();
+    await manualTab.click();
+    await expect(manualTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('bloqueia a troca de modo enquanto o pricing manual está pendente', async ({ page }) => {
+    let releasePricing;
+    const pricingGate = new Promise((resolve) => { releasePricing = resolve; });
+    const pricingRequests = [];
+    await mockSharedApis(page, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ orders: [] }),
+    }), {
+      pricingHandler: async (route) => {
+        pricingRequests.push(route.request());
+        await pricingGate;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, rate: 12.5 }] }) });
+      },
+    });
+    await page.goto('/#/manual');
+    await page.getByLabel('Nome do cliente').fill('Cliente manual pricing');
+    await page.getByLabel('Origem *').selectOption('Google Ads');
+    await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
+    await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
+    await expect.poll(() => pricingRequests.length).toBe(1);
+    const conversationTab = page.getByRole('tab', { name: 'Da conversa' });
+    await expect(conversationTab).toBeDisabled();
+    await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+    releasePricing();
+    await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('12.5');
+    await conversationTab.click();
+    await expect(conversationTab).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('compartilha o save entre Salvar e Emitir e não duplica o POST', async ({ page }) => {
     let releaseSave;
     const saveGate = new Promise((resolve) => { releaseSave = resolve; });
@@ -290,7 +348,11 @@ test.describe('Novo orçamento unificado @quotations', () => {
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
-        body: JSON.stringify({ quotation_uuid: 'quotation-race', quotation_id: 'ORC-RACE', revision_id: 'revision-race', concurrency_token: 'token-race' }),
+        body: JSON.stringify({
+          quotation_uuid: 'quotation-race', quotation_id: 'ORC-RACE', revision_id: 'revision-race', concurrency_token: 'token-race',
+          items: [{ item_code: PRODUCT.sku, nome: PRODUCT.nome, qty: '30', applied_unit_price: '12.50', manual_rate: false }],
+          frete: '0.00', total: '375.00',
+        }),
       });
     });
     await page.route('**/api/quotation-issues', async (route) => {
@@ -328,7 +390,15 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
     await page.route('**/api/orcamento', async (route) => {
       saveRequests += 1;
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ quotation_uuid: 'quotation-double', quotation_id: 'ORC-DOUBLE', revision_id: 'revision-double', concurrency_token: 'token-double' }) });
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          quotation_uuid: 'quotation-double', quotation_id: 'ORC-DOUBLE', revision_id: 'revision-double', concurrency_token: 'token-double',
+          items: [{ item_code: PRODUCT.sku, nome: PRODUCT.nome, qty: '30', applied_unit_price: '12.50', manual_rate: false }],
+          frete: '0.00', total: '375.00',
+        }),
+      });
     });
     await page.route('**/api/quotation-issues', async (route) => {
       issueRequests += 1;
@@ -401,6 +471,101 @@ test.describe('Novo orçamento unificado @quotations', () => {
     expect(unexpectedApiRequests).toEqual([]);
   });
 
+  test('mantém o resultado pendente bloqueado até concluir a seleção de produto', async ({ page }) => {
+    let extractionCount = 0;
+    let pricingCount = 0;
+    let releaseSelectionPricing;
+    const selectionPricing = new Promise((resolve) => { releaseSelectionPricing = resolve; });
+    const pricingRequests = [];
+    await mockSharedApis(page, async (route) => {
+      extractionCount += 1;
+      const orders = extractionCount === 1 ? [order('Cliente ativo')] : [order('Cliente pendente')];
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders }) });
+    }, {
+      productData: [PRODUCT, PRODUCT_B],
+      pricingHandler: async (route) => {
+        pricingCount += 1;
+        pricingRequests.push(route.request());
+        if (pricingCount === 3) await selectionPricing;
+        const rate = pricingCount === 1 ? 11 : pricingCount === 2 ? 17 : 42;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, rate }] }),
+        });
+      },
+    });
+
+    await page.goto('/#/novo-orcamento');
+    const input = page.getByLabel('Mensagem do cliente para extração');
+    await input.fill('ativo');
+    await page.getByRole('button', { name: 'Extrair dados' }).click();
+    await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
+    await input.fill('pendente');
+    await page.getByRole('button', { name: 'Extrair dados' }).click();
+    const pending = page.getByText('Novo resultado para revisão (1/1)', { exact: true }).locator('..');
+    await expect(pending).toBeVisible();
+    await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT.sku}`)).toHaveValue('17');
+
+    const sku = pending.getByPlaceholder('Buscar SKU ou nome…');
+    await sku.fill(PRODUCT_B.sku);
+    await expect(pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) })).toBeVisible();
+    await pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) }).click();
+    await expect.poll(() => pricingRequests.length).toBe(3);
+    await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('');
+    await expect(pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' })).toBeDisabled();
+
+    releaseSelectionPricing();
+    await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('42');
+    await expect(pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' })).toBeEnabled();
+    await pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' }).click();
+    await expect(page.getByRole('heading', { name: 'Cliente pendente' })).toBeVisible();
+    await expect(page.getByText('R$ 42,00', { exact: true })).toBeVisible();
+  });
+
+  for (const [testName, pricingResponse] of [
+    ['mantém Apply bloqueado quando a seleção de SKU falha via HTTP', { status: 503, body: { error: 'indisponível' } }],
+    ['mantém Apply bloqueado quando a seleção de SKU retorna resposta malformada', { status: 200, body: { success: true, items: [{ item_code: PRODUCT_B.sku, rate: 'preço inválido' }] } }],
+  ]) {
+    test(testName, async ({ page }) => {
+      let extractionCount = 0;
+      let pricingCount = 0;
+      const pricingRequests = [];
+      await mockSharedApis(page, async (route) => {
+        extractionCount += 1;
+        const orders = extractionCount === 1 ? [order('Cliente ativo')] : [order('Cliente pendente')];
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders }) });
+      }, {
+        productData: [PRODUCT, PRODUCT_B],
+        pricingHandler: async (route) => {
+          pricingCount += 1;
+          pricingRequests.push(route.request());
+          const response = pricingCount === 3
+            ? pricingResponse
+            : { status: 200, body: { success: true, items: [{ item_code: PRODUCT.sku, rate: pricingCount === 1 ? 11 : 17 }] } };
+          await route.fulfill({ status: response.status, contentType: 'application/json', body: JSON.stringify(response.body) });
+        },
+      });
+
+      await page.goto('/#/novo-orcamento');
+      const input = page.getByLabel('Mensagem do cliente para extração');
+      await input.fill('ativo');
+      await page.getByRole('button', { name: 'Extrair dados' }).click();
+      await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
+      await input.fill('pendente');
+      await page.getByRole('button', { name: 'Extrair dados' }).click();
+      const pending = page.getByText('Novo resultado para revisão (1/1)', { exact: true }).locator('..');
+      await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT.sku}`)).toHaveValue('17');
+
+      await pending.getByPlaceholder('Buscar SKU ou nome…').fill(PRODUCT_B.sku);
+      await expect(pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) })).toBeVisible();
+      await pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) }).click();
+      await expect.poll(() => pricingRequests.length).toBe(3);
+      await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('');
+      await expect(pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' })).toBeDisabled();
+    });
+  }
+
   test('preserva um rascunho salvo ao alternar sem editar', async ({ page }) => {
     const savedDraft = {
       index: 0,
@@ -411,7 +576,10 @@ test.describe('Novo orçamento unificado @quotations', () => {
         items: [{ item_code: PRODUCT.sku, item_name: PRODUCT.nome, qty: 10, rate: 12, _rateManual: false }], template_key: 'padrao',
       },
       approved: false, discarded: false,
-      saved: { quotationId: 'quotation-saved', businessNumber: 'ORC-SAVED', revisionId: 'revision-saved', concurrencyToken: 'token-saved' },
+      saved: {
+        quotationId: 'quotation-saved', businessNumber: 'ORC-SAVED', revisionId: 'revision-saved', concurrencyToken: 'token-saved',
+        snapshot: { items: [{ item_code: PRODUCT.sku, item_name: PRODUCT.nome, qty: 10, rate: 12, _rateManual: false }], frete: '0.00', total: '120.00' },
+      },
     };
     await page.addInitScript((draft) => globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [draft] })), savedDraft);
     const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders: [] }) }));
