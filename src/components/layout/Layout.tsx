@@ -13,18 +13,19 @@ export interface BreadcrumbItem {
 }
 
 const PAGE_LABELS: Record<string, string> = {
-  '/dashboard': 'Início',
+  '/dashboard': 'Resultados',
   '/quotations': 'Orçamentos',
   '/novo-orcamento': 'Novo orçamento',
   '/auto': 'Auto',
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
-  '/crm': 'CRM',
+  '/crm': 'Comercial',
   '/follow-ups': 'Follow-ups',
   '/products': 'Produtos',
+  '/catalog': 'Catálogo',
   '/leads': 'Clientes',
   '/settings': 'Configurações',
-  '/whatsapp-deliveries': 'Envios WhatsApp',
+  '/whatsapp-deliveries': 'Envios',
   '/comunicacao': 'Comunicação',
   '/404': 'Página não encontrada',
 };
@@ -36,8 +37,14 @@ function getParentRoute(fallback: string): string {
 
 function getQuotationParent(): BreadcrumbItem {
   const previousRoute = getHashHistoryPreviousRoute();
+  if (previousRoute && routePath(previousRoute) === '/crm') {
+    return { label: 'Comercial', hash: previousRoute };
+  }
   if (previousRoute && routePath(previousRoute) === '/follow-ups') {
     return { label: 'Follow-ups', hash: previousRoute };
+  }
+  if (previousRoute && routePath(previousRoute) === '/whatsapp-deliveries') {
+    return { label: 'Envios', hash: previousRoute };
   }
   if (previousRoute && routePath(previousRoute) === '/comunicacao') {
     const query = previousRoute.split('?')[1] || '';
@@ -46,6 +53,14 @@ function getQuotationParent(): BreadcrumbItem {
     }
   }
   return { label: 'Orçamentos', hash: getParentRoute('/quotations') };
+}
+
+function getProductParent(): BreadcrumbItem {
+  const previousRoute = getHashHistoryPreviousRoute();
+  if (previousRoute && routePath(previousRoute) === '/catalog') {
+    return { label: 'Catálogo', hash: previousRoute };
+  }
+  return { label: 'Catálogo', hash: '/catalog' };
 }
 
 function decodeLabel(value: string): string {
@@ -61,7 +76,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
   if (path === '/dashboard')
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Dashboard', hash: null },
+      { label: 'Resultados', hash: null },
     ];
 
   if (path.startsWith('/quotations/')) {
@@ -83,7 +98,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
     const sku = path.slice('/products/'.length);
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Produtos', hash: getParentRoute('/products') },
+      getProductParent(),
       { label: sku === 'new' ? 'Novo produto' : decodeLabel(sku), hash: null },
     ];
   }

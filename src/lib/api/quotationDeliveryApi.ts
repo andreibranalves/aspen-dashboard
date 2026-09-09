@@ -39,6 +39,10 @@ export interface DeliveryStepView {
     | 'failed';
   attemptCount: number;
   publicError: string | null;
+  nextAttemptAt?: string | null;
+  acceptedAt?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
   updatedAt: string;
 }
 
@@ -73,6 +77,7 @@ export interface DeliveryView {
   actionDeadline: string | null;
   reconciliationDeadline: string | null;
   deliveredAt: string | null;
+  createdAt: string | null;
   updatedAt: string;
 }
 
@@ -221,7 +226,7 @@ function timestamp(value: unknown): string {
 }
 
 function nullableTimestamp(value: unknown): string | null {
-  if (value === null) return null;
+  if (value === undefined || value === null) return null;
   return timestamp(value);
 }
 
@@ -242,6 +247,10 @@ function parseStep(value: unknown): DeliveryStepView {
       value.public_error === null
         ? null
         : text(value.public_error, { required: false, maximum: 500 }),
+    nextAttemptAt: nullableTimestamp(value.next_attempt_at),
+    acceptedAt: nullableTimestamp(value.accepted_at),
+    deliveredAt: nullableTimestamp(value.delivered_at),
+    readAt: nullableTimestamp(value.read_at),
     updatedAt: timestamp(value.updated_at),
   };
 }
@@ -285,6 +294,7 @@ function parseDelivery(
       value.action_deadline === undefined ? null : nullableTimestamp(value.action_deadline),
     reconciliationDeadline: nullableTimestamp(value.reconciliation_deadline),
     deliveredAt: nullableTimestamp(value.delivered_at),
+    createdAt: nullableTimestamp(value.created_at),
     updatedAt: timestamp(value.updated_at),
   };
 }

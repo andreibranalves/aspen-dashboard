@@ -6,12 +6,13 @@ import { isStagingMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
 loadLocalEnv();
 
-const PORT = 5173;
+const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173);
 // Modos mutuamente exclusivos (fonte única: scripts/lib/e2e-mode.mjs).
 // Configurações contraditórias falham no carregamento deste arquivo —
 // antes do primeiro request HTTP de qualquer suite.
 const IS_STAGING = isStagingMode();
-const BASE_URL = resolveE2eBaseUrl();
+const BASE_URL = resolveE2eBaseUrl(process.env, { port: PORT });
+process.env.BASE_URL = BASE_URL;
 
 export default defineConfig({
   testDir: './tests',
@@ -19,7 +20,8 @@ export default defineConfig({
   fullyParallel: !IS_STAGING,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: IS_STAGING ? 1 : 2,
+  // Database-backed local specs share one disposable schema and must not migrate it concurrently.
+  workers: IS_STAGING || process.env.TEST_DATABASE_URL ? 1 : 2,
   reporter: [['html', { outputFolder: 'playwright-report' }], ['list']],
   timeout: 60000,
   expect: { timeout: 10000 },

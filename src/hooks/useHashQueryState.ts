@@ -4,6 +4,7 @@ export type HashQueryParser<T> = (raw: string | null, fallback: T) => T;
 export type HashQuerySerializer<T> = (value: T, fallback: T) => string | null;
 
 const normalizeHash = (hash: string) => hash.replace(/^#/, '') || '/auto';
+const HASH_QUERY_CHANGE_EVENT = 'aspen:hash-query-change';
 
 function readHashQueryValue(key: string): string | null {
   const route = normalizeHash(window.location.hash);
@@ -32,6 +33,7 @@ function replaceHashQueryValue<T>(
   if (nextRoute === route) return;
 
   window.history.replaceState(window.history.state, '', `#${nextRoute}`);
+  window.dispatchEvent(new Event(HASH_QUERY_CHANGE_EVENT));
 }
 
 function defaultHashQuerySerializer<T>(value: T, fallback: T): string | null {
@@ -80,9 +82,11 @@ export function useHashQueryState<T>(
     };
     window.addEventListener('hashchange', syncFromHash);
     window.addEventListener('popstate', syncFromHash);
+    window.addEventListener(HASH_QUERY_CHANGE_EVENT, syncFromHash);
     return () => {
       window.removeEventListener('hashchange', syncFromHash);
       window.removeEventListener('popstate', syncFromHash);
+      window.removeEventListener(HASH_QUERY_CHANGE_EVENT, syncFromHash);
     };
   }, [fallback, key, parse]);
 

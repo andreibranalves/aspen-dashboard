@@ -328,6 +328,10 @@ function CoreQuotationDetail({
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState(data.templateVersionId || '');
   const [selectedTemplate, setSelectedTemplate] = useState(data.templateKey || 'padrao');
+  const templateBaselineRef = useRef({
+    key: data.templateKey || 'padrao',
+    versionId: data.templateVersionId || '',
+  });
   const clientSnapshot = useMemo(
     () => ({
       id: clientId || undefined,
@@ -352,13 +356,19 @@ function CoreQuotationDetail({
     data.status !== 'rascunho' && data.revisionId && deliveryFlowId
       ? { revisionId: data.revisionId, flowId: deliveryFlowId }
       : null;
-  const { deliveriesByKey, pendingKeys, errorByKey, enqueue, resolve } = useQuotationDeliveries(
-    deliveryIdentity ? [deliveryIdentity] : []
-  );
+  const {
+    deliveriesByKey,
+    pendingKeys,
+    errorByKey,
+    enqueueErrorByKey,
+    enqueue,
+    resolve,
+  } = useQuotationDeliveries(deliveryIdentity ? [deliveryIdentity] : []);
   const deliveryKey = deliveryIdentity ? deliveryIdentityKey(deliveryIdentity) : '';
   const delivery = deliveryKey ? deliveriesByKey[deliveryKey] || null : null;
   const deliveryPending = deliveryKey ? pendingKeys.includes(deliveryKey) : false;
   const deliveryError = deliveryKey ? errorByKey[deliveryKey] : undefined;
+  const enqueueError = deliveryKey ? enqueueErrorByKey[deliveryKey] : undefined;
 
   const handleResolveDelivery = useCallback(
     async (decision: DeliveryResolution, note: string) => {
@@ -381,6 +391,10 @@ function CoreQuotationDetail({
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.templateKey || 'padrao');
     setSelectedVersionId(initialData.templateVersionId || '');
+    templateBaselineRef.current = {
+      key: initialData.templateKey || 'padrao',
+      versionId: initialData.templateVersionId || '',
+    };
     setClientResults([]);
     setClientSearching(false);
     if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -460,22 +474,26 @@ function CoreQuotationDetail({
         const persisted = initialData.templateKey || '';
         const persistedTemplate = available.find((template) => template.key === persisted);
         setTemplates(available);
-        if (persistedTemplate?.archived) {
-          setSelectedTemplate(persisted);
-          setSelectedVersionId(
-            initialData.templateVersionId || persistedTemplate.current_version_id || ''
-          );
-        } else if (initialData.status === 'rascunho' && fallback) {
-          setSelectedTemplate(fallback.key);
-          setSelectedVersionId(fallback.current_version_id || '');
-        } else if (persistedTemplate) {
-          setSelectedTemplate(persisted);
-          setSelectedVersionId(
-            initialData.templateVersionId || persistedTemplate.current_version_id || ''
-          );
-        } else if (fallback) {
-          setSelectedTemplate(fallback.key);
-          setSelectedVersionId(fallback.current_version_id || '');
+        const selection = persistedTemplate?.archived
+          ? {
+              key: persisted,
+              versionId: initialData.templateVersionId || persistedTemplate.current_version_id || '',
+            }
+          : initialData.status === 'rascunho' && fallback
+            ? { key: fallback.key, versionId: fallback.current_version_id || '' }
+            : persistedTemplate
+              ? {
+                  key: persisted,
+                  versionId:
+                    initialData.templateVersionId || persistedTemplate.current_version_id || '',
+                }
+              : fallback
+                ? { key: fallback.key, versionId: fallback.current_version_id || '' }
+                : null;
+        if (selection) {
+          setSelectedTemplate(selection.key);
+          setSelectedVersionId(selection.versionId);
+          templateBaselineRef.current = selection;
         }
         setTemplateError('');
       })
@@ -717,6 +735,10 @@ function CoreQuotationDetail({
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.templateKey || 'padrao');
       setSelectedVersionId(authoritative.templateVersionId || '');
+      templateBaselineRef.current = {
+        key: authoritative.templateKey || 'padrao',
+        versionId: authoritative.templateVersionId || '',
+      };
       showMessage('');
       setConflict('');
       setEditing(false);
@@ -737,8 +759,8 @@ function CoreQuotationDetail({
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
-    if (selectedTemplate !== (data.templateKey || 'padrao')) return true;
-    if (selectedVersionId !== (data.templateVersionId || '')) return true;
+    if (selectedTemplate !== templateBaselineRef.current.key) return true;
+    if (selectedVersionId !== templateBaselineRef.current.versionId) return true;
     return false;
   }, [
     editing,
@@ -1288,7 +1310,10 @@ function CoreQuotationDetail({
     { label: 'Previsão de entrega', value: entrega, enabled: Boolean(entrega.trim()) },
   ].filter(({ value, enabled }) => enabled && quotationContentHasText(value));
   const issuedSummary = (
-    <section aria-labelledby="quotation-summary-content-title" className="border-t border-line py-5">
+    <section
+      aria-labelledby="quotation-summary-content-title"
+      className="border-t border-line py-5"
+    >
       <h2 id="quotation-summary-content-title" className="text-sm font-semibold text-fg">
         Itens e condições
       </h2>
@@ -1590,7 +1615,7 @@ function CoreQuotationDetail({
                   type="button"
                   role="tab"
                   aria-selected={isActive}
-                aria-controls="quotation-panel"
+                  aria-controls="quotation-panel"
                   tabIndex={isActive ? 0 : -1}
                   className={`border-b-2 px-0.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${isActive ? 'border-primary text-link' : 'border-transparent text-fg-muted hover:text-fg'}`}
                   onClick={() => setActiveTab(tab.id)}
@@ -2253,11 +2278,11 @@ function CoreQuotationDetail({
                   {whatsappDisabledReason}
                 </p>
               )}
-              {delivery && deliveryError && (
+              {(delivery && deliveryError) || enqueueError ? (
                 <p role="status" className="mt-2 text-xs text-warning">
-                  {deliveryError}
+                  {deliveryError || enqueueError}
                 </p>
-              )}
+              ) : null}
               {deliveryFlows.length === 0 && !deliveryError && (
                 <p role="status" className="mt-2 text-xs text-fg-muted">
                   Não foi possível carregar os fluxos. Tente novamente mais tarde.
@@ -2610,12 +2635,16 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       previousRoute &&
       routePath(previousRoute) === '/comunicacao' &&
       new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
-    const returnRoute = fromFollowUps || fromSendHistory ? previousRoute : '/quotations';
+    const fromDeliveries = previousRoute && routePath(previousRoute) === '/whatsapp-deliveries';
+    const returnRoute =
+      fromFollowUps || fromSendHistory || fromDeliveries ? previousRoute : '/quotations';
     const returnLabel = fromFollowUps
       ? 'Follow-ups'
       : fromSendHistory
         ? 'Histórico de envios'
-        : 'Orçamentos';
+        : fromDeliveries
+          ? 'Envios'
+          : 'Orçamentos';
     return (
       <PageShell className="space-y-4">
         <button

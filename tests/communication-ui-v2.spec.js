@@ -192,3 +192,19 @@ test('histórico abre o orçamento referenciado, volta para a aba e mantém even
     'true'
   );
 });
+
+test('histórico rejeita envelope malformado sem derrubar a tela', async ({ page }) => {
+  await page.route('**/api/communication-send-events*', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, items: {} }),
+    })
+  );
+
+  await page.goto('/#/comunicacao?tab=history');
+  await expect(page.getByRole('alert')).toContainText(
+    'Não foi possível carregar o histórico de envios.'
+  );
+  await expect(page.getByRole('heading', { name: 'Histórico de envios' })).toBeVisible();
+});

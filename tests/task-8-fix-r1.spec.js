@@ -7,7 +7,7 @@ import {
 const revisionId = '22222222-2222-4222-8222-222222222222';
 const quotationId = 'ORC-20260001';
 const quotationUuid = '11111111-1111-4111-8111-111111111111';
-const TEST_ORIGIN = 'http://localhost:5173';
+const TEST_ORIGIN = process.env.BASE_URL || 'http://localhost:5173';
 const controlledOrderPages = new WeakMap();
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -49,6 +49,77 @@ test.afterEach(({ page }) => {
 
 function json(route, body, status = 200, contentType = 'application/json') {
   return route.fulfill({ status, contentType, body: JSON.stringify(body) });
+}
+
+function issuedQuotationDetail() {
+  return withCanonicalQuotationDetail({
+    id: quotationId,
+    quotation_id: quotationId,
+    quotation_name: quotationId,
+    quotation_uuid: quotationUuid,
+    revision_id: revisionId,
+    revision: 1,
+    revision_number: 1,
+    status: 'Emitido',
+    status_canonical: 'emitido',
+    cliente: 'Cliente envio',
+    client_id: '33333333-3333-4333-8333-333333333333',
+    cliente_snapshot: {
+      id: '33333333-3333-4333-8333-333333333333',
+      nome: 'Cliente envio',
+      email: 'cliente@example.test',
+      telefone: '5511999990000',
+    },
+    validade_dias: 15,
+    validade: '2026-08-28',
+    data: '2026-08-13',
+    pagamento: '',
+    entrega: '',
+    frete_padrao: '0.00',
+    frete: '0.00',
+    observacoes: '',
+    prazo_producao: '',
+    template_key: 'padrao',
+    template_hash: 'a'.repeat(64),
+    template_version_id: null,
+    template_version: null,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo de produção', value: '' },
+        current: { enabled: true, title: 'Prazo de produção', value: '' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: '' },
+        current: { enabled: true, title: 'Pagamento', body: '' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições gerais', body: '' },
+        current: { enabled: true, title: 'Condições gerais', body: '' },
+      },
+    },
+    items: [{
+      item_code: 'SKU-1',
+      sku: 'SKU-1',
+      item_name: 'Produto',
+      nome: 'Produto',
+      qty: '10.000',
+      suggested_unit_price: '9.00',
+      applied_unit_price: '9.00',
+      price_difference: '0.00',
+      line_total: '90.00',
+      manual_rate: false,
+    }],
+    subtotal: '90.00',
+    total: '90.00',
+    valor: '90.00',
+    revision_history: [],
+    derived_expired: false,
+    concurrency_token: '2026-08-13T00:00:00.000Z',
+    updated_at: '2026-08-13T00:00:00.000Z',
+    email_sent: false,
+    email_sent_at: null,
+  });
 }
 
 test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quotations @critical', async ({
@@ -93,9 +164,11 @@ test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quota
   await page.goto('/#/quotations');
   await expect(page.getByText(quotationId, { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Emitido', { exact: true }).first()).toContainText('Emitido');
-  await expect(page.getByText('(2)', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Emitido · 2', exact: true })).toBeVisible();
   const popup = page.waitForEvent('popup');
-  await page.getByLabel(`Abrir PDF do orçamento ${quotationId}`).first().click();
+  await page.getByRole('button', { name: `Ações do orçamento ${quotationId}` }).click();
+  await page.locator(`[popover][aria-label="Ações do orçamento ${quotationId}"]`)
+    .getByRole('link', { name: 'Visualizar PDF' }).click();
   const opened = await popup;
   await opened.waitForURL('**/api/quotation-preview**');
   const url = new globalThis.URL(opened.url());
@@ -578,7 +651,15 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
       default_key: 'padrao',
     })
   );
-  await page.route('**/api/quotations**', (route) => json(route, { data: [] }));
+  await page.route('**/api/quotations**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return json(
+      route,
+      route.request().method() === 'GET' && url.searchParams.has('id')
+        ? issuedQuotationDetail()
+        : { data: [] }
+    );
+  });
   await page.route('**/api/communication-flows**', (route) =>
     json(route, {
       success: true,
@@ -681,6 +762,12 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
       202
     );
   });
+  await page.route('**/api/whatsapp-send-status**', (route) =>
+    json(route, { error: 'not found' }, 404)
+  );
+  await page.route('**/api/quotation-deliveries**', (route) =>
+    json(route, { error: 'not found' }, 404)
+  );
 
   await page.goto('/#/auto');
   await page.locator('textarea').first().fill('10 produtos');
@@ -815,7 +902,8 @@ test('projeções locais descartam marcadores proibidos de cliente e cotação @
   await expect(page.getByText('Cliente legítimo', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await page.goto(`/#/quotations/${quotationId}`);
-  await expect(page.locator('tr').filter({ hasText: 'Produto legítimo' })).toBeVisible();
+  await page.getByRole('tab', { name: 'Itens' }).click();
+  await expect(page.getByRole('row').filter({ hasText: 'Produto legítimo' })).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href="https://evil.test"]')).toHaveCount(0);
 });

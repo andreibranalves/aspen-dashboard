@@ -12,6 +12,7 @@ const probe = `
     webServer: Boolean(config.webServer),
     testIgnore: config.testIgnore || null,
     baseURL: config.use.baseURL,
+    environmentBaseURL: process.env.BASE_URL,
   }));
 `;
 
@@ -52,6 +53,13 @@ test('APP_ENV=preview usa origem remota, um worker e nenhum servidor local', () 
   assert.equal(config.webServer, false);
   assert.equal(config.testIgnore, null);
   assert.equal(config.baseURL, 'https://preview.example.test');
+  assert.equal(config.environmentBaseURL, config.baseURL);
+});
+
+test('PLAYWRIGHT_PORT mantém config e testes no mesmo servidor local', () => {
+  const config = loadConfig({ APP_ENV: 'development', PLAYWRIGHT_PORT: '5202' });
+  assert.equal(config.baseURL, 'http://localhost:5202');
+  assert.equal(config.environmentBaseURL, config.baseURL);
 });
 
 test('Preview rejeita BASE_URL fora da origem staging', () => {
