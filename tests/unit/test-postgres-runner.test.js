@@ -9,6 +9,18 @@ import {
   runPostgresTests,
   selectPostgresTestFiles,
 } from '../../scripts/test-postgres.mjs';
+import {
+  npmInvocation,
+  runDockerPostgres,
+} from '../../scripts/test-postgres-docker.mjs';
+
+function outputBuffer() {
+  let value = '';
+  return {
+    stream: { write(chunk) { value += String(chunk); } },
+    read() { return value; },
+  };
+}
 
 test('accepts only loopback PostgreSQL URLs for disposable runs', () => {
   assert.equal(isDisposablePostgresUrl('postgresql://postgres:postgres@127.0.0.1:5432/test'), true);
@@ -147,4 +159,46 @@ test('runPostgresTests executes only the selected DB-gated files', () => {
   const manifest = JSON.parse(readFileSync('scripts/test-postgres-manifest.json', 'utf8'));
   assert.deepEqual([...calls[0]].sort(), [...manifest].sort());
   assert.ok(manifest.length > 0);
+});
+
+test('Docker PostgreSQL wrapper launches npm through Node on Windows', () => {
+  assert.deepEqual(npmInvocation({
+    env: { npm_execpath: 'C:\\npm\\npm-cli.js' },
+    execPath: 'C:\\node\\node.exe',
+    platform: 'win32',
+  }), {
+    command: 'C:\\node\\node.exe',
+    args: ['C:\\npm\\npm-cli.js', 'run', 'test:postgres'],
+  });
+  assert.deepEqual(npmInvocation({ env: {}, platform: 'win32' }), {
+    command: 'npm.cmd',
+    args: ['run', 'test:postgres'],
+  });
+  assert.deepEqual(npmInvocation({ env: {}, platform: 'linux' }), {
+    command: 'npm',
+    args: ['run', 'test:postgres'],
+  });
+});
+
+test('Docker PostgreSQL wrapper preserves the test failure when cleanup also fails', () => {
+  const calls = [];
+  const stderr = outputBuffer();
+  const exitCode = runDockerPostgres({
+    env: { npm_execpath: '/npm/npm-cli.js' },
+    execPath: '/node',
+    platform: 'linux',
+    stderr: stderr.stream,
+    stdout: outputBuffer().stream,
+    execute(command, args) {
+      calls.push({ command, args });
+      if (calls.length === 1) return { status: 0 };
+      if (calls.length === 2) return { status: 7 };
+      return { status: null, error: new Error('docker indisponível no cleanup') };
+    },
+  });
+
+  assert.equal(exitCode, 7);
+  assert.equal(calls[1].command, '/node');
+  assert.deepEqual(calls[1].args, ['/npm/npm-cli.js', 'run', 'test:postgres']);
+  assert.match(stderr.read(), /FAIL cleanup do PostgreSQL de testes/);
 });
