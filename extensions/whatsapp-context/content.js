@@ -10,7 +10,6 @@
     context: null,
     loading: false,
     error: '',
-    editingLink: false,
     generation: 0,
   };
   let host;
@@ -20,6 +19,8 @@
   let observer;
   let syncTimer;
   let syncSequence = 0;
+  let rendered = false;
+  let renderedOpen = true;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -45,15 +46,12 @@
 
   function openApp(path) { send({ type: 'aspen-context:open', path }); }
 
-  function linkControls(context, collapsed) {
+  function linkControls(context) {
     if (!context || !context.linking || !context.linking.available) {
-      if (collapsed) return '';
       const missing = !state.conversation.accountId ? 'a conta conectada' : 'a conversa aberta';
       return '<p>Não foi possível identificar ' + missing + ' para salvar o vínculo.</p><button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>';
     }
-    const unlink = context.linking.version ? '<button data-action="unlink">Desvincular cliente</button>' : '';
-    if (collapsed && !state.editingLink) return '<div class="aspen-link-search"><button data-action="edit-link">Corrigir cliente</button>' + unlink + '</div>';
-    return '<div class="aspen-link-search"><input data-search aria-label="Pesquisar cliente" placeholder="Nome ou telefone do cliente" maxlength="100"><button data-action="find">Pesquisar cliente</button>' + unlink + '</div>';
+    return context.linking.version ? '<div class="aspen-link-actions"><button data-action="unlink">Desvincular cliente</button></div>' : '';
   }
 
   function renderContext(context) {
@@ -71,8 +69,8 @@
     const latest = context.latestQuotation;
     const previous = Array.isArray(context.quotations) ? context.quotations : [];
     const deliveries = Array.isArray(context.deliveries) ? context.deliveries : [];
-    const quotation = (item, prominent) => `<a class="aspen-quote ${prominent ? 'aspen-quote-latest' : ''}" href="${escapeHtml(item.url || '#')}" target="_blank" rel="noopener noreferrer"><span><strong>${escapeHtml(item.businessNumber)}</strong><small>${escapeHtml(item.status || '')} · ${escapeHtml(item.date || '')}</small></span><span>${escapeHtml(item.total || '')}</span></a>`;
-    return `<section class="aspen-card"><div class="aspen-contact"><strong>${escapeHtml(contact.nome)}</strong><span>${escapeHtml(contact.tipo)} · ${escapeHtml(contact.telefone || '')}</span>${contact.email ? `<span>${escapeHtml(contact.email)}</span>` : ''}<div><button data-action="open" data-path="${escapeHtml(context.actions && context.actions.openContact || '#')}">Abrir cadastro</button><button data-action="copy" data-value="${escapeHtml(contact.telefone || '')}">Copiar telefone</button></div></div>${latest ? `<h3>Último orçamento</h3>${quotation(latest, true)}` : '<div class="aspen-empty">Nenhum orçamento ainda.</div>'}${previous.length > 0 ? `<h3>Histórico</h3><div class="aspen-list">${previous.filter(item => !latest || item.id !== latest.id).map(item => quotation(item, false)).join('')}</div>` : ''}${deliveries.length > 0 ? `<h3>Entregas</h3><div class="aspen-list">${deliveries.map(item => `<div class="aspen-delivery"><span>${escapeHtml(item.businessNumber || '')}</span><span>${escapeHtml(item.status || 'sem entrega registrada')}</span></div>`).join('')}</div>` : ''}${linkControls(context, true)}</section>`;
+    const quotation = (item, prominent) => `<button type="button" class="aspen-quote ${prominent ? 'aspen-quote-latest' : ''}" data-action="open" data-path="${escapeHtml(item.url || '#')}"><span><strong>${escapeHtml(item.businessNumber)}</strong><small>${escapeHtml(item.status || '')} · ${escapeHtml(item.date || '')}</small></span><span>${escapeHtml(item.total || '')}</span></button>`;
+    return `<section class="aspen-card"><div class="aspen-contact"><strong>${escapeHtml(contact.nome)}</strong><span>${escapeHtml(contact.tipo)} · ${escapeHtml(contact.telefone || '')}</span>${contact.email ? `<span>${escapeHtml(contact.email)}</span>` : ''}<div><button data-action="open" data-path="${escapeHtml(context.actions && context.actions.openContact || '#')}">Abrir cadastro</button><button data-action="copy" data-value="${escapeHtml(contact.telefone || '')}">Copiar telefone</button></div></div>${latest ? `<h3>Último orçamento</h3>${quotation(latest, true)}` : '<div class="aspen-empty">Nenhum orçamento ainda.</div>'}${previous.length > 0 ? `<h3>Histórico</h3><div class="aspen-list">${previous.filter(item => !latest || item.id !== latest.id).map(item => quotation(item, false)).join('')}</div>` : ''}${deliveries.length > 0 ? `<h3>Entregas</h3><div class="aspen-list">${deliveries.map(item => `<div class="aspen-delivery"><span>${escapeHtml(item.businessNumber || '')}</span><span>${escapeHtml(item.status || 'sem entrega registrada')}</span></div>`).join('')}</div>` : ''}${linkControls(context)}</section>`;
   }
 
   function render() {
@@ -81,7 +79,10 @@
     const status = conversation.status || 'idle';
     const [title, description] = messageForStatus(status);
     const visible = state.open ? 'aspen-open' : 'aspen-closed';
-    root.innerHTML = `<button class="aspen-drawer-toggle ${visible}" data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel" aria-expanded="${state.open}" aria-controls="aspen-context-drawer" title="${state.open ? 'Recolher painel' : 'Abrir Aspen'}"><span aria-hidden="true">${state.open ? '»' : 'A'}</span></button><aside id="aspen-context-drawer" class="aspen-panel ${visible}" aria-label="Contexto comercial Aspen"><header><div><strong>Aspen</strong><small>Contexto comercial</small></div><button data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel">${state.open ? '×' : '‹'}</button></header>${state.open ? `<main>${state.loading ? '<div class="aspen-state"><strong>Consultando Aspen</strong><span>Carregando contexto comercial…</span></div>' : state.context ? renderContext(state.context) : `<div class="aspen-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${conversation.displayName ? `<small>${escapeHtml(conversation.displayName)}</small>` : ''}${conversation.status === 'unresolved' ? '<button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>' : conversation.status === 'login_required' ? '<button data-action="open" data-path="/">Abrir Aspen</button><button data-action="retry">Tentar novamente</button>' : conversation.status === 'error' ? '<button data-action="retry">Tentar novamente</button>' : ''}</div>`}</main>` : ''}</aside>`;
+    const motion = rendered && renderedOpen !== state.open ? (state.open ? 'aspen-opening' : 'aspen-closing') : '';
+    rendered = true;
+    renderedOpen = state.open;
+    root.innerHTML = `<button class="aspen-drawer-toggle ${visible}" data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel" aria-expanded="${state.open}" aria-controls="aspen-context-drawer" title="${state.open ? 'Recolher painel' : 'Abrir Aspen'}"><span aria-hidden="true">${state.open ? '»' : 'A'}</span></button><aside id="aspen-context-drawer" class="aspen-panel ${visible} ${motion}" aria-label="Contexto comercial Aspen"><header><div><strong>Aspen</strong><small>Contexto comercial</small></div></header>${state.open ? `<main>${state.loading ? '<div class="aspen-state"><strong>Consultando Aspen</strong><span>Carregando contexto comercial…</span></div>' : state.context ? renderContext(state.context) : `<div class="aspen-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${conversation.displayName ? `<small>${escapeHtml(conversation.displayName)}</small>` : ''}${conversation.status === 'unresolved' ? '<button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>' : conversation.status === 'login_required' ? '<button data-action="open" data-path="/">Abrir Aspen</button><button data-action="retry">Tentar novamente</button>' : conversation.status === 'error' ? '<button data-action="retry">Tentar novamente</button>' : ''}</div>`}</main>` : ''}</aside>`;
   }
 
   function mount() {
@@ -95,8 +96,6 @@
       const target = event.target && event.target.closest ? event.target.closest('[data-action]') : null;
       if (!target) return;
       const action = target.getAttribute('data-action');
-      if (action === 'find') { const query = root.querySelector('[data-search]')?.value.trim(); if (query && query.length >= 2) lookupContext(state.conversation, state.generation, query); return; }
-      if (action === 'edit-link') { state.editingLink = true; render(); return; }
       if (action === 'link' || action === 'unlink') { confirmLink(action, target); return; }
       if (action === 'toggle') { state.open = !state.open; render(); return; }
       if (action === 'retry') { sync(true); return; }
@@ -130,9 +129,9 @@
     });
   }
 
-  function lookupContext(conversation, generation, search) {
+  function lookupContext(conversation, generation) {
     state.loading = true; state.error = ''; render();
-    send({ type: 'aspen-context:lookup', ...identityMessage(conversation), search }, function (result) {
+    send({ type: 'aspen-context:lookup', ...identityMessage(conversation) }, function (result) {
       if (generation !== state.generation) return;
       state.loading = false;
       if (!result || result.status === 'error' || result.status === 'login_required') {
@@ -153,7 +152,6 @@
       state.context = null;
       state.loading = false;
       state.error = '';
-      state.editingLink = false;
       state.conversation = { status: 'resolving' };
       render();
     }
@@ -184,7 +182,6 @@
     state.context = null;
     state.loading = false;
     state.error = '';
-    state.editingLink = false;
     render();
     if (['ready', 'unresolved'].includes(conversation.status) && (conversation.phone || conversation.technicalId)) lookupContext(conversation, generation);
   }

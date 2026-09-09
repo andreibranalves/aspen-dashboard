@@ -9,6 +9,7 @@ const { AbortController } = globalThis;
 
 const contentSource = await readFile(new URL('../../extensions/whatsapp-context/content.js', import.meta.url), 'utf8');
 const backgroundSource = await readFile(new URL('../../extensions/whatsapp-context/background.js', import.meta.url), 'utf8');
+const stylesSource = await readFile(new URL('../../extensions/whatsapp-context/styles.css', import.meta.url), 'utf8');
 
 function deferred() {
   let resolve;
@@ -75,6 +76,7 @@ function createHarness({ conversations, lookupResults = [], visibleKeys = [] }) 
 
 function createBackgroundHarness(fetchFn, timers = { setTimeout, clearTimeout }) {
   let listener;
+  const openedUrls = [];
   const context = vm.createContext({
     ASPEN_WHATSAPP_CONTEXT_CONFIG: { appOrigin: 'https://aspen.example', endpointPath: '/api/whatsapp-context' },
     AbortController, URL, console,
@@ -82,13 +84,19 @@ function createBackgroundHarness(fetchFn, timers = { setTimeout, clearTimeout })
     setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
     chrome: {
       runtime: { onMessage: { addListener(value) { listener = value; } } },
-      tabs: { create() {} },
+      tabs: { create({ url }) { openedUrls.push(url); } },
     },
   });
   vm.runInContext(backgroundSource, context, { filename: 'background.js' });
   return {
+    get openedUrls() { return openedUrls; },
     lookup(phone = '5521981763562') {
       return new Promise(resolve => listener({ type: 'aspen-context:lookup', phone }, {}, resolve));
+    },
+    open(path) {
+      let response;
+      listener({ type: 'aspen-context:open', path }, {}, value => { response = value; });
+      return response;
     },
   };
 }
@@ -162,13 +170,35 @@ test('same conversation avoids request storms and mount is idempotent', async ()
   assert.match(harness.html, /Contato A/);
 });
 
-test('matched customer shows context immediately and keeps correction secondary', async () => {
+test('matched customer shows context immediately without manual search controls', async () => {
   const harness = createHarness({ conversations: [conversationA], lookupResults: [settled({ ...matchedA, linking: { available: true, version: null } })] });
   await flush();
   assert.match(harness.html, /Contato A/);
-  assert.match(harness.html, /Corrigir cliente/);
   assert.doesNotMatch(harness.html, /placeholder="Nome ou telefone do cliente"/);
+  assert.doesNotMatch(harness.html, /Pesquisar cliente/);
+  assert.doesNotMatch(harness.html, /Corrigir cliente/);
   assert.doesNotMatch(harness.html, /Vincular cliente/);
+  assert.doesNotMatch(harness.html, />×<\/button>/);
+});
+
+test('quotation action delegates the UUID route to the Aspen origin', async () => {
+  const quotation = { id: 'cd90f75a-9b66-4d24-9dd0-e54f847480e6', businessNumber: 'ORC-20262121', status: 'Enviado', date: '2026-09-09', total: '9385.20', url: '/#/quotations/cd90f75a-9b66-4d24-9dd0-e54f847480e6' };
+  const panel = createHarness({ conversations: [conversationA], lookupResults: [settled({ ...matchedA, latestQuotation: quotation, quotations: [quotation], linking: { available: true, version: null } })] });
+  await flush();
+  assert.match(panel.html, /data-action="open" data-path="\/#\/quotations\/cd90f75a-9b66-4d24-9dd0-e54f847480e6"/);
+  assert.doesNotMatch(panel.html, /href="\/#\/quotations/);
+
+  const background = createBackgroundHarness(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+  assert.equal(background.open(quotation.url).ok, true);
+  assert.equal(background.openedUrls[0], 'https://aspen.example/#/quotations/cd90f75a-9b66-4d24-9dd0-e54f847480e6');
+});
+
+test('drawer is narrower and uses sliding motion with a reduced-motion fallback', () => {
+  assert.match(stylesSource, /--aspen-panel-width: min\(336px,/);
+  assert.match(stylesSource, /@keyframes aspen-panel-in/);
+  assert.match(stylesSource, /@keyframes aspen-panel-out/);
+  assert.match(stylesSource, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(stylesSource, /aspen-panel\.aspen-closed\s*\{[^}]*display:\s*none/);
 });
 
 test('content panel renders explicit terminal states for login, API, and empty results', async () => {
