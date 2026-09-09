@@ -2,6 +2,7 @@
   "tests/unit/ad-consent-chain-postgres.test.ts",
   "tests/unit/backup.test.ts",
   "tests/unit/beta-cleanup-postgres.test.ts",
+  "tests/unit/client-consolidation-postgres.test.ts",
   "tests/unit/crm-deals-postgres.test.ts",
   "tests/unit/disposable-postgres-target.test.ts",
   "tests/unit/duplicate-quotation-postgres.test.ts",
