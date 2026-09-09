@@ -1035,14 +1035,14 @@ test('sales order detail presents one origin, one progress summary, and protecte
   const partialProgress = page.getByRole('region', { name: 'Progresso do pedido' });
   await expect(partialProgress.getByText('60%', { exact: true })).toBeVisible();
   await expect(partialProgress.getByText('40%', { exact: true })).toBeVisible();
-  const sourceButton = page.getByRole('button', { name: 'Abrir orçamento de origem' });
+  const sourceButton = page.getByRole('button', { name: 'Abrir orçamento ORC-LOCAL-1' });
   await expect(sourceButton).toHaveCount(1);
-  await expect(sourceButton).toHaveAttribute('data-variant', 'ghost');
+  await expect(sourceButton).toHaveAttribute('data-variant', 'link');
   await sourceButton.click();
   await expect(page).toHaveURL(/\/#\/quotations\/ORC-LOCAL-1$/);
 
   await page.goto('/#/sales-orders/LOCAL-COMPLETED');
-  await expect(page.getByText('Concluído', { exact: true })).toBeVisible();
+  await expect(page.getByTitle('Concluído')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Progresso do pedido' }).getByText('100%', { exact: true })).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();

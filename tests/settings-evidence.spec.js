@@ -119,6 +119,9 @@ async function mockSettings(page) {
 
 async function settleForEvidence(page) {
   await page.evaluate(async () => {
+    globalThis.scrollTo(0, 0);
+    globalThis.document.scrollingElement?.scrollTo(0, 0);
+    globalThis.document.querySelector('main')?.scrollTo(0, 0);
     await globalThis.document.fonts.ready;
     await Promise.all(
       globalThis.document
@@ -132,6 +135,11 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   const state = await mockSettings(page);
   await page.goto('/#/settings');
   await expect(page.getByRole('heading', { name: 'Padrões de orçamento' })).toBeVisible();
+  for (const placeholder of await page.getByText('Digite o conteúdo…', { exact: true }).all()) {
+    const box = await placeholder.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.y).toBeGreaterThan(55);
+  }
 
   for (const viewport of [
     { width: 1440, height: 900 },
