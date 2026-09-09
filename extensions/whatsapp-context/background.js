@@ -24,23 +24,29 @@ importScripts('./config.js');
     return { status: 'error', message: 'Não foi possível consultar o contexto.' };
   }
 
-  async function lookup(phone) {
+  async function lookup(message) {
     const appOrigin = safeOrigin(config.appOrigin);
-    if (!appOrigin || !PHONE_RE.test(phone)) return { status: 'unresolved', message: 'Telefone não confirmado.' };
+    const phone = String(message.phone || '');
+    if (!appOrigin || phone && !PHONE_RE.test(phone) || !phone && !message.conversationId) return { status: 'unresolved', message: 'Telefone não confirmado.' };
     const endpoint = new URL(config.endpointPath || '/api/whatsapp-context', appOrigin);
-    endpoint.searchParams.set('phone', phone);
+    if (phone) endpoint.searchParams.set('phone', phone);
+    for (const key of ['accountId', 'conversationId', 'search', 'phoneSource']) {
+      if (message[key]) endpoint.searchParams.set(key, String(message[key]));
+    }
+    const method = message.type === 'aspen-context:link' ? 'PUT' : message.type === 'aspen-context:unlink' ? 'DELETE' : 'GET';
     const controller = new AbortController();
     const timeout = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(endpoint.toString(), {
-        method: 'GET',
+        method,
+        ...(method !== 'GET' ? { body: JSON.stringify({ clientId: message.clientId, expectedVersion: message.expectedVersion, expectedClientPhone: message.expectedClientPhone, expectedClientName: message.expectedClientName }) } : {}),
         credentials: 'include',
         mode: 'cors',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}) },
         signal: controller.signal,
       });
       const body = await response.json().catch(function () { return null; });
-      if (!response.ok) return publicError(response.status);
+      if (!response.ok) return response.status === 409 ? { status: 'error', message: 'O vínculo mudou. Atualize o painel e tente novamente.' } : publicError(response.status);
       if (!body || typeof body !== 'object' || Array.isArray(body)) return { status: 'error', message: 'Resposta inválida do Aspen.' };
       return body;
     } catch (error) {
@@ -59,8 +65,9 @@ importScripts('./config.js');
 
   chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
     if (!message || typeof message !== 'object') return false;
-    if (message.type === 'aspen-context:lookup') {
-      lookup(String(message.phone || '')).then(sendResponse);
+    if (['aspen-context:lookup', 'aspen-context:link', 'aspen-context:unlink'].includes(message.type)) {
+      if (message.type !== 'aspen-context:lookup' && (!_sender || !String(_sender.url || '').startsWith('https://web.whatsapp.com/'))) return false;
+      lookup(message).then(sendResponse);
       return true;
     }
     if (message.type === 'aspen-context:open') {

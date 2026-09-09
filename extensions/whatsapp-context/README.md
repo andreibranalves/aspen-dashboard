@@ -1,6 +1,6 @@
 # Extensão Aspen — contexto comercial
 
-Superfície contextual somente leitura. Não lê nem envia corpo de mensagens ao Aspen.
+Contexto comercial com vínculo de cliente confirmado pelo operador. Não lê nem envia corpo de mensagens ao Aspen.
 
 ## Instalação interna
 
@@ -11,4 +11,4 @@ Superfície contextual somente leitura. Não lê nem envia corpo de mensagens ao
 
 `manifest.json` restringe o content script a `https://web.whatsapp.com/*`. O service worker usa a sessão autenticada do Aspen (`credentials: include`); não há API key ou segredo no pacote.
 
-A identidade usa telefone visível como fast path e leitura IndexedDB limitada somente para resolver identidade. `@lid`, grupos, timeouts e mudanças de schema permanecem estados visíveis; não viram telefone.
+A versão 0.2.0 usa o identificador da conversa aberta e a conta conectada. Números presentes apenas no título e diferenças no nono dígito geram sugestões. O operador pesquisa, confirma ou desfaz vínculos; LID nunca é convertido em telefone. Requer a migration 0034 e o backend correspondente antes de recarregar a extensão. Veja docs/whatsapp-client-links.md no repositório.

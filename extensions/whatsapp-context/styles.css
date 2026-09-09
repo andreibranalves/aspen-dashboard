@@ -50,3 +50,6 @@ html:has(#aspen-whatsapp-context-extension) #app {
 #aspen-whatsapp-context-extension .aspen-list { display: grid; gap: 6px; }
 #aspen-whatsapp-context-extension .aspen-delivery { color: #475569; }
 #aspen-whatsapp-context-extension .aspen-empty { border: 1px dashed #cbd5e1; border-radius: 10px; padding: 12px; }
+
+#aspen-whatsapp-context-extension .aspen-link-search { display: grid; gap: 8px; margin-top: 12px; }
+#aspen-whatsapp-context-extension input { box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #ccd5e3; border-radius: 8px; padding: 10px; font: inherit; background: white; color: #172033; }

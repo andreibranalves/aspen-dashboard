@@ -29,6 +29,7 @@
   "tests/unit/sales-order-offline-export-postgres.test.ts",
   "tests/unit/sales-orders-postgres.test.ts",
   "tests/unit/settings-postgres.test.ts",
+  "tests/unit/whatsapp-client-links-postgres.test.ts",
   "tests/unit/whatsapp-contact-activity-postgres.test.ts",
   "tests/unit/whatsapp-crm-postgres.test.ts"
 ]

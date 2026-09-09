@@ -239,6 +239,13 @@
       "when": 1788739200000,
       "tag": "0033_sales_order_offline_exports",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788912000000,
+      "tag": "0034_whatsapp_client_links",
+      "breakpoints": true
     }
   ]
 }
