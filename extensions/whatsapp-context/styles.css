@@ -1,5 +1,5 @@
-html:has(#aspen-whatsapp-context-extension) { --aspen-context-width: min(360px, 40vw); }
-html:has(#aspen-whatsapp-context-extension .aspen-closed) { --aspen-context-width: 46px; }
+html:has(#aspen-whatsapp-context-extension) { --aspen-context-width: min(360px, calc(100vw - 48px)); }
+html:has(#aspen-whatsapp-context-extension .aspen-closed) { --aspen-context-width: 0px; }
 html:has(#aspen-whatsapp-context-extension) #app {
   width: calc(100% - var(--aspen-context-width)) !important;
   max-width: none !important;
@@ -18,31 +18,35 @@ html:has(#aspen-whatsapp-context-extension) #app {
   pointer-events: none;
 }
 #aspen-whatsapp-context-extension *, #aspen-whatsapp-context-extension *::before, #aspen-whatsapp-context-extension *::after { box-sizing: border-box; }
-#aspen-whatsapp-context-extension .aspen-panel { pointer-events: auto; background: #fff; border-left: 1px solid #d8dee9; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
-#aspen-whatsapp-context-extension .aspen-panel.aspen-closed { width: 46px; margin-left: auto; }
-#aspen-whatsapp-context-extension .aspen-closed header { justify-content: center; padding: 14px 0; }
-#aspen-whatsapp-context-extension .aspen-closed header > div { display: none; }
-#aspen-whatsapp-context-extension header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; }
+#aspen-whatsapp-context-extension .aspen-panel { pointer-events: auto; background: #f0f3f9; border-left: 1px solid #d8dee9; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+#aspen-whatsapp-context-extension .aspen-panel.aspen-closed { display: none; }
+#aspen-whatsapp-context-extension header { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 12px; padding: 20px 24px; background: #19243d; color: #fff; }
 #aspen-whatsapp-context-extension header strong, #aspen-whatsapp-context-extension header small, #aspen-whatsapp-context-extension .aspen-contact span, #aspen-whatsapp-context-extension .aspen-state span, #aspen-whatsapp-context-extension .aspen-state small { display: block; }
-#aspen-whatsapp-context-extension header strong { font-size: 15px; }
-#aspen-whatsapp-context-extension header small { color: #64748b; font-size: 11px; margin-top: 2px; }
-#aspen-whatsapp-context-extension button { border: 0; border-radius: 8px; background: #eef2ff; color: #253a8a; cursor: pointer; font: inherit; font-size: 12px; padding: 7px 9px; }
-#aspen-whatsapp-context-extension header button { background: transparent; color: #64748b; font-size: 20px; line-height: 1; padding: 2px 6px; }
-#aspen-whatsapp-context-extension main { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
-#aspen-whatsapp-context-extension .aspen-state { display: grid; gap: 8px; padding: 22px 10px; color: #475569; font-size: 13px; }
+#aspen-whatsapp-context-extension header strong { font-size: 24px; font-weight: 750; letter-spacing: -.6px; }
+#aspen-whatsapp-context-extension header small { color: #c4d0e5; font-size: 12px; margin-top: 4px; }
+#aspen-whatsapp-context-extension button { border: 0; border-radius: 6px; background: #165cd8; color: #fff; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; padding: 11px 14px; }
+#aspen-whatsapp-context-extension button:hover { filter: brightness(.94); }
+#aspen-whatsapp-context-extension button:focus-visible, #aspen-whatsapp-context-extension a:focus-visible { outline: 3px solid #80b4ff; outline-offset: 3px; }
+#aspen-whatsapp-context-extension header button { background: transparent; color: #fff; font-size: 24px; line-height: 1; padding: 8px; }
+#aspen-whatsapp-context-extension .aspen-drawer-toggle { position: absolute; pointer-events: auto; z-index: 1; top: min(150px, 30vh); left: -16px; width: 32px; height: 40px; padding: 0; border-radius: 12px; font-size: 26px; box-shadow: 0 2px 8px #10254b24; }
+#aspen-whatsapp-context-extension .aspen-drawer-toggle.aspen-closed { left: -48px; width: 48px; height: 88px; border-radius: 16px 0 0 16px; font-size: 30px; font-weight: 750; }
+#aspen-whatsapp-context-extension main { flex: 1; min-height: 0; overflow: auto; padding: 24px; scrollbar-width: thin; scrollbar-color: #9caac2 transparent; }
+#aspen-whatsapp-context-extension .aspen-state { display: grid; gap: 12px; padding: 20px; background: #fff; border-radius: 12px; color: #475569; font-size: 13px; line-height: 1.5; }
 #aspen-whatsapp-context-extension .aspen-state strong, #aspen-whatsapp-context-extension .aspen-card strong { color: #172033; font-size: 14px; }
 #aspen-whatsapp-context-extension .aspen-state small { color: #64748b; }
-#aspen-whatsapp-context-extension .aspen-card { display: grid; gap: 9px; color: #475569; font-size: 12px; }
+#aspen-whatsapp-context-extension .aspen-card { display: grid; gap: 12px; color: #475569; font-size: 13px; overflow-wrap: anywhere; }
+#aspen-whatsapp-context-extension .aspen-card:not(:has(.aspen-contact)) { background: #fff; border-radius: 12px; padding: 20px; }
 #aspen-whatsapp-context-extension .aspen-card p { margin: 0; line-height: 1.45; }
-#aspen-whatsapp-context-extension .aspen-contact { display: grid; gap: 3px; padding-bottom: 4px; }
+#aspen-whatsapp-context-extension .aspen-contact { display: grid; gap: 6px; padding: 20px; background: #fff; border-radius: 12px; }
 #aspen-whatsapp-context-extension .aspen-contact > div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
-#aspen-whatsapp-context-extension h3 { color: #64748b; font-size: 10px; letter-spacing: .05em; margin: 8px 0 0; text-transform: uppercase; }
+#aspen-whatsapp-context-extension h3 { color: #19243d; font-size: 14px; margin: 12px 0 0; }
 #aspen-whatsapp-context-extension .aspen-quote, #aspen-whatsapp-context-extension .aspen-delivery { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #172033; text-decoration: none; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px; }
-#aspen-whatsapp-context-extension .aspen-quote:hover { border-color: #6366f1; }
+#aspen-whatsapp-context-extension .aspen-quote { background: #fff; }
+#aspen-whatsapp-context-extension .aspen-quote:hover { border-color: #165cd8; }
 #aspen-whatsapp-context-extension .aspen-quote span:first-child { min-width: 0; }
 #aspen-whatsapp-context-extension .aspen-quote strong, #aspen-whatsapp-context-extension .aspen-quote small { display: block; }
 #aspen-whatsapp-context-extension .aspen-quote small { color: #64748b; font-size: 11px; margin-top: 3px; }
-#aspen-whatsapp-context-extension .aspen-quote-latest { border-color: #a5b4fc; background: #eef2ff; }
+#aspen-whatsapp-context-extension .aspen-quote-latest { border-color: #a8c4ef; background: #fff; }
 #aspen-whatsapp-context-extension .aspen-list { display: grid; gap: 6px; }
 #aspen-whatsapp-context-extension .aspen-delivery { color: #475569; }
 #aspen-whatsapp-context-extension .aspen-empty { border: 1px dashed #cbd5e1; border-radius: 10px; padding: 12px; }
