@@ -11,6 +11,8 @@ import {
   Send,
   Check,
   Eye,
+  FileText,
+  Phone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { capitalize, fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -21,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPanel';
+import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import type {
   Draft,
   DraftEdited,
@@ -30,6 +34,8 @@ import type {
   StoredAutoQuoteDraft,
 } from '@/types/domain';
 import type { QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
+import type { CommunicationFlow } from '@/lib/api/communicationApi';
+import type { DeliveryResolution, DeliveryView } from '@/lib/api/quotationDeliveryApi';
 
 export interface SplitResultCardProps {
   draft: Draft;
@@ -57,10 +63,20 @@ export interface SplitResultCardProps {
   issue?: QuotationIssueProjection;
   issueError?: string;
   pricingConflictItems?: string[];
+  viewUrl?: string;
+  delivery?: DeliveryView | null;
+  deliveryPending?: boolean;
+  deliveryError?: string;
+  waSendEnabled?: boolean;
+  waFlows?: CommunicationFlow[];
+  waSelectedFlowId?: string;
   templates?: QuotationTemplateMetadata[];
   templateLoading?: boolean;
   templateError?: string | null;
   onRetryTemplates?: () => void;
+  onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
+  onSendWhatsApp?: (draftIdx: number) => void;
+  onResolveDelivery?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
 }
 
 export default function SplitResultCard({
@@ -89,10 +105,20 @@ export default function SplitResultCard({
   issue,
   issueError,
   pricingConflictItems = [],
+  viewUrl,
+  delivery = null,
+  deliveryPending = false,
+  deliveryError,
+  waSendEnabled = false,
+  waFlows = [],
+  waSelectedFlowId = '',
   templates = [],
   templateLoading = false,
   templateError = null,
   onRetryTemplates,
+  onSelectWhatsAppFlow,
+  onSendWhatsApp,
+  onResolveDelivery,
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(reviewOnly);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -274,7 +300,9 @@ export default function SplitResultCard({
   const actionStatusId = `quotation-action-status-${draft.index}`;
   const displayItems = editing ? items : items.filter((it) => it.item_code);
   const immutableIssue = Boolean(issue);
+  const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
+  const whatsappSendBlocked = deliveryPending || Boolean(delivery) || Boolean(deliveryError);
 
   function toggleEditing() {
     if (editingBlocked || immutableIssue) return;
@@ -652,6 +680,25 @@ export default function SplitResultCard({
               <span>Validade: {formatDate(issue.validUntil)}</span>
             </div>
           )}
+          <WhatsAppSendPanel
+            selectedFlowId={waSelectedFlowId}
+            flows={waFlows}
+            delivery={delivery}
+            pending={deliveryPending}
+            onSelectFlow={(flowId) => onSelectWhatsAppFlow?.(draft.index, flowId)}
+            onSend={() => onSendWhatsApp?.(draft.index)}
+            hideButton
+          />
+          <QuotationDeliveryStatus
+            delivery={delivery}
+            pending={deliveryPending}
+            onResolve={onResolveDelivery}
+          />
+          {deliveryError && (
+            <p role="status" className="pb-2 text-xs leading-5 text-warning">
+              {deliveryError}
+            </p>
+          )}
         </div>
       )}
 
@@ -685,7 +732,34 @@ export default function SplitResultCard({
         <div className="flex-1" />
 
         {isDone ? (
-          null
+          <>
+            {issueViewUrl ? (
+              <a
+                href={issueViewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-surface px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+              >
+                <FileText size={13} /> Abrir PDF
+              </a>
+            ) : (
+              <span aria-disabled="true" className="inline-flex h-8 items-center gap-2 rounded-sm bg-surface px-3 text-xs font-medium text-fg opacity-40">
+                <FileText size={13} /> Abrir PDF
+              </span>
+            )}
+            {waSendEnabled ? (
+              <Button
+                size="sm"
+                disabled={whatsappSendBlocked}
+                title={deliveryError || (delivery ? 'Este orçamento já possui uma entrega pelo WhatsApp.' : undefined)}
+                onClick={() => onSendWhatsApp?.(draft.index)}
+              >
+                <Phone size={13} /> Enviar WhatsApp
+              </Button>
+            ) : (
+              <span className="text-xs text-fg-muted">Nenhum fluxo de WhatsApp disponível</span>
+            )}
+          </>
         ) : reviewOnly ? (
           <>
             <Button variant="outline" size="sm" onClick={onDiscard} disabled={actionBlocked}>Descartar resultado</Button>

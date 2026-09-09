@@ -183,6 +183,9 @@ async function routeCommonAuto(page) {
     quote_revision_id: revisionId,
     revision_number: 1,
     concurrency_token: '2026-08-13T00:00:00.000Z',
+    items: [{ item_code: 'CNG-001', nome: 'Canga', qty: 1, applied_unit_price: 9, manual_rate: false }],
+    frete: '0.00',
+    total: '9.00',
   }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
     quotationId: quotationUuid,
@@ -227,12 +230,14 @@ async function routeCommonAuto(page) {
 }
 
 async function issueAutoQuote(page) {
-  await page.goto('/#/auto');
+  await page.goto('/#/novo-orcamento');
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
+  await expect(page).toHaveURL(/#\/novo-orcamento$/);
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeVisible();
 }
 
 async function mockDeliveryLifecycle(page, states) {

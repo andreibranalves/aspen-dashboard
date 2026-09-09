@@ -181,6 +181,37 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page.getByRole('heading', { name: 'Cliente um' })).toHaveCount(0);
   });
 
+  test('limpa a fila local de resultados somente após confirmação', async ({ page }) => {
+    const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ orders: [order('Cliente um'), order('Cliente dois')] }),
+    }));
+
+    await page.goto('/#/novo-orcamento');
+    await page.getByLabel('Mensagem do cliente para extração').fill('dois pedidos');
+    await page.getByRole('button', { name: 'Extrair dados' }).click();
+    await expect(page.getByText(/Resultados \(2\)/)).toBeVisible();
+
+    const clearResults = page.getByRole('button', { name: 'Limpar lista' });
+    await expect(clearResults).toBeVisible();
+    await clearResults.click();
+    const dialog = page.getByRole('dialog', { name: 'Limpar a lista de resultados?' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancelar' }).click();
+    await expect(page.getByText(/Resultados \(2\)/)).toBeVisible();
+
+    await clearResults.click();
+    await dialog.getByRole('button', { name: 'Limpar lista' }).click();
+    await expect(page.getByText('Nenhum pedido extraído', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('Rascunho ativo')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => {
+      const stored = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts') || 'null');
+      return Array.isArray(stored?.drafts) ? stored.drafts.length : -1;
+    })).toBe(0);
+    expect(unexpectedApiRequests).toEqual([]);
+  });
+
   test('restaura o rascunho manual do localStorage ao recarregar', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
       status: 200,

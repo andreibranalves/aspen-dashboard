@@ -66,11 +66,11 @@ export default function WhatsAppSendPanel({
     <>
       <div className="mb-3 mt-4 space-y-1" aria-busy={isPending}>
         <label htmlFor={flowSelectId} className="text-xs font-medium text-fg-muted">
-          Fluxo de WhatsApp
+          Fluxo WhatsApp
         </label>
         <select
           id={flowSelectId}
-          aria-label="Fluxo de WhatsApp"
+          aria-label="Fluxo WhatsApp"
           className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           value={selectedFlowId || ''}
           onChange={(e) => onSelectFlow?.(e.target.value)}

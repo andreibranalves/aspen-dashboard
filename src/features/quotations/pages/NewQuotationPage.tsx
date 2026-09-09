@@ -23,13 +23,16 @@ import {
 import { apiGet, apiPost } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
+import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
 import { inlineTemplateSelections } from '@/features/quotations/orderTemplateSelections';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
+import { deliveryIdentityKey, useQuotationDeliveries } from '@/hooks/useQuotationDeliveries';
 import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/storage/autoQuoteDraftStorage';
 import { buildQuotePayload, getQuotationIssue, issuePersistedDraft, QuotationIssueApiError } from '@/lib/api/quotationIssueApi';
+import { isSendableQuotationStatus, type SendContext } from '@/lib/api/communicationSend';
 import type {
   Draft,
   DraftEdited,
@@ -383,6 +386,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [manualStorageHydrated, setManualStorageHydrated] = useState(false);
   const [manualIssuing, setManualIssuing] = useState(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  const [confirmClearResults, setConfirmClearResults] = useState(false);
   const [pendingExtraction, setPendingExtraction] = useState<Draft[]>([]);
   const [text, setText] = useState('');
   const [extracting, setExtracting] = useState(false);
@@ -391,6 +395,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [templateKey, setTemplateKey] = useState('');
   const [templateLoading, setTemplateLoading] = useState(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const [waFlows, setWaFlows] = useState<CommunicationFlow[]>([]);
+  const [defaultWaFlowId, setDefaultWaFlowId] = useState('');
+  const [waFlowByDraft, setWaFlowByDraft] = useState<Record<number, string>>({});
   const [orderTemplates, setOrderTemplates] = useState<OrderTemplate[]>([]);
   const [orderTemplateOpen, setOrderTemplateOpen] = useState(false);
   const [savingDraft, setSavingDraft] = useState<Record<number, boolean>>({});
@@ -488,6 +495,25 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const activeDrafts = useMemo(() => drafts.filter((draft) => !draft.discarded), [drafts]);
   const activeDraft = activeDrafts.find((draft) => draft.index === activeDraftIndex) || null;
   const draftCountLabel = activeDrafts.length === 1 ? '1 rascunho' : `${activeDrafts.length} rascunhos`;
+  const deliveryIdentities = useMemo(() => activeDrafts.flatMap((draft) => {
+    const stored = draft as StoredAutoQuoteDraft;
+    const issue = stored.issue;
+    const resultData = draft.result?.data;
+    const status = resultData?.status ?? issue?.status;
+    const revisionId = typeof resultData?.revisionId === 'string' ? resultData.revisionId : issue?.revisionId || '';
+    const flowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
+    return revisionId && flowId && isSendableQuotationStatus(status)
+      ? [{ revisionId, flowId }]
+      : [];
+  }), [activeDrafts, defaultWaFlowId, waFlowByDraft, waFlows]);
+  const {
+    deliveriesByKey,
+    pendingKeys: deliveryPendingKeys,
+    errorByKey: deliveryErrorsByKey,
+    enqueueErrorByKey,
+    enqueue: enqueueDelivery,
+    resolve: resolveDelivery,
+  } = useQuotationDeliveries(deliveryIdentities);
 
   useEffect(() => {
     if (activeDraft || activeDrafts.length === 0) return;
@@ -520,7 +546,24 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     }
   }, []);
 
-  useEffect(() => { void loadTemplates(); void loadOrderTemplates(); }, [loadOrderTemplates, loadTemplates]);
+  const loadCommunicationFlows = useCallback(async () => {
+    try {
+      const result = await fetchFlows();
+      const flows = Array.isArray(result.flows) ? result.flows : [];
+      setWaFlows(flows);
+      const preferred = flows.find((flow) => flow.context === 'already_talking');
+      setDefaultWaFlowId(preferred?.id || result.selectedFlowId || flows[0]?.id || '');
+    } catch {
+      setWaFlows([]);
+      setDefaultWaFlowId('');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTemplates();
+    void loadOrderTemplates();
+    void loadCommunicationFlows();
+  }, [loadCommunicationFlows, loadOrderTemplates, loadTemplates]);
 
   useEffect(() => {
     if (mode !== 'manual' || restoredManual.current) return;
@@ -628,6 +671,63 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     return true;
   }, [setDrafts]);
 
+  const sendContextForDraft = useCallback((draft: Draft, flowId: string): SendContext | null => {
+    const stored = draft as StoredAutoQuoteDraft;
+    const resultData = draft.result?.data;
+    const businessNumber = typeof resultData?.businessNumber === 'string'
+      ? resultData.businessNumber
+      : stored.issue?.businessNumber || '';
+    const revisionId = typeof resultData?.revisionId === 'string'
+      ? resultData.revisionId
+      : stored.issue?.revisionId || '';
+    return businessNumber && revisionId && flowId
+      ? { quotationId: businessNumber, revisionId, flowId }
+      : null;
+  }, []);
+
+  const handleSelectWhatsAppFlow = useCallback((draftIndex: number, flowId: string) => {
+    setWaFlowByDraft((current) => ({ ...current, [draftIndex]: flowId }));
+  }, []);
+
+  const handleSendWhatsApp = useCallback(async (draftIndex: number) => {
+    const draft = draftsRef.current.find((candidate) => candidate.index === draftIndex);
+    if (!draft) {
+      toast('Pedido não encontrado.', 'error');
+      return;
+    }
+    const flowId = waFlowByDraft[draftIndex] || defaultWaFlowId || waFlows[0]?.id || '';
+    const context = sendContextForDraft(draft, flowId);
+    if (!context) {
+      toast(flowId
+        ? 'Não foi possível identificar a revisão emitida do orçamento.'
+        : 'Nenhum fluxo de WhatsApp disponível.', 'error');
+      return;
+    }
+    const deliveryKey = deliveryIdentityKey(context);
+    if (
+      deliveryPendingKeys.includes(deliveryKey)
+      || Boolean(deliveriesByKey[deliveryKey])
+      || Boolean(deliveryErrorsByKey[deliveryKey])
+      || Boolean(enqueueErrorByKey[deliveryKey])
+    ) return;
+    try {
+      await enqueueDelivery(context);
+    } catch {
+      console.error('[NewQuotationPage] failed to enqueue WhatsApp delivery');
+    }
+  }, [
+    defaultWaFlowId,
+    deliveriesByKey,
+    deliveryErrorsByKey,
+    deliveryPendingKeys,
+    enqueueDelivery,
+    enqueueErrorByKey,
+    sendContextForDraft,
+    toast,
+    waFlowByDraft,
+    waFlows,
+  ]);
+
   const recoverQuotationIssue = useCallback(async (draft: StoredAutoQuoteDraft, force = false) => {
     const key = draft.issueIdempotencyKey;
     const identity = key ? `${draft.index}:${key}` : '';
@@ -687,7 +787,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           return;
         }
         finishOfficialIssue(key);
-        navigateToQuotation(state.quotationId);
+        if (mode === 'manual') navigateToQuotation(state.quotationId);
+        else setActiveDraftIndex(draft.index);
       } else {
         setIssueErrorByDraft((current) => ({ ...current, [draft.index]: state.error }));
         setDrafts((current) => current.map((item) => matches(item) ? { ...item, status: undefined, result: { success: false, error: state.error } } : item));
@@ -720,7 +821,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         recoveryInFlight.current.delete(draft.index);
       }
     }
-  }, [beginOfficialIssue, finishOfficialIssue, navigateToQuotation, persistDrafts, setDrafts]);
+  }, [beginOfficialIssue, finishOfficialIssue, mode, navigateToQuotation, persistDrafts, setDrafts]);
 
   const retryQuotationIssueRecovery = useCallback((draftIndex: number) => {
     const draft = draftsRef.current.find((item) => item.index === draftIndex) as StoredAutoQuoteDraft | undefined;
@@ -1203,7 +1304,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       }
       clearManualQuoteDraft();
       clearQuotationOriginPrefill();
-      navigateToQuotation(issue.quotationId);
+      if (mode === 'manual') navigateToQuotation(issue.quotationId);
+      else setActiveDraftIndex(draftIndex);
     } catch (error) {
       if (!mountedRef.current || unloadingRef.current) return;
       const message = error instanceof Error && error.message === ISSUE_PERSISTENCE_ERROR
@@ -1448,6 +1550,45 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     || drafts.some((draft) => draft.status === 'processing');
   const pricingPending = manualPricingPending || Object.values(conversationPricingPending).some(Boolean);
 
+  const clearResultQueue = useCallback(() => {
+    if (liveDraftOperation || pricingPending) return;
+    extractionGeneration.current += 1;
+    recoveryTokens.current.clear();
+    recoveryHandled.current.clear();
+    recoveryAttempts.current.clear();
+    for (const timer of recoveryTimers.current.values()) clearTimeout(timer);
+    recoveryTimers.current.clear();
+    recoveryTimerKeys.current.clear();
+    setPendingExtraction([]);
+    setActiveDraftIndex(null);
+    setWaFlowByDraft({});
+    setIssueErrorByDraft({});
+    if (!persistDrafts([])) {
+      draftsRef.current = [];
+      setDrafts([]);
+      toast('A fila foi limpa desta tela, mas o navegador não permitiu atualizar o armazenamento local.', 'error');
+    }
+  }, [liveDraftOperation, persistDrafts, pricingPending, setDrafts, toast]);
+
+  const activeStoredDraft = activeDraft as StoredAutoQuoteDraft | null;
+  const activeResultData = activeDraft?.result?.data;
+  const activeIssueStatus = activeResultData?.status ?? activeStoredDraft?.issue?.status;
+  const activeSelectedWaFlowId = activeDraft
+    ? waFlowByDraft[activeDraft.index] || defaultWaFlowId || waFlows[0]?.id || ''
+    : '';
+  const activeWhatsAppContext = activeDraft
+    && isSendableQuotationStatus(activeIssueStatus)
+    ? sendContextForDraft(activeDraft, activeSelectedWaFlowId)
+    : null;
+  const activeDeliveryKey = activeWhatsAppContext ? deliveryIdentityKey(activeWhatsAppContext) : '';
+  const activeDelivery = activeDeliveryKey ? deliveriesByKey[activeDeliveryKey] || null : null;
+  const activeDeliveryPending = activeDeliveryKey
+    ? deliveryPendingKeys.includes(activeDeliveryKey)
+    : false;
+  const activeDeliveryError = activeDeliveryKey
+    ? deliveryErrorsByKey[activeDeliveryKey] || enqueueErrorByKey[activeDeliveryKey]
+    : undefined;
+
   const headlineDescription = mode === 'conversation'
     ? activeDraft ? `Da conversa · ${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}` : 'Da conversa · revise antes de salvar ou emitir'
     : 'Manual · rascunho em edição';
@@ -1588,7 +1729,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 <h2 className="text-base font-semibold text-fg">Resultado</h2>
                 <p className="mt-1 text-sm text-fg-muted">{activeDrafts.length ? `Resultados (${activeDrafts.length})` : 'Os itens aparecerão aqui após a extração.'}</p>
               </div>
-              {activeDrafts.length > 0 && <span className="text-xs text-fg-muted">Identidade ativa preservada</span>}
+              {(activeDrafts.length > 0 || pendingExtraction.length > 0) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-fg-muted"
+                  disabled={liveDraftOperation || pricingPending}
+                  onClick={() => setConfirmClearResults(true)}
+                >
+                  <RotateCcw size={14} /> Limpar lista
+                </Button>
+              )}
             </div>
             {!activeDraft && pendingExtraction.length === 0 && (
               <div className="flex min-h-[360px] flex-col items-center justify-center rounded-md border border-dashed border-line px-5 text-center text-fg-muted">
@@ -1619,6 +1771,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onReviewQuote={handleAutoReview}
                 issue={(activeDraft as StoredAutoQuoteDraft).issue}
                 issueError={issueErrorByDraft[activeDraft.index] || activeDraft.result?.error}
+                viewUrl={(activeDraft as StoredAutoQuoteDraft).issue?.pdfUrl}
+                delivery={activeDelivery}
+                deliveryPending={activeDeliveryPending}
+                deliveryError={activeDeliveryError}
+                waSendEnabled={Boolean(activeWhatsAppContext)}
+                waFlows={waFlows}
+                waSelectedFlowId={activeSelectedWaFlowId}
+                onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
+                onSendWhatsApp={handleSendWhatsApp}
+                onResolveDelivery={async (decision, note) => {
+                  if (activeDelivery) await resolveDelivery(activeDelivery.id, decision, note);
+                }}
                 templates={templates}
                 templateLoading={templateLoading}
                 templateError={templateError}
@@ -1732,6 +1896,19 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       <OrderTemplateManager open={orderTemplateOpen} templates={orderTemplates} onClose={() => setOrderTemplateOpen(false)} onChanged={async () => { try { const result = await listOrderTemplates(); setOrderTemplates((result.data || []).filter((item) => !item.archived)); } catch { /* manager owns its error state */ } }} />
+      <ConfirmDialog
+        open={confirmClearResults}
+        title="Limpar a lista de resultados?"
+        message="Todos os rascunhos e resultados extraídos serão removidos deste navegador. Orçamentos já salvos ou emitidos não serão excluídos."
+        confirmLabel="Limpar lista"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmClearResults(false);
+          clearResultQueue();
+        }}
+        onCancel={() => setConfirmClearResults(false)}
+      />
       <ConfirmDialog
         open={pendingRoute !== null}
         title="Sair sem concluir o orçamento?"
