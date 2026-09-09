@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { createHandler } from '../../api/_modules/client-detail.js';
-import type { ClientRepository } from '../../api/_modules/client-repository.js';
+import { createMemoryClientRepository, type ClientRepository } from '../../api/_modules/client-repository.js';
+import { ClientDuplicateError } from '../../api/_modules/client-schema.js';
 import type { ClientRecord } from '../../api/_modules/client-schema.js';
 import type {
   ClientCommercialRepository,
@@ -35,6 +36,7 @@ function repository(record: ClientRecord | null): ClientRepository {
     create: async () => record!,
     update: async () => record!,
     archive: async () => record!,
+    delete: async () => {},
   };
 }
 
@@ -74,6 +76,21 @@ const commercial: ClientCommercialRepository = {
 };
 
 describe('client-detail HTTP contract', () => {
+  it('permanently deletes a client and reports not found on repeated deletion', async () => {
+    const repo = createMemoryClientRepository({ initial: [client] });
+    const handler = createHandler({ repository: repo, commercial });
+    assert.equal((await handler(event('DELETE'))).statusCode, 200);
+    assert.equal(await repo.get(CLIENT_ID), null);
+    assert.equal((await handler(event('DELETE'))).statusCode, 404);
+  });
+
+  it('returns a safe conflict for linked clients', async () => {
+    const repo = repository(client);
+    repo.delete = async () => { throw new ClientDuplicateError('Cliente com histórico vinculado.'); };
+    const response = parse(await createHandler({ repository: repo, commercial })(event('DELETE')));
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.body.error, 'Cliente com histórico vinculado.');
+  });
   it('returns UUID-scoped latest quotation, active deal, and orders', async () => {
     const response = parse(await createHandler({ repository: repository(client), commercial })(event()));
 

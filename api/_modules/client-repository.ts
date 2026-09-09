@@ -33,6 +33,7 @@ export interface ClientRepository {
   create(input: ClientWriteInput): Promise<ClientRecord>;
   update(id: string, patch: ClientPatchInput): Promise<ClientRecord>;
   archive(id: string): Promise<ClientRecord>;
+  delete(id: string): Promise<void>;
 }
 
 export interface MemoryClientRepositoryOptions {
@@ -322,6 +323,10 @@ export class MemoryClientRepository implements ClientRepository {
     if (!current) throw new ClientNotFoundError();
     if (current.arquivado) return cloneClientRecord(current);
     return this.update(id, { arquivado: true });
+  }
+
+  async delete(id: string): Promise<void> {
+    if (!this.records.delete(id)) throw new ClientNotFoundError();
   }
 }
 

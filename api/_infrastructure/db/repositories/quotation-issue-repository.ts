@@ -143,7 +143,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
     if (!row) return null;
     if (row.state === 'processing') return { state: 'processing', retryAfterMs: Math.max(0, date(row.leaseExpiresAt, now()).getTime() - now().getTime()) };
     if (row.state === 'retryable') return { state: 'retryable', error: row.publicError || 'Não foi possível emitir o orçamento. Tente novamente.' };
-    if (!row.quotationId || !row.revisionId) return { state: 'retryable', error: 'Não foi possível emitir o orçamento. Tente novamente.' };
+    if (!row.quotationId || !row.revisionId) throw new QuotationIssueConflictError('Este orçamento foi excluído.');
     const [quotation] = await database().select().from(quotations).where(eq(quotations.id, row.quotationId)).limit(1);
     const [revision] = await database().select().from(quoteRevisions).where(eq(quoteRevisions.id, row.revisionId)).limit(1);
     if (!quotation || !revision) return { state: 'retryable', error: 'Não foi possível recuperar a emissão. Tente novamente.' };
@@ -174,7 +174,10 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         if (!row) throw new QuotationIssueRepositoryError();
         const decision = inserted ? 'claim' : quotationIssueLeaseDecision(row.state, row.fingerprint, fingerprint, row.leaseExpiresAt, started);
         if (decision === 'conflict') throw new QuotationIssueConflictError('A chave de idempotência já foi usada com conteúdo diferente.');
-        if (decision === 'replay' && row.quotationId && row.revisionId) return;
+        if (decision === 'replay') {
+          if (!row.quotationId || !row.revisionId) throw new QuotationIssueConflictError('Este orçamento foi excluído.');
+          return;
+        }
         if (decision === 'active') throw new QuotationIssueConflictError('A emissão desta chave já está em processamento. Tente novamente em instantes.');
         requestId = row.id;
         claimedLeaseExpiresAt = new Date(started.getTime() + leaseMs);

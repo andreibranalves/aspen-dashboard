@@ -77,7 +77,12 @@ export function createCoreHandler(
         return jsonResponse(200, { ...mapClientDetail(updated, context), updated: true });
       }
 
-      return jsonResponse(405, { error: 'Método não permitido.' }, { Allow: 'GET, PATCH, PUT' });
+      if (event.httpMethod === 'DELETE') {
+        await repository.delete(name);
+        return jsonResponse(200, { deleted: true, id: name });
+      }
+
+      return jsonResponse(405, { error: 'Método não permitido.' }, { Allow: 'GET, PATCH, PUT, DELETE' });
     } catch (error) {
       logCoreError(event.httpMethod, error);
       const normalized = normalizeCoreError(error);

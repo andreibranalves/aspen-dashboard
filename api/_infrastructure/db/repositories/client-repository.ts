@@ -399,5 +399,31 @@ export function createPostgresClientRepository(
       if (existing.arquivado) return existing;
       return this.update(id, { arquivado: true });
     },
+    async delete(id: string): Promise<void> {
+      try {
+        await getDb().transaction(async tx => {
+          await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+          const [existing] = await tx.select({ id: clients.id }).from(clients).where(eq(clients.id, id)).for('update');
+          if (!existing) throw new ClientNotFoundError();
+          await tx.execute(sql`SELECT id FROM crm_deals WHERE client_id = ${id}::uuid FOR UPDATE`);
+          const linked = await tx.execute(sql`SELECT 1 FROM quotations WHERE client_id = ${id}::uuid
+            UNION ALL SELECT 1 FROM sales_orders WHERE client_id = ${id}::uuid
+            UNION ALL SELECT 1 FROM crm_deals WHERE client_id = ${id}::uuid AND quotation_id IS NOT NULL`);
+          if (linked.length) throw new ClientDuplicateError('Este cliente possui orçamentos ou pedidos vinculados. Remova ou transfira os vínculos antes de excluir.');
+          await tx.execute(sql`UPDATE quote_leads SET crm_deal_id = NULL WHERE crm_deal_id IN (SELECT id FROM crm_deals WHERE client_id = ${id}::uuid)`);
+          await tx.execute(sql`DELETE FROM crm_deals WHERE client_id = ${id}::uuid AND quotation_id IS NULL`);
+          await tx.delete(clients).where(eq(clients.id, id));
+        });
+      } catch (error) {
+        let current: unknown = error;
+        while (isRecord(current)) {
+          if (current.code === '23503') {
+            throw new ClientDuplicateError('Este cliente possui orçamentos, pedidos ou negócios vinculados. Remova ou transfira os vínculos antes de excluir.');
+          }
+          current = current.cause;
+        }
+        normalizeError(error);
+      }
+    },
   };
 }

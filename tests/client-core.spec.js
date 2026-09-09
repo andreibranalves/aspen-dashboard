@@ -72,6 +72,26 @@ const COMPLETE_DETAIL = {
 /** @typedef {typeof DETAIL & { id?: string, nome?: string, archived?: boolean, updated?: boolean }} ClientDetail */
 
 test.describe('Clientes locais @crm @smoke', () => {
+  test('exclusão manual confirma consequência, permite cancelar e remove cliente', async ({ page }) => {
+    let deleted = 0;
+    await page.route('**/api/client-detail**', async route => {
+      if (route.request().method() === 'DELETE') deleted += 1;
+      await route.fulfill({ json: route.request().method() === 'DELETE' ? { deleted: true } : DETAIL });
+    });
+    await page.route('**/api/leads-clients**', route => route.fulfill({ json: { data: [], pagination: { total: 0 } } }));
+    await page.goto(`/#/leads/cliente/${CLIENT.id}`);
+    await page.getByRole('button', { name: `Mais ações para ${CLIENT.nome}` }).click();
+    await page.getByRole('menuitem', { name: 'Excluir cliente' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Excluir cliente?' });
+    await expect(dialog).toContainText('negócios sem orçamento');
+    await dialog.getByRole('button', { name: 'Cancelar' }).click();
+    expect(deleted).toBe(0);
+    await page.getByRole('button', { name: `Mais ações para ${CLIENT.nome}` }).click();
+    await page.getByRole('menuitem', { name: 'Excluir cliente' }).click();
+    await dialog.getByRole('button', { name: 'Excluir cliente', exact: true }).click();
+    await expect(page).toHaveURL(/#\/leads$/);
+    expect(deleted).toBe(1);
+  });
   test('exibe Cliente sem Lead e permite abrir detalhe', async ({ page }) => {
     await page.route('**/api/leads-clients**', async (route) => {
       await route.fulfill({

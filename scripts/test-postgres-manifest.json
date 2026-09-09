@@ -5,6 +5,7 @@
   "tests/unit/crm-deals-postgres.test.ts",
   "tests/unit/disposable-postgres-target.test.ts",
   "tests/unit/duplicate-quotation-postgres.test.ts",
+  "tests/unit/operator-deletion-postgres.test.ts",
   "tests/unit/orcamento-postgres.test.ts",
   "tests/unit/pricing-postgres.test.ts",
   "tests/unit/product-activity-postgres.test.ts",
