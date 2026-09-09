@@ -12,6 +12,7 @@ const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173);
 // antes do primeiro request HTTP de qualquer suite.
 const IS_STAGING = isStagingMode();
 const BASE_URL = resolveE2eBaseUrl(process.env, { port: PORT });
+process.env.BASE_URL = BASE_URL;
 
 export default defineConfig({
   testDir: './tests',
