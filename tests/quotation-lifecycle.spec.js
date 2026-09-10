@@ -675,17 +675,6 @@ test('detail reload restores durable accepted, reconciling, delivered and failed
     selectedFlowId: 'already-talking',
     flows: [{ id: 'already-talking', name: 'Já conversando', context: 'already_talking', channel: 'whatsapp', vendor_name: 'Evolution', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1, steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }] }],
   }));
-  await page.route('**/api/whatsapp-send-status**', async (route) => {
-    const [phase] = phases[phaseIndex];
-    await fulfillJson(route, {
-      delivery_id: 'delivery-lifecycle',
-      phase,
-      error: null,
-      updated_at: token,
-      revision_id: detail().revision_id,
-      flow_id: 'already-talking',
-    });
-  });
   await page.route('**/api/quotation-deliveries**', async (route) => {
     const [phase] = phases[phaseIndex];
     await fulfillJson(route, deliveryView(phase));
@@ -706,14 +695,6 @@ test('detail retryable status distinguishes verified PDF from generic failure @q
     success: true,
     selectedFlowId: 'already-talking',
     flows: [{ id: 'already-talking', name: 'Já conversando', context: 'already_talking', channel: 'whatsapp', vendor_name: 'Evolution', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1, steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }] }],
-  }));
-  await page.route('**/api/whatsapp-send-status**', async (route) => fulfillJson(route, {
-    delivery_id: 'delivery-lifecycle',
-    phase: 'failed',
-    error: pdfFailure ? 'PDF indisponível. Tentar novamente.' : 'Falha de transporte.',
-    updated_at: token,
-    revision_id: detail().revision_id,
-    flow_id: 'already-talking',
   }));
   await page.route('**/api/quotation-deliveries**', async (route) => fulfillJson(route, deliveryView(
     'failed',

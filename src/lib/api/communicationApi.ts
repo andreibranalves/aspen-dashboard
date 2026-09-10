@@ -457,26 +457,6 @@ export function projectDeliveryFailure(error: unknown): DeliveryProjection {
   };
 }
 
-export interface DeliveryStatusIdentifiers {
-  quotationId: string;
-  revisionId: string;
-  flowId: string;
-}
-
-export async function fetchDeliveryStatus(input: DeliveryStatusIdentifiers): Promise<Record<string, unknown> | null> {
-  const params = new URLSearchParams({
-    quotation_uuid: input.quotationId,
-    revision_id: input.revisionId,
-    flow_id: input.flowId,
-  });
-  const response = await fetch(`/api/whatsapp-send-status?${params.toString()}`);
-  const data: unknown = await response.json().catch(() => ({}));
-  if (response.status === 404) return null;
-  if (!response.ok || !isRecord(data)) {
-    throw new Error(isRecord(data) ? asString(data.error, 'Não foi possível consultar o envio.') : 'Não foi possível consultar o envio.');
-  }
-  return data;
-}
 
 function requiredString(source: Record<string, unknown>, key: string): string {
   const value = source[key];

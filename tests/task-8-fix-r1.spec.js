@@ -762,9 +762,6 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
       202
     );
   });
-  await page.route('**/api/whatsapp-send-status**', (route) =>
-    json(route, { error: 'not found' }, 404)
-  );
   await page.route('**/api/quotation-deliveries**', (route) =>
     json(route, { error: 'not found' }, 404)
   );
