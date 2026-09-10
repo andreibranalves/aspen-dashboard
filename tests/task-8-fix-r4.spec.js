@@ -246,8 +246,12 @@ async function setupAuto(page) {
   }));
   // Safety net: delivery lookups fire as soon as the issued card renders,
   // possibly before a test registers its own delivery routes. Answer them
-  // immediately so the send button is enabled once the lookup settles.
-  await page.route('**/api/quotation-deliveries**', (route) => json(route, deliveryPage()));
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')
+      ? json(route, deliveryPage())
+      : json(route, { error: 'not found' }, 404);
+  });
   await page.goto('/#/auto');
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
@@ -268,13 +272,13 @@ async function installDurableRoutes(page, stateForFlow = () => 'delivered') {
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
-    if (url.searchParams.has('revision_id')) {
+    if (url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')) {
       const flowId = [...active.keys()][0];
       const state = flowId ? active.get(flowId) : undefined;
       return json(route, deliveryPage(flowId && state ? [delivery(state, flowId)] : []));
     }
     const deliveryId = url.searchParams.get('id');
-    const flowId = [...active.keys()].find((candidate) => delivery('delivered', candidate).id === deliveryId);
+    const flowId = url.searchParams.get('flow_id') || [...active.keys()].find((candidate) => delivery('delivered', candidate).id === deliveryId);
     const state = flowId ? active.get(flowId) : undefined;
     if (!flowId || !state) return json(route, { error: 'not found' }, 404);
     return json(route, delivery(state, flowId));
@@ -315,7 +319,7 @@ test('delivered replay without phone remains a durable completed UI status', asy
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
-    if (url.searchParams.has('revision_id')) {
+    if (url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')) {
       return json(route, deliveryPage(active.has('flow-1') ? [delivery(active.get('flow-1'))] : []));
     }
     if (!active.has('flow-1')) return json(route, { error: 'not found' }, 404);
@@ -356,7 +360,7 @@ test('same component double click sends one backend request and unsafe failure s
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
-    return url.searchParams.has('revision_id')
+    return url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')
       ? json(route, deliveryPage())
       : json(route, { error: 'not found' }, 404);
   });
@@ -383,7 +387,7 @@ test('malformed 2xx cannot render sent and leaves no local success authority', a
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
-    return url.searchParams.has('revision_id')
+    return url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')
       ? json(route, deliveryPage())
       : json(route, { error: 'not found' }, 404);
   });

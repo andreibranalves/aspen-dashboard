@@ -275,7 +275,7 @@ async function mockDeliveryLifecycle(page, states) {
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
-    if (url.searchParams.has('revision_id')) {
+    if (url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')) {
       return json(route, deliveryPage(stateIndex < 0 ? [] : [delivery(states[stateIndex])]));
     }
     if (stateIndex < 0) return json(route, { error: 'not found' }, 404);
