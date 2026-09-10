@@ -310,15 +310,14 @@ test('detalhe mantém conteúdo longo legível em modo somente leitura @quotatio
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#/quotations/${id}`);
-  await expect(page.getByText('Este orçamento está somente para leitura porque já foi emitido.')).toBeVisible();
+  await expect(page.getByText('Somente leitura. Alterações criam uma nova revisão.')).toBeVisible();
   await expect(page.getByText(longText)).toBeVisible();
   await expect(page.getByText('Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Itens e condições' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Itens', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Itens', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Itens do orçamento' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Condições comerciais' })).toBeVisible();
 });
 
-test('menu de ações e abas mantêm fechamento, foco e semântica acessíveis @quotations', async ({ page }) => {
+test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semântica acessíveis @quotations', async ({ page }) => {
   const firstRow = withCanonicalListRow({
     id: 'ORC-MENU-1',
     data: '2026-08-20',
@@ -389,24 +388,20 @@ test('menu de ações e abas mantêm fechamento, foco e semântica acessíveis @
   await expect(secondMenu).toBeHidden();
 
   await page.goto('/#/quotations/q-emitido');
-  const tabs = page.getByRole('tab');
-  await expect(tabs).toHaveCount(3);
-  const summaryTab = page.getByRole('tab', { name: 'Resumo', exact: true });
-  const itemsTab = page.getByRole('tab', { name: 'Itens', exact: true });
-  const historyTab = page.getByRole('tab', { name: 'Histórico', exact: true });
-  await expect(summaryTab).toHaveAttribute('aria-selected', 'true');
-  await expect(summaryTab).toHaveAttribute('aria-controls', 'quotation-panel');
-  await expect(page.locator('#quotation-panel')).toHaveAttribute('role', 'tabpanel');
-  await expect(page.locator('#quotation-panel table')).toHaveCount(0);
-  await itemsTab.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(historyTab).toHaveAttribute('aria-selected', 'true');
-  await expect(historyTab).toBeFocused();
-  await page.keyboard.press('Home');
-  await expect(summaryTab).toHaveAttribute('aria-selected', 'true');
-  await expect(summaryTab).toBeFocused();
-  await page.keyboard.press('End');
-  await expect(historyTab).toHaveAttribute('aria-selected', 'true');
+  const detailPanel = page.locator('#quotation-panel');
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  await expect(detailPanel).not.toHaveAttribute('role', 'tabpanel');
+
+  const documentSummary = detailPanel.locator('summary').filter({ hasText: 'Detalhes do documento' });
+  await documentSummary.focus();
+  await page.keyboard.press('Enter');
+  await expect(documentSummary.locator('..')).toHaveAttribute('open', '');
+  await expect(documentSummary).toBeFocused();
+
+  const historySummary = detailPanel.locator('summary').filter({ hasText: 'Histórico e revisões' });
+  await historySummary.click();
+  await expect(historySummary.locator('..')).toHaveAttribute('open', '');
+  await expect(detailPanel.getByRole('table').last()).toBeVisible();
 });
 
 test('detalhe mantém um único scroll vertical no shell @quotations @smoke', async ({ page }) => {

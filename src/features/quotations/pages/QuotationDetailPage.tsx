@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   type ChangeEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
 } from 'react';
 import {
@@ -23,6 +22,9 @@ import {
   Search,
   CheckCircle2,
   ShoppingCart,
+  ArrowUpRight,
+  ChevronDown,
+  LockKeyhole,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
 import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
@@ -108,12 +110,7 @@ function readCreatedSalesOrderId(value: unknown): string {
 }
 const DIALOG_FOCUSABLE_SELECTOR =
   'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-const QUOTATION_TABS = [
-  { id: 'resumo', label: 'Resumo' },
-  { id: 'itens', label: 'Itens' },
-  { id: 'historico', label: 'Histórico' },
-] as const;
-type QuotationTab = (typeof QUOTATION_TABS)[number]['id'];
+type QuotationTab = 'resumo' | 'itens' | 'historico';
 
 type QuotationItem = ProjectedQuotationItem & {
   _key?: string;
@@ -272,7 +269,6 @@ function CoreQuotationDetail({
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
   const [activeTab, setActiveTab] = useState<QuotationTab>('resumo');
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
   const techDetailsDialogRef = useRef<HTMLDivElement>(null);
   const techDetailsCloseRef = useRef<HTMLButtonElement>(null);
@@ -294,24 +290,6 @@ function CoreQuotationDetail({
     setMessage(text);
     setMessageTone(tone);
   }, []);
-  const handleTabKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-      const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-      const targetIndex =
-        event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? QUOTATION_TABS.length - 1
-            : direction
-              ? (index + direction + QUOTATION_TABS.length) % QUOTATION_TABS.length
-              : -1;
-      if (targetIndex < 0) return;
-      event.preventDefault();
-      setActiveTab(QUOTATION_TABS[targetIndex].id);
-      tabRefs.current[targetIndex]?.focus();
-    },
-    []
-  );
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
   const [clientId, setClientId] = useState(data.clienteId || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
@@ -1385,11 +1363,446 @@ function CoreQuotationDetail({
       ? 'Este orçamento já foi enviado pelo WhatsApp.'
       : deliveryError
         ? deliveryError
-        : !deliveryFlowId
-          ? 'Selecione um fluxo para enviar pelo WhatsApp.'
-          : data.expired
-            ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+        : data.expired
+          ? 'Validade expirada — crie uma nova revisão para reenviar.'
+          : !deliveryFlowId
+            ? 'Selecione um fluxo para enviar pelo WhatsApp.'
             : '';
+
+  const paymentDetails = String(sections.pagamento.current.body || '');
+  const generalConditions = String(sections.condicoes_gerais.current.body || '');
+  const commercialTerms = quotationContentHasText(generalConditions)
+    ? generalConditions
+    : paymentDetails;
+  const issuedDetail = issuedView ? (
+    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_336px]">
+      <div id="quotation-panel" className="min-w-0 space-y-5">
+        <section
+          aria-labelledby="issued-client-title"
+          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 id="issued-client-title" className="text-base font-semibold text-fg">
+                Cliente
+              </h2>
+              <p className="mt-2 text-lg font-semibold text-fg">
+                {data.cliente || 'Cliente não informado'}
+              </p>
+              {(data.email || data.telefone) && (
+                <p className="mt-1 break-words text-sm text-fg-muted">
+                  {[data.email, fmtPhone(data.telefone) || data.telefone]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              )}
+            </div>
+            {data.clienteId && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
+              >
+                Ver cliente <ArrowUpRight size={14} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="issued-items-title"
+          className="overflow-hidden rounded-lg border border-line bg-surface"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-3 pt-5 md:px-6">
+            <h2 id="issued-items-title" className="text-base font-semibold text-fg">
+              Itens do orçamento
+            </h2>
+            <span className="text-sm text-fg-muted">
+              {quotationItemCountLabel(displayItems.length)} · {totalUnits} unidades
+            </span>
+          </div>
+          {displayItems.length > 0 ? (
+            <div className="overflow-x-auto px-5 md:px-6">
+              <Table className="min-w-[680px] text-sm">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-9 w-full min-w-[320px] px-0">Produto</TableHead>
+                    <TableHead className="h-9 whitespace-nowrap text-center">Quantidade</TableHead>
+                    <TableHead className="h-9 whitespace-nowrap text-right">
+                      Valor unitário
+                    </TableHead>
+                    <TableHead className="h-9 whitespace-nowrap pr-0 text-right">
+                      Subtotal
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {displayItems.map((item) => (
+                    <TableRow key={item._key}>
+                      <TableCell className="px-0 py-3">
+                        <span className="block break-words font-medium text-fg">
+                          {item.nome || item.item_name || item.sku || 'Produto não informado'}
+                        </span>
+                        {item.sku && (
+                          <span className="mt-0.5 block font-mono text-xs text-fg-muted">
+                            {item.sku}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
+                        {Number(item.qty)} un.
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-3 text-right tabular-nums">
+                        {formatBRL(item.applied_unit_price)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-3 pr-0 text-right font-medium tabular-nums">
+                        {formatBRL(
+                          item.line_total || Number(item.qty) * Number(item.applied_unit_price)
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="px-5 pb-5 md:px-6">
+              <EmptyState
+                icon={FileText}
+                title="Nenhum item neste orçamento"
+                description="Não há itens registrados nesta revisão."
+              />
+            </div>
+          )}
+          <div className="mx-5 flex flex-wrap items-end justify-between gap-5 border-t border-line py-5 md:mx-6">
+            <dl className="text-sm tabular-nums">
+              <dt className="text-xs text-fg-muted">Frete</dt>
+              <dd className="mt-0.5">{formatBRL(data.frete)}</dd>
+            </dl>
+            <dl className="text-right tabular-nums">
+              <dt className="text-sm text-fg-muted">Total do orçamento</dt>
+              <dd className="mt-1 text-2xl font-semibold tracking-tight text-fg">
+                {formatBRL(data.total)}
+              </dd>
+            </dl>
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="issued-conditions-title"
+          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6"
+        >
+          <h2 id="issued-conditions-title" className="text-base font-semibold text-fg">
+            Condições comerciais
+          </h2>
+          <div className="mt-4 grid gap-5 md:grid-cols-2 md:gap-8">
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-fg">Produção e entrega</h3>
+              {quotationContentHasText(productionDeadline) ? (
+                <div
+                  className="rich-text-read mt-1 text-sm leading-5 text-fg-muted [&_li]:ml-4 [&_ol]:list-decimal [&_p]:my-0.5 [&_ul]:list-disc"
+                  dangerouslySetInnerHTML={{ __html: productionDeadline }}
+                />
+              ) : entrega ? (
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-fg-muted">
+                  {entrega}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-fg-muted">Não informado</p>
+              )}
+              {!hideDuplicateProductionDeadline && entrega && productionDeadline && (
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-fg-muted">
+                  {entrega}
+                </p>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium text-fg">Formas de pagamento</h3>
+              {quotationContentHasText(commercialTerms) ? (
+                <div
+                  className="rich-text-read mt-1 text-sm leading-5 text-fg-muted [&_li]:ml-4 [&_ol]:list-decimal [&_p]:my-0.5 [&_ul]:list-disc"
+                  dangerouslySetInnerHTML={{ __html: commercialTerms }}
+                />
+              ) : (
+                <p className="mt-1 text-sm text-fg-muted">Não informado</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-5 divide-y divide-line border-t border-line">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+                <span>Dados bancários</span>
+                <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
+                  Pagamento
+                  <ChevronDown
+                    size={16}
+                    className="transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </span>
+              </summary>
+              <div className="pb-4">
+                {quotationContentHasText(paymentDetails) ? (
+                  <div
+                    className="rich-text-read max-w-[68ch] text-sm leading-6 text-fg-muted [&_li]:ml-4 [&_ol]:list-decimal [&_p]:my-0.5 [&_ul]:list-disc"
+                    dangerouslySetInnerHTML={{ __html: paymentDetails }}
+                  />
+                ) : (
+                  <p className="text-sm text-fg-muted">Nenhum dado bancário informado.</p>
+                )}
+              </div>
+            </details>
+
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+                <span>Detalhes do documento</span>
+                <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
+                  Datas e modelo
+                  <ChevronDown
+                    size={16}
+                    className="transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </span>
+              </summary>
+              <dl className="grid gap-4 pb-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-fg-muted">Data do orçamento</dt>
+                  <dd className="mt-1 tabular-nums">{formatDate(data.data) || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Validade</dt>
+                  <dd className="mt-1">
+                    {data.validadeDias ?? '—'} dias
+                    {formatDate(data.validade) && (
+                      <span className="block text-xs text-fg-muted">
+                        Até {formatDate(data.validade)}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Modelo</dt>
+                  <dd className="mt-1 break-words">
+                    {selectedTemplateMetadata?.name || selectedTemplate || '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-fg-muted">Frete</dt>
+                  <dd className="mt-1 tabular-nums">{formatBRL(data.frete)}</dd>
+                </div>
+              </dl>
+            </details>
+
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+                <span>Histórico e revisões</span>
+                <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
+                  R{data.revision}
+                  <ChevronDown
+                    size={16}
+                    className="transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </span>
+              </summary>
+              <div className="overflow-x-auto pb-4">
+                {(data.revisionHistory || []).length > 0 ? (
+                  <Table className="min-w-[680px] text-sm">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="h-9 pl-0">Revisão</TableHead>
+                        <TableHead className="h-9">Criada em</TableHead>
+                        <TableHead className="h-9">Validade</TableHead>
+                        <TableHead className="h-9">Estado</TableHead>
+                        <TableHead className="h-9 text-right">Total</TableHead>
+                        <TableHead className="h-9">PDF</TableHead>
+                        <TableHead className="h-9 pr-0" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(data.revisionHistory || []).map((entry) => {
+                        const eligible = entry.status !== 'rascunho' && !draftEditable;
+                        return (
+                          <TableRow key={entry.revisionId}>
+                            <TableCell className="whitespace-nowrap py-2 pl-0 font-medium">
+                              R{entry.revision}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap py-2">
+                              {formatDate(entry.createdAt) || '—'}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap py-2">
+                              {formatDate(entry.validade) || '—'}
+                              {entry.expired && (
+                                <span className="block text-xs text-warning">Expirada</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <StatusBadge {...statusBadgeProps(entry.status)} />
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
+                              {formatBRL(entry.total)}
+                            </TableCell>
+                            <TableCell>
+                              {entry.status !== 'rascunho' ? (
+                                <button
+                                  type="button"
+                                  className="text-xs font-medium text-primary hover:underline"
+                                  onClick={() => {
+                                    window.open(
+                                      `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
+                                      '_blank',
+                                      'noopener,noreferrer'
+                                    );
+                                  }}
+                                >
+                                  Visualizar
+                                </button>
+                              ) : (
+                                <span className="text-xs text-fg-muted">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-2 pr-0 text-right">
+                              {eligible && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={lifecycleAction !== null}
+                                  onClick={() => createRevision(entry.revisionId)}
+                                >
+                                  Nova revisão
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-fg-muted">Nenhuma revisão anterior.</p>
+                )}
+              </div>
+            </details>
+          </div>
+        </section>
+      </div>
+
+      <aside
+        className="min-w-0 self-start rounded-lg border border-line bg-surface px-5 py-5 xl:sticky xl:top-4"
+        aria-labelledby="commercial-followup-title"
+      >
+        <h2 id="commercial-followup-title" className="text-base font-semibold text-fg">
+          Acompanhamento comercial
+        </h2>
+        <div className="mt-5 space-y-3">
+          <label className="block text-xs font-medium text-fg-muted">
+            <span className="mb-1.5 block">Fluxo WhatsApp</span>
+            <Select
+              className="w-full"
+              value={deliveryFlowId}
+              onChange={(event) => setDeliveryFlowId(event.target.value)}
+              disabled={deliveryPending}
+            >
+              {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
+              {deliveryFlows.map((flow) => (
+                <option key={flow.id} value={flow.id}>
+                  {flow.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <p className="text-sm leading-5 text-fg-muted">
+            Envie o orçamento para iniciar a conversa com a cliente.
+          </p>
+          <Button
+            className="w-full"
+            aria-label="Enviar WhatsApp"
+            title={whatsappDisabledReason || undefined}
+            disabled={Boolean(whatsappDisabledReason)}
+            onClick={sendIssuedQuotation}
+          >
+            <Phone size={14} /> Enviar pelo WhatsApp
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              setEmailError('');
+              setEmailDialogOpen(true);
+            }}
+          >
+            <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+          </Button>
+        </div>
+        {whatsappDisabledReason && (
+          <p role="status" className="mt-2 text-xs text-fg-muted">
+            {whatsappDisabledReason}
+          </p>
+        )}
+        {(delivery && deliveryError) || enqueueError ? (
+          <p role="status" className="mt-2 text-xs text-warning">
+            {deliveryError || enqueueError}
+          </p>
+        ) : null}
+        {deliveryFlows.length === 0 && !deliveryError && (
+          <p role="status" className="mt-2 text-xs text-fg-muted">
+            Não foi possível carregar os fluxos. Tente novamente mais tarde.
+          </p>
+        )}
+        <QuotationDeliveryStatus
+          delivery={delivery}
+          pending={deliveryPending}
+          onResolve={handleResolveDelivery}
+          className="mt-5 border-t border-line pt-4"
+        />
+        <div className="mt-5 border-t border-line pt-5">
+          <h3 className="text-sm font-semibold text-fg">Resultado da negociação</h3>
+          {data.status === 'emitido' ? (
+            <div className="mt-3 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={lifecycleAction !== null}
+                onClick={() => void markCommercialStatus('aprovado')}
+              >
+                {lifecycleAction === 'aprovado' ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={14} />
+                )}
+                Aprovar e criar pedido
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full text-fg-muted"
+                disabled={lifecycleAction !== null}
+                onClick={openLossReasonDialog}
+              >
+                Marcar como perdido
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <StatusBadge {...statusBadgeProps(data.status)} />
+              {createdSalesOrderId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    navigate(`/sales-orders/${encodeURIComponent(createdSalesOrderId)}`)
+                  }
+                >
+                  <ShoppingCart size={14} /> Ver pedido {createdSalesOrderId}
+                </Button>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  ) : null;
 
   return (
     <div ref={detailTopRef} className="space-y-0">
@@ -1399,30 +1812,37 @@ function CoreQuotationDetail({
             {draftEditable && !editing && (
               <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
             )}
-            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg">
+            <h1 className="text-3xl font-semibold leading-9 tracking-[-0.4px] text-fg">
               {data.businessNumber || displayTitle}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
               <span className="font-medium text-fg">{data.cliente || 'Cliente não informado'}</span>
               <span aria-hidden="true">·</span>
               <span>Revisão {data.revision}</span>
-              {currentRevision?.createdAt && (
+              {issuedView ? (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>Válido até {formatDate(data.validade) || '—'}</span>
+                </>
+              ) : currentRevision?.createdAt ? (
                 <>
                   <span aria-hidden="true">·</span>
                   <span>{formatDate(currentRevision.createdAt) || '—'}</span>
                 </>
-              )}
+              ) : null}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
-              <StatusBadge {...statusBadgeProps(data.status)} />
-              <span>Validade: {formatDate(data.validade) || '—'}</span>
-              {data.expired && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="font-medium text-warning">Expirado</span>
-                </>
-              )}
-            </div>
+            {!issuedView && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
+                <StatusBadge {...statusBadgeProps(data.status)} />
+                <span>Validade: {formatDate(data.validade) || '—'}</span>
+                {data.expired && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-medium text-warning">Expirado</span>
+                  </>
+                )}
+              </div>
+            )}
             {data.quotationOrigin && (
               <div
                 className="mt-2 flex flex-wrap items-center gap-2 text-sm"
@@ -1503,7 +1923,7 @@ function CoreQuotationDetail({
                     </Button>
                   </>
                 ) : (
-                  <Button variant="outline" size="sm" onClick={openIssuedDocument}>
+                  <Button variant="outline" size="lg" onClick={openIssuedDocument}>
                     <FileText size={14} /> Visualizar PDF
                   </Button>
                 )}
@@ -1515,10 +1935,11 @@ function CoreQuotationDetail({
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     aria-label="Mais ações"
-                    className="flex h-8 w-8 items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className={`flex items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${issuedView ? 'h-10 gap-2 px-4 text-sm font-medium' : 'h-8 w-8'}`}
                     onClick={() => setMenuOpen((current) => !current)}
                   >
                     <MoreHorizontal size={18} />
+                    {issuedView && <span>Mais ações</span>}
                   </button>
                   {menuOpen && (
                     <div
@@ -1572,11 +1993,24 @@ function CoreQuotationDetail({
             {message || emailSuccess}
           </p>
         )}
-        {!draftEditable && !editing && (
-          <p className="mt-4 max-w-prose rounded-md bg-surface-subtle px-4 py-3 text-sm text-fg-muted">
-            Este orçamento está somente para leitura porque já foi emitido. Alterações criam uma
-            nova revisão.
-          </p>
+        {issuedView && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-5">
+            <div className="flex min-w-0 items-center gap-2 text-sm text-fg-muted">
+              <LockKeyhole size={16} aria-hidden="true" />
+              <span className="font-semibold text-fg">Emitido</span>
+              <span>Somente leitura. Alterações criam uma nova revisão.</span>
+            </div>
+            {data.revisionId && (
+              <button
+                type="button"
+                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                disabled={lifecycleAction !== null}
+                onClick={() => createRevision(data.revisionId!)}
+              >
+                {lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Criar revisão'}
+              </button>
+            )}
+          </div>
         )}
 
         {conflict && (
@@ -1591,42 +2025,14 @@ function CoreQuotationDetail({
           </div>
         )}
 
-        {issuedView && (
-          <div
-            className="mb-4 flex items-center gap-5 border-b border-line"
-            role="tablist"
-            aria-label="Seções do orçamento"
-          >
-            {QUOTATION_TABS.map((tab, index) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  ref={(element) => {
-                    tabRefs.current[index] = element;
-                  }}
-                  id={`quotation-tab-${tab.id}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls="quotation-panel"
-                  tabIndex={isActive ? 0 : -1}
-                  className={`border-b-2 px-0.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${isActive ? 'border-primary text-link' : 'border-transparent text-fg-muted hover:text-fg'}`}
-                  onClick={() => setActiveTab(tab.id)}
-                  onKeyDown={(event) => handleTabKeyDown(event, index)}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {issuedDetail}
 
-        <div
-          className={
-            editing ? 'min-w-0 space-y-5' : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
-          }
-        >
+        {!issuedView && (
+          <div
+            className={
+              editing ? 'min-w-0 space-y-5' : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
+            }
+          >
           <div
             id={issuedView ? 'quotation-panel' : undefined}
             role={issuedView ? 'tabpanel' : undefined}
@@ -2238,11 +2644,12 @@ function CoreQuotationDetail({
                     ))}
                   </Select>
                 </label>
-                <Button
-                  className="w-full"
-                  title={whatsappDisabledReason || undefined}
-                  disabled={Boolean(whatsappDisabledReason)}
-                  onClick={sendIssuedQuotation}
+          <Button
+            className="w-full"
+            aria-label="Enviar WhatsApp"
+            title={whatsappDisabledReason || undefined}
+            disabled={Boolean(whatsappDisabledReason)}
+            onClick={sendIssuedQuotation}
                 >
                   <Phone size={14} /> Enviar WhatsApp
                 </Button>
@@ -2387,7 +2794,8 @@ function CoreQuotationDetail({
               )}
             </aside>
           )}
-        </div>
+          </div>
+        )}
       </fieldset>
 
       <QuotationEmailDialog
@@ -2665,7 +3073,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   }
   if (!data) return null;
   return (
-    <PageShell className="space-y-3">
+    <PageShell className="max-w-[1240px] space-y-3">
       {reloadWarning && (
         <div
           role="status"

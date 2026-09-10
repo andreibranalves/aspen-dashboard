@@ -899,7 +899,6 @@ test('projeções locais descartam marcadores proibidos de cliente e cotação @
   await expect(page.getByText('Cliente legítimo', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await page.goto(`/#/quotations/${quotationId}`);
-  await page.getByRole('tab', { name: 'Itens' }).click();
   await expect(page.getByRole('row').filter({ hasText: 'Produto legítimo' })).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href="https://evil.test"]')).toHaveCount(0);

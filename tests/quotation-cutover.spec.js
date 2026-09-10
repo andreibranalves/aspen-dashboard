@@ -232,7 +232,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   expect(sanitizedError.body).toContain('Erro ao processar orçamento. Tente novamente.');
   expect(sanitizedError.body).not.toMatch(/EXTERNAL_API_TOKEN|stack|secret|\/home\//i);
 
-  await page.getByText('Ver histórico completo').click();
+  await page.getByText('Histórico e revisões').click();
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
   await expect(page.getByText('Revisão 2')).toBeVisible();

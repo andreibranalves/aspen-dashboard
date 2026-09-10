@@ -557,9 +557,8 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
-  await page.getByRole('tab', { name: 'Itens' }).click();
   const itemRow = page.locator('tr').filter({ hasText: 'Produto lifecycle' }).first();
-  await expect(itemRow.getByText('10', { exact: true })).toBeVisible();
+  await expect(itemRow.getByText('10 un.', { exact: true })).toBeVisible();
   await expect(itemRow.getByText('10.000', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Título da seção Dados para pagamento')).toHaveCount(0);
 });
@@ -819,7 +818,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   expect(pdfUrl.searchParams.has('template_version_id')).toBe(false);
   expect(pdfUrl.searchParams.has('template')).toBe(false);
   await pdfPopup.close();
-  await page.getByText('Ver histórico completo').click();
+  await page.getByText('Histórico e revisões').click();
   const historyPreview = page.waitForEvent('popup');
   await page.locator('tbody tr').filter({ hasText: 'R1' }).getByRole('button', { name: 'Visualizar', exact: true }).click();
   const historyPopup = await historyPreview;
@@ -850,7 +849,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
     ],
   });
   await page.reload();
-  await page.getByText('Ver histórico completo').click();
+  await page.getByText('Histórico e revisões').click();
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
   await expect(page.getByText('Rascunho', { exact: true }).first()).toBeVisible();
@@ -908,7 +907,7 @@ test('new revision prices a product selected from an added item row @quotations 
   });
 
   await page.goto(`/#/quotations/${id}`);
-  await page.getByText('Ver histórico completo').click();
+  await page.getByText('Histórico e revisões').click();
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
   await page.getByRole('button', { name: 'Editar' }).click();
