@@ -15,6 +15,8 @@ import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { createPostgresCrmDealRepository } from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
+import type { CrmPipelineStageRepository } from '../../api/_infrastructure/db/repositories/crm-pipeline-stages-repository.js';
+import { createPostgresCrmPipelineStageRepository } from '../../api/_infrastructure/db/repositories/crm-pipeline-stages-repository.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { createCrmDealsHandler } from '../../api/_modules/crm-deals.js';
 import { createCrmUpdateDealHandler } from '../../api/_modules/crm-update-deal.js';
@@ -100,6 +102,33 @@ function memoryRepository(seed: CrmDealRecord[]): CrmDealRepository & { rows: Cr
   };
 }
 
+function memoryPipelineRepository(): CrmPipelineStageRepository {
+  const rows = CRM_PIPELINE.map((key, position) => ({
+    key,
+    name: key,
+    position,
+    role: null,
+    dealCount: 0,
+  }));
+  return {
+    async list() {
+      return rows;
+    },
+    async create() {
+      throw new Error('not used');
+    },
+    async rename() {
+      throw new Error('not used');
+    },
+    async reorder() {
+      throw new Error('not used');
+    },
+    async remove() {
+      throw new Error('not used');
+    },
+  };
+}
+
 function event(
   httpMethod: string,
   body?: unknown,
@@ -143,7 +172,10 @@ test('groups local deals into canonical Kanban columns without external fetches'
       status: 'Outro Extra',
     }),
   ]);
-  const handler = createCrmDealsHandler({ repository });
+  const handler = createCrmDealsHandler({
+    repository,
+    pipelineRepository: memoryPipelineRepository(),
+  });
 
   const result = await handler(event('GET', undefined, { search: 'aNA' }));
   const body = JSON.parse(result.body || '');
@@ -197,7 +229,10 @@ test('keeps unknown local statuses after canonical columns in alphabetical order
     deal({ id: 'z', status: 'Zeta' }),
     deal({ id: 'a', status: 'Alfa' }),
   ]);
-  const handler = createCrmDealsHandler({ repository });
+  const handler = createCrmDealsHandler({
+    repository,
+    pipelineRepository: memoryPipelineRepository(),
+  });
 
   const result = await handler(event('GET'));
   const body = JSON.parse(result.body || '');
@@ -234,7 +269,7 @@ test('updates a local status and follow-up stage through the handler', async () 
 test('returns Brazilian Portuguese errors for unsupported CRM methods', async () => {
   const repository = memoryRepository([]);
   const handlers = [
-    createCrmDealsHandler({ repository }),
+    createCrmDealsHandler({ repository, pipelineRepository: memoryPipelineRepository() }),
     createCrmUpdateDealHandler({ repository }),
     createCrmPruneCandidatesHandler({ repository }),
   ];
@@ -661,3 +696,72 @@ test(
   }
 );
 
+test(
+  'persists configurable pipeline stages and protects occupied stages in PostgreSQL',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const db = drizzle(client, { schema });
+    const dealId = randomUUID();
+    let createdKey: string | null = null;
+    let originalOrder: string[] = [];
+    try {
+      await migrate(db, { migrationsFolder });
+      const pipelineRepository = createPostgresCrmPipelineStageRepository(() => db, {
+        now: () => NOW,
+        keyFactory: () => randomUUID(),
+      });
+      originalOrder = (await pipelineRepository.list()).map((stage) => stage.key);
+
+      const created = await pipelineRepository.create(`Qualificação ${dealId.slice(0, 8)}`);
+      createdKey = created.key;
+      assert.equal(created.dealCount, 0);
+
+      const renamed = await pipelineRepository.rename(created.key, `Triagem ${dealId.slice(0, 8)}`);
+      assert.equal(renamed?.name, `Triagem ${dealId.slice(0, 8)}`);
+
+      const reordered = await pipelineRepository.reorder([created.key, ...originalOrder]);
+      assert.equal(reordered[0]?.key, created.key);
+
+      await db.insert(schema.crmDeals).values({
+        id: dealId,
+        nome: 'Negócio na etapa customizada',
+        status: created.key,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await assert.rejects(
+        pipelineRepository.remove(created.key),
+        /Mova os negócios desta etapa antes de removê-la\./
+      );
+
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
+      assert.equal(await pipelineRepository.remove(created.key), true);
+      createdKey = null;
+      assert.deepEqual(
+        (await pipelineRepository.list()).map((stage) => stage.key),
+        originalOrder
+      );
+    } finally {
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
+      if (createdKey) {
+        await db
+          .delete(schema.crmPipelineStages)
+          .where(eq(schema.crmPipelineStages.key, createdKey));
+        for (const [position, key] of originalOrder.entries()) {
+          await db
+            .update(schema.crmPipelineStages)
+            .set({ position })
+            .where(eq(schema.crmPipelineStages.key, key));
+        }
+      }
+      await client.end({ timeout: 5 });
+    }
+  }
+);

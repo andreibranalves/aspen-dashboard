@@ -644,6 +644,31 @@ export const quoteLeads = pgTable(
   ]
 );
 
+export type CrmPipelineStageRole = 'new' | 'issued' | 'won' | 'lost';
+
+export const crmPipelineStages = pgTable(
+  'crm_pipeline_stages',
+  {
+    key: varchar('key', { length: 32 }).primaryKey(),
+    name: varchar('name', { length: 80 }).notNull(),
+    position: integer('position').notNull(),
+    role: varchar('role', { length: 16 }).$type<CrmPipelineStageRole>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('crm_pipeline_stages_name_lower_unique').on(sql`lower(${table.name})`),
+    uniqueIndex('crm_pipeline_stages_role_unique').on(table.role),
+    check('crm_pipeline_stages_key_not_blank_check', sql`char_length(btrim(${table.key})) > 0`),
+    check('crm_pipeline_stages_name_not_blank_check', sql`char_length(btrim(${table.name})) > 0`),
+    check('crm_pipeline_stages_position_check', sql`${table.position} >= 0`),
+    check(
+      'crm_pipeline_stages_role_check',
+      sql`${table.role} IS NULL OR ${table.role} IN ('new', 'issued', 'won', 'lost')`
+    ),
+  ]
+);
+
 export const crmDeals = pgTable(
   'crm_deals',
   {
@@ -654,7 +679,10 @@ export const crmDeals = pgTable(
     nome: varchar('nome', { length: 200 }).notNull(),
     email: varchar('email', { length: 254 }),
     telefone: varchar('telefone', { length: 15 }),
-    status: varchar('status', { length: 32 }).notNull().default('Novo Lead'),
+    status: varchar('status', { length: 32 })
+      .notNull()
+      .default('Novo Lead')
+      .references(() => crmPipelineStages.key),
     followUpStage: integer('follow_up_stage').notNull().default(0),
     nextStep: varchar('next_step', { length: 500 }),
     lostReason: varchar('lost_reason', { length: 500 }),
@@ -676,10 +704,6 @@ export const crmDeals = pgTable(
       sql`${table.telefone} IS NULL OR ${table.telefone} ~ '^[0-9]{10,15}$'`
     ),
     check('crm_deals_follow_up_stage_check', sql`${table.followUpStage} >= 0`),
-    check(
-      'crm_deals_status_check',
-      sql`${table.status} IN ('Novo Lead', 'Contato Feito', 'Orcamento Enviado', 'Em Negociacao', 'Arte Aprovada', 'Pedido Fechado', 'Perdido')`
-    ),
   ]
 );
 

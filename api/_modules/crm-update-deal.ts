@@ -3,7 +3,6 @@ import { createHttpError } from '../_shared/http-error.js';
 import {
   createPostgresCrmDealRepository,
   type CrmDealRepository,
-  type CrmDealStatus,
 } from '../_infrastructure/db/repositories/crm-deals-repository.js';
 
 export interface CrmUpdateDealHandlerDependencies {
@@ -45,7 +44,7 @@ export function createCrmUpdateDealHandler(
         throw createHttpError(400, 'deal_id e status são obrigatórios.');
       }
       const result = await repository.updateStatus(dealId, {
-        status: payload.status as CrmDealStatus,
+        status: payload.status,
         followUpStage: payload.follow_up_stage as number | null | undefined,
       });
       if (!result) throw createHttpError(404, 'Oportunidade não encontrada.');

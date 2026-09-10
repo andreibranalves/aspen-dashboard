@@ -2,6 +2,7 @@
 import type { LegacyHandler } from '../_http/types.js';
 
 import { handler as crmDeals } from '../_modules/crm-deals.js';
+import { handler as crmPipelineStages } from '../_modules/crm-pipeline-stages.js';
 import { handler as crmUpdateDeal } from '../_modules/crm-update-deal.js';
 import { handler as crmPruneCandidates } from '../_modules/crm-prune-candidates.js';
 import { handler as duplicateQuotation } from '../_modules/duplicate-quotation.js';
@@ -56,6 +57,7 @@ export const routes: Record<string, LegacyHandler> = {
   'operational-status': operationalStatus,
   'client-detail': clientDetail,
   'crm-deals': crmDeals,
+  'crm-pipeline-stages': crmPipelineStages,
   'crm-prune-candidates': crmPruneCandidates,
   'crm-update-deal': crmUpdateDeal,
   'duplicate-quotation': duplicateQuotation,
