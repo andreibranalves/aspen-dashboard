@@ -40,53 +40,53 @@ channels; the values below are the resulting hex colors.
 
 ### Light theme
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `page` | `#f7f8fa` | application background |
-| `surface` | `#ffffff` | cards, controls, panels |
-| `surface-subtle` | `#fafafa` | quiet interior surface |
-| `surface-hover` | `#f7f7f8` | hover surface |
-| `surface-selected` | `#e7f0ff` | selected content rows/controls |
-| `border-subtle` | `#ededed` | low-emphasis separators |
-| `border-default` | `#e2e2e5` | normal borders |
-| `border-strong` | `#d1d1d6` | emphasized boundaries |
-| `border-control` | `#8a8a92` | input/select boundaries |
-| `text-primary` | `#18181b` | primary text |
-| `text-secondary` | `#52525b` | supporting text |
-| `text-tertiary` | `#66666f` | metadata and low-emphasis text |
-| `text-disabled` | `#a1a1aa` | disabled content |
-| `primary` | `#165cd8` | actions, focus, active links |
-| `link` | `#165cd8` | link text, distinct from surface/action roles |
-| `on-primary` | `#ffffff` | text on primary |
-| `success` | `#1a7a4c` | confirmed success |
-| `warning` | `#9a5b13` | attention |
-| `destructive` | `#b83a39` | destructive action surface/status |
-| `info` | `#165cd8` | informational state |
+| Token              | Value     | Use                                           |
+| ------------------ | --------- | --------------------------------------------- |
+| `page`             | `#f7f8fa` | application background                        |
+| `surface`          | `#ffffff` | cards, controls, panels                       |
+| `surface-subtle`   | `#fafafa` | quiet interior surface                        |
+| `surface-hover`    | `#f7f7f8` | hover surface                                 |
+| `surface-selected` | `#e7f0ff` | selected content rows/controls                |
+| `border-subtle`    | `#ededed` | low-emphasis separators                       |
+| `border-default`   | `#e2e2e5` | normal borders                                |
+| `border-strong`    | `#d1d1d6` | emphasized boundaries                         |
+| `border-control`   | `#8a8a92` | input/select boundaries                       |
+| `text-primary`     | `#18181b` | primary text                                  |
+| `text-secondary`   | `#52525b` | supporting text                               |
+| `text-tertiary`    | `#66666f` | metadata and low-emphasis text                |
+| `text-disabled`    | `#a1a1aa` | disabled content                              |
+| `primary`          | `#165cd8` | actions, focus, active links                  |
+| `link`             | `#165cd8` | link text, distinct from surface/action roles |
+| `on-primary`       | `#ffffff` | text on primary                               |
+| `success`          | `#1a7a4c` | confirmed success                             |
+| `warning`          | `#9a5b13` | attention                                     |
+| `destructive`      | `#b83a39` | destructive action surface/status             |
+| `info`             | `#165cd8` | informational state                           |
 
 ### Dark theme
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `page` | `#0f1420` | application background |
-| `surface` | `#141a26` | cards, controls, panels |
-| `surface-subtle` | `#1a2230` | quiet interior surface |
-| `surface-hover` | `#202a3a` | hover surface |
-| `surface-selected` | `#1d2d4a` | selected content rows/controls |
-| `border-subtle` | `#252f40` | low-emphasis separators |
-| `border-default` | `#334056` | normal borders |
-| `border-strong` | `#46546c` | emphasized boundaries |
-| `border-control` | `#687991` | input/select boundaries |
-| `text-primary` | `#ffffff` | primary text |
-| `text-secondary` | `#b5bfce` | supporting text |
-| `text-tertiary` | `#929eb0` | metadata and low-emphasis text |
-| `text-disabled` | `#66748a` | disabled content |
-| `primary` | `#2f6fdb` | actions and focus |
-| `link` | `#8ab4ff` | link text, distinct from action blue |
-| `on-primary` | `#ffffff` | text on primary |
-| `success` | `#34c77e` | confirmed success |
-| `warning` | `#f0a857` | attention |
-| `destructive` | `#e2696a` | destructive action surface/status |
-| `info` | `#6f9cec` | informational state |
+| Token              | Value     | Use                                  |
+| ------------------ | --------- | ------------------------------------ |
+| `page`             | `#0f1420` | application background               |
+| `surface`          | `#141a26` | cards, controls, panels              |
+| `surface-subtle`   | `#1a2230` | quiet interior surface               |
+| `surface-hover`    | `#202a3a` | hover surface                        |
+| `surface-selected` | `#1d2d4a` | selected content rows/controls       |
+| `border-subtle`    | `#252f40` | low-emphasis separators              |
+| `border-default`   | `#334056` | normal borders                       |
+| `border-strong`    | `#46546c` | emphasized boundaries                |
+| `border-control`   | `#687991` | input/select boundaries              |
+| `text-primary`     | `#ffffff` | primary text                         |
+| `text-secondary`   | `#b5bfce` | supporting text                      |
+| `text-tertiary`    | `#929eb0` | metadata and low-emphasis text       |
+| `text-disabled`    | `#66748a` | disabled content                     |
+| `primary`          | `#2f6fdb` | actions and focus                    |
+| `link`             | `#8ab4ff` | link text, distinct from action blue |
+| `on-primary`       | `#ffffff` | text on primary                      |
+| `success`          | `#34c77e` | confirmed success                    |
+| `warning`          | `#f0a857` | attention                            |
+| `destructive`      | `#e2696a` | destructive action surface/status    |
+| `info`             | `#6f9cec` | informational state                  |
 
 The live Figma variable names are preserved semantically: `text/link` maps to
 `--link`, `border/control` maps to `--border-control`, and the light Figma
@@ -124,13 +124,13 @@ placement where the journey already uses one.
 
 Compatibility aliases remain available while consumers migrate:
 
-| Alias | Canonical variable |
-| --- | --- |
+| Alias             | Canonical variable |
+| ----------------- | ------------------ |
 | `--surface-muted` | `--surface-subtle` |
-| `--line` | `--border-default` |
-| `--fg` | `--text-primary` |
-| `--fg-muted` | `--text-secondary` |
-| `--on-solid` | `--on-primary` |
+| `--line`          | `--border-default` |
+| `--fg`            | `--text-primary`   |
+| `--fg-muted`      | `--text-secondary` |
+| `--on-solid`      | `--on-primary`     |
 
 Aliases are not renamed for aesthetics and are removed only after a repository
 search proves that they have no consumers.
@@ -139,14 +139,14 @@ search proves that they have no consumers.
 
 Inter is the product font. Shared migrated roles are:
 
-| Role | Size | Weight | Line height |
-| --- | --- | --- | --- |
-| Page title | `24px` | `600` | `32px` |
-| Section title | `16px` | `600` | `24px` |
-| UI body | `14px` | `400` | `20px` |
-| UI emphasis | `14px` | `500` | `20px` |
-| Secondary | `13px` | `400` | `18px` |
-| Metadata | `12px` | `400` to `500` | `16px` |
+| Role          | Size   | Weight         | Line height |
+| ------------- | ------ | -------------- | ----------- |
+| Page title    | `24px` | `600`          | `32px`      |
+| Section title | `16px` | `600`          | `24px`      |
+| UI body       | `14px` | `400`          | `20px`      |
+| UI emphasis   | `14px` | `500`          | `20px`      |
+| Secondary     | `13px` | `400`          | `18px`      |
+| Metadata      | `12px` | `400` to `500` | `16px`      |
 
 Page titles use approximately `-0.2px` letter spacing. Monetary values and
 percentages in the Pedidos list/detail use the normal Inter family with
@@ -245,7 +245,7 @@ fixtures and are never copied into production data.
 ## Approved Orçamentos consultation slice
 
 The Orçamentos consultation journey applies this same contract to the list and
-detail/revision views. The implementation uses the current Figma structural
+detail/revision views. The initial implementation used the Figma structural
 references `8:2` (list), `79:186` (two-item review), `81:265` (new draft
 revision), and `81:599` (issued revision and preparation for delivery). The
 related confirmation references `86:38` and `89:51` were consulted but do not
@@ -258,11 +258,16 @@ search, fluid table, and secondary row actions. E-mail delivery remains
 available as row context without becoming a primary table column.
 
 The detail keeps the existing draft/revision, emission, PDF, WhatsApp, e-mail,
-approval/order, loss, deletion, and history workflows. Issued views use the
-Resumo/Itens/Histórico navigation: Resumo is a compact synthesis of items,
-quantities, essential conditions, totals, client, and metadata; the complete
-table is in Itens. The tabs use the WAI-ARIA tab pattern and keep delivery and
-commercial outcome in the existing 320px side panel. Draft review and editing
+approval/order, loss, deletion, and history workflows. Issued views follow the
+subsequent detail references supplied by the user: client, complete item table
+and totals, and commercial conditions appear together without tabs. The client
+card retains Ver cliente, Abrir no CRM, and Ver orçamentos anteriores.
+Commercial sections respect their saved visibility and titles, using the existing
+display-title normalization, and retain their original meanings. Detalhes do
+documento and Histórico e revisões use native collapsible sections. Visualizar PDF
+and Mais ações remain in the header. Acompanhamento comercial groups delivery
+and negotiation actions in a 336px side panel at extra-large widths and stacks
+below the content on smaller screens. Draft review and editing
 use the same detail shell with totals and consequential emission actions in the
 side panel, except that editing recovers the full table width. No business
 rule, endpoint, persistence model, or data source is introduced by this visual
