@@ -55,16 +55,6 @@ function delivery(state, flowId = 'flow-1') {
   };
 }
 
-function statusResponse(state, flowId = 'flow-1') {
-  return {
-    revision_id: revisionId,
-    flow_id: flowId,
-    delivery_id: delivery(state, flowId).id,
-    phase: state,
-    error: null,
-    updated_at: updatedAt,
-  };
-}
 
 function enqueueResponse(state, flowId = 'flow-1', { omitPhone = false } = {}) {
   const body = delivery(state, flowId);
@@ -257,7 +247,6 @@ async function setupAuto(page) {
   // Safety net: delivery lookups fire as soon as the issued card renders,
   // possibly before a test registers its own delivery routes. Answer them
   // immediately so the send button is enabled once the lookup settles.
-  await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
   await page.route('**/api/quotation-deliveries**', (route) => json(route, deliveryPage()));
   await page.goto('/#/auto');
   await page.locator('textarea').first().fill('1 canga');
@@ -276,12 +265,6 @@ async function installDurableRoutes(page, stateForFlow = () => 'delivered') {
     const state = stateForFlow(body.flow_id);
     active.set(body.flow_id, state);
     return json(route, enqueueResponse(state, body.flow_id));
-  });
-  await page.route('**/api/whatsapp-send-status**', (route) => {
-    const flowId = new globalThis.URL(route.request().url()).searchParams.get('flow_id');
-    const state = active.get(flowId);
-    if (!state) return json(route, { error: 'not found' }, 404);
-    return json(route, statusResponse(state, flowId));
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
@@ -330,10 +313,6 @@ test('delivered replay without phone remains a durable completed UI status', asy
     active.set('flow-1', 'delivered');
     return json(route, enqueueResponse('delivered', 'flow-1', { omitPhone: true }));
   });
-  await page.route('**/api/whatsapp-send-status**', (route) => {
-    if (!active.has('flow-1')) return json(route, { error: 'not found' }, 404);
-    return json(route, statusResponse(active.get('flow-1')));
-  });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
     if (url.searchParams.has('revision_id')) {
@@ -375,7 +354,6 @@ test('same component double click sends one backend request and unsafe failure s
     }
     return json(route, enqueueResponse('delivered'));
   });
-  await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
     return url.searchParams.has('revision_id')
@@ -403,7 +381,6 @@ test('malformed 2xx cannot render sent and leaves no local success authority', a
     sendCount += 1;
     return json(route, { success: true });
   });
-  await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
     return url.searchParams.has('revision_id')

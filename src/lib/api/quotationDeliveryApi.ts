@@ -351,18 +351,6 @@ function queryForIdentity(identity: DeliveryIdentity): string {
   return new URLSearchParams({ revision_id: revisionId, flow_id: flowId }).toString();
 }
 
-function parseStatusResponse(value: unknown, identity: DeliveryIdentity): { deliveryId: string } {
-  if (!isRecord(value)) invalidResponse();
-  const revisionId = text(value.revision_id, { maximum: 255 });
-  const flowId = text(value.flow_id, { maximum: 255 });
-  const deliveryId = text(value.delivery_id, { maximum: 255 });
-  oneOf(value.phase, DELIVERY_STATES);
-  if (revisionId !== identity.revisionId || flowId !== identity.flowId) invalidResponse();
-  if (value.error !== null) text(value.error, { required: false, maximum: 500 });
-  timestamp(value.updated_at);
-  return { deliveryId };
-}
-
 export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
   const labels: Record<DeliveryState, string> = {
     queued: 'Na fila',
@@ -414,24 +402,17 @@ export function deliveryPollDelay(state: DeliveryState): number | null {
 export async function fetchDelivery(
   identityOrId: DeliveryIdentity | { id: string }
 ): Promise<DeliveryView | null> {
-  if ('id' in identityOrId) {
-    const id = inputIdentifier(identityOrId.id, 'Identificador da entrega');
-    const response = await fetch(`/api/quotation-deliveries?id=${encodeURIComponent(id)}`);
-    if (response.status === 404) return null;
-    if (!response.ok) return requestError(response, 'Não foi possível consultar a entrega.');
-    return parseDelivery(await responseBody(response));
-  }
-
-  const identity: DeliveryIdentity = {
-    revisionId: inputIdentifier(identityOrId.revisionId, 'Identificador da revisão'),
-    flowId: inputIdentifier(identityOrId.flowId, 'Fluxo'),
-  };
-  const statusResponse = await fetch(`/api/whatsapp-send-status?${queryForIdentity(identity)}`);
-  if (statusResponse.status === 404) return null;
-  if (!statusResponse.ok)
-    return requestError(statusResponse, 'Não foi possível consultar a entrega.');
-  const status = parseStatusResponse(await responseBody(statusResponse), identity);
-  return fetchDelivery({ id: status.deliveryId });
+  const query =
+    'id' in identityOrId
+      ? `id=${encodeURIComponent(inputIdentifier(identityOrId.id, 'Identificador da entrega'))}`
+      : queryForIdentity({
+          revisionId: inputIdentifier(identityOrId.revisionId, 'Identificador da revisão'),
+          flowId: inputIdentifier(identityOrId.flowId, 'Fluxo'),
+        });
+  const response = await fetch(`/api/quotation-deliveries?${query}`);
+  if (response.status === 404) return null;
+  if (!response.ok) return requestError(response, 'Não foi possível consultar a entrega.');
+  return parseDelivery(await responseBody(response));
 }
 
 export async function fetchDeliveryForRevision(revisionId: string): Promise<DeliveryView | null> {

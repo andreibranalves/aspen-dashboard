@@ -226,8 +226,8 @@ async function setupApiMocks(page, orderTemplates = []) {
     });
   });
 
-  await page.route('**/api/whatsapp-send-status**', async (route) => {
-    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({}) });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Entrega não encontrada.' }) });
   });
 
   await page.route('**/api/whatsapp-leads**', async (route) => {

@@ -144,30 +144,33 @@ test('cancelPendingDeliveries posts the explicit queue action and parses its cou
   }
 });
 
-test('fetchDelivery resolves identity through the compatibility status endpoint', async () => {
+test('fetchDelivery resolves identity through a single quotation-deliveries request', async () => {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   globalThis.fetch = (async (input) => {
     requests.push(String(input));
-    if (requests.length === 1) {
-      return response({
-        delivery_id: 'delivery-1',
-        revision_id: 'revision-1',
-        flow_id: 'flow-1',
-        phase: 'processing',
-        error: null,
-        updated_at: updatedAt,
-      });
-    }
     return response(fixture({ state: 'processing' }));
   }) as typeof fetch;
   try {
     const delivery = await fetchDelivery({ revisionId: 'revision-1', flowId: 'flow-1' });
     assert.equal(delivery?.state, 'processing');
-    assert.match(requests[0], /whatsapp-send-status\?/);
+    assert.equal(requests.length, 1);
+    assert.match(requests[0], /quotation-deliveries\?/);
     assert.match(requests[0], /revision_id=revision-1/);
     assert.match(requests[0], /flow_id=flow-1/);
-    assert.match(requests[1], /quotation-deliveries\?id=delivery-1/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('fetchDelivery returns null when delivery is absent', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'Entrega não encontrada.' }), { status: 404 })) as typeof fetch;
+  try {
+    const delivery = await fetchDelivery({ revisionId: 'revision-1', flowId: 'flow-1' });
+    assert.equal(delivery, null);
+    const deliveryById = await fetchDelivery({ id: 'missing' });
+    assert.equal(deliveryById, null);
   } finally {
     globalThis.fetch = originalFetch;
   }

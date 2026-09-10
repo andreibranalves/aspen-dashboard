@@ -306,9 +306,21 @@ export async function handler(
   try {
     if (event.httpMethod === 'GET') {
       const id = queryValue(event, 'id', 'delivery_id', 'deliveryId');
+      const revisionId = queryValue(event, 'revision_id', 'revisionId');
+      const flowId = queryValue(event, 'flow_id', 'flowId');
       if (id) {
         const delivery = await deliveryModule.get({
           deliveryId: localIdentifier(id, 'Identificador da entrega'),
+        });
+        if (!delivery) return json(404, { error: 'Entrega não encontrada.' });
+        return json(200, toPublicDeliveryView(delivery, { includePhone: true }));
+      }
+      if (revisionId && flowId) {
+        const delivery = await deliveryModule.get({
+          identity: {
+            revisionId: localIdentifier(revisionId, 'Identificador da revisão'),
+            flowId: localIdentifier(flowId, 'Fluxo'),
+          },
         });
         if (!delivery) return json(404, { error: 'Entrega não encontrada.' });
         return json(200, toPublicDeliveryView(delivery, { includePhone: true }));

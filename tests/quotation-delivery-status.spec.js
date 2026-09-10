@@ -63,16 +63,6 @@ function delivery(state, selectedFlowId = flowId, selectedRevisionId = revisionI
   };
 }
 
-function statusResponse(state, selectedFlowId = flowId, selectedRevisionId = revisionId) {
-  return {
-    revision_id: selectedRevisionId,
-    flow_id: selectedFlowId,
-    delivery_id: delivery(state, selectedFlowId, selectedRevisionId).id,
-    phase: state,
-    error: null,
-    updated_at: updatedAt,
-  };
-}
 
 function deliveryPage(data = []) {
   return {
@@ -267,7 +257,6 @@ async function issueAutoQuote(page, { expectWhatsApp = true } = {}) {
 
 async function mockDeliveryLifecycle(page, states) {
   let stateIndex = -1;
-  let providerAcceptedReads = 0;
   let sendCount = 0;
   let lastSendBody = null;
   await page.route('**/api/send-whatsapp-flow', (route) => {
@@ -283,14 +272,6 @@ async function mockDeliveryLifecycle(page, states) {
       send_status: state,
       delivery: delivery(state),
     });
-  });
-  await page.route('**/api/whatsapp-send-status**', (route) => {
-    if (stateIndex < 0) return json(route, { error: 'not found' }, 404);
-    if (states[stateIndex] === 'provider_accepted') {
-      providerAcceptedReads += 1;
-      if (providerAcceptedReads > 2 && stateIndex < states.length - 1) stateIndex += 1;
-    }
-    return json(route, statusResponse(states[stateIndex]));
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
@@ -388,7 +369,6 @@ async function mockDetail(page, state = 'delivered', selectedFlowId = flowId) {
       steps: [{ id: 'step-1', type: 'text', template: 'Olá' }],
     }],
   }));
-  await page.route('**/api/whatsapp-send-status**', (route) => json(route, statusResponse(state, selectedFlowId)));
   await page.route('**/api/quotation-deliveries**', (route) => json(route, delivery(state, selectedFlowId)));
 }
 
@@ -455,12 +435,6 @@ test('finds a delivery from another flow and locks the selector against duplicat
     sendCount += 1;
     return json(route, { error: 'unexpected' }, 500);
   });
-  await page.route('**/api/whatsapp-send-status**', (route) => {
-    const requestedFlow = new globalThis.URL(route.request().url()).searchParams.get('flow_id');
-    return requestedFlow === flowId
-      ? json(route, statusResponse('delivered', flowId))
-      : json(route, { error: 'not found' }, 404);
-  });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
     return url.searchParams.has('revision_id')
@@ -487,7 +461,6 @@ test('polls and resolves a delivery found through a removed flow', async ({ page
       steps: [{ id: 'pdf-2', type: 'document', source: 'quotation_pdf' }],
     }],
   }));
-  await page.route('**/api/whatsapp-send-status**', (route) => json(route, statusResponse(state, 'removed-flow')));
   await page.route('**/api/quotation-deliveries**', (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
@@ -548,10 +521,14 @@ test('initial identity lookup disables send before its first response', async ({
   let lookupStarted = false;
   let releaseLookup;
   const lookupReleased = new Promise((resolve) => { releaseLookup = resolve; });
-  await page.route('**/api/whatsapp-send-status**', async (route) => {
-    lookupStarted = true;
-    await lookupReleased;
-    return json(route, statusResponse('delivered'));
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('revision_id') && url.searchParams.has('flow_id')) {
+      lookupStarted = true;
+      await lookupReleased;
+      return json(route, delivery('delivered'));
+    }
+    return json(route, deliveryPage([delivery('delivered')]));
   });
   await page.goto(`/#/quotations/${quotationId}`);
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
@@ -564,14 +541,18 @@ test('initial identity lookup disables send before its first response', async ({
 
 test('initial identity lookup failure keeps warning and blocks blind send', async ({ page }) => {
   await mockDetail(page, 'delivered');
-  await page.route('**/api/whatsapp-send-status**', (route) =>
-    json(route, { error: 'status unavailable' }, 503));
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('revision_id') && url.searchParams.has('flow_id')) {
+      return json(route, { error: 'status unavailable' }, 503);
+    }
+    return json(route, deliveryPage([delivery('delivered')]));
+  });
   await page.goto(`/#/quotations/${quotationId}`);
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
 });
-
 test('completed delivery locks flow selection for the issued revision', async ({ page }) => {
   await routeCommonAuto(page);
   const lifecycle = await mockDeliveryLifecycle(page, ['delivered']);
@@ -601,11 +582,15 @@ test('needs_review exposes only the two explicit manual decisions', async ({ pag
 test('polling failure keeps the last delivery status and shows a non-destructive warning', async ({ page }) => {
   await mockDetail(page, 'provider_accepted');
   let statusReads = 0;
-  await page.route('**/api/whatsapp-send-status**', (route) => {
-    statusReads += 1;
-    return statusReads === 1
-      ? json(route, statusResponse('provider_accepted'))
-      : json(route, { error: 'status unavailable' }, 503);
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('revision_id') && url.searchParams.has('flow_id')) {
+      statusReads += 1;
+      return statusReads === 1
+        ? json(route, delivery('provider_accepted'))
+        : json(route, { error: 'status unavailable' }, 503);
+    }
+    return json(route, deliveryPage([delivery('provider_accepted')]));
   });
   await page.goto(`/#/quotations/${quotationId}`);
   await expect(page.getByText('Aceito', { exact: true })).toBeVisible();

@@ -6,7 +6,6 @@ import {
   toPublicDeliveryView,
 } from '../../api/_modules/quotation-deliveries.js';
 import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
-import { handler as whatsappSendStatus } from '../../api/_modules/whatsapp-send-status.js';
 
 const now = new Date('2026-08-17T12:00:00.000Z');
 
@@ -271,33 +270,30 @@ test('PATCH resolution injects fixed operator identity and validates note/decisi
   );
 });
 
-test('legacy status GET and PATCH use PostgreSQL module without Redis reads', async () => {
+test('GET and PATCH use delivery module by identity or id', async () => {
   const { deliveryModule, calls } = moduleFixture();
-  const status = await whatsappSendStatus(event('GET', {}, {
-    quotation_uuid: 'legacy-quotation',
+  const status = await quotationDeliveries(event('GET', {}, {
     revision_id: 'revision-1',
     flow_id: 'flow-1',
   }), { deliveryModule });
   assert.equal(status.statusCode, 200);
-  assert.deepEqual(JSON.parse(status.body || '{}'), {
-    delivery_id: 'delivery-1',
-    revision_id: 'revision-1',
-    flow_id: 'flow-1',
-    phase: 'provider_accepted',
-    error: null,
-    updated_at: now.toISOString(),
+  const body = JSON.parse(status.body || '{}');
+  assert.equal(body.id, 'delivery-1');
+  assert.equal(body.revision_id, 'revision-1');
+  assert.equal(body.flow_id, 'flow-1');
+  assert.equal(body.state, 'provider_accepted');
+  assert.deepEqual(calls.find((call) => call.method === 'get')?.input, {
+    identity: { revisionId: 'revision-1', flowId: 'flow-1' },
   });
 
-  const resolved = await whatsappSendStatus(event('PATCH', {
-    revision_id: 'revision-1',
-    flow_id: 'flow-1',
-    decision: 'confirmed_received',
-    note: 'Cliente confirmou recebimento.',
-    resolved_by: 'forged-user',
-  }), { deliveryModule });
-  assert.equal(resolved.statusCode, 200);
-  const resolveCall = calls.filter((call) => call.method === 'resolve').at(-1)?.input as any;
-  assert.equal(resolveCall.resolvedBy, 'authenticated-operator');
+  const missing = {
+    ...deliveryModule,
+    async get() { return null; },
+  } as any;
+  assert.equal(
+    (await quotationDeliveries(event('GET', {}, { revision_id: 'rev-missing', flow_id: 'flow-missing' }), { deliveryModule: missing })).statusCode,
+    404,
+  );
 });
 
 test('handler errors are sanitized', async () => {

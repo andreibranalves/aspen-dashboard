@@ -6,7 +6,6 @@ import {
   communicationFlowSummary,
   createMedia,
   executeFlow,
-  fetchDeliveryStatus,
   fetchProductCategories,
   isQuotationDeliveryFlow,
   mediaGroupPathSegment,
@@ -288,27 +287,6 @@ test('unknown delivery failures never claim a PDF cause or allow unsafe retry', 
   assert.doesNotMatch(projectDeliveryFailure(new Error('PDF qualquer')).label, /PDF indisponível/);
 });
 
-test('fetchDeliveryStatus loads durable revision state and treats missing delivery as idle', async () => {
-  const originalFetch = globalThis.fetch;
-  const urls: string[] = [];
-  globalThis.fetch = (async (input) => {
-    urls.push(String(input));
-    if (urls.length === 1) return new Response(JSON.stringify({ phase: 'accepted_partial', revision_id: 'revision-1', flow_id: 'already-talking' }), { status: 200 });
-    return new Response(JSON.stringify({ error: 'Estado de envio não encontrado.' }), { status: 404 });
-  }) as typeof fetch;
-  try {
-    assert.deepEqual(await fetchDeliveryStatus({ quotationId: 'quotation-uuid', revisionId: 'revision-1', flowId: 'already-talking' }), {
-      phase: 'accepted_partial', revision_id: 'revision-1', flow_id: 'already-talking',
-    });
-    assert.equal(await fetchDeliveryStatus({ quotationId: 'quotation-uuid', revisionId: 'revision-1', flowId: 'already-talking' }), null);
-    assert.match(urls[0], /whatsapp-send-status/);
-    assert.match(urls[0], /quotation_uuid=quotation-uuid/);
-    assert.match(urls[0], /revision_id=revision-1/);
-    assert.match(urls[0], /flow_id=already-talking/);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
 
 test('executeFlow rejects 2xx provider markers without success contract', async () => {
   const originalFetch = globalThis.fetch;
