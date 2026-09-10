@@ -959,9 +959,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                           const leadClickable = Boolean(
                             leadHref && leadName && leadName !== 'Sem nome'
                           );
-                          const currentStatus = deal.status || col.status;
                           const moving = movingDealIds.has(deal.id);
-                          const menuId = `move-deal-${deal.id}`;
                           const lastUpdate = deal.modificado_em || deal.criado_em;
                           return (
                             <article
@@ -1054,30 +1052,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                     Atualizado {daysAgo(lastUpdate)}
                                   </time>
                                 )}
-                              </div>
-                              <div className="mt-3 flex items-center gap-2 border-t border-line/60 pt-2">
-                                <label htmlFor={menuId} className="shrink-0 text-xs text-fg-muted">
-                                  Mover para
-                                </label>
-                                <Select
-                                  id={menuId}
-                                  ref={(element) => setMoveMenuRef(deal.id, element)}
-                                  value={currentStatus}
-                                  disabled={moving}
-                                  aria-label={`Mover para ${displayLeadName}`}
-                                  className="h-8 min-w-0 flex-1 py-1 text-xs"
-                                  onChange={(event) => moveDeal(deal.id, event.target.value)}
-                                >
-                                  {orderedColumns.map((destinationColumn) => (
-                                    <option
-                                      key={destinationColumn.status}
-                                      value={destinationColumn.status}
-                                    >
-                                      {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
-                                      {destinationColumn.name}
-                                    </option>
-                                  ))}
-                                </Select>
                               </div>
                               {deal.quote_lead_id && (
                                 <Button
