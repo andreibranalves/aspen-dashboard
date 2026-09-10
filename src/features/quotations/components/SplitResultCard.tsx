@@ -485,9 +485,10 @@ export default function SplitResultCard({
       {/* ── Items table ── */}
       {!isDone && (
         <Table
-            className="w-full max-w-full table-fixed text-xs"
-            aria-label={`Itens do pedido ${displayIdx + 1}`}
-          >
+          containerClassName="rounded-none"
+          className="w-full max-w-full table-fixed text-xs"
+          aria-label={`Itens do pedido ${displayIdx + 1}`}
+        >
             <colgroup>
               <col className="w-24" />
               <col />

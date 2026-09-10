@@ -61,6 +61,7 @@ import { useToast } from '@/components/shared/toast';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import {
   EMPTY_ADDRESS,
+  DEFAULT_LEAD_SOURCE,
   LEAD_SOURCES,
   formatAddressSummary,
   hasAnyAddressField,
@@ -132,7 +133,7 @@ function emptyManual(): ManualForm {
     clientSearch: '',
     selectedClient: null,
     newClient: { nome: '', email: '', telefone: '' },
-    leadSource: '',
+    leadSource: DEFAULT_LEAD_SOURCE,
     cnpj: '',
     address: { ...EMPTY_ADDRESS },
     showAddress: false,

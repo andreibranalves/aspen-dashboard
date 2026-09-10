@@ -15,6 +15,7 @@ import type {
   StoredAutoQuoteDraft,
 } from '@/types/domain';
 import {
+  DEFAULT_LEAD_SOURCE,
   isValidLeadSource,
   normalizeCnpj,
   isValidCnpj,
@@ -382,7 +383,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
           email: String(order.email || ''),
           telefone: String(order.telefone || ''),
           urgente: Boolean(order.urgente || false),
-          origem: normalizeLeadSource(order.origem) || '',
+          origem: normalizeLeadSource(order.origem) || DEFAULT_LEAD_SOURCE,
           cnpj: normalizeCnpj(order.cnpj || ''),
           endereco: normalizeAddress(order.endereco),
           client_id: typeof order.client_id === 'string' ? order.client_id : undefined,

@@ -12,9 +12,13 @@ import { cn } from '@/lib/utils';
  * Table is a first-class Aspen data-table primitive.
  * The wrapper stays flat and uses the canonical subtle border treatment.
  */
-const Table = forwardRef<HTMLTableElement, TableHTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto rounded-md border border-line bg-surface">
+interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
+  containerClassName?: string;
+}
+
+const Table = forwardRef<HTMLTableElement, TableProps>(
+  ({ className, containerClassName, ...props }, ref) => (
+    <div className={cn('relative w-full overflow-auto rounded-md border border-line bg-surface', containerClassName)}>
       <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
     </div>
   )

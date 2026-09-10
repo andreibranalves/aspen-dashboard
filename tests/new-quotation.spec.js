@@ -84,14 +84,14 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
 
     await page.goto('/#/auto');
-    await expect(page.getByRole('tab', { name: 'Da conversa' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Automático' })).toHaveAttribute('aria-selected', 'true');
     await page.goto('/#/manual');
     await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
     await page.goto('/#/novo-orcamento');
-    await expect(page.getByRole('tab', { name: 'Da conversa' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Automático' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('preserva os campos e o preço manual ao alternar entre Manual e Da conversa', async ({ page }) => {
+  test('preserva os campos e o preço manual ao alternar entre Manual e Automático', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -100,6 +100,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
 
     await page.goto('/#/novo-orcamento');
     await page.getByRole('tab', { name: 'Manual' }).click();
+    await expect(page.getByLabel('Origem *')).toHaveValue('Google Ads');
     await page.getByLabel('Nome do cliente').fill('Cliente alternância');
     await page.getByLabel('Origem *').selectOption('Google Ads');
     await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
@@ -110,7 +111,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Prazo de produção').fill('10 dias');
     await page.getByLabel('Observações do orçamento').fill('Condição negociada');
 
-    await page.getByRole('tab', { name: 'Da conversa' }).click();
+    await page.getByRole('tab', { name: 'Automático' }).click();
     await expect(page.getByText(/Resultados \(1\)/)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Cliente Alternância' })).toBeVisible();
 
@@ -400,7 +401,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect.poll(() => pricingRequests.length).toBe(1);
     const manualTab = page.getByRole('tab', { name: 'Manual' });
     await expect(manualTab).toBeDisabled();
-    await expect(page.getByRole('tab', { name: 'Da conversa' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Automático' })).toHaveAttribute('aria-selected', 'true');
     releasePricing();
     await expect(page.getByRole('heading', { name: 'Cliente conversa' })).toBeVisible();
     await manualTab.click();
@@ -428,7 +429,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await expect.poll(() => pricingRequests.length).toBe(1);
-    const conversationTab = page.getByRole('tab', { name: 'Da conversa' });
+    const conversationTab = page.getByRole('tab', { name: 'Automático' });
     await expect(conversationTab).toBeDisabled();
     await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
     releasePricing();
@@ -690,7 +691,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders: [] }) }));
     await page.goto('/#/novo-orcamento');
     await page.getByRole('tab', { name: 'Manual' }).click();
-    await page.getByRole('tab', { name: 'Da conversa' }).click();
+    await page.getByRole('tab', { name: 'Automático' }).click();
     await expect(page.getByText('Rascunho salvo. Continue a revisão ou emita o orçamento.')).toBeVisible();
     expect(unexpectedApiRequests).toEqual([]);
   });
@@ -793,7 +794,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
 
     await page.goto('/#/novo-orcamento');
-    const conversationTab = page.getByRole('tab', { name: 'Da conversa' });
+    const conversationTab = page.getByRole('tab', { name: 'Automático' });
     await conversationTab.focus();
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
