@@ -485,23 +485,25 @@ export default function SplitResultCard({
       {/* ── Items table ── */}
       {!isDone && (
         <Table
-            className="w-full min-w-[520px] table-fixed text-xs"
+            className="w-full max-w-full table-fixed text-xs"
             aria-label={`Itens do pedido ${displayIdx + 1}`}
           >
             <colgroup>
-              <col />
               <col className="w-24" />
+              <col />
+              <col className="w-16" />
+              <col className="w-20" />
               <col className="w-28" />
-              <col className="w-28" />
-              <col className="w-8" />
+              <col className="w-10" />
             </colgroup>
             <TableHeader>
               <TableRow className="border-b border-line text-fg-muted">
-                <TableHead scope="col" className="py-2 pl-4 pr-3 text-left font-medium">Produto</TableHead>
-                <TableHead scope="col" className="px-3 py-2 text-center font-medium">Qtd</TableHead>
-                <TableHead scope="col" className="px-3 py-2 text-center font-medium">Preço</TableHead>
-                <TableHead scope="col" className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</TableHead>
-                <TableHead scope="col" className="py-2 pr-4" />
+                <TableHead scope="col" className="py-2 pl-4 pr-2 text-left font-medium">SKU</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-left font-medium">Produto</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-center font-medium">Qtd</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-center font-medium">Preço</TableHead>
+                <TableHead scope="col" className="py-2 pl-2 pr-4 text-right font-medium">Subtotal</TableHead>
+                <TableHead scope="col" className="px-1 py-2" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -521,7 +523,7 @@ export default function SplitResultCard({
                       pricingConflictItems.includes(item.item_code) && 'bg-amber-50 dark:bg-amber-500/10',
                     )}
                   >
-                    <TableCell className="py-2 pl-4 pr-3">
+                    <TableCell className="py-2 pl-4 pr-2">
                       {editing ? (
                         <div className="relative item-search-cell">
                           <Input
@@ -539,7 +541,7 @@ export default function SplitResultCard({
                             />
                           )}
                           {showDropdown && (
-                            <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            <div className="absolute z-50 left-0 right-0 top-8 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                               {results.map((p) => (
                                 <button
                                   key={p.sku || p.item_code}
@@ -574,18 +576,24 @@ export default function SplitResultCard({
                               ))}
                             </div>
                           )}
-                          <label className="mt-1 block space-y-1">
-                            <Input
-                              aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
-                              className="h-7 text-xs"
-                              value={item.item_name || ''}
-                              onChange={(event) =>
-                                onUpdateItem(draft.index, ii, 'item_name', event.target.value)
-                              }
-                              disabled={editingBlocked}
-                            />
-                          </label>
                         </div>
+                      ) : (
+                        <span className="block truncate font-medium text-fg" title={item.item_code || undefined}>
+                          {item.item_code || '—'}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="px-2 py-2">
+                      {editing ? (
+                        <Input
+                          aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
+                          className="h-7 text-xs"
+                          value={item.item_name || ''}
+                          onChange={(event) =>
+                            onUpdateItem(draft.index, ii, 'item_name', event.target.value)
+                          }
+                          disabled={editingBlocked}
+                        />
                       ) : (
                         <span
                           className="block truncate font-medium text-fg"
@@ -595,7 +603,7 @@ export default function SplitResultCard({
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="px-3 py-2 text-center">
+                    <TableCell className="px-2 py-2 text-center">
                       {editing ? (
                         <Input
                           type="number"
@@ -616,7 +624,7 @@ export default function SplitResultCard({
                             }, 600);
                           }}
                           disabled={editingBlocked}
-                          className="mx-auto h-7 w-16 text-center text-xs"
+                          className="h-7 w-full text-center text-xs"
                         />
                       ) : hasCode ? (
                         Number(item.qty)
@@ -624,7 +632,7 @@ export default function SplitResultCard({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className="px-3 py-2 text-center">
+                    <TableCell className="px-2 py-2 text-center">
                       {editing ? (
                         <Input
                           type="number"
@@ -636,7 +644,7 @@ export default function SplitResultCard({
                           }
                           disabled={editingBlocked}
                           data-conflict-sku={item.item_code || undefined}
-                          className="mx-auto h-7 w-20 text-center text-xs"
+                          className="h-7 w-full text-center text-xs"
                         />
                       ) : item.rate ? (
                         formatBRL(item.rate)
@@ -644,10 +652,10 @@ export default function SplitResultCard({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className="py-2 pl-3 pr-4 text-right font-medium">
+                    <TableCell className="py-2 pl-2 pr-4 text-right font-medium">
                       {formatBRL((item.qty || 0) * (item.rate || 0))}
                     </TableCell>
-                    <TableCell className="py-2 pr-4">
+                    <TableCell className="px-1 py-2">
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
@@ -664,7 +672,7 @@ export default function SplitResultCard({
               })}
               {displayItems.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-4 text-center text-xs text-fg-muted">
+                  <TableCell colSpan={6} className="py-4 text-center text-xs text-fg-muted">
                     Nenhum item adicionado
                   </TableCell>
                 </TableRow>

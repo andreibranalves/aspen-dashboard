@@ -1682,7 +1682,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   disabled={pricingPending}
                   className={cn('h-8 rounded-sm px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', mode === option ? 'bg-primary/10 text-link' : 'text-fg-muted hover:bg-surface-hover hover:text-fg')}
                 >
-                  {option === 'conversation' ? 'Da conversa' : 'Manual'}
+                  {option === 'conversation' ? 'Automático' : 'Manual'}
                 </button>
               ))}
             </div>

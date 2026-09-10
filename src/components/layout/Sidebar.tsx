@@ -72,7 +72,7 @@ export default function Sidebar({
           )}
           aria-hidden="true"
         />
-        {!collapsed && <span className="truncate">{action ? '+ Novo' : item.label}</span>}
+        {!collapsed && <span className="truncate">{item.label}</span>}
       </button>
     );
   };

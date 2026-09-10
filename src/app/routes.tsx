@@ -5,6 +5,7 @@ import {
   Columns3,
   FileText,
   Package,
+  Plus,
   Settings,
   Send,
   ShoppingCart,
@@ -107,7 +108,7 @@ export const routes: AppRoute[] = [
     path: '/novo-orcamento',
     suspense: true,
     render: () => <NewQuotationPage initialMode="conversation" />,
-    nav: { label: 'Novo orçamento', icon: FileText, placement: 'action', order: 0 },
+    nav: { label: 'Novo orçamento', icon: Plus, placement: 'action', order: 0 },
   },
   {
     path: '/auto',
