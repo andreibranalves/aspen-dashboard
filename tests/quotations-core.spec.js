@@ -317,6 +317,41 @@ test('detalhe mantém conteúdo longo legível em modo somente leitura @quotatio
   await expect(page.getByRole('heading', { name: 'Condições comerciais' })).toBeVisible();
 });
 
+for (let visibility = 0; visibility < 8; visibility += 1) {
+  test(`detalhe emitido preserva seções e títulos com visibilidade ${visibility} @quotations`, async ({ page }) => {
+    const definitions = [
+      { key: 'prazo_producao', field: 'value', title: 'Prazo contratado', content: '20 dias úteis após aprovação' },
+      { key: 'pagamento', field: 'body', title: 'Pagamento acordado', content: '50% na aprovação' },
+      { key: 'condicoes_gerais', field: 'body', title: 'Garantia contratual', content: 'Garantia de 12 meses' },
+    ];
+    const secoes = { schema_version: 1 };
+    definitions.forEach(({ key, field, title, content }, index) => {
+      const current = { enabled: Boolean(visibility & (1 << index)), title, [field]: content };
+      secoes[key] = { base: current, current };
+    });
+    await page.route('**/api/quotations?id=*', route => route.fulfill({
+      json: detail({ status: 'Enviado', status_canonical: 'emitido', secoes }),
+    }));
+    await page.route('**/api/communication-flows**', route => route.fulfill({ json: { flows: [] } }));
+    await page.route('**/api/quotation-deliveries**', route => route.fulfill({ json: { data: [] } }));
+    await page.route('**/api/quotation-templates**', route => route.fulfill({ json: { templates: [] } }));
+    await page.goto(`/#/quotations/${id}`);
+    await expect(page.getByRole('heading', { name: 'Condições comerciais' })).toBeVisible();
+    for (const [index, { title, content }] of definitions.entries()) {
+      if (visibility & (1 << index)) {
+        const section = page.getByRole('region', { name: title, exact: true });
+        await expect(section.getByRole('heading', { name: title, exact: true })).toBeVisible();
+        await expect(section).toContainText(content);
+      } else {
+        await expect(page.getByRole('heading', { name: title, exact: true })).toHaveCount(0);
+        await expect(page.getByText(content, { exact: true })).toHaveCount(0);
+      }
+    }
+    await expect(page.getByText('Dados bancários', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('10 dias', { exact: true })).toBeVisible();
+  });
+}
+
 test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semântica acessíveis @quotations', async ({ page }) => {
   const firstRow = withCanonicalListRow({
     id: 'ORC-MENU-1',
