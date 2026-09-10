@@ -392,9 +392,9 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Selecione a origem para continuar.', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeDisabled();
+    await expect(page.getByText('Selecione a origem para continuar.', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
     await expect(page.getByText('(11) 99999-0001', { exact: true })).toBeVisible();
     await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
     const customItemName = 'Lenço 100 x 100 cm';

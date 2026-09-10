@@ -17,9 +17,9 @@ import {
   X,
   PlusCircle,
   Rows3,
+  Settings2,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut } from '@/lib/api/api';
-import { pipelineLabel } from '@/lib/statusLabels';
 import { useToast } from '@/components/shared/toast';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
@@ -37,8 +37,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
+import PipelineStagesDialog from '@/features/crm/components/PipelineStagesDialog';
 import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
@@ -63,6 +63,7 @@ interface Deal {
 
 interface Column {
   status: string;
+  name: string;
   count: number;
   deals: Deal[];
 }
@@ -132,9 +133,9 @@ const CRM_VIEW_TABS = [
   ['list', 'Lista', Rows3],
   ['board', 'Quadro', Columns3],
 ] as const;
-const STAGE_FILTERS = ['all', ...PIPELINE] as const;
-type StageFilter = (typeof STAGE_FILTERS)[number];
-const parseStageFilter = parseHashOption<StageFilter>(STAGE_FILTERS);
+type StageFilter = string;
+const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
+  raw?.trim() || fallback;
 
 function dealName(deal: Deal): string {
   return String(deal.lead_name || '').trim() || 'Sem nome';
@@ -169,6 +170,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const [selectedPruneIds, setSelectedPruneIds] = useState<Set<string>>(new Set());
   const [pruneSubmitting, setPruneSubmitting] = useState<boolean>(false);
   const [pruneSummary, setPruneSummary] = useState<string | null>(null);
+  const [pipelineDialogOpen, setPipelineDialogOpen] = useState(false);
   const [visiblePerColumn, setVisiblePerColumn] = useState<Record<string, number>>({});
   const [narrowLayout, setNarrowLayout] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < 1024
@@ -181,7 +183,8 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function navigateFromLink(event: MouseEvent<HTMLAnchorElement>, target: string) {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
     event.preventDefault();
     navigate(target.replace(/^#/, ''));
   }
@@ -189,7 +192,8 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   function handleViewTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % CRM_VIEW_TABS.length;
-    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + CRM_VIEW_TABS.length) % CRM_VIEW_TABS.length;
+    if (event.key === 'ArrowLeft')
+      nextIndex = (index - 1 + CRM_VIEW_TABS.length) % CRM_VIEW_TABS.length;
     if (event.key === 'Home') nextIndex = 0;
     if (event.key === 'End') nextIndex = CRM_VIEW_TABS.length - 1;
     if (nextIndex === null) return;
@@ -208,7 +212,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       telefone: deal.telefone || '',
       source: deal.lead_source || '',
     });
-    navigate(`/manual?quoteLeadId=${encodeURIComponent(deal.quote_lead_id)}&crmDealId=${encodeURIComponent(deal.id)}`);
+    navigate(
+      `/manual?quoteLeadId=${encodeURIComponent(deal.quote_lead_id)}&crmDealId=${encodeURIComponent(deal.id)}`
+    );
   }
 
   const fetchData = useCallback(async (searchVal: string) => {
@@ -258,6 +264,16 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   useEffect(() => {
     void fetchData(search);
   }, [fetchData, search]);
+
+  useEffect(() => {
+    if (
+      stage !== 'all' &&
+      columns.length > 0 &&
+      !columns.some((column) => column.status === stage)
+    ) {
+      setStage('all');
+    }
+  }, [columns, setStage, stage]);
 
   useEffect(() => {
     void fetchPruneCandidates();
@@ -377,7 +393,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       if (!deal || deal.status === newStatus) return;
 
       const leadName = String(deal.lead_name || 'Negócio sem nome').trim();
-      const destination = pipelineLabel(newStatus);
+      const destination = columns.find((column) => column.status === newStatus)?.name || newStatus;
       setMovingDealIds((previous) => new Set(previous).add(dealId));
       setAnnouncement(`Movendo ${leadName} para ${destination}.`);
 
@@ -403,18 +419,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
         if (newColumn) {
           newColumn.deals.unshift(movedDeal);
           newColumn.count = newColumn.deals.length;
-        } else {
-          next.push({ status: newStatus, count: 1, deals: [movedDeal] });
         }
-
-        next.sort((a, b) => {
-          const ai = PIPELINE.indexOf(a.status as (typeof PIPELINE)[number]);
-          const bi = PIPELINE.indexOf(b.status as (typeof PIPELINE)[number]);
-          if (ai !== -1 && bi !== -1) return ai - bi;
-          if (ai !== -1) return -1;
-          if (bi !== -1) return 1;
-          return a.status.localeCompare(b.status);
-        });
 
         return next;
       });
@@ -442,13 +447,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
     [columns, fetchData, search, toast]
   );
 
-  const orderedColumns = [
-    ...PIPELINE.map(
-      (status) =>
-        columns.find((column) => column.status === status) || { status, count: 0, deals: [] }
-    ),
-    ...columns.filter((column) => !PIPELINE.includes(column.status as (typeof PIPELINE)[number])),
-  ];
+  const orderedColumns = columns;
   const displayColumns =
     stage === 'all' ? orderedColumns : orderedColumns.filter((column) => column.status === stage);
   const allDeals = orderedColumns.flatMap((column) => column.deals);
@@ -509,22 +508,23 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
             </button>
           ))}
         </div>
-        <Select
-          aria-label="Filtrar por etapa"
-          value={stage}
-          onChange={(event) => setStage(event.target.value as StageFilter)}
-        >
-          <option value="all">Todas as etapas ({allDeals.length})</option>
-          {PIPELINE.map((status) => {
-            const count =
-              orderedColumns.find((column) => column.status === status)?.deals.length || 0;
-            return (
-              <option key={status} value={status}>
-                {pipelineLabel(status)} ({count})
+        <div className="flex items-center gap-2">
+          <Select
+            aria-label="Filtrar por etapa"
+            value={stage}
+            onChange={(event) => setStage(event.target.value)}
+          >
+            <option value="all">Todas as etapas ({allDeals.length})</option>
+            {orderedColumns.map((column) => (
+              <option key={column.status} value={column.status}>
+                {column.name} ({column.deals.length})
               </option>
-            );
-          })}
-        </Select>
+            ))}
+          </Select>
+          <Button variant="outline" onClick={() => setPipelineDialogOpen(true)}>
+            <Settings2 aria-hidden="true" /> Editar etapas
+          </Button>
+        </div>
       </div>
       {/* Search stays available for an active query so a zero-result filter can be cleared. */}
       {!loading && !error && (hasDeals || hasSearch) && (
@@ -738,7 +738,10 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         <TableCell>
                           <StatusBadge
                             status={currentStatus}
-                            label={pipelineLabel(currentStatus)}
+                            label={
+                              orderedColumns.find((column) => column.status === currentStatus)
+                                ?.name || currentStatus
+                            }
                             className="tone-neutral-muted"
                           />
                         </TableCell>
@@ -763,7 +766,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 value={destinationColumn.status}
                               >
                                 {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
-                                {pipelineLabel(destinationColumn.status)}
+                                {destinationColumn.name}
                               </option>
                             ))}
                           </Select>
@@ -809,7 +812,10 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                       </div>
                       <StatusBadge
                         status={currentStatus}
-                        label={pipelineLabel(currentStatus)}
+                        label={
+                          orderedColumns.find((column) => column.status === currentStatus)?.name ||
+                          currentStatus
+                        }
                         className="tone-neutral-muted shrink-0"
                       />
                     </div>
@@ -876,7 +882,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         {orderedColumns.map((destinationColumn) => (
                           <option key={destinationColumn.status} value={destinationColumn.status}>
                             {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
-                            {pipelineLabel(destinationColumn.status)}
+                            {destinationColumn.name}
                           </option>
                         ))}
                       </Select>
@@ -906,7 +912,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                 className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg border border-line bg-surface"
               >
                 <div className="flex items-center justify-between px-4 py-3 text-sm font-medium">
-                  <h2>{pipelineLabel(col.status)}</h2>
+                  <h2>{col.name}</h2>
                   <span
                     aria-label={`${col.count} ${col.count === 1 ? 'negócio' : 'negócios'}`}
                     className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-fg-muted"
@@ -967,7 +973,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 e.dataTransfer.setData('text/plain', deal.id);
                               }}
                               onDragEnd={() => setDraggingId(null)}
-                              aria-label={`Negócio ${displayLeadName}. Etapa: ${pipelineLabel(currentStatus)}.`}
+                              aria-label={`Negócio ${displayLeadName}. Etapa: ${col.name}.`}
                               className={cn(
                                 'rounded-lg border border-line bg-surface p-3 transition-all',
                                 'hover:border-fg-muted/30',
@@ -1015,9 +1021,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                   (deal.quotation_id ? (
                                     <a
                                       href={`#/quotations/${deal.quotation_id}`}
-                                onClick={(event) =>
-                                  navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
-                                }
+                                      onClick={(event) =>
+                                        navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
+                                      }
                                       className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
                                       aria-label={`Abrir orçamento ${deal.quotation}`}
                                     >
@@ -1068,7 +1074,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                       value={destinationColumn.status}
                                     >
                                       {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
-                                      {pipelineLabel(destinationColumn.status)}
+                                      {destinationColumn.name}
                                     </option>
                                   ))}
                                 </Select>
@@ -1221,6 +1227,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           </div>
         </div>
       )}
+      <PipelineStagesDialog
+        open={pipelineDialogOpen}
+        onClose={() => setPipelineDialogOpen(false)}
+        onChanged={() => {
+          void fetchData(search);
+        }}
+      />
     </PageShell>
   );
 }

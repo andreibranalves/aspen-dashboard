@@ -2,7 +2,14 @@ import { and, asc, desc, eq, ilike, inArray, lte, ne, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import { crmDeals, quoteLeads, quoteRevisions, quotations, salesOrders } from '../schema.js';
+import {
+  crmDeals,
+  crmPipelineStages,
+  quoteLeads,
+  quoteRevisions,
+  quotations,
+  salesOrders,
+} from '../schema.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 
 export const CRM_PIPELINE = [
@@ -81,7 +88,7 @@ export interface CrmDealListOptions {
 }
 
 export interface CrmDealStatusPatch {
-  status: CrmDealStatus;
+  status: string;
   followUpStage?: number | null;
 }
 
@@ -247,6 +254,13 @@ function normalizedStatus(value: unknown): CrmDealStatus {
   return value as CrmDealStatus;
 }
 
+function normalizedStageKey(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > 32) {
+    throw new CrmDealInputError('Status inválido.');
+  }
+  return value.trim();
+}
+
 function normalizedFollowUpStage(value: unknown): number | undefined {
   if (value === undefined) return undefined;
   if (value === null || value === '') return 0;
@@ -390,7 +404,6 @@ async function pruneEligibility(
   return null;
 }
 
-
 const ISSUED_STAGE_INDEX = CRM_PIPELINE.indexOf(CRM_PRUNE_TARGET_STATUS);
 
 function nextIssuanceStatus(
@@ -524,7 +537,7 @@ export async function upsertCrmDealForQuotation(
   if (existing) {
     const nextStatus = nextIssuanceStatus(existing.status, statusValue);
     const status =
-      existing.status === CRM_PRUNE_LOST_STATUS ? existing.status : nextStatus ?? existing.status;
+      existing.status === CRM_PRUNE_LOST_STATUS ? existing.status : (nextStatus ?? existing.status);
     const updatedAt = strictlyAfter(timestamp, existing.updatedAt);
     const identityPatch = {
       ...(nameValue === undefined ? {} : { nome: requiredName(nameValue) }),
@@ -687,11 +700,17 @@ export function createPostgresCrmDealRepository(
 
     async updateStatus(id: string, patch: CrmDealStatusPatch): Promise<CrmDealRecord | null> {
       const dealId = normalizedId(id, 'deal_id');
-      const status = normalizedStatus(patch?.status);
+      const status = normalizedStageKey(patch?.status);
       const followUpStage = normalizedFollowUpStage(patch?.followUpStage);
       try {
         const database = getDb();
         return await database.transaction(async (transaction) => {
+          const [stage] = await transaction
+            .select({ key: crmPipelineStages.key })
+            .from(crmPipelineStages)
+            .where(eq(crmPipelineStages.key, status))
+            .limit(1);
+          if (!stage) throw new CrmDealInputError('Status inválido.');
           const [current] = await transaction
             .select()
             .from(crmDeals)
@@ -714,7 +733,7 @@ export function createPostgresCrmDealRepository(
               transaction,
               current.quotationId,
               'crm_not_eligible',
-              updatedAt,
+              updatedAt
             );
           }
           return dealWithQuotation(transaction, dealId);
@@ -855,7 +874,7 @@ export function createPostgresCrmDealRepository(
               transaction,
               deal.quotationId,
               'crm_not_eligible',
-              updatedAt,
+              updatedAt
             );
             updated += 1;
           }

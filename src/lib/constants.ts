@@ -1,4 +1,4 @@
-/** Ordem do pipeline CRM (mesma do backend crm-deals.js) */
+/** Etapas iniciais usadas pelo skeleton enquanto o funil configurável carrega. */
 export const PIPELINE = [
   'Novo Lead',
   'Contato Feito',

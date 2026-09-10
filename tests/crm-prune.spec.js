@@ -1,5 +1,16 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { URL } from 'node:url';
+
+const STAGE_NAMES = {
+  'Novo Lead': 'Novo lead',
+  'Contato Feito': 'Contato feito',
+  'Orcamento Enviado': 'Orçamento enviado',
+  'Em Negociacao': 'Em negociação',
+  'Arte Aprovada': 'Arte aprovada',
+  'Pedido Fechado': 'Pedido fechado',
+  Perdido: 'Perdido',
+};
 
 const CRM_DEALS_INITIAL = {
   columns: [
@@ -27,7 +38,7 @@ const CRM_DEALS_INITIAL = {
     { status: 'Arte Aprovada', count: 0, deals: [] },
     { status: 'Pedido Fechado', count: 0, deals: [] },
     { status: 'Perdido', count: 0, deals: [] },
-  ],
+  ].map((column) => ({ ...column, name: STAGE_NAMES[column.status] })),
 };
 
 const CRM_DEALS_AFTER = {
@@ -214,4 +225,133 @@ test('refetches the server state after a failed deal move @crm', async ({ page }
   await expect(page.locator('[role="status"][aria-live="polite"]')).toHaveText(
     'Não foi possível mover Cliente Antigo. O pipeline foi restaurado.'
   );
+});
+
+test('creates, renames, reorders and removes an empty pipeline stage @crm', async ({ page }) => {
+  const stages = CRM_DEALS_INITIAL.columns.map((column, position) => ({
+    key: column.status,
+    name: column.name,
+    position,
+    role:
+      column.status === 'Novo Lead'
+        ? 'new'
+        : column.status === 'Orcamento Enviado'
+          ? 'issued'
+          : column.status === 'Pedido Fechado'
+            ? 'won'
+            : column.status === 'Perdido'
+              ? 'lost'
+              : null,
+    dealCount: column.deals.length,
+  }));
+  const mutations = [];
+
+  await page.route('**/api/crm-deals**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        columns: stages.map((stage) => ({
+          status: stage.key,
+          name: stage.name,
+          count: stage.dealCount,
+          deals: [],
+        })),
+      }),
+    });
+  });
+  await page.route('**/api/crm-prune-candidates', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(PRUNE_CANDIDATES_EMPTY),
+    });
+  });
+  await page.route('**/api/crm-pipeline-stages**', async (route) => {
+    const request = route.request();
+    const method = request.method();
+    if (method === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ stages }),
+      });
+      return;
+    }
+    if (method === 'POST') {
+      const body = request.postDataJSON();
+      mutations.push({ method, body });
+      const stage = {
+        key: 'custom_triagem',
+        name: body.name,
+        position: stages.length,
+        role: null,
+        dealCount: 0,
+      };
+      stages.push(stage);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ stage }),
+      });
+      return;
+    }
+    if (method === 'PATCH') {
+      const body = request.postDataJSON();
+      mutations.push({ method, body });
+      if (body.name) stages.find((stage) => stage.key === body.key).name = body.name;
+      if (body.ordered_keys) {
+        body.ordered_keys.forEach((key, position) => {
+          stages.find((stage) => stage.key === key).position = position;
+        });
+        stages.sort((left, right) => left.position - right.position);
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          body.name ? { stage: stages.find((stage) => stage.key === body.key) } : { stages }
+        ),
+      });
+      return;
+    }
+    mutations.push({ method, key: new URL(request.url()).searchParams.get('key') });
+    stages.splice(
+      stages.findIndex((stage) => stage.key === 'custom_triagem'),
+      1
+    );
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true }),
+    });
+  });
+
+  await page.goto('/#/crm');
+  await page.getByRole('button', { name: 'Editar etapas' }).click();
+  await expect(page.getByRole('dialog', { name: 'Editar etapas do funil' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Não é possível remover Novo lead/ })
+  ).toBeDisabled();
+
+  await page.getByLabel('Nova etapa').fill('Triagem');
+  await page.getByRole('button', { name: 'Adicionar' }).click();
+  await expect(page.getByText('Triagem', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Renomear Triagem' }).click();
+  await page.getByLabel('Nome da etapa').fill('Qualificação');
+  await page.getByRole('button', { name: 'Salvar' }).click();
+  await expect(page.getByText('Qualificação', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Mover Qualificação para cima' }).click();
+  await page.getByRole('button', { name: 'Remover Qualificação' }).click();
+  await page.getByRole('button', { name: 'Remover etapa' }).click();
+  await expect(page.getByText('Qualificação', { exact: true })).toHaveCount(0);
+
+  expect(mutations.map((mutation) => mutation.method)).toEqual([
+    'POST',
+    'PATCH',
+    'PATCH',
+    'DELETE',
+  ]);
 });

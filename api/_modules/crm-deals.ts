@@ -1,14 +1,19 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
-  CRM_PIPELINE,
   createPostgresCrmDealRepository,
   type CrmDealRecord,
   type CrmDealRepository,
 } from '../_infrastructure/db/repositories/crm-deals-repository.js';
+import {
+  createPostgresCrmPipelineStageRepository,
+  type CrmPipelineStage,
+  type CrmPipelineStageRepository,
+} from '../_infrastructure/db/repositories/crm-pipeline-stages-repository.js';
 
 export interface CrmDealsHandlerDependencies {
   repository?: CrmDealRepository;
+  pipelineRepository?: CrmPipelineStageRepository;
 }
 
 function json(statusCode: number, body: unknown): FunctionResult {
@@ -60,8 +65,13 @@ function parseLimit(value: string | undefined): number | undefined {
   return Math.min(limit, 500);
 }
 
-function pipelineColumns(deals: Record<string, unknown>[]) {
-  type KanbanColumn = { status: string; count: number; deals: Record<string, unknown>[] };
+function pipelineColumns(deals: Record<string, unknown>[], stages: CrmPipelineStage[]) {
+  type KanbanColumn = {
+    status: string;
+    name: string;
+    count: number;
+    deals: Record<string, unknown>[];
+  };
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const deal of deals) {
     const status = typeof deal.status === 'string' && deal.status ? deal.status : 'Novo Lead';
@@ -70,17 +80,23 @@ function pipelineColumns(deals: Record<string, unknown>[]) {
     groups.set(status, group);
   }
 
-  const columns: KanbanColumn[] = CRM_PIPELINE.map((status) => ({
-    status,
-    count: groups.get(status)?.length || 0,
-    deals: groups.get(status) || [],
+  const columns: KanbanColumn[] = stages.map((stage) => ({
+    status: stage.key,
+    name: stage.name,
+    count: groups.get(stage.key)?.length || 0,
+    deals: groups.get(stage.key) || [],
   }));
-  const known = new Set(CRM_PIPELINE);
+  const known = new Set(stages.map((stage) => stage.key));
   const extras = [...groups.keys()]
-    .filter((status) => !known.has(status as (typeof CRM_PIPELINE)[number]))
+    .filter((status) => !known.has(status))
     .sort((a, b) => a.localeCompare(b));
   for (const status of extras) {
-    columns.push({ status, count: groups.get(status)!.length, deals: groups.get(status)! });
+    columns.push({
+      status,
+      name: status,
+      count: groups.get(status)!.length,
+      deals: groups.get(status)!,
+    });
   }
   return columns;
 }
@@ -89,21 +105,25 @@ export function createCrmDealsHandler(
   dependencies: CrmDealsHandlerDependencies = {}
 ): (event: FunctionEvent) => Promise<FunctionResult> {
   const repository = dependencies.repository || createPostgresCrmDealRepository();
+  const pipelineRepository =
+    dependencies.pipelineRepository || createPostgresCrmPipelineStageRepository();
   return async (event: FunctionEvent): Promise<FunctionResult> => {
     if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
     try {
       const params = event.queryStringParameters || {};
       const search = (params.search || '').trim();
-      const deals = (await repository.list({ search, limit: parseLimit(params.limit) })).map(
-        mapDeal
-      );
-      const columns = pipelineColumns(deals);
+      const [dealRows, stages] = await Promise.all([
+        repository.list({ search, limit: parseLimit(params.limit) }),
+        pipelineRepository.list(),
+      ]);
+      const deals = dealRows.map(mapDeal);
+      const columns = pipelineColumns(deals, stages);
       return json(200, {
         columns,
         meta: {
           total_deals: deals.length,
           stages: columns.filter((column) => column.count > 0).length,
-          pipeline_order: CRM_PIPELINE,
+          pipeline_order: stages.map((stage) => stage.key),
         },
       });
     } catch (error) {
