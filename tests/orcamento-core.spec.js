@@ -148,7 +148,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     expect(quoteRequest?.extracted?.template_key).toBe('minimalista');
   });
 
-  test('explica a Origem pendente e confirma emissão sem disparar transporte', async ({ page }) => {
+  test('usa a Origem padrão e confirma emissão sem disparar transporte', async ({ page }) => {
     const quotationUuid = '00000000-0000-4000-8000-000000000301';
     const revisionId = '00000000-0000-4000-8000-000000000302';
     const concurrencyToken = '2026-09-05T12:00:00.000Z';
@@ -226,10 +226,9 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
 
-    await expect(page.getByText('Selecione a origem para continuar.', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeDisabled();
-    await page.getByLabel('Origem *', { exact: true }).selectOption('Google Ads');
+    await expect(page.getByLabel('Origem *', { exact: true })).toHaveValue('Google Ads');
+    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
 
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     await expect.poll(() => issueRequest).toEqual({
