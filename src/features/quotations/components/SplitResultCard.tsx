@@ -54,7 +54,6 @@ export interface SplitResultCardProps {
   onRecoverIssue?: (draftIdx: number) => void;
   onClearIssueRecovery?: (draftIdx: number) => void;
   onPricingPendingChange?: (draftIdx: number, pending: boolean) => void;
-  onSaveDraft?: (draftIdx: number) => void;
   isSavingDraft?: boolean;
   onReviewQuote: (draftIdx: number) => void;
   reviewOnly?: boolean;
@@ -97,7 +96,6 @@ export default function SplitResultCard({
   onRecoverIssue,
   onClearIssueRecovery,
   onPricingPendingChange,
-  onSaveDraft,
   isSavingDraft = false,
   onReviewQuote,
   reviewOnly = false,
@@ -427,7 +425,7 @@ export default function SplitResultCard({
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
                 {draft.edited.origem && (
-                  <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[10px]">
+                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
                     {draft.edited.origem}
                   </span>
                 )}
@@ -783,23 +781,11 @@ export default function SplitResultCard({
                 size="sm"
                 onClick={() => onReviewQuote(draft.index)}
                 disabled={actionBlocked || !canCreate}
-                title="Salva o rascunho e abre o detalhe do orçamento."
+                title="Abre uma pré-visualização temporária sem salvar ou emitir."
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
                 <Eye size={13} />
                 Revisar
-              </Button>
-            )}
-            {onSaveDraft && !hasSavedSnapshot && !editing && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onSaveDraft(draft.index)}
-                disabled={actionBlocked || !canCreate}
-                aria-describedby={actionBlockMessage ? actionStatusId : undefined}
-              >
-                {isSavingDraft ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                {isSavingDraft ? 'Salvando…' : 'Salvar rascunho'}
               </Button>
             )}
             {!editing && (

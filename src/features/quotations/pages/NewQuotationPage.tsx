@@ -1414,14 +1414,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     });
   }, [currentManualDraft, liveDraftOperation, manualPricingPending, navigateToQuotation, saveDraft]);
 
-  const handleAutoSave = useCallback((draftIndex: number) => {
-    if (liveDraftOperation) return;
-    const draft = drafts.find((item) => item.index === draftIndex);
-    if (draft) void saveDraft(draft).then((saved) => {
-      if (saved?.saved) navigateToQuotation(saved.saved.quotationId);
-    });
-  }, [drafts, liveDraftOperation, navigateToQuotation, saveDraft]);
-
   const handleAutoIssue = useCallback((draftIndex: number) => {
     if (liveDraftOperation) return;
     const draft = drafts.find((item) => item.index === draftIndex);
@@ -1432,11 +1424,20 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     if (liveDraftOperation) return;
     const draft = drafts.find((item) => item.index === draftIndex);
     if (!draft) return;
-    const saved = (draft as StoredAutoQuoteDraft).saved;
-    void (saved ? Promise.resolve({ saved }) : saveDraft(draft)).then((savedDraft) => {
-      if (savedDraft?.saved) navigateToQuotation(savedDraft.saved.quotationId);
-    });
-  }, [drafts, liveDraftOperation, navigateToQuotation, saveDraft]);
+    const form = document.createElement('form');
+    const payload = document.createElement('input');
+    form.method = 'POST';
+    form.action = '/api/quotation-preview?format=html';
+    form.target = '_blank';
+    form.style.display = 'none';
+    payload.type = 'hidden';
+    payload.name = 'payload';
+    payload.value = JSON.stringify(buildQuotePayload(draft));
+    form.append(payload);
+    document.body.append(form);
+    form.submit();
+    form.remove();
+  }, [drafts, liveDraftOperation]);
 
   const searchClientsLocal = useCallback(async (term: string) => {
     if (liveDraftOperation) return;
@@ -1803,7 +1804,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onRecoverIssue={retryQuotationIssueRecovery}
                 onClearIssueRecovery={releaseUnconfirmedIssue}
                 onPricingPendingChange={reportConversationPricing}
-                onSaveDraft={handleAutoSave}
                 isSavingDraft={Boolean(savingDraft[activeDraft.index])}
                 onReviewQuote={handleAutoReview}
                 issue={(activeDraft as StoredAutoQuoteDraft).issue}
