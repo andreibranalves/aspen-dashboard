@@ -56,7 +56,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
-import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import {
@@ -390,8 +389,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [manual, setManual] = useState<ManualForm>(emptyManual);
   const [manualStorageHydrated, setManualStorageHydrated] = useState(false);
   const [manualIssuing, setManualIssuing] = useState(false);
-  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
-  const [confirmClearResults, setConfirmClearResults] = useState(false);
   const [pendingExtraction, setPendingExtraction] = useState<Draft[]>([]);
   const [text, setText] = useState('');
   const [extracting, setExtracting] = useState(false);
@@ -892,19 +889,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     }
   }, []);
 
-  const hasWork = Boolean(activeDraft && draftHasWork(activeDraft)) || manualHasWork(manual);
   useEffect(() => {
-    if (!hasWork || liveDraftOperation) {
-      setNavigationGuard(liveDraftOperation ? () => false : null);
-      setPendingRoute(null);
-      return () => setNavigationGuard(null);
-    }
-    setNavigationGuard((nextRoute) => {
-      setPendingRoute(nextRoute);
-      return false;
-    });
+    setNavigationGuard(liveDraftOperation ? () => false : null);
     return () => setNavigationGuard(null);
-  }, [hasWork, liveDraftOperation, setNavigationGuard]);
+  }, [liveDraftOperation, setNavigationGuard]);
 
   const setManualValue = useCallback(<K extends keyof ManualForm>(key: K, value: ManualForm[K]) => {
     if (liveDraftOperation) return;
@@ -1647,7 +1635,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     : 'Manual · rascunho em edição';
 
   return (
-    <PageShell className="min-w-0 max-w-full space-y-4 overflow-x-hidden">
+    <PageShell className="min-w-0 space-y-4 overflow-x-hidden">
       <PageHeader
         title="Novo orçamento"
         description={headlineDescription}
@@ -1785,7 +1773,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   size="sm"
                   className="shrink-0 text-fg-muted"
                   disabled={clearResultsBlocked}
-                  onClick={() => setConfirmClearResults(true)}
+                  onClick={clearResultQueue}
                 >
                   <RotateCcw size={14} /> Limpar lista
                 </Button>
@@ -1946,34 +1934,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       <OrderTemplateManager open={orderTemplateOpen} templates={orderTemplates} onClose={() => setOrderTemplateOpen(false)} onChanged={async () => { try { const result = await listOrderTemplates(); setOrderTemplates((result.data || []).filter((item) => !item.archived)); } catch { /* manager owns its error state */ } }} />
-      <ConfirmDialog
-        open={confirmClearResults}
-        title="Limpar a lista de resultados?"
-        message="Todos os rascunhos e resultados extraídos serão removidos deste navegador. Orçamentos já salvos ou emitidos não serão excluídos."
-        confirmLabel="Limpar lista"
-        cancelLabel="Cancelar"
-        variant="destructive"
-        onConfirm={() => {
-          setConfirmClearResults(false);
-          clearResultQueue();
-        }}
-        onCancel={() => setConfirmClearResults(false)}
-      />
-      <ConfirmDialog
-        open={pendingRoute !== null}
-        title="Sair sem concluir o orçamento?"
-        message="O rascunho permanece salvo neste navegador e será restaurado quando você voltar."
-        confirmLabel="Sair da página"
-        cancelLabel="Continuar editando"
-        variant="default"
-        onConfirm={() => {
-          const target = pendingRoute;
-          setPendingRoute(null);
-          setNavigationGuard(null);
-          if (target) window.location.hash = target;
-        }}
-        onCancel={() => setPendingRoute(null)}
-      />
     </PageShell>
   );
 }

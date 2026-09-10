@@ -182,7 +182,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page.getByRole('heading', { name: 'Cliente um' })).toHaveCount(0);
   });
 
-  test('limpa a fila local de resultados somente após confirmação', async ({ page }) => {
+  test('limpa a fila local de resultados imediatamente', async ({ page }) => {
     const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -197,13 +197,6 @@ test.describe('Novo orçamento unificado @quotations', () => {
     const clearResults = page.getByRole('button', { name: 'Limpar lista' });
     await expect(clearResults).toBeVisible();
     await clearResults.click();
-    const dialog = page.getByRole('dialog', { name: 'Limpar a lista de resultados?' });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Cancelar' }).click();
-    await expect(page.getByText(/Resultados \(2\)/)).toBeVisible();
-
-    await clearResults.click();
-    await dialog.getByRole('button', { name: 'Limpar lista' }).click();
     await expect(page.getByText('Nenhum pedido extraído', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Rascunho ativo')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => {

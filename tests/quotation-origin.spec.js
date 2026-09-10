@@ -138,7 +138,6 @@ test('restoring a manual draft without hash parameters preserves its direct orig
   await expect.poll(() => page.evaluate(() => Boolean(globalThis.localStorage.getItem('aspen_manual_draft')))).toBe(true);
 
   await page.goto('/#/manual');
-  await page.getByRole('dialog').getByRole('button', { name: 'Sair da página' }).click();
   await page.reload();
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
   await page.getByRole('button', { name: 'Salvar rascunho' }).click();
