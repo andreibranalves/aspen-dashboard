@@ -1308,6 +1308,24 @@ function CoreQuotationDetail({
               </button>
             )}
           </div>
+          {data.clienteId && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+              <button
+                type="button"
+                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => navigate('/crm')}
+              >
+                Abrir no CRM
+              </button>
+              <button
+                type="button"
+                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => navigate('/quotations')}
+              >
+                Ver orçamentos anteriores
+              </button>
+            </div>
+          )}
         </section>
 
         <section

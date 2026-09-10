@@ -691,3 +691,32 @@ test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smo
   await page.getByRole('button', { name: /Editar/ }).click();
   await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('simples');
 });
+
+for (const width of [1280, 390]) {
+  test(`atalhos do cliente emitido preservam navegação em ${width}px @quotations`, async ({ page }) => {
+    const quotation = detail({ status: 'Enviado', status_canonical: 'emitido' });
+    await page.setViewportSize({ width, height: 844 });
+    await page.route('**/api/quotations**', route => route.fulfill({
+      json: new URL(route.request().url()).searchParams.has('id')
+        ? quotation
+        : { data: [], pagination: { total: 0 } },
+    }));
+    await page.route('**/api/communication-flows**', route => route.fulfill({ json: { flows: [] } }));
+    await page.route('**/api/quotation-deliveries**', route => route.fulfill({ json: { data: [] } }));
+    await page.route('**/api/quotation-templates**', route => route.fulfill({ json: { templates: [] } }));
+    const shortcuts = [
+      ['Ver cliente', `/leads/cliente/${encodeURIComponent(quotation.client_id)}`],
+      ['Abrir no CRM', '/crm'],
+      ['Ver orçamentos anteriores', '/quotations'],
+    ];
+    for (const [name, destination] of shortcuts) {
+      await page.goto(`/#/quotations/${id}`);
+      const client = page.getByRole('region', { name: 'Cliente', exact: true });
+      for (const [label] of shortcuts) {
+        await expect(client.getByRole('button', { name: label, exact: true })).toBeVisible();
+      }
+      await client.getByRole('button', { name, exact: true }).click();
+      await expect(page).toHaveURL(url => url.hash === `#${destination}`);
+    }
+  });
+}
