@@ -98,18 +98,20 @@ function issuedQuotationDetail() {
         current: { enabled: true, title: 'Condições gerais', body: '' },
       },
     },
-    items: [{
-      item_code: 'SKU-1',
-      sku: 'SKU-1',
-      item_name: 'Produto',
-      nome: 'Produto',
-      qty: '10.000',
-      suggested_unit_price: '9.00',
-      applied_unit_price: '9.00',
-      price_difference: '0.00',
-      line_total: '90.00',
-      manual_rate: false,
-    }],
+    items: [
+      {
+        item_code: 'SKU-1',
+        sku: 'SKU-1',
+        item_name: 'Produto',
+        nome: 'Produto',
+        qty: '10.000',
+        suggested_unit_price: '9.00',
+        applied_unit_price: '9.00',
+        price_difference: '0.00',
+        line_total: '90.00',
+        manual_rate: false,
+      },
+    ],
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
@@ -167,8 +169,10 @@ test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quota
   await expect(page.getByRole('button', { name: 'Emitido · 2', exact: true })).toBeVisible();
   const popup = page.waitForEvent('popup');
   await page.getByRole('button', { name: `Ações do orçamento ${quotationId}` }).click();
-  await page.locator(`[popover][aria-label="Ações do orçamento ${quotationId}"]`)
-    .getByRole('link', { name: 'Visualizar PDF' }).click();
+  await page
+    .locator(`[popover][aria-label="Ações do orçamento ${quotationId}"]`)
+    .getByRole('link', { name: 'Visualizar PDF' })
+    .click();
   const opened = await popup;
   await opened.waitForURL('**/api/quotation-preview**');
   const url = new globalThis.URL(opened.url());
@@ -899,7 +903,6 @@ test('projeções locais descartam marcadores proibidos de cliente e cotação @
   await expect(page.getByText('Cliente legítimo', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await page.goto(`/#/quotations/${quotationId}`);
-  await page.getByRole('tab', { name: 'Itens' }).click();
   await expect(page.getByRole('row').filter({ hasText: 'Produto legítimo' })).toBeVisible();
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href="https://evil.test"]')).toHaveCount(0);

@@ -1,7 +1,8 @@
 # Evidência visual: consulta de Orçamentos
 
-Registro de validação desta entrega, não um contrato visual. A referência
-normativa continua sendo [DESIGN-aspen.md](../../DESIGN-aspen.md).
+Registro histórico de validação da entrega inicial, não um contrato visual.
+As capturas do detalhe emitido antecedem o redesenho posterior. A composição
+atual está em [DESIGN-aspen.md](../../DESIGN-aspen.md#approved-orçamentos-consultation-slice).
 
 ## Recorte e isolamento
 
@@ -18,17 +19,15 @@ normativa continua sendo [DESIGN-aspen.md](../../DESIGN-aspen.md).
 
 As imagens abaixo são um conjunto enxuto da matriz final em `1440 × 900`.
 
-| Vista | Claro | Escuro |
-| --- | --- | --- |
-| Lista | ![Lista clara](lista-light-1440x900.png) | ![Lista escura](lista-dark-1440x900.png) |
+| Vista           | Claro                                                | Escuro                                               |
+| --------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| Lista           | ![Lista clara](lista-light-1440x900.png)             | ![Lista escura](lista-dark-1440x900.png)             |
 | Detalhe emitido | ![Emitido claro](detalhe-emitido-light-1440x900.png) | ![Emitido escuro](detalhe-emitido-dark-1440x900.png) |
-| Rascunho/edição | ![Rascunho claro](rascunho-light-1440x900.png) | ![Rascunho escuro](rascunho-dark-1440x900.png) |
+| Rascunho/edição | ![Rascunho claro](rascunho-light-1440x900.png)       | ![Rascunho escuro](rascunho-dark-1440x900.png)       |
 
 A matriz completa gerada fora do repositório contém 16 capturas, incluindo
 `1280 × 800`, `1440 × 900`, `1024 × 800` e `390 × 844`, lista, emitido e
-rascunho nos dois temas quando aplicável. No emitido, Resumo mostra a síntese
-de itens/quantidades, condições essenciais e totais; a tabela completa fica em
-Itens. Os estilos computados, auditorias e logs estão em
+rascunho nos dois temas quando aplicável. Os estilos computados, auditorias e logs estão em
 `/opt/data/aspen-quotations-goal/final-worker`.
 
 ### Antes e depois
