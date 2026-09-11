@@ -364,7 +364,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByText('Pré-orçamentos', { exact: true })).toHaveCount(0);
   });
 
-  test('submissão de texto exibe rascunhos para revisão', async ({ page }) => {
+  test('submissão de texto permite revisar prévia sem salvar ou emitir', async ({ page, context }) => {
     await setupApiMocks(page);
     /** @type {any} */
     const orcamentoRequests = [];
@@ -372,6 +372,19 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
       if (route.request().method() !== 'POST') return route.fallback();
       orcamentoRequests.push(route.request().postDataJSON());
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ORCAMENTO) });
+    });
+    const issueRequests = [];
+    await page.route('**/api/quotation-issues**', async (route) => {
+      issueRequests.push(route.request().method());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ISSUE) });
+    });
+    // A primeira navegação da nova aba precisa ser interceptada no contexto.
+    await context.route('**/api/quotation-preview?format=html', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/html; charset=utf-8',
+        body: '<!doctype html><title>Prévia do orçamento</title><h1>Prévia do orçamento</h1>',
+      });
     });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
@@ -393,29 +406,38 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Selecione a origem para continuar.', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Revisar', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
     await expect(page.getByText('(11) 99999-0001', { exact: true })).toBeVisible();
     await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
     const customItemName = 'Lenço 100 x 100 cm';
     await page.getByRole('button', { name: 'Editar' }).click();
-    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Revisar', exact: true })).toHaveCount(0);
     await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
     await page.getByLabel('Origem').selectOption('Google Ads');
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
     await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
     await page.getByRole('button', { name: 'Concluir' }).click();
 
-    const draftSaveRequest = page.waitForRequest(
-      (request) => request.url().endsWith('/api/orcamento') && request.method() === 'POST',
+    const previewRequest = context.waitForEvent('request',
+      (request) => request.url().endsWith('/api/quotation-preview?format=html') && request.method() === 'POST',
     );
+    const popupPromise = page.waitForEvent('popup');
     await page.getByRole('button', { name: 'Revisar', exact: true }).click();
-    const draftSave = await draftSaveRequest;
-    expect(orcamentoRequests).toHaveLength(1);
-    expect(draftSave.postDataJSON().extracted.items[0].item_name).toBe(customItemName);
-    expect(draftSave.postDataJSON().extracted.template_key).toBe('minimalista');
-    await expect(page).toHaveURL(/#\/quotations\/11111111-1111-4111-8111-111111111101$/);
-    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
+    const preview = await popupPromise;
+    const request = await previewRequest;
+    const payload = JSON.parse(new URLSearchParams(request.postData() || '').get('payload') || '{}');
+    expect(payload.extracted.items[0].item_name).toBe(customItemName);
+    expect(payload.extracted.template_key).toBe('minimalista');
+    expect(payload.extracted.origem).toBe('Google Ads');
+    await expect(preview).toHaveURL(/\/api\/quotation-preview\?format=html$/);
+    await expect(preview.getByRole('heading', { name: 'Prévia do orçamento' })).toBeVisible();
+    await preview.close();
+    await expect(page).toHaveURL(/#\/auto$/);
+    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
+    expect(orcamentoRequests).toHaveLength(0);
+    expect(issueRequests).toHaveLength(0);
   });
 
   test('emissão permanece na fila e oferece o envio por WhatsApp nesta página', async ({ page }) => {
