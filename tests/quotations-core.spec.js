@@ -98,28 +98,68 @@ function detail(overrides = {}) {
     template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
     template_version_id: null,
     template_version: null,
-    secoes: { schema_version: 1, prazo_producao: { base: { enabled: true, title: 'Prazo' }, current: { enabled: true, title: 'Prazo' } }, pagamento: { base: { enabled: true, title: 'Pagamento', body: 'À vista' }, current: { enabled: true, title: 'Pagamento', body: 'À vista' } }, condicoes_gerais: { base: { enabled: true, title: 'Condições', body: '' }, current: { enabled: true, title: 'Condições', body: '' } } },
+    secoes: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo' },
+        current: { enabled: true, title: 'Prazo' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: 'À vista' },
+        current: { enabled: true, title: 'Pagamento', body: 'À vista' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições', body: '' },
+        current: { enabled: true, title: 'Condições', body: '' },
+      },
+    },
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
     concurrency_token: token,
     updated_at: token,
-    items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto local', item_name: 'Produto local', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '90.00', manual_rate: false }],
-    revision_history: [], derived_expired: false, expiration_derived: false, is_expired: false, expirada: false,
+    items: [
+      {
+        id: '44444444-4444-4444-8444-444444444444',
+        sku: 'SKU-1',
+        item_code: 'SKU-1',
+        nome: 'Produto local',
+        item_name: 'Produto local',
+        qty: '10.000',
+        suggested_unit_price: '9.00',
+        applied_unit_price: '9.00',
+        price_difference: '0.00',
+        line_total: '90.00',
+        manual_rate: false,
+      },
+    ],
+    revision_history: [],
+    derived_expired: false,
+    expiration_derived: false,
+    is_expired: false,
+    expirada: false,
     ...overrides,
   });
 }
 
 test('exclusão manual permite excluir enviado e exibe bloqueio de pedido', async ({ page }) => {
   let attempts = 0;
-  await page.route('**/api/quotations**', async route => {
+  await page.route('**/api/quotations**', async (route) => {
     if (route.request().method() === 'DELETE') {
       attempts += 1;
-      await route.fulfill({ status: attempts === 1 ? 409 : 200, json: attempts === 1 ? { error: 'Este orçamento possui pedido vinculado e não pode ser excluído.' } : { success: true } });
+      await route.fulfill({
+        status: attempts === 1 ? 409 : 200,
+        json:
+          attempts === 1
+            ? { error: 'Este orçamento possui pedido vinculado e não pode ser excluído.' }
+            : { success: true },
+      });
     } else {
-      await route.fulfill({ json: new URL(route.request().url()).searchParams.has('id')
-        ? detail({ status: 'Enviado', status_canonical: 'emitido' })
-        : { data: [], pagination: { total: 0 } } });
+      await route.fulfill({
+        json: new URL(route.request().url()).searchParams.has('id')
+          ? detail({ status: 'Enviado', status_canonical: 'emitido' })
+          : { data: [], pagination: { total: 0 } },
+      });
     }
   });
   await page.goto(`/#/quotations/${id}`);
@@ -128,7 +168,9 @@ test('exclusão manual permite excluir enviado e exibe bloqueio de pedido', asyn
   const dialog = page.getByRole('dialog', { name: 'Excluir orçamento?' });
   await expect(dialog).toContainText('todas as suas revisões');
   await dialog.getByRole('button', { name: 'Excluir', exact: true }).click();
-  await expect(page.getByText('Este orçamento possui pedido vinculado e não pode ser excluído.')).toBeVisible();
+  await expect(
+    page.getByText('Este orçamento possui pedido vinculado e não pode ser excluído.')
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Mais ações', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Excluir orçamento' }).click();
   await dialog.getByRole('button', { name: 'Excluir', exact: true }).click();
@@ -138,28 +180,34 @@ test('exclusão manual permite excluir enviado e exibe bloqueio de pedido', asyn
 
 test('email markers render on desktop and mobile', async ({ page }) => {
   const rows = [
-    withCanonicalListRow({
-      id: 'ORC-EMAIL-1',
-      data: '2026-08-17',
-      cliente: 'Cliente Enviado',
-      valor: '100.00',
-      status: 'Enviado',
-      status_canonical: 'emitido',
-      revision_id: '11111111-1111-4111-8111-111111111111',
-      email_sent: true,
-      email_sent_at: '2026-08-17T12:00:00.000Z',
-    }, '11111111-1111-4111-8111-111111111101'),
-    withCanonicalListRow({
-      id: 'ORC-EMAIL-2',
-      data: '2026-08-17',
-      cliente: 'Cliente Pendente',
-      valor: '200.00',
-      status: 'Enviado',
-      status_canonical: 'emitido',
-      revision_id: '22222222-2222-4222-8222-222222222222',
-      email_sent: false,
-      email_sent_at: null,
-    }, '22222222-2222-4222-8222-222222222202'),
+    withCanonicalListRow(
+      {
+        id: 'ORC-EMAIL-1',
+        data: '2026-08-17',
+        cliente: 'Cliente Enviado',
+        valor: '100.00',
+        status: 'Enviado',
+        status_canonical: 'emitido',
+        revision_id: '11111111-1111-4111-8111-111111111111',
+        email_sent: true,
+        email_sent_at: '2026-08-17T12:00:00.000Z',
+      },
+      '11111111-1111-4111-8111-111111111101'
+    ),
+    withCanonicalListRow(
+      {
+        id: 'ORC-EMAIL-2',
+        data: '2026-08-17',
+        cliente: 'Cliente Pendente',
+        valor: '200.00',
+        status: 'Enviado',
+        status_canonical: 'emitido',
+        revision_id: '22222222-2222-4222-8222-222222222222',
+        email_sent: false,
+        email_sent_at: null,
+      },
+      '22222222-2222-4222-8222-222222222202'
+    ),
   ];
   await page.route('**/api/quotations**', async (route) => {
     await route.fulfill({
@@ -197,24 +245,33 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
   await page.route('**/api/quotations**', async (route) => {
     attempts += 1;
     if (attempts <= 2) {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'internal database details' }) });
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'internal database details' }),
+      });
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: [withCanonicalListRow({
-          id: 'ORC-RETRY-1',
-          data: '2026-08-20',
-          cliente: 'Cliente de recuperação',
-          valor: '100.00',
-          status: 'Rascunho',
-          status_canonical: 'rascunho',
-          revision_id: '11111111-1111-4111-8111-111111111111',
-          email_sent: false,
-          email_sent_at: null,
-        }, '11111111-1111-4111-8111-111111111102')],
+        data: [
+          withCanonicalListRow(
+            {
+              id: 'ORC-RETRY-1',
+              data: '2026-08-20',
+              cliente: 'Cliente de recuperação',
+              valor: '100.00',
+              status: 'Rascunho',
+              status_canonical: 'rascunho',
+              revision_id: '11111111-1111-4111-8111-111111111111',
+              email_sent: false,
+              email_sent_at: null,
+            },
+            '11111111-1111-4111-8111-111111111102'
+          ),
+        ],
         pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
         status_summary: { Rascunho: 1 },
       }),
@@ -229,18 +286,23 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
   expect(attempts).toBeGreaterThanOrEqual(3);
 });
 
-test('lista distingue filtro sem resultado, preserva paginação e destaca o orçamento como ação primária @quotations @smoke', async ({ page }) => {
-  const row = withCanonicalListRow({
-    id: 'ORC-PRIMARY-1',
-    data: '2026-08-20',
-    cliente: 'Cliente com nome longo para uma proposta comercial',
-    valor: '1250.00',
-    status: 'Aprovado',
-    status_canonical: 'aprovado',
-    revision_id: '11111111-1111-4222-8222-222222222222',
-    email_sent: false,
-    email_sent_at: null,
-  }, '11111111-1111-4111-8111-111111111103');
+test('lista distingue filtro sem resultado, preserva paginação e destaca o orçamento como ação primária @quotations @smoke', async ({
+  page,
+}) => {
+  const row = withCanonicalListRow(
+    {
+      id: 'ORC-PRIMARY-1',
+      data: '2026-08-20',
+      cliente: 'Cliente com nome longo para uma proposta comercial',
+      valor: '1250.00',
+      status: 'Aprovado',
+      status_canonical: 'aprovado',
+      revision_id: '11111111-1111-4222-8222-222222222222',
+      email_sent: false,
+      email_sent_at: null,
+    },
+    '11111111-1111-4111-8111-111111111103'
+  );
   await page.route('**/api/quotations**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     const filtered = url.searchParams.get('search') === 'sem-resultado';
@@ -268,73 +330,115 @@ test('lista distingue filtro sem resultado, preserva paginação e destaca o or�
   expect(hash.searchParams.get('limit')).toBe('25');
 });
 
-test('detalhe mantém conteúdo longo legível em modo somente leitura @quotations @smoke', async ({ page }) => {
-  const longText = 'Observação comercial com conteúdo extenso que deve continuar legível e quebrar dentro da seção sem criar rolagem horizontal.'.repeat(3);
+test('detalhe mantém conteúdo longo legível em modo somente leitura @quotations @smoke', async ({
+  page,
+}) => {
+  const longText =
+    'Observação comercial com conteúdo extenso que deve continuar legível e quebrar dentro da seção sem criar rolagem horizontal.'.repeat(
+      3
+    );
   await page.route('**/api/quotations?id=*', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(detail({
-        status: 'Enviado',
-        status_canonical: 'emitido',
-        observacoes: longText,
-        secoes: {
-          ...detail().secoes,
-          condicoes_gerais: {
-            ...detail().secoes.condicoes_gerais,
-            current: { ...detail().secoes.condicoes_gerais.current, body: longText },
+      body: JSON.stringify(
+        detail({
+          status: 'Enviado',
+          status_canonical: 'emitido',
+          observacoes: longText,
+          secoes: {
+            ...detail().secoes,
+            condicoes_gerais: {
+              ...detail().secoes.condicoes_gerais,
+              current: { ...detail().secoes.condicoes_gerais.current, body: longText },
+            },
           },
-        },
-        items: [{
-          id: '44444444-4444-4444-8444-444444444444',
-          sku: 'SKU-LONGO',
-          item_code: 'SKU-LONGO',
-          nome: 'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
-          item_name: 'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
-          qty: '10.000',
-          suggested_unit_price: '9.00',
-          applied_unit_price: '9.00',
-          price_difference: '0.00',
-          line_total: '90.00',
-          manual_rate: false,
-        }],
-      })),
+          items: [
+            {
+              id: '44444444-4444-4444-8444-444444444444',
+              sku: 'SKU-LONGO',
+              item_code: 'SKU-LONGO',
+              nome: 'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
+              item_name:
+                'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
+              qty: '10.000',
+              suggested_unit_price: '9.00',
+              applied_unit_price: '9.00',
+              price_difference: '0.00',
+              line_total: '90.00',
+              manual_rate: false,
+            },
+          ],
+        })
+      ),
     });
   });
   await page.route('**/api/communication-flows', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }),
+    });
   });
   await page.route('**/api/quotation-templates', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [] }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ templates: [] }),
+    });
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Somente leitura. Alterações criam uma nova revisão.')).toBeVisible();
   await expect(page.getByText(longText)).toBeVisible();
-  await expect(page.getByText('Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela')).toBeVisible();
+  await expect(
+    page.getByText(
+      'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela'
+    )
+  ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Itens do orçamento' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Condições comerciais' })).toBeVisible();
 });
 
 for (let visibility = 0; visibility < 8; visibility += 1) {
-  test(`detalhe emitido preserva seções e títulos com visibilidade ${visibility} @quotations`, async ({ page }) => {
+  test(`detalhe emitido preserva seções e títulos com visibilidade ${visibility} @quotations`, async ({
+    page,
+  }) => {
     const definitions = [
-      { key: 'prazo_producao', field: 'value', title: 'Prazo contratado', content: '20 dias úteis após aprovação' },
+      {
+        key: 'prazo_producao',
+        field: 'value',
+        title: 'Prazo contratado',
+        content: '20 dias úteis após aprovação',
+      },
       { key: 'pagamento', field: 'body', title: 'Pagamento acordado', content: '50% na aprovação' },
-      { key: 'condicoes_gerais', field: 'body', title: 'Garantia contratual', content: 'Garantia de 12 meses' },
+      {
+        key: 'condicoes_gerais',
+        field: 'body',
+        title: 'Garantia contratual',
+        content: 'Garantia de 12 meses',
+      },
     ];
     const secoes = { schema_version: 1 };
     definitions.forEach(({ key, field, title, content }, index) => {
       const current = { enabled: Boolean(visibility & (1 << index)), title, [field]: content };
       secoes[key] = { base: current, current };
     });
-    await page.route('**/api/quotations?id=*', route => route.fulfill({
-      json: detail({ status: 'Enviado', status_canonical: 'emitido', secoes }),
-    }));
-    await page.route('**/api/communication-flows**', route => route.fulfill({ json: { flows: [] } }));
-    await page.route('**/api/quotation-deliveries**', route => route.fulfill({ json: { data: [] } }));
-    await page.route('**/api/quotation-templates**', route => route.fulfill({ json: { templates: [] } }));
+    await page.route('**/api/quotations?id=*', (route) =>
+      route.fulfill({
+        json: detail({ status: 'Enviado', status_canonical: 'emitido', secoes }),
+      })
+    );
+    await page.route('**/api/communication-flows**', (route) =>
+      route.fulfill({ json: { flows: [] } })
+    );
+    await page.route('**/api/quotation-deliveries**', (route) =>
+      route.fulfill({ json: { data: [] } })
+    );
+    await page.route('**/api/quotation-templates**', (route) =>
+      route.fulfill({ json: { templates: [] } })
+    );
     await page.goto(`/#/quotations/${id}`);
     await expect(page.getByRole('heading', { name: 'Condições comerciais' })).toBeVisible();
     for (const [index, { title, content }] of definitions.entries()) {
@@ -352,29 +456,41 @@ for (let visibility = 0; visibility < 8; visibility += 1) {
   });
 }
 
-test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semântica acessíveis @quotations', async ({ page }) => {
-  const firstRow = withCanonicalListRow({
-    id: 'ORC-MENU-1',
-    data: '2026-08-20',
-    cliente: 'Cliente do menu 1',
-    valor: '100.00',
-    status: 'Enviado',
-    status_canonical: 'emitido',
-    revision_id: '11111111-1111-4222-8222-222222222221',
-  }, '11111111-1111-4111-8111-111111111121');
-  const secondRow = withCanonicalListRow({
-    id: 'ORC-MENU-2',
-    data: '2026-08-21',
-    cliente: 'Cliente do menu 2',
-    valor: '200.00',
-    status: 'Enviado',
-    status_canonical: 'emitido',
-    revision_id: '22222222-2222-4222-8222-222222222222',
-  }, '22222222-2222-4222-8222-222222222222');
+test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semântica acessíveis @quotations', async ({
+  page,
+}) => {
+  const firstRow = withCanonicalListRow(
+    {
+      id: 'ORC-MENU-1',
+      data: '2026-08-20',
+      cliente: 'Cliente do menu 1',
+      valor: '100.00',
+      status: 'Enviado',
+      status_canonical: 'emitido',
+      revision_id: '11111111-1111-4222-8222-222222222221',
+    },
+    '11111111-1111-4111-8111-111111111121'
+  );
+  const secondRow = withCanonicalListRow(
+    {
+      id: 'ORC-MENU-2',
+      data: '2026-08-21',
+      cliente: 'Cliente do menu 2',
+      valor: '200.00',
+      status: 'Enviado',
+      status_canonical: 'emitido',
+      revision_id: '22222222-2222-4222-8222-222222222222',
+    },
+    '22222222-2222-4222-8222-222222222222'
+  );
   await page.route('**/api/quotations**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     if (url.searchParams.has('id')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail({ status: 'Enviado', status_canonical: 'emitido' })) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(detail({ status: 'Enviado', status_canonical: 'emitido' })),
+      });
       return;
     }
     await route.fulfill({
@@ -388,10 +504,18 @@ test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semânt
     });
   });
   await page.route('**/api/communication-flows**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }),
+    });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [] }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ templates: [] }),
+    });
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -402,8 +526,12 @@ test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semânt
   const firstMenu = page.locator('#quotation-actions-mobile-11111111-1111-4111-8111-111111111121');
   await expect(firstMenu).toBeVisible();
   await expect(firstMenu.locator('[role="menuitem"]')).toHaveCount(0);
-  expect(await firstMenu.evaluate((element) => globalThis.getComputedStyle(element).position)).toBe('fixed');
-  const firstMenuBottom = await firstMenu.evaluate((element) => element.getBoundingClientRect().bottom);
+  expect(await firstMenu.evaluate((element) => globalThis.getComputedStyle(element).position)).toBe(
+    'fixed'
+  );
+  const firstMenuBottom = await firstMenu.evaluate(
+    (element) => element.getBoundingClientRect().bottom
+  );
   expect(firstMenuBottom).toBeLessThanOrEqual(844);
 
   await secondAction.click();
@@ -417,7 +545,10 @@ test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semânt
   await secondMenu.getByRole('button', { name: 'Duplicar' }).click();
   await expect(page.getByRole('dialog', { name: 'Duplicar orçamento?' })).toBeVisible();
   await expect(secondMenu).toBeHidden();
-  await page.getByRole('dialog', { name: 'Duplicar orçamento?' }).getByRole('button', { name: 'Cancelar' }).click();
+  await page
+    .getByRole('dialog', { name: 'Duplicar orçamento?' })
+    .getByRole('button', { name: 'Cancelar' })
+    .click();
   await secondAction.click();
   await page.getByRole('heading', { name: 'Orçamentos', exact: true }).click();
   await expect(secondMenu).toBeHidden();
@@ -427,7 +558,9 @@ test('menu de ações e detalhes recolhíveis mantêm fechamento, foco e semânt
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(detailPanel).not.toHaveAttribute('role', 'tabpanel');
 
-  const documentSummary = detailPanel.locator('summary').filter({ hasText: 'Detalhes do documento' });
+  const documentSummary = detailPanel
+    .locator('summary')
+    .filter({ hasText: 'Detalhes do documento' });
   await documentSummary.focus();
   await page.keyboard.press('Enter');
   await expect(documentSummary.locator('..')).toHaveAttribute('open', '');
@@ -444,52 +577,65 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(detail({
-        items: Array.from({ length: 30 }, (_, index) => ({
-          id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
-          sku: `SKU-${index}`,
-          item_code: `SKU-${index}`,
-          nome: `Produto local ${index}`,
-          item_name: `Produto local ${index}`,
-          qty: '10.000',
-          suggested_unit_price: '9.00',
-          applied_unit_price: '9.00',
-          price_difference: '0.00',
-          line_total: '90.00',
-          manual_rate: false,
-        })),
-      })),
+      body: JSON.stringify(
+        detail({
+          items: Array.from({ length: 30 }, (_, index) => ({
+            id: `44444444-4444-4444-8444-${String(index).padStart(12, '0')}`,
+            sku: `SKU-${index}`,
+            item_code: `SKU-${index}`,
+            nome: `Produto local ${index}`,
+            item_name: `Produto local ${index}`,
+            qty: '10.000',
+            suggested_unit_price: '9.00',
+            applied_unit_price: '9.00',
+            price_difference: '0.00',
+            line_total: '90.00',
+            manual_rate: false,
+          })),
+        })
+      ),
     });
   });
   await page.route('**/api/communication-flows', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }),
+    });
   });
   await page.route('**/api/quotation-templates', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [] }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ templates: [] }),
+    });
   });
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByRole('heading', { name: 'Itens' })).toBeVisible();
 
-  const readScrollState = () => page.evaluate(() => {
-    const main = globalThis.document.querySelector('main');
-    const topBar = main?.previousElementSibling;
-    return {
-      windowY: globalThis.scrollY,
-      documentHeight: globalThis.document.documentElement.scrollHeight,
-      viewportHeight: globalThis.innerHeight,
-      mainTop: main?.getBoundingClientRect().top,
-      mainBottom: main?.getBoundingClientRect().bottom,
-      mainScrollHeight: main?.scrollHeight,
-      mainClientHeight: main?.clientHeight,
-      topBarTop: topBar?.getBoundingClientRect().top,
-    };
-  });
+  const readScrollState = () =>
+    page.evaluate(() => {
+      const main = globalThis.document.querySelector('main');
+      const topBar = main?.previousElementSibling;
+      return {
+        windowY: globalThis.scrollY,
+        documentHeight: globalThis.document.documentElement.scrollHeight,
+        viewportHeight: globalThis.innerHeight,
+        mainTop: main?.getBoundingClientRect().top,
+        mainBottom: main?.getBoundingClientRect().bottom,
+        mainScrollHeight: main?.scrollHeight,
+        mainClientHeight: main?.clientHeight,
+        topBarTop: topBar?.getBoundingClientRect().top,
+      };
+    });
 
   const initial = await readScrollState();
   expect(initial.documentHeight).toBeLessThanOrEqual(initial.viewportHeight);
-  await page.locator('main').evaluate((main) => { main.scrollTop = main.scrollHeight; });
+  await page.locator('main').evaluate((main) => {
+    main.scrollTop = main.scrollHeight;
+  });
   await expect(page.getByRole('navigation', { name: 'Trilha de navegação' })).toBeVisible();
   const scrolled = await readScrollState();
   expect(scrolled.windowY).toBe(0);
@@ -499,17 +645,43 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
   expect(scrolled.mainScrollHeight).toBeGreaterThan(scrolled.mainClientHeight);
 });
 
-test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({ page }) => {
+test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({
+  page,
+}) => {
   let authoritative = detail();
   await page.route('**/api/quotations**', async (route) => {
-    if (route.request().method() === 'GET' && new globalThis.URL(route.request().url()).searchParams.get('id')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+    if (
+      route.request().method() === 'GET' &&
+      new globalThis.URL(route.request().url()).searchParams.get('id')
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(authoritative),
+      });
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [withCanonicalListRow({ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }, '11111111-1111-4111-8111-111111111111')], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
+      body: JSON.stringify({
+        data: [
+          withCanonicalListRow(
+            {
+              id,
+              revision_id: '22222222-2222-4222-8222-222222222222',
+              cliente: 'Cliente local',
+              data: '2026-07-01',
+              valor: '90.00',
+              status: 'Rascunho',
+              status_canonical: 'rascunho',
+            },
+            '11111111-1111-4111-8111-111111111111'
+          ),
+        ],
+        pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        status_summary: { Rascunho: 1 },
+      }),
     });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
@@ -542,9 +714,15 @@ test('cancelar edição sem alterações não abre confirmação de descarte @qu
   await expect(page.getByRole('button', { name: /Editar/ })).toBeVisible();
 });
 
-test('editar mantém o início do formulário e a seleção ativa nos editores @quotations', async ({ page }) => {
+test('editar mantém o início do formulário e a seleção ativa nos editores @quotations', async ({
+  page,
+}) => {
   await page.route('**/api/quotations**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail()) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(detail()),
+    });
   });
 
   await page.goto(`/#/quotations/${id}`);
@@ -570,7 +748,9 @@ test('editar mantém o início do formulário e a seleção ativa nos editores @
   await expect(payment).toHaveText('Prazo bem final');
 });
 
-test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({ page }) => {
+test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({
+  page,
+}) => {
   const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;
   let lastPutPayload;
@@ -579,14 +759,24 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
     const request = route.request();
     const url = new globalThis.URL(request.url());
     if (request.method() === 'GET' && url.searchParams.get('id')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(authoritative),
+      });
       return;
     }
     if (request.method() === 'PUT') {
       putCount += 1;
       lastPutPayload = request.postDataJSON();
       if (putCount === 2) {
-        await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'O orçamento foi alterado por outro usuário. Recarregue antes de salvar.' }) });
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'O orçamento foi alterado por outro usuário. Recarregue antes de salvar.',
+          }),
+        });
       } else {
         const authoritativeSections = globalThis.structuredClone(lastPutPayload.secoes);
         authoritativeSections.pagamento.current.body = '30 dias';
@@ -601,20 +791,61 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
           valor: '101.25',
           concurrency_token: '2026-07-01T12:01:00.000Z',
           updated_at: '2026-07-01T12:01:00.000Z',
-          items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: lastPutPayload.items[0].item_name, item_name: lastPutPayload.items[0].item_name, qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '10.00', price_difference: '1.00', line_total: '100.00', manual_rate: true }],
+          items: [
+            {
+              id: '44444444-4444-4444-8444-444444444444',
+              sku: 'SKU-1',
+              item_code: 'SKU-1',
+              nome: lastPutPayload.items[0].item_name,
+              item_name: lastPutPayload.items[0].item_name,
+              qty: '10.000',
+              suggested_unit_price: '9.00',
+              applied_unit_price: '10.00',
+              price_difference: '1.00',
+              line_total: '100.00',
+              manual_rate: true,
+            },
+          ],
         });
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(authoritative),
+        });
       }
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [withCanonicalListRow({ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }, '11111111-1111-4111-8111-111111111111')], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
+      body: JSON.stringify({
+        data: [
+          withCanonicalListRow(
+            {
+              id,
+              revision_id: '22222222-2222-4222-8222-222222222222',
+              cliente: 'Cliente local',
+              data: '2026-07-01',
+              valor: '90.00',
+              status: 'Rascunho',
+              status_canonical: 'rascunho',
+            },
+            '11111111-1111-4111-8111-111111111111'
+          ),
+        ],
+        pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        status_summary: { Rascunho: 1 },
+      }),
     });
   });
   await page.route('**/api/leads-clients**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente local' }] }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [{ id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente local' }],
+      }),
+    });
   });
 
   await page.goto('/#/quotations');
@@ -633,7 +864,9 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
   await page.getByLabel('Condição de pagamento').fill('30 dias');
   await page.getByLabel('Frete do orçamento').fill('1.25');
-  await page.getByRole('textbox', { name: 'Condições gerais', exact: true }).fill('Alteração local');
+  await page
+    .getByRole('textbox', { name: 'Condições gerais', exact: true })
+    .fill('Alteração local');
   await page.getByLabel('Preço aplicado SKU-1').fill('10.00');
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText('Orçamento salvo.')).toBeVisible();
@@ -654,13 +887,23 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByRole('button', { name: /Editar/ }).click();
   await expect(page.getByText('R$ 1,00')).toBeVisible();
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText(/O orçamento (foi alterado por outro usuário|mudou ou não pode mais ser editado)/i)).toBeVisible();
+  await expect(
+    page.getByText(
+      /O orçamento (foi alterado por outro usuário|mudou ou não pode mais ser editado)/i
+    )
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Recarregar' })).toBeVisible();
 });
 
-test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smoke', async ({ page }) => {
+test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smoke', async ({
+  page,
+}) => {
   await page.route('**/api/leads-clients**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
     await route.fulfill({
@@ -669,8 +912,20 @@ test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smo
       body: JSON.stringify({
         default_key: 'simples',
         templates: [
-          { key: 'branded', name: 'Aspen Original', is_default: false, current_version_id: '55555555-5555-4555-8555-555555555555', current_version: 1 },
-          { key: 'simples', name: 'Simples', is_default: true, current_version_id: '66666666-6666-4666-8666-666666666666', current_version: 1 },
+          {
+            key: 'branded',
+            name: 'Aspen Original',
+            is_default: false,
+            current_version_id: '55555555-5555-4555-8555-555555555555',
+            current_version: 1,
+          },
+          {
+            key: 'simples',
+            name: 'Simples',
+            is_default: true,
+            current_version_id: '66666666-6666-4666-8666-666666666666',
+            current_version: 1,
+          },
         ],
       }),
     });
@@ -679,11 +934,13 @@ test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smo
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(detail({
-        template_key: 'branded',
-        template_padrao: 'branded',
-        template_version_id: '55555555-5555-4555-8555-555555555555',
-      })),
+      body: JSON.stringify(
+        detail({
+          template_key: 'branded',
+          template_padrao: 'branded',
+          template_version_id: '55555555-5555-4555-8555-555555555555',
+        })
+      ),
     });
   });
 
@@ -693,17 +950,27 @@ test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smo
 });
 
 for (const width of [1280, 390]) {
-  test(`atalhos do cliente emitido preservam navegação em ${width}px @quotations`, async ({ page }) => {
+  test(`atalhos do cliente emitido preservam navegação em ${width}px @quotations`, async ({
+    page,
+  }) => {
     const quotation = detail({ status: 'Enviado', status_canonical: 'emitido' });
     await page.setViewportSize({ width, height: 844 });
-    await page.route('**/api/quotations**', route => route.fulfill({
-      json: new URL(route.request().url()).searchParams.has('id')
-        ? quotation
-        : { data: [], pagination: { total: 0 } },
-    }));
-    await page.route('**/api/communication-flows**', route => route.fulfill({ json: { flows: [] } }));
-    await page.route('**/api/quotation-deliveries**', route => route.fulfill({ json: { data: [] } }));
-    await page.route('**/api/quotation-templates**', route => route.fulfill({ json: { templates: [] } }));
+    await page.route('**/api/quotations**', (route) =>
+      route.fulfill({
+        json: new URL(route.request().url()).searchParams.has('id')
+          ? quotation
+          : { data: [], pagination: { total: 0 } },
+      })
+    );
+    await page.route('**/api/communication-flows**', (route) =>
+      route.fulfill({ json: { flows: [] } })
+    );
+    await page.route('**/api/quotation-deliveries**', (route) =>
+      route.fulfill({ json: { data: [] } })
+    );
+    await page.route('**/api/quotation-templates**', (route) =>
+      route.fulfill({ json: { templates: [] } })
+    );
     const shortcuts = [
       ['Ver cliente', `/leads/cliente/${encodeURIComponent(quotation.client_id)}`],
       ['Abrir no CRM', '/crm'],
@@ -716,7 +983,7 @@ for (const width of [1280, 390]) {
         await expect(client.getByRole('button', { name: label, exact: true })).toBeVisible();
       }
       await client.getByRole('button', { name, exact: true }).click();
-      await expect(page).toHaveURL(url => url.hash === `#${destination}`);
+      await expect(page).toHaveURL((url) => url.hash === `#${destination}`);
     }
   });
 }

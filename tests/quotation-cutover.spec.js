@@ -22,7 +22,10 @@ function coreDetail(overrides = {}) {
     status_canonical: 'emitido',
     cliente: 'Cliente PostgreSQL Cutover',
     client_id: '33333333-3333-4333-8333-333333333342',
-    cliente_snapshot: { id: '33333333-3333-4333-8333-333333333342', nome: 'Cliente PostgreSQL Cutover' },
+    cliente_snapshot: {
+      id: '33333333-3333-4333-8333-333333333342',
+      nome: 'Cliente PostgreSQL Cutover',
+    },
     validade_dias: 15,
     validade: '2026-08-23',
     data: '2026-08-08',
@@ -60,46 +63,52 @@ function coreDetail(overrides = {}) {
     expirada: false,
     concurrency_token: '2026-08-08T12:00:00.000Z',
     updated_at: '2026-08-08T12:00:00.000Z',
-    items: [{
-      id: '44444444-4444-4444-8444-444444444442',
-      sku: 'CORE-CUTOVER-001',
-      item_code: 'CORE-CUTOVER-001',
-      nome: 'Produto PostgreSQL',
-      item_name: 'Produto PostgreSQL',
-      qty: '10.000',
-      suggested_unit_price: '9.00',
-      applied_unit_price: '9.00',
-      price_difference: '0.00',
-      line_total: '90.00',
-      manual_rate: false,
-    }],
-    revision_history: [{
-      id: CORE_REVISION_ID,
-      revision_id: CORE_REVISION_ID,
-      revision: 1,
-      revision_number: 1,
-      created_at: '2026-08-08T12:00:00.000Z',
-      createdAt: '2026-08-08T12:00:00.000Z',
-      validade_dias: 15,
-      validade: '2026-08-23',
-      subtotal: '90.00',
-      total: '90.00',
-      valor: '90.00',
-      status: 'Enviado',
-      status_canonical: 'emitido',
-      template_key: 'padrao',
-      template_version: 1,
-      template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
-      derived_expired: false,
-      expiration_derived: false,
-      is_expired: false,
-      expirada: false,
-    }],
+    items: [
+      {
+        id: '44444444-4444-4444-8444-444444444442',
+        sku: 'CORE-CUTOVER-001',
+        item_code: 'CORE-CUTOVER-001',
+        nome: 'Produto PostgreSQL',
+        item_name: 'Produto PostgreSQL',
+        qty: '10.000',
+        suggested_unit_price: '9.00',
+        applied_unit_price: '9.00',
+        price_difference: '0.00',
+        line_total: '90.00',
+        manual_rate: false,
+      },
+    ],
+    revision_history: [
+      {
+        id: CORE_REVISION_ID,
+        revision_id: CORE_REVISION_ID,
+        revision: 1,
+        revision_number: 1,
+        created_at: '2026-08-08T12:00:00.000Z',
+        createdAt: '2026-08-08T12:00:00.000Z',
+        validade_dias: 15,
+        validade: '2026-08-23',
+        subtotal: '90.00',
+        total: '90.00',
+        valor: '90.00',
+        status: 'Enviado',
+        status_canonical: 'emitido',
+        template_key: 'padrao',
+        template_version: 1,
+        template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
+        derived_expired: false,
+        expiration_derived: false,
+        is_expired: false,
+        expirada: false,
+      },
+    ],
     ...overrides,
   });
 }
 
-test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizado @quotations @database @critical', async ({ page }) => {
+test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizado @quotations @database @critical', async ({
+  page,
+}) => {
   const requests = [];
   let authoritative = coreDetail();
   const tokens = new Set();
@@ -109,13 +118,30 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
   });
   await page.context().route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e' }] }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        templates: [
+          {
+            key: 'padrao',
+            name: 'Padrão',
+            is_default: true,
+            hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
+          },
+        ],
+      }),
+    });
   });
   await page.context().route('**/api/quotations**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
     if (request.method() === 'GET' && url.searchParams.get('id')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(authoritative),
+      });
       return;
     }
     if (request.method() === 'POST' && request.postDataJSON()?.action === 'create_revision') {
@@ -124,20 +150,41 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
         revision_number: 2,
         status: 'Rascunho',
         status_canonical: 'rascunho',
-        revision_history: [authoritative.revision_history[0], {
-          ...authoritative.revision_history[0],
-          id: CORE_NEXT_REVISION_ID,
-          revision_id: CORE_NEXT_REVISION_ID,
-          revision: 2,
-          revision_number: 2,
-          status: 'Rascunho',
-          status_canonical: 'rascunho',
-        }],
+        revision_history: [
+          authoritative.revision_history[0],
+          {
+            ...authoritative.revision_history[0],
+            id: CORE_NEXT_REVISION_ID,
+            revision_id: CORE_NEXT_REVISION_ID,
+            revision: 2,
+            revision_number: 2,
+            status: 'Rascunho',
+            status_canonical: 'rascunho',
+          },
+        ],
       });
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(authoritative),
+      });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: CORE_ID, cliente: authoritative.cliente, valor: authoritative.total, status: authoritative.status }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 } }) });
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [
+          {
+            id: CORE_ID,
+            cliente: authoritative.cliente,
+            valor: authoritative.total,
+            status: authoritative.status,
+          },
+        ],
+        pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+      }),
+    });
   });
   await page.context().route('**/api/quotation-preview**', async (route) => {
     await route.fulfill({
@@ -152,7 +199,15 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
     if (request.method() === 'POST') {
       const token = CORE_TOKEN;
       tokens.add(token);
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ token, revisionId: authoritative.revision_id, expiresAt: '2026-08-15T12:00:00.000Z' }) });
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          token,
+          revisionId: authoritative.revision_id,
+          expiresAt: '2026-08-15T12:00:00.000Z',
+        }),
+      });
       return;
     }
     const url = new globalThis.URL(request.url());
@@ -163,16 +218,30 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
       return;
     }
     if (token === 'error') {
-      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Erro ao processar orçamento. Tente novamente.' }) });
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Erro ao processar orçamento. Tente novamente.' }),
+      });
       return;
     }
     if (token === 'expired') {
-      await route.fulfill({ status: 410, contentType: 'application/json', body: JSON.stringify({ error: 'Link público expirado.' }) });
+      await route.fulfill({
+        status: 410,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Link público expirado.' }),
+      });
       return;
     }
-    await route.fulfill({ status: tokens.has(token) ? 200 : 404, contentType: 'text/html', body: '<html><body>Cliente PostgreSQL Cutover</body></html>' });
+    await route.fulfill({
+      status: tokens.has(token) ? 200 : 404,
+      contentType: 'text/html',
+      body: '<html><body>Cliente PostgreSQL Cutover</body></html>',
+    });
   });
-  await page.context().route('**/api/view**', async () => { throw new Error('Customer-facing path must not request /api/view'); });
+  await page.context().route('**/api/view**', async () => {
+    throw new Error('Customer-facing path must not request /api/view');
+  });
 
   await page.goto(`/#/quotations/${CORE_ID}`);
   await expect(page.getByRole('heading', { name: CORE_ID })).toBeVisible();
@@ -181,7 +250,10 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   await expect(page.getByText('Produto PostgreSQL')).toBeVisible();
 
   const pdfPopupPromise = page.waitForEvent('popup');
-  const pdfResponsePromise = page.context().waitForEvent('response', { predicate: (response) => response.url().includes('/api/quotation-preview') && response.url().includes('format=pdf') });
+  const pdfResponsePromise = page.context().waitForEvent('response', {
+    predicate: (response) =>
+      response.url().includes('/api/quotation-preview') && response.url().includes('format=pdf'),
+  });
   await page.getByRole('button', { name: 'Visualizar PDF', exact: true }).click();
   const [pdfPopup, pdfResponse] = await Promise.all([pdfPopupPromise, pdfResponsePromise]);
   expect(pdfResponse.status()).toBe(200);
@@ -207,7 +279,11 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   expect(String.fromCharCode(...pdfResult.tail)).toBe('%%EOF');
 
   const publicResult = await page.evaluate(async () => {
-    const issued = await globalThis.fetch('/api/public-quotation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revisionId: '22222222-2222-4222-8222-222222222242' }) });
+    const issued = await globalThis.fetch('/api/public-quotation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ revisionId: '22222222-2222-4222-8222-222222222242' }),
+    });
     const issuedBody = await issued.json();
     const view = await globalThis.fetch(`/api/public-quotation?token=${issuedBody.token}`);
     return { issued: issued.status, viewed: view.status, body: await view.text() };
