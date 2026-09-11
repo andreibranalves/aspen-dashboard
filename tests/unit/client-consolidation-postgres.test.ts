@@ -30,7 +30,7 @@ test('consolidation transfers history, preserves identity, backs up and rolls ba
     // All fixtures live in this connection's temporary schema. No durable rows
     // or migration state are created, updated or removed by this test.
     await connection`CREATE TEMP TABLE clients (
-      id uuid PRIMARY KEY, nome text NOT NULL, documento text UNIQUE, email text,
+      id uuid PRIMARY KEY, nome text NOT NULL, empresa text, documento text UNIQUE, email text,
       telefone text, notes text, endereco text, numero text, bairro text,
       complemento text, municipio text, uf text, cep text,
       arquivado boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now(),
@@ -40,9 +40,9 @@ test('consolidation transfers history, preserves identity, backs up and rolls ba
       await connection.unsafe(`CREATE TEMP TABLE ${table} (id uuid PRIMARY KEY, client_id uuid REFERENCES pg_temp.clients(id), created_at timestamptz DEFAULT now())`);
     }
     const old = randomUUID(); const winner = randomUUID();
-    await connection`INSERT INTO clients (id,nome,telefone,documento,notes) VALUES
-      (${old},'Teste antigo','21999998888','11111111111','Primeiro atendimento'),
-      (${winner},'Teste recente','5521999998888',null,'Último atendimento')`;
+    await connection`INSERT INTO clients (id,nome,empresa,telefone,documento,notes) VALUES
+      (${old},'Teste antigo','Empresa antiga','21999998888','11111111111','Primeiro atendimento'),
+      (${winner},'Teste recente',null,'5521999998888',null,'Último atendimento')`;
     await connection`UPDATE clients SET endereco='Rua antiga',numero='10' WHERE id=${old}`;
     await connection`UPDATE clients SET endereco='Rua atual' WHERE id=${winner}`;
     await connection`INSERT INTO quotations VALUES (${randomUUID()},${old},'2026-01-01'),(${randomUUID()},${winner},'2026-02-01')`;
@@ -70,6 +70,7 @@ test('consolidation transfers history, preserves identity, backs up and rolls ba
     const rows = await connection`SELECT * FROM clients`;
     assert.equal(rows.length, 1);
     assert.equal(rows[0].id, winner);
+    assert.equal(rows[0].empresa, 'Empresa antiga');
     assert.equal(rows[0].documento, '11111111111');
     assert.equal(rows[0].endereco, 'Rua atual');
     assert.equal(rows[0].numero, null, 'never combine different addresses');

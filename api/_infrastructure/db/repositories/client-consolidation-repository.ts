@@ -84,7 +84,7 @@ export function createClientConsolidationRepository(database: () => AppDatabase 
             const notes = [...new Set(members.map(row => row.notes?.trim()).filter(Boolean))].join('\n\n');
             if (notes.length > 4000) throw new Error('As observações consolidadas ultrapassam o limite. Revisão necessária.');
             const patch: Partial<typeof survivor> = { notes: notes || null };
-            const fields = ['documento', 'email'] as const;
+            const fields = ['empresa', 'documento', 'email'] as const;
             for (const field of fields) {
               const values = [...new Set(members.map(row => row[field]).filter(Boolean))];
               if (!survivor[field] && values.length === 1) patch[field] = values[0];
