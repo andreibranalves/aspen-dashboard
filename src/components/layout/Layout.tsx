@@ -83,7 +83,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
     return [
       { label: 'Início', hash: '/dashboard' },
       getQuotationParent(),
-      { label: 'Orçamento', hash: null },
+      { label: detailLabel || 'Orçamento', hash: null },
     ];
   }
   if (path.startsWith('/sales-orders/')) {

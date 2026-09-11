@@ -6,9 +6,13 @@ import { cn } from '@/lib/utils';
  * Select keeps the native browser behavior while matching the 36px Aspen
  * control contract.
  */
-const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, children, ...props }, ref) => (
-    <div className="relative inline-flex">
+interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  containerClassName?: string;
+}
+
+const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  ({ className, containerClassName, children, ...props }, ref) => (
+    <div className={cn('relative inline-flex', containerClassName)}>
       <select
         ref={ref}
         className={cn(

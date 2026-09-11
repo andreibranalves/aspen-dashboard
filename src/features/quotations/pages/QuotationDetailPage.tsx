@@ -54,6 +54,7 @@ import {
 } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import PageShell from '@/components/shared/PageShell';
+import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
 import { type QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import { QuotationSectionsDocument } from '@/features/quotations/components/QuotationSectionsDocument';
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
@@ -1341,11 +1342,14 @@ function CoreQuotationDetail({
             </span>
           </div>
           {displayItems.length > 0 ? (
-            <div className="overflow-x-auto px-5 md:px-6">
-              <Table className="min-w-[680px] text-sm">
+            <div className="px-5 md:px-6">
+              <Table
+                className="table-fixed text-sm"
+                containerClassName="overflow-hidden border-0 rounded-none"
+              >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9 w-full min-w-[320px] px-0">Produto</TableHead>
+                    <TableHead className="h-9 w-[48%] px-0">Produto</TableHead>
                     <TableHead className="h-9 whitespace-nowrap text-center">Quantidade</TableHead>
                     <TableHead className="h-9 whitespace-nowrap text-right">
                       Valor unitário
@@ -1571,6 +1575,7 @@ function CoreQuotationDetail({
             <span className="mb-1.5 block">Fluxo WhatsApp</span>
             <Select
               className="w-full"
+              containerClassName="w-full"
               value={deliveryFlowId}
               onChange={(event) => setDeliveryFlowId(event.target.value)}
               disabled={deliveryPending}
@@ -1713,7 +1718,7 @@ function CoreQuotationDetail({
                 )}
               </div>
             )}
-            {data.quotationOrigin && (
+            {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && (
               <div
                 className="mt-2 flex flex-wrap items-center gap-2 text-sm"
                 aria-label="Origem do orçamento"
@@ -2139,7 +2144,10 @@ function CoreQuotationDetail({
                     </span>
                   </div>
                   {displayItems.length > 0 ? (
-                    <Table className="min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3">
+                    <Table
+                      className="min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3"
+                      containerClassName="border-0 rounded-none"
+                    >
                       <TableHeader>
                         <TableRow>
                           <TableHead className="h-8 w-full min-w-[280px]">Produto</TableHead>
@@ -2709,6 +2717,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   const concurrencyTokenRef = useRef('');
   const dataRef = useRef<QuotationData | null>(null);
   const loadedRouteIdRef = useRef<string | null>(null);
+  useBreadcrumbLabel(data?.businessNumber || null);
 
   useEffect(() => {
     dataRef.current = null;
