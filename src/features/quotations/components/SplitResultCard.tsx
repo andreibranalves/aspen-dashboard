@@ -427,17 +427,17 @@ export default function SplitResultCard({
             </div>
           ) : (
             <>
-              <h3 className="mt-1 text-sm font-semibold text-fg truncate">
-                {capitalize(displayName) || 'Cliente'}
+              <h3 className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
+                <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
+                {draft.edited.origem && (
+                  <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                    {draft.edited.origem}
+                  </span>
+                )}
               </h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-fg-muted">
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
-                {draft.edited.origem && (
-                  <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
-                    {draft.edited.origem}
-                  </span>
-                )}
               </div>
             </>
           )}
@@ -508,7 +508,6 @@ export default function SplitResultCard({
               <col />
               <col className="w-16" />
               <col className="w-20" />
-              <col className="w-28" />
               <col className="w-10" />
             </colgroup>
             <TableHeader>
@@ -517,7 +516,6 @@ export default function SplitResultCard({
                 <TableHead scope="col" className="px-2 py-2 text-left font-medium">Produto</TableHead>
                 <TableHead scope="col" className="px-2 py-2 text-center font-medium">Qtd</TableHead>
                 <TableHead scope="col" className="px-2 py-2 text-center font-medium">Preço</TableHead>
-                <TableHead scope="col" className="py-2 pl-2 pr-4 text-right font-medium">Subtotal</TableHead>
                 <TableHead scope="col" className="px-1 py-2" />
               </TableRow>
             </TableHeader>
@@ -667,9 +665,6 @@ export default function SplitResultCard({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className="py-2 pl-2 pr-4 text-right font-medium">
-                      {formatBRL((item.qty || 0) * (item.rate || 0))}
-                    </TableCell>
                     <TableCell className="px-1 py-2">
                       <button
                         type="button"
@@ -687,7 +682,7 @@ export default function SplitResultCard({
               })}
               {displayItems.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-4 text-center text-xs text-fg-muted">
+                  <TableCell colSpan={5} className="py-4 text-center text-xs text-fg-muted">
                     Nenhum item adicionado
                   </TableCell>
                 </TableRow>
@@ -712,6 +707,7 @@ export default function SplitResultCard({
             delivery={delivery}
             pending={deliveryPending}
             hideStatusLabel
+            hideUpdatedAt
             onResolve={onResolveDelivery}
           />
         </div>

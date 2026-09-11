@@ -12,6 +12,7 @@ export interface QuotationDeliveryStatusProps {
   delivery: DeliveryView | null;
   pending?: boolean;
   hideStatusLabel?: boolean;
+  hideUpdatedAt?: boolean;
   onResolve?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
   className?: string;
 }
@@ -26,6 +27,7 @@ export function QuotationDeliveryStatus({
   delivery,
   pending = false,
   hideStatusLabel = false,
+  hideUpdatedAt = false,
   onResolve,
   className,
 }: QuotationDeliveryStatusProps) {
@@ -127,7 +129,7 @@ export function QuotationDeliveryStatus({
       )}
       {delivery && (
         <div className="space-y-1 text-fg-muted">
-          <p>Última atualização: {formatDateTime(delivery.updatedAt) || '—'}</p>
+          {!hideUpdatedAt && <p>Última atualização: {formatDateTime(delivery.updatedAt) || '—'}</p>}
           {delivery.publicError && <p className="text-destructive">{delivery.publicError}</p>}
           {delayed && (
             <p className="text-warning">
