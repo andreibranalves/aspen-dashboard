@@ -1027,7 +1027,7 @@ function CoreQuotationDetail({
         return;
       }
       setLifecycleAction('create_revision');
-      showMessage('Criando nova revisão…');
+      showMessage('');
       setConflict('');
       try {
         const refreshed = await apiPost<QuotationData>(
@@ -1043,6 +1043,7 @@ function CoreQuotationDetail({
         concurrencyTokenRef.current = projection.concurrencyToken;
         setData(projection.data);
         resetEditor(projection.data);
+        setEditing(true);
         toast('Nova revisão criada em rascunho.', 'success');
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
