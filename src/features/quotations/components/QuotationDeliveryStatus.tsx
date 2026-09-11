@@ -11,6 +11,7 @@ import { formatDateTime } from '@/lib/formatting/formatters';
 export interface QuotationDeliveryStatusProps {
   delivery: DeliveryView | null;
   pending?: boolean;
+  hideStatusLabel?: boolean;
   onResolve?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
   className?: string;
 }
@@ -24,6 +25,7 @@ function formatProgress(delivery: DeliveryView): string {
 export function QuotationDeliveryStatus({
   delivery,
   pending = false,
+  hideStatusLabel = false,
   onResolve,
   className,
 }: QuotationDeliveryStatusProps) {
@@ -111,16 +113,18 @@ export function QuotationDeliveryStatus({
 
   return (
     <section className={cn('space-y-2 text-xs', className)}>
-      <div
-        role="status"
-        aria-live="polite"
-        aria-busy={pending}
-        aria-label={`Status da entrega: ${statusLabel}`}
-        className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', statusTone)}
-      >
-        <strong>{statusLabel}</strong>
-        {progressLabel && <span className="text-fg-muted">{progressLabel}</span>}
-      </div>
+      {!hideStatusLabel && (
+        <div
+          role="status"
+          aria-live="polite"
+          aria-busy={pending}
+          aria-label={`Status da entrega: ${statusLabel}`}
+          className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', statusTone)}
+        >
+          <strong>{statusLabel}</strong>
+          {progressLabel && <span className="text-fg-muted">{progressLabel}</span>}
+        </div>
+      )}
       {delivery && (
         <div className="space-y-1 text-fg-muted">
           <p>Última atualização: {formatDateTime(delivery.updatedAt) || '—'}</p>

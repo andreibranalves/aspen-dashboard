@@ -16,7 +16,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { capitalize, fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { capitalize, fmtPhone, formatBRL } from '@/lib/formatting/formatters';
 import { isValidLeadSource, LEAD_SOURCES } from '@/lib/clientMetadata';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
@@ -434,7 +434,7 @@ export default function SplitResultCard({
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
                 {draft.edited.origem && (
-                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                  <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
                     {draft.edited.origem}
                   </span>
                 )}
@@ -451,15 +451,6 @@ export default function SplitResultCard({
           )}
         </div>
       </div>
-
-      {/* ── Stage 2: extracted values remain editable until creation. ── */}
-      {!isDone && hasSavedSnapshot && (
-        <div className="border-b border-line bg-primary/5 px-4 py-3">
-          <p className="text-xs leading-5 text-fg-muted">
-            Rascunho salvo. Continue a revisão ou emita o orçamento.
-          </p>
-        </div>
-      )}
 
       {/* ── Template selector ── */}
       {!isDone && (
@@ -508,7 +499,7 @@ export default function SplitResultCard({
       {/* ── Items table ── */}
       {!isDone && (
         <Table
-          containerClassName="rounded-none"
+          containerClassName="border-0 rounded-none"
           className="w-full max-w-full table-fixed text-xs"
           aria-label={`Itens do pedido ${displayIdx + 1}`}
         >
@@ -521,7 +512,7 @@ export default function SplitResultCard({
               <col className="w-10" />
             </colgroup>
             <TableHeader>
-              <TableRow className="border-b border-line text-fg-muted">
+              <TableRow className="text-fg-muted">
                 <TableHead scope="col" className="py-2 pl-4 pr-2 text-left font-medium">SKU</TableHead>
                 <TableHead scope="col" className="px-2 py-2 text-left font-medium">Produto</TableHead>
                 <TableHead scope="col" className="px-2 py-2 text-center font-medium">Qtd</TableHead>
@@ -707,13 +698,6 @@ export default function SplitResultCard({
 
       {isDone && (
         <div className="px-4 pb-2 border-t border-line bg-surface/20">
-          {issue && (
-            <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 pt-3 text-xs text-fg-muted">
-              <strong className="text-fg">{issue.businessNumber}</strong>
-              <span>Revisão {issue.revisionNumber}</span>
-              <span>Validade: {formatDate(issue.validUntil)}</span>
-            </div>
-          )}
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
@@ -727,13 +711,9 @@ export default function SplitResultCard({
           <QuotationDeliveryStatus
             delivery={delivery}
             pending={deliveryPending}
+            hideStatusLabel
             onResolve={onResolveDelivery}
           />
-          {deliveryError && (
-            <p role="status" className="pb-2 text-xs leading-5 text-warning">
-              {deliveryError}
-            </p>
-          )}
         </div>
       )}
 
@@ -789,7 +769,7 @@ export default function SplitResultCard({
                 title={deliveryError || (delivery ? 'Este orçamento já possui uma entrega pelo WhatsApp.' : undefined)}
                 onClick={() => onSendWhatsApp?.(draft.index)}
               >
-                <Phone size={13} /> Enviar WhatsApp
+                <Phone size={13} /> {deliveryError ? 'Falha no envio' : deliveryPending ? 'Enviando…' : delivery ? 'Enviado' : 'Enviar WhatsApp'}
               </Button>
             ) : null}
           </>

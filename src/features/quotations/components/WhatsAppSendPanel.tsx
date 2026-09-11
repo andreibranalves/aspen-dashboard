@@ -7,11 +7,7 @@ import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
-import {
-  communicationFlowSummary,
-  isQuotationDeliveryFlow,
-  renderableFlowStepCount,
-} from '@/lib/api/communicationApi';
+import { isQuotationDeliveryFlow, renderableFlowStepCount } from '@/lib/api/communicationApi';
 import { projectDelivery, type DeliveryView } from '@/lib/api/quotationDeliveryApi';
 
 export interface WhatsAppSendPanelProps {
@@ -86,12 +82,6 @@ export default function WhatsAppSendPanel({
             </option>
           ))}
         </select>
-        {selectedFlow && (
-          <span className="block text-xs leading-5 text-fg-muted">
-            {communicationFlowSummary(selectedFlow)}
-          </span>
-        )}
-
       </div>
       {!hasValidSteps && (
         <p className="mb-2 mt-3 text-xs leading-5 text-warning" role="status">
