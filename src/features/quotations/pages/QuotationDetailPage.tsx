@@ -1682,7 +1682,7 @@ function CoreQuotationDetail({
             {draftEditable && !editing && (
               <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
             )}
-            <h1 className="text-3xl font-semibold leading-9 tracking-[-0.4px] text-fg">
+            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg">
               {data.businessNumber || displayTitle}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
@@ -2788,7 +2788,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   }
   if (!data) return null;
   return (
-    <PageShell className="max-w-[1240px] space-y-3">
+    <PageShell className="space-y-3">
       {reloadWarning && (
         <div
           role="status"
