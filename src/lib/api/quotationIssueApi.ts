@@ -4,6 +4,7 @@ export function buildQuotePayload(draft: Draft) {
   return {
     extracted: {
       nome: draft.edited.nome,
+      empresa: draft.edited.empresa?.trim() || null,
       email: draft.edited.email || null,
       telefone: draft.edited.telefone || null,
       ...(draft.edited.client_id ? { client_id: draft.edited.client_id } : {}),

@@ -11,6 +11,7 @@ import {
   ClientRepositoryError,
   normalizeClientAddress,
   normalizeClientAddressPatch,
+  normalizeClientCompany,
   normalizeClientDocument,
   normalizeClientEmail,
   normalizeClientName,
@@ -79,6 +80,7 @@ function toRecord(row: ClientRow): ClientRecord {
   return {
     id: row.id,
     nome: row.nome,
+    empresa: row.empresa || null,
     documento: row.documento || null,
     email: row.email || null,
     telefone: row.telefone || null,
@@ -175,6 +177,7 @@ function clientListWhere(options: ClientListOptions): SQL | undefined {
     filters.push(
       or(
         ilike(clients.nome, pattern),
+        ilike(clients.empresa, pattern),
         ilike(clients.documento, pattern),
         ilike(clients.email, pattern),
         ilike(clients.telefone, pattern),
@@ -203,6 +206,7 @@ export async function listClientsForExport(
     .select({
       id: clients.id,
       nome: clients.nome,
+      empresa: clients.empresa,
       documento: clients.documento,
       email: clients.email,
       telefone: clients.telefone,
@@ -228,6 +232,8 @@ function dataForWrite(input: ClientWriteInput | ClientPatchInput, existing?: Cli
   const result: Record<string, unknown> = {};
   if (Object.prototype.hasOwnProperty.call(input, 'nome'))
     result.nome = normalizeClientName(input.nome);
+  if (Object.prototype.hasOwnProperty.call(input, 'empresa'))
+    result.empresa = normalizeClientCompany(input.empresa);
   if (Object.prototype.hasOwnProperty.call(input, 'documento'))
     result.documento = normalizeClientDocument(input.documento);
   if (Object.prototype.hasOwnProperty.call(input, 'email'))
@@ -341,6 +347,7 @@ export function createPostgresClientRepository(
         const data = dataForWrite({
           ...input,
           nome: normalizeClientName(input.nome),
+          empresa: normalizeClientCompany(input.empresa),
           documento: normalizeClientDocument(input.documento),
           email: normalizeClientEmail(input.email),
           telefone: normalizeClientPhone(input.telefone),

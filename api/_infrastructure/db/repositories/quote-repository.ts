@@ -22,6 +22,7 @@ import {
 import {
   ClientInputError,
   normalizeClientAddress,
+  normalizeClientCompany,
   normalizeClientDocument,
   normalizeClientEmail,
   normalizeClientName,
@@ -134,6 +135,8 @@ export interface QuoteDraftCreateInput {
   /** Inline client fields are kept here for callers that pass `extracted` directly. */
   nome?: unknown;
   name?: unknown;
+  empresa?: unknown;
+  company?: unknown;
   email?: unknown;
   telefone?: unknown;
   cnpj?: unknown;
@@ -154,6 +157,7 @@ export interface QuoteDraftCreateInput {
 export interface QuoteDraftClientSnapshot {
   id: string;
   nome: string;
+  empresa?: string | null;
   documento: string | null;
   email: string | null;
   telefone: string | null;
@@ -360,6 +364,7 @@ function normalizeInlineClient(input: QuoteDraftCreateInput): Omit<QuoteDraftCli
     }
     return {
       nome: normalizeClientName(firstDefined(source, ['nome', 'name'])),
+      empresa: normalizeClientCompany(firstDefined(source, ['empresa', 'company'])),
       documento: document,
       email: normalizeClientEmail(firstDefined(source, ['email', 'email_id'])),
       telefone: normalizeClientPhone(
@@ -566,6 +571,7 @@ function mapClient(row: typeof clients.$inferSelect): QuoteDraftClientSnapshot {
   return {
     id: row.id,
     nome: row.nome,
+    ...(row.empresa ? { empresa: row.empresa } : {}),
     documento: row.documento ?? null,
     email: row.email ?? null,
     telefone: row.telefone ?? null,
@@ -586,6 +592,7 @@ function toClientRow(
   return {
     id: snapshot.id,
     nome: snapshot.nome,
+    empresa: snapshot.empresa ?? null,
     documento: snapshot.documento,
     email: snapshot.email,
     telefone: snapshot.telefone,

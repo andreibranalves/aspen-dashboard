@@ -34,6 +34,7 @@ export interface ProjectedDeal {
 export interface ProjectedClientRow {
   id: string;
   nome?: string;
+  empresa?: string | null;
   email?: string | null;
   telefone?: string | null;
   documento?: string | null;
@@ -330,16 +331,19 @@ export function projectClientRow(value: unknown): ProjectedClientRow | null {
   const nome = readIdentifier(source?.nome);
   if (!source || !id || !nome) return null;
   const result: ProjectedClientRow = { id, nome };
+  const empresa = readNullableString(source.empresa);
   const email = readNullableString(source.email);
   const telefone = readNullableString(source.telefone);
   const documento = readNullableString(source.documento);
   const arquivado = readBoolean(source.arquivado);
   const status = readString(source.status);
+  if (source.empresa !== undefined && empresa === undefined) return null;
   if (source.email !== undefined && email === undefined) return null;
   if (source.telefone !== undefined && telefone === undefined) return null;
   if (source.documento !== undefined && documento === undefined) return null;
   if (source.arquivado !== undefined && arquivado === undefined) return null;
   if (source.status !== undefined && status === undefined) return null;
+  if (empresa !== undefined) result.empresa = empresa;
   if (email !== undefined) result.email = email;
   if (telefone !== undefined) result.telefone = telefone;
   if (documento !== undefined) result.documento = documento;

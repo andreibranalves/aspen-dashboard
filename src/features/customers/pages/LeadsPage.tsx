@@ -74,6 +74,7 @@ type LeadsResponse = unknown;
 
 interface EditFields {
   nome: string;
+  empresa: string;
   email: string;
   telefone: string;
   documento: string;
@@ -94,6 +95,7 @@ const parseLeadStatus = parseHashOption<'active' | 'archived' | 'all'>([
 const parseLeadLimit = parseHashAllowedInteger(PAGE_SIZES);
 const EMPTY_FIELDS: EditFields = {
   nome: '',
+  empresa: '',
   email: '',
   telefone: '',
   documento: '',
@@ -181,6 +183,7 @@ function qualityBadges(detail: ClientDetail): QualityBadge[] {
 function fieldsFromDetail(detail: ClientDetail): EditFields {
   return {
     nome: detail.display_name || detail.nome || '',
+    empresa: detail.empresa || '',
     email: detail.email || '',
     telefone: detail.telefone || '',
     documento: detail.tax_id || detail.documento || '',
@@ -412,6 +415,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         `/client-detail?name=${encodeURIComponent(selectedId)}`,
         {
           nome: fields.nome.trim(),
+          empresa: fields.empresa.trim() || null,
           email: fields.email.trim() || null,
           telefone: fields.telefone.trim() || null,
           documento: fields.documento.replace(/\D/g, '') || null,
@@ -431,6 +435,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             ? {
                 ...row,
                 nome: projected.display_name || projected.nome,
+                empresa: projected.empresa,
                 email: projected.email,
                 telefone: projected.telefone,
                 documento: projected.tax_id || projected.documento,
@@ -587,7 +592,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const selectRow = (row: DataRow) => {
     const label = rowLabel(row);
     return (
-      <>
+      <div>
         <a
           href={`#/leads/cliente/${encodeURIComponent(row.id)}`}
           onClick={(event) => {
@@ -600,7 +605,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         >
           {label}
         </a>
-      </>
+        {row.empresa && <p className="mt-0.5 text-xs text-fg-muted">{row.empresa}</p>}
+      </div>
     );
   };
 
@@ -1079,6 +1085,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         {detail && !detailLoading && !editMode && (
           <div className="space-y-4 text-sm">
             <div>
+              <p className="text-xs uppercase tracking-wide text-fg-muted">Empresa</p>
+              <p className="break-words">{detail.empresa || 'Empresa não informada'}</p>
+            </div>
+            <div>
               <p className="text-xs uppercase tracking-wide text-fg-muted">E-mail</p>
               <p className="break-words">{detail.email || 'E-mail não informado'}</p>
             </div>
@@ -1140,6 +1150,15 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 value={editFields.nome}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, nome: event.target.value }))
+                }
+              />
+            </label>
+            <label className="block text-xs text-fg-muted">
+              Empresa
+              <Input
+                value={editFields.empresa}
+                onChange={(event) =>
+                  setEditFields((current) => ({ ...current, empresa: event.target.value }))
                 }
               />
             </label>

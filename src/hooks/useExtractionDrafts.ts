@@ -380,6 +380,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         original: { ...order },
         edited: {
           nome: String(order.nome || ''),
+          empresa: String(order.empresa || order.company || ''),
           email: String(order.email || ''),
           telefone: String(order.telefone || ''),
           urgente: Boolean(order.urgente || false),

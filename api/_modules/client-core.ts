@@ -116,6 +116,7 @@ export function buildCreateInput(payload: Record<string, unknown>): ClientWriteI
   const address = readAddressPayload(payload);
   const result: ClientWriteInput = {
     nome: normalizeClientName(firstDefined(payload, ['nome', 'name'])),
+    empresa: firstDefined(payload, ['empresa', 'company']) as string | null | undefined,
     documento: document.value,
     email: firstDefined(payload, ['email', 'email_id']) as string | null | undefined,
     telefone: firstDefined(payload, ['telefone', 'phone', 'mobile_no', 'celular']) as
@@ -149,6 +150,9 @@ export function buildPatchInput(payload: Record<string, unknown>): ParsedPatch {
     // Leave null/empty for repository validation so the stable required-name
     // error is returned instead of treating it as an omitted field.
     patch.nome = value as string | null;
+  }
+  if (hasOwn(payload, 'empresa') || hasOwn(payload, 'company')) {
+    patch.empresa = firstDefined(payload, ['empresa', 'company']) as string | null;
   }
 
   const document = readDocumentAlias(payload);
@@ -202,6 +206,7 @@ export function mapClientRow(record: ClientRecord): Record<string, unknown> {
   return {
     id: record.id,
     nome: record.nome,
+    empresa: record.empresa ?? null,
     email: record.email,
     telefone: record.telefone,
     documento: record.documento,
@@ -279,6 +284,7 @@ export function mapClientDetail(
     id: record.id,
     display_name: record.nome,
     nome: record.nome,
+    empresa: record.empresa ?? null,
     email: record.email,
     telefone: record.telefone,
     person_type: personType,

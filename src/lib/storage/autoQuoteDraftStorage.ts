@@ -106,6 +106,7 @@ function isStoredAutoQuoteDraft(value: unknown): value is StoredAutoQuoteDraft {
     typeof edited.email !== 'string' || typeof edited.telefone !== 'string' || typeof edited.urgente !== 'boolean' ||
     typeof edited.origem !== 'string' || typeof edited.cnpj !== 'string' || typeof edited.prazo_producao !== 'string' ||
     !isRecord(edited.endereco) || !Array.isArray(edited.items) || edited.items.length === 0 || !edited.items.every(isDraftItem) ||
+    (edited.empresa !== undefined && typeof edited.empresa !== 'string') ||
     (edited._showAddr !== undefined && typeof edited._showAddr !== 'boolean') ||
     (edited.template_key !== undefined && typeof edited.template_key !== 'string')) return false;
   if (typeof value.approved !== 'boolean' || typeof value.discarded !== 'boolean') return false;
@@ -137,6 +138,7 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
   const edited = value.edited as unknown as RecordValue;
   const nextEdited = {
     nome: edited.nome as string,
+    ...(typeof edited.empresa === 'string' ? { empresa: edited.empresa } : {}),
     email: edited.email as string,
     telefone: edited.telefone as string,
     urgente: edited.urgente as boolean,

@@ -9,6 +9,7 @@ export const appClients = clients;
 
 export {
   ADDRESS_LIMITS,
+  CLIENT_COMPANY_MAX_LENGTH,
   CLIENT_DOCUMENT_LENGTHS,
   CLIENT_EMAIL_MAX_LENGTH,
   CLIENT_NAME_MAX_LENGTH,
@@ -17,6 +18,7 @@ export {
   CLIENT_PHONE_MIN_LENGTH,
   normalizeClientAddress,
   normalizeClientAddressPatch,
+  normalizeClientCompany,
   normalizeClientDocument,
   normalizeClientEmail,
   normalizeClientName,

@@ -245,6 +245,7 @@ function draftToManual(draft: Draft): ManualForm {
 function sameEditableDraft(left: DraftEdited, right: DraftEdited): boolean {
   const comparable = (edited: DraftEdited) => ({
     nome: edited.nome,
+    empresa: edited.empresa || '',
     email: edited.email,
     telefone: edited.telefone,
     urgente: edited.urgente,
@@ -628,12 +629,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     }
     if (!raw) return;
     try {
-      const prefill = JSON.parse(raw) as { nome?: unknown; email?: unknown; telefone?: unknown };
+      const prefill = JSON.parse(raw) as { nome?: unknown; empresa?: unknown; email?: unknown; telefone?: unknown };
       const nome = typeof prefill.nome === 'string' ? prefill.nome.trim() : '';
+      const empresa = typeof prefill.empresa === 'string' ? prefill.empresa.trim() : '';
       const email = typeof prefill.email === 'string' ? prefill.email.trim() : '';
       const telefone = typeof prefill.telefone === 'string' ? prefill.telefone.trim() : '';
-      if (!nome && !email && !telefone) return;
-      setText((current) => current.trim() ? current : [`Nome: ${nome}`, `E-mail: ${email}`, `Telefone: ${telefone}`].join('\n'));
+      if (!nome && !empresa && !email && !telefone) return;
+      setText((current) => current.trim() ? current : [
+        `Nome: ${nome}`,
+        ...(empresa ? [`Empresa: ${empresa}`] : []),
+        `E-mail: ${email}`,
+        `Telefone: ${telefone}`,
+      ].join('\n'));
     } catch {
       // Prefill malformado é ignorado sem bloquear a entrada.
     }

@@ -97,7 +97,7 @@ Aplique cada quantidade a todos os SKUs autorizados.`;
       .filter((it) => it && it.item_code)
       .map((it) => `- ${it.item_code}: ${it.qty || 0} un`)
       .join('\n');
-    mergeInstruction = `\n\nO usuário está COMPLEMENTANDO um pedido já existente. Os itens já presentes são:\n${itemsText}\n\nINSTRUÇÕES DE MERGE:\n- Retorne APENAS os novos itens no campo "items".\n- NÃO repita SKUs que já existem na lista acima; se o novo texto pedir algo idêntico, ignore.\n- NÃO altere nome, e-mail, telefone, origem, CNPJ ou endereço do pedido original.\n- Se o novo texto não adicionar nenhum item novo, retorne "items": [] e mantenha os dados do cliente.`;
+    mergeInstruction = `\n\nO usuário está COMPLEMENTANDO um pedido já existente. Os itens já presentes são:\n${itemsText}\n\nINSTRUÇÕES DE MERGE:\n- Retorne APENAS os novos itens no campo "items".\n- NÃO repita SKUs que já existem na lista acima; se o novo texto pedir algo idêntico, ignore.\n- NÃO altere nome, empresa, e-mail, telefone, origem, CNPJ ou endereço do pedido original.\n- Se o novo texto não adicionar nenhum item novo, retorne "items": [] e mantenha os dados do cliente.`;
   }
   return `Você é um assistente de cotação da Aspen Estamparia. Extraia os dados do pedido e aplique as regras de negócio.
 
@@ -109,6 +109,7 @@ RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 [
   {
     "nome": "string",
+    "empresa": "string ou null",
     "email": "string ou null",
     "telefone": "string ou null",
     "urgente": false,
@@ -136,6 +137,11 @@ Regras para origem (campo "origem"):
 Regras para CNPJ (campo "cnpj"):
 - Extraia APENAS se um CNPJ completo (14 dígitos, com ou sem pontuação) estiver presente no texto.
 - NUNCA invente CNPJ.
+
+Regras para empresa (campo "empresa"):
+- Extraia apenas quando o nome da empresa estiver explícito no texto.
+- Não confunda o nome da pessoa de contato com o nome da empresa.
+- NUNCA invente empresa.
 
 Regras para endereço (campo "endereco"):
 - Extraia APENAS se houver dados de endereço no texto (CEP, rua, número, bairro, cidade, UF).
@@ -261,6 +267,7 @@ interface OrderItem {
 
 interface Order {
   nome: string;
+  empresa: string | null;
   email: string | null;
   telefone: string | null;
   urgente: boolean;
@@ -384,6 +391,7 @@ function normalizeProviderOrder(value: unknown, orderIndex: number): ExtractedOr
     items: value.items.map((item, itemIndex) => normalizeProviderOrderItem(item, orderIndex, itemIndex)),
   };
   const nome = normalizeProviderString(value.nome, 'nome', 255);
+  const empresa = normalizeProviderString(value.empresa, 'empresa', 200);
   const email = normalizeProviderString(value.email, 'email', 320);
   const telefone = normalizeProviderString(value.telefone, 'telefone', 64);
   const origem = normalizeProviderString(value.origem, 'origem', 120);
@@ -392,6 +400,7 @@ function normalizeProviderOrder(value: unknown, orderIndex: number): ExtractedOr
   const endereco = normalizeProviderAddress(value.endereco);
 
   if (nome !== undefined && nome !== null) order.nome = nome;
+  if (empresa !== undefined) order.empresa = empresa;
   if (email !== undefined) order.email = email;
   if (telefone !== undefined) order.telefone = telefone;
   if (origem !== undefined) order.origem = origem;

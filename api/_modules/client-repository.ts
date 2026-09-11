@@ -15,6 +15,7 @@ import {
   cloneClientRecord,
   normalizeClientAddress,
   normalizeClientAddressPatch,
+  normalizeClientCompany,
   normalizeClientDocument,
   normalizeClientEmail,
   normalizeClientName,
@@ -62,6 +63,7 @@ function cloneInputRecord(record: ClientRecord): ClientRecord {
     ...record,
     id: String(record.id || randomUUID()),
     nome: normalizeClientName(record.nome),
+    empresa: normalizeClientCompany(record.empresa),
     documento: normalizeClientDocument(record.documento),
     email: normalizeClientEmail(record.email),
     telefone: normalizeClientPhone(record.telefone),
@@ -103,6 +105,7 @@ function searchable(record: ClientRecord, search: string): boolean {
   return (
     [
       record.nome,
+      record.empresa,
       record.documento,
       record.email,
       record.telefone,
@@ -200,6 +203,7 @@ export class MemoryClientRepository implements ClientRepository {
   async create(input: ClientWriteInput): Promise<ClientRecord> {
     const now = this.timestamp();
     const nome = normalizeClientName(input.nome);
+    const empresa = normalizeClientCompany(input.empresa);
     const documento = normalizeClientDocument(input.documento);
     const email = normalizeClientEmail(input.email);
     const telefone = normalizeClientPhone(input.telefone);
@@ -225,6 +229,7 @@ export class MemoryClientRepository implements ClientRepository {
     const record: ClientRecord = {
       id,
       nome,
+      empresa,
       documento,
       email,
       telefone,
@@ -247,6 +252,9 @@ export class MemoryClientRepository implements ClientRepository {
     if (Object.prototype.hasOwnProperty.call(patch, 'nome')) {
       // A null/empty name is not a clear operation: names are required.
       next.nome = normalizeClientName(patch.nome);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'empresa')) {
+      next.empresa = normalizeClientCompany(patch.empresa);
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'documento')) {
       next.documento = normalizeClientDocument(patch.documento);

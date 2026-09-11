@@ -84,6 +84,7 @@ export interface DraftItem {
 
 export interface DraftEdited {
   nome: string;
+  empresa?: string;
   email: string;
   telefone: string;
   urgente: boolean;
