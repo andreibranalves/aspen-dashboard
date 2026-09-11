@@ -578,7 +578,11 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         ? result.flows.filter(isQuotationDeliveryFlow)
         : [];
       setWaFlows(flows);
-      const preferred = flows.find((flow) => flow.context === 'already_talking');
+      const preferred =
+        flows.find(
+          (flow) =>
+            flow.name.localeCompare('Já estou em contato', 'pt-BR', { sensitivity: 'base' }) === 0
+        ) || flows.find((flow) => flow.context === 'already_talking');
       const selected = flows.find((flow) => flow.id === result.selectedFlowId);
       setDefaultWaFlowId(preferred?.id || selected?.id || flows[0]?.id || '');
     } catch {
