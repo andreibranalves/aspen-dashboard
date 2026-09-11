@@ -1333,13 +1333,10 @@ function CoreQuotationDetail({
           aria-labelledby="issued-items-title"
           className="overflow-hidden rounded-lg border border-line bg-surface"
         >
-          <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-3 pt-5 md:px-6">
+          <div className="px-5 pb-3 pt-5 md:px-6">
             <h2 id="issued-items-title" className="text-base font-semibold text-fg">
               Itens do orçamento
             </h2>
-            <span className="text-sm text-fg-muted">
-              {quotationItemCountLabel(displayItems.length)} · {totalUnits} unidades
-            </span>
           </div>
           {displayItems.length > 0 ? (
             <div className="px-5 md:px-6">
@@ -1349,9 +1346,10 @@ function CoreQuotationDetail({
               >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9 w-[48%] px-0">Produto</TableHead>
+                    <TableHead className="h-9 w-[12%] px-0">SKU</TableHead>
+                    <TableHead className="h-9 w-[36%] px-2">Produto</TableHead>
                     <TableHead className="h-9 whitespace-nowrap text-center">Quantidade</TableHead>
-                    <TableHead className="h-9 whitespace-nowrap text-right">
+                    <TableHead className="h-9 whitespace-nowrap text-center">
                       Valor unitário
                     </TableHead>
                     <TableHead className="h-9 whitespace-nowrap pr-0 text-right">
@@ -1362,20 +1360,18 @@ function CoreQuotationDetail({
                 <TableBody>
                   {displayItems.map((item) => (
                     <TableRow key={item._key}>
-                      <TableCell className="px-0 py-3">
+                      <TableCell className="px-0 py-3 font-mono text-xs text-fg-muted">
+                        {item.sku || '—'}
+                      </TableCell>
+                      <TableCell className="px-2 py-3">
                         <span className="block break-words font-medium text-fg">
                           {item.nome || item.item_name || item.sku || 'Produto não informado'}
                         </span>
-                        {item.sku && (
-                          <span className="mt-0.5 block font-mono text-xs text-fg-muted">
-                            {item.sku}
-                          </span>
-                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
-                        {Number(item.qty)} un.
+                        {Number(item.qty)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-3 text-right tabular-nums">
+                      <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
                         {formatBRL(item.applied_unit_price)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-3 pr-0 text-right font-medium tabular-nums">
@@ -1404,7 +1400,7 @@ function CoreQuotationDetail({
             </dl>
             <dl className="text-right tabular-nums">
               <dt className="text-sm text-fg-muted">Total do orçamento</dt>
-              <dd className="mt-1 text-2xl font-semibold tracking-tight text-fg">
+              <dd className="mt-1 text-xl font-semibold tracking-tight text-fg">
                 {formatBRL(data.total)}
               </dd>
             </dl>
@@ -1413,7 +1409,7 @@ function CoreQuotationDetail({
 
         <section
           aria-labelledby="issued-conditions-title"
-          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6"
+          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6 [&>section:first-of-type]:border-t-0"
         >
           <h2 id="issued-conditions-title" className="text-base font-semibold text-fg">
             Condições comerciais
@@ -1427,7 +1423,7 @@ function CoreQuotationDetail({
               <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-fg-muted">{entrega}</p>
             </section>
           )}
-          <div className="mt-5 divide-y divide-line border-t border-line">
+          <div className="divide-y divide-line border-t border-line">
             <details className="group">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
                 <span>Detalhes do documento</span>

@@ -80,9 +80,8 @@ function ItemTable({ items }: { items: SalesOrderItemView[] }) {
         <TableRow>
           <TableHead>SKU</TableHead>
           <TableHead>Produto</TableHead>
-          <TableHead className="text-right">Qtd</TableHead>
-          <TableHead className="text-right">Un.</TableHead>
-          <TableHead className="text-right">Preço un.</TableHead>
+          <TableHead className="text-center">Quantidade</TableHead>
+          <TableHead className="text-center">Valor unitário</TableHead>
           <TableHead className="text-right">Total</TableHead>
         </TableRow>
       </TableHeader>
@@ -93,9 +92,8 @@ function ItemTable({ items }: { items: SalesOrderItemView[] }) {
             <TableRow key={`${item.item_code}-${index}`}>
               <TableCell className="font-mono text-xs">{item.item_code}</TableCell>
               <TableCell>{item.item_name || item.item_code}</TableCell>
-              <TableCell className="text-right">{item.qty}</TableCell>
-              <TableCell className="text-right text-fg-muted">{item.uom || 'und'}</TableCell>
-              <TableCell className="text-right font-sans tabular-nums">
+              <TableCell className="text-center">{item.qty}</TableCell>
+              <TableCell className="text-center font-sans tabular-nums">
                 {formatBRL(item.rate)}
               </TableCell>
               <TableCell className="text-right font-sans tabular-nums">
