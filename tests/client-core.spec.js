@@ -254,6 +254,7 @@ test.describe('Clientes locais @crm @smoke', () => {
           ...CLIENT,
           id: '00000000-0000-4000-8000-000000000002',
           nome: body.nome,
+          empresa: body.empresa || null,
           email: body.email,
           documento: body.documento || null,
           status: 'active',
@@ -268,6 +269,7 @@ test.describe('Clientes locais @crm @smoke', () => {
           name: created.id,
           display_name: created.nome,
           nome: created.nome,
+          empresa: created.empresa,
           email: created.email,
           documento: created.documento,
           tax_id: created.documento,
@@ -340,6 +342,7 @@ test.describe('Clientes locais @crm @smoke', () => {
           ...current,
           display_name: body.nome || current.display_name,
           nome: body.nome || current.nome,
+          empresa: body.empresa ?? current.empresa,
           email: body.email ?? current.email,
           notes,
           observacoes: notes,
@@ -356,6 +359,7 @@ test.describe('Clientes locais @crm @smoke', () => {
             ? {
                 ...row,
                 nome: next.display_name,
+                empresa: next.empresa,
                 email: next.email,
                 arquivado: next.arquivado,
                 status: next.status,
@@ -388,7 +392,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByPlaceholder('Nome do cliente').fill('Ana Cliente');
     await page.getByRole('button', { name: 'Criar cliente' }).last().click();
 
-    await page.getByRole('button', { name: 'voltar' }).click();
+    await page.getByRole('button', { name: 'Clientes' }).first().click();
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
     await page.getByLabel('Buscar clientes').fill('Ana');
     await expect(page.locator('tbody tr').filter({ hasText: 'Ana Cliente' }).first()).toBeVisible();
@@ -396,15 +400,18 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     const row = page.locator('tbody tr').filter({ hasText: 'Ana Cliente' }).first();
     await row.getByRole('button', { name: /Visualização rápida Ana Cliente/ }).click();
-    await expect(page.getByText('Empresa', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Empresa', { exact: true })).toBeVisible();
+    await expect(page.getByText('Empresa não informada', { exact: true })).toBeVisible();
     await expect(page.getByText('Origem', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Contribuinte', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Inscrição Estadual', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Editar' }).click();
     await page.getByRole('textbox', { name: 'Nome' }).fill('Ana Cliente Editada');
+    await page.getByRole('textbox', { name: 'Empresa' }).fill('Ana Eventos');
     await page.getByLabel('Observações').fill('Nota do drawer');
     await page.getByRole('button', { name: /^Salvar$/ }).click();
     await expect(page.getByText('Ana Cliente Editada', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('Ana Eventos', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Nota do drawer', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Fechar', exact: true }).click();
 
