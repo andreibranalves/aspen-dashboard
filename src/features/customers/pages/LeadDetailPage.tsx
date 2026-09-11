@@ -48,6 +48,7 @@ type ClientDetail = ProjectedClientDetail;
 
 interface EditFields {
   nome: string;
+  empresa: string;
   email: string;
   telefone: string;
   documento: string;
@@ -63,6 +64,7 @@ interface LeadDetailPageProps {
 
 const EMPTY_FIELDS: EditFields = {
   nome: '',
+  empresa: '',
   email: '',
   telefone: '',
   documento: '',
@@ -112,6 +114,7 @@ function addressPayload(address: Address): Address {
 function fieldsFromDetail(detail: ClientDetail): EditFields {
   return {
     nome: detail.display_name || detail.nome || '',
+    empresa: detail.empresa || '',
     email: detail.email || '',
     telefone: detail.telefone || '',
     documento: detail.tax_id || detail.documento || '',
@@ -291,6 +294,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     setSaving(true);
     const payload = {
       nome: fields.nome.trim(),
+      empresa: fields.empresa.trim() || null,
       email: fields.email.trim() || null,
       telefone: fields.telefone.trim() || null,
       documento: fields.documento.replace(/\D/g, '') || null,
@@ -517,6 +521,16 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                   />
                 </label>
                 <label className="text-xs text-fg-muted">
+                  Empresa
+                  <Input
+                    value={fields.empresa}
+                    onChange={(event) =>
+                      setFields((value) => ({ ...value, empresa: event.target.value }))
+                    }
+                    placeholder="Empresa"
+                  />
+                </label>
+                <label className="text-xs text-fg-muted">
                   E-mail
                   <Input
                     type="email"
@@ -705,6 +719,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
             </div>
             <SectionCard title="Cadastro" icon={UserRound} className="lg:order-1">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <InfoField label="Empresa" value={current.empresa || 'Empresa não informada'} />
                 <InfoField
                   label="Telefone"
                   value={fmtPhone(current.telefone) || 'Telefone não informado'}

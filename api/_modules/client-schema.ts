@@ -7,6 +7,7 @@
  */
 
 export const CLIENT_NAME_MAX_LENGTH = 200;
+export const CLIENT_COMPANY_MAX_LENGTH = 200;
 export const CLIENT_DOCUMENT_LENGTHS = [11, 14] as const;
 export const CLIENT_EMAIL_MAX_LENGTH = 254;
 export const CLIENT_PHONE_MIN_LENGTH = 10;
@@ -36,6 +37,7 @@ export interface ClientAddress {
 export interface ClientRecord {
   id: string;
   nome: string;
+  empresa?: string | null;
   documento: string | null;
   email: string | null;
   telefone: string | null;
@@ -65,6 +67,7 @@ export interface ClientListResult {
 
 export interface ClientWriteInput {
   nome: string;
+  empresa?: string | null;
   documento?: string | null;
   email?: string | null;
   telefone?: string | null;
@@ -77,6 +80,7 @@ export interface ClientWriteInput {
 
 export interface ClientPatchInput {
   nome?: string | null;
+  empresa?: string | null;
   documento?: string | null;
   email?: string | null;
   telefone?: string | null;
@@ -151,6 +155,20 @@ export function normalizeClientName(value: unknown): string {
   if (!normalized) throw new ClientInputError('Nome é obrigatório.');
   if (normalized.length > CLIENT_NAME_MAX_LENGTH) {
     throw new ClientInputError(`Nome deve ter no máximo ${CLIENT_NAME_MAX_LENGTH} caracteres.`);
+  }
+  return normalized;
+}
+
+export function normalizeClientCompany(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = valueAsText(value);
+  if (text === null) return null;
+  const normalized = text.trim();
+  if (!normalized) return null;
+  if (normalized.length > CLIENT_COMPANY_MAX_LENGTH) {
+    throw new ClientInputError(
+      `Empresa deve ter no máximo ${CLIENT_COMPANY_MAX_LENGTH} caracteres.`
+    );
   }
   return normalized;
 }

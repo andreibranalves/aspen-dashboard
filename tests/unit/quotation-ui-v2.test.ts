@@ -16,7 +16,7 @@ describe('quotation Aspen v2 surfaces', () => {
     assert.match(page, /aria-label="Mensagem do cliente para extração"/);
     assert.match(page, /Cole aqui a mensagem do cliente/);
     assert.match(card, /Emitir orçamento/);
-    assert.match(card, /Rascunho salvo\. Continue a revisão ou emita o orçamento/);
+    assert.match(card, /<Check size=\{10\} \/> Rascunho salvo/);
     assert.doesNotMatch(
       card,
       /Nada será criado|Gerar orçamento|Modelo HTML|Revise cliente, itens, quantidades e preços/

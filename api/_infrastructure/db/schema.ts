@@ -238,6 +238,7 @@ export const clients = pgTable(
   {
     id: uuid('id').primaryKey(),
     nome: varchar('nome', { length: 200 }).notNull(),
+    empresa: varchar('empresa', { length: 200 }),
     documento: varchar('documento', { length: 14 }),
     email: varchar('email', { length: 254 }),
     telefone: varchar('telefone', { length: 15 }),

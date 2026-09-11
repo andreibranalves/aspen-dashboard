@@ -151,6 +151,8 @@ describe('buildSystemPrompt()', () => {
   it('contém schema JSON de saída', () => {
     const prompt = buildSystemPrompt('');
     assert.ok(prompt.includes('"nome": "string"'), 'schema com nome');
+    assert.ok(prompt.includes('"empresa": "string ou null"'), 'schema com empresa opcional');
+    assert.ok(prompt.includes('NUNCA invente empresa'), 'empresa não deve ser inferida');
     assert.ok(prompt.includes('"items": [{"item_code": "SKU", "qty": N}]'), 'schema com items');
   });
 

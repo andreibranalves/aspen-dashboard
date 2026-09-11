@@ -100,6 +100,7 @@ function rowDecimal(row: CommercialExportRow, key: string, scale = 2): string {
 const CLIENT_COLUMNS: readonly CsvColumn<CommercialExportRow>[] = [
   { header: 'ID do cliente', value: (row) => rowValue(row, 'id') },
   { header: 'Nome', value: (row) => rowValue(row, 'nome') },
+  { header: 'Empresa', value: (row) => rowValue(row, 'empresa') },
   { header: 'CPF/CNPJ', value: (row) => formatBrazilianDocument(rowText(row, 'documento')) },
   { header: 'E-mail', value: (row) => rowValue(row, 'email') },
   { header: 'Telefone', value: (row) => formatBrazilianPhone(rowText(row, 'telefone')) },

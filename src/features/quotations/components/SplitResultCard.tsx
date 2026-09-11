@@ -372,17 +372,30 @@ export default function SplitResultCard({
           </div>
           {editing && !isDone ? (
             <div className="mt-2 space-y-2">
-              <label className="block space-y-1">
-                <span className="text-[10px] font-medium text-fg-muted">Nome</span>
-                <Input
-                  aria-label="Nome"
-                  value={draft.edited.nome || ''}
-                  onChange={(e) => onUpdateField(draft.index, 'nome', e.target.value)}
-                  disabled={editingBlocked}
-                  placeholder="Nome"
-                  className="h-7 text-xs"
-                />
-              </label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-medium text-fg-muted">Nome</span>
+                  <Input
+                    aria-label="Nome"
+                    value={draft.edited.nome || ''}
+                    onChange={(e) => onUpdateField(draft.index, 'nome', e.target.value)}
+                    disabled={editingBlocked}
+                    placeholder="Nome"
+                    className="h-7 text-xs"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[10px] font-medium text-fg-muted">Empresa</span>
+                  <Input
+                    aria-label="Empresa"
+                    value={draft.edited.empresa || ''}
+                    onChange={(e) => onUpdateField(draft.index, 'empresa', e.target.value)}
+                    disabled={editingBlocked}
+                    placeholder="Empresa"
+                    className="h-7 text-xs"
+                  />
+                </label>
+              </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[4fr_3fr_3fr]">
                 <label className="block space-y-1">
                   <span className="text-[10px] font-medium text-fg-muted">E-mail</span>
@@ -436,6 +449,7 @@ export default function SplitResultCard({
                 )}
               </h3>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-fg-muted">
+                {draft.edited.empresa && <span>{draft.edited.empresa}</span>}
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
               </div>

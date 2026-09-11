@@ -417,6 +417,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByRole('button', { name: 'Revisar', exact: true })).toHaveCount(0);
     await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
     await page.getByLabel('Origem').selectOption('Google Ads');
+    await page.getByRole('button', { name: 'Modelo de orçamento' }).click();
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
     await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
     await page.getByRole('button', { name: 'Concluir' }).click();
@@ -441,7 +442,46 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     expect(issueRequests).toHaveLength(0);
   });
 
-  test('emissão permanece na fila e oferece o envio por WhatsApp nesta página', async ({ page }) => {
+  test('Empresa é opcional e pode ser adicionada no split card antes da emissão', async ({ page }) => {
+    let savedPayload = null;
+    await setupApiMocks(page);
+    await page.route('**/api/orcamento**', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fallback();
+        return;
+      }
+      savedPayload = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          name: 'Q-EMPRESA',
+          client_id: 'client-empresa',
+          revision_id: 'rev-empresa',
+          quotation_number: 2050,
+          grand_total: 500,
+        }),
+      });
+    });
+
+    await page.goto('/#/auto');
+    await page.locator('textarea').first().fill(TEST_INPUT);
+    await page.getByRole('button', { name: /Extrair/i }).click();
+    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.getByLabel('Empresa')).toHaveValue('');
+    await page.getByLabel('Empresa').fill('Silva Eventos');
+    await page.getByLabel('Origem').selectOption('Google Ads');
+    await page.getByRole('button', { name: 'Concluir' }).click();
+    await page.getByRole('button', { name: 'Emitir orçamento' }).click();
+
+    await expect.poll(() => savedPayload?.extracted?.empresa).toBe('Silva Eventos');
+  });
+
+  test('emissão permanece na fila sem duplicar a ação de WhatsApp nesta página', async ({ page }) => {
     await setupApiMocks(page);
     await page.route('**/api/communication-flows**', async (route) => {
       await route.fulfill({
@@ -491,7 +531,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     await expect(page).toHaveURL(/#\/auto$/);
     await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible();
+    await expect(page.getByLabel('Fluxo WhatsApp')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toHaveCount(0);
   });
 
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {
@@ -515,6 +556,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByRole('button', { name: 'Tentar novamente' })).toHaveCount(0);
     await page.getByRole('button', { name: /Extrair/i }).click();
     await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Modelo de orçamento' }).click();
     await expect(page.getByLabel('Modelo de orçamento')).toBeEnabled();
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
     expect(templateAttempts).toBeGreaterThanOrEqual(2);

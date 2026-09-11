@@ -2,12 +2,13 @@
 const QUOTE_PREFILL_KEY = 'aspen_quote_prefill';
 
 export function createQuoteForClient(
-  client: { display_name?: string | null; nome?: string | null; email?: string | null; telefone?: string | null },
+  client: { display_name?: string | null; nome?: string | null; empresa?: string | null; email?: string | null; telefone?: string | null },
   navigate?: (path: string) => void,
 ): void {
   const prefill: Record<string, string> = {};
   const nome = client.display_name || client.nome;
   if (nome) prefill.nome = nome;
+  if (client.empresa) prefill.empresa = client.empresa;
   if (client.email) prefill.email = client.email;
   if (client.telefone) prefill.telefone = client.telefone;
   try {
