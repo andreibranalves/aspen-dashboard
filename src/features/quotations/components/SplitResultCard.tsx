@@ -13,6 +13,7 @@ import {
   Eye,
   FileText,
   Phone,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { capitalize, fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -121,8 +122,17 @@ export default function SplitResultCard({
   onResolveDelivery,
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(reviewOnly);
+  const [templateExpanded, setTemplateExpanded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const editingBlocked = Boolean(isProcessing || isSavingDraft || parentEditingBlocked);
+  const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
+
+  useEffect(() => {
+    if (isDone || draft.edited.template_key || !templates.some((template) => template.key === 'simples')) {
+      return;
+    }
+    onUpdateField(draft.index, 'template_key', 'simples');
+  }, [draft.edited.template_key, draft.index, isDone, onUpdateField, templates]);
 
   useEffect(() => {
     if (!pricingConflictItems.length) return;
@@ -273,7 +283,6 @@ export default function SplitResultCard({
   const savedDraft = draft as StoredAutoQuoteDraft;
   const saved = savedDraft.saved;
   const hasSavedSnapshot = Boolean(saved?.snapshot);
-  const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
   const resultData = draft.result?.data;
   const snapshot = saved?.snapshot || (resultData?.snapshot as QuotationSavedSnapshot | undefined);
   const items = isDone
@@ -455,27 +464,43 @@ export default function SplitResultCard({
       {/* ── Template selector ── */}
       {!isDone && (
         <div className="border-b border-line bg-surface/20 px-4 py-3">
-          {templateError ? (
-            <div className="flex items-center justify-between gap-2 text-xs text-destructive">
-              <span>{templateError}</span>
-              <Button type="button" variant="outline" size="sm" onClick={onRetryTemplates}>Tentar novamente</Button>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
+            aria-expanded={templateExpanded}
+            aria-controls={`quotation-template-${draft.index}`}
+            onClick={() => setTemplateExpanded((expanded) => !expanded)}
+          >
+            Modelo de orçamento
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={cn('transition-transform', templateExpanded && 'rotate-180')}
+            />
+          </button>
+          {templateExpanded && (
+            <div id={`quotation-template-${draft.index}`} className="mt-3">
+              {templateError ? (
+                <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+                  <span>{templateError}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={onRetryTemplates}>Tentar novamente</Button>
+                </div>
+              ) : (
+                <Select
+                  aria-label="Modelo de orçamento"
+                  value={draft.edited.template_key || ''}
+                  onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
+                  disabled={editingBlocked || templateLoading || templates.length === 0}
+                  className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                  containerClassName="w-full"
+                >
+                  {!draft.edited.template_key && <option value="">Modelo padrão</option>}
+                  {templates.map((template) => (
+                    <option key={template.key} value={template.key}>{template.name}</option>
+                  ))}
+                </Select>
+              )}
             </div>
-          ) : (
-            <label className="block space-y-1 [&>div]:flex [&>div]:w-full">
-              <span className="text-[10px] font-medium text-fg-muted">Modelo de orçamento</span>
-              <Select
-                aria-label="Modelo de orçamento"
-                value={draft.edited.template_key || ''}
-                onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
-                disabled={editingBlocked || templateLoading || templates.length === 0}
-                className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-              >
-                {!draft.edited.template_key && <option value="">Modelo padrão</option>}
-                {templates.map((template) => (
-                  <option key={template.key} value={template.key}>{template.name}</option>
-                ))}
-              </Select>
-            </label>
           )}
         </div>
       )}
@@ -623,7 +648,7 @@ export default function SplitResultCard({
                             }, 600);
                           }}
                           disabled={editingBlocked}
-                          className="h-7 w-full text-center text-xs"
+                          className="h-7 w-full appearance-textfield text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       ) : hasCode ? (
                         Number(item.qty)
@@ -643,7 +668,7 @@ export default function SplitResultCard({
                           }
                           disabled={editingBlocked}
                           data-conflict-sku={item.item_code || undefined}
-                          className="h-7 w-full text-center text-xs"
+                          className="h-7 w-full appearance-textfield text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       ) : item.rate ? (
                         formatBRL(item.rate)
