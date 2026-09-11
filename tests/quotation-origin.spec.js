@@ -148,7 +148,8 @@ test('restoring a manual draft without hash parameters preserves its direct orig
 
 test('quotation detail distinguishes missing and conflicting historical origins', async ({ page }) => {
   await page.goto(`/#/quotations/${missingQuotation}`);
-  await expect(page.getByLabel('Origem do orçamento')).toContainText('Origem ausente');
+  await expect(page.getByRole('heading', { name: /^ORC-/ })).toBeVisible();
+  await expect(page.getByLabel('Origem do orçamento')).toHaveCount(0);
 
   await page.goto(`/#/quotations/${conflictQuotation}`);
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Origem conflitante');
