@@ -453,23 +453,27 @@ databaseTest('acceptance recovery retries a newer delivery over a reopenable can
 
   assert.deepEqual(
     await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery }),
-    [{
-      deliveryId: ids.resendDelivery,
-      revisionId: ids.revision,
-      phone: '5511888888888',
-      providerMessageId: 'provider-resend-accepted',
-    }],
+    {
+      data: [{
+        deliveryId: ids.resendDelivery,
+        revisionId: ids.revision,
+        phone: '5511888888888',
+        providerMessageId: 'provider-resend-accepted',
+        acceptedAt: new Date('2026-08-03T00:00:00.000Z'),
+      }],
+      hasMore: false,
+    },
   );
   assert.deepEqual(
     await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.delivery }),
-    [],
+    { data: [], hasMore: false },
   );
   await db
     .update(quotationFollowUps)
     .set({ state: 'waiting', closedReason: null, closedAt: null, updatedAt: now })
     .where(eq(quotationFollowUps.quotationId, ids.quotation));
   assert.equal(
-    (await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery })).length,
+    (await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery })).data.length,
     1,
   );
 
@@ -484,7 +488,7 @@ databaseTest('acceptance recovery retries a newer delivery over a reopenable can
     .where(eq(quotationFollowUps.quotationId, ids.quotation));
   assert.deepEqual(
     await repository.listAcceptedDeliveriesMissingFollowUp!({ deliveryId: ids.resendDelivery }),
-    [],
+    { data: [], hasMore: false },
   );
 });
 

@@ -305,6 +305,10 @@ export async function handler(
 
   try {
     const deliveryModule = dependencies.deliveryModule || createQuotationDeliveryModule();
+    // The receipt is stored in a durable inbox before correlation, so it is
+    // acknowledged even when it arrives before `markAccepted` persisted the
+    // provider id (or matches no step at all). Losing an acknowledgement is
+    // therefore not a risk, and no provider replay is required.
     await deliveryModule.applyEvolutionEvent(evolutionEvent);
     return json(200, { received: true });
   } catch (error) {

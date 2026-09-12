@@ -58,7 +58,8 @@
     "test:e2e:safe": "npm run build:api && node scripts/run-safe-e2e.mjs",
     "test:e2e:staging": "node scripts/run-staging-e2e.mjs",
     "test:e2e:ui": "npx playwright test --ui",
-    "test:e2e:report": "npx playwright show-report"
+    "test:e2e:report": "npx playwright show-report",
+    "whatsapp:readiness": "node scripts/whatsapp-delivery-readiness.mjs"
   },
   "dependencies": {
     "@lexical/html": "^0.49.0",

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
+import { createDbDeadline, runBoundedStatement, type DbDeadline } from '../deadline.js';
 import {
   buildDefaultFollowUpMessage,
   evaluateFollowUp,
@@ -104,35 +105,79 @@ export interface ClaimedFollowUp {
   followUp: FollowUpRecord;
   leaseToken: string;
 }
+export interface AcceptedDeliveryCandidate {
+  deliveryId: string;
+  revisionId: string;
+  phone: string;
+  providerMessageId: string;
+  // Provider acceptance clock of the first accepted step. Used as the activity
+  // `occurredAt` so re-projecting the same acceptance on a retry is a no-op
+  // instead of advancing the durable activity clock.
+  acceptedAt: Date | null;
+}
+export interface AwaitingReceiptCandidate {
+  followUpId: string;
+  deliveryId: string;
+  revisionId: string;
+  phone: string;
+  providerMessageId: string;
+  receivedAt: Date;
+}
+export interface CandidatePage<T> {
+  data: T[];
+  // True when the source was truncated by the caller's limit, i.e. durable work
+  // remains even after this slice. Callers must never report `remaining: false`
+  // while a saturated source still has candidates.
+  hasMore: boolean;
+}
+export type ProjectionAttemptOptions = { deadline?: DbDeadline; timeoutMs?: number };
 export interface QuotationFollowUpRepository {
   list(input?: FollowUpListInput): Promise<FollowUpListResult>;
   get(quotationId: string, options?: { trackingStartedAt?: Date; now?: Date }): Promise<FollowUpProjection | null>;
   approve(input: ApproveInput): Promise<FollowUpRecord>;
   dismiss(input: DismissInput): Promise<FollowUpRecord>;
-  upsertAwaitingReceiptFromAcceptedDelivery?(input: {
-    deliveryId: string;
-    revisionId: string;
-    phone: string;
-    providerMessageId: string;
-  }): Promise<void>;
-  listAcceptedDeliveriesMissingFollowUp?(filter?: {
-    deliveryId?: string;
-  }): Promise<
-    Array<{
+  upsertAwaitingReceiptFromAcceptedDelivery?(
+    input: {
       deliveryId: string;
       revisionId: string;
       phone: string;
       providerMessageId: string;
-    }>
-  >;
-  upsertFromDeliveryReceipt?(input: {
-    deliveryId: string;
-    revisionId: string;
-    phone: string;
-    providerConversationId: string;
-    allStepsDelivered: boolean;
-    receivedAt: Date;
-  }): Promise<void>;
+    },
+    options?: ProjectionAttemptOptions
+  ): Promise<void>;
+  listAcceptedDeliveriesMissingFollowUp?(
+    filter?: {
+      deliveryId?: string;
+      limit?: number;
+    },
+    options?: ProjectionAttemptOptions
+  ): Promise<CandidatePage<AcceptedDeliveryCandidate>>;
+  markAcceptanceProjectionAttempt?(
+    input: { deliveryId: string },
+    options?: ProjectionAttemptOptions
+  ): Promise<void>;
+  listAwaitingReceiptWithCompletedDelivery?(
+    filter?: {
+      deliveryId?: string;
+      limit?: number;
+    },
+    options?: ProjectionAttemptOptions
+  ): Promise<CandidatePage<AwaitingReceiptCandidate>>;
+  markReceiptProjectionAttempt?(
+    input: { followUpId: string },
+    options?: ProjectionAttemptOptions
+  ): Promise<void>;
+  upsertFromDeliveryReceipt?(
+    input: {
+      deliveryId: string;
+      revisionId: string;
+      phone: string;
+      providerConversationId: string;
+      allStepsDelivered: boolean;
+      receivedAt: Date;
+    },
+    options?: ProjectionAttemptOptions
+  ): Promise<void>;
   applyConversationToOpenFollowUps?(input: {
     instance: string;
     providerConversationId: string;
@@ -321,6 +366,19 @@ function unique(error: unknown): boolean {
     }
     return false;
 }
+function projectionDeadline(options: ProjectionAttemptOptions = {}): DbDeadline | null {
+  if (options.deadline) return options.deadline;
+  if (typeof options.timeoutMs === 'number') return createDbDeadline(options.timeoutMs);
+  return null;
+}
+
+async function runUnbounded<T = Record<string, unknown>>(
+  db: Database,
+  fragment: SQL,
+): Promise<T[]> {
+  return Array.from(await db.execute(fragment)) as T[];
+}
+
 function factsSql(started: Date, instance: string): SQL {
     return sql `WITH latest AS (
     SELECT DISTINCT ON (q.id)
@@ -697,12 +755,15 @@ export function createPostgresQuotationFollowUpRepository(
                 throw new RepositoryError();
             }
         },
-        async upsertAwaitingReceiptFromAcceptedDelivery(input: {
-            deliveryId: string;
-            revisionId: string;
-            phone: string;
-            providerMessageId: string;
-        }) {
+        async upsertAwaitingReceiptFromAcceptedDelivery(
+            input: {
+                deliveryId: string;
+                revisionId: string;
+                phone: string;
+                providerMessageId: string;
+            },
+            options: ProjectionAttemptOptions = {}
+        ) {
             const deliveryId = id(input.deliveryId, 'delivery_id');
             const revisionId = id(input.revisionId, 'revision_id');
             const providerMessageId = typeof input.providerMessageId === 'string' ? input.providerMessageId.trim() : '';
@@ -719,20 +780,22 @@ export function createPostgresQuotationFollowUpRepository(
             const conversation = lidConversation || `${canonicalPhone}@s.whatsapp.net`;
             const phoneValue = canonicalPhone || '';
             const identityUnresolved = !canonicalPhone;
-            try {
-                await getDb().transaction(async (tx) => {
-                    const source = Array.from(await tx.execute(sql `
-              SELECT q.id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0))
-              FROM quotation_deliveries d
-              JOIN quote_revisions r ON r.id = d.revision_id
-              JOIN quotations q ON q.id = r.quotation_id
-              JOIN clients cl ON cl.id = q.client_id
-              WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
-              FOR UPDATE OF cl
-            `));
-                    if (!source.length)
-                        throw new RepositoryError();
-                    const result = await tx.execute(sql `
+            // One atomic statement: `source` takes the per-quotation advisory lock
+            // and the client row lock, and `upsert` folds the acceptance in the
+            // same statement. A queued or slow execution is cancelled directly by
+            // the deadline, so no JavaScript callback can hold the sole pooled
+            // connection past the caller's return.
+            const fragment = sql `
+          WITH source AS MATERIALIZED (
+            SELECT q.id AS quotation_id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0)) AS lock
+            FROM quotation_deliveries d
+            JOIN quote_revisions r ON r.id = d.revision_id
+            JOIN quotations q ON q.id = r.quotation_id
+            JOIN clients cl ON cl.id = q.client_id
+            WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
+            FOR UPDATE OF cl
+          ),
+          upsert AS (
             INSERT INTO quotation_follow_ups (
               id, quotation_id, revision_id, delivery_id, instance, provider_conversation_id,
               canonical_phone, eligibility_version, message_snapshot, state, closed_reason,
@@ -770,6 +833,7 @@ export function createPostgresQuotationFollowUpRepository(
             JOIN clients cl ON cl.id = q.client_id
             LEFT JOIN crm_deals cd ON cd.quotation_id = q.id AND cd.status = 'Orcamento Enviado'
             WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
+              AND EXISTS (SELECT 1 FROM source)
             ON CONFLICT (quotation_id) DO UPDATE SET
               revision_id = EXCLUDED.revision_id,
               delivery_id = EXCLUDED.delivery_id,
@@ -883,12 +947,18 @@ export function createPostgresQuotationFollowUpRepository(
                       (incoming_delivery.created_at, incoming_delivery.id)
               )
             RETURNING id
-          `);
-                    if (!Array.from(result).length) {
-                        // A newer accepted delivery already owns this quotation's candidate.
-                        return;
-                    }
-                });
+          )
+          SELECT (SELECT COUNT(*) FROM source) AS source_count
+        `;
+            try {
+                const deadline = projectionDeadline(options);
+                const result = deadline
+                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
+                    : await runUnbounded(getDb(), fragment);
+                const sourceCount = Number(result[0]?.source_count ?? result[0]?.sourceCount ?? 0);
+                if (sourceCount === 0)
+                    // The delivery/revision pair vanished between planning and projection.
+                    throw new RepositoryError();
             }
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
@@ -896,19 +966,22 @@ export function createPostgresQuotationFollowUpRepository(
                 throw new RepositoryError();
             }
         },
-        async listAcceptedDeliveriesMissingFollowUp(filter: { deliveryId?: string } = {}) {
+        async listAcceptedDeliveriesMissingFollowUp(
+            filter: { deliveryId?: string; limit?: number } = {},
+            options: ProjectionAttemptOptions = {}
+        ) {
             const started = tracking();
             if (!started)
-                return [];
+                return { data: [], hasMore: false };
             const deliveryId = filter.deliveryId ? id(filter.deliveryId, 'delivery_id') : null;
-            try {
-                const result = await getDb().execute(sql `
-          SELECT d.id AS delivery_id, d.revision_id, d.phone, s.provider_message_id
+            const limit = filter.limit === undefined ? 50 : Math.min(Math.max(1, Math.trunc(filter.limit)), 100);
+            const fragment = sql `
+          SELECT d.id AS delivery_id, d.revision_id, d.phone, s.provider_message_id, s.accepted_at
           FROM quotation_deliveries d
           JOIN quote_revisions r ON r.id = d.revision_id
           JOIN quotations q ON q.id = r.quotation_id
           JOIN LATERAL (
-            SELECT st.provider_message_id
+            SELECT st.provider_message_id, st.accepted_at
             FROM quotation_delivery_steps st
             WHERE st.delivery_id = d.id
               AND st.accepted_at IS NOT NULL
@@ -952,31 +1025,180 @@ export function createPostgresQuotationFollowUpRepository(
                   AND (d.created_at, d.id) > (current_delivery.created_at, current_delivery.id)
               )
             )
-          ORDER BY d.created_at ASC
-          LIMIT 50
-        `);
-                return Array.from(result).flatMap((row) => {
+          ORDER BY d.follow_up_projection_attempted_at ASC NULLS FIRST,
+                   d.created_at ASC,
+                   d.id ASC
+          LIMIT ${limit + 1}
+        `;
+            try {
+                const deadline = projectionDeadline(options);
+                const rows = deadline
+                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
+                    : await runUnbounded(getDb(), fragment);
+                const hasMore = rows.length > limit;
+                const window = hasMore ? rows.slice(0, limit) : rows;
+                const data = window.flatMap((row) => {
                     const nextDeliveryId = String(row.delivery_id || row.deliveryId || '');
                     const revisionId = String(row.revision_id || row.revisionId || '');
                     const phone = String(row.phone || '');
                     const providerMessageId = String(row.provider_message_id || row.providerMessageId || '').trim();
+                    const acceptedAt = asDate(row.accepted_at ?? row.acceptedAt);
                     if (!UUID.test(nextDeliveryId) || !UUID.test(revisionId) || !providerMessageId)
                         return [];
-                    return [{ deliveryId: nextDeliveryId, revisionId, phone, providerMessageId }];
+                    return [{ deliveryId: nextDeliveryId, revisionId, phone, providerMessageId, acceptedAt }];
                 });
+                return { data, hasMore };
             }
-            catch {
+            catch (error) {
+                if (error instanceof InputError || error instanceof RepositoryError)
+                    throw error;
                 throw new RepositoryError();
             }
         },
-        async upsertFromDeliveryReceipt(input: {
-            deliveryId: string;
-            revisionId: string;
-            phone: string;
-            providerConversationId: string;
-            allStepsDelivered: boolean;
-            receivedAt: Date;
-        }) {
+        // Records that the acceptance projection was attempted for this delivery.
+        // The durable marker rotates a persistently failing candidate to the tail
+        // of the next slice, so 51+ poison candidates cannot starve later work
+        // across invocations and across process restarts. It touches only this
+        // dedicated column, never the delivery's business clock (`updated_at`),
+        // so the resolution deadline is untouched.
+        async markAcceptanceProjectionAttempt(
+            input: { deliveryId: string },
+            options: ProjectionAttemptOptions = {}
+        ) {
+            const deliveryId = id(input?.deliveryId, 'delivery_id');
+            const fragment = sql `
+          UPDATE quotation_deliveries
+          SET follow_up_projection_attempted_at = now()
+          WHERE id = ${deliveryId}
+        `;
+            try {
+                const deadline = projectionDeadline(options);
+                if (deadline)
+                    await runBoundedStatement(getDb(), deadline, fragment);
+                else
+                    await runUnbounded(getDb(), fragment);
+            }
+            catch (error) {
+                if (error instanceof InputError || error instanceof RepositoryError)
+                    throw error;
+                throw new RepositoryError();
+            }
+        },
+        // A delivered outbox step is durable proof that the provider confirmed
+        // the message; if the follow-up projection that records it failed after
+        // the receipt was folded, the candidate stays `awaiting_receipt` forever
+        // because the normal path only writes once and no provider replay is
+        // guaranteed. This query is the durable retry source: it returns exactly
+        // those candidates, together with the step's receipt clock (itself the
+        // durable inbox `received_at`), so the worker can project again.
+        //
+        // Ordering by `updated_at` (the row's own last durable touch, bumped by
+        // every projection attempt) makes the slice rotate: a persistently
+        // failing row moves to the tail instead of occupying the head of every
+        // invocation, so it can neither starve later candidates nor monopolize
+        // the worker. The caller bounds the slice and re-reads the next window.
+        async listAwaitingReceiptWithCompletedDelivery(
+            filter: { deliveryId?: string; limit?: number } = {},
+            options: ProjectionAttemptOptions = {}
+        ) {
+            const deliveryId = filter.deliveryId ? id(filter.deliveryId, 'delivery_id') : null;
+            const limit = filter.limit === undefined ? 50 : Math.min(Math.max(1, Math.trunc(filter.limit)), 100);
+            const fragment = sql `
+          SELECT f.id AS follow_up_id, d.id AS delivery_id, d.revision_id, d.phone,
+                 s.provider_message_id, sr.received_at
+          FROM quotation_follow_ups f
+          JOIN quotation_deliveries d ON d.id = f.delivery_id
+          JOIN LATERAL (
+            SELECT st.provider_message_id
+            FROM quotation_delivery_steps st
+            WHERE st.delivery_id = d.id
+              AND NULLIF(BTRIM(st.provider_message_id), '') IS NOT NULL
+            ORDER BY st.position
+            LIMIT 1
+          ) s ON true
+          JOIN LATERAL (
+            SELECT CASE
+              WHEN COUNT(*) > 0
+                AND COUNT(*) FILTER (WHERE st.delivered_at IS NULL AND st.read_at IS NULL) = 0
+                THEN MAX(COALESCE(st.delivered_at, st.read_at))
+            END AS received_at
+            FROM quotation_delivery_steps st
+            WHERE st.delivery_id = d.id
+          ) sr ON true
+          WHERE f.state = 'awaiting_receipt'
+            AND d.state = 'delivered'
+            AND d.completion_source = 'provider_receipt'
+            AND sr.received_at IS NOT NULL
+            AND d.phone NOT ILIKE '%@g.us'
+            AND d.phone NOT ILIKE '%status%'
+            AND d.phone NOT ILIKE '%broadcast%'
+            ${deliveryId ? sql `AND d.id = ${deliveryId}` : sql ``}
+          ORDER BY f.updated_at ASC, f.id ASC
+          LIMIT ${limit + 1}
+        `;
+            try {
+                const deadline = projectionDeadline(options);
+                const rows = deadline
+                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
+                    : await runUnbounded(getDb(), fragment);
+                const hasMore = rows.length > limit;
+                const window = hasMore ? rows.slice(0, limit) : rows;
+                const data = window.flatMap((row) => {
+                    const followUpId = String(row.follow_up_id || row.followUpId || '');
+                    const nextDeliveryId = String(row.delivery_id || row.deliveryId || '');
+                    const revisionId = String(row.revision_id || row.revisionId || '');
+                    const phone = String(row.phone || '');
+                    const providerMessageId = String(row.provider_message_id || row.providerMessageId || '').trim();
+                    const receivedAt = asDate(row.received_at ?? row.receivedAt);
+                    if (!UUID.test(followUpId) || !UUID.test(nextDeliveryId) || !UUID.test(revisionId) || !providerMessageId || !receivedAt)
+                        return [];
+                    return [{ followUpId, deliveryId: nextDeliveryId, revisionId, phone, providerMessageId, receivedAt }];
+                });
+                return { data, hasMore };
+            }
+            catch (error) {
+                if (error instanceof InputError || error instanceof RepositoryError)
+                    throw error;
+                throw new RepositoryError();
+            }
+        },
+        // Records that the worker attempted to project this candidate, which is
+        // what gives the retry slice its rotation. The projection itself is
+        // idempotent, so a concurrent duplicate attempt is harmless.
+        async markReceiptProjectionAttempt(
+            input: { followUpId: string },
+            options: ProjectionAttemptOptions = {}
+        ) {
+            const followUpId = id(input?.followUpId, 'follow_up_id');
+            const fragment = sql `
+          UPDATE quotation_follow_ups
+          SET updated_at = now()
+          WHERE id = ${followUpId}
+        `;
+            try {
+                const deadline = projectionDeadline(options);
+                if (deadline)
+                    await runBoundedStatement(getDb(), deadline, fragment);
+                else
+                    await runUnbounded(getDb(), fragment);
+            }
+            catch (error) {
+                if (error instanceof InputError || error instanceof RepositoryError)
+                    throw error;
+                throw new RepositoryError();
+            }
+        },
+        async upsertFromDeliveryReceipt(
+            input: {
+                deliveryId: string;
+                revisionId: string;
+                phone: string;
+                providerConversationId: string;
+                allStepsDelivered: boolean;
+                receivedAt: Date;
+            },
+            options: ProjectionAttemptOptions = {}
+        ) {
             const deliveryId = id(input.deliveryId, 'delivery_id');
             const revisionId = id(input.revisionId, 'revision_id');
             const canonicalPhone = acceptedCanonicalPhone(input.phone);
@@ -996,20 +1218,22 @@ export function createPostgresQuotationFollowUpRepository(
             const firstReceipt = input.allStepsDelivered ? receivedAt : null;
             const dueAt = firstReceipt ? new Date(firstReceipt.getTime() + 24 * 60 * 60 * 1000) : null;
             const now = new Date();
-            try {
-                await getDb().transaction(async (tx) => {
-                    const source = Array.from(await tx.execute(sql `
-              SELECT q.id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0))
-              FROM quotation_deliveries d
-              JOIN quote_revisions r ON r.id = d.revision_id
-              JOIN quotations q ON q.id = r.quotation_id
-              JOIN clients cl ON cl.id = q.client_id
-              WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
-              FOR UPDATE OF cl
-            `));
-                    if (!source.length)
-                        throw new RepositoryError();
-                    await tx.execute(sql `
+            // One atomic statement: `source` takes the per-quotation advisory lock
+            // and the client row lock, and `upsert` folds the receipt in the same
+            // statement. A queued or slow execution is cancelled directly by the
+            // deadline, so no JavaScript callback can hold the sole pooled
+            // connection past the caller's return.
+            const fragment = sql `
+          WITH source AS MATERIALIZED (
+            SELECT q.id AS quotation_id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0)) AS lock
+            FROM quotation_deliveries d
+            JOIN quote_revisions r ON r.id = d.revision_id
+            JOIN quotations q ON q.id = r.quotation_id
+            JOIN clients cl ON cl.id = q.client_id
+            WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
+            FOR UPDATE OF cl
+          ),
+          upsert AS (
             INSERT INTO quotation_follow_ups (
               id, quotation_id, revision_id, delivery_id, instance, provider_conversation_id,
               canonical_phone, eligibility_version, message_snapshot, state, closed_reason,
@@ -1049,6 +1273,7 @@ export function createPostgresQuotationFollowUpRepository(
             JOIN clients cl ON cl.id = q.client_id
             LEFT JOIN crm_deals cd ON cd.quotation_id = q.id AND cd.status = 'Orcamento Enviado'
             WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
+              AND EXISTS (SELECT 1 FROM source)
             ON CONFLICT (quotation_id) DO UPDATE SET
               revision_id = EXCLUDED.revision_id,
               delivery_id = EXCLUDED.delivery_id,
@@ -1116,8 +1341,19 @@ export function createPostgresQuotationFollowUpRepository(
                   AND (current_delivery.created_at, current_delivery.id) >
                       (incoming_delivery.created_at, incoming_delivery.id)
               )
-          `);
-                });
+            RETURNING id
+          )
+          SELECT (SELECT COUNT(*) FROM source) AS source_count
+        `;
+            try {
+                const deadline = projectionDeadline(options);
+                const result = deadline
+                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
+                    : await runUnbounded(getDb(), fragment);
+                const sourceCount = Number(result[0]?.source_count ?? result[0]?.sourceCount ?? 0);
+                if (sourceCount === 0)
+                    // The delivery/revision pair vanished between planning and projection.
+                    throw new RepositoryError();
             }
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)

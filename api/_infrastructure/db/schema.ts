@@ -460,12 +460,23 @@ export const quotationDeliveries = pgTable(
     diagnosticsExpiresAt: timestamp('diagnostics_expires_at', { withTimezone: true }),
     resumableUntil: timestamp('resumable_until', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    // Durable rotation cursor for acceptance follow-up reconciliation. Bumped on
+    // every projection attempt so a persistently failing or timed-out candidate
+    // moves to the tail of the next slice instead of starving later work. Kept
+    // separate from `updated_at` so it never shifts the resolution deadline.
+    followUpProjectionAttemptedAt: timestamp('follow_up_projection_attempted_at', {
+      withTimezone: true,
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
   (table) => [
     uniqueIndex('quotation_deliveries_revision_flow_unique').on(table.revisionId, table.flowId),
     index('quotation_deliveries_due_idx').on(table.state, table.nextAttemptAt),
+    index('quotation_deliveries_follow_up_projection_idx').on(
+      table.state,
+      table.followUpProjectionAttemptedAt
+    ),
     check(
       'quotation_deliveries_state_check',
       sql`${table.state} IN ('queued', 'processing', 'provider_accepted', 'reconciling', 'retry_scheduled', 'needs_review', 'delivered', 'failed')`
@@ -508,6 +519,38 @@ export const quotationDeliverySteps = pgTable(
     check(
       'quotation_delivery_steps_state_check',
       sql`${table.state} IN ('queued', 'sending', 'server_ack', 'reconciling', 'retry_scheduled', 'needs_review', 'delivered', 'read', 'failed')`
+    ),
+  ]
+);
+
+/**
+ * Durable inbox for Evolution delivery receipts (MESSAGES_UPDATE). A receipt
+ * can reach the webhook before `markAccepted` persisted the provider message id
+ * on the step; without this inbox the receipt would be dropped. Rows are
+ * inserted idempotently per (provider message id, status) and applied later,
+ * monotonically, when the id becomes correlated.
+ */
+export const evolutionReceiptInbox = pgTable(
+  'evolution_receipt_inbox',
+  {
+    id: uuid('id').primaryKey(),
+    providerMessageId: text('provider_message_id').notNull(),
+    status: text('status').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('evolution_receipt_inbox_event_unique').on(
+      table.providerMessageId,
+      table.status
+    ),
+    index('evolution_receipt_inbox_pending_idx')
+      .on(table.providerMessageId)
+      .where(sql`${table.appliedAt} IS NULL`),
+    index('evolution_receipt_inbox_received_idx').on(table.receivedAt),
+    check(
+      'evolution_receipt_inbox_status_check',
+      sql`${table.status} IN ('ERROR', 'PENDING', 'SERVER_ACK', 'DELIVERY_ACK', 'READ', 'PLAYED')`
     ),
   ]
 );

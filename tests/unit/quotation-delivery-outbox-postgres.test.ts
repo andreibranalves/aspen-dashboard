@@ -11,15 +11,19 @@ import {
   type FixtureRevisionFields,
 } from '../fixtures/quotation-revision-seeds.ts';
 import postgres from 'postgres';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   clients,
-  quoteRevisions,
-  quotations,
+  crmDeals,
+  evolutionReceiptInbox,
   quotationDeliveries,
   quotationDeliverySteps,
+  quotationFollowUps,
+  quoteRevisions,
+  quotations,
+  whatsappContactActivity,
 } from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresQuotationDeliveryOutboxRepository,
@@ -32,7 +36,15 @@ import {
   QuotationDeliveryConflictError,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
-import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
+import {
+  createQuotationDeliveryModule,
+  DELIVERY_LEASE_MS,
+  FOLLOW_UP_RECONCILIATION_BATCH,
+} from '../../api/_modules/quotation-delivery-outbox.js';
+import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
+import { createPostgresWhatsappContactActivityRepository } from '../../api/_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
+import { createDbDeadline } from '../../api/_infrastructure/db/deadline.js';
+import { toPublicDeliveryView } from '../../api/_modules/quotation-deliveries.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
@@ -61,8 +73,10 @@ function databaseTest(name: string, optionsOrFn: any, maybeFn?: any) {
 const ids = {
   client: randomUUID(),
   quotation: randomUUID(),
+  crm: randomUUID(),
   revision: randomUUID(),
 };
+const followUpInstance = 'instance-outbox-follow-up';
 const businessNumber = `ORC-${String(Date.now()).slice(-8)}`;
 
 let sqlClient: ReturnType<typeof postgres> | undefined;
@@ -72,12 +86,26 @@ let integrationClock: Date;
 let integrationRepository: ReturnType<typeof createPostgresQuotationDeliveryOutboxRepository>;
 let fixtureFields: FixtureRevisionFields;
 let nextRevisionVersion = 1;
+let followUpBusinessSequence = 60000000;
+const followUpCleanupIds: Array<{
+  clientId: string;
+  quotationId: string;
+  revisionId: string;
+  crmDealId: string;
+}> = [];
 const testRevisionIds = new Set([ids.revision]);
 
 const textStep = (position = 0, text = `step-${position}`) => ({
   position,
   type: 'text' as const,
   payload: { text },
+  delayMs: 0,
+});
+
+const pdfStep = (position = 0, revisionId = ids.revision) => ({
+  position,
+  type: 'quotation_pdf' as const,
+  payload: { revisionId, fileName: 'ORC.pdf', caption: '' },
   delayMs: 0,
 });
 
@@ -132,6 +160,40 @@ async function setStep(id: string, values: Record<string, unknown>) {
     .where(eq(quotationDeliverySteps.id, id));
 }
 
+async function backendIsWaiting(applicationName: string): Promise<boolean> {
+  const rows = await db.execute(sql`
+    SELECT 1 AS waiting
+    FROM pg_stat_activity
+    WHERE application_name = ${applicationName}
+      AND wait_event_type = 'Lock'
+    LIMIT 1
+  `);
+  return Array.from(rows).length > 0;
+}
+
+async function waitForBackendLock(applicationName: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await backendIsWaiting(applicationName)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`backend ${applicationName} never reached a lock wait`);
+}
+
+async function waitForRenewalOutcome(
+  applicationName: string,
+  settled: () => boolean,
+  timeoutMs = 10_000,
+): Promise<'settled' | 'blocked'> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (settled()) return 'settled';
+    if (await backendIsWaiting(applicationName)) return 'blocked';
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`renewal on ${applicationName} neither settled nor blocked`);
+}
+
 test.before(async () => {
   if (!TEST_DATABASE_URL) return;
   sqlClient = postgres(TEST_DATABASE_URL, {
@@ -153,6 +215,16 @@ test.before(async () => {
     createdAt: now,
     updatedAt: now,
   });
+  await db.insert(crmDeals).values({
+    id: ids.crm,
+    quotationId: ids.quotation,
+    clientId: ids.client,
+    nome: 'Cliente outbox',
+    status: 'Orcamento Enviado',
+    createdAt: now,
+    updatedAt: now,
+  });
+  process.env.EVOLUTION_INSTANCE = followUpInstance;
   fixtureFields = await ensureFixtureTemplateVersion(db as any);
   await db.insert(quoteRevisions).values({
     ...fixtureFields,
@@ -180,6 +252,16 @@ test.before(async () => {
 
 test.beforeEach(async () => {
   if (!TEST_DATABASE_URL || !db) return;
+  await db.delete(evolutionReceiptInbox);
+  await db.delete(quotationFollowUps);
+  for (const { clientId, quotationId, revisionId, crmDealId } of followUpCleanupIds) {
+    await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
+    await db.delete(quoteRevisions).where(eq(quoteRevisions.id, revisionId));
+    await db.delete(crmDeals).where(eq(crmDeals.id, crmDealId));
+    await db.delete(quotations).where(eq(quotations.id, quotationId));
+    await db.delete(clients).where(eq(clients.id, clientId));
+  }
+  followUpCleanupIds.length = 0;
   for (const revisionId of testRevisionIds) {
     await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
     if (revisionId !== ids.revision) {
@@ -192,10 +274,25 @@ test.beforeEach(async () => {
 
 test.after(async () => {
   if (!TEST_DATABASE_URL || !db || !sqlClient) return;
+  await db.delete(evolutionReceiptInbox);
+  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+  // Seeded receipt-reconciliation fixtures must not survive a filtered run:
+  // their `business_number` sequence restarts, so leftovers collide with the
+  // next standalone invocation.
+  for (const { clientId, quotationId, revisionId, crmDealId } of followUpCleanupIds) {
+    await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, quotationId));
+    await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
+    await db.delete(quoteRevisions).where(eq(quoteRevisions.id, revisionId));
+    await db.delete(crmDeals).where(eq(crmDeals.id, crmDealId));
+    await db.delete(quotations).where(eq(quotations.id, quotationId));
+    await db.delete(clients).where(eq(clients.id, clientId));
+  }
+  followUpCleanupIds.length = 0;
   for (const revisionId of testRevisionIds) {
     await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
   }
   await db.delete(quoteRevisions).where(eq(quoteRevisions.quotationId, ids.quotation));
+  await db.delete(crmDeals).where(eq(crmDeals.id, ids.crm));
   await db.delete(quotations).where(eq(quotations.id, ids.quotation));
   await db.delete(clients).where(eq(clients.id, ids.client));
   await sqlClient.end({ timeout: 5 });
@@ -574,11 +671,11 @@ databaseTest('duplicate SERVER_ACK receipts are monotonic without another transp
     leaseToken: claim.leaseToken,
     providerMessageId: accepted.providerMessageId,
   });
-  const first = await repository.applyReceipt({
+  const first = await repository.receiveReceipt({
     providerMessageId: 'provider-duplicate-server-ack',
     status: 'SERVER_ACK',
   });
-  const second = await repository.applyReceipt({
+  const second = await repository.receiveReceipt({
     providerMessageId: 'provider-duplicate-server-ack',
     status: 'SERVER_ACK',
   });
@@ -612,12 +709,28 @@ databaseTest('DELIVERY_ACK after needs_review resolves the persisted provider ke
     updatedAt: now,
   });
   await setDelivery(delivery.id, { state: 'needs_review', publicError: 'Aguardando recibo.' });
-  const resolved = await repository.applyReceipt({
+  const resolved = await repository.receiveReceipt({
     providerMessageId: 'provider-delayed-delivery-ack',
     status: 'DELIVERY_ACK',
   });
   assert.equal(resolved?.state, 'delivered');
   assert.equal(resolved?.steps[0]?.state, 'delivered');
+  // A successful delayed receipt must clear the stale step and delivery errors.
+  assert.equal(resolved?.steps[0]?.publicError, null);
+  assert.equal(resolved?.publicError, null);
+  const view = toPublicDeliveryView(resolved!, { includePhone: true });
+  assert.equal(view.public_error, null);
+  assert.deepEqual(
+    (view.steps as Array<Record<string, unknown>>).map((step) => step.public_error),
+    [null],
+  );
+  const read = await repository.receiveReceipt({
+    providerMessageId: 'provider-delayed-delivery-ack',
+    status: 'READ',
+  });
+  assert.equal(read?.steps[0]?.state, 'read');
+  assert.equal(read?.steps[0]?.publicError, null);
+  assert.equal(read?.publicError, null);
   assert.equal(transportCalls, 1);
 });
 
@@ -639,11 +752,11 @@ databaseTest('READ before DELIVERY_ACK remains delivered without another transpo
     leaseToken: claim.leaseToken,
     providerMessageId: accepted.providerMessageId,
   });
-  const read = await repository.applyReceipt({
+  const read = await repository.receiveReceipt({
     providerMessageId: 'provider-read-before-delivery',
     status: 'READ',
   });
-  const lateDelivery = await repository.applyReceipt({
+  const lateDelivery = await repository.receiveReceipt({
     providerMessageId: 'provider-read-before-delivery',
     status: 'DELIVERY_ACK',
   });
@@ -842,6 +955,403 @@ databaseTest('confirmed_received records operator completion', async () => {
   assert.equal(resolved.steps[0]?.state, 'delivered');
 });
 
+databaseTest('confirmed_received on a mixed partial delivery keeps the never-attempted remainder queued', async () => {
+  const delivery = await repository.enqueue(
+    input({
+      flowId: 'resolve-mixed-partial',
+      flowName: 'Resolve mixed partial',
+      steps: [textStep(0), textStep(1), textStep(2)],
+    })
+  );
+  const [attempted, ...remainder] = delivery.steps;
+  await setStep(attempted.id, {
+    state: 'server_ack',
+    providerMessageId: 'provider-mixed-accepted',
+    acceptedAt: old,
+    attemptCount: 1,
+    updatedAt: old,
+  });
+  for (const step of remainder) {
+    await setStep(step.id, { state: 'queued', nextAttemptAt: null, attemptCount: 0, updatedAt: old });
+  }
+  await setDelivery(delivery.id, { state: 'needs_review', updatedAt: old });
+
+  const resolved = await repository.resolve({
+    deliveryId: delivery.id,
+    decision: 'confirmed_received',
+    note: 'Cliente confirmou o recebimento da mensagem já entregue.',
+    resolvedBy: 'authenticated-operator',
+  });
+
+  assert.equal(resolved.steps.find((step) => step.id === attempted.id)?.state, 'delivered');
+  assert.equal(resolved.state, 'queued');
+  assert.equal(resolved.completionSource, null);
+  const remaining = resolved.steps.filter((step) => step.id !== attempted.id);
+  assert.deepEqual(remaining.map((step) => step.state), ['queued', 'queued']);
+  assert.deepEqual(remaining.map((step) => step.attemptCount), [0, 0]);
+  // Exactly the first legitimately remaining step is scheduled, with its delay.
+  assert.ok(remaining[0]?.nextAttemptAt);
+  assert.equal(remaining[1]?.nextAttemptAt, null);
+
+  let transportCalls = 0;
+  const recovery = createQuotationDeliveryModule({
+    repository,
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: `provider-mixed-${transportCalls}` };
+    },
+    now: () => now,
+    logger: () => {},
+  });
+  const resumed = await recovery.process(delivery.id);
+  assert.equal(transportCalls, 2);
+  assert.equal(resumed?.state, 'provider_accepted');
+  assert.equal(resumed?.steps.find((step) => step.id === attempted.id)?.state, 'delivered');
+});
+
+databaseTest('resolution cannot reinterpret or revoke a live sending lease', async () => {
+  integrationClock = new Date(now);
+  const delivery = await repository.enqueue(
+    input({ flowId: 'resolve-live-lease', steps: [textStep(0), textStep(1)] })
+  );
+  let transportCalls = 0;
+  const enteredSecondStep = Promise.withResolvers<void>();
+  const releaseSecondStep = Promise.withResolvers<void>();
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    plan: async () => ({
+      revisionId: ids.revision,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId: 'resolve-live-lease',
+      flowName: 'Resolve live lease',
+      steps: [textStep(0), textStep(1)],
+    }),
+    transport: async ({ step }) => {
+      transportCalls += 1;
+      if (step.position === 1) {
+        enteredSecondStep.resolve();
+        await releaseSecondStep.promise;
+      }
+      return {
+        accepted: true as const,
+        providerMessageId: `provider-live-lease-${step.position}`,
+      };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+
+  const running = module.process(delivery.id);
+  await enteredSecondStep.promise;
+  assert.equal(transportCalls, 2);
+
+  // A late ERROR on the accepted first step must not disturb the in-flight second
+  // step or revoke its live lease.
+  const errored = await repository.receiveReceipt({
+    providerMessageId: 'provider-live-lease-0',
+    status: 'ERROR',
+  });
+  assert.equal(errored?.steps[0]?.state, 'needs_review');
+  assert.equal(errored?.steps[1]?.state, 'sending');
+  assert.equal(errored?.state, 'needs_review');
+  const [lease] = await db
+    .select({
+      leaseToken: quotationDeliveries.leaseToken,
+      leaseUntil: quotationDeliveries.leaseUntil,
+    })
+    .from(quotationDeliveries)
+    .where(eq(quotationDeliveries.id, delivery.id));
+  assert.ok(lease?.leaseToken);
+  assert.ok(lease?.leaseUntil && lease.leaseUntil.getTime() > now.getTime());
+
+  for (const decision of ['confirmed_received', 'confirmed_not_received'] as const) {
+    await assert.rejects(
+      repository.resolve({
+        deliveryId: delivery.id,
+        decision,
+        note: 'Resolução durante envio ativo.',
+        resolvedBy: 'authenticated-operator',
+      }),
+      /envio em andamento/i,
+    );
+  }
+  const untouched = await repository.get(delivery.id);
+  assert.equal(untouched?.steps[1]?.state, 'sending');
+  assert.equal(untouched?.steps[1]?.attemptCount, 1);
+
+  releaseSecondStep.resolve();
+  const settled = await running;
+  // Exactly one transport call per step: the held dispatch was neither repeated
+  // nor revoked, and the manual attempt could not schedule another one. The
+  // provider accepted the held step, but acceptance cannot be persisted while a
+  // predecessor is `needs_review`, so the step honestly stays ambiguous.
+  assert.equal(transportCalls, 2);
+  assert.equal(settled?.steps[0]?.state, 'needs_review');
+  assert.equal(settled?.steps[1]?.state, 'reconciling');
+  assert.equal(settled?.state, 'needs_review');
+  const afterSettle = await repository.get(delivery.id);
+  assert.equal(afterSettle?.steps[1]?.state, 'reconciling');
+  assert.equal(afterSettle?.steps[1]?.attemptCount, 1);
+
+  const resolved = await repository.resolve({
+    deliveryId: delivery.id,
+    decision: 'confirmed_received',
+    note: 'Cliente confirmou após o envio concluir.',
+    resolvedBy: 'authenticated-operator',
+  });
+  assert.equal(resolved.state, 'delivered');
+  assert.deepEqual(resolved.steps.map((step) => step.state), ['delivered', 'delivered']);
+  assert.equal(transportCalls, 2);
+
+  // The ordered-gate worker path still sees no claimable work.
+  const followUpProcess = await module.process(delivery.id);
+  assert.equal(followUpProcess?.state, 'delivered');
+  assert.equal(transportCalls, 2);
+});
+
+databaseTest('resolution cannot clear an expired sending lease and leave the step orphaned', async () => {
+  integrationClock = new Date(now);
+  const delivery = await repository.enqueue(
+    input({ flowId: 'resolve-expired-lease', steps: [textStep(0), textStep(1)] })
+  );
+  let transportCalls = 0;
+  const enteredSecondStep = Promise.withResolvers<void>();
+  const releaseSecondStep = Promise.withResolvers<void>();
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    plan: async () => ({
+      revisionId: ids.revision,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId: 'resolve-expired-lease',
+      flowName: 'Resolve expired lease',
+      steps: [textStep(0), textStep(1)],
+    }),
+    transport: async ({ step }) => {
+      transportCalls += 1;
+      if (step.position === 1) {
+        enteredSecondStep.resolve();
+        await releaseSecondStep.promise;
+      }
+      return {
+        accepted: true as const,
+        providerMessageId: `provider-expired-lease-${step.position}`,
+      };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+
+  const running = module.process(delivery.id);
+  await enteredSecondStep.promise;
+  const errored = await repository.receiveReceipt({
+    providerMessageId: 'provider-expired-lease-0',
+    status: 'ERROR',
+  });
+  assert.equal(errored?.steps[1]?.state, 'sending');
+  assert.equal(errored?.state, 'needs_review');
+  const [before] = await db
+    .select({
+      leaseToken: quotationDeliveries.leaseToken,
+      leaseUntil: quotationDeliveries.leaseUntil,
+    })
+    .from(quotationDeliveries)
+    .where(eq(quotationDeliveries.id, delivery.id));
+  assert.ok(before?.leaseToken);
+
+  // The worker is slow, not dead: its lease timestamp elapsed while the
+  // transport is still gated, so the dispatch may still reach the provider.
+  integrationClock = new Date(now.getTime() + DELIVERY_LEASE_MS + 60_000);
+
+  for (const decision of ['confirmed_received', 'confirmed_not_received'] as const) {
+    await assert.rejects(
+      integrationRepository.resolve({
+        deliveryId: delivery.id,
+        decision,
+        note: 'Resolução após o lease expirar.',
+        resolvedBy: 'authenticated-operator',
+      }),
+      /envio em andamento/i,
+    );
+  }
+  const untouched = await repository.get(delivery.id);
+  assert.equal(untouched?.steps[1]?.state, 'sending');
+  const [after] = await db
+    .select({
+      leaseToken: quotationDeliveries.leaseToken,
+      leaseUntil: quotationDeliveries.leaseUntil,
+    })
+    .from(quotationDeliveries)
+    .where(eq(quotationDeliveries.id, delivery.id));
+  // Resolution neither cleared the lease nor reinterpreted the classification:
+  // the step stays recoverable by the worker's own reconciliation.
+  assert.equal(after?.leaseToken, before?.leaseToken);
+  assert.equal(after?.leaseUntil?.getTime(), before?.leaseUntil?.getTime());
+  assert.equal(transportCalls, 2);
+
+  releaseSecondStep.resolve();
+  const settled = await running;
+  // Exactly one transport per step: the held dispatch was neither repeated nor
+  // revoked. A predecessor is `needs_review`, so the acceptance cannot be
+  // persisted and the step honestly lands ambiguous (`reconciling`).
+  assert.equal(transportCalls, 2);
+  assert.equal(settled?.steps[1]?.state, 'reconciling');
+  assert.equal(settled?.state, 'needs_review');
+  const stillSending = await repository.claim({ deliveryId: delivery.id });
+  assert.equal(stillSending, null);
+
+  const resolved = await integrationRepository.resolve({
+    deliveryId: delivery.id,
+    decision: 'confirmed_received',
+    note: 'Cliente confirmou depois do envio concluir.',
+    resolvedBy: 'authenticated-operator',
+  });
+  assert.equal(resolved.state, 'delivered');
+  assert.deepEqual(resolved.steps.map((step) => step.state), ['delivered', 'delivered']);
+  assert.equal(transportCalls, 2);
+});
+
+databaseTest('late receipts never reopen an operator-cancelled partial delivery', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'cancel-terminal-partial', steps: [textStep(0), textStep(1)] })
+  );
+  const first = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(first);
+  await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: first.step.id,
+    leaseToken: first.leaseToken,
+    providerMessageId: 'provider-cancel-terminal',
+  });
+  assert.ok((await repository.cancelPending()) >= 1);
+  const cancelled = await repository.get(delivery.id);
+  assert.equal(cancelled?.state, 'failed');
+  assert.equal(cancelled?.completionSource, 'operator');
+  assert.deepEqual(cancelled?.steps.map((step) => step.state), ['server_ack', 'failed']);
+
+  let transportCalls = 0;
+  const module = createQuotationDeliveryModule({
+    repository,
+    transport: async () => {
+      transportCalls += 1;
+      return {
+        accepted: true as const,
+        providerMessageId: `provider-cancel-terminal-${transportCalls}`,
+      };
+    },
+    now: () => now,
+    logger: () => {},
+  });
+
+  const afterError = await repository.receiveReceipt({
+    providerMessageId: 'provider-cancel-terminal',
+    status: 'ERROR',
+  });
+  assert.equal(afterError?.state, 'failed');
+  assert.equal(afterError?.completionSource, 'operator');
+  assert.equal(afterError?.steps[0]?.state, 'needs_review');
+  assert.equal(afterError?.steps[1]?.state, 'failed');
+
+  const afterRead = await repository.receiveReceipt({
+    providerMessageId: 'provider-cancel-terminal',
+    status: 'READ',
+  });
+  assert.equal(afterRead?.state, 'failed');
+  assert.equal(afterRead?.completionSource, 'operator');
+  assert.equal(afterRead?.steps[0]?.state, 'read');
+  assert.equal(afterRead?.steps[1]?.state, 'failed');
+  assert.equal(afterRead?.steps[1]?.publicError, 'Cancelada pelo operador.');
+
+  await assert.rejects(
+    repository.resolve({
+      deliveryId: delivery.id,
+      decision: 'confirmed_not_received',
+      note: 'Reenviar etapas canceladas.',
+      resolvedBy: 'authenticated-operator',
+    }),
+    /não está disponível para resolução/,
+  );
+  const afterProcess = await module.process(delivery.id);
+  assert.equal(afterProcess?.state, 'failed');
+  assert.equal(transportCalls, 0);
+});
+
+databaseTest('confirmed_not_received never requeues a cancelled failed step', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'resolve-with-failed', steps: [textStep(0), textStep(1)] })
+  );
+  const [pendingStep, failedStep] = delivery.steps;
+  await setStep(pendingStep!.id, { state: 'needs_review', updatedAt: old });
+  await setStep(failedStep!.id, {
+    state: 'failed',
+    publicError: 'Cancelada pelo operador.',
+    updatedAt: old,
+  });
+  await setDelivery(delivery.id, {
+    state: 'needs_review',
+    leaseToken: null,
+    leaseUntil: null,
+    updatedAt: old,
+  });
+
+  const resolved = await repository.resolve({
+    deliveryId: delivery.id,
+    decision: 'confirmed_not_received',
+    note: 'Reenviar apenas a etapa pendente.',
+    resolvedBy: 'authenticated-operator',
+  });
+  assert.equal(resolved.steps.find((step) => step.id === pendingStep!.id)?.state, 'queued');
+  assert.equal(resolved.steps.find((step) => step.id === failedStep!.id)?.state, 'failed');
+  assert.equal(
+    resolved.steps.find((step) => step.id === failedStep!.id)?.publicError,
+    'Cancelada pelo operador.',
+  );
+  assert.equal(resolved.state, 'failed');
+});
+
+databaseTest('duplicate provider callbacks stay monotonic and unknown ids never associate', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'duplicate-receipts', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId: 'provider-duplicate',
+  });
+
+  const first = await repository.receiveReceipt({
+    providerMessageId: 'provider-duplicate',
+    status: 'DELIVERY_ACK',
+  });
+  const second = await repository.receiveReceipt({
+    providerMessageId: 'provider-duplicate',
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(first?.state, 'delivered');
+  assert.equal(second?.state, 'delivered');
+  assert.equal(second?.steps[0]?.state, 'delivered');
+  const lateServerAck = await repository.receiveReceipt({
+    providerMessageId: 'provider-duplicate',
+    status: 'SERVER_ACK',
+  });
+  assert.equal(lateServerAck?.steps[0]?.state, 'delivered');
+  const lateError = await repository.receiveReceipt({
+    providerMessageId: 'provider-duplicate',
+    status: 'ERROR',
+  });
+  assert.equal(lateError?.state, 'delivered');
+  assert.equal(
+    await repository.receiveReceipt({ providerMessageId: 'provider-unknown', status: 'DELIVERY_ACK' }),
+    null
+  );
+});
+
 databaseTest('legacy delivery without steps can be confirmed received without becoming queued', async () => {
   const delivery = await repository.enqueue(
     input({ flowId: 'resolve-legacy-no-steps', steps: [textStep(0)] })
@@ -938,4 +1448,2272 @@ databaseTest('confirmed_not_received requeues every non-delivered step and clear
   assert.equal(requeued?.state, 'provider_accepted');
   assert.equal(requeued?.steps.find((step) => step.id === accepted.id)?.state, 'server_ack');
   assert.equal(requeued?.steps.find((step) => step.id === unresolved.id)?.state, 'server_ack');
+});
+
+databaseTest('receipt before acceptance is stored durably and applied by markAccepted', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'early-receipt', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  const providerMessageId = `provider-early-${randomUUID()}`;
+
+  // RED without the inbox: this receipt has no persisted provider id yet, so it
+  // was dropped and the step stayed `server_ack`. Now it must be queued durably
+  // and folded by the very transaction that persists the acceptance.
+  const early = await repository.receiveReceipt({
+    providerMessageId,
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(early, null);
+  const pending = await db
+    .select()
+    .from(evolutionReceiptInbox)
+    .where(eq(evolutionReceiptInbox.providerMessageId, providerMessageId));
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0]?.appliedAt, null);
+
+  const accepted = await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId,
+  });
+  assert.equal(accepted.steps[0]?.state, 'delivered');
+  assert.equal(accepted.state, 'delivered');
+  assert.equal(accepted.completionSource, 'provider_receipt');
+  const applied = await db
+    .select()
+    .from(evolutionReceiptInbox)
+    .where(eq(evolutionReceiptInbox.providerMessageId, providerMessageId));
+  assert.equal(applied.length, 1);
+  assert.ok(applied[0]?.appliedAt);
+});
+
+databaseTest('early receipts fold in received order without regressing delivery', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'early-receipt-order', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  const providerMessageId = `provider-ordered-${randomUUID()}`;
+
+  await repository.receiveReceipt({ providerMessageId, status: 'SERVER_ACK' });
+  await repository.receiveReceipt({ providerMessageId, status: 'READ' });
+  const accepted = await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId,
+  });
+  assert.equal(accepted.steps[0]?.state, 'read');
+  assert.equal(accepted.state, 'delivered');
+  const stored = await db
+    .select({ status: evolutionReceiptInbox.status, appliedAt: evolutionReceiptInbox.appliedAt })
+    .from(evolutionReceiptInbox)
+    .where(eq(evolutionReceiptInbox.providerMessageId, providerMessageId));
+  assert.equal(stored.length, 2);
+  assert.equal(stored.every((row) => row.appliedAt !== null), true);
+});
+
+databaseTest('concurrent acceptance and early receipt converge on one delivered step', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'concurrent-receipt', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  const providerMessageId = `provider-race-${randomUUID()}`;
+
+  await Promise.all([
+    repository.receiveReceipt({ providerMessageId, status: 'DELIVERY_ACK' }),
+    repository.markAccepted({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: claim.leaseToken,
+      providerMessageId,
+    }),
+  ]);
+
+  const final = await repository.get(delivery.id);
+  assert.equal(final?.steps[0]?.state, 'delivered');
+  assert.equal(final?.steps[0]?.attemptCount, 1);
+  assert.equal(final?.state, 'delivered');
+  const rows = await db
+    .select()
+    .from(evolutionReceiptInbox)
+    .where(eq(evolutionReceiptInbox.providerMessageId, providerMessageId));
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0]?.appliedAt);
+});
+
+databaseTest('an early receipt folded by markAccepted projects the follow-up exactly once', async () => {
+  integrationClock = new Date(now);
+  const revisionId = await createIssuedRevision();
+  const flowId = `early-follow-up-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-early-follow-up-${randomUUID()}`;
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  let receiptProjections = 0;
+  const enteredTransport = Promise.withResolvers<void>();
+  const releaseTransport = Promise.withResolvers<void>();
+
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+      upsertFromDeliveryReceipt: async (value, options) => {
+        receiptProjections += 1;
+        return followUp.upsertFromDeliveryReceipt!(value, options);
+      },
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+    },
+    planner: async () => ({
+      revisionId,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Early follow-up',
+      steps: [textStep(0)],
+    }),
+    transport: async () => {
+      enteredTransport.resolve();
+      await releaseTransport.promise;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const running = module.enqueue({ revisionId, flowId });
+  await enteredTransport.promise;
+
+  // The receipt arrives before `markAccepted` persisted the provider id: it is
+  // stored durably and cannot correlate yet.
+  assert.equal(
+    await module.applyEvolutionEvent({
+      instance: followUpInstance,
+      providerMessageId,
+      fromMe: true,
+      status: 'DELIVERY_ACK',
+    }),
+    null,
+  );
+  releaseTransport.resolve();
+  const accepted = await running;
+  assert.equal(accepted.state, 'delivered');
+  assert.equal(accepted.completionSource, 'provider_receipt');
+  assert.equal(receiptProjections, 1);
+
+  const rows = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.state, 'waiting');
+  assert.ok(rows[0]?.firstProviderReceiptAt);
+  assert.equal(
+    rows[0]?.dueAt?.getTime(),
+    rows[0]!.firstProviderReceiptAt!.getTime() + 24 * 60 * 60 * 1000,
+  );
+
+  // No provider replay is required or expected: the projection already happened.
+  await module.process(accepted.id);
+  assert.equal(receiptProjections, 1);
+
+  // A late replay of the same receipt re-projects idempotently: one row and the
+  // original receipt clock, never a second delivery or a reset due time.
+  await module.applyEvolutionEvent({
+    instance: followUpInstance,
+    providerMessageId,
+    fromMe: true,
+    status: 'DELIVERY_ACK',
+  });
+  const afterReplay = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(afterReplay.length, 1);
+  assert.equal(
+    afterReplay[0]?.firstProviderReceiptAt?.getTime(),
+    rows[0]?.firstProviderReceiptAt?.getTime(),
+  );
+  assert.equal(afterReplay[0]?.dueAt?.getTime(), rows[0]?.dueAt?.getTime());
+  assert.equal((await repository.get(accepted.id))?.steps[0]?.attemptCount, 1);
+});
+
+databaseTest('an early receipt keeps the durable inbox time, not the acceptance clock', async () => {
+  integrationClock = new Date(now);
+  const revisionId = await createIssuedRevision();
+  const flowId = `early-receipt-clock-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-early-clock-${randomUUID()}`;
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const enteredTransport = Promise.withResolvers<void>();
+  const releaseTransport = Promise.withResolvers<void>();
+
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+      upsertFromDeliveryReceipt: (value, options) =>
+        followUp.upsertFromDeliveryReceipt!(value, options),
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+    },
+    planner: async () => ({
+      revisionId,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Early receipt clock',
+      steps: [textStep(0)],
+    }),
+    transport: async () => {
+      enteredTransport.resolve();
+      await releaseTransport.promise;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const running = module.enqueue({ revisionId, flowId });
+  await enteredTransport.promise;
+
+  // The provider receipt lands first, at t0. The acceptance is only persisted
+  // at t0 + 3h, so using the fold clock would lie about the receipt and shift
+  // the follow-up due time three hours late.
+  const receiptAt = new Date(integrationClock);
+  assert.equal(
+    await module.applyEvolutionEvent({
+      instance: followUpInstance,
+      providerMessageId,
+      fromMe: true,
+      status: 'DELIVERY_ACK',
+    }),
+    null,
+  );
+  integrationClock = new Date(receiptAt.getTime() + 3 * 3_600_000);
+  releaseTransport.resolve();
+  const accepted = await running;
+  assert.equal(accepted.state, 'delivered');
+  assert.equal(accepted.steps[0]?.state, 'delivered');
+
+  const rows = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.firstProviderReceiptAt?.getTime(), receiptAt.getTime());
+  assert.equal(
+    rows[0]?.dueAt?.getTime(),
+    rows[0]!.firstProviderReceiptAt!.getTime() + 24 * 60 * 60 * 1000,
+  );
+  assert.notEqual(rows[0]?.firstProviderReceiptAt?.getTime(), integrationClock.getTime());
+
+  const [step] = await db
+    .select({ deliveredAt: quotationDeliverySteps.deliveredAt })
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.deliveryId, accepted.id));
+  assert.equal(step?.deliveredAt?.getTime(), receiptAt.getTime());
+});
+
+databaseTest('a rejected receipt projection is recovered by the worker without a duplicate webhook', async () => {
+  integrationClock = new Date(now);
+  const revisionId = await createIssuedRevision();
+  const flowId = `receipt-retry-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-receipt-retry-${randomUUID()}`;
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  let projections = 0;
+  let rejectNextProjection = true;
+  let transportCalls = 0;
+
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+      upsertFromDeliveryReceipt: async (value, options) => {
+        projections += 1;
+        if (rejectNextProjection) {
+          rejectNextProjection = false;
+          throw new Error('transient projection failure');
+        }
+        return followUp.upsertFromDeliveryReceipt!(value, options);
+      },
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+    },
+    planner: async () => ({
+      revisionId,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Receipt retry',
+      steps: [textStep(0)],
+    }),
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const accepted = await module.enqueue({ revisionId, flowId });
+  assert.equal(accepted.state, 'provider_accepted');
+  assert.equal(transportCalls, 1);
+
+  // The receipt is folded durably, but the follow-up projection is rejected
+  // once. The webhook acknowledges; no replay will ever come.
+  const receiptAt = new Date(integrationClock);
+  const receipt = await module.applyEvolutionEvent({
+    instance: followUpInstance,
+    providerMessageId,
+    fromMe: true,
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(receipt?.state, 'delivered');
+  assert.equal(projections, 1);
+  const [inboxRow] = await db
+    .select()
+    .from(evolutionReceiptInbox)
+    .where(eq(evolutionReceiptInbox.providerMessageId, providerMessageId));
+  assert.equal(inboxRow?.appliedAt != null, true);
+
+  const failed = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(failed.length, 1);
+  assert.equal(failed[0]?.state, 'awaiting_receipt');
+  assert.equal(failed[0]?.firstProviderReceiptAt, null);
+
+  // Hours later the worker reconciles from the durable delivered row: no
+  // webhook replay, no extra transport, exactly one follow-up.
+  integrationClock = new Date(receiptAt.getTime() + 3 * 3_600_000);
+  const recovered = await module.process(accepted.id);
+  assert.equal(recovered?.state, 'delivered');
+  assert.equal(projections, 2);
+  const rows = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.state, 'waiting');
+  assert.equal(rows[0]?.firstProviderReceiptAt?.getTime(), receiptAt.getTime());
+  assert.equal(
+    rows[0]?.dueAt?.getTime(),
+    rows[0]!.firstProviderReceiptAt!.getTime() + 24 * 60 * 60 * 1000,
+  );
+  assert.equal(transportCalls, 1);
+
+  // Idempotent: another pass changes nothing.
+  await module.process(accepted.id);
+  assert.equal(projections, 2);
+  const after = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(after.length, 1);
+  assert.equal(after[0]?.state, 'waiting');
+  assert.equal(after[0]?.firstProviderReceiptAt?.getTime(), receiptAt.getTime());
+  assert.equal(after[0]?.dueAt?.getTime(), rows[0]?.dueAt?.getTime());
+  assert.equal(transportCalls, 1);
+});
+
+databaseTest('a stale preparer that lost its lease makes zero transport calls after the fence', async () => {
+  integrationClock = new Date(now);
+  const flowId = `lease-fence-lost-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-lease-fence-${randomUUID()}`;
+  const delivery = await repository.enqueue(
+    input({ flowId, flowName: 'Lease fence lost', steps: [pdfStep(0)] })
+  );
+  let staleTransportCalls = 0;
+  let competingTransportCalls = 0;
+  const enteredPreparation = Promise.withResolvers<void>();
+  const releasePreparation = Promise.withResolvers<void>();
+
+  const staleModule = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    planner: async () => ({
+      revisionId: ids.revision,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Lease fence lost',
+      steps: [pdfStep(0)],
+    }),
+    // Preparation is gated so the lease can expire — and a competing worker can
+    // recover the delivery — before the stale worker reaches the provider.
+    prepareDeliveryDocument: async () => {
+      enteredPreparation.resolve();
+      await releasePreparation.promise;
+      return {
+        pdf: Buffer.from('%PDF-fence'),
+        pdfSize: 10,
+        pdfSignature: 'fence',
+        validUntil: new Date(integrationClock.getTime() + 86_400_000),
+      };
+    },
+    transport: async () => {
+      staleTransportCalls += 1;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+
+  const running = staleModule.process(delivery.id);
+  await enteredPreparation.promise;
+  assert.equal(staleTransportCalls, 0);
+
+  // The worker is not dead, only slow: the database lease elapses while it is
+  // still in preparation. Recovery and renewal both read the database clock, so
+  // moving the injectable application clock would prove nothing.
+  await setDelivery(delivery.id, { leaseUntil: old });
+
+  // A competing worker recovers the expired lease: the stale step becomes
+  // `reconciling` and the lease token is revoked.
+  const recovered = await integrationRepository.claim({ deliveryId: delivery.id });
+  assert.equal(recovered, null);
+  const afterRecovery = await repository.get(delivery.id);
+  assert.equal(afterRecovery?.steps[0]?.state, 'reconciling');
+  assert.equal(afterRecovery?.state, 'reconciling');
+
+  releasePreparation.resolve();
+  const settled = await running;
+
+  // Zero transport from the fenced stale owner: it cannot dispatch after losing
+  // ownership, and it must not convert the loss into an ambiguity or a retry of
+  // its own.
+  assert.equal(staleTransportCalls, 0);
+  const durable = await repository.get(delivery.id);
+  assert.equal(durable?.steps[0]?.state, 'reconciling');
+  assert.equal(durable?.steps[0]?.attemptCount, 1);
+  assert.equal(durable?.state, 'reconciling');
+  assert.equal(settled?.steps[0]?.state, 'reconciling');
+
+  // Exactly one legitimate durable classification remains available: the
+  // reconciliation is the only honest classifier, and once its deadline passes
+  // it becomes `needs_review` — never a silent second send.
+  await setDelivery(delivery.id, { reconciliationDeadline: old });
+  assert.equal(await repository.expireReconciliations(10), 1);
+  const classified = await repository.get(delivery.id);
+  assert.equal(classified?.state, 'needs_review');
+
+  // A later legitimate worker must not resend the ambiguous step.
+  const followUpModule = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    transport: async () => {
+      competingTransportCalls += 1;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+  const resumed = await followUpModule.process(delivery.id);
+  assert.equal(competingTransportCalls, 0);
+  assert.equal(resumed?.state, 'needs_review');
+  assert.equal((await repository.get(delivery.id))?.steps[0]?.state, 'needs_review');
+});
+
+databaseTest('a worker that still owns the lease renews it and dispatches exactly once', async () => {
+  integrationClock = new Date(now);
+  const flowId = `lease-fence-kept-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-lease-kept-${randomUUID()}`;
+  const delivery = await repository.enqueue(
+    input({ flowId, flowName: 'Lease fence kept', steps: [pdfStep(0)] })
+  );
+  let transportCalls = 0;
+  const enteredPreparation = Promise.withResolvers<void>();
+  const releasePreparation = Promise.withResolvers<void>();
+
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    prepareDeliveryDocument: async () => {
+      enteredPreparation.resolve();
+      await releasePreparation.promise;
+      return {
+        pdf: Buffer.from('%PDF-fence'),
+        pdfSize: 10,
+        pdfSignature: 'fence',
+        validUntil: new Date(integrationClock.getTime() + 86_400_000),
+      };
+    },
+    planner: async () => ({
+      revisionId: ids.revision,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Lease fence kept',
+      steps: [pdfStep(0)],
+    }),
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+
+  const running = module.process(delivery.id);
+  await enteredPreparation.promise;
+
+  // The lease has not expired: the pre-dispatch renewal succeeds and the
+  // dispatch result stays persistable.
+  releasePreparation.resolve();
+  const settled = await running;
+  assert.equal(transportCalls, 1);
+  assert.equal(settled?.state, 'provider_accepted');
+  assert.equal(settled?.steps[0]?.state, 'server_ack');
+  const [stored] = await db
+    .select({
+      providerMessageId: quotationDeliverySteps.providerMessageId,
+      state: quotationDeliverySteps.state,
+    })
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.deliveryId, delivery.id));
+  assert.equal(stored?.providerMessageId, providerMessageId);
+  assert.equal(stored?.state, 'server_ack');
+});
+
+databaseTest('renewLease refuses a step that is no longer sending or whose token was revoked', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'renew-lease-guard', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+
+  // Wrong token: never renews.
+  assert.equal(
+    await repository.renewLease({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: randomUUID(),
+    }),
+    false,
+  );
+
+  // The owning token renews while the step is still `sending`.
+  assert.equal(
+    await repository.renewLease({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: claim.leaseToken,
+    }),
+    true,
+  );
+
+  // Once the step leaves `sending`, renewal is impossible even with the token.
+  await setStep(claim.step.id, { state: 'reconciling' });
+  assert.equal(
+    await repository.renewLease({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: claim.leaseToken,
+    }),
+    false,
+  );
+});
+
+databaseTest('expired recovery and an overlapping pre-dispatch renewal serialize on the delivery row', async () => {
+  // Real overlapping sessions, not sequential calls: the stale worker's lease
+  // expires, recovery takes the delivery row and is paused before it revokes the
+  // step, and the pre-dispatch renewal contends for the exact same fence. The
+  // winner is decided by the row lock and the exact provider POST count is zero.
+  integrationClock = new Date(now);
+  const flowId = `lease-race-${randomUUID().slice(0, 8)}`;
+  const delivery = await repository.enqueue(
+    input({ flowId, flowName: 'Lease race', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+
+  // The worker is only slow: the database lease elapses while it is still in
+  // preparation. Recovery reads `clock_timestamp()`, so the expiry is expressed
+  // in database time instead of a mutable application clock.
+  await setDelivery(delivery.id, { leaseUntil: old });
+
+  const recoveryClient = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-lease-recovery' },
+  });
+  const renewalClient = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-lease-renewal' },
+  });
+  const pauseClient = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-lease-pause' },
+  });
+  const recoveryRepository = createPostgresQuotationDeliveryOutboxRepository(
+    () => drizzle(recoveryClient, { schema }),
+    { now: () => new Date(integrationClock) },
+  );
+  const renewalRepository = createPostgresQuotationDeliveryOutboxRepository(
+    () => drizzle(renewalClient, { schema }),
+    { now: () => new Date(integrationClock) },
+  );
+
+  const stepLockHeld = Promise.withResolvers<void>();
+  const releaseStepLock = Promise.withResolvers<void>();
+  const holdStep = pauseClient.begin(async (tx) => {
+    await tx`SELECT id FROM quotation_delivery_steps WHERE id = ${claim.step.id}::uuid FOR UPDATE`;
+    stepLockHeld.resolve();
+    await releaseStepLock.promise;
+  });
+
+  try {
+    await stepLockHeld.promise;
+    // Recovery locks the delivery row (FOR UPDATE) and then blocks on the held
+    // step row, exactly between its first and second durable transitions.
+    const recovery = recoveryRepository.claim({ deliveryId: delivery.id });
+    await waitForBackendLock('adv-lease-recovery');
+
+    let renewalSettled = false;
+    const renewal = renewalRepository.renewLease({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: claim.leaseToken,
+    });
+    renewal.then(
+      () => {
+        renewalSettled = true;
+      },
+      () => {
+        renewalSettled = true;
+      },
+    );
+    const outcome = await waitForRenewalOutcome('adv-lease-renewal', () => renewalSettled);
+
+    releaseStepLock.resolve();
+    await holdStep;
+    await recovery;
+    const renewed = await renewal;
+
+    // The loser of the fence is exactly the worker that may not dispatch: an
+    // expired recovery revokes the lease, so the provider POST count is zero.
+    // Repairing the serialization makes this deterministic regardless of the
+    // observed interleaving; with recovery uncommitted and the token intact the
+    // old unlocked renewal would have returned true here and produced a POST.
+    let providerPosts = 0;
+    if (renewed) providerPosts += 1;
+    assert.equal(
+      outcome === 'settled' && renewed,
+      false,
+      'a renewal that settles while recovery is mid-transition must not win',
+    );
+    assert.equal(renewed, false, 'renewal must lose to committed expired recovery');
+    assert.equal(providerPosts, 0);
+
+    const durable = await repository.get(delivery.id);
+    assert.equal(durable?.steps[0]?.state, 'reconciling');
+    assert.equal(durable?.state, 'reconciling');
+    assert.equal(durable?.leaseToken ?? null, null);
+  } finally {
+    releaseStepLock.resolve();
+    await holdStep.catch(() => {});
+    await recoveryClient.end({ timeout: 5 });
+    await renewalClient.end({ timeout: 5 });
+    await pauseClient.end({ timeout: 5 });
+  }
+});
+
+databaseTest('a renewal whose row-lock wait outlives the offered lease still persists a live database-time lease', async () => {
+  // Red-capable adversarial case: the renewal call blocks on the delivery row
+  // for longer than the lease it is about to grant. A timestamp captured before
+  // the lock wait would persist an already-expired lease and still return true,
+  // letting the worker dispatch into a lease recovery already revoked.
+  const flowId = `lease-short-renewal-${randomUUID().slice(0, 8)}`;
+  const delivery = await repository.enqueue(
+    input({ flowId, flowName: 'Short renewal', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+
+  const pauseClient = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-lease-short-pause' },
+  });
+  const renewalClient = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-lease-short-renewal' },
+  });
+  const renewalRepository = createPostgresQuotationDeliveryOutboxRepository(
+    () => drizzle(renewalClient, { schema }),
+    { now: () => new Date(now), leaseMs: 500 },
+  );
+
+  const rowLockHeld = Promise.withResolvers<void>();
+  const releaseRowLock = Promise.withResolvers<void>();
+  const holdRow = pauseClient.begin(async (tx) => {
+    await tx`SELECT id FROM quotation_deliveries WHERE id = ${delivery.id}::uuid FOR UPDATE`;
+    rowLockHeld.resolve();
+    await releaseRowLock.promise;
+  });
+
+  try {
+    await rowLockHeld.promise;
+    let renewalSettled = false;
+    const renewal = renewalRepository.renewLease({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: claim.leaseToken,
+    });
+    renewal.then(
+      () => {
+        renewalSettled = true;
+      },
+      () => {
+        renewalSettled = true;
+      },
+    );
+    const outcome = await waitForRenewalOutcome('adv-lease-short-renewal', () => renewalSettled);
+    assert.equal(outcome, 'blocked', 'the renewal must wait behind the held delivery row');
+
+    // The lock wait exceeds the lease the renewal will offer, in real time.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    releaseRowLock.resolve();
+    await holdRow;
+    assert.equal(await renewal, true, 'the renewal owns the fence');
+
+    const [liveRow] = (await db.execute(sql`
+      SELECT lease_until > clock_timestamp() AS live
+      FROM quotation_deliveries
+      WHERE id = ${delivery.id}::uuid
+    `)) as unknown as Array<{ live: boolean }>;
+    assert.equal(
+      liveRow?.live,
+      true,
+      'a true renewal must persist a lease that is live on the database clock',
+    );
+    const [leaseRow] = await db
+      .select({ leaseToken: quotationDeliveries.leaseToken })
+      .from(quotationDeliveries)
+      .where(eq(quotationDeliveries.id, delivery.id));
+    assert.equal(leaseRow?.leaseToken, claim.leaseToken);
+
+    // A live renewal must not be revoked by a later recovery pass.
+    assert.equal(await integrationRepository.claim({ deliveryId: delivery.id }), null);
+    const durable = await repository.get(delivery.id);
+    assert.equal(durable?.steps[0]?.state, 'sending');
+  } finally {
+    releaseRowLock.resolve();
+    await holdRow.catch(() => {});
+    await pauseClient.end({ timeout: 5 });
+    await renewalClient.end({ timeout: 5 });
+  }
+});
+
+databaseTest('a committed renewal prevents a later expired recovery from revoking the owner', async () => {
+  integrationClock = new Date(now);
+  const delivery = await repository.enqueue(
+    input({ flowId: 'renewal-first', flowName: 'Renewal first', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+
+  // The pre-dispatch fence succeeds first and extends the lease on the database
+  // clock; no mutable application-clock advance is involved.
+  assert.equal(
+    await integrationRepository.renewLease({
+      deliveryId: delivery.id,
+      stepId: claim.step.id,
+      leaseToken: claim.leaseToken,
+    }),
+    true,
+  );
+  const [renewed] = (await db.execute(sql`
+    SELECT lease_until > clock_timestamp() AS live
+    FROM quotation_deliveries
+    WHERE id = ${delivery.id}::uuid
+  `)) as unknown as Array<{ live: boolean }>;
+  assert.equal(renewed?.live, true, 'the committed renewal must be live on the database clock');
+
+  // Recovery now reads the extended lease under the same row lock and
+  // must not revoke a live owner or touch its `sending` step.
+  assert.equal(await integrationRepository.claim({ deliveryId: delivery.id }), null);
+  const durable = await repository.get(delivery.id);
+  assert.equal(durable?.steps[0]?.state, 'sending');
+  const [lease] = await db
+    .select({ leaseToken: quotationDeliveries.leaseToken })
+    .from(quotationDeliveries)
+    .where(eq(quotationDeliveries.id, delivery.id));
+  assert.equal(lease?.leaseToken, claim.leaseToken);
+});
+
+databaseTest('receipt reconciliation makes bounded progress past a poison row and still claims due outbound work', async () => {
+  integrationClock = new Date(now);
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const poisonDeliveryId = randomUUID();
+  const poisonFollowUpId = randomUUID();
+  const poisonProviderId = `provider-poison-${randomUUID()}`;
+
+  async function seedAwaitingReceipt(
+    index: number,
+    createdAt: Date,
+    deliveryId = randomUUID(),
+    followUpId = randomUUID(),
+    providerMessageId = `provider-window-${index}-${randomUUID()}`,
+  ): Promise<string> {
+    const phone = `55119${String(900000 + index).padStart(8, '0')}`;
+    const clientId = randomUUID();
+    const quotationId = randomUUID();
+    const revisionId = randomUUID();
+    const crmDealId = randomUUID();
+    await db.insert(clients).values({ id: clientId, nome: `Receipt window ${index}` });
+    await db.insert(quotations).values({
+      id: quotationId,
+      businessNumber: `ORC-${String(followUpBusinessSequence++).padStart(8, '0')}`,
+      clientId,
+      status: 'emitido',
+      issuedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await db.insert(crmDeals).values({
+      id: crmDealId,
+      quotationId,
+      clientId,
+      nome: `Receipt window ${index}`,
+      status: 'Orcamento Enviado',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await db.insert(quoteRevisions).values({
+      ...fixtureFields,
+      id: revisionId,
+      quotationId,
+      version: 1,
+      status: 'emitido',
+      issuedAt: createdAt,
+      validadeDias: 15,
+      entrega: '',
+      fretePadrao: '0.00',
+      frete: '0.00',
+      clienteNome: `Receipt window ${index}`,
+      companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+      subtotal: '0.00',
+      total: '0.00',
+      createdAt,
+    });
+    followUpCleanupIds.push({ clientId, quotationId, revisionId, crmDealId });
+    await db.insert(quotationDeliveries).values({
+      id: deliveryId,
+      revisionId,
+      phone,
+      flowId: `receipt-window-${index}-${randomUUID().slice(0, 8)}`,
+      flowName: 'Receipt window',
+      state: 'delivered',
+      completionSource: 'provider_receipt',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await db.insert(quotationDeliverySteps).values({
+      id: randomUUID(),
+      deliveryId,
+      position: 0,
+      type: 'text',
+      payloadSnapshot: { text: `window-${index}`, delayMs: 0 },
+      state: 'delivered',
+      providerMessageId,
+      attemptCount: 1,
+      acceptedAt: createdAt,
+      deliveredAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await db.insert(quotationFollowUps).values({
+      id: followUpId,
+      quotationId,
+      revisionId,
+      deliveryId,
+      instance: followUpInstance,
+      providerConversationId: `${phone}@s.whatsapp.net`,
+      canonicalPhone: phone,
+      state: 'awaiting_receipt',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    return deliveryId;
+  }
+
+  // An entire reconciliation slice of oldest candidates fails forever. Without
+  // durable retry-order rotation those same rows are re-selected by every pass,
+  // so later recoverable candidates starve; with rotation the failures move to
+  // the tail and the recoverable window is reached.
+  const oldest = new Date(now.getTime() - 10_000_000);
+  const poisonIds: string[] = [poisonDeliveryId];
+  await seedAwaitingReceipt(0, oldest, poisonDeliveryId, poisonFollowUpId, poisonProviderId);
+  for (let index = 1; index < FOLLOW_UP_RECONCILIATION_BATCH; index += 1) {
+    poisonIds.push(
+      await seedAwaitingReceipt(index, new Date(oldest.getTime() + index * 1_000)),
+    );
+  }
+
+  // 51+ candidates total: the recoverable rows sit behind a full failing slice.
+  const recoverableIds: string[] = [];
+  for (let index = FOLLOW_UP_RECONCILIATION_BATCH; index <= 52; index += 1) {
+    recoverableIds.push(
+      await seedAwaitingReceipt(index, new Date(oldest.getTime() + index * 1_000)),
+    );
+  }
+  const pending: string[] = [...poisonIds, ...recoverableIds];
+
+  const poisonSet = new Set(poisonIds);
+  const followUpDeps = {
+    upsertAwaitingReceiptFromAcceptedDelivery: (value: Parameters<
+      NonNullable<typeof followUp.upsertAwaitingReceiptFromAcceptedDelivery>
+    >[0]) => followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+    listAcceptedDeliveriesMissingFollowUp: () => Promise.resolve({ data: [], hasMore: false }),
+    listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
+      followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+    markReceiptProjectionAttempt: (value, options) =>
+      followUp.markReceiptProjectionAttempt!(value, options),
+    upsertFromDeliveryReceipt: async (value, options) => {
+      if (poisonSet.has(value.deliveryId)) throw new Error('poison projection');
+      return followUp.upsertFromDeliveryReceipt!(value as never, options);
+    },
+  };
+
+  // A due outbound claim shares the invocation. Reconciliation failures and
+  // bound must never consume the claim path's capacity.
+  const dueRevisionId = await createIssuedRevision();
+  const dueFlowId = `due-with-reconciliation-${randomUUID().slice(0, 8)}`;
+  const dueDelivery = await repository.enqueue(
+    input({ revisionId: dueRevisionId, flowId: dueFlowId, steps: [textStep(0)] })
+  );
+  let transportCalls = 0;
+  const workerModule = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: followUpDeps,
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: `provider-due-${randomUUID()}` };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const batch = await workerModule.processDue(3);
+  assert.equal(transportCalls, 1);
+  assert.equal((await repository.get(dueDelivery.id))?.state, 'provider_accepted');
+  // Reconciliation had far more than one slice of candidates, so the next
+  // invocation must be told there is work left.
+  assert.equal(batch.remaining, true);
+
+  // Bounded slices plus rotation: repeated invocations keep making progress
+  // instead of re-processing the same oldest window, and the persistent failure
+  // cannot monopolize it.
+  const remainingAwaiting = async (): Promise<string[]> =>
+    (
+      await db
+        .select({ deliveryId: quotationFollowUps.deliveryId })
+        .from(quotationFollowUps)
+        .where(
+          and(
+            inArray(quotationFollowUps.deliveryId, pending),
+            eq(quotationFollowUps.state, 'awaiting_receipt')
+          )
+        )
+    ).map((row) => row.deliveryId);
+
+  const firstRemaining = await remainingAwaiting();
+  assert.equal(firstRemaining.includes(poisonDeliveryId), true);
+  // Progress already happened within the first invocation: the failing head
+  // rotated and the recoverable window behind it was projected.
+  assert.equal(
+    firstRemaining.length < pending.length,
+    true,
+    'the first invocation must already make progress past the poison slice',
+  );
+  // ...but the work is bounded: one invocation cannot drain all 53 candidates,
+  // so a slow or poisoned slice can never monopolize the function budget.
+  assert.equal(
+    firstRemaining.length > poisonIds.length,
+    true,
+    'one invocation must not reconcile the whole backlog',
+  );
+
+  // Rotation: each later invocation moves attempted rows to the tail, so the
+  // recoverable rows behind the failing slice are eventually reached. With
+  // head-of-line selection they never would be.
+  for (let pass = 0; pass < 8; pass += 1) {
+    await workerModule.processDue(3);
+    if ((await remainingAwaiting()).length <= poisonIds.length) break;
+  }
+
+  // Only the honest poison candidates stay `awaiting_receipt`; every recoverable
+  // seeded candidate converged to its projected state.
+  const converged = await remainingAwaiting();
+  assert.deepEqual([...converged].sort(), [...poisonIds].sort());
+  assert.equal(pending.length, 53);
+  assert.equal(poisonIds.length, FOLLOW_UP_RECONCILIATION_BATCH);
+});
+
+databaseTest('a blocked reconciliation statement is cancelled by the server-side statement timeout', async () => {
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const blocker = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-timeout-blocker' },
+  });
+  const locked = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const hold = blocker.begin(async (tx) => {
+    await tx`LOCK TABLE quotation_follow_ups IN ACCESS EXCLUSIVE MODE`;
+    locked.resolve();
+    await release.promise;
+  });
+  try {
+    await locked.promise;
+    // Safety net: if the server-side timeout is broken the statement would block
+    // forever; release after 4s so the assertion fails instead of hanging. With
+    // the timeout it is cancelled by PostgreSQL well before that.
+    const releaseTimer = setTimeout(() => release.resolve(), 4_000);
+    const startedAt = Date.now();
+    await assert.rejects(
+      followUp.listAwaitingReceiptWithCompletedDelivery!({ limit: 1 }, { timeoutMs: 300 }),
+    );
+    const elapsed = Date.now() - startedAt;
+    clearTimeout(releaseTimer);
+    assert.ok(elapsed < 3_000, `statement timeout did not cancel the held query (took ${elapsed}ms)`);
+  } finally {
+    release.resolve();
+    await hold.catch(() => {});
+    await blocker.end({ timeout: 5 });
+  }
+});
+
+databaseTest('duplicate callbacks stay idempotent in the durable inbox', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'duplicate-inbox', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  const providerMessageId = `provider-inbox-duplicate-${randomUUID()}`;
+  await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId,
+  });
+
+  const first = await repository.receiveReceipt({ providerMessageId, status: 'DELIVERY_ACK' });
+  const second = await repository.receiveReceipt({ providerMessageId, status: 'DELIVERY_ACK' });
+  assert.equal(first?.steps[0]?.state, 'delivered');
+  assert.equal(second?.steps[0]?.state, 'delivered');
+  const rows = await db
+    .select()
+    .from(evolutionReceiptInbox)
+    .where(eq(evolutionReceiptInbox.providerMessageId, providerMessageId));
+  assert.equal(rows.length, 1);
+  assert.equal(rows.filter((row) => row.status === 'DELIVERY_ACK').length, 1);
+});
+
+databaseTest('a receipt never resurrects an operator-cancelled step', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'cancelled-receipt', steps: [textStep(0)] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  const providerMessageId = `provider-cancelled-${randomUUID()}`;
+  await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId,
+  });
+  await setStep(claim.step.id, { state: 'failed', publicError: 'Cancelada pelo operador.' });
+  await setDelivery(delivery.id, {
+    state: 'failed',
+    completionSource: 'operator',
+    publicError: 'Cancelada pelo operador.',
+  });
+
+  const receipt = await repository.receiveReceipt({ providerMessageId, status: 'READ' });
+  assert.equal(receipt?.state, 'failed');
+  assert.equal(receipt?.completionSource, 'operator');
+  assert.equal(receipt?.steps[0]?.state, 'failed');
+});
+
+databaseTest('the durable inbox is pruned by receipt age', async () => {
+  const stale = new Date(now.getTime() - 31 * 86_400_000);
+  await db.insert(evolutionReceiptInbox).values([
+    {
+      id: randomUUID(),
+      providerMessageId: `prune-applied-${randomUUID()}`,
+      status: 'DELIVERY_ACK',
+      receivedAt: stale,
+      appliedAt: stale,
+    },
+    {
+      id: randomUUID(),
+      providerMessageId: `prune-pending-${randomUUID()}`,
+      status: 'SERVER_ACK',
+      receivedAt: stale,
+    },
+    {
+      id: randomUUID(),
+      providerMessageId: `prune-fresh-${randomUUID()}`,
+      status: 'SERVER_ACK',
+      receivedAt: now,
+    },
+  ]);
+
+  await repository.receiveReceipt({
+    providerMessageId: `prune-trigger-${randomUUID()}`,
+    status: 'PENDING',
+  });
+
+  const remaining = await db.select().from(evolutionReceiptInbox);
+  assert.equal(remaining.length, 2);
+  assert.equal(remaining.some((row) => row.providerMessageId.startsWith('prune-fresh-')), true);
+  assert.equal(remaining.some((row) => row.providerMessageId.startsWith('prune-trigger-')), true);
+});
+
+// ---------------------------------------------------------------------------
+// Correction round 5: true deadlines/cancellation, durable rotation and
+// fairness, honest saturation reporting, and PLAYED receipt clock folding.
+// ---------------------------------------------------------------------------
+
+interface ProjectionFixture {
+  deliveryId: string;
+  followUpId: string | null;
+  providerMessageId: string;
+  revisionId: string;
+  phone: string;
+}
+
+async function seedProjectionFixture(
+  index: number,
+  createdAt: Date,
+  mode: 'accepted' | 'receipt'
+): Promise<ProjectionFixture> {
+  const phone = `55118${String(700000 + index).padStart(8, '0')}`;
+  const clientId = randomUUID();
+  const quotationId = randomUUID();
+  const revisionId = randomUUID();
+  const crmDealId = randomUUID();
+  const deliveryId = randomUUID();
+  const providerMessageId = `provider-${mode}-${index}-${randomUUID()}`;
+  await db.insert(clients).values({ id: clientId, nome: `Projection ${mode} ${index}` });
+  await db.insert(quotations).values({
+    id: quotationId,
+    businessNumber: `ORC-${String(followUpBusinessSequence++).padStart(8, '0')}`,
+    clientId,
+    status: 'emitido',
+    issuedAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  await db.insert(crmDeals).values({
+    id: crmDealId,
+    quotationId,
+    clientId,
+    nome: `Projection ${mode} ${index}`,
+    status: 'Orcamento Enviado',
+    createdAt,
+    updatedAt: createdAt,
+  });
+  await db.insert(quoteRevisions).values({
+    ...fixtureFields,
+    id: revisionId,
+    quotationId,
+    version: 1,
+    status: 'emitido',
+    issuedAt: createdAt,
+    validadeDias: 15,
+    entrega: '',
+    fretePadrao: '0.00',
+    frete: '0.00',
+    clienteNome: `Projection ${mode} ${index}`,
+    companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+    subtotal: '0.00',
+    total: '0.00',
+    createdAt,
+  });
+  followUpCleanupIds.push({ clientId, quotationId, revisionId, crmDealId });
+  if (mode === 'receipt') {
+    await db.insert(quotationDeliveries).values({
+      id: deliveryId,
+      revisionId,
+      phone,
+      flowId: `projection-receipt-${index}-${randomUUID().slice(0, 8)}`,
+      flowName: 'Projection receipt',
+      state: 'delivered',
+      completionSource: 'provider_receipt',
+      deliveredAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    await db.insert(quotationDeliverySteps).values({
+      id: randomUUID(),
+      deliveryId,
+      position: 0,
+      type: 'text',
+      payloadSnapshot: { text: `projection-${index}`, delayMs: 0 },
+      state: 'delivered',
+      providerMessageId,
+      attemptCount: 1,
+      acceptedAt: createdAt,
+      deliveredAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+    const followUpId = randomUUID();
+    await db.insert(quotationFollowUps).values({
+      id: followUpId,
+      quotationId,
+      revisionId,
+      deliveryId,
+      instance: followUpInstance,
+      providerConversationId: `${phone}@s.whatsapp.net`,
+      canonicalPhone: phone,
+      state: 'awaiting_receipt',
+      createdAt,
+      updatedAt: createdAt,
+    });
+    return { deliveryId, followUpId, providerMessageId, revisionId, phone };
+  }
+  await db.insert(quotationDeliveries).values({
+    id: deliveryId,
+    revisionId,
+    phone,
+    flowId: `projection-accepted-${index}-${randomUUID().slice(0, 8)}`,
+    flowName: 'Projection accepted',
+    state: 'provider_accepted',
+    createdAt,
+    updatedAt: createdAt,
+  });
+  await db.insert(quotationDeliverySteps).values({
+    id: randomUUID(),
+    deliveryId,
+    position: 0,
+    type: 'text',
+    payloadSnapshot: { text: `projection-${index}`, delayMs: 0 },
+    state: 'server_ack',
+    providerMessageId,
+    attemptCount: 1,
+    acceptedAt: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  });
+  return { deliveryId, followUpId: null, providerMessageId, revisionId, phone };
+}
+
+databaseTest('a queued bounded reconciliation statement is cancelled and can never commit after the deadline', async () => {
+  const fixture = await seedProjectionFixture(9001, new Date(now.getTime() - 100_000), 'accepted');
+  // A dedicated pool with max: 1 mirrors the serverless pool: while its only
+  // connection is held, any bounded statement queues behind it.
+  const dedicated = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-r5-queued' },
+  });
+  const dedicatedDb = drizzle(dedicated, { schema });
+  const dedicatedRepository = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
+  const held = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const hold = dedicated.begin(async (tx) => {
+    await tx`SELECT 1`;
+    held.resolve();
+    await release.promise;
+  });
+  try {
+    await held.promise;
+    const deadline = createDbDeadline(250);
+    const startedAt = Date.now();
+    await assert.rejects(
+      dedicatedRepository.markAcceptanceProjectionAttempt!(
+        { deliveryId: fixture.deliveryId },
+        { deadline }
+      ),
+    );
+    assert.ok(
+      Date.now() - startedAt < 2_000,
+      'the queued statement must be cancelled at the deadline, not wait for the connection',
+    );
+
+    // Releasing the only connection must not let the cancelled queued write run.
+    release.resolve();
+    await hold;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const [row] = await db
+      .select({ marker: quotationDeliveries.followUpProjectionAttemptedAt })
+      .from(quotationDeliveries)
+      .where(eq(quotationDeliveries.id, fixture.deliveryId));
+    assert.equal(row?.marker, null, 'a post-deadline queued write must never commit');
+  } finally {
+    release.resolve();
+    await hold.catch(() => {});
+    await dedicated.end({ timeout: 5 });
+  }
+});
+
+databaseTest('a reconciliation statement blocked on a held lock is cancelled at the deadline, writes nothing later and frees the sole connection', async () => {
+  const fixture = await seedProjectionFixture(9200, new Date(now.getTime() - 100_000), 'accepted');
+  // The dedicated pool mirrors the serverless `max: 1` pool used by the worker.
+  const dedicated = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'r7-atomic-target' },
+  });
+  const dedicatedDb = drizzle(dedicated, { schema });
+  const dedicatedFollowUp = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
+  const dedicatedOutbox = createPostgresQuotationDeliveryOutboxRepository(() => dedicatedDb, {
+    now: () => new Date(now),
+  });
+  const blocker = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'r7-atomic-blocker' },
+  });
+  const held = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const clientRows = (await db.execute(sql`
+    SELECT q.client_id AS client_id
+    FROM quotation_deliveries d
+    JOIN quote_revisions r ON r.id = d.revision_id
+    JOIN quotations q ON q.id = r.quotation_id
+    WHERE d.id = ${fixture.deliveryId}::uuid
+  `)) as unknown as Array<{ client_id: string }>;
+  const clientId = clientRows[0]!.client_id;
+  // The blocker holds the exact client row the atomic upsert's `FOR UPDATE OF cl`
+  // must acquire, so the reconciliation statement runs (not queues) and blocks.
+  const hold = blocker.begin(async (tx) => {
+    await tx`SELECT id FROM clients WHERE id = ${clientId}::uuid FOR UPDATE`;
+    held.resolve();
+    await release.promise;
+  });
+  try {
+    await held.promise;
+    const startedAt = Date.now();
+    await assert.rejects(
+      dedicatedFollowUp.upsertAwaitingReceiptFromAcceptedDelivery!(
+        {
+          deliveryId: fixture.deliveryId,
+          revisionId: fixture.revisionId,
+          phone: fixture.phone,
+          providerMessageId: fixture.providerMessageId,
+        },
+        { deadline: createDbDeadline(300) },
+      ),
+    );
+    assert.ok(
+      Date.now() - startedAt < 2_000,
+      'a statement blocked on a held lock must be cancelled at the deadline',
+    );
+
+    release.resolve();
+    await hold;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const rows = await db
+      .select()
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.deliveryId, fixture.deliveryId));
+    assert.equal(rows.length, 0, 'a cancelled statement must never write after the lock releases');
+    const stuck = (await db.execute(sql`
+      SELECT 1 FROM pg_stat_activity
+      WHERE application_name = 'r7-atomic-target' AND state = 'idle in transaction'
+    `)) as unknown as unknown[];
+    assert.equal(Array.from(stuck).length, 0, 'no transaction may dangle after the caller returns');
+
+    // The sole connection is immediately usable for the outbound claim path.
+    const revisionId = await createIssuedRevision();
+    const flowId = `r7-atomic-reclaim-${randomUUID().slice(0, 8)}`;
+    const due = await repository.enqueue(input({ revisionId, flowId, steps: [textStep(0)] }));
+    const claimed = await dedicatedOutbox.claim();
+    assert.ok(claimed, 'the pool must be usable immediately for a due outbound claim');
+    assert.equal(claimed!.delivery.id, due.id);
+  } finally {
+    release.resolve();
+    await hold.catch(() => {});
+    await blocker.end({ timeout: 5 });
+    await dedicated.end({ timeout: 5 });
+  }
+});
+
+databaseTest('PLAYED before acceptance folds the durable inbox clock, not the acceptance clock', async () => {
+  integrationClock = new Date(now);
+  const revisionId = await createIssuedRevision();
+  const flowId = `played-clock-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-played-clock-${randomUUID()}`;
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const enteredTransport = Promise.withResolvers<void>();
+  const releaseTransport = Promise.withResolvers<void>();
+
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+      upsertFromDeliveryReceipt: (value, options) =>
+        followUp.upsertFromDeliveryReceipt!(value, options),
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+    },
+    planner: async () => ({
+      revisionId,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Played clock',
+      steps: [textStep(0)],
+    }),
+    transport: async () => {
+      enteredTransport.resolve();
+      await releaseTransport.promise;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const running = module.enqueue({ revisionId, flowId });
+  await enteredTransport.promise;
+
+  // The PLAYED receipt lands first, at t0. The acceptance is persisted only at
+  // t0 + 3h: folding must use the inbox receipt time, not the acceptance clock.
+  const receiptAt = new Date(integrationClock);
+  assert.equal(
+    await module.applyEvolutionEvent({
+      instance: followUpInstance,
+      providerMessageId,
+      fromMe: true,
+      status: 'PLAYED',
+    }),
+    null,
+  );
+  integrationClock = new Date(receiptAt.getTime() + 3 * 3_600_000);
+  releaseTransport.resolve();
+  const accepted = await running;
+  assert.equal(accepted.state, 'delivered');
+  assert.equal(accepted.steps[0]?.state, 'read');
+
+  const rows = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.state, 'waiting');
+  assert.equal(rows[0]?.firstProviderReceiptAt?.getTime(), receiptAt.getTime());
+  assert.equal(
+    rows[0]?.dueAt?.getTime(),
+    rows[0]!.firstProviderReceiptAt!.getTime() + 24 * 60 * 60 * 1000,
+  );
+
+  const [step] = await db
+    .select({ readAt: quotationDeliverySteps.readAt })
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.deliveryId, accepted.id));
+  assert.equal(step?.readAt?.getTime(), receiptAt.getTime());
+  assert.notEqual(step?.readAt?.getTime(), integrationClock.getTime());
+});
+
+databaseTest('an immediate PLAYED receipt projects a follow-up from the inbox clock', async () => {
+  integrationClock = new Date(now);
+  const revisionId = await createIssuedRevision();
+  const flowId = `played-immediate-${randomUUID().slice(0, 8)}`;
+  const providerMessageId = `provider-played-immediate-${randomUUID()}`;
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  let transportCalls = 0;
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+      upsertFromDeliveryReceipt: (value, options) =>
+        followUp.upsertFromDeliveryReceipt!(value, options),
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+    },
+    planner: async () => ({
+      revisionId,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Played immediate',
+      steps: [textStep(0)],
+    }),
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const accepted = await module.enqueue({ revisionId, flowId });
+  assert.equal(accepted.state, 'provider_accepted');
+
+  // Skew the clock forward before the PLAYED arrives: the inbox `received_at`
+  // is the projection clock, exactly as it was stored at webhook time.
+  const playedAt = new Date(integrationClock.getTime() + 5 * 3_600_000);
+  integrationClock = playedAt;
+  const receipt = await module.applyEvolutionEvent({
+    instance: followUpInstance,
+    providerMessageId,
+    fromMe: true,
+    status: 'PLAYED',
+  });
+  assert.equal(receipt?.steps[0]?.state, 'read');
+
+  const rows = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.quotationId, ids.quotation));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.state, 'waiting');
+  assert.equal(rows[0]?.firstProviderReceiptAt?.getTime(), playedAt.getTime());
+  assert.equal(transportCalls, 1);
+});
+
+databaseTest('51+ poison acceptance candidates cannot starve candidate 51 and outbound claims still run', async () => {
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const oldest = new Date(now.getTime() - 1_000_000);
+  const poison: string[] = [];
+  for (let index = 0; index < 51; index += 1) {
+    const fixture = await seedProjectionFixture(
+      index,
+      new Date(oldest.getTime() + index * 1_000),
+      'accepted',
+    );
+    poison.push(fixture.deliveryId);
+  }
+  const recoverable = await seedProjectionFixture(51, new Date(oldest.getTime() + 51_000), 'accepted');
+  const poisonSet = new Set(poison);
+  const attempted = new Set<string>();
+  const followUpDeps = {
+    listAcceptedDeliveriesMissingFollowUp: (filter: { limit?: number }, options: unknown) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options as never),
+    markAcceptanceProjectionAttempt: (value: { deliveryId: string }, options: unknown) =>
+      followUp.markAcceptanceProjectionAttempt!(value, options as never),
+    upsertAwaitingReceiptFromAcceptedDelivery: async (value: { deliveryId: string }, options: unknown) => {
+      attempted.add(value.deliveryId);
+      if (poisonSet.has(value.deliveryId)) throw new Error('poison acceptance');
+      return followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value as never, options as never);
+    },
+  };
+
+  const dueRevisionId = await createIssuedRevision();
+  const dueFlowId = `due-with-acceptance-${randomUUID().slice(0, 8)}`;
+  const due = await repository.enqueue(
+    input({ revisionId: dueRevisionId, flowId: dueFlowId, steps: [textStep(0)] }),
+  );
+  let transportCalls = 0;
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: followUpDeps,
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: `provider-due-${randomUUID()}` };
+    },
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  try {
+    for (let pass = 0; pass < 8; pass += 1) await module.processDue(1);
+    assert.equal(
+      attempted.has(recoverable.deliveryId),
+      true,
+      'candidate 51 must be reached despite 51 poison candidates',
+    );
+    const rows = await db
+      .select()
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.deliveryId, recoverable.deliveryId));
+    assert.equal(rows.length, 1);
+    assert.equal((await repository.get(due.id))?.state, 'provider_accepted');
+    assert.equal(transportCalls, 1);
+  } finally {
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
+});
+
+databaseTest('a saturated acceptance source reports remaining even when every attempted projection succeeds', async () => {
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const oldest = new Date(now.getTime() - 1_000_000);
+  for (let index = 0; index < 101; index += 1) {
+    await seedProjectionFixture(index, new Date(oldest.getTime() + index * 1_000), 'accepted');
+  }
+  const attempted = new Set<string>();
+  const followUpDeps = {
+    listAcceptedDeliveriesMissingFollowUp: (filter: { limit?: number }, options: unknown) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options as never),
+    markAcceptanceProjectionAttempt: (value: { deliveryId: string }, options: unknown) =>
+      followUp.markAcceptanceProjectionAttempt!(value, options as never),
+    // Successful no-op: the candidate never leaves the source, so a saturated
+    // source is the only reason work remains.
+    upsertAwaitingReceiptFromAcceptedDelivery: async (value: { deliveryId: string }) => {
+      attempted.add(value.deliveryId);
+    },
+  };
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: followUpDeps,
+    transport: async () => ({ accepted: true as const, providerMessageId: `provider-${randomUUID()}` }),
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  try {
+    const first = await module.processDue(1);
+    assert.equal(first.remaining, true, 'a saturated source must never report drained');
+    for (let pass = 0; pass < 10 && attempted.size < 101; pass += 1) {
+      await module.processDue(1);
+    }
+    assert.equal(attempted.size, 101, 'rotation must eventually reach every candidate');
+  } finally {
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
+});
+
+databaseTest('a slow receipt projection rotates durably without marking the projection successful', async () => {
+  const first = await seedProjectionFixture(300, new Date(now.getTime() - 10_000), 'receipt');
+  const second = await seedProjectionFixture(301, new Date(now.getTime() - 9_000), 'receipt');
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const attempted: string[] = [];
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: async () => ({ data: [], hasMore: false }),
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+      markReceiptProjectionAttempt: (value, options) =>
+        followUp.markReceiptProjectionAttempt!(value, options),
+      // The projection never settles: it is the deadline that must end it.
+      upsertFromDeliveryReceipt: (value) => {
+        attempted.push(value.deliveryId);
+        return new Promise(() => {});
+      },
+    },
+    transport: async () => ({ accepted: true as const, providerMessageId: `provider-${randomUUID()}` }),
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const startedAt = Date.now();
+  await module.processDue(1, 18_000);
+  assert.ok(Date.now() - startedAt < 17_000, 'a held projection must be bounded by the deadline');
+  assert.deepEqual(attempted, [first.deliveryId]);
+
+  const [firstRow] = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.id, first.followUpId!));
+  const [secondRow] = await db
+    .select()
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.id, second.followUpId!));
+  // Durable rotation happened even though the business projection did not.
+  assert.ok(
+    firstRow!.updatedAt.getTime() > secondRow!.updatedAt.getTime(),
+    'the timed-out candidate must rotate to the tail',
+  );
+  assert.equal(firstRow!.state, 'awaiting_receipt');
+  assert.equal(firstRow!.firstProviderReceiptAt, null);
+
+  // The next invocation starts from the row after the timed-out candidate.
+  attempted.length = 0;
+  await module.processDue(1, 18_000);
+  assert.equal(attempted[0], second.deliveryId);
+});
+
+databaseTest('a held lock on the immediate acceptance projection cannot strand the invocation and is recovered without a second POST', async () => {
+  integrationClock = new Date(now);
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const revisionId = await createIssuedRevision();
+  const flowId = `held-immediate-${randomUUID().slice(0, 8)}`;
+  const deliveryId = randomUUID();
+  await db.insert(quotationDeliveries).values({
+    id: deliveryId,
+    revisionId,
+    phone: '5511999999999',
+    flowId,
+    flowName: 'Held immediate',
+    state: 'queued',
+    nextAttemptAt: new Date(now),
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(quotationDeliverySteps).values({
+    id: randomUUID(),
+    deliveryId,
+    position: 0,
+    type: 'text',
+    payloadSnapshot: { text: 'held', delayMs: 0 },
+    state: 'queued',
+    attemptCount: 0,
+    nextAttemptAt: new Date(now),
+    createdAt: now,
+    updatedAt: now,
+  });
+  testRevisionIds.add(revisionId);
+
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  let transportCalls = 0;
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      markAcceptanceProjectionAttempt: (value, options) =>
+        followUp.markAcceptanceProjectionAttempt!(value, options),
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+    },
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: `provider-held-${randomUUID()}` };
+    },
+    now: () => new Date(integrationClock),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+
+  const blocker = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'adv-r5-immediate-blocker' },
+  });
+  const held = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const hold = blocker.begin(async (tx) => {
+    // The acceptance projection locks the client row (`FOR UPDATE OF cl`), so
+    // holding it simulates an external lock after provider acceptance.
+    await tx`SELECT id FROM clients WHERE id = ${ids.client}::uuid FOR UPDATE`;
+    held.resolve();
+    await release.promise;
+  });
+
+  try {
+    await held.promise;
+    const startedAt = Date.now();
+    await module.processDue(1, 3_000);
+    const elapsed = Date.now() - startedAt;
+    assert.ok(elapsed < 6_000, `a held projection must be bounded (took ${elapsed}ms)`);
+    assert.equal(transportCalls, 1, 'exactly one provider POST');
+
+    // Provider acceptance and its id are durable before the optional projection.
+    const accepted = await integrationRepository.get(deliveryId);
+    assert.equal(accepted?.state, 'provider_accepted');
+    assert.equal(accepted?.steps[0]?.state, 'server_ack');
+    const [stored] = await db
+      .select({ providerMessageId: quotationDeliverySteps.providerMessageId })
+      .from(quotationDeliverySteps)
+      .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
+    assert.ok(stored?.providerMessageId);
+    // The projection timed out: no follow-up yet, but the durable retry source
+    // (the accepted delivery) remains.
+    assert.equal(
+      (
+        await db
+          .select()
+          .from(quotationFollowUps)
+          .where(eq(quotationFollowUps.revisionId, revisionId))
+      ).length,
+      0,
+    );
+
+    // Releasing the lock lets the next invocation recover with no second POST.
+    release.resolve();
+    await hold;
+    // The timed-out projection must have been truly cancelled: a merely raced
+    // operation would commit its write as soon as the lock is released, before
+    // the recovery pass runs.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(
+      (
+        await db
+          .select()
+          .from(quotationFollowUps)
+          .where(eq(quotationFollowUps.revisionId, revisionId))
+      ).length,
+      0,
+      'a post-deadline projection must never commit on its own',
+    );
+    await module.processDue(1, 30_000);
+    const rows = await db
+      .select()
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.revisionId, revisionId));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.state, 'awaiting_receipt');
+    assert.equal(transportCalls, 1, 'recovery must never replay the provider POST');
+  } finally {
+    release.resolve();
+    await hold.catch(() => {});
+    await blocker.end({ timeout: 5 });
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Correction round 6: outer transaction-lifecycle cancellation, activity
+// convergence, and sticky-vs-saturated `remaining` semantics.
+// ---------------------------------------------------------------------------
+
+databaseTest('a reconciliation statement queued behind the sole connection is cancelled at the deadline and never writes', async () => {
+  const fixture = await seedProjectionFixture(9201, new Date(now.getTime() - 100_000), 'accepted');
+  const dedicated = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'r6-queued-acquire' },
+  });
+  const dedicatedDb = drizzle(dedicated, { schema });
+  const dedicatedFollowUp = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
+  const held = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const hold = dedicated.begin(async (tx) => {
+    await tx`SELECT 1`;
+    held.resolve();
+    await release.promise;
+  });
+  try {
+    await held.promise;
+    const deadline = createDbDeadline(250);
+    const startedAt = Date.now();
+    await assert.rejects(
+      dedicatedFollowUp.upsertAwaitingReceiptFromAcceptedDelivery!(
+        {
+          deliveryId: fixture.deliveryId,
+          revisionId: fixture.revisionId,
+          phone: fixture.phone,
+          providerMessageId: fixture.providerMessageId,
+        },
+        { deadline },
+      ),
+    );
+    assert.ok(
+      Date.now() - startedAt < 2_000,
+      'the queued statement must be cancelled at the deadline, not wait for the connection',
+    );
+
+    // Releasing the only connection must not let the cancelled statement run.
+    release.resolve();
+    await hold;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const rows = await db
+      .select()
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.deliveryId, fixture.deliveryId));
+    assert.equal(rows.length, 0, 'a reservation that lands after the deadline must never insert');
+  } finally {
+    release.resolve();
+    await hold.catch(() => {});
+    await dedicated.end({ timeout: 5 });
+  }
+});
+
+databaseTest('the sole connection is immediately usable for a due outbound claim after a cancelled reconciliation statement', async () => {
+  const revisionId = await createIssuedRevision();
+  const flowId = `r6-reclaim-${randomUUID().slice(0, 8)}`;
+  const due = await repository.enqueue(input({ revisionId, flowId, steps: [textStep(0)] }));
+  const fixture = await seedProjectionFixture(9203, new Date(now.getTime() - 100_000), 'accepted');
+  const dedicated = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    onnotice: () => {},
+    connection: { application_name: 'r6-reclaim-target' },
+  });
+  const dedicatedDb = drizzle(dedicated, { schema });
+  const dedicatedFollowUp = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
+  const dedicatedOutbox = createPostgresQuotationDeliveryOutboxRepository(() => dedicatedDb, {
+    now: () => new Date(now),
+  });
+  const held = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  // The blocker occupies the dedicated pool's only connection, so the single
+  // reconciliation statement queues behind it and is cancelled by the deadline.
+  const hold = dedicated.begin(async (tx) => {
+    await tx`SELECT 1`;
+    held.resolve();
+    await release.promise;
+  });
+  try {
+    await held.promise;
+    const deadline = createDbDeadline(250);
+    await assert.rejects(
+      dedicatedFollowUp.upsertAwaitingReceiptFromAcceptedDelivery!(
+        {
+          deliveryId: fixture.deliveryId,
+          revisionId: fixture.revisionId,
+          phone: fixture.phone,
+          providerMessageId: fixture.providerMessageId,
+        },
+        { deadline },
+      ),
+    );
+
+    release.resolve();
+    await hold;
+    const claimed = await dedicatedOutbox.claim();
+    assert.ok(claimed, 'the pool must be usable immediately for a due outbound claim');
+    assert.equal(claimed!.delivery.id, due.id);
+  } finally {
+    release.resolve();
+    await hold.catch(() => {});
+    await dedicated.end({ timeout: 5 });
+  }
+});
+
+databaseTest('a final acceptance pass that drains a 21-candidate source returns remaining false', async () => {
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const oldest = new Date(now.getTime() - 1_000_000);
+  for (let index = 0; index < 21; index += 1) {
+    await seedProjectionFixture(index, new Date(oldest.getTime() + index * 1_000), 'accepted');
+  }
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      markAcceptanceProjectionAttempt: (value, options) =>
+        followUp.markAcceptanceProjectionAttempt!(value, options),
+      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+    },
+    transport: async () => ({
+      accepted: true as const,
+      providerMessageId: `provider-${randomUUID()}`,
+    }),
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+  try {
+    const result = await module.processDue(1);
+    const stillPending = await followUp.listAcceptedDeliveriesMissingFollowUp!({ limit: 100 });
+    assert.equal(stillPending.data.length, 0, 'the final pass must drain the source');
+    assert.equal(result.remaining, false, 'a drained final pass must not report remaining work');
+  } finally {
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
+});
+
+databaseTest('a saturated receipt source keeps remaining true while a due outbound claim still runs', async () => {
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const oldest = new Date(now.getTime() - 1_000_000);
+  for (let index = 0; index < FOLLOW_UP_RECONCILIATION_BATCH * 2 + 1; index += 1) {
+    await seedProjectionFixture(index, new Date(oldest.getTime() + index * 1_000), 'receipt');
+  }
+  const dueRevisionId = await createIssuedRevision();
+  const dueFlowId = `r6-mixed-${randomUUID().slice(0, 8)}`;
+  const due = await repository.enqueue(
+    input({ revisionId: dueRevisionId, flowId: dueFlowId, steps: [textStep(0)] }),
+  );
+  let transportCalls = 0;
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: async () => ({ data: [], hasMore: false }),
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+      markReceiptProjectionAttempt: (value, options) =>
+        followUp.markReceiptProjectionAttempt!(value, options),
+      upsertFromDeliveryReceipt: (value, options) =>
+        followUp.upsertFromDeliveryReceipt!(value as never, options),
+    },
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: `provider-due-${randomUUID()}` };
+    },
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+  try {
+    const result = await module.processDue(1);
+    assert.equal(result.remaining, true, 'a saturated receipt source must keep reporting work');
+    assert.equal(transportCalls, 1, 'the due outbound claim must still run');
+    assert.equal((await repository.get(due.id))?.state, 'provider_accepted');
+  } finally {
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
+});
+
+databaseTest('an uninspectable acceptance source fails closed and keeps remaining true', async () => {
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: async () => {
+        throw new Error('source down');
+      },
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+    },
+    transport: async () => ({
+      accepted: true as const,
+      providerMessageId: `provider-${randomUUID()}`,
+    }),
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+  const result = await module.processDue(1);
+  assert.equal(result.remaining, true, 'an uninspectable source must never report drained');
+});
+
+databaseTest('an acceptance source that never settles fails closed at the deadline', async () => {
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: () => new Promise(() => {}),
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+    },
+    transport: async () => ({
+      accepted: true as const,
+      providerMessageId: `provider-${randomUUID()}`,
+    }),
+    now: () => new Date(now),
+    instance: followUpInstance,
+    logger: () => {},
+  });
+  const startedAt = Date.now();
+  const result = await module.processDue(1, 300);
+  assert.ok(Date.now() - startedAt < 5_000, 'the never-settling source must be bounded');
+  assert.equal(result.remaining, true);
+});
+
+databaseTest('a failed acceptance activity keeps the delivery in the retry source until activity and follow-up are both durable', async () => {
+  integrationClock = new Date(now);
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const phone = '5511999900001';
+  const revisionId = await createIssuedRevision();
+  const flowId = `r6-activity-${randomUUID().slice(0, 8)}`;
+  const delivery = await repository.enqueue(input({ revisionId, flowId, phone, steps: [textStep(0)] }));
+
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const activity = createPostgresWhatsappContactActivityRepository(() => db);
+  const conversation = `${phone}@s.whatsapp.net`;
+  let activityFails = true;
+  const activityDeps = {
+    recordActivity: (
+      value: Parameters<typeof activity.recordActivity>[0],
+      options?: Parameters<typeof activity.recordActivity>[1],
+    ) =>
+      activityFails
+        ? Promise.reject(new Error('activity down'))
+        : activity.recordActivity(value, options),
+  };
+  const followUpDeps = {
+    upsertAwaitingReceiptFromAcceptedDelivery: (value: never, options: never) =>
+      followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+    upsertFromDeliveryReceipt: (value: never, options: never) =>
+      followUp.upsertFromDeliveryReceipt!(value, options),
+    listAcceptedDeliveriesMissingFollowUp: (filter: never, options: never) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+    markAcceptanceProjectionAttempt: (value: never, options: never) =>
+      followUp.markAcceptanceProjectionAttempt!(value, options),
+    listAwaitingReceiptWithCompletedDelivery: (filter: never, options: never) =>
+      followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+    markReceiptProjectionAttempt: (value: never, options: never) =>
+      followUp.markReceiptProjectionAttempt!(value, options),
+  };
+  let transportCalls = 0;
+  const providerMessageId = `provider-activity-${randomUUID()}`;
+  const buildModule = () =>
+    createQuotationDeliveryModule({
+      repository: integrationRepository,
+      followUpRepository: followUpDeps,
+      activityRepository: activityDeps,
+      transport: async () => {
+        transportCalls += 1;
+        return { accepted: true as const, providerMessageId };
+      },
+      now: () => new Date(integrationClock),
+      instance: followUpInstance,
+      logger: () => {},
+    });
+
+  try {
+    const first = await buildModule().processDue(1);
+    assert.equal(transportCalls, 1, 'exactly one provider POST');
+    assert.equal((await repository.get(delivery.id))?.state, 'provider_accepted');
+    const [storedStep] = await db
+      .select({ providerMessageId: quotationDeliverySteps.providerMessageId })
+      .from(quotationDeliverySteps)
+      .where(eq(quotationDeliverySteps.deliveryId, delivery.id));
+    assert.equal(storedStep?.providerMessageId, providerMessageId, 'the provider id stays durable');
+    assert.equal(
+      (await db.select().from(quotationFollowUps).where(eq(quotationFollowUps.revisionId, revisionId)))
+        .length,
+      0,
+      'the follow-up must not exist while the activity is missing',
+    );
+    assert.equal(first.remaining, true, 'the failed activity must keep the source non-drained');
+
+    // Fresh module retry: the activity source is healthy now.
+    activityFails = false;
+    const second = await buildModule().processDue(1);
+    assert.equal(second.remaining, false, 'both effects must converge');
+
+    const followUps = await db
+      .select()
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.revisionId, revisionId));
+    assert.equal(followUps.length, 1, 'exactly one follow-up');
+    assert.equal(followUps[0]?.state, 'awaiting_receipt');
+    const activities = await db
+      .select()
+      .from(whatsappContactActivity)
+      .where(eq(whatsappContactActivity.providerConversationId, conversation));
+    assert.equal(activities.length, 1, 'exactly one activity row');
+    assert.equal(activities[0]?.lastOutboundProviderMessageId, providerMessageId);
+    assert.equal(transportCalls, 1, 'recovery must never replay the provider POST');
+  } finally {
+    await db
+      .delete(whatsappContactActivity)
+      .where(eq(whatsappContactActivity.providerConversationId, conversation));
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
+});
+
+databaseTest('a failed follow-up upsert retries after a durable activity without duplicating it', async () => {
+  integrationClock = new Date(now);
+  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
+    now.getTime() - 86_400_000,
+  ).toISOString();
+  const phone = '5511999900002';
+  const revisionId = await createIssuedRevision();
+  const flowId = `r6-followup-${randomUUID().slice(0, 8)}`;
+  const delivery = await repository.enqueue(input({ revisionId, flowId, phone, steps: [textStep(0)] }));
+
+  const followUp = createPostgresQuotationFollowUpRepository(() => db);
+  const activity = createPostgresWhatsappContactActivityRepository(() => db);
+  const conversation = `${phone}@s.whatsapp.net`;
+  let upsertFails = true;
+  const followUpDeps = {
+    upsertAwaitingReceiptFromAcceptedDelivery: async (value: never, options: never) => {
+      if (upsertFails) throw new Error('follow-up down');
+      return followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options);
+    },
+    upsertFromDeliveryReceipt: (value: never, options: never) =>
+      followUp.upsertFromDeliveryReceipt!(value, options),
+    listAcceptedDeliveriesMissingFollowUp: (filter: never, options: never) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+    markAcceptanceProjectionAttempt: (value: never, options: never) =>
+      followUp.markAcceptanceProjectionAttempt!(value, options),
+    listAwaitingReceiptWithCompletedDelivery: (filter: never, options: never) =>
+      followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+    markReceiptProjectionAttempt: (value: never, options: never) =>
+      followUp.markReceiptProjectionAttempt!(value, options),
+  };
+  let transportCalls = 0;
+  const providerMessageId = `provider-followup-${randomUUID()}`;
+  const buildModule = () =>
+    createQuotationDeliveryModule({
+      repository: integrationRepository,
+      followUpRepository: followUpDeps,
+      activityRepository: {
+        recordActivity: (value: never, options: never) => activity.recordActivity(value, options),
+      },
+      transport: async () => {
+        transportCalls += 1;
+        return { accepted: true as const, providerMessageId };
+      },
+      now: () => new Date(integrationClock),
+      instance: followUpInstance,
+      logger: () => {},
+    });
+
+  try {
+    const first = await buildModule().processDue(1);
+    assert.equal(transportCalls, 1);
+    assert.equal(first.remaining, true, 'the failed follow-up must keep the source non-drained');
+    const activitiesDuringFailure = await db
+      .select()
+      .from(whatsappContactActivity)
+      .where(eq(whatsappContactActivity.providerConversationId, conversation));
+    assert.equal(activitiesDuringFailure.length, 1, 'the activity is durable before the follow-up');
+
+    upsertFails = false;
+    const second = await buildModule().processDue(1);
+    assert.equal(second.remaining, false);
+    const followUps = await db
+      .select()
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.revisionId, revisionId));
+    assert.equal(followUps.length, 1, 'exactly one follow-up');
+    const activities = await db
+      .select()
+      .from(whatsappContactActivity)
+      .where(eq(whatsappContactActivity.providerConversationId, conversation));
+    assert.equal(activities.length, 1, 'the retry must not duplicate the activity');
+    assert.equal(transportCalls, 1);
+  } finally {
+    await db
+      .delete(whatsappContactActivity)
+      .where(eq(whatsappContactActivity.providerConversationId, conversation));
+    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
+  }
 });

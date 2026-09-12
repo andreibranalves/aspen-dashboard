@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import test from 'node:test';
 
 import {
@@ -115,6 +116,54 @@ test('transport classifies malformed success, server failures and validation rej
     }),
   );
   assert.equal(errorOf(validationError).kind, 'permanent_pre_transport');
+});
+
+test('transport rejects an explicit provider failure status even with a message id', async () => {
+  for (const body of [
+    { key: { id: 'provider-error' }, status: 'ERROR' },
+    { key: { id: 'provider-failed' }, status: 'FAILED' },
+    { key: { id: 'provider-failure' }, status: 'failed' },
+  ]) {
+    const error = await rejected(
+      sendFrozenStep({ phone: '5511999990000', step: textStep }, {
+        ...config,
+        fetch: async () => response(200, body),
+      }),
+    );
+    // A rejected dispatch may still have left the provider, so it must stay
+    // ambiguous: never a confirmed acceptance and never a blind retry.
+    assert.equal(errorOf(error).kind, 'ambiguous');
+  }
+});
+
+test('transport timeout bounds response body consumption after headers', async () => {
+  // Real delay on purpose: this proves the AbortController deadline still bounds
+  // an in-flight fetch body stream. Fake timers cannot drive undici's socket/stream
+  // abort, which is the exact platform behavior under test.
+  const server = http.createServer((_request, serverResponse) => {
+    serverResponse.writeHead(200, { 'content-type': 'application/json' });
+    serverResponse.flushHeaders();
+    setTimeout(() => {
+      serverResponse.end(JSON.stringify({ key: { id: 'slow-body' }, status: 'PENDING' }));
+    }, 300);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  try {
+    const error = await rejected(
+      sendFrozenStep({ phone: '5511999990000', step: textStep }, {
+        ...config,
+        baseUrl: `http://127.0.0.1:${port}`,
+        timeoutMs: 100,
+        fetch: globalThis.fetch,
+      }),
+    );
+    assert.equal(errorOf(error).kind, 'ambiguous');
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 test('transport accepts Evolution key.id and requires a prepared quotation document', async () => {
