@@ -38,6 +38,13 @@ export interface QuoteLead {
   arte?: string;
   sourceDetail?: string;
   externalId?: string | null;
+  /**
+   * Stable identity of the admitted commercial demand. Distinct from the
+   * contact (phone/e-mail) and from `externalId` (transport/conversation
+   * retry association): the same conversation may later admit more than one
+   * demand (#241), and those must not fuse.
+   */
+  demandId?: string | null;
   attribution?: QuoteLeadAttribution;
   missingFields?: string[];
   raw?: Record<string, unknown>;
@@ -85,11 +92,6 @@ function normalizePhone(value: unknown): string {
   if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11))
     return `55${digits}`;
   return digits;
-}
-
-function localPhone(value: unknown): string {
-  const phone = normalizePhone(value);
-  return phone.startsWith('55') ? phone.slice(2) : phone;
 }
 
 // ponytail: numeric product codes from Typebot (1-7), map here instead of 14 Typebot blocks
@@ -193,6 +195,7 @@ export function normalizeQuoteLeadInput(
     prazo: cleanText(input.prazo || input.deadline),
     arte: cleanText(input.arte),
     externalId: cleanText(input.externalId || input.external_id || input.sanityId) || null,
+    demandId: cleanText(input.demandId || input.demand_id || input.opportunityId) || null,
     attribution: buildAttribution(input),
     missingFields: missing,
     raw:
@@ -204,24 +207,26 @@ export function normalizeQuoteLeadInput(
   };
 }
 
+/**
+ * Identity of one admitted demand. Only explicit identities are idempotency
+ * keys: an explicit demand id is the admitted demand, and an explicit external
+ * id is the transport/ingestion key. The contact (phone/e-mail) is NOT an
+ * identity: two demands sharing a phone or e-mail are separate admissions.
+ * Without either, the admitted record's own id is the identity, so a repeated
+ * delivery without an explicit key admits a new demand instead of faking
+ * stable idempotency from the payload or the contact.
+ */
 export function quoteLeadIdentityKey(
-  lead: Pick<QuoteLead, 'telefone' | 'email' | 'source' | 'externalId' | 'id'>
+  lead: Pick<QuoteLead, 'source' | 'externalId' | 'demandId' | 'id'>
 ): string {
-  // Explicit external identities are idempotency keys, not optional metadata.
+  if (lead.demandId) return `demand:${lead.source}:${lead.demandId}`;
   if (lead.externalId) return `external:${lead.source}:${lead.externalId}`;
-  if (lead.telefone) return `phone:${localPhone(lead.telefone)}`;
-  if (lead.email) return `email:${lead.email}`;
   return `id:${lead.id}`;
 }
 
 function score(lead: QuoteLead): number {
-  return [
-    lead.nome,
-    lead.email,
-    lead.telefone,
-    lead.pedidoTexto,
-    lead.quotationId,
-  ].filter(Boolean).length;
+  return [lead.nome, lead.email, lead.telefone, lead.pedidoTexto, lead.quotationId].filter(Boolean)
+    .length;
 }
 
 function mergeAttribution(
@@ -259,6 +264,7 @@ export function mergeQuoteLead(existing: QuoteLead, incoming: QuoteLead, now: st
     prazo: primary.prazo || secondary.prazo,
     arte: primary.arte || secondary.arte,
     externalId: primary.externalId || secondary.externalId || null,
+    demandId: primary.demandId || secondary.demandId || null,
     attribution: mergeAttribution(existing.attribution, incoming.attribution),
     createdAt: existing.createdAt,
     updatedAt: now,

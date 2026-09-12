@@ -56,6 +56,15 @@ export interface WhatsappConversation {
   linkedCrmEntityId?: string | null;
   linkedCrmEntityType?: 'lead' | 'cliente' | null;
   linkedCrmMatchSource?: 'phone' | 'email' | 'name' | null;
+  /**
+   * Internal admission fence. `admissionReservedSequence` is a monotonic
+   * reservation taken before a brand-new admission writes anything;
+   * `admissionSelectedSequence` is the reservation that last wrote the CRM
+   * selection. They live in the conversation mutation state so a stale
+   * admission that finishes later can never overwrite a newer selection.
+   */
+  admissionReservedSequence?: number;
+  admissionSelectedSequence?: number;
   status: WhatsappConversationStatus;
   createdAt: string;
   updatedAt: string;
@@ -148,6 +157,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function localUuid(value: unknown): string | null {
   const normalized = cleanText(value);
   return UUID_PATTERN.test(normalized) ? normalized : null;
+}
+
+/** Internal admission fence counter: non-negative safe integer, default 0. */
+function normalizeSequence(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function storeFailure(message: string, error: unknown): never {
@@ -592,6 +607,8 @@ export function normalizeWhatsappConversationInput(
       input.linkedCrmMatchSource === 'name'
         ? input.linkedCrmMatchSource
         : null,
+    admissionReservedSequence: normalizeSequence(input.admissionReservedSequence),
+    admissionSelectedSequence: normalizeSequence(input.admissionSelectedSequence),
     status,
     createdAt: normalizeIso(input.createdAt, now),
     updatedAt: normalizeIso(input.updatedAt, now),
@@ -861,6 +878,10 @@ function mergeConversation(current: WhatsappConversation, normalized: WhatsappCo
     linkedCrmEntityId: normalized.linkedCrmEntityId || current.linkedCrmEntityId || null,
     linkedCrmEntityType: normalized.linkedCrmEntityType || current.linkedCrmEntityType || null,
     linkedCrmMatchSource: normalized.linkedCrmMatchSource || current.linkedCrmMatchSource || null,
+    // The admission fence is authoritative conversation state; a provider sync
+    // must never reset it by omitting the internal counters.
+    admissionReservedSequence: normalizeSequence(current.admissionReservedSequence),
+    admissionSelectedSequence: normalizeSequence(current.admissionSelectedSequence),
     status: normalized.status === 'new' ? current.status : normalized.status,
     createdAt: current.createdAt,
     updatedAt: now,
@@ -981,6 +1002,8 @@ function sanitizeConversationPhone(item: WhatsappConversation): WhatsappConversa
     linkedCrmEntityId: item.linkedCrmEntityId || null,
     linkedCrmEntityType: item.linkedCrmEntityType || null,
     linkedCrmMatchSource: item.linkedCrmMatchSource || null,
+    admissionReservedSequence: normalizeSequence(item.admissionReservedSequence),
+    admissionSelectedSequence: normalizeSequence(item.admissionSelectedSequence),
     status: item.status,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -1024,6 +1047,8 @@ function normalizeStoredConversation(
     linkedCrmEntityId: normalizeLocalLink(value.linkedCrmEntityId),
     linkedCrmEntityType: value.linkedCrmEntityType === 'lead' || value.linkedCrmEntityType === 'cliente' ? value.linkedCrmEntityType : null,
     linkedCrmMatchSource: value.linkedCrmMatchSource === 'phone' || value.linkedCrmMatchSource === 'email' || value.linkedCrmMatchSource === 'name' ? value.linkedCrmMatchSource : null,
+    admissionReservedSequence: normalizeSequence(value.admissionReservedSequence),
+    admissionSelectedSequence: normalizeSequence(value.admissionSelectedSequence),
     status: parseStatus(value.status),
     createdAt: normalizeIso(value.createdAt, now),
     updatedAt: normalizeIso(value.updatedAt, now),
@@ -1158,8 +1183,111 @@ export async function updateWhatsappConversation(
       linkedCrmEntityId: patch.linkedCrmEntityId === undefined ? currentConversation.linkedCrmEntityId || null : normalizePatchLink(patch.linkedCrmEntityId, 'linkedCrmEntityId'),
       linkedCrmEntityType: patch.linkedCrmEntityType === undefined ? currentConversation.linkedCrmEntityType || null : patch.linkedCrmEntityType || null,
       linkedCrmMatchSource: patch.linkedCrmMatchSource === undefined ? currentConversation.linkedCrmMatchSource || null : patch.linkedCrmMatchSource || null,
+      admissionReservedSequence: normalizeSequence(currentConversation.admissionReservedSequence),
+      admissionSelectedSequence: normalizeSequence(currentConversation.admissionSelectedSequence),
       status: patch.status === undefined ? currentConversation.status : parseStatus(patch.status),
       createdAt: currentConversation.createdAt,
+      updatedAt: deps.now(),
+    };
+    const next = [...current];
+    next[index] = saved;
+    return { conversations: next, result: saved };
+  });
+}
+
+/**
+ * Reserves a monotonic admission sequence on a conversation before a new
+ * admission touches anything else. The reservation is persisted in the
+ * conversation mutation state, so it reflects the order in which concurrent
+ * admissions started rather than the order in which they finish.
+ */
+export async function beginWhatsappConversationAdmission(
+  id: string,
+  deps: WhatsappConversationStoreDeps = LIVE_DEPS
+): Promise<number> {
+  return mutateConversations(deps, async (current) => {
+    const index = current.findIndex((item) => item.id === id);
+    if (index < 0) throw createHttpError(404, 'Conversa do WhatsApp não encontrada.');
+    const currentConversation = current[index];
+    const reserved = normalizeSequence(currentConversation.admissionReservedSequence) + 1;
+    const saved: WhatsappConversation = {
+      ...currentConversation,
+      admissionReservedSequence: reserved,
+      updatedAt: deps.now(),
+    };
+    const next = [...current];
+    next[index] = saved;
+    return { conversations: next, result: reserved };
+  });
+}
+
+/**
+ * Writes the CRM selection of a new admission only when its reserved sequence
+ * is not older than the last selection written. A newer admission that already
+ * saved wins; a stale admission that completes later leaves it intact. The
+ * comparison runs inside the CAS mutation, so it is decided against the latest
+ * conversation state, never against a read that could be overwritten.
+ */
+export async function completeWhatsappConversationAdmission(
+  id: string,
+  sequence: number,
+  links: { linkedLeadId: string; linkedDealId: string | null },
+  deps: WhatsappConversationStoreDeps = LIVE_DEPS
+): Promise<WhatsappConversation> {
+  return mutateConversations(deps, async (current) => {
+    const index = current.findIndex((item) => item.id === id);
+    if (index < 0) throw createHttpError(404, 'Conversa do WhatsApp não encontrada.');
+    const currentConversation = current[index];
+    const normalizedSequence = normalizeSequence(sequence);
+    const selected = normalizeSequence(currentConversation.admissionSelectedSequence);
+    if (normalizedSequence < selected) {
+      // A newer admission already saved a different selection; leave it intact.
+      return { conversations: [...current], result: currentConversation };
+    }
+    const saved: WhatsappConversation = {
+      ...currentConversation,
+      linkedLeadId: normalizePatchLink(links.linkedLeadId, 'linkedLeadId'),
+      linkedDealId: normalizePatchLink(links.linkedDealId, 'linkedDealId'),
+      status: 'quote_lead_created',
+      admissionSelectedSequence: normalizedSequence,
+      updatedAt: deps.now(),
+    };
+    const next = [...current];
+    next[index] = saved;
+    return { conversations: next, result: saved };
+  });
+}
+
+/**
+ * Completes the CRM links of a retried admission without ever replacing a
+ * newer saved selection. A later explicit demand in the same conversation may
+ * already own a different lead/deal; retrying the older admission must only
+ * fill links that are missing or already point at the same admission. The
+ * decision is evaluated inside the CAS mutation, so a concurrent writer that
+ * saves a newer selection between reads cannot be overwritten.
+ */
+export async function linkWhatsappConversationAdmission(
+  id: string,
+  links: { linkedLeadId: string; linkedDealId: string | null },
+  deps: WhatsappConversationStoreDeps = LIVE_DEPS
+): Promise<WhatsappConversation> {
+  return mutateConversations(deps, async (current) => {
+    const index = current.findIndex((item) => item.id === id);
+    if (index < 0) throw createHttpError(404, 'Conversa do WhatsApp não encontrada.');
+    const currentConversation = current[index];
+    const sameLead =
+      !currentConversation.linkedLeadId || currentConversation.linkedLeadId === links.linkedLeadId;
+    const sameDeal =
+      !currentConversation.linkedDealId || currentConversation.linkedDealId === links.linkedDealId;
+    if (!sameLead || !sameDeal) {
+      // A newer admission already saved a different selection; leave it intact.
+      return { conversations: [...current], result: currentConversation };
+    }
+    const saved: WhatsappConversation = {
+      ...currentConversation,
+      linkedLeadId: normalizePatchLink(links.linkedLeadId, 'linkedLeadId'),
+      linkedDealId: normalizePatchLink(links.linkedDealId, 'linkedDealId'),
+      status: 'quote_lead_created',
       updatedAt: deps.now(),
     };
     const next = [...current];

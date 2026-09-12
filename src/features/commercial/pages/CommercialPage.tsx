@@ -1,19 +1,21 @@
 import { useRef, type KeyboardEvent } from 'react';
-import { BriefcaseBusiness, MessageSquare, PlusCircle } from 'lucide-react';
+import { BriefcaseBusiness, ListChecks, MessageSquare, PlusCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
+import CommercialQueuePanel from '@/features/commercial/components/CommercialQueuePanel';
 import CrmKanbanPage from '@/features/crm/pages/CrmKanbanPage';
 import FollowUpsPage, { type FollowUpReturnView } from '@/features/follow-ups/pages/FollowUpsPage';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
-type CommercialTab = 'deals' | 'returns';
-const parseCommercialTab = parseHashOption<CommercialTab>(['deals', 'returns']);
+type CommercialTab = 'deals' | 'returns' | 'queue';
+const parseCommercialTab = parseHashOption<CommercialTab>(['deals', 'returns', 'queue']);
 const parseReturnView = parseHashOption<FollowUpReturnView>(['unanswered', 'sent']);
 
 const TABS: Array<{ key: CommercialTab; label: string; icon: typeof BriefcaseBusiness }> = [
   { key: 'deals', label: 'Negócios', icon: BriefcaseBusiness },
   { key: 'returns', label: 'Retornos', icon: MessageSquare },
+  { key: 'queue', label: 'Fila', icon: ListChecks },
 ];
 const RETURN_TABS: Array<{ key: FollowUpReturnView; label: string }> = [
   { key: 'unanswered', label: 'Sem resposta' },
@@ -141,11 +143,11 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
         aria-labelledby={`commercial-tab-${tab}`}
         className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
-        {tab === 'deals' ? (
-          <CrmKanbanPage embedded />
-        ) : (
+        {tab === 'deals' && <CrmKanbanPage embedded />}
+        {tab === 'returns' && (
           <FollowUpsPage navigate={navigate} embedded returnView={returnView} />
         )}
+        {tab === 'queue' && <CommercialQueuePanel navigate={navigate} />}
       </div>
     </PageShell>
   );

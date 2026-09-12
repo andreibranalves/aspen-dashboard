@@ -45,7 +45,18 @@ export function createCoreHandler(dependencies: Pick<LeadsClientsHandlerDependen
         if (Object.prototype.hasOwnProperty.call(payload, 'tipo')) {
           const tipo = typeof payload.tipo === 'string' ? payload.tipo.trim().toLowerCase() : '';
           if (!tipo || (tipo !== 'lead' && tipo !== 'cliente')) {
-            return jsonResponse(400, { error: 'Tipo inválido. Use "lead" ou "cliente".' });
+            return jsonResponse(400, { error: 'Tipo inválido. Use "cliente".' });
+          }
+          // This route only owns the clients table. Leads are captured by the
+          // ingestion flows (site-quote-leads / whatsapp-conversations) and by
+          // CRM opportunities; manual lead-to-opportunity creation belongs to
+          // #241, so accepting `tipo=lead` here would silently create a client
+          // under a lead label.
+          if (tipo === 'lead') {
+            return jsonResponse(400, {
+              error:
+                'Este endpoint cadastra clientes. Leads são registrados pela captação do site, do WhatsApp e pelas oportunidades do CRM.',
+            });
           }
         }
         const record = await repository.create(buildCreateInput(payload));

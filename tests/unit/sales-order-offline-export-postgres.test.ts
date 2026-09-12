@@ -16,6 +16,7 @@ import {
   crmDeals,
   products,
   productActivityEvents,
+  opportunityNextActions,
   quoteLeads,
   quoteRevisions,
   quotations,
@@ -720,6 +721,11 @@ test(
             .update(crmDeals)
             .set({ quotationId: null, quoteLeadId: null })
             .where(inArray(crmDeals.id, createdDealIds));
+          // Durable action history explicitly removed by the fixture; the
+          // RESTRICT reference forbids deleting the opportunity first.
+          await database
+            .delete(opportunityNextActions)
+            .where(inArray(opportunityNextActions.opportunityId, createdDealIds));
           await database.delete(crmDeals).where(inArray(crmDeals.id, createdDealIds));
         }
         if (createdQuotationIds.length) {

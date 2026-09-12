@@ -91,8 +91,11 @@ npm run test:unit            # corpus unitário completo (~47s)
 npm run verify:full          # RELEASE: FAST + corpus completo + build + E2E
 ```
 
-- Use `verify:fast` + testes focados durante o desenvolvimento.
-- `verify:full` fica para gates RELEASE, mudanças transversais grandes ou solicitação explícita — não é obrigatório em toda issue.
+Use `verify:fast` + testes focados durante o desenvolvimento.
+`verify:full` fica para gates RELEASE, mudanças transversais grandes ou solicitação explícita — não é obrigatório em toda issue.
+
+E2E integrado (HTTP -> PostgreSQL descartável -> UI) usa o ponto de entrada seguro
+`npm run test:e2e:safe`; ver `docs/safe-e2e.md`.
 
 ## Agent skills
 
