@@ -47,8 +47,11 @@ export function createDbDeadline(budgetMs: number): DbDeadline {
   // unhandled rejection.
   whenExpired.catch(() => {});
 
+  // This timer must remain referenced: it is the only handle that settles
+  // `whenExpired` when the bounded operation has nothing else pending. On Node
+  // 22 an unreferenced timer lets the event loop resolve while the promise is
+  // still pending, so the operation would never reject.
   const timer = setTimeout(() => expire(), duration);
-  timer.unref?.();
 
   function expire(): void {
     if (expired) return;
