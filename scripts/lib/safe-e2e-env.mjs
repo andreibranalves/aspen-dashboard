@@ -21,6 +21,13 @@ export const SAFE_E2E_MARKER = 'SAFE_E2E';
 export const SAFE_E2E_EGRESS_LOG_VAR = 'SAFE_E2E_EGRESS_LOG';
 export const SAFE_E2E_RUN_ID_VAR = 'SAFE_E2E_RUN_ID';
 /**
+ * Configuração Playwright dedicada à suíte integrada. É a única que seleciona
+ * SAFE_E2E_SPECS e só carrega com a capability viva do run (ver
+ * scripts/lib/safe-e2e-capability.mjs). O playwright.config.js comum NUNCA a
+ * usa e sempre exclui SAFE_E2E_SPECS, independentemente do ambiente.
+ */
+export const SAFE_E2E_CONFIG_FILE = 'playwright.safe.config.js';
+/**
  * Process entry the run's HTTP API responses actually come from. The guard is
  * preloaded via NODE_OPTIONS into every Node process (npx, Playwright, the Vite
  * dev server), so an unqualified `guard_initialized` could belong to any of
@@ -32,6 +39,18 @@ export const SAFE_E2E_APP_ENV = 'test';
 export const SAFE_E2E_DOTENV_PATH = '/dev/null';
 export const MIN_INGEST_TOKEN_BYTES = 32;
 export const SAFE_E2E_DEFAULT_PORT = 5173;
+
+/**
+ * Fonte única da suíte integrada que exige o ponto de entrada seguro. É
+ * consumida por scripts/run-safe-e2e.mjs (seleção explícita), por
+ * playwright.safe.config.js (testMatch) e por playwright.config.js (exclusão
+ * incondicional do discovery comum). O spec só é descoberto pela config
+ * dedicada, que exige a capability viva criada pelo runner: `test:e2e` genérico
+ * e `--grep @smoke` nunca o importam, e a invocação direta e não segura falha
+ * fechada ("No tests found" no Playwright, ou a guarda do próprio spec como
+ * defesa em profundidade).
+ */
+export const SAFE_E2E_SPECS = Object.freeze(['tests/commercial-queue-integrated.spec.js']);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const NETWORK_GUARD_PATH = resolve(HERE, 'safe-e2e-network-guard.mjs');
@@ -187,20 +206,24 @@ export function isOperationalKey(key) {
 }
 
 /**
- * argv for the real `npx` invocation that launches Playwright. The explicit
- * `--node-options` config is the failsafe that makes the guard survive npm's
- * environment rewriting: npm assigns `env.NODE_OPTIONS` from this config for
- * every child, and CLI config outranks `npm_config_node_options`/`.npmrc`, so a
- * poisoned npm chain cannot drop the guard from the app-server/Playwright
- * descendants. `--no-install` keeps npx from resolving or downloading anything.
+ * argv for the real `npx` invocation that launches Playwright under the
+ * dedicated config. The explicit `--node-options` config is the failsafe that
+ * makes the guard survive npm's environment rewriting: npm assigns
+ * `env.NODE_OPTIONS` from this config for every child, and CLI config outranks
+ * `npm_config_node_options`/`.npmrc`, so a poisoned npm chain cannot drop the
+ * guard from the app-server/Playwright descendants. `--no-install` keeps npx
+ * from resolving or downloading anything. `--config` selects the only config
+ * that can discover SAFE_E2E_SPECS.
  */
-export function safeE2eNpxArgs(specs = []) {
+export function safeE2eNpxArgs(specs = SAFE_E2E_SPECS) {
   return [
     '--node-options',
     `--import ${NETWORK_GUARD_PATH}`,
     '--no-install',
     'playwright',
     'test',
+    '--config',
+    SAFE_E2E_CONFIG_FILE,
     ...specs,
   ];
 }

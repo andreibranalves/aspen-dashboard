@@ -48,14 +48,91 @@ O comando:
 6. pré-carrega `scripts/lib/safe-e2e-network-guard.mjs` no processo do servidor:
    toda chamada `fetch` global é registrada e destinos não-loopback são negados;
 7. só então invoca o Playwright via `npx --node-options "--import <guarda>"
-   --no-install ...`. O `--node-options` explícito tem precedência sobre
-   `npm_config_node_options`/`.npmrc`, então a configuração npm não consegue
-   remover a guarda dos processos filhos antes do servidor/browser subirem; o
-   `--no-install` impede resolução/instalação de pacotes.
+--no-install --config playwright.safe.config.js ...`. O `--node-options`
+   explícito tem precedência sobre `npm_config_node_options`/`.npmrc`, então a
+   configuração npm não consegue remover a guarda dos processos filhos antes do
+   servidor/browser subirem; o `--no-install` impede resolução/instalação de
+   pacotes;
+8. cria uma **capability** efêmera e privada do run (arquivo `0600` em diretório
+   `0700`, com prova aleatória que nunca é gravada em claro), vinculada ao
+   `SAFE_E2E_RUN_ID`, à config dedicada e a `SAFE_E2E_SPECS`, e a injeta no
+   ambiente do filho. Em qualquer desfecho — sucesso, falha do Playwright, falha
+   de auditoria, exceção ou sinal — o runner revoga a capability e aplica o
+   encerramento best-effort do processo lançado (ver "Encerramento best-effort").
 
-Executar o spec diretamente (`npx playwright test tests/commercial-queue-integrated.spec.js`)
-é recusado: o spec verifica os invariantes do ambiente isolado e falha antes do
-primeiro request HTTP, em vez de carregar `.env` operacional em silêncio.
+Executar o spec diretamente (`npx playwright test
+tests/commercial-queue-integrated.spec.js`) é recusado: a config comum
+(`playwright.config.js`) **sempre** exclui `SAFE_E2E_SPECS`, então o Playwright
+responde `No tests found` (exit != 0) antes de qualquer request. O spec também
+revalida os invariantes do ambiente isolado e a capability antes do primeiro
+request HTTP.
+
+## Config dedicada e capability
+
+A suíte integrada só existe em `playwright.safe.config.js`, usada exclusivamente
+por `scripts/run-safe-e2e.mjs`. Ela seleciona exatamente `SAFE_E2E_SPECS`, roda
+com um worker e mantém o servidor local de loopback. No carregamento (antes de
+qualquer spawn), ela exige simultaneamente:
+
+- o ambiente isolado COMPLETO (`safeE2eEnvironmentIsValid`); e
+- uma capability viva criada pelo runner, checada de forma síncrona
+  (`scripts/lib/safe-e2e-capability.mjs`): arquivo/diretório privados, dono
+  esperado quando inspecionável, `runId` deste run, config e specs corretas,
+  validade curta (5 min) e prova cujo hash bate por comparação em tempo
+  constante.
+
+Sem a capability, a config nem carrega (`exit != 0`, sem servidor/browser). Um
+conjunto de variáveis públicas "seguras-aparentes" — no shell ou injetado por
+`.env`/`loadLocalEnv` — não libera nada: a config comum ignora a suíte de forma
+incondicional, e a dedicada exige o arquivo + prova do runner. Capability
+ausente, pública, malformada, expirada, de outro run/config/spec, com prova
+errada ou já removida falha fechado.
+
+**Fronteira de ameaça:** a capability não afirma proteger contra um processo
+malicioso do MESMO usuário (quem lê a prova consegue forjar o arquivo). O
+objetivo é impedir que execução acidental ou um ambiente forjado libere/importe
+a suíte sem uma capability viva e correspondente criada pelo runner.
+
+## Encerramento best-effort
+
+O Playwright é iniciado como líder de um novo grupo de processos (`detached` em
+POSIX), mas o Playwright 1.60 lança `webServer` e browsers com `detached: true`,
+criando grupos/sessões independentes que `kill(-pgid)` não alcança. O runner
+**não** persegue descendentes; o encerramento é limitado ao que é conhecido com
+confiança.
+
+Em qualquer desfecho (sucesso, falha do Playwright, falha de auditoria, exceção
+ou sinal), a finalização é idempotente e segue esta ordem:
+
+1. **revoga a capability primeiro** — a liberação nunca é preservada nem
+   reutilizada depois de consumida;
+2. sinaliza **somente o filho direto/grupo conhecido**, e somente enquanto o
+   ciclo de vida do `ChildProcess` (`exitCode`/`signalCode` nulos) comprova que a
+   identidade ainda é a que foi lançada; nunca um PID/PGID derivado de `/proc`,
+   `ps` ou de um valor guardado anteriormente;
+3. espera um tempo limitado pelo fechamento desse filho;
+4. encerra com o status convencional do sinal (`SIGINT -> 130`, `SIGTERM -> 143`)
+   quando disponível, ou com o status agregado, preservando a falha.
+
+Se o filho já fechou, **nenhum sinal é enviado**: a identidade não é mais
+confiável e um PID/PGID reutilizado por outro processo não pode ser atingido. Não
+há confirmação de morte, escalada para `SIGKILL`, varredura contínua nem fallback
+de plataforma.
+
+**Limites documentados (não são bugs):**
+
+- um descendente que entra em nova sessão (`detached`/`setsid`) pode sobreviver
+  ao runner; o processo direto que ignora `SIGTERM` também pode sobreviver;
+- a revogação da capability não interrompe código que **já a validou** antes do
+  sinal; ela apenas impede uma nova validação.
+
+Ambos rodam dentro do ambiente isolado (banco descartável, loopback, credenciais
+removidas e sem egress), então a sobrevivência é uma limitação best-effort
+documentada, não uma garantia de contenção.
+
+**Fronteira de contenção:** o runner só chama `process.kill` sobre o grupo/PID do
+filho que ele mesmo lançou e que o `ChildProcess` ainda reporta vivo; sinais ao
+grupo do próprio runner ou a processos alheios continuam impossíveis.
 
 ## Status fail-closed
 

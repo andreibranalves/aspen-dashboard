@@ -12,14 +12,23 @@
 //      `NPM_TOKEN`) que reescreveriam NODE_OPTIONS nos filhos, e FORÇA BASE_URL
 //      para loopback derivado de PLAYWRIGHT_PORT (URL de deployment herdada
 //      nunca é usada).
-//   4. Invoca o Playwright via npx com `--node-options` fixando a guarda, de
-//      modo que a configuração npm (inclusive `.npmrc`) não consiga removê-la
-//      antes do servidor/browser subirem.
+//   4. Cria uma capability efêmera, privada e atribuída a este run (arquivo +
+//      prova aleatória) e a injeta no ambiente do filho. A config dedicada
+//      (playwright.safe.config.js) e a guarda do spec só carregam com ela.
+//   5. Invoca o Playwright via npx com `--node-options` fixando a guarda e
+//      `--config` da config dedicada, de modo que a configuração npm (inclusive
+//      `.npmrc`) não consiga remover a guarda antes do servidor/browser subirem.
 //
 // O status final é fail-closed: um run do Playwright verde ainda falha quando a
 // guarda de egress registrou bloqueio, quando o log de evidência está ilegível
-// ou quando a instrumentação não se inicializou.
-import { spawnSync } from 'node:child_process';
+// ou quando a instrumentação não se inicializou. A capability é revogada em
+// qualquer desfecho (sucesso, falha do Playwright, falha de auditoria, exceção
+// ou sinal). O encerramento do processo lançado é best-effort: sinaliza apenas o
+// filho direto/grupo conhecido enquanto o ChildProcess comprova que ele está
+// vivo, espera um tempo limitado e encerra. Nunca persegue descendentes nem
+// reusa PID/PGID de um filho já fechado; um descendente destacado pode
+// sobreviver. Sem nunca expor prova ou caminho em logs.
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -29,20 +38,24 @@ import {
   auditSafeE2eEgressLog,
   buildSafeE2eEnvironment,
   NETWORK_GUARD_PATH,
+  SAFE_E2E_SPECS,
   safeE2eNpxArgs,
   SAFE_E2E_EGRESS_LOG_VAR,
   SAFE_E2E_SERVER_ENTRY,
 } from './lib/safe-e2e-env.mjs';
+import {
+  createSafeE2eCapability,
+  deleteSafeE2eCapability,
+  SAFE_E2E_CAPABILITY_PATH_VAR,
+  SAFE_E2E_CAPABILITY_PROOF_VAR,
+} from './lib/safe-e2e-capability.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(HERE, '..');
-// Suíte DB-gated por padrão; specs extras (ex.: quotation-origin) entram por argumento.
-const DEFAULT_SPECS = ['tests/commercial-queue-integrated.spec.js'];
-const specs = process.argv.slice(2).filter((value) => !value.startsWith('-'));
+const DEFAULT_SPECS = [...SAFE_E2E_SPECS];
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
-  process.exitCode = 1;
 }
 
 let safe;
@@ -58,6 +71,15 @@ process.stdout.write(
   'E2E seguro: APP_ENV=test, EXTERNAL_WRITES_ENABLED=0, DOTENV_CONFIG_PATH=/dev/null, ' +
     `banco descartável presente, alvo loopback:${safe.port}, guarda de egress ativa.\n`
 );
+
+// A suíte é fixa (fonte única SAFE_E2E_SPECS) e a capability é vinculada a ela.
+// Argumentos extras que não pertençam à lista são recusados em vez de ignorados.
+const requested = process.argv.slice(2).filter((value) => !value.startsWith('-'));
+const unexpected = requested.filter((spec) => !SAFE_E2E_SPECS.includes(spec));
+if (unexpected.length) {
+  fail('FAIL E2E seguro: a seleção de specs é fixa (SAFE_E2E_SPECS); argumentos extras recusados.');
+  process.exit(1);
+}
 
 // Controle positivo: subprocesso com a mesma guarda tenta um destino
 // não-loopback. Se a guarda estiver quebrada, o E2E inteiro é recusado.
@@ -84,11 +106,148 @@ if (control.status !== 0) {
   process.exit(1);
 }
 
-const result = spawnSync('npx', safeE2eNpxArgs(specs.length ? specs : DEFAULT_SPECS), {
-  cwd: PROJECT_ROOT,
-  env: safe.env,
-  stdio: 'inherit',
+let capability;
+function cleanupCapability() {
+  deleteSafeE2eCapability(capability);
+}
+
+// --- Encerramento best-effort do processo lançado ---------------------------
+// O Playwright é iniciado como líder de um NOVO grupo de processos (detached em
+// POSIX). Playwright, por sua vez, sobe `webServer` e browsers com
+// `detached: true`, criando grupos/sessões independentes que `kill(-pgid)` não
+// alcança. Por design, NÃO há garantia de encerrar descendentes destacados.
+//
+// Contrato de finalização, idempotente:
+//   1. revoga (apaga) a capability PRIMEIRO, em qualquer desfecho;
+//   2. sinaliza SOMENTE o filho direto/grupo conhecido, e somente enquanto o
+//      ciclo de vida do ChildProcess (exitCode/signalCode nulos) comprova que a
+//      identidade ainda é a que lançamos — nunca um PID/PGID reutilizado;
+//   3. espera um tempo limitado pelo fechamento do filho;
+//   4. encerra com o status convencional do sinal (130/143) quando disponível,
+//      ou com o status agregado, preservando a falha.
+// Se o filho já fechou, nenhum sinal é enviado. Descendentes que entraram em
+// novas sessões podem sobreviver; a revogação da capability não interrompe
+// código que já a validou. Ambos são limites documentados em docs/safe-e2e.md.
+const TERM_GRACE_MS = 5_000;
+
+let activeChild = null;
+let activeChildDetached = false;
+let finalizePromise = null;
+let capabilityRevoked = false;
+let exitCode = null;
+
+function revokeCapability() {
+  if (capabilityRevoked) return;
+  capabilityRevoked = true;
+  cleanupCapability();
+}
+
+/** A identidade do filho só é confiável enquanto o ChildProcess não reportou saída. */
+function knownChildIsAlive() {
+  return Boolean(activeChild) && activeChild.exitCode === null && activeChild.signalCode === null;
+}
+
+/**
+ * Sinaliza apenas o filho direto ou seu grupo, e apenas enquanto a identidade é
+ * a do processo que lançamos. Um filho já fechado nunca é sinalizado, então um
+ * PID/PGID reutilizado por terceiros não pode ser atingido por aqui.
+ */
+function signalKnownChild(signal) {
+  if (!knownChildIsAlive()) return false;
+  const pid = activeChild.pid;
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    if (activeChildDetached) process.kill(-pid, signal);
+    else activeChild.kill(signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Espera limitada pelo fechamento do filho; resolve true quando ele já fechou. */
+function waitForKnownChildClose(timeoutMs) {
+  const child = activeChild;
+  if (!knownChildIsAlive()) return Promise.resolve(true);
+  return new Promise((resolveClose) => {
+    let settled = false;
+    const finish = (closed) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener('close', onClose);
+      resolveClose(closed);
+    };
+    const onClose = () => finish(true);
+    const timer = setTimeout(() => finish(!knownChildIsAlive()), timeoutMs);
+    child.once('close', onClose);
+    if (!knownChildIsAlive()) finish(true);
+  });
+}
+
+async function doFinalize() {
+  revokeCapability();
+  signalKnownChild('SIGTERM');
+  await waitForKnownChildClose(TERM_GRACE_MS);
+  process.exit(exitCode === null ? 1 : exitCode);
+}
+
+function beginFinalize() {
+  if (!finalizePromise) finalizePromise = doFinalize();
+  return finalizePromise;
+}
+
+process.on('SIGINT', () => {
+  exitCode = 130;
+  void beginFinalize();
 });
+process.on('SIGTERM', () => {
+  exitCode = 143;
+  void beginFinalize();
+});
+process.on('uncaughtException', () => {
+  if (exitCode === null) exitCode = 1;
+  void beginFinalize();
+});
+process.on('unhandledRejection', () => {
+  if (exitCode === null) exitCode = 1;
+  void beginFinalize();
+});
+// Rede de segurança: a capability nunca sobrevive à saída do runner.
+process.on('exit', revokeCapability);
+
+function runPlaywright(env) {
+  return new Promise((resolveRun) => {
+    activeChildDetached = process.platform !== 'win32';
+    const child = spawn('npx', safeE2eNpxArgs(DEFAULT_SPECS), {
+      cwd: PROJECT_ROOT,
+      env,
+      stdio: 'inherit',
+      // Grupo próprio: a sinalização de teardown nunca alcança o runner.
+      detached: activeChildDetached,
+    });
+    activeChild = child;
+    let settled = false;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      resolveRun(result);
+    };
+    child.on('error', (error) => settle({ status: null, error }));
+    child.on('close', (status) => settle({ status }));
+  });
+}
+
+let status;
+capability = createSafeE2eCapability({ runId: safe.runId });
+safe.env[SAFE_E2E_CAPABILITY_PATH_VAR] = capability.path;
+safe.env[SAFE_E2E_CAPABILITY_PROOF_VAR] = capability.proof;
+
+const result = await runPlaywright(safe.env);
+if (exitCode !== null) {
+  // Sinal durante o run: a árvore está sendo encerrada; não auditar.
+  await beginFinalize();
+}
 
 // Evidência de egress do servidor: o log precisa comprovar a inicialização da
 // guarda e nenhum destino não-loopback bloqueado. Linha ilegível também falha
@@ -106,7 +265,7 @@ try {
   audit = { initialized: false, instrumented: false, blocked: 0, malformed: true, entries: 0 };
 }
 
-const status = aggregateSafeE2eStatus({
+status = aggregateSafeE2eStatus({
   playwrightStatus: result.status === null ? null : result.status,
   audit,
 });
@@ -128,4 +287,5 @@ if (status !== 0) {
   }
 }
 
-process.exit(status);
+if (exitCode === null) exitCode = status ?? 1;
+await beginFinalize();

@@ -15,6 +15,7 @@ import {
   SAFE_E2E_MARKER,
   SAFE_E2E_RUN_ID_VAR,
   SAFE_E2E_SERVER_ENTRY,
+  SAFE_E2E_SPECS,
   aggregateSafeE2eStatus,
   auditSafeE2eEgressLog,
   buildSafeE2eEnvironment,
@@ -25,7 +26,9 @@ import {
 
 const DISPOSABLE_URL = 'postgresql://review:review@127.0.0.1:55432/aspen_safe_e2e';
 const PROJECT_ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const SAFE_ENV_MODULE = fileURLToPath(new URL('../../scripts/lib/safe-e2e-env.mjs', import.meta.url));
+const SAFE_ENV_MODULE = fileURLToPath(
+  new URL('../../scripts/lib/safe-e2e-env.mjs', import.meta.url)
+);
 
 /** Ambientes "envenenados": credenciais reais de operação jamais podem chegar. */
 const POISONED = {
@@ -49,7 +52,8 @@ const POISONED = {
   QSTASH_NEXT_SIGNING_KEY: 'qstash-next-signing-key',
   QSTASH_API_URL: 'https://qstash.upstash.io',
   CRON_SECRET: 'cron-real-secret',
-  QUOTATION_FOLLOW_UP_WORKER_URL: 'https://dashboard.aspenestamparia.com/api/quotation-follow-up-worker',
+  QUOTATION_FOLLOW_UP_WORKER_URL:
+    'https://dashboard.aspenestamparia.com/api/quotation-follow-up-worker',
   QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT: '2026-01-01T00:00:00.000Z',
   QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED: 'follow-up-writes-real',
   WHATSAPP_CONTEXT_EXTENSION_ORIGIN: 'chrome-extension://real-extension-id',
@@ -264,6 +268,13 @@ test('a non-disposable or mismatched database target fails closed', () => {
       }),
     /coincidir/
   );
+});
+
+test('the integrated suite list is a single frozen source', () => {
+  assert.deepEqual(SAFE_E2E_SPECS, ['tests/commercial-queue-integrated.spec.js']);
+  assert.equal(Object.isFrozen(SAFE_E2E_SPECS), true);
+  const { env } = buildSafeE2eEnvironment(BASE_ENV, { egressLog: '/tmp/safe-e2e-test.log' });
+  assert.equal(safeE2eEnvironmentIsValid(env), true);
 });
 
 test('an unsanitized environment is refused as unsafe', () => {

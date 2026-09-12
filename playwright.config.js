@@ -2,6 +2,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { loadLocalEnv } from './scripts/load-env.mjs';
 import { STAGING_E2E_SPECS } from './scripts/lib/staging-e2e-specs.mjs';
+import { SAFE_E2E_SPECS } from './scripts/lib/safe-e2e-env.mjs';
 import { isStagingMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
 loadLocalEnv();
@@ -43,10 +44,13 @@ export default defineConfig({
   // scripts/lib/staging-e2e-specs.mjs:
   // - Preview roda SOMENTE a suíte controlada de staging contra STAGING_BASE_URL.
   // - Modo local nunca seleciona specs de staging (mesmo por filtros explícitos).
+  // A suíte integrada (scripts/lib/safe-e2e-env.mjs) é SEMPRE excluída aqui: só
+  // `playwright.safe.config.js`, com a capability viva do runner, a descobre.
+  // `test:e2e` genérico, `--grep @smoke` e invocações diretas não a importam.
   ...(IS_STAGING
     ? { testMatch: [...STAGING_E2E_SPECS] }
     : {
-        testIgnore: [...STAGING_E2E_SPECS],
+        testIgnore: [...STAGING_E2E_SPECS, ...SAFE_E2E_SPECS],
         webServer: {
           command: 'node scripts/vite-dev.mjs',
           url: BASE_URL,

@@ -28,15 +28,20 @@ import {
   auditSafeE2eEgressLog,
   safeE2eEnvironmentIsValid,
 } from '../scripts/lib/safe-e2e-env.mjs';
+import { assertSafeE2eCapability } from '../scripts/lib/safe-e2e-capability.mjs';
 import { requireMatchingDisposableTestDatabaseUrl } from './support/disposable-postgres.js';
 import { expectedIngestStatus } from './support/ingest-status-contract.js';
 
+// Fail-closed antes de qualquer request: o ambiente isolado COMPLETO e a
+// capability viva do run (config dedicada + specs + runId + prova) precisam
+// bater. A mesma validação roda no carregamento de playwright.safe.config.js.
 if (!safeE2eEnvironmentIsValid(process.env)) {
   throw new Error(
     'O E2E integrado exige o ponto de entrada seguro. Use `npm run test:e2e:safe` ' +
       '(executa scripts/run-safe-e2e.mjs, que isola o ambiente antes de subir o servidor).'
   );
 }
+assertSafeE2eCapability(process.env);
 
 const INGEST_TOKEN = String(process.env.QUOTE_LEADS_INGEST_TOKEN || '').trim();
 const EGRESS_LOG = String(process.env[SAFE_E2E_EGRESS_LOG_VAR] || '');
