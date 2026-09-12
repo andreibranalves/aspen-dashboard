@@ -915,9 +915,68 @@ test('preserva a identidade pré-dispatch depois do 404 até o operador emitir n
   await page.goto('/#/auto');
   await expect.poll(() => page.evaluate(() => {
     const draft = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts')).drafts[0];
-    return { issueIdempotencyKey: draft.issueIdempotencyKey, issueDispatchStarted: draft.issueDispatchStarted, status: draft.status };
-  })).toEqual({ issueIdempotencyKey: key, issueDispatchStarted: undefined, status: undefined });
+    return {
+      newDemand: draft.edited.new_demand,
+      issueIdempotencyKey: draft.issueIdempotencyKey,
+      issueDispatchStarted: draft.issueDispatchStarted,
+      status: draft.status,
+      saved: draft.saved,
+      result: draft.result,
+    };
+  })).toEqual({
+    newDemand: undefined,
+    issueIdempotencyKey: key,
+    issueDispatchStarted: undefined,
+    status: undefined,
+    saved,
+    result: { success: false, error: 'A emissão ainda não foi iniciada. Tente emitir novamente.' },
+  });
   expect(requests.filter((request) => request.method() === 'POST')).toHaveLength(0);
+});
+
+test('preserva emissão concluída ao inicializar a oportunidade @quotations @critical', async ({ page }) => {
+  const completedResult = {
+    success: true,
+    data: {
+      businessNumber: issue.businessNumber,
+      quotationId: issue.quotationId,
+      revisionId: issue.revisionId,
+      revisionNumber: issue.revisionNumber,
+      status: issue.status,
+      snapshot: saved.snapshot,
+    },
+  };
+  const { requests } = await setup(page, {
+    storedDraft: { ...draft, saved, issue, status: 'done', result: completedResult },
+  });
+  await page.goto('/#/auto');
+  await expect.poll(() => page.evaluate(() => {
+    const draft = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts')).drafts[0];
+    return {
+      newDemand: draft.edited.new_demand,
+      saved: draft.saved,
+      issue: draft.issue,
+      status: draft.status,
+      result: draft.result,
+    };
+  })).toEqual({
+    newDemand: undefined,
+    saved,
+    issue,
+    status: 'done',
+    result: completedResult,
+  });
+  expect(requests.filter((request) => request.method() === 'GET')).toHaveLength(0);
+  expect(requests.filter((request) => request.method() === 'POST')).toHaveLength(0);
+});
+
+test('materializa nova demanda para draft automático ainda não salvo @quotations', async ({ page }) => {
+  await setup(page);
+  await page.goto('/#/auto');
+  await expect.poll(() => page.evaluate(() => {
+    const stored = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts'));
+    return stored.drafts[0].edited.new_demand;
+  })).toBe(true);
 });
 
 test('repete no modo manual uma emissão retryable sem criar outro save ou revisão @quotations @critical', async ({ page }) => {

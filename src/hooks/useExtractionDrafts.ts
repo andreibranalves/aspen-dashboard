@@ -211,6 +211,23 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     [],
   );
 
+  const updateDraftSystemField = useCallback(
+    (draftIdx: number, field: keyof DraftEdited, value: unknown) => {
+      setDrafts(prev => {
+        const draftIndex = prev.findIndex((draft) => draft.index === draftIdx);
+        if (draftIndex < 0) return prev;
+        const next = [...prev];
+        const draft = prev[draftIndex];
+        next[draftIndex] = {
+          ...draft,
+          edited: { ...draft.edited, [field]: value },
+        };
+        return next;
+      });
+    },
+    [],
+  );
+
   const updateDraftAddressField = useCallback(
     (draftIdx: number, field: keyof Address, value: unknown) => {
       setDrafts(prev => {
@@ -432,6 +449,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     reorderItems,
     // Field mutations
     updateDraftField,
+    updateDraftSystemField,
     updateDraftAddressField,
     handleUrgenteToggle,
     // Approval
