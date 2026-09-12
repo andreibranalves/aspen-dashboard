@@ -24,10 +24,18 @@ function item(overrides: Partial<OpportunityQueuePage['data'][number]> = {}) {
     actionId: '00000000-0000-4000-8000-00000000000a',
     opportunityId: '00000000-0000-4000-8000-00000000000b',
     kind: 'first_contact' as const,
+    kindLabel: 'Primeiro contato',
     reasonCode: 'new_lead',
+    reason: 'Primeiro atendimento',
     origin: 'automatic' as const,
     state: 'active' as const,
     dueAt: '2026-09-11T12:00:00.000Z',
+    dueDate: '2026-09-11',
+    dueTime: '09:00',
+    scheduleType: 'timed' as const,
+    dueStatus: 'overdue' as const,
+    version: 1,
+    actor: 'system',
     demandSummary: 'Cangas 100 unidades',
     contactName: 'Cliente Sintético',
     contactPhone: '5521999990000',
@@ -62,11 +70,19 @@ test('GET /api/commercial-queue returns the prioritized page in snake_case', asy
   assert.equal(row.action_id, '00000000-0000-4000-8000-00000000000a');
   assert.equal(row.opportunity_id, '00000000-0000-4000-8000-00000000000b');
   assert.equal(row.kind, 'first_contact');
+  assert.equal(row.kind_label, 'Primeiro contato');
   assert.equal(row.reason_code, 'new_lead');
   assert.equal(row.reason_label, 'Primeiro atendimento');
+  assert.equal(row.reason, 'Primeiro atendimento');
   assert.equal(row.origin, 'automatic');
   assert.equal(row.state, 'active');
   assert.equal(row.due_at, '2026-09-11T12:00:00.000Z');
+  assert.equal(row.due_date, '2026-09-11');
+  assert.equal(row.due_time, '09:00');
+  assert.equal(row.schedule_type, 'timed');
+  assert.equal(row.due_status, 'overdue');
+  assert.equal(row.version, 1);
+  assert.equal(row.actor, 'system');
   assert.equal(row.demand_summary, 'Cangas 100 unidades');
   assert.equal(row.contact_name, 'Cliente Sintético');
   assert.equal(row.contact_phone, '5521999990000');
@@ -178,7 +194,7 @@ test('GET /api/commercial-queue never leaks repository failures', async () => {
 
 test('GET /api/commercial-queue rejects other methods', async () => {
   const handler = createCommercialQueueHandler({ repository: repository() });
-  const result = await handler(event('POST'));
+  const result = await handler(event('PUT'));
   assert.equal(result.statusCode, 405);
-  assert.equal(result.headers?.Allow, 'GET');
+  assert.equal(result.headers?.Allow, 'GET, POST');
 });

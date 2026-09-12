@@ -7,6 +7,7 @@
   "tests/unit/disposable-postgres-target.test.ts",
   "tests/unit/duplicate-quotation-postgres.test.ts",
   "tests/unit/operator-deletion-postgres.test.ts",
+  "tests/unit/opportunity-action-commands-postgres.test.ts",
   "tests/unit/opportunity-queue-migration.test.ts",
   "tests/unit/opportunity-queue-postgres.test.ts",
   "tests/unit/quotation-opportunity-link-migration.test.ts",
