@@ -444,7 +444,10 @@ test('volta do pedido para a lista preservando o contexto e aceita entrada diret
   await page.goto('/#/sales-orders?page=3&limit=25&period=7d&status=Completed&search=Cliente');
   await page.getByText(detail.id, { exact: true }).first().click();
   await expect(page.getByText('Cliente com filtros', { exact: true }).first()).toBeVisible();
-  await page.locator('header').getByRole('button', { name: 'Voltar aos pedidos' }).click();
+  const ordersBreadcrumb = page
+    .getByRole('navigation', { name: 'Trilha de navegação' })
+    .getByRole('button', { name: 'Pedidos', exact: true });
+  await ordersBreadcrumb.click();
   await expect(page).toHaveURL(
     /#\/sales-orders\?page=3&limit=25&period=7d&status=Completed&search=Cliente$/
   );
@@ -452,7 +455,7 @@ test('volta do pedido para a lista preservando o contexto e aceita entrada diret
   await page.goto('/#/dashboard');
   await page.goto('/#/sales-orders/PED-2026-0008');
   await expect(page.getByText('Cliente com filtros', { exact: true }).first()).toBeVisible();
-  await page.locator('header').getByRole('button', { name: 'Voltar aos pedidos' }).click();
+  await ordersBreadcrumb.click();
   await expect(page).toHaveURL(/#\/sales-orders$/);
 });
 
