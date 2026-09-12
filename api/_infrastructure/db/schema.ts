@@ -784,6 +784,17 @@ export const crmDeals = pgTable(
   ]
 );
 
+export const MANUAL_CONTACT_RESULT_CODES = [
+  'follow_up_agreed',
+  'interested',
+  'not_interested',
+  'no_response',
+  'awaiting_information',
+  'wrong_contact',
+  'other',
+] as const;
+export type ManualContactResultCode = (typeof MANUAL_CONTACT_RESULT_CODES)[number];
+
 /**
  * Primary next action of a commercial opportunity. An opportunity keeps at
  * most one active action; terminal rows stay as immutable history so a
@@ -887,7 +898,7 @@ export const manualContactEvents = pgTable(
     contactType: varchar('contact_type', { length: 32 }).notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     note: text('note'),
-    resultCode: varchar('result_code', { length: 32 }).notNull(),
+    resultCode: varchar('result_code', { length: 32 }).$type<ManualContactResultCode>().notNull(),
     countsAsFollowUp: boolean('counts_as_follow_up').notNull().default(false),
     source: varchar('source', { length: 32 }).notNull().default('operator_statement'),
     actor: varchar('actor', { length: 128 }).notNull(),
@@ -918,7 +929,7 @@ export const manualContactEvents = pgTable(
     ),
     check(
       'manual_contact_events_result_code_check',
-      sql`${table.resultCode} IN ('follow_up_agreed', 'interested', 'not_interested', 'no_response', 'wrong_contact', 'other')`
+      sql`${table.resultCode} IN ('follow_up_agreed', 'interested', 'not_interested', 'no_response', 'awaiting_information', 'wrong_contact', 'other')`
     ),
     check(
       'manual_contact_events_source_check',

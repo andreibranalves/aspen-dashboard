@@ -124,6 +124,7 @@ test(
       assert.equal(action.contactName, 'Cliente Sintético');
       assert.equal(action.contactPhone, '5521999990000');
       assert.equal(action.clientId, null, 'a WhatsApp lead is not a client row yet');
+      assert.equal(action.followUpStage, 0);
     } finally {
       await clearIngestedLeads([record.id]);
     }

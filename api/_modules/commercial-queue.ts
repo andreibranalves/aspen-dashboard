@@ -1,4 +1,5 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { addBusinessDays, calendarDateInSaoPaulo } from '../_shared/calendar-sao-paulo.js';
 import {
   ActionConflictError,
   ActionNotFoundError,
@@ -53,6 +54,7 @@ const MANUAL_CONTACT_RESULT_LABELS: Record<string, string> = {
   interested: 'Interessado',
   not_interested: 'Sem interesse',
   no_response: 'Sem resposta',
+  awaiting_information: 'Aguardando informação',
   wrong_contact: 'Contato incorreto',
   other: 'Outro resultado',
 };
@@ -126,6 +128,27 @@ function queueFilter(value: unknown): OpportunityQueueFilter {
     throw new HandlerInputError('Filtro da fila inválido.');
   }
   return candidate as OpportunityQueueFilter;
+}
+
+function followUpBusinessDays(value: unknown): 2 | 3 {
+  if (value !== '2' && value !== '3') {
+    throw new HandlerInputError('A quantidade de dias úteis é inválida.');
+  }
+  return Number(value) as 2 | 3;
+}
+
+function followUpSuggestion(query: Record<string, string | undefined>): FunctionResult {
+  const occurredAt = query.occurred_at;
+  if (!isStrictIsoTimestamp(occurredAt)) {
+    throw new HandlerInputError('A data e hora do contato são inválidas.');
+  }
+  const businessDays = followUpBusinessDays(query.business_days);
+  const anchorDate = calendarDateInSaoPaulo(new Date(occurredAt));
+  return json(200, {
+    anchor_date: anchorDate,
+    suggested_date: addBusinessDays(anchorDate, businessDays),
+    business_days: businessDays,
+  });
 }
 
 function expectedVersion(payload: Record<string, unknown>): number {
@@ -242,6 +265,7 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
     actor: item.actor,
     is_urgent: item.isUrgent,
     priority: item.priority,
+    follow_up_stage: item.followUpStage,
     opportunity_status: item.opportunityStatus,
     terminal_status: item.terminalStatus,
     terminal_reason: item.terminalReason,
@@ -391,6 +415,7 @@ export function createCommercialQueueHandler(
     try {
       if (event.httpMethod === 'GET') {
         const query = event.queryStringParameters || {};
+        if (query.view === 'follow_up_suggestion') return followUpSuggestion(query);
         if (query.view === 'history') {
           const opportunityId = textField(query, 'opportunity_id');
           const data = await repository.listHistory(opportunityId);

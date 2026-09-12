@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   completeCommercialAction,
   createCommercialAction,
+  getCommercialFollowUpSuggestion,
   getCommercialActionHistory,
   recordManualContact,
   rescheduleCommercialAction,
@@ -19,6 +20,56 @@ function response(body: unknown, status = 200): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+test('cliente da fila consulta sugestão por data de ocorrência e contagem suportada', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestUrl = '';
+  globalThis.fetch = async (input) => {
+    requestUrl = String(input);
+    return response({
+      anchor_date: '2026-09-11',
+      suggested_date: '2026-09-15',
+      business_days: 2,
+    });
+  };
+  try {
+    const result = await getCommercialFollowUpSuggestion({
+      occurredAt: '2026-09-11T12:00:00.000Z',
+      businessDays: 2,
+    });
+    assert.deepEqual(result, {
+      anchorDate: '2026-09-11',
+      suggestedDate: '2026-09-15',
+      businessDays: 2,
+    });
+    const query = new URL(requestUrl, 'http://localhost').searchParams;
+    assert.equal(query.get('view'), 'follow_up_suggestion');
+    assert.equal(query.get('occurred_at'), '2026-09-11T12:00:00.000Z');
+    assert.equal(query.get('business_days'), '2');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('cliente da fila rejeita resposta de sugestão que não cumpre o contrato estrito', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    response({
+      anchor_date: '2026-09-11',
+      suggested_date: '2026-09-15',
+      business_days: 3,
+    });
+  try {
+    await assert.rejects(
+      getCommercialFollowUpSuggestion({
+        occurredAt: '2026-09-11T12:00:00.000Z',
+        businessDays: 2,
+      })
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('cliente da fila envia criação e agenda civil sem converter data no navegador', async () => {
   const originalFetch = globalThis.fetch;
@@ -271,6 +322,54 @@ test('cliente da fila envia declaração manual com chave estável e continuidad
         },
       },
     });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('cliente da fila reconhece aguardando informação no retorno manual', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    response({
+      action_id: actionId,
+      opportunity_id: opportunityId,
+      state: 'completed',
+      version: 2,
+      closed: false,
+      successor: null,
+      event_id: '33333333-3333-4333-8333-333333333333',
+      command_id: 'manual-command-awaiting',
+      contact_type: 'phone_call',
+      occurred_at: '2026-09-12T11:30:00.000Z',
+      note: null,
+      result_code: 'awaiting_information',
+      result_label: 'Aguardando informação',
+      counts_as_follow_up: false,
+      continuation_type: 'wait',
+      source: 'operator_statement',
+    });
+  try {
+    const result = await recordManualContact({
+      commandId: 'manual-command-awaiting',
+      opportunityId,
+      actionId,
+      expectedVersion: 1,
+      contactType: 'phone_call',
+      occurredAt: '2026-09-12T11:30:00.000Z',
+      note: null,
+      resultCode: 'awaiting_information',
+      countsAsFollowUp: false,
+      continuation: {
+        type: 'wait',
+        schedule: {
+          kind: 'customer_contact',
+          dueDate: '2026-09-15',
+          dueTime: null,
+          reason: 'Acompanhar informações pendentes',
+        },
+      },
+    });
+    assert.equal(result.resultCode, 'awaiting_information');
   } finally {
     globalThis.fetch = originalFetch;
   }

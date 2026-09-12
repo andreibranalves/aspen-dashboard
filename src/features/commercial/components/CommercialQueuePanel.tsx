@@ -26,6 +26,7 @@ import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formattin
 import {
   completeCommercialAction,
   createCommercialAction,
+  getCommercialFollowUpSuggestion,
   getCommercialActionHistory,
   listCommercialQueue,
   recordManualContact,
@@ -37,6 +38,8 @@ import {
   type CommercialQueueProposal,
   type CommercialActionHistoryEntry,
   type CommercialActionScheduleInput,
+  type CommercialFollowUpBusinessDays,
+  type CommercialFollowUpSuggestion,
   type CommercialManualContactResultCode,
   type CommercialManualContactType,
 } from '@/lib/api/commercialQueueApi';
@@ -65,6 +68,7 @@ const MANUAL_CONTACT_RESULTS = [
   ['interested', 'Interessado'],
   ['not_interested', 'Sem interesse'],
   ['no_response', 'Sem resposta'],
+  ['awaiting_information', 'Aguardando informação'],
   ['wrong_contact', 'Contato incorreto'],
   ['other', 'Outro resultado'],
 ] as const satisfies ReadonlyArray<[CommercialManualContactResultCode, string]>;
@@ -94,6 +98,25 @@ interface ManualContactDraft extends ScheduleDraft {
   countsAsFollowUp: boolean;
   continuation: ManualContactContinuation;
   closeReason: string;
+}
+
+interface ManualContactSuggestion {
+  anchorDate: string;
+  date: string;
+  label: string;
+  businessDays: CommercialFollowUpBusinessDays;
+  occurredAt: string;
+}
+
+interface ManualContactSuggestionEligibility {
+  label: string;
+  businessDays: CommercialFollowUpBusinessDays;
+}
+
+interface AppliedManualContactSuggestion {
+  occurredAt: string;
+  before: Pick<ManualContactDraft, 'kind' | 'dueDate' | 'dueTime' | 'reason' | 'continuation'>;
+  after: Pick<ManualContactDraft, 'kind' | 'dueDate' | 'dueTime' | 'reason' | 'continuation'>;
 }
 
 function scheduleDraft(item: CommercialQueueItem): ScheduleDraft {
@@ -150,6 +173,37 @@ function manualContactDraft(item: CommercialQueueItem): ManualContactDraft {
     continuation: '',
     closeReason: '',
   };
+}
+
+function manualContactSuggestionEligibility(
+  item: CommercialQueueItem,
+  draft: ManualContactDraft
+): ManualContactSuggestionEligibility | null {
+  if (item.followUpStage !== 0 || draft.continuation) return null;
+  if (draft.resultCode === 'awaiting_information') {
+    return { businessDays: 2, label: 'Primeiro retorno' };
+  }
+  if (draft.resultCode === 'no_response' && draft.countsAsFollowUp) {
+    return { businessDays: 3, label: 'Segundo retorno' };
+  }
+  return null;
+}
+
+function manualContactSuggestionForCurrentDraft(
+  item: CommercialQueueItem,
+  draft: ManualContactDraft,
+  suggestion: ManualContactSuggestion | null
+): ManualContactSuggestion | null {
+  const eligibility = manualContactSuggestionEligibility(item, draft);
+  if (
+    !eligibility ||
+    !suggestion ||
+    suggestion.occurredAt !== draft.occurredAt ||
+    suggestion.businessDays !== eligibility.businessDays
+  ) {
+    return null;
+  }
+  return suggestion;
 }
 
 interface CommercialQueuePanelProps {
@@ -247,7 +301,66 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [submitting, setSubmitting] = useState(false);
   const [urgencySubmitting, setUrgencySubmitting] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<CommercialQueueFilter>('active');
+  const [manualSuggestion, setManualSuggestion] = useState<ManualContactSuggestion | null>(null);
   const requestGenerationRef = useRef(0);
+  const manualSuggestionRequestRef = useRef(0);
+  const manualSuggestionAbortRef = useRef<AbortController | null>(null);
+  const appliedManualSuggestionRef = useRef<AppliedManualContactSuggestion | null>(null);
+
+  const manualContactItem = dialog?.type === 'manual-contact' ? dialog.item : null;
+  const manualContactDraftState = draft && 'contactType' in draft ? draft : null;
+  const manualContactActionId = manualContactItem?.actionId ?? null;
+  const manualContactFollowUpStage = manualContactItem?.followUpStage ?? null;
+  const manualContactOccurredAt = manualContactDraftState?.occurredAt ?? null;
+  const manualContactResultCode = manualContactDraftState?.resultCode ?? null;
+  const manualContactCountsAsFollowUp = manualContactDraftState?.countsAsFollowUp ?? null;
+  const manualContactContinuation = manualContactDraftState?.continuation ?? null;
+
+  useEffect(() => {
+    const requestId = ++manualSuggestionRequestRef.current;
+    manualSuggestionAbortRef.current?.abort();
+    manualSuggestionAbortRef.current = null;
+    setManualSuggestion(null);
+
+    if (!manualContactItem || !manualContactDraftState || manualContactDraftState.continuation)
+      return;
+    const eligibility = manualContactSuggestionEligibility(
+      manualContactItem,
+      manualContactDraftState
+    );
+    const occurredAt = localDateTimeToIso(manualContactDraftState.occurredAt);
+    if (!eligibility || !occurredAt) return;
+
+    const controller = new AbortController();
+    manualSuggestionAbortRef.current = controller;
+    void getCommercialFollowUpSuggestion({
+      occurredAt,
+      businessDays: eligibility.businessDays,
+      signal: controller.signal,
+    })
+      .then((result: CommercialFollowUpSuggestion) => {
+        if (controller.signal.aborted || requestId !== manualSuggestionRequestRef.current) return;
+        setManualSuggestion({
+          anchorDate: result.anchorDate,
+          date: result.suggestedDate,
+          label: eligibility.label,
+          businessDays: result.businessDays,
+          occurredAt: manualContactDraftState.occurredAt,
+        });
+      })
+      .catch(() => {
+        // Suggestions are optional; an unavailable read must not block a manual declaration.
+      });
+
+    return () => controller.abort();
+  }, [
+    manualContactActionId,
+    manualContactFollowUpStage,
+    manualContactOccurredAt,
+    manualContactResultCode,
+    manualContactCountsAsFollowUp,
+    manualContactContinuation,
+  ]);
 
   const load = useCallback(
     async (requestedPage: number, requestedFilter: CommercialQueueFilter) => {
@@ -330,6 +443,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   function openManualContact(item: CommercialQueueItem) {
+    appliedManualSuggestionRef.current = null;
     setDialog({ type: 'manual-contact', item, commandId: globalThis.crypto.randomUUID() });
     setDraft(manualContactDraft(item));
     setDialogError(null);
@@ -350,6 +464,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   function closeDialog(force = false) {
     if (submitting && !force) return;
+    appliedManualSuggestionRef.current = null;
     setDialog(null);
     setDraft(null);
     setDialogError(null);
@@ -363,7 +478,71 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     field: K,
     value: ManualContactDraft[K]
   ) {
+    if (field === 'occurredAt') {
+      const applied = appliedManualSuggestionRef.current;
+      appliedManualSuggestionRef.current = null;
+      if (applied) {
+        setDraft((current) => {
+          if (
+            !current ||
+            !('contactType' in current) ||
+            current.occurredAt !== applied.occurredAt
+          ) {
+            return current ? { ...current, [field]: value } : current;
+          }
+          const next: ManualContactDraft = { ...current, occurredAt: value as string };
+          if (current.kind === applied.after.kind) next.kind = applied.before.kind;
+          if (current.dueDate === applied.after.dueDate) next.dueDate = applied.before.dueDate;
+          if (current.dueTime === applied.after.dueTime) next.dueTime = applied.before.dueTime;
+          if (current.reason === applied.after.reason) next.reason = applied.before.reason;
+          if (current.continuation === applied.after.continuation) {
+            next.continuation = applied.before.continuation;
+          }
+          return next;
+        });
+        return;
+      }
+    }
     setDraft((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function useManualContactSuggestion() {
+    if (!dialog || dialog.type !== 'manual-contact' || !draft || !('contactType' in draft)) return;
+    const suggestion = manualContactSuggestionForCurrentDraft(dialog.item, draft, manualSuggestion);
+    if (!suggestion) return;
+    const before = {
+      kind: draft.kind,
+      dueDate: draft.dueDate,
+      dueTime: draft.dueTime,
+      reason: draft.reason,
+      continuation: draft.continuation,
+    };
+    const after = {
+      kind: 'customer_contact' as const,
+      dueDate: suggestion.date,
+      dueTime: '',
+      reason: 'Acompanhar retorno pré-orçamento',
+      continuation: 'wait' as const,
+    };
+    appliedManualSuggestionRef.current = {
+      occurredAt: draft.occurredAt,
+      before,
+      after,
+    };
+    setDraft((current) => {
+      if (
+        !current ||
+        !('contactType' in current) ||
+        current.continuation ||
+        current.occurredAt !== suggestion.occurredAt
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        ...after,
+      };
+    });
   }
 
   async function submitSchedule() {
@@ -575,6 +754,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   function manualContactFields() {
     if (!draft || !('contactType' in draft)) return null;
+    const suggestion =
+      dialog?.type === 'manual-contact'
+        ? manualContactSuggestionForCurrentDraft(dialog.item, draft, manualSuggestion)
+        : null;
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
@@ -636,6 +819,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           />
           Follow-up comercial concluído
         </label>
+        {suggestion && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-muted px-3 py-2 text-sm sm:col-span-2">
+            <span>
+              {suggestion.label} sugerido: {formatDate(suggestion.date)}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={useManualContactSuggestion}>
+              Usar sugestão
+            </Button>
+          </div>
+        )}
         <label className="grid gap-1 text-sm sm:col-span-2">
           Observação <span className="text-fg-muted">(opcional)</span>
           <textarea

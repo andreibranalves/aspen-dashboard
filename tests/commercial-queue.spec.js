@@ -29,6 +29,7 @@ const firstContact = {
   schedule_type: 'timed',
   due_status: 'overdue',
   version: 1,
+  follow_up_stage: 0,
   actor: 'system',
   is_urgent: false,
   priority: 4,
@@ -52,6 +53,311 @@ const firstContact = {
 function queue(items) {
   return { data: items, total: items.length, page: 1, page_size: 25 };
 }
+
+function followUpSuggestion(url) {
+  const query = new globalThis.URL(url).searchParams;
+  const occurredAt = query.get('occurred_at');
+  const businessDays = Number(query.get('business_days'));
+  const anchorDate = occurredAt?.slice(0, 10);
+  const dates = {
+    '2026-09-11:2': '2026-09-15',
+    '2026-09-14:2': '2026-09-16',
+    '2026-09-15:3': '2026-09-18',
+  };
+  return {
+    anchor_date: anchorDate,
+    suggested_date: dates[`${anchorDate}:${businessDays}`],
+    business_days: businessDays,
+  };
+}
+
+function manualContactResponse(body) {
+  return {
+    action_id: firstContact.action_id,
+    opportunity_id: firstContact.opportunity_id,
+    state: 'completed',
+    version: 2,
+    closed: false,
+    successor: null,
+    event_id: '99999999-9999-4999-8999-999999999999',
+    command_id: body.command_id,
+    contact_type: body.contact_type,
+    occurred_at: body.occurred_at,
+    note: body.note || null,
+    result_code: body.result_code,
+    counts_as_follow_up: body.counts_as_follow_up,
+    continuation_type: body.continuation.type,
+    source: 'operator_statement',
+  };
+}
+
+test('contato aguardando informação oferece sugestão explícita de dois dias úteis', async ({
+  page,
+}) => {
+  const posts = [];
+  await page.route('**/api/commercial-queue**', async (route) => {
+    if (
+      new globalThis.URL(route.request().url()).searchParams.get('view') === 'follow_up_suggestion'
+    ) {
+      return json(route, followUpSuggestion(route.request().url()));
+    }
+    if (route.request().method() === 'POST') {
+      const body = JSON.parse(route.request().postData() || '{}');
+      posts.push(body);
+      return json(route, manualContactResponse(body));
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-11T10:00');
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('awaiting_information');
+  await expect(dialog.getByRole('option', { name: 'Aguardando informação' })).toBeAttached();
+  await expect(dialog.getByText('Primeiro retorno sugerido: 15/09/2026')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Usar sugestão' }).click();
+
+  await expect(dialog.getByLabel('Continuidade', { exact: true })).toHaveValue('wait');
+  await expect(dialog.getByLabel('Data para aguardar')).toHaveValue('2026-09-15');
+  expect(posts).toEqual([]);
+
+  await dialog.getByLabel('Data para aguardar').fill('2026-09-19');
+  await dialog.getByLabel('Motivo da continuidade').fill('Acompanhar informações pendentes');
+  await dialog.getByRole('button', { name: 'Registrar contato' }).click();
+
+  await expect.poll(() => posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({
+    command: 'manual_contact',
+    result_code: 'awaiting_information',
+    continuation: {
+      type: 'wait',
+      schedule: { due_date: '2026-09-19' },
+    },
+  });
+});
+
+test('primeiro sem resposta contado oferece sugestão de três dias úteis', async ({ page }) => {
+  await page.route('**/api/commercial-queue**', (route) => {
+    if (
+      new globalThis.URL(route.request().url()).searchParams.get('view') === 'follow_up_suggestion'
+    ) {
+      return json(route, followUpSuggestion(route.request().url()));
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-15T10:00');
+  await dialog.getByRole('combobox', { name: 'Resultado do contato' }).selectOption('no_response');
+  await expect(dialog.getByRole('button', { name: 'Usar sugestão' })).toHaveCount(0);
+  await dialog.getByLabel('Follow-up comercial concluído').check();
+  await expect(dialog.getByText('Segundo retorno sugerido: 18/09/2026')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Usar sugestão' }).click();
+  await expect(dialog.getByLabel('Data para aguardar')).toHaveValue('2026-09-18');
+});
+
+test('sugestão aplicada é invalidada e recalculada quando a ocorrência muda', async ({ page }) => {
+  await page.route('**/api/commercial-queue**', (route) => {
+    if (
+      new globalThis.URL(route.request().url()).searchParams.get('view') === 'follow_up_suggestion'
+    ) {
+      return json(route, followUpSuggestion(route.request().url()));
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-11T10:00');
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('awaiting_information');
+  await expect(dialog.getByText('Primeiro retorno sugerido: 15/09/2026')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Usar sugestão' }).click();
+  await expect(dialog.getByLabel('Continuidade', { exact: true })).toHaveValue('wait');
+  await expect(dialog.getByLabel('Data para aguardar')).toHaveValue('2026-09-15');
+
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-14T10:00');
+  await expect(dialog.getByLabel('Continuidade', { exact: true })).toHaveValue('');
+  await expect(dialog.getByText('Primeiro retorno sugerido: 16/09/2026')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Usar sugestão' }).click();
+  await expect(dialog.getByLabel('Data para aguardar')).toHaveValue('2026-09-16');
+});
+
+test('resposta tardia não substitui uma continuidade de fim de semana editada pelo operador', async ({
+  page,
+}) => {
+  const posts = [];
+  const pendingSuggestions = [];
+  await page.route('**/api/commercial-queue**', async (route) => {
+    if (
+      new globalThis.URL(route.request().url()).searchParams.get('view') === 'follow_up_suggestion'
+    ) {
+      await new Promise((resolve) => {
+        pendingSuggestions.push(async () => {
+          try {
+            await json(route, followUpSuggestion(route.request().url()));
+          } catch {
+            // The UI may abort this request after the operator chooses a continuation.
+          }
+          resolve();
+        });
+      });
+      return;
+    }
+    if (route.request().method() === 'POST') {
+      const body = JSON.parse(route.request().postData() || '{}');
+      posts.push(body);
+      return json(route, manualContactResponse(body));
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-11T10:00');
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('awaiting_information');
+  await expect.poll(() => pendingSuggestions.length).toBe(1);
+  await dialog.getByRole('combobox', { name: 'Continuidade' }).selectOption('wait');
+  await dialog.getByLabel('Data para aguardar').fill('2026-09-19');
+  await dialog.getByLabel('Motivo da continuidade').fill('Aguardar documentos');
+  await pendingSuggestions[0]();
+
+  await expect(dialog.getByLabel('Data para aguardar')).toHaveValue('2026-09-19');
+  await expect(dialog.getByRole('button', { name: 'Usar sugestão' })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Registrar contato' }).click();
+  await expect.poll(() => posts).toHaveLength(1);
+  expect(posts[0].continuation.schedule.due_date).toBe('2026-09-19');
+});
+
+test('respostas fora de ordem não substituem o resultado da ocorrência atual', async ({ page }) => {
+  const pendingSuggestions = new Map();
+  await page.route('**/api/commercial-queue**', async (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.get('view') === 'follow_up_suggestion') {
+      const occurredAt = url.searchParams.get('occurred_at');
+      await new Promise((resolve) => {
+        pendingSuggestions.set(occurredAt, async () => {
+          try {
+            await json(route, followUpSuggestion(route.request().url()));
+          } catch {
+            // An older request may have been aborted by the current request.
+          }
+          resolve();
+        });
+      });
+      return;
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-11T10:00');
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('awaiting_information');
+  await expect.poll(() => pendingSuggestions.size).toBe(1);
+  await dialog.getByLabel('Data e hora do contato').fill('2026-09-14T10:00');
+  await expect.poll(() => pendingSuggestions.size).toBe(2);
+
+  await pendingSuggestions.get('2026-09-14T13:00:00.000Z')?.();
+  await expect(dialog.getByText('Primeiro retorno sugerido: 16/09/2026')).toBeVisible();
+  await pendingSuggestions.get('2026-09-11T13:00:00.000Z')?.();
+  await expect(dialog.getByText('Primeiro retorno sugerido: 16/09/2026')).toBeVisible();
+});
+
+test('estágio já contado não oferece um terceiro retorno genérico', async ({ page }) => {
+  await page.route('**/api/commercial-queue**', (route) =>
+    json(route, queue([{ ...firstContact, follow_up_stage: 1 }]))
+  );
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('awaiting_information');
+  await expect(dialog.getByRole('button', { name: 'Usar sugestão' })).toHaveCount(0);
+  await dialog.getByRole('combobox', { name: 'Resultado do contato' }).selectOption('no_response');
+  await dialog.getByLabel('Follow-up comercial concluído').check();
+  await expect(dialog.getByRole('button', { name: 'Usar sugestão' })).toHaveCount(0);
+});
+
+test('continuidade interna escolhida pelo operador não é substituída por sugestão', async ({
+  page,
+}) => {
+  const posts = [];
+  await page.route('**/api/commercial-queue**', async (route) => {
+    if (
+      new globalThis.URL(route.request().url()).searchParams.get('view') === 'follow_up_suggestion'
+    ) {
+      return json(route, followUpSuggestion(route.request().url()));
+    }
+    if (route.request().method() === 'POST') {
+      const body = JSON.parse(route.request().postData() || '{}');
+      posts.push(body);
+      return json(route, manualContactResponse(body));
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Lead Sintético/ })
+    .getByRole('button', { name: 'Registrar contato' })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('awaiting_information');
+  await dialog.getByRole('combobox', { name: 'Continuidade' }).selectOption('successor');
+  await expect(dialog.getByRole('button', { name: 'Usar sugestão' })).toHaveCount(0);
+  await dialog.getByLabel('Tipo da próxima ação').selectOption('internal');
+  await dialog.getByLabel('Data da próxima ação').fill('2026-09-20');
+  await dialog.getByLabel('Motivo da continuidade').fill('Separar amostras');
+  await dialog.getByRole('button', { name: 'Registrar contato' }).click();
+
+  await expect.poll(() => posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({
+    continuation: {
+      type: 'successor',
+      schedule: {
+        kind: 'internal',
+        due_date: '2026-09-20',
+        reason: 'Separar amostras',
+      },
+    },
+  });
+});
 
 test('a rota Comercial sem aba abre a Fila priorizada', async ({ page }) => {
   await page.route('**/api/commercial-queue**', (route) => json(route, queue([firstContact])));

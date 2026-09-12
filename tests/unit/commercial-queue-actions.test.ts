@@ -217,6 +217,51 @@ test('POST /api/commercial-queue exige continuidade no contato manual', async ()
   assert.equal(calls, 0);
 });
 
+test('POST /api/commercial-queue publica o rótulo de aguardando informação', async () => {
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      recordManualContact: async () => ({
+        ...result,
+        state: 'completed',
+        eventId: 'manual-event',
+        commandId: 'manual-command',
+        contactType: 'phone_call',
+        occurredAt: '2026-09-12T11:30:00.000Z',
+        note: null,
+        resultCode: 'awaiting_information',
+        countsAsFollowUp: false,
+        continuationType: 'wait',
+        source: 'operator_statement',
+      }),
+    }),
+  });
+  const response = await handler(
+    event('POST', {
+      command: 'manual_contact',
+      command_id: 'manual-command',
+      opportunity_id: result.opportunityId,
+      action_id: result.actionId,
+      expected_version: 1,
+      contact_type: 'phone_call',
+      occurred_at: '2026-09-12T11:30:00.000Z',
+      result_code: 'awaiting_information',
+      counts_as_follow_up: false,
+      continuation: {
+        type: 'wait',
+        schedule: {
+          kind: 'customer_contact',
+          due_date: '2026-09-15',
+          due_time: null,
+          reason: 'Acompanhar informações pendentes',
+        },
+      },
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body || '{}').result_label, 'Aguardando informação');
+});
+
 test('POST /api/commercial-queue rejeita data impossível antes do repositório', async () => {
   let calls = 0;
   const handler = createCommercialQueueHandler({

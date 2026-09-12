@@ -25,6 +25,7 @@ export type ManualContactResultCode =
   | 'interested'
   | 'not_interested'
   | 'no_response'
+  | 'awaiting_information'
   | 'wrong_contact'
   | 'other';
 export type ManualContactContinuationType = 'successor' | 'wait' | 'close';
@@ -69,6 +70,7 @@ const MANUAL_CONTACT_RESULTS: readonly ManualContactResultCode[] = [
   'interested',
   'not_interested',
   'no_response',
+  'awaiting_information',
   'wrong_contact',
   'other',
 ];
@@ -96,6 +98,7 @@ export interface OpportunityQueueItem {
   actor: string;
   isUrgent: boolean;
   priority: number;
+  followUpStage: number;
   opportunityStatus: string;
   terminalStatus: string | null;
   terminalReason: string | null;
@@ -730,6 +733,7 @@ interface QueueRow {
   actor: string;
   is_urgent: boolean;
   priority: number;
+  follow_up_stage: number;
   opportunity_status: string;
   terminal_status: string | null;
   terminal_reason: string | null;
@@ -1240,6 +1244,7 @@ export function createPostgresOpportunityActionRepository(
               a.updated_at,
               d.quote_lead_id,
               d.is_urgent,
+              d.follow_up_stage,
               d.status AS opportunity_status,
               CASE WHEN d.status IN (${sql.join(
                 closedStatuses.map((status) => sql`${status}`),
@@ -1482,6 +1487,7 @@ export function createPostgresOpportunityActionRepository(
                 actor: row.actor,
                 isUrgent: row.is_urgent === true,
                 priority: Number(row.priority || 8),
+                followUpStage: Number(row.follow_up_stage || 0),
                 opportunityStatus: row.opportunity_status,
                 terminalStatus: row.terminal_status || null,
                 terminalReason: row.terminal_reason || null,

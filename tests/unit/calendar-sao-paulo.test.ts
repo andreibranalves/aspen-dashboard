@@ -2,11 +2,27 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  addBusinessDays,
   calendarDateInSaoPaulo,
   isCalendarMonthPeriod,
   resolveNamedPeriod,
   yearMonthOf,
 } from '../../api/_shared/calendar-sao-paulo.ts';
+
+describe('addBusinessDays', () => {
+  it('skips the weekend when adding two business days from Friday', () => {
+    assert.equal(addBusinessDays('2026-09-11', 2), '2026-09-15');
+  });
+
+  it('returns Friday when adding three business days from Tuesday', () => {
+    assert.equal(addBusinessDays('2026-09-15', 3), '2026-09-18');
+  });
+
+  it('rejects malformed or impossible date-only input', () => {
+    assert.throws(() => addBusinessDays('2026-9-11', 2));
+    assert.throws(() => addBusinessDays('2026-02-31', 2));
+  });
+});
 
 describe('calendarDateInSaoPaulo', () => {
   it('keeps 22h in Brazil on the São Paulo calendar day, not UTC', () => {
