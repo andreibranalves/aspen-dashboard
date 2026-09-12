@@ -436,6 +436,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     const saveGate = new Promise((resolve) => { releaseSave = resolve; });
     let saveRequests = 0;
     let issueRequests = 0;
+    const issuePayloads = [];
     const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -456,6 +457,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     });
     await page.route('**/api/quotation-issues', async (route) => {
       issueRequests += 1;
+      issuePayloads.push(route.request().postDataJSON());
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -476,10 +478,13 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect.poll(() => issueRequests).toBe(1);
     await expect.poll(() => page.url()).toContain('#/quotations/quotation-race');
     expect(saveRequests).toBe(1);
+    expect(issuePayloads).toEqual([{ revision_id: 'revision-race', concurrency_token: 'token-race' }]);
     expect(unexpectedApiRequests).toEqual([]);
   });
 
-  test('ignora duplo clique de emissão com um único save e issue', async ({ page }) => {
+  test('ignora duplo clique de emissão enquanto o save está pendente', async ({ page }) => {
+    let releaseSave;
+    const saveGate = new Promise((resolve) => { releaseSave = resolve; });
     let saveRequests = 0;
     let issueRequests = 0;
     const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
@@ -489,6 +494,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
     await page.route('**/api/orcamento', async (route) => {
       saveRequests += 1;
+      await saveGate;
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -510,7 +516,54 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await page.getByRole('button', { name: 'Emitir orçamento', exact: true }).dblclick({ force: true });
     await expect.poll(() => saveRequests).toBe(1);
+    expect(issueRequests).toBe(0);
+    releaseSave();
     await expect.poll(() => issueRequests).toBe(1);
+    expect(unexpectedApiRequests).toEqual([]);
+  });
+
+  test('não emite quando o save compartilhado falha e mostra a tentativa novamente', async ({ page }) => {
+    let releaseSave;
+    const saveGate = new Promise((resolve) => { releaseSave = resolve; });
+    let saveRequests = 0;
+    let issueRequests = 0;
+    const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ orders: [] }),
+    }));
+    await page.route('**/api/orcamento', async (route) => {
+      saveRequests += 1;
+      await saveGate;
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'falha controlada' }),
+      });
+    });
+    await page.route('**/api/quotation-issues', async (route) => {
+      issueRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.goto('/#/manual');
+    await page.getByLabel('Nome do cliente').fill('Cliente falha compartilhada');
+    await page.getByLabel('Origem *').selectOption('Google Ads');
+    await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
+    await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
+    await page.getByRole('button', { name: 'Salvar rascunho', exact: true }).click();
+    await page.getByRole('button', { name: 'Emitir orçamento', exact: true }).click();
+    await expect.poll(() => saveRequests).toBe(1);
+    expect(issueRequests).toBe(0);
+    releaseSave();
+    await expect(page.getByRole('alert').getByText('Não foi possível salvar o rascunho. Tente novamente.', { exact: true })).toBeVisible();
+    expect(issueRequests).toBe(0);
+    expect(page.url()).toContain('#/manual');
+    await expect(page.getByRole('button', { name: 'Salvar rascunho', exact: true })).toBeEnabled();
     expect(unexpectedApiRequests).toEqual([]);
   });
 

@@ -491,7 +491,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [savingDraft, setSavingDraft] = useState<Record<number, boolean>>({});
   const [issueErrorByDraft, setIssueErrorByDraft] = useState<Record<number, string>>({});
   const issueInFlight = useRef(new Set<number>());
-  const saveInFlight = useRef(new Map<number, Promise<StoredAutoQuoteDraft | null>>());
+  const saveInFlight = useRef(new Map<string, Promise<StoredAutoQuoteDraft | null>>());
   const initialIssueKeys = initialDrafts.flatMap((draft) => draft.issueIdempotencyKey && !draft.issue ? [draft.issueIdempotencyKey] : []);
   const initialIssuePending = initialIssueKeys.length > 0;
   const [officialIssuePending, setOfficialIssuePending] = useState(initialIssuePending);
@@ -1345,15 +1345,20 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   }, [finishOfficialIssue, persistDrafts]);
 
   const saveDraft = useCallback(async (draft: Draft, isCurrentContent: () => boolean = () => true): Promise<StoredAutoQuoteDraft | null> => {
-    const index = draft.index;
+    // The local index is only a presentation slot. It can change between two
+    // click handlers while React commits the first persistence update; the
+    // creation key is the identity shared by Save and Issue.
+    const requestDraft = ensureCreationRequestId(draft) as StoredAutoQuoteDraft & { creationRequestId: string };
+    const identity = requestDraft.creationRequestId;
+    const index = requestDraft.index;
     const existing = draftsRef.current.find((candidate) => candidate.index === index) as StoredAutoQuoteDraft | undefined;
-    const existingSaved = (draft as StoredAutoQuoteDraft).saved || (
-      existing && sameEditableDraft(existing.edited, draft.edited) ? existing.saved : undefined
+    const existingSaved = requestDraft.saved || (
+      existing && sameEditableDraft(existing.edited, requestDraft.edited) ? existing.saved : undefined
     );
     if (existingSaved?.quotationId && existingSaved.businessNumber && existingSaved.revisionId && existingSaved.concurrencyToken && existingSaved.snapshot) {
       return { ...draft, saved: existingSaved } as StoredAutoQuoteDraft;
     }
-    const pending = saveInFlight.current.get(index);
+    const pending = saveInFlight.current.get(identity);
     if (pending) return pending;
     let operation!: Promise<StoredAutoQuoteDraft | null>;
     operation = (async () => {
@@ -1361,7 +1366,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       try {
         // The creation key is stable across retries and persisted before the
         // first dispatch, so a lost response never creates a second quotation.
-        const requestDraft = ensureCreationRequestId(draft) as StoredAutoQuoteDraft;
         const response = await dispatchAfterDraftPersistence(
           requestDraft,
           (persistedDraft) => {
@@ -1401,10 +1405,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           delete next[index];
           return next;
         });
-        if (saveInFlight.current.get(index) === operation) saveInFlight.current.delete(index);
+        if (saveInFlight.current.get(identity) === operation) saveInFlight.current.delete(identity);
       }
     })();
-    saveInFlight.current.set(index, operation);
+    saveInFlight.current.set(identity, operation);
     return operation;
   }, [persistDrafts, responseSaved]);
 
@@ -1443,7 +1447,22 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         || (sameExisting && existing?.saved?.snapshot ? existing.saved : undefined)
         || (await saveDraft(requestDraft))?.saved;
       if (!mountedRef.current || unloadingRef.current) return;
-      if (!saved?.quotationId || !saved.businessNumber || !saved.revisionId || !saved.concurrencyToken) throw new Error('Resposta inválida ao salvar o rascunho.');
+      // saveDraft owns the actionable Save error. Do not turn a shared Save
+      // failure into an Issue attempt with stale or undefined revision data.
+      if (!saved?.quotationId || !saved.businessNumber || !saved.revisionId || !saved.concurrencyToken) {
+        const failed = draftsRef.current.map((draft) => {
+          if (draft.index !== draftIndex || (draft as StoredAutoQuoteDraft).issueIdempotencyKey !== key) return draft;
+          const next = { ...draft, status: undefined, result: undefined } as StoredAutoQuoteDraft;
+          delete next.issueIdempotencyKey;
+          delete next.issueDispatchStarted;
+          return next;
+        });
+        if (!persistDrafts(failed)) {
+          draftsRef.current = failed;
+          setDrafts(failed);
+        }
+        return;
+      }
       const issue = await issueOfficially(key, async () => {
         const marked = draftsRef.current.map((draft) => draft.index === draftIndex
           && (draft as StoredAutoQuoteDraft).issueIdempotencyKey === key
@@ -1503,7 +1522,12 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     const base = manualSourceDraft.current === null
       ? undefined
       : drafts.find((draft) => draft.index === manualSourceDraft.current);
-    const index = base?.index ?? (Math.max(-1, ...drafts.map((draft) => draft.index)) + 1);
+    const index = base?.index
+      ?? manualSourceDraft.current
+      ?? (Math.max(-1, ...drafts.map((draft) => draft.index)) + 1);
+    // Reserve the existing presentation slot before the first await. Save and
+    // Issue can otherwise observe different slots in adjacent click events.
+    if (manualSourceDraft.current === null) manualSourceDraft.current = index;
     return draftFromManual(manual, index, base);
   }, [drafts, manual]);
 
