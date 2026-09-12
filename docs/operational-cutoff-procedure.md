@@ -4,14 +4,9 @@ O dashboard usa PostgreSQL como fonte de verdade para produtos, clientes, orçam
 
 ## Pré-condições
 
-Os checks locais exigidos são os da lane da mudança, definidos na fonte normativa [release-lanes.md](./release-lanes.md):
+A verificação exigida para concluir depende da classificação de risco da mudança, conforme a política atual em [release-lanes.md](./release-lanes.md). Nenhuma sequência ad-hoc de checks individuais substitui essa política.
 
-```bash
-npm run verify:fast                              # lane FAST
-npm run verify:full                              # RELEASE ou mudanças CRITICAL, quando aplicável
-```
-
-Nenhuma sequência ad-hoc de checks individuais substitui a lane canônica. Backup e restore são operações controladas fora deste repositório.
+As etapas posteriores deste runbook são específicas de cutover e exigem autorização explícita; não devem ser executadas para uma feature comum. Backup e restore são operações controladas fora deste repositório.
 
 ## Readiness
 

@@ -2,7 +2,7 @@
 
 ## Regra principal
 
-Migrations pertencem à lane CRITICAL e nunca executam implicitamente no startup, build ou CI padrão.
+Migrations seguem a classificação de `docs/release-lanes.md`: uma migration genuinamente aditiva pode ser SAFE; migration destrutiva é CRITICAL. Criar ou aplicar migration exige aprovação explícita e separada, qualquer que seja a classificação. Migrations nunca executam implicitamente no startup, build ou CI padrão.
 
 Exceção explícita: o job `postgres` do CI de pull request invoca o apply raw (`npm run db:migrate`)
 contra um PostgreSQL service container descartável, nunca contra staging ou produção.

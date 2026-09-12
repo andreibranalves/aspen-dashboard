@@ -31,10 +31,10 @@
 - Evolution API é o único transporte de WhatsApp.
 ## Fluxo de git
 
-- Mudança trivial (CSS, copy, navegação, ajuste pequeno de UI; ~1–3 arquivos, sem dados/auth/infra/dependências): commit direto na `master` e push. Sem issue, branch, worktree, PR nem CI.
-- Na dúvida entre trivial e estrutural (ex.: mudança simples tocando mais de ~3 arquivos), pergunte antes com `ask_user_question`: commit direto na master vs branch + PR.
-- CRITICAL, multi-arquivo estrutural ou mudança em infraestrutura: branch dedicada + PR como de costume.
-
+- Mudanças triviais e reversíveis (CSS, copy, navegação, ajuste pequeno de UI) podem seguir no fluxo direto já autorizado, sem issue, branch ou worktree.
+- Não há gate por contagem de arquivos. Na dúvida, use branch curta; pergunte somente quando a autorização ou o risco mudar.
+- Demais mudanças vão em branch curta + PR quando a publicação for autorizada. `SHIP` não autoriza push/deploy nem pular check existente.
+- Sincronize `git pull --ff-only origin <base>` após checar o status e antes das mudanças, preservando trabalho alheio.
 - Após o merge do PR, rode `sh scripts/post-merge-cleanup.sh` para remover worktrees e branches locais cujo remote foi apagado (branches não merged ficam de fora).
 - Não edite arquivos gerados pelo Vite em `public/`.
 
@@ -56,30 +56,23 @@
 - Antes de cutover, execute `node scripts/cutover-env-status.mjs`.
 - O preflight deve mostrar apenas nomes e estados `present` ou `missing`, nunca valores.
 
-## Estágio do produto: PRE-BETA
+## Estágio do produto: produção, estágio inicial
 
-O Aspen Orçamento está em pré-beta, sem usuários. O objetivo de engenharia é aprender e entregar rápido, preservando rigor somente onde um erro causa dano real (dados, dinheiro, comunicação externa, segurança, inconsistência permanente).
+O Aspen Orçamento é uma ferramenta interna de operador único, em produção, com dados reais. O objetivo de engenharia é aprender e entregar rápido, preservando rigor somente onde um erro causa dano real (dados, dinheiro, comunicação externa, segurança, inconsistência permanente). Prioridade: velocidade de entrega, baixo custo/tokens, simplicidade, segurança proporcional e qualidade suficiente.
 
-Compatibilidade com comportamentos ou dados de versões anteriores não é requisito por padrão. Não criar adapters, dual-read, dual-write, fallbacks legado, backfills complexos ou camadas de compatibilidade sem necessidade explícita na issue (dados reais a preservar, consumidores reais dependentes ou pedido explícito).
+Dados reais e contratos em uso precisam ser preservados; não implemente compatibilidade com consumidores hipotéticos nem crie adapters, dual-read, dual-write, fallbacks legado, backfills complexos ou camadas de compatibilidade.
 
-Antes de adicionar abstraction layer, adapter, cache, fila, feature flag, event bus, novo pacote ou infraestrutura para requisito futuro, responda: existe necessidade na issue atual? Existe risco real já observado? A solução mais simples falha em algum requisito atual? Se as três respostas não justificarem, não implemente.
+Antes de adicionar abstração ou infraestrutura para requisito futuro, siga a seção Complexidade de `docs/release-lanes.md`.
 
-## Classificação de risco por issue
+## Classificação de risco
 
-Classifique no início do trabalho. `FAST` é o padrão; promova para `CRITICAL` apenas com critério objetivo.
+A fonte normativa única das lanes, do processo de revisão e dos limites de correção é `docs/release-lanes.md`. Leia antes de classificar, delegar ou revisar; não replique aqui definições, testes ou limites.
 
-- **FAST** — mudanças reversíveis: UI, copy, navegação, filtros, CRUD comum, refactors locais, cálculos em rascunho experimental. Validação: `verify:fast`, testes focados quando houver comportamento relevante (`npm run test:unit:focused -- tests/unit/<arquivo>.test.ts`), smoke da jornada alterada quando aplicável. Mudança puramente visual ou de copy não exige teste automatizado novo. Revisão única leve; sem E2E completo nem PostgreSQL real.
-- **CRITICAL** — perda destrutiva ou irreversível de dados; envio real de WhatsApp/e-mail/documento ao cliente; valores oficialmente emitidos (orçamento emitido, totais, pedidos); autenticação, autorização ou isolamento de tenant; idempotência, locks e invariantes de concorrência. Validação: checks FAST + testes das invariantes e caminhos de erro + PostgreSQL descartável quando persistência for afetada + E2E das jornadas afetadas + revisão independente.
-
-Pertencer a domínio comercial não torna uma issue CRITICAL por si só; o gatilho é o efeito possível. A fonte normativa das lanes e o detalhamento operacional de cada fluxo ficam em `docs/release-lanes.md`.
-
-**RELEASE** é um gate periódico do conjunto integrado (antes de deploy importante, milestone ou beta), não um tipo de issue: `verify:full` (FAST + corpus unitário completo + build de produção + Playwright completo), PostgreSQL/migrations aplicáveis e smoke das jornadas principais.
-
-Falha já existente no baseline só é ignorável após reprodução idêntica na base e registro em issue própria; a mudança atual não pode piorar nem tocar aquele comportamento.
+Classifique pela consequência concreta do **diff** (não por palavra-chave, número de arquivos ou domínio): `SHIP` (padrão), `SAFE` e `CRITICAL`. `RELEASE` é um gate periódico do conjunto integrado, não um quarto tipo de tarefa. Criar ou aplicar migration exige aprovação explícita e separada, qualquer que seja a classificação.
 
 Issues de implementação devem ter 1 objetivo, 1 jornada principal, domínio coeso e normalmente 3–7 acceptance criteria. Ajustes pequenos e relacionados viajam juntos; não crie uma issue por botão.
 
-Relatórios finais de issues FAST são curtos: implementado, validação realizada e checks amplos omitidos intencionalmente.
+Relatórios finais são curtos: implementado, validação realizada e checks amplos omitidos intencionalmente.
 
 ## Comandos
 
@@ -87,12 +80,12 @@ Relatórios finais de issues FAST são curtos: implementado, validação realiza
 npm run dev
 npm run verify:fast          # lint + typecheck + checks estruturais baratos
 npm run test:unit:focused -- tests/unit/<arquivo>.test.ts   # testes focados
-npm run test:unit            # corpus unitário completo (~47s)
-npm run verify:full          # RELEASE: FAST + corpus completo + build + E2E
+npm run test:unit            # corpus unitário completo
+npm run verify:full          # RELEASE: verify:fast + corpus + build + E2E
 ```
 
-Use `verify:fast` + testes focados durante o desenvolvimento.
-`verify:full` fica para gates RELEASE, mudanças transversais grandes ou solicitação explícita — não é obrigatório em toda issue.
+- Durante a edição, rode o checker barato relevante; antes de entregar código, rode `npm run verify:fast`, conforme a política de risco.
+- `verify:full` fica para gates RELEASE, mudanças transversais grandes ou solicitação explícita — não é obrigatório em toda issue.
 
 E2E integrado (HTTP -> PostgreSQL descartável -> UI) usa o ponto de entrada seguro
 `npm run test:e2e:safe`; ver `docs/safe-e2e.md`.

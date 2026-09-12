@@ -1,33 +1,28 @@
-## Ticket
-
-Ref #
-
 ## Risk level
 
-FAST / CRITICAL
+SHIP / SAFE / CRITICAL — justificativa em uma linha:
 
-## Scope
+<!-- Fonte normativa: docs/release-lanes.md -->
+
+## Objetivo
+
+<!-- 1 objetivo; inclua issue/ref quando houver -->
+
+## Escopo
 
 -
 
-## Out of scope
+## Fora de escopo
 
 -
 
 ## Validação realizada
 
-- [ ] lint
-- [ ] typecheck
-- [ ] testes focados
-- [ ] verify:fast
+<!-- Escolha pelo risco; informe resultados reais e omissões intencionais. -->
 
-### Somente quando aplicável (CRITICAL / RELEASE)
+-
 
-- [ ] PostgreSQL descartável/real
-- [ ] E2E das jornadas afetadas
-- [ ] verify:full
+## Riscos relevantes
 
-## Risks
-
-- Data/migration impact:
-- External-write impact:
+- Dados/migration:
+- Escrita externa:
