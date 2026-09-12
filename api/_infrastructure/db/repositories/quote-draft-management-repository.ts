@@ -7,6 +7,7 @@ import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import { prepareQuotationDeletion, QuotationDeletionConflictError } from './quotation-deletion.js';
 import {
   clients,
+  crmDeals,
   products,
   productPricingTiers,
   quoteRevisionItems,
@@ -1310,6 +1311,26 @@ export function createPostgresQuoteDraftManagementRepository(
             throw new QuoteManagementConflictError(
               'A revisão do orçamento não está mais em rascunho.'
             );
+          }
+          // A linked proposal belongs to its demand's client. Changing to an
+          // incompatible client would orphan the commercial link, so it is
+          // rejected instead of silently rewriting quotations.client_id.
+          if (
+            quotation.opportunityId &&
+            selectedClientId &&
+            selectedClientId !== quotation.clientId
+          ) {
+            const [opportunity] = await tx
+              .select()
+              .from(crmDeals)
+              .where(eq(crmDeals.id, quotation.opportunityId))
+              .for('update')
+              .limit(1);
+            if (!opportunity || opportunity.clientId !== selectedClientId) {
+              throw new QuoteManagementConflictError(
+                'A oportunidade deste orçamento pertence a outro cliente. Crie uma nova proposta para o cliente selecionado.'
+              );
+            }
           }
           const templateSelection = await readTemplateSelection(tx, input, revision);
           const sectionsSnapshot = sectionSnapshotForUpdate(input, revision);

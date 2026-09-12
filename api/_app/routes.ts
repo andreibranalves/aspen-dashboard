@@ -10,6 +10,7 @@ import { handler as editDraft } from '../_modules/edit-draft.js';
 import { handler as extract } from '../_modules/extract.js';
 import { handler as commercialExport } from '../_modules/commercial-export.js';
 import { handler as commercialQueue } from '../_modules/commercial-queue.js';
+import { handler as proposalOpportunities } from '../_modules/proposal-opportunities.js';
 import { handler as clientDetail } from '../_modules/client-detail.js';
 import { handler as leadsClients } from '../_modules/leads-clients.js';
 import { handler as login } from '../_modules/login.js';
@@ -65,6 +66,7 @@ export const routes: Record<string, LegacyHandler> = {
   extract,
   'commercial-exports': commercialExport,
   'commercial-queue': commercialQueue,
+  'proposal-opportunities': proposalOpportunities,
   'leads-clients': leadsClients,
   orcamento,
   pdf,

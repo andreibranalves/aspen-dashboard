@@ -56,6 +56,12 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
     contact_email: item.contactEmail,
     client_id: item.clientId,
     client_name: item.clientName,
+    proposals: item.proposals.map((proposal) => ({
+      quotation_id: proposal.quotationId,
+      business_number: proposal.businessNumber,
+      status: proposal.status,
+      total: proposal.total,
+    })),
   };
 }
 

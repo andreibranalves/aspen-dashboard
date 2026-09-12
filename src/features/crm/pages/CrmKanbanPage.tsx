@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
+import DealProposals from '@/features/crm/components/DealProposals';
 import PipelineStagesDialog from '@/features/crm/components/PipelineStagesDialog';
 import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { fmtPhone } from '@/lib/formatting/formatters';
@@ -734,6 +735,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                           ) : (
                             <span className="text-fg-muted">—</span>
                           )}
+                          <DealProposals opportunityId={deal.id} />
                         </TableCell>
                         <TableCell>
                           <StatusBadge
@@ -856,6 +858,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         </div>
                       )}
                     </dl>
+                    <DealProposals opportunityId={deal.id} />
                     {deal.quote_lead_id && (
                       <Button
                         type="button"
@@ -1053,6 +1056,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                   </time>
                                 )}
                               </div>
+                              <DealProposals opportunityId={deal.id} />
                               {deal.quote_lead_id && (
                                 <Button
                                   variant="ghost"

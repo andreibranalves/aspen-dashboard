@@ -21,7 +21,7 @@ Persistência ou comportamento relevante, porém controlável e reversível.
 - Checks baratos e testes focados das garantias alteradas.
 - PostgreSQL descartável ou integração somente quando a garantia depender deles; E2E focado quando a jornada exigir.
 - Um reviewer.
-- Migration genuinamente aditiva pode ser SAFE se preservar os dados e a compatibilidade com o app anterior, sem dano concreto. Aprovação para criar/aplicar migrations continua explícita e separada, qualquer que seja a classificação.
+- Migration genuinamente aditiva pode ser SAFE se preservar os dados e a compatibilidade com o app anterior, sem dano concreto. Criar e testar a migration em PostgreSQL local descartável faz parte da implementação autorizada. Aplicar em staging/produção exige autorização operacional explícita e separada; alterar migration histórica, criar migration destrutiva ou mudar a estratégia de migrations exige decisão explícita.
 
 ## CRITICAL
 

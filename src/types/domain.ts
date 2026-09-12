@@ -103,6 +103,9 @@ export interface DraftEdited {
   client_id?: string;
   quote_lead_id?: string;
   crm_deal_id?: string;
+  opportunity_id?: string;
+  new_demand?: boolean;
+  demand_summary?: string;
 }
 
 export interface Draft {
@@ -113,6 +116,9 @@ export interface Draft {
   discarded: boolean;
   status?: 'processing' | 'done' | 'error';
   result?: { success: boolean; data?: Record<string, unknown>; error?: string };
+  /** Stable creation key generated before the first dispatch. A retry with the
+   * same key and content replays the original draft instead of duplicating it. */
+  creationRequestId?: string;
 }
 
 export interface QuotationIssueProjection {

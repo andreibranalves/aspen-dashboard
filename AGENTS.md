@@ -44,8 +44,9 @@
 - Autenticação e rate limiting passam pelo pipeline compartilhado em ambiente local e implantado.
 - Não adicione novos fallbacks de provedor, transporte ou persistência, nem branches de rollout.
 - Fallbacks existentes de leitura ou cache no frontend não autorizam novos caminhos de persistência durável.
-- Não altere migrations históricas em `drizzle/` nem execute migrations sem autorização explícita.
-- Pare e peça uma decisão antes de criar migrations ou alterar a estratégia de migrations.
+- Criar e testar uma migration genuinamente aditiva em PostgreSQL local descartável faz parte da implementação autorizada.
+- Alterar migration histórica, criar migration destrutiva ou mudar a estratégia de migrations exige decisão explícita.
+- Aplicar qualquer migration em staging ou produção exige autorização operacional explícita e separada, conforme o runbook.
 - Não adicione dependências sem aprovação explícita.
 - Nunca registre ou versione `.env`, credenciais ou dados de produção.
 
@@ -68,7 +69,7 @@ Antes de adicionar abstração ou infraestrutura para requisito futuro, siga a s
 
 A fonte normativa única das lanes, do processo de revisão e dos limites de correção é `docs/release-lanes.md`. Leia antes de classificar, delegar ou revisar; não replique aqui definições, testes ou limites.
 
-Classifique pela consequência concreta do **diff** (não por palavra-chave, número de arquivos ou domínio): `SHIP` (padrão), `SAFE` e `CRITICAL`. `RELEASE` é um gate periódico do conjunto integrado, não um quarto tipo de tarefa. Criar ou aplicar migration exige aprovação explícita e separada, qualquer que seja a classificação.
+Classifique pela consequência concreta do **diff** (não por palavra-chave, número de arquivos ou domínio): `SHIP` (padrão), `SAFE` e `CRITICAL`. `RELEASE` é um gate periódico do conjunto integrado, não um quarto tipo de tarefa. Criar/testar migration aditiva local faz parte da implementação; aplicar em staging/produção exige autorização operacional explícita e separada, e alterar migration histórica, criar migration destrutiva ou mudar a estratégia exige decisão explícita.
 
 Issues de implementação devem ter 1 objetivo, 1 jornada principal, domínio coeso e normalmente 3–7 acceptance criteria. Ajustes pequenos e relacionados viajam juntos; não crie uma issue por botão.
 

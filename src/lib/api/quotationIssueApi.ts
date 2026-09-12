@@ -1,6 +1,7 @@
-import type { Draft, QuotationIssueProjection } from '@/types/domain';
+import type { Draft, QuotationIssueProjection, StoredAutoQuoteDraft } from '@/types/domain';
 
 export function buildQuotePayload(draft: Draft) {
+  const creationRequestId = (draft as StoredAutoQuoteDraft).creationRequestId;
   return {
     extracted: {
       nome: draft.edited.nome,
@@ -10,6 +11,10 @@ export function buildQuotePayload(draft: Draft) {
       ...(draft.edited.client_id ? { client_id: draft.edited.client_id } : {}),
       ...(draft.edited.quote_lead_id ? { quote_lead_id: draft.edited.quote_lead_id } : {}),
       ...(draft.edited.crm_deal_id ? { crm_deal_id: draft.edited.crm_deal_id } : {}),
+      ...(draft.edited.opportunity_id ? { opportunity_id: draft.edited.opportunity_id } : {}),
+      ...(draft.edited.new_demand ? { new_demand: true } : {}),
+      ...(draft.edited.demand_summary ? { demand_summary: draft.edited.demand_summary } : {}),
+      ...(creationRequestId ? { creation_request_id: creationRequestId } : {}),
       urgente: draft.edited.urgente,
       origem: draft.edited.origem || undefined,
       cnpj: draft.edited.cnpj || undefined,

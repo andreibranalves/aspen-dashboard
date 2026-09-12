@@ -36,6 +36,25 @@ import {
 } from '@/hooks/useQuotationDeliveries';
 import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/storage/autoQuoteDraftStorage';
 import { buildQuotePayload, getQuotationIssue, issuePersistedDraft, QuotationIssueApiError } from '@/lib/api/quotationIssueApi';
+import {
+  listClientOpportunities,
+  type OpportunityChoice,
+} from '@/lib/api/proposalOpportunitiesApi';
+import OpportunitySelector from '@/features/quotations/components/OpportunitySelector';
+import {
+  NEW_DEMAND_SELECTION,
+  initialOpportunitySelection,
+  isOpportunitySelectionValid,
+  opportunitySelectionPayload,
+  reconcileOpportunitySelection,
+  type OpportunitySelection,
+} from '@/features/quotations/opportunitySelection';
+import {
+  draftOpportunityRequestKey,
+  planDraftOpportunityApplication,
+  shouldStartDraftOpportunityRequest,
+  type DraftOpportunityRequest,
+} from '@/features/quotations/draftOpportunityRequest';
 import { isSendableQuotationStatus, type SendContext } from '@/lib/api/communicationSend';
 import type {
   Draft,
@@ -82,6 +101,10 @@ import {
   loadManualQuoteDraft,
   saveManualQuoteDraft,
 } from '@/lib/storage/manualQuoteDraftStorage';
+import {
+  dispatchAfterDraftPersistence,
+  ensureCreationRequestId,
+} from '@/features/quotations/creationRequest';
 
 export type NewQuotationMode = 'conversation' | 'manual';
 
@@ -121,6 +144,8 @@ interface ManualForm {
   urgente: boolean;
   templateKey: string;
   originPrefill: QuotationOriginPrefill | null;
+  opportunity: OpportunitySelection;
+  creationRequestId: string;
 }
 
 const CLIENT_TYPE = { NEW: 'new', EXISTING: 'existing' } as const;
@@ -146,6 +171,8 @@ function emptyManual(): ManualForm {
     urgente: false,
     templateKey: '',
     originPrefill: null,
+    opportunity: { ...NEW_DEMAND_SELECTION },
+    creationRequestId: globalThis.crypto.randomUUID(),
   };
 }
 
@@ -174,6 +201,34 @@ function draftHasWork(draft: Draft | null | undefined): boolean {
   );
 }
 
+function opportunitySelectionFromDraft(draft: Draft): OpportunitySelection {
+  if (draft.edited.opportunity_id) {
+    return { mode: 'existing', opportunityId: draft.edited.opportunity_id, demandSummary: '' };
+  }
+  if (draft.edited.new_demand) {
+    return { mode: 'new', opportunityId: null, demandSummary: draft.edited.demand_summary || '' };
+  }
+  return { mode: 'existing', opportunityId: null, demandSummary: '' };
+}
+
+/** An automatic result may only be saved/issued after the operator's explicit
+ * demand choice; multiple candidates never default to one of them. */
+function draftHasOrigin(draft: Draft): boolean {
+  return Boolean(draft.edited.quote_lead_id && draft.edited.crm_deal_id);
+}
+
+function conversationOpportunityBlockMessage(
+  draft: Draft,
+  choices: OpportunityChoice[],
+  loading: boolean,
+): string | null {
+  if (draftHasOrigin(draft)) return null;
+  if (loading) return 'Carregando demandas…';
+  return isOpportunitySelectionValid(opportunitySelectionFromDraft(draft), choices)
+    ? null
+    : 'Escolha a oportunidade ou inicie uma nova demanda.';
+}
+
 function manualHasWork(form: ManualForm): boolean {
   return Boolean(
     form.items.length ||
@@ -195,6 +250,8 @@ function cloneManual(form: ManualForm): ManualForm {
     address: { ...form.address },
     items: form.items.map((item) => ({ ...item })),
     originPrefill: form.originPrefill ? { ...form.originPrefill } : null,
+    opportunity: { ...form.opportunity },
+    creationRequestId: form.creationRequestId,
   };
 }
 
@@ -239,6 +296,13 @@ function draftToManual(draft: Draft): ManualForm {
           source: edited.origem,
         }
       : null,
+    opportunity: edited.opportunity_id
+      ? { mode: 'existing', opportunityId: edited.opportunity_id, demandSummary: '' }
+      : edited.new_demand
+        ? { mode: 'new', opportunityId: null, demandSummary: edited.demand_summary || '' }
+        : { mode: 'existing', opportunityId: null, demandSummary: '' },
+    creationRequestId:
+      (draft as StoredAutoQuoteDraft).creationRequestId || globalThis.crypto.randomUUID(),
   };
 }
 
@@ -270,6 +334,9 @@ function sameEditableDraft(left: DraftEdited, right: DraftEdited): boolean {
     client_id: edited.client_id || '',
     quote_lead_id: edited.quote_lead_id || '',
     crm_deal_id: edited.crm_deal_id || '',
+    opportunity_id: edited.opportunity_id || '',
+    new_demand: edited.new_demand === true,
+    demand_summary: edited.demand_summary || '',
   });
   return JSON.stringify(comparable(left)) === JSON.stringify(comparable(right));
 }
@@ -328,6 +395,7 @@ function manualToEdited(form: ManualForm): DraftEdited {
     client_id: form.clientType === CLIENT_TYPE.EXISTING ? form.selectedClient?.id : undefined,
     quote_lead_id: form.originPrefill?.quoteLeadId,
     crm_deal_id: form.originPrefill?.crmDealId,
+    ...(form.originPrefill ? {} : opportunitySelectionPayload(form.opportunity)),
     items: form.items.map((item) => ({
       item_code: item.sku,
       item_name: item.nome,
@@ -354,6 +422,7 @@ function draftFromManual(form: ManualForm, index: number, base?: Draft): Draft {
     edited,
     approved: unchanged && base ? base.approved : false,
     discarded: false,
+    creationRequestId: form.creationRequestId,
     ...(unchanged && base ? {
       status: base.status,
       result: base.result,
@@ -426,6 +495,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const pendingPricingVersions = useRef<Record<number, number>>({});
   const manualSourceDraft = useRef<number | null>(null);
   const restoredManual = useRef(false);
+  const opportunityClientRef = useRef<string | null>(null);
+  const draftOpportunityRequests = useRef(new Map<number, DraftOpportunityRequest>());
   const manualRef = useRef(manual);
   manualRef.current = manual;
   const unloadingRef = useRef(false);
@@ -440,6 +511,14 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [clientResults, setClientResults] = useState<Client[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
   const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [opportunityChoices, setOpportunityChoices] = useState<OpportunityChoice[]>([]);
+  const [opportunityLoading, setOpportunityLoading] = useState(false);
+  const [draftOpportunityChoices, setDraftOpportunityChoices] = useState<
+    Record<number, OpportunityChoice[]>
+  >({});
+  const [draftOpportunityLoading, setDraftOpportunityLoading] = useState<
+    Record<number, boolean>
+  >({});
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<Product[]>([]);
   const [productSearching, setProductSearching] = useState(false);
@@ -485,6 +564,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       recoveryTimerKeys.current.clear();
       officialIssueKeys.current.clear();
       officialIssuePendingRef.current = false;
+      draftOpportunityRequests.current.clear();
       if (clientTimer.current) clearTimeout(clientTimer.current);
       if (productTimer.current) clearTimeout(productTimer.current);
       manualPricingVersion.current += 1;
@@ -605,6 +685,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     const restored = prefill ? null : loadManualQuoteDraft();
     if (pendingIssue) {
       manualSourceDraft.current = pendingIssue.index;
+      opportunityClientRef.current = pendingIssue.edited.client_id || null;
       setManual(draftToManual(pendingIssue));
     } else if (prefill) {
       setManual((current) => ({
@@ -613,7 +694,12 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         newClient: { nome: prefill.leadName, email: prefill.email, telefone: formatPhoneInput(prefill.telefone) },
       }));
     } else if (restored) {
-      setManual({ ...restored, originPrefill: restored.originPrefill || null });
+      opportunityClientRef.current = restored.selectedClient?.id ?? null;
+      setManual({
+        ...restored,
+        originPrefill: restored.originPrefill || null,
+        creationRequestId: restored.creationRequestId || globalThis.crypto.randomUUID(),
+      });
     }
     restoredManual.current = true;
     setManualStorageHydrated(true);
@@ -667,6 +753,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       urgente: manual.urgente,
       templateKey: manual.templateKey,
       originPrefill: manual.originPrefill || undefined,
+      opportunity: manual.opportunity,
+      creationRequestId: manual.creationRequestId,
     });
   }, [manual, manualStorageHydrated, mode]);
 
@@ -1255,15 +1343,33 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     operation = (async () => {
       setSavingDraft((current) => ({ ...current, [index]: true }));
       try {
-        const response = await apiPost<OrcamentoResponse>('/orcamento', buildQuotePayload(draft));
+        // The creation key is stable across retries and persisted before the
+        // first dispatch, so a lost response never creates a second quotation.
+        const requestDraft = ensureCreationRequestId(draft) as StoredAutoQuoteDraft;
+        const response = await dispatchAfterDraftPersistence(
+          requestDraft,
+          (persistedDraft) => {
+            const staged = draftsRef.current.some((item) => item.index === index)
+              ? draftsRef.current.map((item) =>
+                  item.index === index ? persistedDraft : item
+                )
+              : [...draftsRef.current, persistedDraft];
+            return persistDrafts(staged);
+          },
+          (persistedDraft) => apiPost<OrcamentoResponse>('/orcamento', buildQuotePayload(persistedDraft)),
+        );
+        if (!response) {
+          setIssueErrorByDraft((current) => ({ ...current, [index]: ISSUE_PERSISTENCE_ERROR }));
+          return null;
+        }
         if (!mountedRef.current || unloadingRef.current) return null;
         const saved = responseSaved(response);
         if (!saved) throw new Error('Resposta inválida ao salvar o rascunho.');
         if (!isCurrentContent()) return null;
         const current = draftsRef.current;
         const currentDraft = current.find((item) => item.index === index);
-        if (currentDraft && !sameEditableDraft(currentDraft.edited, draft.edited)) return null;
-        const next = { ...currentDraft, ...draft, saved, result: undefined, ...(draft.status || currentDraft?.status ? { status: draft.status || currentDraft?.status } : {}) } as StoredAutoQuoteDraft;
+        if (currentDraft && !sameEditableDraft(currentDraft.edited, requestDraft.edited)) return null;
+        const next = { ...currentDraft, ...requestDraft, saved, result: undefined, ...(requestDraft.status || currentDraft?.status ? { status: requestDraft.status || currentDraft?.status } : {}) } as StoredAutoQuoteDraft;
         const nextDrafts = current.some((item) => item.index === index)
           ? current.map((item) => item.index === index ? next : item)
           : [...current, next];
@@ -1386,12 +1492,13 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   }, [drafts, manual]);
 
   const handleManualSave = useCallback(async () => {
-    if (liveDraftOperation || manualPricingPending || manualPricingPendingRef.current) return;
+    if (liveDraftOperation || opportunityLoading || manualPricingPending || manualPricingPendingRef.current) return;
     const draft = currentManualDraft();
     if (!draft.edited.nome) { toast('Informe o cliente para continuar.', 'error'); return; }
     if (!draft.edited.items.length) { toast('Adicione ao menos um item para continuar.', 'error'); return; }
     if (!isValidLeadSource(draft.edited.origem)) { toast('Selecione a origem para continuar.', 'error'); return; }
     if (draft.edited.cnpj && !isValidCnpj(draft.edited.cnpj)) { toast('CNPJ informado é inválido. Corrija ou deixe em branco.', 'error'); return; }
+    if (!isOpportunitySelectionValid(manualRef.current.opportunity, opportunityChoices)) { toast('Escolha a oportunidade ou inicie uma nova demanda.', 'error'); return; }
     const isCurrentContent = () => sameEditableDraft(manualToEdited(manualRef.current), draft.edited);
     const saved = await saveDraft(draft, isCurrentContent);
     if (saved && isCurrentContent()) {
@@ -1400,10 +1507,11 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       clearQuotationOriginPrefill();
       navigateToQuotation(saved.saved!.quotationId);
     }
-  }, [currentManualDraft, liveDraftOperation, manualPricingPending, navigateToQuotation, saveDraft, toast]);
+  }, [currentManualDraft, liveDraftOperation, manualPricingPending, navigateToQuotation, opportunityChoices, opportunityLoading, saveDraft, toast]);
 
   const handleManualIssue = useCallback(() => {
-    if (manualIssuing || officialIssuePending || drafts.some((draft) => draft.status === 'processing') || manualPricingPending || manualPricingPendingRef.current || addingSku) return;
+    if (opportunityLoading || manualIssuing || officialIssuePending || drafts.some((draft) => draft.status === 'processing') || manualPricingPending || manualPricingPendingRef.current || addingSku) return;
+    if (!isOpportunitySelectionValid(manualRef.current.opportunity, opportunityChoices)) { toast('Escolha a oportunidade ou inicie uma nova demanda.', 'error'); return; }
     const draft = currentManualDraft();
     const fingerprint = JSON.stringify(buildQuotePayload(draft));
     const current = manualIssueKey.current;
@@ -1413,23 +1521,33 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     manualIssueKey.current = { fingerprint, key };
     setManualIssuing(true);
     void issueDraft({ ...draft, issueIdempotencyKey: key } as StoredAutoQuoteDraft);
-  }, [addingSku, currentManualDraft, drafts, issueDraft, manualIssuing, manualPricingPending, officialIssuePending]);
+  }, [addingSku, currentManualDraft, drafts, issueDraft, manualIssuing, manualPricingPending, officialIssuePending, opportunityChoices, opportunityLoading, toast]);
 
   const handleManualReview = useCallback(() => {
-    if (liveDraftOperation || manualPricingPending || manualPricingPendingRef.current) return;
+    if (liveDraftOperation || opportunityLoading || manualPricingPending || manualPricingPendingRef.current) return;
     const draft = currentManualDraft();
     const isCurrentContent = () => sameEditableDraft(manualToEdited(manualRef.current), draft.edited);
     void saveDraft(draft, isCurrentContent).then((saved) => {
       if (!saved?.saved || !isCurrentContent()) return;
       navigateToQuotation(saved.saved.quotationId);
     });
-  }, [currentManualDraft, liveDraftOperation, manualPricingPending, navigateToQuotation, saveDraft]);
+  }, [currentManualDraft, liveDraftOperation, manualPricingPending, navigateToQuotation, opportunityLoading, saveDraft]);
 
   const handleAutoIssue = useCallback((draftIndex: number) => {
     if (liveDraftOperation) return;
     const draft = drafts.find((item) => item.index === draftIndex);
-    if (draft) void issueDraft(draft);
-  }, [drafts, issueDraft, liveDraftOperation]);
+    if (!draft) return;
+    const block = conversationOpportunityBlockMessage(
+      draft,
+      draftOpportunityChoices[draftIndex] || [],
+      Boolean(draftOpportunityLoading[draftIndex]),
+    );
+    if (block) {
+      toast(block, 'error');
+      return;
+    }
+    void issueDraft(draft);
+  }, [draftOpportunityChoices, draftOpportunityLoading, drafts, issueDraft, liveDraftOperation, toast]);
 
   const handleAutoReview = useCallback((draftIndex: number) => {
     if (liveDraftOperation) return;
@@ -1563,6 +1681,142 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     };
   }, [clientPanel]);
 
+  const selectedClientId = manual.selectedClient?.id || '';
+  useEffect(() => {
+    if (!selectedClientId) {
+      opportunityClientRef.current = null;
+      setOpportunityChoices([]);
+      setOpportunityLoading(false);
+      setManual((current) =>
+        current.originPrefill || current.opportunity.mode === 'new'
+          ? current
+          : { ...current, opportunity: { ...NEW_DEMAND_SELECTION } }
+      );
+      return;
+    }
+    let cancelled = false;
+    // A selection restored from the browser belongs to the same client and is
+    // preserved (even when no longer eligible, so the operator must decide).
+    // Only a real client change resets the choice.
+    const sameClient = opportunityClientRef.current === selectedClientId;
+    opportunityClientRef.current = selectedClientId;
+    setOpportunityChoices([]);
+    setOpportunityLoading(true);
+    listClientOpportunities(selectedClientId)
+      .then((choices) => {
+        if (cancelled) return;
+        setOpportunityChoices(choices);
+        setManual((current) =>
+          current.originPrefill
+            ? current
+            : {
+                ...current,
+                opportunity: reconcileOpportunitySelection(current.opportunity, choices, {
+                  sameClient,
+                }),
+              }
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setOpportunityChoices([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOpportunityLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClientId]);
+
+  // Automatic (conversation) drafts must also carry an explicit demand link.
+  // Choices load by the proposal's client; with several candidates the result
+  // stays blocked until the operator picks one. No inference is ever made.
+  // A request is identified by the draft index plus its client and carries a
+  // token, so editing the same draft never cancels an in-flight load while a
+  // client change (or a cleared/removed draft) makes the old response stale.
+  useEffect(() => {
+    const clearDraftOpportunityState = (index: number) => {
+      setDraftOpportunityChoices((current) => {
+        if (!(index in current)) return current;
+        const next = { ...current };
+        delete next[index];
+        return next;
+      });
+      setDraftOpportunityLoading((current) => {
+        if (!(index in current)) return current;
+        const next = { ...current };
+        delete next[index];
+        return next;
+      });
+    };
+    const activeIndices = new Set(activeDrafts.map((draft) => draft.index));
+    for (const index of draftOpportunityRequests.current.keys()) {
+      if (!activeIndices.has(index)) draftOpportunityRequests.current.delete(index);
+    }
+    for (const draft of activeDrafts) {
+      const index = draft.index;
+      if (draftHasOrigin(draft)) {
+        draftOpportunityRequests.current.delete(index);
+        clearDraftOpportunityState(index);
+        continue;
+      }
+      const clientId = draft.edited.client_id;
+      if (!clientId) {
+        draftOpportunityRequests.current.delete(index);
+        clearDraftOpportunityState(index);
+        if (draft.edited.new_demand !== true) updateDraftField(index, 'new_demand', true);
+        continue;
+      }
+      const key = draftOpportunityRequestKey(index, clientId);
+      if (!shouldStartDraftOpportunityRequest({
+        request: draftOpportunityRequests.current.get(index),
+        key,
+        hasOrigin: draftHasOrigin(draft),
+        clientId,
+      })) continue;
+      const token = Symbol('draft-opportunity');
+      draftOpportunityRequests.current.set(index, { key, token });
+      clearDraftOpportunityState(index);
+      setDraftOpportunityLoading((current) => ({ ...current, [index]: true }));
+      const decide = (alreadyDecided: boolean) => {
+        const latest = draftsRef.current.find((candidate) => candidate.index === index);
+        return planDraftOpportunityApplication({
+          request: draftOpportunityRequests.current.get(index),
+          token,
+          draftActive: Boolean(latest && !latest.discarded && !draftHasOrigin(latest)),
+          alreadyDecided,
+        });
+      };
+      listClientOpportunities(clientId)
+        .then((choices) => {
+          const latest = draftsRef.current.find((candidate) => candidate.index === index);
+          const decided = Boolean(
+            latest && (latest.edited.opportunity_id || latest.edited.new_demand === true)
+          );
+          const decision = decide(decided);
+          if (!decision.choices) return;
+          setDraftOpportunityChoices((current) => ({ ...current, [index]: choices }));
+          if (!decision.selection) return;
+          const selection = initialOpportunitySelection(choices);
+          if (selection.mode === 'existing' && selection.opportunityId) {
+            updateDraftField(index, 'opportunity_id', selection.opportunityId);
+          } else if (selection.mode === 'new') {
+            updateDraftField(index, 'new_demand', true);
+          }
+        })
+        .catch(() => {
+          if (decide(false).choices) {
+            setDraftOpportunityChoices((current) => ({ ...current, [index]: [] }));
+          }
+        })
+        .finally(() => {
+          if (decide(false).settleLoading) {
+            setDraftOpportunityLoading((current) => ({ ...current, [index]: false }));
+          }
+        });
+    }
+  }, [activeDrafts, updateDraftField]);
+
   const subtotal = manual.items.reduce((sum, item) => sum + item.qty * item.rate, 0);
   const manualValidationBlockMessage = !manualToEdited(manual).nome && !manual.items.length
     ? 'Informe o cliente e adicione ao menos um item para continuar.'
@@ -1572,13 +1826,17 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         ? 'Adicione ao menos um item para continuar.'
         : !manual.leadSource || !isValidLeadSource(manual.leadSource)
           ? 'Selecione a origem para continuar.'
-          : null;
+          : !isOpportunitySelectionValid(manual.opportunity, opportunityChoices)
+            ? 'Escolha a oportunidade ou inicie uma nova demanda.'
+            : null;
   const manualBlockMessage = liveDraftOperation
     ? 'Aguarde a conclusão da operação atual.'
     : manualPricingPending
       ? 'Atualizando preços…'
-      : manualValidationBlockMessage;
-  const manualCanSubmit = !manualValidationBlockMessage && !manualPricingPending && !manual.items.some((item) => item.rate === 0);
+      : opportunityLoading
+        ? 'Carregando demandas…'
+        : manualValidationBlockMessage;
+  const manualCanSubmit = !manualValidationBlockMessage && !manualPricingPending && !opportunityLoading && !manual.items.some((item) => item.rate === 0);
   const manualActionDraftIndex = manualSourceDraft.current ?? (Math.max(-1, ...drafts.map((draft) => draft.index)) + 1);
   const manualRecoveryDraft = activeDrafts.find((draft) => {
     const stored = draft as StoredAutoQuoteDraft;
@@ -1604,6 +1862,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     setActiveDraftIndex(null);
     setWaFlowByDraft({});
     setIssueErrorByDraft({});
+    draftOpportunityRequests.current.clear();
+    setDraftOpportunityChoices({});
+    setDraftOpportunityLoading({});
     if (!persistDrafts([])) {
       draftsRef.current = [];
       setDrafts([]);
@@ -1836,6 +2097,38 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 templateLoading={templateLoading}
                 templateError={templateError}
                 onRetryTemplates={loadTemplates}
+                opportunitySelector={
+                  draftHasOrigin(activeDraft) ? undefined : (
+                    <OpportunitySelector
+                      choices={draftOpportunityChoices[activeDraft.index] || []}
+                      loading={Boolean(draftOpportunityLoading[activeDraft.index])}
+                      value={opportunitySelectionFromDraft(activeDraft)}
+                      disabled={liveDraftOperation}
+                      onChange={(next) => {
+                        updateDraftField(
+                          activeDraft.index,
+                          'opportunity_id',
+                          next.mode === 'existing' ? next.opportunityId || undefined : undefined
+                        );
+                        updateDraftField(
+                          activeDraft.index,
+                          'new_demand',
+                          next.mode === 'new' ? true : undefined
+                        );
+                        updateDraftField(
+                          activeDraft.index,
+                          'demand_summary',
+                          next.mode === 'new' ? next.demandSummary || undefined : undefined
+                        );
+                      }}
+                    />
+                  )
+                }
+                opportunityBlockMessage={conversationOpportunityBlockMessage(
+                  activeDraft,
+                  draftOpportunityChoices[activeDraft.index] || [],
+                  Boolean(draftOpportunityLoading[activeDraft.index])
+                )}
               />
             )}
             {pendingExtraction.map((pending, index) => (
@@ -1889,6 +2182,22 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 <div className="flex items-end"><Button type="button" variant="ghost" size="sm" onClick={() => openClientPanel('address')} disabled={manualActionsBlocked}><MapPin size={14} /> {manual.showAddress ? 'Editar endereço' : 'Endereço opcional'}</Button></div>
               </div>
               {!manual.showAddress && hasAnyAddressField(manual.address) && <p className="mt-2 text-xs text-fg-muted">{formatAddressSummary(manual.address)}</p>}
+            </section>
+
+            <section aria-label="Oportunidade da proposta" className="rounded-lg border border-line bg-surface p-4 md:p-5">
+              {manual.originPrefill ? (
+                <p className="text-sm text-fg-muted">
+                  Demanda vinculada à origem comercial{manual.originPrefill.leadName ? ` · ${manual.originPrefill.leadName}` : ''}.
+                </p>
+              ) : (
+                <OpportunitySelector
+                  choices={opportunityChoices}
+                  loading={opportunityLoading}
+                  value={manual.opportunity}
+                  disabled={manualActionsBlocked}
+                  onChange={(next) => setManual((current) => ({ ...current, opportunity: next }))}
+                />
+              )}
             </section>
 
             <section aria-label="Itens do orçamento" className="rounded-lg border border-line bg-surface p-4 md:p-5">
