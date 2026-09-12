@@ -5,6 +5,7 @@ import {
   completeCommercialAction,
   createCommercialAction,
   getCommercialActionHistory,
+  recordManualContact,
   rescheduleCommercialAction,
   setCommercialUrgency,
 } from '../../src/lib/api/commercialQueueApi.ts';
@@ -132,6 +133,45 @@ test('cliente da fila lê histórico da oportunidade', async () => {
   }
 });
 
+test('cliente da fila distingue declaração manual no histórico', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    response({
+      opportunity_id: opportunityId,
+      data: [
+        {
+          event_id: '33333333-3333-4333-8333-333333333333',
+          action_id: actionId,
+          type: 'manual_contact',
+          actor: 'authenticated-operator',
+          timestamp: '2026-09-12T11:31:00.000Z',
+          origin: 'manual',
+          reason: 'follow_up_agreed',
+          state: 'completed',
+          replacement_action_id: null,
+          contact_type: 'phone_call',
+          occurred_at: '2026-09-12T11:30:00.000Z',
+          note: 'Cliente confirmou interesse.',
+          result_code: 'follow_up_agreed',
+          result_label: 'Próximo passo combinado',
+          counts_as_follow_up: true,
+          source: 'operator_statement',
+          continuation_type: 'successor',
+          successor_action_id: '44444444-4444-4444-8444-444444444444',
+          close_reason: null,
+        },
+      ],
+    });
+  try {
+    const [entry] = await getCommercialActionHistory(opportunityId);
+    assert.equal(entry?.type, 'manual_contact');
+    assert.equal(entry?.source, 'operator_statement');
+    assert.equal(entry?.resultLabel, 'Próximo passo combinado');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('cliente da fila alterna urgência usando o token da ação ativa', async () => {
   const originalFetch = globalThis.fetch;
   let request: { body?: string } | undefined;
@@ -158,6 +198,78 @@ test('cliente da fila alterna urgência usando o token da ação ativa', async (
       action_id: actionId,
       expected_version: 1,
       is_urgent: true,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('cliente da fila envia declaração manual com chave estável e continuidade única', async () => {
+  const originalFetch = globalThis.fetch;
+  let request: { method?: string; body?: string } | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = { method: init?.method, body: String(init?.body || '') };
+    return response({
+      action_id: actionId,
+      opportunity_id: opportunityId,
+      state: 'completed',
+      version: 2,
+      closed: false,
+      successor: null,
+      event_id: '33333333-3333-4333-8333-333333333333',
+      command_id: 'manual-command',
+      contact_type: 'external_conversation',
+      occurred_at: '2026-09-12T11:30:00.000Z',
+      note: null,
+      result_code: 'no_response',
+      counts_as_follow_up: false,
+      continuation_type: 'wait',
+      source: 'operator_statement',
+    });
+  };
+  try {
+    const result = await recordManualContact({
+      commandId: 'manual-command',
+      opportunityId,
+      actionId,
+      expectedVersion: 1,
+      contactType: 'external_conversation',
+      occurredAt: '2026-09-12T11:30:00.000Z',
+      note: null,
+      resultCode: 'no_response',
+      countsAsFollowUp: false,
+      continuation: {
+        type: 'wait',
+        schedule: {
+          kind: 'review',
+          dueDate: '2026-09-15',
+          dueTime: null,
+          reason: 'Aguardar retorno',
+        },
+      },
+    });
+    assert.equal(result.source, 'operator_statement');
+    assert.equal(request?.method, 'POST');
+    assert.deepEqual(JSON.parse(request!.body || ''), {
+      command: 'manual_contact',
+      command_id: 'manual-command',
+      opportunity_id: opportunityId,
+      action_id: actionId,
+      expected_version: 1,
+      contact_type: 'external_conversation',
+      occurred_at: '2026-09-12T11:30:00.000Z',
+      note: null,
+      result_code: 'no_response',
+      counts_as_follow_up: false,
+      continuation: {
+        type: 'wait',
+        schedule: {
+          kind: 'review',
+          due_date: '2026-09-15',
+          due_time: null,
+          reason: 'Aguardar retorno',
+        },
+      },
     });
   } finally {
     globalThis.fetch = originalFetch;

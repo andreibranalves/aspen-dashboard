@@ -28,6 +28,7 @@ import {
   createCommercialAction,
   getCommercialActionHistory,
   listCommercialQueue,
+  recordManualContact,
   rescheduleCommercialAction,
   setCommercialUrgency,
   type CommercialQueueFilter,
@@ -36,6 +37,8 @@ import {
   type CommercialQueueProposal,
   type CommercialActionHistoryEntry,
   type CommercialActionScheduleInput,
+  type CommercialManualContactResultCode,
+  type CommercialManualContactType,
 } from '@/lib/api/commercialQueueApi';
 
 const PAGE_SIZE = 25;
@@ -53,12 +56,25 @@ const ACTION_KINDS = [
   ['agreed_commitment', 'Compromisso acordado'],
   ['review', 'Revisão'],
 ] as const;
+const MANUAL_CONTACT_TYPES = [
+  ['phone_call', 'Ligação telefônica'],
+  ['external_conversation', 'Conversa externa'],
+] as const satisfies ReadonlyArray<[CommercialManualContactType, string]>;
+const MANUAL_CONTACT_RESULTS = [
+  ['follow_up_agreed', 'Próximo passo combinado'],
+  ['interested', 'Interessado'],
+  ['not_interested', 'Sem interesse'],
+  ['no_response', 'Sem resposta'],
+  ['wrong_contact', 'Contato incorreto'],
+  ['other', 'Outro resultado'],
+] as const satisfies ReadonlyArray<[CommercialManualContactResultCode, string]>;
 
 type ActionKind = (typeof ACTION_KINDS)[number][0];
 type Dialog =
   | { type: 'create'; item: CommercialQueueItem }
   | { type: 'schedule'; item: CommercialQueueItem }
   | { type: 'complete'; item: CommercialQueueItem }
+  | { type: 'manual-contact'; item: CommercialQueueItem; commandId: string }
   | { type: 'history'; item: CommercialQueueItem };
 
 interface ScheduleDraft {
@@ -66,6 +82,18 @@ interface ScheduleDraft {
   dueDate: string;
   dueTime: string;
   reason: string;
+}
+
+type ManualContactContinuation = 'successor' | 'wait' | 'close' | '';
+
+interface ManualContactDraft extends ScheduleDraft {
+  contactType: CommercialManualContactType;
+  occurredAt: string;
+  note: string;
+  resultCode: CommercialManualContactResultCode;
+  countsAsFollowUp: boolean;
+  continuation: ManualContactContinuation;
+  closeReason: string;
 }
 
 function scheduleDraft(item: CommercialQueueItem): ScheduleDraft {
@@ -76,6 +104,51 @@ function scheduleDraft(item: CommercialQueueItem): ScheduleDraft {
     dueDate: item.dueDate || '',
     dueTime: item.dueTime || '',
     reason: '',
+  };
+}
+
+function localDateTimeInSaoPaulo(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  return `${value('year')}-${value('month')}-${value('day')}T${value('hour')}:${value('minute')}`;
+}
+
+function localDateTimeToIso(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return '';
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth || hour > 23 || minute > 59) {
+    return '';
+  }
+  const candidate = new Date(`${value}:00-03:00`);
+  return Number.isNaN(candidate.getTime()) ? '' : candidate.toISOString();
+}
+
+function manualContactDraft(item: CommercialQueueItem): ManualContactDraft {
+  const schedule = scheduleDraft(item);
+  return {
+    ...schedule,
+    contactType: 'phone_call',
+    occurredAt: localDateTimeInSaoPaulo(),
+    note: '',
+    resultCode: 'follow_up_agreed',
+    countsAsFollowUp: false,
+    continuation: '',
+    closeReason: '',
   };
 }
 
@@ -147,7 +220,18 @@ function historyLabel(type: CommercialActionHistoryEntry['type']): string {
   if (type === 'created') return 'Criada';
   if (type === 'rescheduled') return 'Reagendada';
   if (type === 'completed') return 'Concluída';
+  if (type === 'manual_contact') return 'Declaração manual';
   return 'Substituída';
+}
+
+function manualContactTypeLabel(value: CommercialActionHistoryEntry['contactType']): string {
+  return MANUAL_CONTACT_TYPES.find(([type]) => type === value)?.[1] || 'Contato manual';
+}
+
+function manualContactResultLabel(value: CommercialActionHistoryEntry['resultCode']): string {
+  return (
+    MANUAL_CONTACT_RESULTS.find(([code]) => code === value)?.[1] || value || 'Resultado informado'
+  );
 }
 
 export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelProps) {
@@ -156,7 +240,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [draft, setDraft] = useState<ScheduleDraft | null>(null);
+  const [draft, setDraft] = useState<ScheduleDraft | ManualContactDraft | null>(null);
   const [completionMode, setCompletionMode] = useState<'successor' | 'close'>('successor');
   const [history, setHistory] = useState<CommercialActionHistoryEntry[]>([]);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -165,32 +249,35 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [filter, setFilter] = useState<CommercialQueueFilter>('active');
   const requestGenerationRef = useRef(0);
 
-  const load = useCallback(async (requestedPage: number, requestedFilter: CommercialQueueFilter) => {
-    const requestGeneration = ++requestGenerationRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await listCommercialQueue({
-        page: requestedPage,
-        pageSize: PAGE_SIZE,
-        filter: requestedFilter,
-      });
-      if (requestGeneration !== requestGenerationRef.current) return;
-      setResult(next);
-      // The server clamps a page that no longer exists to the last valid one.
-      // Adopt it so navigation continues from real remaining work instead of
-      // an empty page the operator can no longer leave.
-      if (next.page !== requestedPage) setPage(next.page);
-    } catch (reason) {
-      if (requestGeneration !== requestGenerationRef.current) return;
-      setResult(null);
-      setError(
-        reason instanceof Error ? reason.message : 'Não foi possível carregar a fila comercial.'
-      );
-    } finally {
-      if (requestGeneration === requestGenerationRef.current) setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (requestedPage: number, requestedFilter: CommercialQueueFilter) => {
+      const requestGeneration = ++requestGenerationRef.current;
+      setLoading(true);
+      setError(null);
+      try {
+        const next = await listCommercialQueue({
+          page: requestedPage,
+          pageSize: PAGE_SIZE,
+          filter: requestedFilter,
+        });
+        if (requestGeneration !== requestGenerationRef.current) return;
+        setResult(next);
+        // The server clamps a page that no longer exists to the last valid one.
+        // Adopt it so navigation continues from real remaining work instead of
+        // an empty page the operator can no longer leave.
+        if (next.page !== requestedPage) setPage(next.page);
+      } catch (reason) {
+        if (requestGeneration !== requestGenerationRef.current) return;
+        setResult(null);
+        setError(
+          reason instanceof Error ? reason.message : 'Não foi possível carregar a fila comercial.'
+        );
+      } finally {
+        if (requestGeneration === requestGenerationRef.current) setLoading(false);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     void load(page, filter);
@@ -242,6 +329,12 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     setDialogError(null);
   }
 
+  function openManualContact(item: CommercialQueueItem) {
+    setDialog({ type: 'manual-contact', item, commandId: globalThis.crypto.randomUUID() });
+    setDraft(manualContactDraft(item));
+    setDialogError(null);
+  }
+
   async function openHistory(item: CommercialQueueItem) {
     setDialog({ type: 'history', item });
     setHistory([]);
@@ -263,6 +356,13 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   function updateDraft(field: keyof ScheduleDraft, value: string) {
+    setDraft((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function updateManualDraft<K extends keyof ManualContactDraft>(
+    field: K,
+    value: ManualContactDraft[K]
+  ) {
     setDraft((current) => (current ? { ...current, [field]: value } : current));
   }
 
@@ -299,7 +399,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   async function toggleUrgency(item: CommercialQueueItem) {
-    if (isClosed(item) || item.state !== 'active' || urgencySubmitting.has(item.opportunityId)) return;
+    if (isClosed(item) || item.state !== 'active' || urgencySubmitting.has(item.opportunityId))
+      return;
     setUrgencySubmitting((current) => new Set(current).add(item.opportunityId));
     try {
       await setCommercialUrgency({
@@ -310,9 +411,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       });
       await load(currentPage, filter);
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : 'Não foi possível atualizar a urgência.'
-      );
+      setError(reason instanceof Error ? reason.message : 'Não foi possível atualizar a urgência.');
     } finally {
       setUrgencySubmitting((current) => {
         const next = new Set(current);
@@ -348,10 +447,68 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         });
       }
       closeDialog(true);
-          await load(currentPage, filter);
+      await load(currentPage, filter);
     } catch (reason) {
       setDialogError(
         reason instanceof Error ? reason.message : 'Não foi possível concluir a ação.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitManualContact() {
+    if (!dialog || dialog.type !== 'manual-contact' || !draft || !('contactType' in draft)) return;
+    if (!draft.continuation) {
+      setDialogError('Escolha a continuidade do contato.');
+      return;
+    }
+    const occurredAt = localDateTimeToIso(draft.occurredAt);
+    if (!occurredAt) {
+      setDialogError('Informe uma data e hora válidas para o contato.');
+      return;
+    }
+    if (draft.continuation === 'close' && !draft.closeReason.trim()) {
+      setDialogError('Informe o motivo do fechamento.');
+      return;
+    }
+    if (draft.continuation !== 'close' && (!draft.dueDate || !draft.reason.trim())) {
+      setDialogError('Informe a data e o motivo da continuidade.');
+      return;
+    }
+
+    setSubmitting(true);
+    setDialogError(null);
+    try {
+      const continuation =
+        draft.continuation === 'close'
+          ? { type: 'close' as const, closeReason: draft.closeReason }
+          : {
+              type: draft.continuation,
+              schedule: {
+                kind: draft.kind,
+                dueDate: draft.dueDate,
+                dueTime: draft.dueTime || null,
+                reason: draft.reason,
+              } as CommercialActionScheduleInput,
+            };
+      await recordManualContact({
+        commandId: dialog.commandId,
+        opportunityId: dialog.item.opportunityId,
+        actionId: dialog.item.actionId,
+        expectedVersion: dialog.item.version,
+        contactType: draft.contactType,
+        occurredAt,
+        note: draft.note.trim() || null,
+        resultCode: draft.resultCode,
+        countsAsFollowUp: draft.countsAsFollowUp,
+        continuation,
+      });
+      closeDialog(true);
+      await load(currentPage, filter);
+    } catch (reason) {
+      setDialogError(
+        reason instanceof Error ? reason.message : 'Não foi possível registrar o contato.'
       );
     } finally {
       setSubmitting(false);
@@ -416,6 +573,159 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     );
   }
 
+  function manualContactFields() {
+    if (!draft || !('contactType' in draft)) return null;
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-sm">
+          Tipo de contato
+          <select
+            aria-label="Tipo de contato"
+            required
+            className="h-9 rounded-sm border border-input bg-background px-3"
+            value={draft.contactType}
+            onChange={(event) =>
+              updateManualDraft('contactType', event.target.value as CommercialManualContactType)
+            }
+          >
+            {MANUAL_CONTACT_TYPES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm">
+          Data e hora do contato
+          <input
+            aria-label="Data e hora do contato"
+            required
+            type="datetime-local"
+            className="h-9 rounded-md border border-input bg-background px-3"
+            value={draft.occurredAt}
+            onChange={(event) => updateManualDraft('occurredAt', event.target.value)}
+          />
+        </label>
+        <label className="grid gap-1 text-sm">
+          Resultado
+          <select
+            aria-label="Resultado do contato"
+            required
+            className="h-9 rounded-sm border border-input bg-background px-3"
+            value={draft.resultCode}
+            onChange={(event) =>
+              updateManualDraft(
+                'resultCode',
+                event.target.value as CommercialManualContactResultCode
+              )
+            }
+          >
+            {MANUAL_CONTACT_RESULTS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input
+            aria-label="Follow-up comercial concluído"
+            type="checkbox"
+            checked={draft.countsAsFollowUp}
+            onChange={(event) => updateManualDraft('countsAsFollowUp', event.target.checked)}
+          />
+          Follow-up comercial concluído
+        </label>
+        <label className="grid gap-1 text-sm sm:col-span-2">
+          Observação <span className="text-fg-muted">(opcional)</span>
+          <textarea
+            aria-label="Observação do contato"
+            className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
+            value={draft.note}
+            onChange={(event) => updateManualDraft('note', event.target.value)}
+          />
+        </label>
+        <label className="grid gap-1 text-sm sm:col-span-2">
+          Continuidade
+          <select
+            aria-label="Continuidade"
+            required
+            className="h-9 rounded-sm border border-input bg-background px-3"
+            value={draft.continuation}
+            onChange={(event) =>
+              updateManualDraft('continuation', event.target.value as ManualContactContinuation)
+            }
+          >
+            <option value="">Selecione uma continuidade</option>
+            <option value="successor">Criar próxima ação</option>
+            <option value="wait">Aguardar até uma data</option>
+            <option value="close">Fechar oportunidade</option>
+          </select>
+        </label>
+        {draft.continuation === 'close' ? (
+          <label className="grid gap-1 text-sm sm:col-span-2">
+            Motivo do fechamento
+            <textarea
+              aria-label="Motivo do fechamento"
+              required
+              className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
+              value={draft.closeReason}
+              onChange={(event) => updateManualDraft('closeReason', event.target.value)}
+            />
+          </label>
+        ) : draft.continuation ? (
+          <>
+            <label className="grid gap-1 text-sm">
+              Tipo da próxima ação
+              <select
+                aria-label="Tipo da próxima ação"
+                required
+                className="h-9 rounded-sm border border-input bg-background px-3"
+                value={draft.kind}
+                onChange={(event) => updateManualDraft('kind', event.target.value as ActionKind)}
+              >
+                {kindOptions()}
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              {draft.continuation === 'wait' ? 'Data para aguardar' : 'Data da próxima ação'}
+              <input
+                aria-label={
+                  draft.continuation === 'wait' ? 'Data para aguardar' : 'Data da próxima ação'
+                }
+                required
+                type="date"
+                className="h-9 rounded-md border border-input bg-background px-3"
+                value={draft.dueDate}
+                onChange={(event) => updateManualDraft('dueDate', event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Horário <span className="text-fg-muted">(opcional)</span>
+              <input
+                aria-label="Horário da continuidade"
+                type="time"
+                className="h-9 rounded-md border border-input bg-background px-3"
+                value={draft.dueTime}
+                onChange={(event) => updateManualDraft('dueTime', event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-sm sm:col-span-2">
+              Motivo da continuidade
+              <textarea
+                aria-label="Motivo da continuidade"
+                required
+                className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
+                value={draft.reason}
+                onChange={(event) => updateManualDraft('reason', event.target.value)}
+              />
+            </label>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   function actionButtons(item: CommercialQueueItem) {
     if (isClosed(item)) {
       return (
@@ -429,9 +739,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     }
     if (item.state !== 'active') {
       return (
-        <span className="text-xs text-fg-muted">
-          Resultado: {item.reason || item.reasonLabel}
-        </span>
+        <span className="text-xs text-fg-muted">Resultado: {item.reason || item.reasonLabel}</span>
       );
     }
     return (
@@ -444,6 +752,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         </Button>
         <Button type="button" size="sm" onClick={() => openComplete(item)}>
           Concluir
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => openManualContact(item)}>
+          Registrar contato
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
           Histórico
@@ -594,7 +905,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             variant="outline"
             size="sm"
             className="ml-auto"
-          onClick={() => void load(page, filter)}
+            onClick={() => void load(page, filter)}
           >
             Tentar novamente
           </Button>
@@ -650,9 +961,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                         </ul>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {contextDetails(item)}
-                    </TableCell>
+                    <TableCell>{contextDetails(item)}</TableCell>
                     <TableCell>
                       <div className="space-y-2">
                         {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
@@ -723,7 +1032,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     ? 'Reagendar próxima ação'
                     : dialog.type === 'complete'
                       ? 'Concluir próxima ação'
-                      : 'Histórico da próxima ação'}
+                      : dialog.type === 'manual-contact'
+                        ? 'Registrar contato'
+                        : 'Histórico da próxima ação'}
               </h2>
               <Button
                 type="button"
@@ -752,9 +1063,30 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                           <span className="font-medium">{historyLabel(entry.type)}</span>
                           <time dateTime={entry.timestamp}>{formatDateTime(entry.timestamp)}</time>
                         </div>
-                        <p className="mt-1 text-fg-muted">
-                          {entry.reason} · {entry.actor} · {entry.origin}
-                        </p>
+                        {entry.type === 'manual_contact' ? (
+                          <>
+                            <p className="mt-1 text-fg-muted">
+                              {manualContactTypeLabel(entry.contactType)} ·{' '}
+                              {manualContactResultLabel(entry.resultCode)} · {entry.actor}
+                            </p>
+                            <p className="mt-1 text-fg-muted">
+                              {entry.countsAsFollowUp
+                                ? 'Contou como follow-up comercial concluído'
+                                : 'Não contou como follow-up comercial'}{' '}
+                              · Continuidade:{' '}
+                              {entry.continuationType === 'close'
+                                ? 'fechamento'
+                                : entry.continuationType === 'wait'
+                                  ? 'aguardar'
+                                  : 'próxima ação'}
+                            </p>
+                            {entry.note && <p className="mt-1 whitespace-pre-wrap">{entry.note}</p>}
+                          </>
+                        ) : (
+                          <p className="mt-1 text-fg-muted">
+                            {entry.reason} · {entry.actor} · {entry.origin}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ol>
@@ -767,9 +1099,12 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                   event.preventDefault();
                   void (dialog.type === 'schedule' || dialog.type === 'create'
                     ? submitSchedule()
-                    : submitComplete());
+                    : dialog.type === 'manual-contact'
+                      ? submitManualContact()
+                      : submitComplete());
                 }}
               >
+                {dialog.type === 'manual-contact' && manualContactFields()}
                 {dialog.type === 'complete' && (
                   <label className="grid gap-1 text-sm">
                     Resultado
@@ -786,7 +1121,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     </select>
                   </label>
                 )}
-                {dialog.type === 'complete' && completionMode === 'close' ? (
+                {dialog.type === 'manual-contact' ? null : dialog.type === 'complete' &&
+                  completionMode === 'close' ? (
                   <label className="grid gap-1 text-sm">
                     Motivo do fechamento
                     <textarea
@@ -821,9 +1157,11 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                         ? 'Criar ação'
                         : dialog.type === 'schedule'
                           ? 'Reagendar'
-                          : completionMode === 'successor'
-                            ? 'Concluir e criar próxima'
-                            : 'Concluir e fechar'}
+                          : dialog.type === 'manual-contact'
+                            ? 'Registrar contato'
+                            : completionMode === 'successor'
+                              ? 'Concluir e criar próxima'
+                              : 'Concluir e fechar'}
                   </Button>
                 </div>
               </form>

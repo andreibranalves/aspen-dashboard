@@ -1,9 +1,9 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
 import { getDatabase, type AppDatabase } from '../client.js';
-import { crmDeals, opportunityNextActions } from '../schema.js';
+import { crmDeals, manualContactEvents, opportunityNextActions } from '../schema.js';
 import type { OpportunityProposal } from './proposal-opportunity-repository.js';
 
 export type OpportunityActionKind =
@@ -19,6 +19,15 @@ export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'clo
 export type OpportunityQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
 export type OpportunityContactContextStatus = 'available' | 'unavailable' | 'review';
 export type OpportunityContactDirection = 'inbound' | 'outbound' | null;
+export type ManualContactType = 'phone_call' | 'external_conversation';
+export type ManualContactResultCode =
+  | 'follow_up_agreed'
+  | 'interested'
+  | 'not_interested'
+  | 'no_response'
+  | 'wrong_contact'
+  | 'other';
+export type ManualContactContinuationType = 'successor' | 'wait' | 'close';
 
 export interface OpportunityQueueBlocker {
   code: string;
@@ -50,8 +59,24 @@ const QUEUE_FILTERS: readonly OpportunityQueueFilter[] = [
 ];
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_TIME = /^\d{2}:\d{2}$/;
+const ISO_TIMESTAMP =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|([+-])(\d{2}):(\d{2}))$/;
 const MAX_REASON_LENGTH = 500;
 const MAX_ACTOR_LENGTH = 128;
+const MANUAL_CONTACT_TYPES: readonly ManualContactType[] = ['phone_call', 'external_conversation'];
+const MANUAL_CONTACT_RESULTS: readonly ManualContactResultCode[] = [
+  'follow_up_agreed',
+  'interested',
+  'not_interested',
+  'no_response',
+  'wrong_contact',
+  'other',
+];
+const MANUAL_CONTINUATIONS: readonly ManualContactContinuationType[] = [
+  'successor',
+  'wait',
+  'close',
+];
 
 /** One prioritized item of the commercial queue: a demand and its pending work. */
 export interface OpportunityQueueItem {
@@ -137,6 +162,26 @@ export interface CompleteOpportunityActionInput {
   close?: { reason: string };
 }
 
+export type ManualContactContinuation =
+  | { type: 'successor'; schedule: OpportunityActionScheduleInput }
+  | { type: 'wait'; schedule: OpportunityActionScheduleInput }
+  | { type: 'close'; reason: string };
+
+export interface ManualContactInput {
+  commandId: string;
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  contactType: ManualContactType;
+  occurredAt: Date | string;
+  note?: string | null;
+  resultCode: ManualContactResultCode;
+  countsAsFollowUp: boolean;
+  actor: string;
+  continuation?: ManualContactContinuation;
+  now?: Date;
+}
+
 export interface OpportunityActionRecord {
   actionId: string;
   opportunityId: string;
@@ -160,7 +205,12 @@ export interface OpportunityActionRecord {
   replacedById: string | null;
 }
 
-export type OpportunityActionHistoryType = 'created' | 'rescheduled' | 'completed' | 'replaced';
+export type OpportunityActionHistoryType =
+  | 'created'
+  | 'rescheduled'
+  | 'completed'
+  | 'replaced'
+  | 'manual_contact';
 
 export interface OpportunityActionHistoryEntry {
   eventId: string;
@@ -172,6 +222,15 @@ export interface OpportunityActionHistoryEntry {
   reason: string;
   state: OpportunityActionState;
   replacementActionId: string | null;
+  contactType?: ManualContactType;
+  occurredAt?: string;
+  note?: string | null;
+  resultCode?: ManualContactResultCode;
+  countsAsFollowUp?: boolean;
+  source?: 'operator_statement';
+  continuationType?: ManualContactContinuationType;
+  successorActionId?: string | null;
+  closeReason?: string | null;
 }
 
 export interface OpportunityActionCommandResult {
@@ -182,6 +241,18 @@ export interface OpportunityActionCommandResult {
   action: OpportunityActionRecord | null;
   successor: OpportunityActionRecord | null;
   closed: boolean;
+}
+
+export interface ManualContactCommandResult extends OpportunityActionCommandResult {
+  eventId: string;
+  commandId: string;
+  contactType: ManualContactType;
+  occurredAt: string;
+  note: string | null;
+  resultCode: ManualContactResultCode;
+  countsAsFollowUp: boolean;
+  continuationType: ManualContactContinuationType;
+  source: 'operator_statement';
 }
 
 export interface SetOpportunityUrgencyInput {
@@ -203,8 +274,11 @@ export interface OpportunityUrgencyResult {
 export interface OpportunityActionRepository {
   listActive(options?: OpportunityQueueListOptions): Promise<OpportunityQueuePage>;
   createAction(input: CreateOpportunityActionInput): Promise<OpportunityActionCommandResult>;
-  rescheduleAction(input: RescheduleOpportunityActionInput): Promise<OpportunityActionCommandResult>;
+  rescheduleAction(
+    input: RescheduleOpportunityActionInput
+  ): Promise<OpportunityActionCommandResult>;
   completeAction(input: CompleteOpportunityActionInput): Promise<OpportunityActionCommandResult>;
+  recordManualContact(input: ManualContactInput): Promise<ManualContactCommandResult>;
   listHistory(opportunityId: string): Promise<OpportunityActionHistoryEntry[]>;
   setUrgency(input: SetOpportunityUrgencyInput): Promise<OpportunityUrgencyResult>;
 }
@@ -286,7 +360,9 @@ function nowDate(value: Date | undefined, factory: () => Date): Date {
 
 function cleanText(value: unknown, label: string, maximum: number): string {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > maximum) {
-    throw new OpportunityActionInputError(`${label} é obrigatório e deve ter no máximo ${maximum} caracteres.`);
+    throw new OpportunityActionInputError(
+      `${label} é obrigatório e deve ter no máximo ${maximum} caracteres.`
+    );
   }
   return value.trim();
 }
@@ -361,7 +437,11 @@ function normalizeSchedule(input: OpportunityActionScheduleInput): NormalizedSch
   const dueTime = validateTime(input.dueTime);
   const kind = validateKind(input.kind);
   const reason = cleanText(input.reason, 'O motivo', MAX_REASON_LENGTH);
-  const reasonCode = cleanText(input.reasonCode || defaultReasonCode(kind), 'O código do motivo', 32);
+  const reasonCode = cleanText(
+    input.reasonCode || defaultReasonCode(kind),
+    'O código do motivo',
+    32
+  );
   const origin = validateOrigin(input.origin);
   // São Paulo has used UTC-03:00 since the operational calendar stopped
   // observing daylight saving time. The civil fields remain the source of
@@ -380,6 +460,158 @@ function normalizeSchedule(input: OpportunityActionScheduleInput): NormalizedSch
     reasonCode,
     origin,
   };
+}
+
+interface NormalizedManualContact {
+  commandId: string;
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  contactType: ManualContactType;
+  occurredAt: Date;
+  note: string | null;
+  resultCode: ManualContactResultCode;
+  countsAsFollowUp: boolean;
+  actor: string;
+  continuation: {
+    type: ManualContactContinuationType;
+    schedule: NormalizedSchedule | null;
+    closeReason: string | null;
+  };
+}
+
+function validateManualContactType(value: unknown): ManualContactType {
+  if (!MANUAL_CONTACT_TYPES.includes(value as ManualContactType)) {
+    throw new OpportunityActionInputError('Tipo de contato manual inválido.');
+  }
+  return value as ManualContactType;
+}
+
+function validateManualContactResult(value: unknown): ManualContactResultCode {
+  if (!MANUAL_CONTACT_RESULTS.includes(value as ManualContactResultCode)) {
+    throw new OpportunityActionInputError('Resultado do contato manual inválido.');
+  }
+  return value as ManualContactResultCode;
+}
+
+export function isStrictIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = ISO_TIMESTAMP.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const daysInMonth =
+    month === 2
+      ? year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+        ? 29
+        : 28
+      : [4, 6, 9, 11].includes(month)
+        ? 30
+        : 31;
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return false;
+  }
+  if (match[7] !== 'Z' && (Number(match[9]) > 23 || Number(match[10]) > 59)) {
+    return false;
+  }
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function validateOccurredAt(value: unknown): Date {
+  if (typeof value === 'string') {
+    if (!isStrictIsoTimestamp(value)) {
+      throw new OpportunityActionInputError('A data e hora do contato são inválidas.');
+    }
+    const candidate = new Date(value);
+    if (!Number.isNaN(candidate.getTime())) return candidate;
+  } else if (value instanceof Date) {
+    const candidate = new Date(value.getTime());
+    if (!Number.isNaN(candidate.getTime())) return candidate;
+  }
+  throw new OpportunityActionInputError('A data e hora do contato são inválidas.');
+}
+
+function optionalNote(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || value.trim().length > 4000) {
+    throw new OpportunityActionInputError('A observação deve ter no máximo 4000 caracteres.');
+  }
+  return value.trim() || null;
+}
+
+function validateManualContinuation(
+  value: ManualContactContinuation | undefined
+): NormalizedManualContact['continuation'] {
+  if (!value || !MANUAL_CONTINUATIONS.includes(value.type)) {
+    throw new OpportunityActionInputError(
+      'O contato manual exige uma continuidade: próxima ação, espera ou fechamento.'
+    );
+  }
+  if (value.type === 'close') {
+    return {
+      type: 'close',
+      schedule: null,
+      closeReason: cleanText(value.reason, 'O motivo do fechamento', 500),
+    };
+  }
+  const schedule = normalizeSchedule({ ...value.schedule, origin: 'manual' });
+  return { type: value.type, schedule, closeReason: null };
+}
+
+function normalizeManualContact(input: ManualContactInput): NormalizedManualContact {
+  const continuation = validateManualContinuation(input.continuation);
+  if (typeof input.countsAsFollowUp !== 'boolean') {
+    throw new OpportunityActionInputError('A marcação de follow-up concluído é obrigatória.');
+  }
+  return {
+    commandId: cleanText(input.commandId, 'O ID do comando', 255),
+    opportunityId: cleanText(input.opportunityId, 'O ID da oportunidade', 255),
+    actionId: cleanText(input.actionId, 'O ID da ação', 255),
+    expectedVersion: validateVersion(input.expectedVersion),
+    contactType: validateManualContactType(input.contactType),
+    occurredAt: validateOccurredAt(input.occurredAt),
+    note: optionalNote(input.note),
+    resultCode: validateManualContactResult(input.resultCode),
+    countsAsFollowUp: input.countsAsFollowUp,
+    actor: cleanText(input.actor, 'O ator', MAX_ACTOR_LENGTH),
+    continuation,
+  };
+}
+
+function manualContactFingerprint(input: NormalizedManualContact): string {
+  const semantic = {
+    opportunityId: input.opportunityId,
+    actionId: input.actionId,
+    expectedVersion: input.expectedVersion,
+    contactType: input.contactType,
+    occurredAt: input.occurredAt.toISOString(),
+    note: input.note,
+    resultCode: input.resultCode,
+    countsAsFollowUp: input.countsAsFollowUp,
+    continuation: input.continuation.schedule
+      ? {
+          type: input.continuation.type,
+          kind: input.continuation.schedule.kind,
+          dueDate: input.continuation.schedule.dueDate,
+          dueTime: input.continuation.schedule.dueTime,
+          reasonCode: input.continuation.schedule.reasonCode,
+          reason: input.continuation.schedule.reason,
+        }
+      : { type: 'close', closeReason: input.continuation.closeReason },
+  };
+  return createHash('sha256').update(JSON.stringify(semantic)).digest('hex');
 }
 
 function localPartsFromInstant(value: Date): { dueDate: string; dueTime: string } {
@@ -536,13 +768,16 @@ function parseProposals(value: unknown): OpportunityProposal[] {
     if (typeof entry !== 'object' || entry === null) continue;
     const row = entry as ProposalJsonRow;
     if (typeof row.quotation_id !== 'string' || typeof row.business_number !== 'string') continue;
-    const createdAt = row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at));
+    const createdAt =
+      row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at));
     proposals.push({
       quotationId: row.quotation_id,
       businessNumber: row.business_number,
       status: typeof row.status === 'string' ? row.status : 'rascunho',
       total: row.total === null || row.total === undefined ? null : String(row.total),
-      createdAt: Number.isNaN(createdAt.getTime()) ? new Date(0).toISOString() : createdAt.toISOString(),
+      createdAt: Number.isNaN(createdAt.getTime())
+        ? new Date(0).toISOString()
+        : createdAt.toISOString(),
     });
   }
   return proposals;
@@ -586,8 +821,19 @@ function preserveKnownError(error: unknown): never {
   throw new OpportunityActionRepositoryError();
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
+}
+
 function assertOpenOpportunity(status: string): void {
-  if (CLOSED_OPPORTUNITY_STATUSES.includes(status as (typeof CLOSED_OPPORTUNITY_STATUSES)[number])) {
+  if (
+    CLOSED_OPPORTUNITY_STATUSES.includes(status as (typeof CLOSED_OPPORTUNITY_STATUSES)[number])
+  ) {
     throw new ActionConflictError('A oportunidade já está encerrada. Recarregue a fila.');
   }
 }
@@ -788,6 +1034,128 @@ async function completeWithSuccessor(
   };
 }
 
+async function completeWithClose(
+  database: ActionDatabase,
+  deal: typeof crmDeals.$inferSelect,
+  oldAction: typeof opportunityNextActions.$inferSelect,
+  actor: string,
+  reason: string,
+  now: Date
+): Promise<OpportunityActionCommandResult> {
+  const changed = await database
+    .update(opportunityNextActions)
+    .set({
+      state: 'completed',
+      updatedAt: now,
+      transitionActor: actor,
+      transitionAt: now,
+      transitionOrigin: 'manual',
+      transitionReason: reason,
+      replacedById: null,
+    })
+    .where(
+      and(
+        eq(opportunityNextActions.id, oldAction.id),
+        eq(opportunityNextActions.state, 'active'),
+        eq(opportunityNextActions.version, oldAction.version)
+      )
+    )
+    .returning();
+  if (changed.length !== 1) throw new ActionConflictError();
+  const [closed] = await database
+    .update(crmDeals)
+    .set({ status: 'Perdido', lostReason: reason, updatedAt: now })
+    .where(eq(crmDeals.id, deal.id))
+    .returning({ id: crmDeals.id });
+  if (!closed) throw new ActionConflictError();
+  return {
+    actionId: oldAction.id,
+    opportunityId: oldAction.opportunityId,
+    state: 'completed',
+    version: oldAction.version + 1,
+    action: rowRecord(changed[0]),
+    successor: null,
+    closed: true,
+  };
+}
+
+async function findManualContactEvent(
+  database: ActionDatabase,
+  commandId: string
+): Promise<typeof manualContactEvents.$inferSelect | null> {
+  const [event] = await database
+    .select()
+    .from(manualContactEvents)
+    .where(eq(manualContactEvents.commandId, commandId))
+    .limit(1);
+  return event || null;
+}
+
+function manualContactResultFromEvent(
+  event: typeof manualContactEvents.$inferSelect,
+  action: typeof opportunityNextActions.$inferSelect | null,
+  successor: OpportunityActionRecord | null
+): ManualContactCommandResult {
+  return {
+    actionId: event.actionId,
+    opportunityId: event.opportunityId,
+    state: 'completed',
+    version: event.resultVersion,
+    action: action ? rowRecord(action) : null,
+    successor,
+    closed: event.closed,
+    eventId: event.id,
+    commandId: event.commandId,
+    contactType: event.contactType as ManualContactType,
+    occurredAt: isoDate(event.occurredAt),
+    note: event.note,
+    resultCode: event.resultCode as ManualContactResultCode,
+    countsAsFollowUp: event.countsAsFollowUp,
+    continuationType: event.continuationType as ManualContactContinuationType,
+    source: 'operator_statement',
+  };
+}
+
+async function replayManualContact(
+  database: ActionDatabase,
+  event: typeof manualContactEvents.$inferSelect,
+  fingerprint: string
+): Promise<ManualContactCommandResult> {
+  if (event.commandFingerprint !== fingerprint) {
+    throw new ActionConflictError('O ID do comando já foi usado com outro contato manual.');
+  }
+  const [action] = await database
+    .select()
+    .from(opportunityNextActions)
+    .where(eq(opportunityNextActions.id, event.actionId))
+    .limit(1);
+  let successor: OpportunityActionRecord | null = null;
+  if (event.successorActionId) {
+    const [row] = await database
+      .select()
+      .from(opportunityNextActions)
+      .where(eq(opportunityNextActions.id, event.successorActionId))
+      .limit(1);
+    if (row) {
+      // The successor's schedule and creation metadata are immutable. Its
+      // state/version/transition fields are the mutable part of the live row,
+      // so rebuild the exact initial snapshot returned by the command.
+      successor = rowRecord({
+        ...row,
+        state: 'active',
+        version: event.resultVersion,
+        updatedAt: row.createdAt,
+        transitionActor: null,
+        transitionAt: null,
+        transitionOrigin: null,
+        transitionReason: null,
+        replacedById: null,
+      });
+    }
+  }
+  return manualContactResultFromEvent(event, action || null, successor);
+}
+
 /**
  * Guarantees the first-contact action of an opportunity exists exactly once.
  * The first action ever created for a demand is the admission work; later
@@ -929,15 +1297,17 @@ export function createPostgresOpportunityActionRepository(
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
             WHERE (
-              ${filter === 'closed'
-                ? sql`d.status IN (${sql.join(
-                    closedStatuses.map((status) => sql`${status}`),
-                    sql`, `
-                  )})`
-                : sql`a.state = 'active' AND d.status NOT IN (${sql.join(
-                    closedStatuses.map((status) => sql`${status}`),
-                    sql`, `
-                  )})`}
+              ${
+                filter === 'closed'
+                  ? sql`d.status IN (${sql.join(
+                      closedStatuses.map((status) => sql`${status}`),
+                      sql`, `
+                    )})`
+                  : sql`a.state = 'active' AND d.status NOT IN (${sql.join(
+                      closedStatuses.map((status) => sql`${status}`),
+                      sql`, `
+                    )})`
+              }
             )
           ),
           selected_actions AS (
@@ -1107,9 +1477,7 @@ export function createPostgresOpportunityActionRepository(
                 dueTime: scheduleType === 'date_only' ? null : rowTime(row.due_time),
                 scheduleType,
                 dueStatus:
-                  filter === 'closed'
-                    ? 'closed'
-                    : dueStatus(scheduleType, dueDate, dueAt, now),
+                  filter === 'closed' ? 'closed' : dueStatus(scheduleType, dueDate, dueAt, now),
                 version: Number(row.version || 1),
                 actor: row.actor,
                 isUrgent: row.is_urgent === true,
@@ -1175,7 +1543,9 @@ export function createPostgresOpportunityActionRepository(
       }
     },
 
-    async createAction(input: CreateOpportunityActionInput): Promise<OpportunityActionCommandResult> {
+    async createAction(
+      input: CreateOpportunityActionInput
+    ): Promise<OpportunityActionCommandResult> {
       const opportunityId = cleanText(input.opportunityId, 'O ID da oportunidade', 255);
       const actor = cleanText(input.actor, 'O ator', MAX_ACTOR_LENGTH);
       const schedule = normalizeSchedule(input);
@@ -1278,7 +1648,9 @@ export function createPostgresOpportunityActionRepository(
         );
       }
       const successor = hasSuccessor ? normalizeSchedule(input.successor!) : null;
-      const transitionOrigin = validateTransitionOrigin(input.transitionOrigin ?? successor?.origin);
+      const transitionOrigin = validateTransitionOrigin(
+        input.transitionOrigin ?? successor?.origin
+      );
       const closeReason = hasClose
         ? cleanText(input.close?.reason, 'O motivo do fechamento', 500)
         : null;
@@ -1350,6 +1722,112 @@ export function createPostgresOpportunityActionRepository(
       }
     },
 
+    async recordManualContact(input: ManualContactInput): Promise<ManualContactCommandResult> {
+      const normalized = normalizeManualContact(input);
+      const fingerprint = manualContactFingerprint(normalized);
+      const now = nowDate(input.now, nowFactory);
+      try {
+        return await getDb().transaction(async (database) => {
+          const alreadyRecorded = await findManualContactEvent(database, normalized.commandId);
+          if (alreadyRecorded) return replayManualContact(database, alreadyRecorded, fingerprint);
+
+          // The opportunity lock is the serialization point for all commands
+          // that can replace its one active action.  A retry deliberately
+          // checks the immutable event after taking this lock: its old action
+          // may already be completed or replaced by the first attempt.
+          const deal = await lockOpportunity(database, normalized.opportunityId);
+          const existing = await findManualContactEvent(database, normalized.commandId);
+          if (existing) return replayManualContact(database, existing, fingerprint);
+
+          assertOpenOpportunity(deal.status);
+          const active = await lockAction(database, normalized.actionId, normalized.opportunityId);
+          assertExpectedAction(active, normalized.expectedVersion);
+
+          const eventId = idFactory();
+          const continuation = normalized.continuation;
+          const actionResult = continuation.schedule
+            ? await completeWithSuccessor(
+                database,
+                active,
+                continuation.schedule,
+                normalized.actor,
+                'manual',
+                active.reason,
+                now,
+                idFactory
+              )
+            : await completeWithClose(
+                database,
+                deal,
+                active,
+                normalized.actor,
+                continuation.closeReason!,
+                now
+              );
+
+          if (normalized.countsAsFollowUp) {
+            const [updated] = await database
+              .update(crmDeals)
+              .set({
+                followUpStage: sql`${crmDeals.followUpStage} + 1`,
+                updatedAt: now,
+              })
+              .where(eq(crmDeals.id, normalized.opportunityId))
+              .returning({ id: crmDeals.id });
+            if (!updated) throw new ActionConflictError();
+          }
+
+          const [event] = await database
+            .insert(manualContactEvents)
+            .values({
+              id: eventId,
+              commandId: normalized.commandId,
+              commandFingerprint: fingerprint,
+              opportunityId: normalized.opportunityId,
+              actionId: normalized.actionId,
+              contactType: normalized.contactType,
+              occurredAt: normalized.occurredAt,
+              note: normalized.note,
+              resultCode: normalized.resultCode,
+              countsAsFollowUp: normalized.countsAsFollowUp,
+              source: 'operator_statement',
+              actor: normalized.actor,
+              createdAt: now,
+              continuationType: continuation.type,
+              successorActionId: actionResult.successor?.actionId || null,
+              closeReason: continuation.closeReason,
+              resultVersion: actionResult.version,
+              closed: actionResult.closed,
+            })
+            .returning();
+          if (!event) throw new OpportunityActionRepositoryError();
+
+          return {
+            ...actionResult,
+            eventId: event.id,
+            commandId: event.commandId,
+            contactType: normalized.contactType,
+            occurredAt: normalized.occurredAt.toISOString(),
+            note: normalized.note,
+            resultCode: normalized.resultCode,
+            countsAsFollowUp: normalized.countsAsFollowUp,
+            continuationType: continuation.type,
+            source: 'operator_statement' as const,
+          };
+        });
+      } catch (error) {
+        // A command key is unique across opportunities too.  If two callers
+        // race before either can lock its different opportunity, PostgreSQL
+        // may report that unique conflict instead of letting the second
+        // transaction observe the event.  Replay the now-committed winner.
+        if (isUniqueViolation(error)) {
+          const winner = await findManualContactEvent(getDb(), normalized.commandId);
+          if (winner) return replayManualContact(getDb(), winner, fingerprint);
+        }
+        return preserveKnownError(error);
+      }
+    },
+
     async listHistory(opportunityId: string): Promise<OpportunityActionHistoryEntry[]> {
       const normalizedId = cleanText(opportunityId, 'O ID da oportunidade', 255);
       try {
@@ -1358,12 +1836,49 @@ export function createPostgresOpportunityActionRepository(
           .from(opportunityNextActions)
           .where(eq(opportunityNextActions.opportunityId, normalizedId))
           .orderBy(asc(opportunityNextActions.createdAt), asc(opportunityNextActions.id));
+        const manualEvents = await getDb()
+          .select()
+          .from(manualContactEvents)
+          .where(eq(manualContactEvents.opportunityId, normalizedId))
+          .orderBy(asc(manualContactEvents.createdAt), asc(manualContactEvents.id));
         const history: OpportunityActionHistoryEntry[] = [];
         const rowsById = new Map(rows.map((row) => [row.id, row]));
+        const manualEventsByActionId = new Map<
+          string,
+          Array<typeof manualContactEvents.$inferSelect>
+        >();
+        for (const event of manualEvents) {
+          const entries = manualEventsByActionId.get(event.actionId) || [];
+          entries.push(event);
+          manualEventsByActionId.set(event.actionId, entries);
+        }
         const successorIds = new Set(
           rows.map((row) => row.replacedById).filter((id): id is string => Boolean(id))
         );
         const visited = new Set<string>();
+
+        function appendManualContact(event: typeof manualContactEvents.$inferSelect): void {
+          history.push({
+            eventId: event.id,
+            actionId: event.actionId,
+            type: 'manual_contact',
+            actor: event.actor,
+            timestamp: isoDate(event.createdAt),
+            origin: 'manual',
+            reason: event.resultCode,
+            state: 'completed',
+            replacementActionId: event.successorActionId,
+            contactType: event.contactType as ManualContactType,
+            occurredAt: isoDate(event.occurredAt),
+            note: event.note,
+            resultCode: event.resultCode as ManualContactResultCode,
+            countsAsFollowUp: event.countsAsFollowUp,
+            source: 'operator_statement',
+            continuationType: event.continuationType as ManualContactContinuationType,
+            successorActionId: event.successorActionId,
+            closeReason: event.closeReason,
+          });
+        }
 
         function appendAction(row: typeof opportunityNextActions.$inferSelect): void {
           if (visited.has(row.id)) return;
@@ -1403,6 +1918,10 @@ export function createPostgresOpportunityActionRepository(
               state: action.state,
               replacementActionId: action.replacedById,
             });
+          }
+
+          for (const event of manualEventsByActionId.get(action.actionId) || []) {
+            appendManualContact(event);
           }
 
           if (action.replacedById) {

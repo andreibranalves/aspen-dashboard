@@ -283,7 +283,7 @@ test('a config dedicada com capability viva descobre exatamente a suíte integra
     const result = discoverSafe([...SAFE_E2E_SPECS], env);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /commercial-queue-integrated\.spec\.js/);
-    assert.match(result.stdout, /Total: 2 tests in 1 file/);
+    assert.match(result.stdout, /Total: 4 tests in 1 file/);
   } finally {
     deleteSafeE2eCapability(capability);
     rmSync(dir, { recursive: true, force: true });
