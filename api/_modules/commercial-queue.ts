@@ -9,6 +9,7 @@ import {
   type OpportunityActionHistoryEntry,
   type OpportunityActionRepository,
   type OpportunityActionScheduleInput,
+  type OpportunityQueueFilter,
   type OpportunityQueueItem,
 } from '../_infrastructure/db/repositories/opportunity-actions-repository.js';
 
@@ -41,6 +42,14 @@ const KIND_LABELS: Record<string, string> = {
   agreed_commitment: 'Compromisso acordado',
   review: 'Revisão',
 };
+
+const QUEUE_FILTERS: readonly OpportunityQueueFilter[] = [
+  'active',
+  'overdue',
+  'today',
+  'scheduled',
+  'closed',
+];
 
 function json(
   statusCode: number,
@@ -93,6 +102,15 @@ function optionalTime(payload: Record<string, unknown>, name = 'due_time'): stri
   return value;
 }
 
+function queueFilter(value: unknown): OpportunityQueueFilter {
+  const candidate = value === undefined || value === '' ? 'active' : value;
+  if (candidate === 'all') return 'active';
+  if (typeof candidate !== 'string' || !QUEUE_FILTERS.includes(candidate as OpportunityQueueFilter)) {
+    throw new HandlerInputError('Filtro da fila inválido.');
+  }
+  return candidate as OpportunityQueueFilter;
+}
+
 function expectedVersion(payload: Record<string, unknown>): number {
   const value = payload.expected_version;
   if (!Number.isSafeInteger(value) || Number(value) < 1) {
@@ -142,6 +160,22 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
     due_status: item.dueStatus,
     version: item.version,
     actor: item.actor,
+    is_urgent: item.isUrgent,
+    priority: item.priority,
+    opportunity_status: item.opportunityStatus,
+    terminal_status: item.terminalStatus,
+    terminal_reason: item.terminalReason,
+    terminal_at: item.terminalAt,
+    contact_context: {
+      status: item.contactContext.status,
+      last_contact_at: item.contactContext.lastContactAt,
+      last_contact_direction: item.contactContext.lastContactDirection,
+      blockers: item.contactContext.blockers,
+    },
+    last_contact_at: item.contactContext.lastContactAt,
+    last_contact_direction: item.contactContext.lastContactDirection,
+    blockers: item.contactContext.blockers,
+    whatsapp_href: item.whatsappHref,
     demand_summary: item.demandSummary,
     contact_name: item.contactName,
     contact_phone: item.contactPhone,
@@ -154,6 +188,20 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
       status: proposal.status,
       total: proposal.total,
     })),
+  };
+}
+
+function publicUrgency(result: {
+  opportunityId: string;
+  actionId: string;
+  version: number;
+  isUrgent: boolean;
+}): Record<string, unknown> {
+  return {
+    opportunity_id: result.opportunityId,
+    action_id: result.actionId,
+    version: result.version,
+    is_urgent: result.isUrgent,
   };
 }
 
@@ -247,12 +295,14 @@ export function createCommercialQueueHandler(
         }
         const requestedPage = page(query.page, 'Página', 1);
         const pageSize = page(query.page_size, 'Tamanho da página', 25);
-        const result = await repository.listActive({ page: requestedPage, pageSize });
+        const filter = queueFilter(query.filter ?? query.view);
+        const result = await repository.listActive({ page: requestedPage, pageSize, filter });
         return json(200, {
           data: result.data.map(publicRecord),
           total: result.total,
           page: result.page,
           page_size: result.pageSize,
+          filter,
         });
       }
 
@@ -306,6 +356,21 @@ export function createCommercialQueueHandler(
           close,
         });
         return json(200, publicCommand(completed));
+      }
+
+      if (command === 'set_urgency' || command === 'set_urgent') {
+        const isUrgent = payload.is_urgent;
+        if (typeof isUrgent !== 'boolean') {
+          throw new HandlerInputError('O estado de urgência é obrigatório.');
+        }
+        const updated = await repository.setUrgency({
+          opportunityId: textField(payload, 'opportunity_id'),
+          actionId: textField(payload, 'action_id'),
+          expectedVersion: expectedVersion(payload),
+          isUrgent,
+          actor,
+        });
+        return json(200, publicUrgency(updated));
       }
 
       throw new HandlerInputError('Comando da ação inválido.');

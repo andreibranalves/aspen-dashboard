@@ -73,7 +73,7 @@ test('comercial alterna negócios entre Lista e Quadro', async ({ page }) => {
     json(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } })
   );
 
-  await page.goto('/#/crm');
+  await page.goto('/#/crm?tab=deals');
   await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Negócios' })).toHaveAttribute(
     'aria-selected',
@@ -85,7 +85,7 @@ test('comercial alterna negócios entre Lista e Quadro', async ({ page }) => {
 
   await page.getByRole('tab', { name: 'Lista' }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page).toHaveURL(/#\/crm\?view=board$/);
+  await expect(page).toHaveURL(/#\/crm\?tab=deals&view=board$/);
   await expect(page.getByRole('region', { name: 'Pipeline CRM' })).toBeVisible();
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('tab', { name: 'Lista' })).toHaveAttribute('aria-selected', 'true');

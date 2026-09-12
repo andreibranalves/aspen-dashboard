@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, ListChecks, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  ListChecks,
+  MessageCircle,
+  RefreshCw,
+  Star,
+} from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
@@ -19,6 +29,8 @@ import {
   getCommercialActionHistory,
   listCommercialQueue,
   rescheduleCommercialAction,
+  setCommercialUrgency,
+  type CommercialQueueFilter,
   type CommercialQueueItem,
   type CommercialQueuePage,
   type CommercialQueueProposal,
@@ -27,6 +39,13 @@ import {
 } from '@/lib/api/commercialQueueApi';
 
 const PAGE_SIZE = 25;
+const QUEUE_FILTERS: ReadonlyArray<[CommercialQueueFilter, string]> = [
+  ['active', 'Todas'],
+  ['overdue', 'Atrasadas'],
+  ['today', 'Hoje'],
+  ['scheduled', 'Agendadas'],
+  ['closed', 'Encerradas'],
+];
 const ACTION_KINDS = [
   ['first_contact', 'Primeiro contato'],
   ['internal', 'Ação interna'],
@@ -72,6 +91,22 @@ function contactDetail(item: CommercialQueueItem): string | null {
   return fmtPhone(item.contactPhone) || item.contactEmail;
 }
 
+function contactContextLabel(item: CommercialQueueItem): string {
+  if (item.contactContext.status === 'review') {
+    return 'Último contato: revisão necessária (atribuição ambígua)';
+  }
+  if (item.contactContext.status === 'unavailable' || !item.contactContext.lastContactAt) {
+    return 'Último contato: indisponível';
+  }
+  const direction =
+    item.contactContext.lastContactDirection === 'inbound'
+      ? 'cliente'
+      : item.contactContext.lastContactDirection === 'outbound'
+        ? 'comercial'
+        : 'contato';
+  return `Último contato (${direction}): ${formatDateTime(item.contactContext.lastContactAt)}`;
+}
+
 function proposalLabel(proposal: CommercialQueueProposal): string {
   const value = proposal.total === null ? 'Sem valor' : formatBRL(proposal.total);
   return `${proposal.businessNumber} · ${proposal.status} · ${value}`;
@@ -80,6 +115,7 @@ function proposalLabel(proposal: CommercialQueueProposal): string {
 function dueStatusLabel(status: CommercialQueueItem['dueStatus']): string {
   if (status === 'overdue') return 'Atrasada';
   if (status === 'today') return 'Hoje';
+  if (status === 'closed') return 'Encerrada';
   return 'Próxima';
 }
 
@@ -87,8 +123,24 @@ function dueLabel(item: CommercialQueueItem): string {
   if (item.scheduleType === 'date_only' && item.dueDate) {
     return `${dueStatusLabel(item.dueStatus)} · ${formatDate(item.dueDate)}`;
   }
+  if (item.dueStatus === 'closed') return `Encerrada · ${formatDateTime(item.dueAt)}`;
   const timestamp = formatDateTime(item.dueAt);
   return item.dueStatus === 'overdue' ? `Atrasada · ${timestamp}` : timestamp;
+}
+
+function isClosed(item: CommercialQueueItem): boolean {
+  return item.dueStatus === 'closed' || item.terminalStatus !== null;
+}
+
+function terminalContext(item: CommercialQueueItem) {
+  if (!isClosed(item)) return null;
+  return (
+    <div className="space-y-1 text-xs text-fg-muted">
+      <p>Status final: {item.terminalStatus || item.opportunityStatus || 'Encerrada'}</p>
+      {item.terminalReason && <p>Motivo do encerramento: {item.terminalReason}</p>}
+      {item.terminalAt && <p>Encerrado em: {formatDateTime(item.terminalAt)}</p>}
+    </div>
+  );
 }
 
 function historyLabel(type: CommercialActionHistoryEntry['type']): string {
@@ -109,14 +161,20 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [history, setHistory] = useState<CommercialActionHistoryEntry[]>([]);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [urgencySubmitting, setUrgencySubmitting] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<CommercialQueueFilter>('active');
   const requestGenerationRef = useRef(0);
 
-  const load = useCallback(async (requestedPage: number) => {
+  const load = useCallback(async (requestedPage: number, requestedFilter: CommercialQueueFilter) => {
     const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
-      const next = await listCommercialQueue({ page: requestedPage, pageSize: PAGE_SIZE });
+      const next = await listCommercialQueue({
+        page: requestedPage,
+        pageSize: PAGE_SIZE,
+        filter: requestedFilter,
+      });
       if (requestGeneration !== requestGenerationRef.current) return;
       setResult(next);
       // The server clamps a page that no longer exists to the last valid one.
@@ -135,8 +193,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }, []);
 
   useEffect(() => {
-    void load(page);
-  }, [load, page]);
+    void load(page, filter);
+  }, [filter, load, page]);
 
   const rows = result?.data || [];
   const total = result?.total ?? 0;
@@ -230,13 +288,37 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         });
       }
       closeDialog(true);
-      await load(currentPage);
+      await load(currentPage, filter);
     } catch (reason) {
       setDialogError(
         reason instanceof Error ? reason.message : 'Não foi possível reagendar a ação.'
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function toggleUrgency(item: CommercialQueueItem) {
+    if (isClosed(item) || item.state !== 'active' || urgencySubmitting.has(item.opportunityId)) return;
+    setUrgencySubmitting((current) => new Set(current).add(item.opportunityId));
+    try {
+      await setCommercialUrgency({
+        opportunityId: item.opportunityId,
+        actionId: item.actionId,
+        expectedVersion: item.version,
+        isUrgent: !item.isUrgent,
+      });
+      await load(currentPage, filter);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : 'Não foi possível atualizar a urgência.'
+      );
+    } finally {
+      setUrgencySubmitting((current) => {
+        const next = new Set(current);
+        next.delete(item.opportunityId);
+        return next;
+      });
     }
   }
 
@@ -266,7 +348,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         });
       }
       closeDialog(true);
-      await load(currentPage);
+          await load(currentPage, filter);
     } catch (reason) {
       setDialogError(
         reason instanceof Error ? reason.message : 'Não foi possível concluir a ação.'
@@ -335,6 +417,23 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   function actionButtons(item: CommercialQueueItem) {
+    if (isClosed(item)) {
+      return (
+        <div className="space-y-2">
+          {terminalContext(item)}
+          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+            Histórico
+          </Button>
+        </div>
+      );
+    }
+    if (item.state !== 'active') {
+      return (
+        <span className="text-xs text-fg-muted">
+          Resultado: {item.reason || item.reasonLabel}
+        </span>
+      );
+    }
     return (
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => openCreate(item)}>
@@ -353,9 +452,94 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     );
   }
 
+  function whatsappLink(item: CommercialQueueItem) {
+    if (!item.whatsappHref) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
+          <Ban size={13} aria-hidden="true" /> WhatsApp indisponível
+        </span>
+      );
+    }
+    return (
+      <a
+        href={item.whatsappHref}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+        aria-label={`Abrir WhatsApp de ${contactLabel(item)}`}
+      >
+        <MessageCircle size={13} aria-hidden="true" /> WhatsApp
+        <ExternalLink size={11} aria-hidden="true" />
+      </a>
+    );
+  }
+
+  function contextDetails(item: CommercialQueueItem) {
+    return (
+      <div className="space-y-1 text-xs text-fg-muted">
+        <p>Motivo: {item.reason || item.reasonLabel}</p>
+        <p>Prazo: {dueLabel(item)}</p>
+        <p>{contactContextLabel(item)}</p>
+        {item.contactContext.blockers.length > 0 ? (
+          <p className="inline-flex items-center gap-1 text-destructive">
+            <Ban size={13} aria-hidden="true" />
+            Bloqueio: {item.contactContext.blockers.map((blocker) => blocker.label).join(', ')}
+          </p>
+        ) : (
+          <p>Bloqueios: nenhum conhecido</p>
+        )}
+      </div>
+    );
+  }
+
+  function urgencyButton(item: CommercialQueueItem) {
+    if (isClosed(item) || item.state !== 'active') return null;
+    const submittingUrgency = urgencySubmitting.has(item.opportunityId);
+    return (
+      <Button
+        type="button"
+        variant={item.isUrgent ? 'default' : 'outline'}
+        size="sm"
+        aria-label={item.isUrgent ? 'Remover urgência' : 'Marcar como urgente'}
+        aria-pressed={item.isUrgent}
+        disabled={submittingUrgency}
+        onClick={() => void toggleUrgency(item)}
+      >
+        <Star aria-hidden="true" className={item.isUrgent ? 'fill-current' : undefined} />
+        {item.isUrgent ? 'Urgente' : 'Marcar urgente'}
+      </Button>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        <div
+          className="mr-auto flex flex-wrap gap-1 rounded-sm border border-line bg-surface p-1"
+          role="tablist"
+          aria-label="Cortes da fila comercial"
+        >
+          {QUEUE_FILTERS.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={filter === value}
+              className={
+                filter === value
+                  ? 'rounded-sm bg-surface-muted px-3 py-1.5 text-sm font-medium text-fg'
+                  : 'rounded-sm px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg'
+              }
+              onClick={() => {
+                if (value === filter) return;
+                setPage(1);
+                setFilter(value);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {showPagination && (
           <nav
             aria-label="Paginação da fila"
@@ -390,7 +574,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => void load(page)}
+          onClick={() => void load(page, filter)}
           disabled={loading}
         >
           <RefreshCw aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
@@ -410,7 +594,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             variant="outline"
             size="sm"
             className="ml-auto"
-            onClick={() => void load(page)}
+          onClick={() => void load(page, filter)}
           >
             Tentar novamente
           </Button>
@@ -434,8 +618,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                   <TableHead>Contato</TableHead>
                   <TableHead>Demanda</TableHead>
                   <TableHead>Propostas</TableHead>
-                  <TableHead>Motivo</TableHead>
-                  <TableHead>Prazo</TableHead>
+                  <TableHead>Contexto</TableHead>
                   <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -444,6 +627,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                   <TableRow key={item.actionId}>
                     <TableCell>
                       {clientName(item)}
+                      {item.clientName && item.contactName !== item.clientName && (
+                        <p className="text-xs text-fg-muted">Contato: {item.contactName}</p>
+                      )}
                       {contactDetail(item) && (
                         <p className="text-xs text-fg-muted">{contactDetail(item)}</p>
                       )}
@@ -465,12 +651,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                       )}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={item.reasonCode} label={item.reasonLabel} />
+                      {contextDetails(item)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-fg-muted">
-                      {dueLabel(item)}
+                    <TableCell>
+                      <div className="space-y-2">
+                        {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
+                        {urgencyButton(item)}
+                        {whatsappLink(item)}
+                        {actionButtons(item)}
+                      </div>
                     </TableCell>
-                    <TableCell>{actionButtons(item)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -483,15 +673,21 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate">{clientName(item)}</p>
+                    {item.clientName && item.contactName !== item.clientName && (
+                      <p className="mt-1 truncate text-xs text-fg-muted">
+                        Contato: {item.contactName}
+                      </p>
+                    )}
                     {contactDetail(item) && (
                       <p className="mt-1 text-xs text-fg-muted">{contactDetail(item)}</p>
                     )}
                   </div>
-                  <StatusBadge status={item.reasonCode} label={item.reasonLabel} />
+                  {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
                 </div>
                 <p className="mt-3 text-sm text-fg-muted">
                   {item.demandSummary || 'Demanda não informada'}
                 </p>
+                <p className="mt-1 text-xs text-fg-muted">Oportunidade: {item.opportunityId}</p>
                 {item.proposals.length > 0 && (
                   <ul className="mt-2 space-y-1 text-xs text-fg-muted">
                     {item.proposals.map((proposal) => (
@@ -499,7 +695,11 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     ))}
                   </ul>
                 )}
-                <p className="mt-2 text-xs text-fg-muted">{dueLabel(item)}</p>
+                <div className="mt-3">{contextDetails(item)}</div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {urgencyButton(item)}
+                  {whatsappLink(item)}
+                </div>
                 <div className="mt-3">{actionButtons(item)}</div>
               </article>
             ))}

@@ -15,7 +15,22 @@ export type OpportunityActionKind =
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
 export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
 export type OpportunityActionScheduleType = 'date_only' | 'timed';
-export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue';
+export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'closed';
+export type OpportunityQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
+export type OpportunityContactContextStatus = 'available' | 'unavailable' | 'review';
+export type OpportunityContactDirection = 'inbound' | 'outbound' | null;
+
+export interface OpportunityQueueBlocker {
+  code: string;
+  label: string;
+}
+
+export interface OpportunityContactContext {
+  status: OpportunityContactContextStatus;
+  lastContactAt: string | null;
+  lastContactDirection: OpportunityContactDirection;
+  blockers: OpportunityQueueBlocker[];
+}
 
 const ACTION_KINDS: readonly OpportunityActionKind[] = [
   'first_contact',
@@ -26,6 +41,13 @@ const ACTION_KINDS: readonly OpportunityActionKind[] = [
 ];
 const ACTION_ORIGINS: readonly OpportunityActionOrigin[] = ['manual', 'automatic', 'event'];
 const CLOSED_OPPORTUNITY_STATUSES = ['Pedido Fechado', 'Perdido'] as const;
+const QUEUE_FILTERS: readonly OpportunityQueueFilter[] = [
+  'active',
+  'overdue',
+  'today',
+  'scheduled',
+  'closed',
+];
 const LOCAL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const LOCAL_TIME = /^\d{2}:\d{2}$/;
 const MAX_REASON_LENGTH = 500;
@@ -47,6 +69,14 @@ export interface OpportunityQueueItem {
   dueStatus: OpportunityActionDueStatus;
   version: number;
   actor: string;
+  isUrgent: boolean;
+  priority: number;
+  opportunityStatus: string;
+  terminalStatus: string | null;
+  terminalReason: string | null;
+  terminalAt: string | null;
+  contactContext: OpportunityContactContext;
+  whatsappHref: string | null;
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
@@ -67,6 +97,7 @@ export interface OpportunityQueuePage {
 export interface OpportunityQueueListOptions {
   page?: number;
   pageSize?: number;
+  filter?: OpportunityQueueFilter;
 }
 
 export interface OpportunityActionScheduleInput {
@@ -153,12 +184,29 @@ export interface OpportunityActionCommandResult {
   closed: boolean;
 }
 
+export interface SetOpportunityUrgencyInput {
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  isUrgent: boolean;
+  actor: string;
+  now?: Date;
+}
+
+export interface OpportunityUrgencyResult {
+  opportunityId: string;
+  actionId: string;
+  version: number;
+  isUrgent: boolean;
+}
+
 export interface OpportunityActionRepository {
   listActive(options?: OpportunityQueueListOptions): Promise<OpportunityQueuePage>;
   createAction(input: CreateOpportunityActionInput): Promise<OpportunityActionCommandResult>;
   rescheduleAction(input: RescheduleOpportunityActionInput): Promise<OpportunityActionCommandResult>;
   completeAction(input: CompleteOpportunityActionInput): Promise<OpportunityActionCommandResult>;
   listHistory(opportunityId: string): Promise<OpportunityActionHistoryEntry[]>;
+  setUrgency(input: SetOpportunityUrgencyInput): Promise<OpportunityUrgencyResult>;
 }
 
 export class OpportunityActionInputError extends Error {
@@ -448,6 +496,17 @@ interface QueueRow {
   schedule_type: string;
   version: number;
   actor: string;
+  is_urgent: boolean;
+  priority: number;
+  opportunity_status: string;
+  terminal_status: string | null;
+  terminal_reason: string | null;
+  terminal_at: Date | string | null;
+  contact_context_status: OpportunityContactContextStatus;
+  last_contact_at: Date | string | null;
+  last_contact_direction: OpportunityContactDirection;
+  blockers: unknown;
+  whatsapp_href: string | null;
   demand_summary: string | null;
   contact_name: string;
   contact_phone: string | null;
@@ -463,6 +522,11 @@ interface ProposalJsonRow {
   status?: unknown;
   total?: unknown;
   created_at?: unknown;
+}
+
+interface BlockerJsonRow {
+  code?: unknown;
+  label?: unknown;
 }
 
 function parseProposals(value: unknown): OpportunityProposal[] {
@@ -482,6 +546,33 @@ function parseProposals(value: unknown): OpportunityProposal[] {
     });
   }
   return proposals;
+}
+
+function parseBlockers(value: unknown): OpportunityQueueBlocker[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const row = entry as BlockerJsonRow;
+    return typeof row.code === 'string' && typeof row.label === 'string'
+      ? [{ code: row.code, label: row.label }]
+      : [];
+  });
+}
+
+function rowContactContext(row: QueueRow): OpportunityContactContext {
+  const status: OpportunityContactContextStatus =
+    row.contact_context_status === 'available' || row.contact_context_status === 'review'
+      ? row.contact_context_status
+      : 'unavailable';
+  return {
+    status,
+    lastContactAt: row.last_contact_at ? isoDate(row.last_contact_at) : null,
+    lastContactDirection:
+      row.last_contact_direction === 'inbound' || row.last_contact_direction === 'outbound'
+        ? row.last_contact_direction
+        : null,
+    blockers: parseBlockers(row.blockers),
+  };
 }
 
 function preserveKnownError(error: unknown): never {
@@ -748,8 +839,13 @@ export function createPostgresOpportunityActionRepository(
     async listActive(listOptions: OpportunityQueueListOptions = {}): Promise<OpportunityQueuePage> {
       const page = positiveInteger(listOptions.page, 1, Number.MAX_SAFE_INTEGER);
       const pageSize = positiveInteger(listOptions.pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+      const filter = listOptions.filter || 'active';
+      if (!QUEUE_FILTERS.includes(filter)) {
+        throw new OpportunityActionInputError('Filtro da fila comercial inválido.');
+      }
       const closedStatuses = [...CLOSED_OPPORTUNITY_STATUSES];
       const now = nowDate(undefined, nowFactory);
+      const nowIso = now.toISOString();
 
       try {
         const database = getDb();
@@ -757,7 +853,7 @@ export function createPostgresOpportunityActionRepository(
         // and the page rows together. When a close or removal shrinks the queue
         // below the requested page, `page` is clamped to the last valid one.
         const rows = (await database.execute(sql`
-          WITH filtered AS (
+          WITH candidate_actions AS (
             SELECT
               a.id AS action_id,
               a.opportunity_id,
@@ -773,12 +869,39 @@ export function createPostgresOpportunityActionRepository(
               a.version,
               a.actor,
               a.created_at,
+              a.updated_at,
+              d.quote_lead_id,
+              d.is_urgent,
+              d.status AS opportunity_status,
+              CASE WHEN d.status IN (${sql.join(
+                closedStatuses.map((status) => sql`${status}`),
+                sql`, `
+              )}) THEN d.status ELSE NULL END AS terminal_status,
+              CASE WHEN d.status IN (${sql.join(
+                closedStatuses.map((status) => sql`${status}`),
+                sql`, `
+              )}) THEN d.lost_reason ELSE NULL END AS terminal_reason,
+              CASE WHEN d.status IN (${sql.join(
+                closedStatuses.map((status) => sql`${status}`),
+                sql`, `
+              )}) THEN d.updated_at ELSE NULL END AS terminal_at,
               d.demand_summary,
               d.nome AS contact_name,
               d.telefone AS contact_phone,
               d.email AS contact_email,
               d.client_id,
               c.nome AS client_name,
+              CASE
+                WHEN a.schedule_type = 'date_only' THEN
+                  CASE
+                    WHEN a.due_date < (${nowIso}::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date THEN 'overdue'
+                    WHEN a.due_date = (${nowIso}::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date THEN 'today'
+                    ELSE 'upcoming'
+                  END
+                WHEN a.due_at <= ${nowIso}::timestamptz THEN 'overdue'
+                WHEN a.due_date = (${nowIso}::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date THEN 'today'
+                ELSE 'upcoming'
+              END AS due_status_key,
               (
                 SELECT coalesce(
                   json_agg(
@@ -805,11 +928,135 @@ export function createPostgresOpportunityActionRepository(
             FROM opportunity_next_actions a
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
-            WHERE a.state = 'active'
-              AND d.status NOT IN (${sql.join(
-                closedStatuses.map((status) => sql`${status}`),
-                sql`, `
-              )})
+            WHERE (
+              ${filter === 'closed'
+                ? sql`d.status IN (${sql.join(
+                    closedStatuses.map((status) => sql`${status}`),
+                    sql`, `
+                  )})`
+                : sql`a.state = 'active' AND d.status NOT IN (${sql.join(
+                    closedStatuses.map((status) => sql`${status}`),
+                    sql`, `
+                  )})`}
+            )
+          ),
+          selected_actions AS (
+            SELECT *
+            FROM (
+              SELECT
+                candidate_actions.*,
+                row_number() OVER (
+                  PARTITION BY opportunity_id
+                  ORDER BY updated_at DESC, created_at DESC, action_id DESC
+                ) AS opportunity_row
+              FROM candidate_actions
+            ) candidates
+            WHERE ${filter === 'closed' ? sql`opportunity_row = 1` : sql`true`}
+          ),
+          activity_matches AS (
+            SELECT DISTINCT
+              selected.action_id,
+              activity.id AS activity_id,
+              activity.last_inbound_at,
+              activity.last_outbound_at,
+              activity.identity_status,
+              activity.blocked_at,
+              activity.block_reason
+            FROM selected_actions selected
+            INNER JOIN whatsapp_contact_activity activity ON (
+              EXISTS (
+                SELECT 1
+                FROM quote_leads lead
+                WHERE lead.id = selected.quote_lead_id
+                  AND lead.source = 'whatsapp'
+                  AND lead.external_id = activity.provider_conversation_id
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM quotation_follow_ups follow_up
+                INNER JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+                WHERE quotation.opportunity_id = selected.opportunity_id
+                  AND follow_up.instance = activity.instance
+                  AND follow_up.provider_conversation_id = activity.provider_conversation_id
+              )
+            )
+          ),
+          contact_context AS (
+            SELECT
+              action_id,
+              count(*)::int AS activity_count,
+              CASE
+                WHEN count(*) = 1 AND max(identity_status) IN ('verified', 'derived')
+                  AND (max(last_inbound_at) IS NOT NULL OR max(last_outbound_at) IS NOT NULL)
+                  THEN GREATEST(max(last_inbound_at), max(last_outbound_at))
+                ELSE NULL
+              END AS last_contact_at,
+              CASE
+                WHEN count(*) = 1 AND max(identity_status) IN ('verified', 'derived')
+                  AND max(last_inbound_at) IS NOT NULL
+                  AND (max(last_outbound_at) IS NULL OR max(last_inbound_at) > max(last_outbound_at))
+                  THEN 'inbound'
+                WHEN count(*) = 1 AND max(identity_status) IN ('verified', 'derived')
+                  AND max(last_outbound_at) IS NOT NULL
+                  AND (max(last_inbound_at) IS NULL OR max(last_outbound_at) >= max(last_inbound_at))
+                  THEN 'outbound'
+                ELSE NULL
+              END AS last_contact_direction,
+              CASE
+                WHEN bool_or(blocked_at IS NOT NULL) THEN
+                  json_build_array(json_build_object('code', 'do_not_contact', 'label', 'Não contatar'))
+                ELSE '[]'::json
+              END AS blockers,
+              CASE
+                WHEN count(*) = 1 AND max(identity_status) IN ('verified', 'derived') THEN true
+                ELSE false
+              END AS authoritative_identity
+            FROM activity_matches
+            GROUP BY action_id
+          ),
+          classified AS (
+            SELECT
+              selected.*,
+              COALESCE(context.activity_count, 0) AS activity_count,
+              CASE WHEN COALESCE(context.activity_count, 0) = 0 THEN 'unavailable'
+                WHEN context.authoritative_identity THEN 'available'
+                ELSE 'review'
+              END AS contact_context_status,
+              context.last_contact_at,
+              context.last_contact_direction,
+              COALESCE(context.blockers, '[]'::json) AS blockers,
+              CASE
+                WHEN selected.contact_phone ~ '^[0-9]{10,15}$'
+                  THEN 'https://wa.me/' || selected.contact_phone
+                ELSE NULL
+              END AS whatsapp_href,
+              CASE
+                WHEN selected.is_urgent THEN 1
+                WHEN selected.due_status_key = 'overdue' AND selected.kind = 'agreed_commitment' THEN 2
+                WHEN context.authoritative_identity
+                  AND context.last_contact_direction = 'inbound'
+                  THEN 3
+                WHEN selected.kind = 'first_contact' THEN 4
+                WHEN selected.due_status_key = 'overdue' THEN 5
+                WHEN selected.due_status_key = 'today' THEN 6
+                WHEN selected.due_status_key = 'upcoming' THEN 7
+                ELSE 8
+              END AS priority
+            FROM selected_actions selected
+            LEFT JOIN contact_context context ON context.action_id = selected.action_id
+          ),
+          filtered AS (
+            SELECT *
+            FROM classified
+            WHERE ${
+              filter === 'overdue'
+                ? sql`due_status_key = 'overdue'`
+                : filter === 'today'
+                  ? sql`due_status_key = 'today'`
+                  : filter === 'scheduled'
+                    ? sql`due_status_key = 'upcoming'`
+                    : sql`true`
+            }
           ),
           bounds AS (SELECT count(*)::int AS total FROM filtered),
           position AS (
@@ -822,9 +1069,20 @@ export function createPostgresOpportunityActionRepository(
           FROM position
           LEFT JOIN LATERAL (
             SELECT * FROM filtered
-            ORDER BY due_at ASC, created_at ASC, action_id ASC
+            ORDER BY
+              CASE WHEN ${filter === 'closed' ? sql`true` : sql`false`} THEN updated_at END DESC NULLS LAST,
+              priority ASC,
+              due_at ASC,
+              created_at ASC,
+              action_id ASC
             LIMIT ${pageSize} OFFSET (position.page - 1) * ${pageSize}
           ) AS page_rows ON true
+          ORDER BY
+            CASE WHEN ${filter === 'closed' ? sql`true` : sql`false`} THEN page_rows.updated_at END DESC NULLS LAST,
+            page_rows.priority ASC,
+            page_rows.due_at ASC,
+            page_rows.created_at ASC,
+            page_rows.action_id ASC
         `)) as unknown as QueueRow[];
 
         const [first] = rows;
@@ -848,9 +1106,20 @@ export function createPostgresOpportunityActionRepository(
                 dueDate,
                 dueTime: scheduleType === 'date_only' ? null : rowTime(row.due_time),
                 scheduleType,
-                dueStatus: dueStatus(scheduleType, dueDate, dueAt, now),
+                dueStatus:
+                  filter === 'closed'
+                    ? 'closed'
+                    : dueStatus(scheduleType, dueDate, dueAt, now),
                 version: Number(row.version || 1),
                 actor: row.actor,
+                isUrgent: row.is_urgent === true,
+                priority: Number(row.priority || 8),
+                opportunityStatus: row.opportunity_status,
+                terminalStatus: row.terminal_status || null,
+                terminalReason: row.terminal_reason || null,
+                terminalAt: row.terminal_at ? isoDate(row.terminal_at) : null,
+                contactContext: rowContactContext(row),
+                whatsappHref: row.whatsapp_href,
                 demandSummary: row.demand_summary,
                 contactName: row.contact_name,
                 contactPhone: row.contact_phone,
@@ -864,6 +1133,43 @@ export function createPostgresOpportunityActionRepository(
           page: Number(first.page ?? 1),
           pageSize,
         };
+      } catch (error) {
+        return preserveKnownError(error);
+      }
+    },
+
+    async setUrgency(input: SetOpportunityUrgencyInput): Promise<OpportunityUrgencyResult> {
+      const opportunityId = cleanText(input.opportunityId, 'O ID da oportunidade', 255);
+      const actionId = cleanText(input.actionId, 'O ID da ação', 255);
+      const actor = cleanText(input.actor, 'O ator', MAX_ACTOR_LENGTH);
+      const expectedVersion = validateVersion(input.expectedVersion);
+      if (typeof input.isUrgent !== 'boolean') {
+        throw new OpportunityActionInputError('O estado de urgência é inválido.');
+      }
+      const now = nowDate(input.now, nowFactory);
+      try {
+        return await getDb().transaction(async (database) => {
+          const deal = await lockOpportunity(database, opportunityId);
+          assertOpenOpportunity(deal.status);
+          const action = await lockAction(database, actionId, opportunityId);
+          assertExpectedAction(action, expectedVersion);
+          const [updated] = await database
+            .update(crmDeals)
+            .set({ isUrgent: input.isUrgent, updatedAt: now })
+            .where(eq(crmDeals.id, opportunityId))
+            .returning({ id: crmDeals.id, isUrgent: crmDeals.isUrgent });
+          if (!updated) throw new ActionConflictError();
+          // `actor` is intentionally validated above. Urgency is a property of
+          // the opportunity, while action history remains the source of truth
+          // for schedule transitions; no generic priority history is created.
+          void actor;
+          return {
+            opportunityId: updated.id,
+            actionId: action.id,
+            version: action.version,
+            isUrgent: updated.isUrgent,
+          };
+        });
       } catch (error) {
         return preserveKnownError(error);
       }

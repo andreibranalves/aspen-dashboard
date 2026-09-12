@@ -7,16 +7,20 @@ import type {
   OpportunityQueuePage,
 } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 
+const resultActionId = '00000000-0000-4000-8000-00000000000a';
+const resultOpportunityId = '00000000-0000-4000-8000-00000000000b';
+
 function event(
   httpMethod: string,
-  query: Record<string, string> = {}
+  query: Record<string, string> = {},
+  body: Record<string, unknown> = {}
 ): {
   httpMethod: string;
   headers: Record<string, string>;
   queryStringParameters: Record<string, string>;
   body: string;
 } {
-  return { httpMethod, headers: {}, queryStringParameters: query, body: '' };
+  return { httpMethod, headers: {}, queryStringParameters: query, body: JSON.stringify(body) };
 }
 
 function item(overrides: Partial<OpportunityQueuePage['data'][number]> = {}) {
@@ -36,6 +40,19 @@ function item(overrides: Partial<OpportunityQueuePage['data'][number]> = {}) {
     dueStatus: 'overdue' as const,
     version: 1,
     actor: 'system',
+    isUrgent: false,
+    priority: 4,
+    opportunityStatus: 'Novo Lead',
+    terminalStatus: null,
+    terminalReason: null,
+    terminalAt: null,
+    contactContext: {
+      status: 'unavailable' as const,
+      lastContactAt: null,
+      lastContactDirection: null,
+      blockers: [],
+    },
+    whatsappHref: 'https://wa.me/5521999990000',
     demandSummary: 'Cangas 100 unidades',
     contactName: 'Cliente Sintético',
     contactPhone: '5521999990000',
@@ -52,6 +69,12 @@ function repository(
 ): OpportunityActionRepository {
   return {
     listActive: async () => ({ data: [item()], total: 1, page: 1, pageSize: 25 }),
+    setUrgency: async () => ({
+      opportunityId: resultOpportunityId,
+      actionId: resultActionId,
+      version: 1,
+      isUrgent: false,
+    }),
     ...overrides,
   };
 }
@@ -83,6 +106,9 @@ test('GET /api/commercial-queue returns the prioritized page in snake_case', asy
   assert.equal(row.due_status, 'overdue');
   assert.equal(row.version, 1);
   assert.equal(row.actor, 'system');
+  assert.equal(row.terminal_status, null);
+  assert.equal(row.terminal_reason, null);
+  assert.equal(row.terminal_at, null);
   assert.equal(row.demand_summary, 'Cangas 100 unidades');
   assert.equal(row.contact_name, 'Cliente Sintético');
   assert.equal(row.contact_phone, '5521999990000');
@@ -197,4 +223,98 @@ test('GET /api/commercial-queue rejects other methods', async () => {
   const result = await handler(event('PUT'));
   assert.equal(result.statusCode, 405);
   assert.equal(result.headers?.Allow, 'GET, POST');
+});
+
+test('GET /api/commercial-queue forwards the cut and exposes queue context', async () => {
+  let received: Record<string, unknown> | undefined;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      listActive: async (options) => {
+        received = options as unknown as Record<string, unknown>;
+        return { data: [item()], total: 1, page: 1, pageSize: 25 };
+      },
+    }),
+  });
+  const result = await handler(event('GET', { filter: 'overdue', page: '1', page_size: '25' }));
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(received?.filter, 'overdue');
+  const row = JSON.parse(result.body || '{}').data[0];
+  assert.equal(row.is_urgent, false);
+  assert.equal(row.priority, 4);
+  assert.deepEqual(row.contact_context, {
+    status: 'unavailable',
+    last_contact_at: null,
+    last_contact_direction: null,
+    blockers: [],
+  });
+  assert.equal(row.whatsapp_href, 'https://wa.me/5521999990000');
+});
+
+test('GET /api/commercial-queue keeps terminal context separate from action reason', async () => {
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      listActive: async () => ({
+        data: [
+          item({
+            state: 'active',
+            dueStatus: 'closed',
+            opportunityStatus: 'Perdido',
+            terminalStatus: 'Perdido',
+            terminalReason: 'Cliente escolheu outro fornecedor',
+            terminalAt: '2026-09-11T14:00:00.000Z',
+          }),
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      }),
+    }),
+  });
+  const result = await handler(event('GET', { filter: 'closed' }));
+  const row = JSON.parse(result.body || '{}').data[0];
+
+  assert.equal(row.state, 'active');
+  assert.equal(row.reason, 'Primeiro atendimento');
+  assert.equal(row.terminal_status, 'Perdido');
+  assert.equal(row.terminal_reason, 'Cliente escolheu outro fornecedor');
+  assert.equal(row.terminal_at, '2026-09-11T14:00:00.000Z');
+});
+
+test('POST /api/commercial-queue encaminha a urgência do negócio com token da ação', async () => {
+  let received: Record<string, unknown> | undefined;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      setUrgency: async (input) => {
+        received = input as unknown as Record<string, unknown>;
+        return {
+          opportunityId: resultOpportunityId,
+          actionId: resultActionId,
+          version: 2,
+          isUrgent: true,
+        };
+      },
+    }),
+  });
+  const response = await handler(
+    event('POST', {}, {
+      command: 'set_urgency',
+      opportunity_id: resultOpportunityId,
+      action_id: resultActionId,
+      expected_version: 1,
+      is_urgent: true,
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(received?.opportunityId, resultOpportunityId);
+  assert.equal(received?.actionId, resultActionId);
+  assert.equal(received?.expectedVersion, 1);
+  assert.equal(received?.isUrgent, true);
+  assert.deepEqual(JSON.parse(response.body || '{}'), {
+    opportunity_id: resultOpportunityId,
+    action_id: resultActionId,
+    version: 2,
+    is_urgent: true,
+  });
 });

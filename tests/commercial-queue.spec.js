@@ -30,6 +30,16 @@ const firstContact = {
   due_status: 'overdue',
   version: 1,
   actor: 'system',
+  is_urgent: false,
+  priority: 4,
+  opportunity_status: 'Novo Lead',
+  contact_context: {
+    status: 'available',
+    last_contact_at: '2026-09-11T11:30:00.000Z',
+    last_contact_direction: 'inbound',
+    blockers: [],
+  },
+  whatsapp_href: 'https://wa.me/5521999990000',
   demand_summary: 'Cangas 100 unidades',
   contact_name: 'Lead Sintético',
   contact_phone: '5521999990000',
@@ -42,6 +52,15 @@ const firstContact = {
 function queue(items) {
   return { data: items, total: items.length, page: 1, page_size: 25 };
 }
+
+test('a rota Comercial sem aba abre a Fila priorizada', async ({ page }) => {
+  await page.route('**/api/commercial-queue**', (route) => json(route, queue([firstContact])));
+
+  await page.goto('/#/crm');
+
+  await expect(page.getByRole('tab', { name: 'Fila' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('row', { name: /Lead Sintético/ })).toBeVisible();
+});
 
 test('Comercial lista o lead novo com demanda, motivo e prazo na Fila', async ({ page }) => {
   await page.route('**/api/commercial-queue**', (route) => json(route, queue([firstContact])));
@@ -57,6 +76,118 @@ test('Comercial lista o lead novo com demanda, motivo e prazo na Fila', async ({
   await expect(row.getByText('Primeiro atendimento')).toBeVisible();
   await expect(row.getByText('(21) 99999-0000')).toBeVisible();
   await expect(row.getByText('11/09/2026, 09:00')).toBeVisible();
+  await expect(row.getByRole('link', { name: 'Abrir WhatsApp de Lead Sintético' })).toHaveAttribute(
+    'href',
+    'https://wa.me/5521999990000'
+  );
+});
+
+test('a Fila mantém contexto explícito e oferece os quatro cortes', async ({ page }) => {
+  const requestedFilters = [];
+  const rows = [
+    firstContact,
+    {
+      ...firstContact,
+      action_id: '33333333-3333-4333-8333-333333333333',
+      contact_name: 'Contato ambíguo',
+      contact_context: {
+        status: 'review',
+        last_contact_at: null,
+        last_contact_direction: null,
+        blockers: [],
+      },
+      whatsapp_href: null,
+    },
+  ];
+  await page.route('**/api/commercial-queue**', (route) => {
+    requestedFilters.push(/[?&]filter=([^&]+)/.exec(route.request().url())?.[1] ?? null);
+    return json(route, queue(rows));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  for (const label of ['Atrasadas', 'Hoje', 'Agendadas', 'Encerradas']) {
+    await expect(page.getByRole('tab', { name: label })).toBeVisible();
+  }
+  await expect(
+    page.getByRole('table').getByText('Último contato (cliente): 11/09/2026, 08:30')
+  ).toBeVisible();
+  await page.getByRole('row', { name: /Contato ambíguo/ }).getByText(/revisão necessária/).waitFor();
+  await expect(
+    page.getByRole('table').getByText('Último contato: revisão necessária (atribuição ambígua)')
+  ).toBeVisible();
+  await expect(page.getByRole('table').getByText('WhatsApp indisponível')).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Agendadas' }).click();
+  await expect.poll(() => requestedFilters.at(-1)).toBe('scheduled');
+});
+
+test('a Fila alterna urgência sem perder o contexto da ação', async ({ page }) => {
+  const requests = [];
+  let urgent = false;
+  await page.route('**/api/commercial-queue**', async (route) => {
+    if (route.request().method() === 'POST') {
+      const body = JSON.parse(route.request().postData() || '{}');
+      requests.push(body);
+      urgent = body.is_urgent;
+      return json(route, {
+        opportunity_id: firstContact.opportunity_id,
+        action_id: firstContact.action_id,
+        version: 1,
+        is_urgent: urgent,
+      });
+    }
+    return json(route, queue([{ ...firstContact, is_urgent: urgent, priority: urgent ? 1 : 4 }]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page.getByRole('row', { name: /Lead Sintético/ }).getByRole('button', { name: 'Marcar como urgente' }).click();
+  await expect.poll(() => requests).toEqual([
+    {
+      command: 'set_urgency',
+      opportunity_id: firstContact.opportunity_id,
+      action_id: firstContact.action_id,
+      expected_version: 1,
+      is_urgent: true,
+    },
+  ]);
+  await expect(page.getByRole('button', { name: 'Remover urgência' })).toBeVisible();
+  await expect(page.getByRole('table').getByTitle('Urgente')).toBeVisible();
+});
+
+test('a Fila mostra o resultado terminal e bloqueia mutações de uma ação ainda ativa', async ({
+  page,
+}) => {
+  const closedActive = {
+    ...firstContact,
+    action_id: '77777777-7777-4777-8777-777777777777',
+    opportunity_id: '88888888-8888-4888-8888-888888888888',
+    contact_name: 'Oportunidade encerrada',
+    state: 'active',
+    reason: 'Ação ativa após encerramento',
+    due_status: 'closed',
+    opportunity_status: 'Perdido',
+    terminal_status: 'Perdido',
+    terminal_reason: 'Cliente escolheu outro fornecedor',
+    terminal_at: '2026-09-11T14:00:00.000Z',
+  };
+  await page.route('**/api/commercial-queue**', (route) => {
+    const filter = /[?&]filter=([^&]+)/.exec(route.request().url())?.[1];
+    return json(route, filter === 'closed' ? queue([closedActive]) : queue([]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page.getByRole('tab', { name: 'Encerradas' }).click();
+
+  const row = page.getByRole('row', { name: /Oportunidade encerrada/ });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText('Status final: Perdido');
+  await expect(row).toContainText('Motivo do encerramento: Cliente escolheu outro fornecedor');
+  await expect(row).toContainText('Encerrado em: 11/09/2026, 11:00');
+  await expect(row.getByRole('button', { name: 'Nova ação' })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Reagendar' })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Concluir' })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Marcar como urgente' })).toHaveCount(0);
+  await expect(row.getByRole('button', { name: 'Histórico' })).toBeVisible();
 });
 
 test('a Fila envia o reagendamento com data civil e token da ação', async ({ page }) => {
@@ -120,7 +251,7 @@ test('a ação da Fila abre o cadastro do contato quando o cliente está vincula
   );
 
   await page.goto('/#/crm?tab=queue');
-  await page.getByRole('link', { name: 'Empresa Sintética' }).click();
+  await page.getByRole('link', { name: 'Empresa Sintética', exact: true }).click();
 
   await expect(page).toHaveURL(/#\/leads\/cliente\/33333333-3333-4333-8333-333333333333$/);
 });
@@ -172,7 +303,7 @@ test.describe('layout compacto', () => {
     );
 
     await page.goto('/#/crm?tab=queue');
-    await page.getByRole('link', { name: 'Empresa Sintética' }).click();
+    await page.getByRole('link', { name: 'Empresa Sintética', exact: true }).click();
 
     await expect(page).toHaveURL(/#\/leads\/cliente\/33333333-3333-4333-8333-333333333333$/);
   });
