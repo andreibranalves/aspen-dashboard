@@ -14,6 +14,7 @@ import {
   appSettings,
   clients,
   crmDeals,
+  opportunityNextActions,
   productActivityEvents,
   products,
   quotations,
@@ -596,7 +597,14 @@ test(
         if (orderIds.length) await db.delete(salesOrders).where(inArray(salesOrders.id, orderIds));
         await db.delete(quotations).where(inArray(quotations.id, createdIds));
       }
-      if (dealIds.length) await db.delete(crmDeals).where(inArray(crmDeals.id, dealIds));
+      if (dealIds.length) {
+        // Durable action history created by ingestion; the RESTRICT reference
+        // requires removing it before the opportunity.
+        await db
+          .delete(opportunityNextActions)
+          .where(inArray(opportunityNextActions.opportunityId, dealIds));
+        await db.delete(crmDeals).where(inArray(crmDeals.id, dealIds));
+      }
       if (leadIds.length) await db.delete(quoteLeads).where(inArray(quoteLeads.id, leadIds));
       if (createdClientIds.length) {
         await db.delete(clients).where(inArray(clients.id, createdClientIds));

@@ -87,6 +87,9 @@ npm run verify:full          # RELEASE: verify:fast + corpus + build + E2E
 - Durante a edição, rode o checker barato relevante; antes de entregar código, rode `npm run verify:fast`, conforme a política de risco.
 - `verify:full` fica para gates RELEASE, mudanças transversais grandes ou solicitação explícita — não é obrigatório em toda issue.
 
+E2E integrado (HTTP -> PostgreSQL descartável -> UI) usa o ponto de entrada seguro
+`npm run test:e2e:safe`; ver `docs/safe-e2e.md`.
+
 ## Agent skills
 
 ### Issue tracker

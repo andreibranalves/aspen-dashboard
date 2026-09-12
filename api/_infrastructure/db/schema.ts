@@ -610,6 +610,11 @@ export const quoteLeads = pgTable(
     source: varchar('source', { length: 80 }).notNull().default('typebot'),
     sourceDetail: varchar('source_detail', { length: 255 }),
     externalId: varchar('external_id', { length: 255 }),
+    // Stable identity of the admitted demand, separate from the contact and
+    // from `external_id` (transport/conversation retry association). When two
+    // independently supplied demands share a conversation or phone, distinct
+    // `demand_id` values keep them apart instead of fusing into one lead.
+    demandId: varchar('demand_id', { length: 255 }),
     empresa: varchar('empresa', { length: 255 }),
     produto: varchar('produto', { length: 255 }),
     quantidade: varchar('quantidade', { length: 255 }),
@@ -626,6 +631,11 @@ export const quoteLeads = pgTable(
   },
   (table) => [
     uniqueIndex('quote_leads_identity_key_unique').on(table.identityKey),
+    // The explicit demand identity is looked up on every WhatsApp pre-quote
+    // retry; the partial index keeps that lookup off a sequential scan.
+    index('quote_leads_demand_id_idx')
+      .on(table.source, table.demandId)
+      .where(sql`${table.demandId} IS NOT NULL`),
     check(
       'quote_leads_identity_key_not_blank_check',
       sql`char_length(btrim(${table.identityKey})) > 0`
@@ -686,6 +696,7 @@ export const crmDeals = pgTable(
       .references(() => crmPipelineStages.key),
     followUpStage: integer('follow_up_stage').notNull().default(0),
     nextStep: varchar('next_step', { length: 500 }),
+    demandSummary: varchar('demand_summary', { length: 4000 }),
     lostReason: varchar('lost_reason', { length: 500 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -705,6 +716,55 @@ export const crmDeals = pgTable(
       sql`${table.telefone} IS NULL OR ${table.telefone} ~ '^[0-9]{10,15}$'`
     ),
     check('crm_deals_follow_up_stage_check', sql`${table.followUpStage} >= 0`),
+  ]
+);
+
+/**
+ * Primary next action of a commercial opportunity. An opportunity keeps at
+ * most one active action; terminal rows stay as immutable history so a
+ * replaced action is still auditable.
+ *
+ * `opportunity_id` references the demand it belongs to with `ON DELETE
+ * RESTRICT`. Existing flows do remove opportunities (client removal and beta
+ * cleanup), so the database blocks the removal while any action row exists
+ * instead of cascading the history away or leaving an orphan identifier
+ * behind. The application turns that conflict into a Portuguese message and
+ * the surrounding transaction rolls back as a whole.
+ */
+export const opportunityNextActions = pgTable(
+  'opportunity_next_actions',
+  {
+    id: uuid('id').primaryKey(),
+    opportunityId: uuid('opportunity_id')
+      .notNull()
+      .references(() => crmDeals.id, { onDelete: 'restrict' }),
+    kind: varchar('kind', { length: 32 }).notNull(),
+    reasonCode: varchar('reason_code', { length: 32 }).notNull(),
+    origin: varchar('origin', { length: 16 }).notNull(),
+    state: varchar('state', { length: 16 }).notNull().default('active'),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('opportunity_next_actions_active_unique')
+      .on(table.opportunityId)
+      .where(sql`${table.state} = 'active'`),
+    index('opportunity_next_actions_state_due_idx').on(table.state, table.dueAt),
+    index('opportunity_next_actions_opportunity_idx').on(table.opportunityId),
+    check('opportunity_next_actions_kind_check', sql`${table.kind} IN ('first_contact')`),
+    check(
+      'opportunity_next_actions_origin_check',
+      sql`${table.origin} IN ('manual', 'automatic', 'event')`
+    ),
+    check(
+      'opportunity_next_actions_state_check',
+      sql`${table.state} IN ('active', 'completed', 'cancelled', 'superseded')`
+    ),
+    check(
+      'opportunity_next_actions_reason_not_blank_check',
+      sql`char_length(btrim(${table.reasonCode})) > 0`
+    ),
   ]
 );
 

@@ -30,6 +30,7 @@ test('operator deletes issued quotation then client, preserving orders and in-fl
     await connection`CREATE TEMP TABLE quote_revisions (id uuid PRIMARY KEY, quotation_id uuid REFERENCES quotations(id) ON DELETE CASCADE)`;
     await connection`CREATE TEMP TABLE sales_orders (id uuid PRIMARY KEY, client_id uuid REFERENCES clients(id), quotation_id uuid REFERENCES quotations(id), quotation_revision_id uuid REFERENCES quote_revisions(id))`;
     await connection`CREATE TEMP TABLE crm_deals (id uuid PRIMARY KEY, client_id uuid REFERENCES clients(id), quotation_id uuid REFERENCES quotations(id))`;
+    await connection`CREATE TEMP TABLE opportunity_next_actions (id uuid PRIMARY KEY, opportunity_id uuid REFERENCES crm_deals(id) ON DELETE RESTRICT, state text)`;
     await connection`CREATE TEMP TABLE quote_leads (id uuid PRIMARY KEY, crm_deal_id uuid REFERENCES crm_deals(id), quotation_id uuid REFERENCES quotations(id))`;
     await connection`CREATE TEMP TABLE quotation_deliveries (id uuid PRIMARY KEY, revision_id uuid REFERENCES quote_revisions(id), state text)`;
     await connection`CREATE TEMP TABLE quotation_delivery_steps (id uuid PRIMARY KEY, delivery_id uuid REFERENCES quotation_deliveries(id) ON DELETE CASCADE)`;

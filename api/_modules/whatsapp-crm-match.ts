@@ -28,6 +28,7 @@ export interface LocalQuoteLeadRecord {
   quotationId: string | null;
   crmDealId: string | null;
   externalId?: string | null;
+  demandId?: string | null;
 }
 
 export interface LocalClientRecord {
@@ -255,6 +256,7 @@ function mapLead(row: Record<string, unknown>): LocalQuoteLeadRecord {
     quotationId: rowText(row.quotationId ?? row.quotation_id),
     crmDealId: rowText(row.crmDealId ?? row.crm_deal_id),
     externalId: rowText(row.externalId ?? row.external_id),
+    demandId: rowText(row.demandId ?? row.demand_id),
   };
 }
 
@@ -581,6 +583,7 @@ function dbFields() {
     quotationId: quoteLeads.quotationId,
     crmDealId: quoteLeads.crmDealId,
     externalId: quoteLeads.externalId,
+    demandId: quoteLeads.demandId,
   };
 }
 

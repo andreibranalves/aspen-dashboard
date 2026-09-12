@@ -10,9 +10,12 @@ import { handler as extractHandler } from './extract.js';
 import { sendText } from './send-whatsapp.js';
 import { createPostgresQuoteLeadRepository } from '../_infrastructure/db/repositories/quote-leads-repository.js';
 import {
+  beginWhatsappConversationAdmission,
   cleanText,
+  completeWhatsappConversationAdmission,
   getWhatsappConversation,
   getWhatsappMessages,
+  linkWhatsappConversationAdmission,
   listWhatsappConversations,
   LIVE_DEPS,
   normalizeWhatsappPhone,
@@ -97,7 +100,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 interface WhatsappActionDeps extends EvolutionSyncDeps, ResolveCrmMatchDeps {
   extractOrders?: (text: string) => Promise<unknown[]>;
   upsertQuoteLead?: (input: Record<string, unknown>) => Promise<unknown>;
-  findQuoteLeadByExternalId?: (
+  /**
+   * Narrow admission finders backed directly by the quote lead repository.
+   * They are deliberately NOT part of the CRM matcher contract: live
+   * admission reads the repository by its exact identity key, never by a
+   * conversation-wide external lookup that could straddle two demands.
+   */
+  findQuoteLeadByDemandId?: (
+    demandId: string,
+    source?: string
+  ) => Promise<LocalQuoteLeadRecord | null>;
+  findQuoteLeadByExternalIdWithoutDemand?: (
     externalId: string,
     source?: string
   ) => Promise<LocalQuoteLeadRecord | null>;
@@ -247,34 +260,60 @@ function ensureSendablePhone(conversation: WhatsappConversation): string {
   return phone;
 }
 
-async function findExistingWhatsappLead(
+const MAX_DEMAND_ID_LENGTH = 255;
+
+function parseDemandId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const demandId = cleanText(value);
+  if (!demandId) return null;
+  if (demandId.length > MAX_DEMAND_ID_LENGTH) {
+    throw createHttpError(400, 'Identificador de demanda do pré-orçamento inválido.');
+  }
+  return demandId;
+}
+
+/**
+ * Resolves the exact admission being retried. An explicit demand id is the
+ * admitted demand; without it, the original ingestion identity is the external
+ * key with a null demand. The generic conversation-wide external lookup is NOT
+ * used here: after a second demand shares the same conversation, it would find
+ * two rows and fail. Returns null when this is a new admission.
+ */
+async function findAdmittedWhatsappLead(
   conversationId: string,
+  demandId: string | null,
   deps: WhatsappActionDeps
 ): Promise<Record<string, unknown> | null> {
+  const isAdmission = (value: unknown): value is LocalQuoteLeadRecord => {
+    if (!isRecord(value) || cleanText(value.source) !== 'whatsapp') return false;
+    if (!demandId) return cleanText(value.externalId) === conversationId;
+    // A demand id is a durable identity: it stays bound to the conversation
+    // that first admitted it. The same id arriving from another conversation is
+    // a conflicting reuse, never a retry, and must not link this contact to
+    // another lead/opportunity.
+    const boundConversation = cleanText(value.externalId);
+    if (boundConversation && boundConversation !== conversationId) {
+      throw createHttpError(409, 'Esta demanda já está vinculada a outra conversa.');
+    }
+    return true;
+  };
   try {
-    const isWhatsappLead = (value: unknown): value is Record<string, unknown> => {
-      if (!isRecord(value)) return false;
-      const source = cleanText(value.source);
-      return source === 'whatsapp' && cleanText(value.externalId) === conversationId;
-    };
-    const finder = deps.findQuoteLeadByExternalId || deps.localCrm?.findQuoteLeadByExternalId;
-    if (finder) {
-      const value = await finder(conversationId, 'whatsapp');
-      return isWhatsappLead(value) ? value : null;
+    let value: unknown;
+    if (demandId) {
+      const finder = deps.findQuoteLeadByDemandId;
+      value = finder
+        ? await finder(demandId, 'whatsapp')
+        : await createPostgresQuoteLeadRepository().findByDemandId(demandId, 'whatsapp');
+    } else {
+      const finder = deps.findQuoteLeadByExternalIdWithoutDemand;
+      value = finder
+        ? await finder(conversationId, 'whatsapp')
+        : await createPostgresQuoteLeadRepository().findByExternalIdWithoutDemand(
+            conversationId,
+            'whatsapp'
+          );
     }
-    const listLeads = deps.listQuoteLeads || deps.localCrm?.listQuoteLeads;
-    if (listLeads) {
-      const matches = (await listLeads()).filter((row) => isWhatsappLead(row));
-      if (matches.length > 1) {
-        throw createHttpError(409, 'Identificador externo do WhatsApp ambíguo.');
-      }
-      return matches[0] ? (matches[0] as unknown as Record<string, unknown>) : null;
-    }
-    if (!deps.upsertQuoteLead && !deps.localCrm) {
-      const value = await createPostgresQuoteLeadRepository().findByExternalId(conversationId, 'whatsapp');
-      return isWhatsappLead(value) ? value : null;
-    }
-    return null;
+    return isAdmission(value) ? (value as unknown as Record<string, unknown>) : null;
   } catch (error) {
     const statusCode = Number((error as { statusCode?: unknown })?.statusCode || 0);
     if (statusCode >= 400 && statusCode < 500) throw error;
@@ -379,27 +418,33 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
             throw createHttpError(400, 'Não é possível criar pré-orçamento com identidade do contato não confirmada.');
           }
 
-          // The local externalId is the durable source of truth. If a prior
+          const demandId = parseDemandId(body.demandId);
+          // The admitted demand is the durable source of truth. If a prior
           // request saved the lead but lost the KV link, retry only completes
           // that link and never creates another business identity.
-          const existing = await findExistingWhatsappLead(id, storeDeps);
+          const existing = await findAdmittedWhatsappLead(id, demandId, storeDeps);
           if (existing) {
             const existingLeadId = cleanText(existing.id);
             if (!UUID_PATTERN.test(existingLeadId)) {
               throw createHttpError(503, 'Pré-orçamento local sem identificador válido.');
             }
             const existingDealId = cleanText(existing.crmDealId);
-            const linked = await updateWhatsappConversation(
+            const linked = await linkWhatsappConversationAdmission(
               id,
               {
                 linkedLeadId: existingLeadId,
                 linkedDealId: UUID_PATTERN.test(existingDealId) ? existingDealId : null,
-                status: 'quote_lead_created',
               },
               storeDeps
             );
             return jsonResponse(200, { success: true, data: publicQuoteLead(existing), conversation: publicConversation(linked) });
           }
+
+          // A new admission reserves a monotonic sequence before writing
+          // anything. Completion only applies when no newer admission has
+          // already saved a selection, so a stale in-flight admission cannot
+          // overwrite a demand admitted later in the same conversation.
+          const admissionSequence = await beginWhatsappConversationAdmission(id, storeDeps);
 
           const messages = await getWhatsappMessages(id, storeDeps);
           const pedidoTexto = buildConversationText(messages);
@@ -415,6 +460,7 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
             source: 'whatsapp',
             status: missingFields.length ? 'incomplete' : 'ready',
             externalId: id,
+            ...(demandId ? { demandId } : {}),
           };
           let data: unknown;
           try {
@@ -430,12 +476,12 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
           const leadId = cleanText(dataRecord.id);
           if (!UUID_PATTERN.test(leadId)) throw createHttpError(503, 'Pré-orçamento local sem identificador válido.');
           const dealId = cleanText(dataRecord.crmDealId);
-          const linked = await updateWhatsappConversation(
+          const linked = await completeWhatsappConversationAdmission(
             id,
+            admissionSequence,
             {
               linkedLeadId: leadId,
               linkedDealId: UUID_PATTERN.test(dealId) ? dealId : null,
-              status: 'quote_lead_created',
             },
             storeDeps
           );

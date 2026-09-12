@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, asc, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNull, or, type SQL } from 'drizzle-orm';
 
 import { createHttpError } from '../../../_shared/http-error.js';
 import { getDatabase, type AppDatabase } from '../client.js';
+import { ensureFirstContactAction } from './opportunity-actions-repository.js';
 import { crmDeals, quoteLeads, quotations } from '../schema.js';
 import {
   formatQuoteLeadText,
@@ -49,6 +50,17 @@ export interface QuoteLeadRepository {
   upsert(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
   ingestSiteSubmission(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
   findByExternalId(externalId: string, source?: string): Promise<QuoteLeadRecord | null>;
+  /**
+   * Original ingestion identity of an admission that carried no explicit
+   * demand: the external key with `demand_id IS NULL`. The identity key is
+   * unique, so this is exact — never a conversation-wide guess between
+   * demands sharing a transport key.
+   */
+  findByExternalIdWithoutDemand(
+    externalId: string,
+    source?: string
+  ): Promise<QuoteLeadRecord | null>;
+  findByDemandId(demandId: string, source?: string): Promise<QuoteLeadRecord | null>;
   list(options?: QuoteLeadListOptions): Promise<Array<QuoteLeadRecord & { texto: string }>>;
   update(id: string, patch: QuoteLeadPatch): Promise<(QuoteLeadRecord & { texto: string }) | null>;
 }
@@ -190,6 +202,7 @@ function rowToRecord(row: QuoteLeadRow, created?: boolean): QuoteLeadRecord {
       source: row.source,
       sourceDetail: row.sourceDetail || '',
       externalId: row.externalId || null,
+      demandId: row.demandId || null,
       empresa: row.empresa || '',
       produto: row.produto || '',
       quantidade: row.quantidade || '',
@@ -233,6 +246,7 @@ function rowValues(
     source: lead.source || 'typebot',
     sourceDetail: lead.sourceDetail || null,
     externalId: lead.externalId || null,
+    demandId: lead.demandId || null,
     empresa: lead.empresa || null,
     produto: lead.produto || null,
     quantidade: lead.quantidade || null,
@@ -301,6 +315,7 @@ async function ensureDeal(
   now: Date,
   idFactory: () => string
 ): Promise<string> {
+  const initialDemand = lead.pedidoTexto || null;
   const existing = await selectDealForUpdate(database, lead.id, lead.crmDealId);
   if (existing) {
     const updatedAt = strictAfter(now, existing.updatedAt);
@@ -310,9 +325,17 @@ async function ensureDeal(
         nome: lead.nome || existing.nome || 'Sem nome',
         email: lead.email || null,
         telefone: lead.telefone || null,
+        // The opportunity records the demand that opened it. A later request
+        // for the same identity must not silently redefine that demand.
+        demandSummary: existing.demandSummary || initialDemand,
         updatedAt,
       })
       .where(eq(crmDeals.id, existing.id));
+    await ensureFirstContactAction(database, {
+      opportunityId: existing.id,
+      dueAt: now,
+      idFactory: () => ensureId(idFactory),
+    });
     return existing.id;
   }
 
@@ -328,12 +351,18 @@ async function ensureDeal(
       status: 'Novo Lead',
       followUpStage: 0,
       nextStep: null,
+      demandSummary: initialDemand,
       lostReason: null,
       createdAt: now,
       updatedAt: now,
     })
     .returning();
   if (!created) throw createHttpError(503, 'Não foi possível criar a oportunidade local.');
+  await ensureFirstContactAction(database, {
+    opportunityId: created.id,
+    dueAt: now,
+    idFactory: () => ensureId(idFactory),
+  });
   return created.id;
 }
 
@@ -350,6 +379,8 @@ async function updateDealSnapshot(
       nome: lead.nome || deal.nome || 'Sem nome',
       email: lead.email || null,
       telefone: lead.telefone || null,
+      // Same rule as ensureDeal: only an empty initial demand is filled in.
+      demandSummary: deal.demandSummary || lead.pedidoTexto || null,
       updatedAt: strictAfter(now, deal.updatedAt),
     })
     .where(eq(crmDeals.id, deal.id));
@@ -386,7 +417,8 @@ export async function convertQuoteLeadInTransaction(
     .for('update')
     .limit(1);
   if (!lead) throw createHttpError(404, 'Lead de orçamento não encontrado.');
-  if (lead.status === 'discarded') throw createHttpError(409, 'Lead de orçamento descartado não pode ser convertido.');
+  if (lead.status === 'discarded')
+    throw createHttpError(409, 'Lead de orçamento descartado não pode ser convertido.');
   const updatedAt = strictAfter(timestamp, lead.updatedAt);
   await transaction
     .update(quoteLeads)
@@ -402,10 +434,7 @@ export function createPostgresQuoteLeadRepository(
   const idFactory = options.idFactory || randomUUID;
 
   const repository: QuoteLeadRepository = {
-    async findByExternalId(
-      externalId: string,
-      source?: string
-    ): Promise<QuoteLeadRecord | null> {
+    async findByExternalId(externalId: string, source?: string): Promise<QuoteLeadRecord | null> {
       const normalizedExternalId = cleanText(externalId);
       const normalizedSource = source === undefined ? '' : cleanText(source);
       if (!normalizedExternalId || (source !== undefined && !normalizedSource)) return null;
@@ -426,6 +455,54 @@ export function createPostgresQuoteLeadRepository(
           return null;
         }
         return rows[0] ? rowToRecord(rows[0]) : null;
+      } catch (error) {
+        return safeError(error);
+      }
+    },
+
+    async findByDemandId(demandId: string, source?: string): Promise<QuoteLeadRecord | null> {
+      const normalizedDemandId = cleanText(demandId);
+      const normalizedSource = source === undefined ? '' : cleanText(source);
+      if (!normalizedDemandId) return null;
+      try {
+        const database = getDb();
+        const filters = [eq(quoteLeads.demandId, normalizedDemandId)];
+        if (normalizedSource) filters.push(eq(quoteLeads.source, normalizedSource));
+        const rows = await database
+          .select()
+          .from(quoteLeads)
+          .where(and(...filters))
+          .orderBy(asc(quoteLeads.id))
+          .limit(2);
+        if (rows.length > 1) {
+          throw createHttpError(409, 'Identidade de demanda ambígua.');
+        }
+        return rows[0] ? rowToRecord(rows[0]) : null;
+      } catch (error) {
+        return safeError(error);
+      }
+    },
+
+    async findByExternalIdWithoutDemand(
+      externalId: string,
+      source?: string
+    ): Promise<QuoteLeadRecord | null> {
+      const normalizedExternalId = cleanText(externalId);
+      const normalizedSource = source === undefined ? '' : cleanText(source);
+      if (!normalizedExternalId || (source !== undefined && !normalizedSource)) return null;
+      try {
+        const database = getDb();
+        const filters = [
+          eq(quoteLeads.externalId, normalizedExternalId),
+          isNull(quoteLeads.demandId),
+        ];
+        if (normalizedSource) filters.push(eq(quoteLeads.source, normalizedSource));
+        const [row] = await database
+          .select()
+          .from(quoteLeads)
+          .where(and(...filters))
+          .limit(1);
+        return row ? rowToRecord(row) : null;
       } catch (error) {
         return safeError(error);
       }
@@ -458,6 +535,19 @@ export function createPostgresQuoteLeadRepository(
 
           let lead = rowToRecord(row, Boolean(inserted));
           if (!inserted) {
+            // A demand id is a durable identity bound to the conversation that
+            // first admitted it. A different conversation reusing the same id is
+            // a conflict, never a merge: keep the original lead, contact,
+            // opportunity and action untouched.
+            if (
+              incoming.demandId &&
+              row.demandId === incoming.demandId &&
+              row.externalId &&
+              incoming.externalId &&
+              row.externalId !== incoming.externalId
+            ) {
+              throw createHttpError(409, 'Esta demanda já está vinculada a outra conversa.');
+            }
             const merged = {
               ...mergeQuoteLead(lead, incoming, timestamp.toISOString()),
               id: lead.id,

@@ -417,6 +417,16 @@ export function createPostgresClientRepository(
             UNION ALL SELECT 1 FROM sales_orders WHERE client_id = ${id}::uuid
             UNION ALL SELECT 1 FROM crm_deals WHERE client_id = ${id}::uuid AND quotation_id IS NOT NULL`);
           if (linked.length) throw new ClientDuplicateError('Este cliente possui orçamentos ou pedidos vinculados. Remova ou transfira os vínculos antes de excluir.');
+          // Commercial action history is durable and must not be cascade-deleted
+          // or left as an orphan UUID. Block the whole removal instead; the open
+          // transaction rolls back every earlier statement.
+          const commercialHistory = await tx.execute(sql`SELECT 1 FROM opportunity_next_actions
+            WHERE opportunity_id IN (
+              SELECT id FROM crm_deals WHERE client_id = ${id}::uuid AND quotation_id IS NULL
+            ) LIMIT 1`);
+          if (commercialHistory.length) {
+            throw new ClientDuplicateError('Este cliente possui oportunidades com histórico de ações comerciais. Esse histórico é preservado e impede a exclusão. Nada foi removido.');
+          }
           await tx.execute(sql`UPDATE quote_leads SET crm_deal_id = NULL WHERE crm_deal_id IN (SELECT id FROM crm_deals WHERE client_id = ${id}::uuid)`);
           await tx.execute(sql`DELETE FROM crm_deals WHERE client_id = ${id}::uuid AND quotation_id IS NULL`);
           await tx.delete(clients).where(eq(clients.id, id));
@@ -425,7 +435,7 @@ export function createPostgresClientRepository(
         let current: unknown = error;
         while (isRecord(current)) {
           if (current.code === '23503') {
-            throw new ClientDuplicateError('Este cliente possui orçamentos, pedidos ou negócios vinculados. Remova ou transfira os vínculos antes de excluir.');
+            throw new ClientDuplicateError('Este cliente possui orçamentos, pedidos, negócios ou histórico comercial vinculados. Remova ou transfira os vínculos antes de excluir.');
           }
           current = current.cause;
         }

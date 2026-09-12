@@ -3,6 +3,7 @@ import { getDatabase, type AppDatabase } from '../client.js';
 import {
   clients,
   crmDeals,
+  opportunityNextActions,
   productActivityEvents,
   quoteLeads,
   quoteRevisionItems,
@@ -59,7 +60,7 @@ export interface BetaCleanupPlan {
     activities: string[];
   };
   retainedSharedClients: string[];
-  blockers: Array<{ type: 'sales_order' | 'shared_client'; id: string }>;
+  blockers: Array<{ type: 'sales_order' | 'shared_client' | 'commercial_history'; id: string }>;
 }
 
 export class BetaCleanupInputError extends Error {
@@ -257,6 +258,17 @@ async function buildPlan(db: CleanupDatabase, candidates: BetaCleanupCandidate[]
 
   const retainedSharedClients = new Set<string>();
   const blockers: BetaCleanupPlan['blockers'] = orderRows.map((row) => ({ type: 'sales_order', id: row.id }));
+  // Commercial action history is durable: deleting its opportunity is blocked
+  // so the plan fails closed instead of hitting the RESTRICT constraint.
+  if (dealIds.size) {
+    const historyRows = await selectIn(
+      db
+        .select({ opportunityId: opportunityNextActions.opportunityId })
+        .from(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [...dealIds])),
+    );
+    for (const row of historyRows) blockers.push({ type: 'commercial_history', id: row.opportunityId });
+  }
   if (clientIds.size) {
     const clientList = [...clientIds];
     const externalQuotes = quotationList.length
@@ -330,7 +342,14 @@ export function createPostgresBetaCleanupRepository(
       try {
         const plan = await getDb().transaction(async (tx) => {
           const current = await buildPlan(tx, candidates);
-          if (current.blockers.length) throw new BetaCleanupBlockedError('O grafo possui pedido real ou cliente compartilhado; nada foi removido.');
+          if (current.blockers.length) {
+            const hasHistory = current.blockers.some((blocker) => blocker.type === 'commercial_history');
+            throw new BetaCleanupBlockedError(
+              hasHistory
+                ? 'O grafo possui oportunidades com histórico de ações comerciais; esse histórico é preservado e nada foi removido.'
+                : 'O grafo possui pedido real ou cliente compartilhado; nada foi removido.',
+            );
+          }
           if (current.ids.issueRequests.length) await tx.delete(quotationIssueRequests).where(inArray(quotationIssueRequests.id, current.ids.issueRequests));
           if (current.ids.deliverySteps.length) await tx.delete(quotationDeliverySteps).where(inArray(quotationDeliverySteps.id, current.ids.deliverySteps));
           if (current.ids.deliveries.length) await tx.delete(quotationDeliveries).where(inArray(quotationDeliveries.id, current.ids.deliveries));
