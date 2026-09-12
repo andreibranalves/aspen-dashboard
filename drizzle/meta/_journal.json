@@ -309,6 +309,13 @@
       "when": 1789242044184,
       "tag": "0043_prequote_follow_up",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789249404102,
+      "tag": "0044_opportunity_delivery_anchor",
+      "breakpoints": true
     }
   ]
 }

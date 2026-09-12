@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
 import { createDbDeadline, runBoundedStatement, type DbDeadline } from '../deadline.js';
+import { addBusinessDays, calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
 import {
   buildDefaultFollowUpMessage,
   evaluateFollowUp,
@@ -291,6 +292,10 @@ function acceptedLidConversation(value: unknown): string | null {
 }
 function iso(value: Date): string {
   return value.toISOString();
+}
+
+function postProposalDueDate(receivedAt: Date): string {
+  return addBusinessDays(calendarDateInSaoPaulo(receivedAt), 2);
 }
 function projection(
   row: Record<string, unknown>,
@@ -1211,6 +1216,7 @@ export function createPostgresQuotationFollowUpRepository(
                 `${canonicalPhone}@s.whatsapp.net`;
             const phoneValue = canonicalPhone || '';
             const identityUnresolved = !canonicalPhone;
+            const validProviderConversation = /^\d{10,15}@s\.whatsapp\.net$/i.test(providerConversationId);
             const receivedAt = requiredDate(input.receivedAt, 'recibo');
             const instance = configuredInstance();
             if (!instance)
@@ -1218,18 +1224,37 @@ export function createPostgresQuotationFollowUpRepository(
             const firstReceipt = input.allStepsDelivered ? receivedAt : null;
             const dueAt = firstReceipt ? new Date(firstReceipt.getTime() + 24 * 60 * 60 * 1000) : null;
             const now = new Date();
-            // One atomic statement: `source` takes the per-quotation advisory lock
-            // and the client row lock, and `upsert` folds the receipt in the same
-            // statement. A queued or slow execution is cancelled directly by the
-            // deadline, so no JavaScript callback can hold the sole pooled
-            // connection past the caller's return.
+            const postProposalDueDateValue = input.allStepsDelivered
+                ? postProposalDueDate(receivedAt)
+                : null;
+            const commercialActionId = randomUUID();
+            const commercialReason = 'Entrega confirmada da proposta';
+            // One atomic statement: the source CTE locks the client and linked
+            // opportunity, the technical queue upsert and commercial projection
+            // are data-modifying CTEs in the same PostgreSQL statement. A failed
+            // commercial insert therefore rolls back the technical projection
+            // too, while the durable delivery remains the reconciliation source.
             const fragment = sql `
           WITH source AS MATERIALIZED (
-            SELECT q.id AS quotation_id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0)) AS lock
+            SELECT
+              q.id AS quotation_id,
+              r.id AS revision_id,
+              d.id AS delivery_id,
+              q.opportunity_id,
+              d.state AS delivery_state,
+              d.completion_source,
+              q.status AS quotation_status,
+              cl.arquivado AS client_archived,
+              cd.id AS linked_opportunity_id,
+              cd.status AS opportunity_status,
+              pg_advisory_xact_lock(hashtextextended(
+                COALESCE(q.opportunity_id::text, q.id::text), 0
+              )) AS lock
             FROM quotation_deliveries d
             JOIN quote_revisions r ON r.id = d.revision_id
             JOIN quotations q ON q.id = r.quotation_id
             JOIN clients cl ON cl.id = q.client_id
+            LEFT JOIN crm_deals cd ON cd.id = q.opportunity_id
             WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
             FOR UPDATE OF cl
           ),
@@ -1342,8 +1367,255 @@ export function createPostgresQuotationFollowUpRepository(
                       (incoming_delivery.created_at, incoming_delivery.id)
               )
             RETURNING id
+          ),
+          opportunity_lock AS MATERIALIZED (
+            SELECT cd.id AS opportunity_id
+            FROM crm_deals cd
+            JOIN source ON source.opportunity_id = cd.id
+            FOR UPDATE OF cd
+          ),
+          commercial_source AS MATERIALIZED (
+            SELECT source.*
+            FROM source
+            CROSS JOIN (SELECT COUNT(*) AS technical_count FROM upsert) technical
+            CROSS JOIN (SELECT COUNT(*) AS locked_count FROM opportunity_lock) locked
+            WHERE ${input.allStepsDelivered}
+              AND source.delivery_state = 'delivered'
+              AND source.completion_source = 'provider_receipt'
+              AND source.opportunity_id IS NOT NULL
+              AND source.linked_opportunity_id IS NOT NULL
+              AND source.opportunity_status NOT IN ('Pedido Fechado', 'Perdido')
+              AND source.quotation_status = 'emitido'
+          ),
+          anchor_context AS MATERIALIZED (
+            SELECT
+              source.opportunity_id,
+              source.quotation_id,
+              source.revision_id,
+              source.delivery_id,
+              source.client_archived,
+              anchor.receipt_at AS anchor_receipt_at,
+              anchor.created_action_id AS anchor_created_action_id,
+              true AS anchor_exists
+            FROM commercial_source source
+            JOIN opportunity_delivery_anchors anchor
+              ON anchor.opportunity_id = source.opportunity_id
+            UNION ALL
+            SELECT
+              source.opportunity_id,
+              source.quotation_id,
+              source.revision_id,
+              source.delivery_id,
+              source.client_archived,
+              ${iso(receivedAt)}::timestamptz AS anchor_receipt_at,
+              NULL AS anchor_created_action_id,
+              false AS anchor_exists
+            FROM commercial_source source
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM opportunity_delivery_anchors existing_anchor
+              WHERE existing_anchor.opportunity_id = source.opportunity_id
+            )
+          ),
+          action_context AS MATERIALIZED (
+            SELECT
+              anchor_context.opportunity_id,
+              anchor_context.quotation_id,
+              anchor_context.revision_id,
+              anchor_context.delivery_id,
+              anchor_context.client_archived,
+              anchor_context.anchor_receipt_at,
+              anchor_context.anchor_created_action_id,
+              anchor_context.anchor_exists,
+              active_action.id AS active_action_id,
+              active_action.origin AS active_action_origin,
+              active_action.kind AS active_action_kind,
+              active_action.version AS active_action_version,
+              EXISTS (
+                SELECT 1
+                FROM whatsapp_contact_activity activity
+                WHERE activity.instance = ${instance}
+                  AND activity.blocked_at IS NOT NULL
+                  AND (
+                    activity.provider_conversation_id = ${providerConversationId}
+                    OR activity.canonical_phone = ${phoneValue}
+                  )
+              ) AS contact_blocked,
+              EXISTS (
+                SELECT 1
+                FROM whatsapp_contact_activity activity
+                WHERE activity.instance = ${instance}
+                  AND (
+                    activity.provider_conversation_id = ${providerConversationId}
+                    OR activity.canonical_phone = ${phoneValue}
+                  )
+                  AND activity.identity_status NOT IN ('verified', 'derived')
+              ) AS identity_unresolved,
+              EXISTS (
+                SELECT 1
+                FROM whatsapp_contact_activity activity
+                WHERE activity.instance = ${instance}
+                  AND activity.identity_status IN ('verified', 'derived')
+                  AND activity.last_inbound_at > anchor_context.anchor_receipt_at
+                  AND (
+                    activity.provider_conversation_id = ${providerConversationId}
+                    OR activity.canonical_phone = ${phoneValue}
+                  )
+              ) AS inbound_after_anchor,
+              EXISTS (
+                SELECT 1
+                FROM manual_contact_events manual_event
+                WHERE manual_event.opportunity_id = anchor_context.opportunity_id
+                  AND manual_event.occurred_at >= anchor_context.anchor_receipt_at
+              ) AS has_manual_continuity
+            FROM anchor_context
+            LEFT JOIN LATERAL (
+              SELECT action.*
+              FROM opportunity_next_actions action
+              WHERE action.opportunity_id = anchor_context.opportunity_id
+                AND action.state = 'active'
+              ORDER BY action.updated_at DESC, action.created_at DESC, action.id DESC
+              LIMIT 1
+            ) active_action ON true
+          ),
+          old_action_cancellation AS (
+            UPDATE opportunity_next_actions old_action
+            SET state = 'cancelled',
+                updated_at = ${iso(now)}::timestamptz,
+                transition_actor = 'system',
+                transition_at = ${iso(now)}::timestamptz,
+                transition_origin = 'event',
+                transition_reason = CASE
+                  WHEN context.inbound_after_anchor THEN 'Cliente respondeu após a entrega'
+                  WHEN context.contact_blocked THEN 'Contato bloqueado'
+                  ELSE 'Identidade do contato não resolvida'
+                END,
+                replaced_by_id = NULL
+            FROM action_context context
+            WHERE old_action.id = context.anchor_created_action_id
+              AND old_action.state = 'active'
+              AND old_action.origin = 'event'
+              AND old_action.kind = 'customer_contact'
+              AND context.anchor_created_action_id IS NOT NULL
+              AND (
+                context.inbound_after_anchor
+                OR context.contact_blocked
+                OR context.identity_unresolved
+              )
+            RETURNING old_action.id
+          ),
+          action_schedule AS (
+            SELECT
+              context.*,
+              CASE
+                WHEN context.anchor_receipt_at = ${iso(receivedAt)}::timestamptz
+                  THEN ${postProposalDueDateValue}::date
+                ELSE (
+                  context.anchor_receipt_at AT TIME ZONE 'America/Sao_Paulo'
+                )::date + CASE EXTRACT(DOW FROM (
+                  context.anchor_receipt_at AT TIME ZONE 'America/Sao_Paulo'
+                ))::int
+                  WHEN 0 THEN 2
+                  WHEN 1 THEN 2
+                  WHEN 2 THEN 2
+                  WHEN 3 THEN 2
+                  WHEN 4 THEN 4
+                  WHEN 5 THEN 4
+                  ELSE 3
+                END
+              END AS due_date
+            FROM action_context context
+            CROSS JOIN (SELECT COUNT(*) AS cancelled_count FROM old_action_cancellation) cancelled
+            WHERE ${validProviderConversation}
+              AND context.anchor_created_action_id IS NULL
+              AND context.client_archived = false
+              AND context.contact_blocked = false
+              AND context.identity_unresolved = false
+              AND context.inbound_after_anchor = false
+              AND context.has_manual_continuity = false
+              AND (
+                context.active_action_id IS NULL
+                OR (
+                  context.active_action_origin = 'automatic'
+                  AND context.active_action_kind = 'first_contact'
+                )
+              )
+          ),
+          replace_automatic_action AS (
+            UPDATE opportunity_next_actions old_action
+            SET state = 'superseded',
+                updated_at = ${iso(now)}::timestamptz,
+                transition_actor = 'system',
+                transition_at = ${iso(now)}::timestamptz,
+                transition_origin = 'event',
+                transition_reason = ${commercialReason},
+                replaced_by_id = ${commercialActionId}
+            FROM action_schedule schedule
+            WHERE old_action.id = schedule.active_action_id
+              AND old_action.state = 'active'
+              AND old_action.origin = 'automatic'
+              AND old_action.kind = 'first_contact'
+            RETURNING old_action.id
+          ),
+          create_commercial_action AS (
+            INSERT INTO opportunity_next_actions (
+              id, opportunity_id, kind, reason_code, origin, state, due_at,
+              due_date, due_time, schedule_type, version, actor, reason,
+              created_at, updated_at
+            )
+            SELECT
+              ${commercialActionId}, schedule.opportunity_id, 'customer_contact',
+              'proposal_delivery_confirmed', 'event', 'active',
+              (schedule.due_date::timestamp AT TIME ZONE 'America/Sao_Paulo'),
+              schedule.due_date, NULL, 'date_only',
+              CASE
+                WHEN schedule.active_action_id IS NULL THEN 1
+                ELSE schedule.active_action_version + 1
+              END,
+              'system', ${commercialReason}, ${iso(now)}::timestamptz,
+              ${iso(now)}::timestamptz
+            FROM action_schedule schedule
+            CROSS JOIN (SELECT COUNT(*) AS replaced_count FROM replace_automatic_action) replaced
+            ON CONFLICT DO NOTHING
+            RETURNING id, opportunity_id
+          ),
+          anchor_insert AS (
+            INSERT INTO opportunity_delivery_anchors (
+              opportunity_id, quotation_id, revision_id, delivery_id, receipt_at,
+              created_action_id, created_at
+            )
+            SELECT
+              context.opportunity_id,
+              context.quotation_id,
+              context.revision_id,
+              context.delivery_id,
+              context.anchor_receipt_at,
+              action.id,
+              ${iso(now)}::timestamptz
+            FROM action_context context
+            LEFT JOIN create_commercial_action action
+              ON action.opportunity_id = context.opportunity_id
+            WHERE context.anchor_exists = false
+            ON CONFLICT (opportunity_id) DO NOTHING
+            RETURNING opportunity_id
+          ),
+          link_existing_action AS (
+            UPDATE opportunity_delivery_anchors anchor
+            SET created_action_id = action.id
+            FROM action_context context
+            JOIN create_commercial_action action
+              ON action.opportunity_id = context.opportunity_id
+            WHERE anchor.opportunity_id = context.opportunity_id
+              AND context.anchor_exists = true
+              AND context.anchor_created_action_id IS NULL
+              AND anchor.created_action_id IS NULL
+            RETURNING anchor.opportunity_id
           )
-          SELECT (SELECT COUNT(*) FROM source) AS source_count
+          SELECT
+            (SELECT COUNT(*) FROM source) AS source_count,
+            (SELECT COUNT(*) FROM upsert) AS technical_upsert_count,
+            (SELECT COUNT(*) FROM anchor_insert) +
+              (SELECT COUNT(*) FROM link_existing_action) AS commercial_action_count
         `;
             try {
                 const deadline = projectionDeadline(options);
@@ -1389,7 +1661,7 @@ export function createPostgresQuotationFollowUpRepository(
                   AND NOT (
                     f.provider_conversation_id = ${conversation}
                     OR (
-                      ${phone || null} IS NOT NULL
+                      ${phone || null}::text IS NOT NULL
                       AND f.canonical_phone = ${phone || null}
                     )
                   )
@@ -1401,7 +1673,7 @@ export function createPostgresQuotationFollowUpRepository(
                   AND NOT (
                     f.provider_conversation_id = ${conversation}
                     OR (
-                      ${phone || null} IS NOT NULL
+                      ${phone || null}::text IS NOT NULL
                       AND f.canonical_phone = ${phone || null}
                     )
                   )
@@ -1414,7 +1686,7 @@ export function createPostgresQuotationFollowUpRepository(
                   AND NOT (
                     f.provider_conversation_id = ${conversation}
                     OR (
-                      ${phone || null} IS NOT NULL
+                      ${phone || null}::text IS NOT NULL
                       AND f.canonical_phone = ${phone || null}
                     )
                   )
@@ -1436,7 +1708,7 @@ export function createPostgresQuotationFollowUpRepository(
                 AND (
                   f.provider_conversation_id = ${conversation}
                   OR (
-                    ${phone || null} IS NOT NULL
+                    ${phone || null}::text IS NOT NULL
                     AND f.canonical_phone = ${phone || null}
                   )
                 )
@@ -1454,12 +1726,49 @@ export function createPostgresQuotationFollowUpRepository(
                 AND NOT (
                   f.provider_conversation_id = ${conversation}
                   OR (
-                    ${phone || null} IS NOT NULL
+                    ${phone || null}::text IS NOT NULL
                     AND f.canonical_phone = ${phone || null}
                   )
                 )
               )
             )`);
+                if (!input.fromMe && (input.identityStatus === 'verified' || input.identityStatus === 'derived')) {
+                    await getDb().execute(sql `UPDATE opportunity_next_actions action
+            SET state = 'cancelled',
+                updated_at = ${iso(occurredAt)}::timestamptz,
+                transition_actor = 'system',
+                transition_at = ${iso(occurredAt)}::timestamptz,
+                transition_origin = 'event',
+                transition_reason = 'Cliente respondeu após a entrega',
+                replaced_by_id = NULL
+            FROM opportunity_delivery_anchors anchor
+            WHERE anchor.created_action_id = action.id
+              AND action.state = 'active'
+              AND action.origin = 'event'
+              AND action.kind = 'customer_contact'
+              AND anchor.receipt_at < ${iso(occurredAt)}::timestamptz
+              AND (
+                anchor.delivery_id IN (
+                  SELECT f2.delivery_id
+                  FROM quotation_follow_ups f2
+                  WHERE f2.instance = ${instance}
+                    AND (
+                      f2.provider_conversation_id = ${conversation}
+                      OR (
+                        ${phone || null}::text IS NOT NULL
+                        AND f2.canonical_phone = ${phone || null}
+                      )
+                    )
+                )
+                OR EXISTS (
+                  SELECT 1
+                  FROM whatsapp_contact_activity activity
+                  WHERE activity.instance = ${instance}
+                    AND activity.provider_conversation_id = ${conversation}
+                    AND activity.canonical_phone = ${phone || null}
+                )
+              )`);
+                }
             }
             catch {
                 throw new RepositoryError();

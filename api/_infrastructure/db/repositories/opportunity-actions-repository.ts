@@ -111,6 +111,10 @@ export interface OpportunityQueueItem {
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
+  /** Source of the event action, when the opportunity anchor created it. */
+  sourceQuotationId: string | null;
+  sourceRevisionId: string | null;
+  sourceDeliveryId: string | null;
   /** Every proposal linked to the demand, with value and state. */
   proposals: OpportunityProposal[];
 }
@@ -749,6 +753,9 @@ interface QueueRow {
   contact_email: string | null;
   client_id: string | null;
   client_name: string | null;
+  source_quotation_id: string | null;
+  source_revision_id: string | null;
+  source_delivery_id: string | null;
   proposals: unknown;
 }
 
@@ -1264,6 +1271,9 @@ export function createPostgresOpportunityActionRepository(
               d.email AS contact_email,
               d.client_id,
               c.nome AS client_name,
+              anchor.quotation_id AS source_quotation_id,
+              anchor.revision_id AS source_revision_id,
+              anchor.delivery_id AS source_delivery_id,
               CASE
                 WHEN a.schedule_type = 'date_only' THEN
                   CASE
@@ -1301,6 +1311,7 @@ export function createPostgresOpportunityActionRepository(
             FROM opportunity_next_actions a
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
+            LEFT JOIN opportunity_delivery_anchors anchor ON anchor.created_action_id = a.id
             WHERE (
               ${
                 filter === 'closed'
@@ -1500,6 +1511,9 @@ export function createPostgresOpportunityActionRepository(
                 contactEmail: row.contact_email,
                 clientId: row.client_id,
                 clientName: row.client_name,
+                sourceQuotationId: row.source_quotation_id,
+                sourceRevisionId: row.source_revision_id,
+                sourceDeliveryId: row.source_delivery_id,
                 proposals: parseProposals(row.proposals),
               };
             }),

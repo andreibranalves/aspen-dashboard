@@ -879,6 +879,41 @@ export const opportunityNextActions = pgTable(
 );
 
 /**
+ * The first provider-confirmed proposal delivery starts one commercial cycle
+ * for an opportunity. Keeping that fact separate from the action preserves
+ * the receipt source even when an operator later replaces the action.
+ */
+export const opportunityDeliveryAnchors = pgTable(
+  'opportunity_delivery_anchors',
+  {
+    opportunityId: uuid('opportunity_id')
+      .primaryKey()
+      .references(() => crmDeals.id, { onDelete: 'restrict' }),
+    quotationId: uuid('quotation_id')
+      .notNull()
+      .references(() => quotations.id, { onDelete: 'restrict' }),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id, { onDelete: 'restrict' }),
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .references(() => quotationDeliveries.id, { onDelete: 'restrict' }),
+    receiptAt: timestamp('receipt_at', { withTimezone: true }).notNull(),
+    createdActionId: uuid('created_action_id').references(() => opportunityNextActions.id, {
+      onDelete: 'restrict',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('opportunity_delivery_anchors_delivery_unique').on(table.deliveryId),
+    uniqueIndex('opportunity_delivery_anchors_action_unique')
+      .on(table.createdActionId)
+      .where(sql`${table.createdActionId} IS NOT NULL`),
+    index('opportunity_delivery_anchors_quotation_idx').on(table.quotationId),
+  ]
+);
+
+/**
  * Immutable operator statements about commercial contacts.  This is not a
  * provider event: it records what the operator declared happened and keeps
  * the command key/fingerprint needed to make retries safe.

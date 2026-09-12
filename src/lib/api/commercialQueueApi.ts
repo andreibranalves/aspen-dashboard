@@ -63,6 +63,9 @@ export interface CommercialQueueItem {
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
+  sourceQuotationId: string | null;
+  sourceRevisionId: string | null;
+  sourceDeliveryId: string | null;
   /** Every proposal linked to the demand, with value and state. */
   proposals: CommercialQueueProposal[];
 }
@@ -416,6 +419,9 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     contactEmail: optionalText(record.contact_email, 254),
     clientId: optionalIdentifier(record.client_id),
     clientName: optionalIdentifier(record.client_name),
+    sourceQuotationId: optionalIdentifier(record.source_quotation_id),
+    sourceRevisionId: optionalIdentifier(record.source_revision_id),
+    sourceDeliveryId: optionalIdentifier(record.source_delivery_id),
     proposals: record.proposals.map(parseProposal),
   };
 }

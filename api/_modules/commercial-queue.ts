@@ -39,6 +39,7 @@ const AUTHENTICATED_OPERATOR = 'authenticated-operator';
 const REASON_LABELS: Record<string, string> = {
   new_lead: 'Primeiro atendimento',
   manual_action: 'Ação manual',
+  proposal_delivery_confirmed: 'Entrega confirmada da proposta',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -286,6 +287,9 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
     contact_email: item.contactEmail,
     client_id: item.clientId,
     client_name: item.clientName,
+    source_quotation_id: item.sourceQuotationId,
+    source_revision_id: item.sourceRevisionId,
+    source_delivery_id: item.sourceDeliveryId,
     proposals: item.proposals.map((proposal) => ({
       quotation_id: proposal.quotationId,
       business_number: proposal.businessNumber,
