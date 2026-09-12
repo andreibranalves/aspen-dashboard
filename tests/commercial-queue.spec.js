@@ -17,17 +17,26 @@ const firstContact = {
   action_id: '11111111-1111-4111-8111-111111111111',
   opportunity_id: '22222222-2222-4222-8222-222222222222',
   kind: 'first_contact',
+  kind_label: 'Primeiro contato',
   reason_code: 'new_lead',
   reason_label: 'Primeiro atendimento',
+  reason: 'Primeiro atendimento',
   origin: 'automatic',
   state: 'active',
   due_at: '2026-09-11T12:00:00.000Z',
+  due_date: '2026-09-11',
+  due_time: '09:00',
+  schedule_type: 'timed',
+  due_status: 'overdue',
+  version: 1,
+  actor: 'system',
   demand_summary: 'Cangas 100 unidades',
   contact_name: 'Lead Sintético',
   contact_phone: '5521999990000',
   contact_email: 'synthetic@example.invalid',
   client_id: null,
   client_name: null,
+  proposals: [],
 };
 
 function queue(items) {
@@ -48,6 +57,47 @@ test('Comercial lista o lead novo com demanda, motivo e prazo na Fila', async ({
   await expect(row.getByText('Primeiro atendimento')).toBeVisible();
   await expect(row.getByText('(21) 99999-0000')).toBeVisible();
   await expect(row.getByText('11/09/2026, 09:00')).toBeVisible();
+});
+
+test('a Fila envia o reagendamento com data civil e token da ação', async ({ page }) => {
+  const requests = [];
+  await page.route('**/api/commercial-queue**', async (route) => {
+    if (route.request().method() === 'POST') {
+      requests.push(JSON.parse(route.request().postData() || '{}'));
+      return json(route, {
+        action_id: firstContact.action_id,
+        opportunity_id: firstContact.opportunity_id,
+        state: 'superseded',
+        version: 2,
+        closed: false,
+        successor: null,
+      });
+    }
+    return json(route, queue([firstContact]));
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  const row = page.getByRole('row', { name: /Lead Sintético/ });
+  await row.getByRole('button', { name: 'Reagendar' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Data local').fill('2026-09-15');
+  await dialog.getByLabel('Horário local').fill('14:30');
+  await dialog.getByLabel('Motivo').fill('Cliente pediu retorno');
+  await dialog.getByRole('button', { name: 'Reagendar' }).click();
+
+  await expect
+    .poll(() => requests)
+    .toEqual([
+      {
+        command: 'reschedule',
+        action_id: firstContact.action_id,
+        expected_version: 1,
+        kind: 'first_contact',
+        due_date: '2026-09-15',
+        due_time: '14:30',
+        reason: 'Cliente pediu retorno',
+      },
+    ]);
 });
 
 test('a ação da Fila abre o cadastro do contato quando o cliente está vinculado', async ({
@@ -176,7 +226,9 @@ test('a página que deixou de existir é recarregada com o trabalho restante', a
     action_id: `66666666-6666-4666-8666-${String(index).padStart(12, '0')}`,
     contact_name: name,
   });
-  const remaining = Array.from({ length: 5 }, (_, index) => row(index, `Lead restante ${index + 1}`));
+  const remaining = Array.from({ length: 5 }, (_, index) =>
+    row(index, `Lead restante ${index + 1}`)
+  );
   const full = Array.from({ length: 25 }, (_, index) => row(index, `Lead ${index + 1}`));
   const requestedPages = [];
   let shrunk = false;
@@ -187,7 +239,12 @@ test('a página que deixou de existir é recarregada com o trabalho restante', a
     if (requested >= 3) shrunk = true;
     if (shrunk) {
       // 30 rows remain: the last valid page is 2, so page 3 is clamped.
-      return json(route, { data: remaining, total: 30, page: Math.min(requested, 2), page_size: 25 });
+      return json(route, {
+        data: remaining,
+        total: 30,
+        page: Math.min(requested, 2),
+        page_size: 25,
+      });
     }
     return json(route, { data: full, total: 60, page: requested, page_size: 25 });
   });

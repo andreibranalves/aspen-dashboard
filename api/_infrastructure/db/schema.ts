@@ -12,6 +12,7 @@ import {
   primaryKey,
   timestamp,
   text,
+  time,
   uniqueIndex,
   uuid,
   varchar,
@@ -806,6 +807,20 @@ export const opportunityNextActions = pgTable(
     origin: varchar('origin', { length: 16 }).notNull(),
     state: varchar('state', { length: 16 }).notNull().default('active'),
     dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    // `due_at` remains the sortable instant and compatibility seam. These
+    // fields retain the operator's civil scheduling choice, including a
+    // date-only action that must not become overdue during that date.
+    dueDate: date('due_date'),
+    dueTime: time('due_time'),
+    scheduleType: varchar('schedule_type', { length: 16 }).notNull().default('timed'),
+    version: integer('version').notNull().default(1),
+    actor: varchar('actor', { length: 128 }).notNull().default('legacy-system'),
+    reason: varchar('reason', { length: 500 }).notNull().default('legacy action'),
+    transitionActor: varchar('transition_actor', { length: 128 }),
+    transitionAt: timestamp('transition_at', { withTimezone: true }),
+    transitionOrigin: varchar('transition_origin', { length: 16 }),
+    transitionReason: varchar('transition_reason', { length: 500 }),
+    replacedById: uuid('replaced_by_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -815,7 +830,10 @@ export const opportunityNextActions = pgTable(
       .where(sql`${table.state} = 'active'`),
     index('opportunity_next_actions_state_due_idx').on(table.state, table.dueAt),
     index('opportunity_next_actions_opportunity_idx').on(table.opportunityId),
-    check('opportunity_next_actions_kind_check', sql`${table.kind} IN ('first_contact')`),
+    check(
+      'opportunity_next_actions_kind_check',
+      sql`${table.kind} IN ('first_contact', 'internal', 'customer_contact', 'agreed_commitment', 'review')`
+    ),
     check(
       'opportunity_next_actions_origin_check',
       sql`${table.origin} IN ('manual', 'automatic', 'event')`
@@ -827,6 +845,23 @@ export const opportunityNextActions = pgTable(
     check(
       'opportunity_next_actions_reason_not_blank_check',
       sql`char_length(btrim(${table.reasonCode})) > 0`
+    ),
+    check(
+      'opportunity_next_actions_schedule_type_check',
+      sql`${table.scheduleType} IN ('date_only', 'timed')`
+    ),
+    check('opportunity_next_actions_version_check', sql`${table.version} > 0`),
+    check(
+      'opportunity_next_actions_date_only_check',
+      sql`${table.scheduleType} <> 'date_only' OR (${table.dueDate} IS NOT NULL AND ${table.dueTime} IS NULL)`
+    ),
+    check(
+      'opportunity_next_actions_transition_reason_check',
+      sql`${table.transitionReason} IS NULL OR char_length(btrim(${table.transitionReason})) > 0`
+    ),
+    check(
+      'opportunity_next_actions_transition_origin_check',
+      sql`${table.transitionOrigin} IS NULL OR ${table.transitionOrigin} IN ('manual', 'automatic', 'event')`
     ),
   ]
 );
