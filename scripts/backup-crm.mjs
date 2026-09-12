@@ -319,16 +319,26 @@ function assertMode(filepath, expected, label) {
   }
 }
 
-export function ensureBackupDirectory(env = process.env) {
+export function assertExistingBackupDirectory(env = process.env) {
   const directory = resolveBackupDirectory(env);
-  if (!existsSync(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const stat = lstatSync(directory);
+  let stat;
+  try {
+    stat = lstatSync(directory);
+  } catch {
+    throw new Error('BACKUP_DIR deve existir antes do backup.');
+  }
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('BACKUP_DIR deve ser um diretório regular.');
   const real = realpathSync(directory);
   if (real === PROJECT_ROOT || real.startsWith(`${PROJECT_ROOT}/`))
     throw new Error('BACKUP_DIR deve apontar para um diretório fora do checkout.');
   assertMode(directory, 0o700, 'Diretório de backup');
   return directory;
+}
+
+export function ensureBackupDirectory(env = process.env) {
+  const directory = resolveBackupDirectory(env);
+  if (!existsSync(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  return assertExistingBackupDirectory(env);
 }
 
 function writeExclusive(filepath, content) {

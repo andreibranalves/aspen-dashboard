@@ -42,6 +42,20 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
     anyOf: [],
     paths: { PGSERVICEFILE: true, PGPASSFILE: true },
   },
+  'migration-production': {
+    description: 'Preflight, backup e apply operacional de migrations no alvo de produção.',
+    keys: [
+      'PRODUCTION_DATABASE_URL',
+      'DATABASE_URL',
+      'PRODUCTION_PG_SERVICE',
+      'CUTOVER_PG_SERVICE',
+      'CUTOVER_EXPECTED_DATABASE',
+      'PGSERVICEFILE',
+      'PGPASSFILE',
+    ],
+    anyOf: [['CUTOVER_BACKUP_DIR', 'BACKUP_DIR']],
+    paths: { PGSERVICEFILE: true, PGPASSFILE: true },
+  },
   'staging-e2e': {
     description: 'E2E controlado contra o ambiente de staging.',
     keys: [
@@ -223,11 +237,15 @@ export function checkOperationEnv(operation, env = process.env, { lstat = lstatS
 
   const hasValue = (key) => String(env[key] ?? '').trim().length > 0;
   const missingRequired = contract.keys.filter((key) => !hasValue(key));
+  const satisfiedAnyOf = new Set(contract.anyOf.filter((group) => group.some(hasValue)).flat());
 
   const allContractKeys = [...contract.keys, ...contract.anyOf.flat()];
   const keyStatus = {};
   for (const key of allContractKeys) {
-    keyStatus[key] = hasValue(key) ? 'present' : 'missing';
+    if (hasValue(key)) keyStatus[key] = 'present';
+    else if (contract.anyOf.some((group) => group.includes(key))) {
+      keyStatus[key] = satisfiedAnyOf.size > 0 ? 'not-needed' : 'missing';
+    } else keyStatus[key] = 'missing';
   }
   for (const [key] of Object.entries(contract.paths)) {
     if (!hasValue(key)) continue;
@@ -243,7 +261,10 @@ export function checkOperationEnv(operation, env = process.env, { lstat = lstatS
     }
   }
 
-  const ok = missingRequired.length === 0 && Object.values(keyStatus).every((status) => status === 'present');
+  const ok =
+    missingRequired.length === 0 &&
+    contract.anyOf.every((group) => group.some(hasValue)) &&
+    Object.values(keyStatus).every((status) => status === 'present' || status === 'not-needed');
   return {
     operation,
     ok,
