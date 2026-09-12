@@ -1,6 +1,13 @@
-export type OpportunityActionKind = 'first_contact';
+export type OpportunityActionKind =
+  | 'first_contact'
+  | 'internal'
+  | 'customer_contact'
+  | 'agreed_commitment'
+  | 'review';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
 export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
+export type OpportunityActionScheduleType = 'date_only' | 'timed';
+export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue';
 
 export interface CommercialQueueProposal {
   quotationId: string;
@@ -13,11 +20,19 @@ export interface CommercialQueueItem {
   actionId: string;
   opportunityId: string;
   kind: OpportunityActionKind;
+  kindLabel: string;
   reasonCode: string;
+  reason: string | null;
   reasonLabel: string;
   origin: OpportunityActionOrigin;
   state: OpportunityActionState;
   dueAt: string;
+  dueDate: string | null;
+  dueTime: string | null;
+  scheduleType: OpportunityActionScheduleType;
+  dueStatus: OpportunityActionDueStatus;
+  version: number;
+  actor: string;
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
@@ -40,6 +55,46 @@ export interface CommercialQueueFilters {
   pageSize?: number;
 }
 
+export interface CommercialActionScheduleInput {
+  kind: OpportunityActionKind;
+  dueDate: string;
+  dueTime: string | null;
+  reason: string;
+}
+
+export interface CommercialActionCommandResult {
+  actionId: string;
+  opportunityId: string;
+  state: OpportunityActionState;
+  version: number;
+  closed: boolean;
+  successor: {
+    actionId: string;
+    opportunityId: string;
+    kind: OpportunityActionKind;
+    reason: string;
+    origin: OpportunityActionOrigin;
+    state: OpportunityActionState;
+    dueAt: string;
+    dueDate: string;
+    dueTime: string | null;
+    scheduleType: OpportunityActionScheduleType;
+    version: number;
+  } | null;
+}
+
+export interface CommercialActionHistoryEntry {
+  eventId: string;
+  actionId: string;
+  type: 'created' | 'rescheduled' | 'completed' | 'replaced';
+  actor: string;
+  timestamp: string;
+  origin: OpportunityActionOrigin;
+  reason: string;
+  state: OpportunityActionState;
+  replacementActionId: string | null;
+}
+
 export class CommercialQueueApiError extends Error {
   readonly status: number;
   constructor(message: string, status = 0) {
@@ -51,9 +106,17 @@ export class CommercialQueueApiError extends Error {
 
 const MAX_PAGE_SIZE = 100;
 const MAX_TOTAL = 1_000_000;
-const KINDS = ['first_contact'] as const;
+const KINDS = [
+  'first_contact',
+  'internal',
+  'customer_contact',
+  'agreed_commitment',
+  'review',
+] as const;
 const ORIGINS = ['manual', 'automatic', 'event'] as const;
 const STATES = ['active', 'completed', 'cancelled', 'superseded'] as const;
+const SCHEDULE_TYPES = ['date_only', 'timed'] as const;
+const DUE_STATUSES = ['upcoming', 'today', 'overdue'] as const;
 const ISO_TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -101,6 +164,25 @@ function timestamp(value: unknown): string {
   return result;
 }
 
+function optionalDate(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const result = text(value, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) invalidResponse();
+  return result;
+}
+
+function optionalTime(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const result = text(value, 8);
+  if (!/^\d{2}:\d{2}(?::\d{2})?$/.test(result)) invalidResponse();
+  return result.slice(0, 5);
+}
+
+function optionalNumber(value: unknown, fallback: number): number {
+  if (value === undefined || value === null) return fallback;
+  return pageInteger(value, 1, MAX_TOTAL);
+}
+
 function member<T extends string>(value: unknown, allowed: readonly T[]): T {
   if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value))
     invalidResponse();
@@ -136,11 +218,27 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     actionId: text(record.action_id, 255),
     opportunityId: text(record.opportunity_id, 255),
     kind: member(record.kind, KINDS),
+    kindLabel:
+      typeof record.kind_label === 'string' && record.kind_label.trim()
+        ? record.kind_label
+        : String(record.kind),
     reasonCode: text(record.reason_code, 100),
+    reason: optionalText(record.reason, 500),
     reasonLabel: text(record.reason_label, 255),
     origin: member(record.origin, ORIGINS),
     state: member(record.state, STATES),
     dueAt: timestamp(record.due_at),
+    dueDate: optionalDate(record.due_date),
+    dueTime: optionalTime(record.due_time),
+    scheduleType:
+      record.schedule_type === undefined
+        ? 'timed'
+        : member(record.schedule_type, SCHEDULE_TYPES),
+    dueStatus:
+      record.due_status === undefined ? 'upcoming' : member(record.due_status, DUE_STATUSES),
+    version: optionalNumber(record.version, 1),
+    actor:
+      typeof record.actor === 'string' && record.actor.trim() ? record.actor : 'legacy-system',
     demandSummary: optionalText(record.demand_summary),
     contactName: text(record.contact_name, 255),
     contactPhone: optionalText(record.contact_phone, 32),
@@ -186,4 +284,142 @@ export async function listCommercialQueue(
     );
   }
   return parseCommercialQueuePage(body);
+}
+
+function parseCommandResult(value: unknown): CommercialActionCommandResult {
+  const record = asObject(value);
+  const successorValue = record.successor;
+  let successor: CommercialActionCommandResult['successor'] = null;
+  if (successorValue !== null && successorValue !== undefined) {
+    const item = asObject(successorValue);
+    successor = {
+      actionId: text(item.action_id, 255),
+      opportunityId: text(item.opportunity_id, 255),
+      kind: member(item.kind, KINDS),
+      reason: text(item.reason, 500),
+      origin: member(item.origin, ORIGINS),
+      state: member(item.state, STATES),
+      dueAt: timestamp(item.due_at),
+      dueDate: text(item.due_date, 10),
+      dueTime: optionalTime(item.due_time),
+      scheduleType: member(item.schedule_type, SCHEDULE_TYPES),
+      version: optionalNumber(item.version, 1),
+    };
+  }
+  return {
+    actionId: text(record.action_id, 255),
+    opportunityId: text(record.opportunity_id, 255),
+    state: member(record.state, STATES),
+    version: optionalNumber(record.version, 1),
+    closed: record.closed === true,
+    successor,
+  };
+}
+
+async function sendAction(payload: Record<string, unknown>): Promise<CommercialActionCommandResult> {
+  const response = await fetch('/api/commercial-queue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new CommercialQueueApiError(
+      errorMessage(body, 'Não foi possível atualizar a próxima ação.'),
+      response.status
+    );
+  }
+  return parseCommandResult(body);
+}
+
+function schedulePayload(input: CommercialActionScheduleInput): Record<string, unknown> {
+  return {
+    kind: input.kind,
+    due_date: input.dueDate,
+    due_time: input.dueTime,
+    reason: input.reason,
+  };
+}
+
+export function createCommercialAction(
+  input: CommercialActionScheduleInput & {
+    opportunityId: string;
+    replaceActionId?: string;
+    expectedVersion?: number;
+  }
+): Promise<CommercialActionCommandResult> {
+  return sendAction({
+    command: 'create',
+    opportunity_id: input.opportunityId,
+    ...(input.replaceActionId ? { replace_action_id: input.replaceActionId } : {}),
+    ...(input.expectedVersion ? { expected_version: input.expectedVersion } : {}),
+    ...schedulePayload(input),
+  });
+}
+
+export function rescheduleCommercialAction(
+  input: CommercialActionScheduleInput & { actionId: string; expectedVersion: number }
+): Promise<CommercialActionCommandResult> {
+  return sendAction({
+    command: 'reschedule',
+    action_id: input.actionId,
+    expected_version: input.expectedVersion,
+    ...schedulePayload(input),
+  });
+}
+
+export type CommercialActionCompletion =
+  | { successor: CommercialActionScheduleInput }
+  | { closeReason: string };
+
+export function completeCommercialAction(
+  input:
+    & { actionId: string; expectedVersion: number }
+    & (CommercialActionCompletion | { outcome: CommercialActionCompletion })
+): Promise<CommercialActionCommandResult> {
+  const selected = 'outcome' in input ? input.outcome : input;
+  const outcome = 'successor' in selected
+    ? { successor: schedulePayload(selected.successor) }
+    : { close: { reason: selected.closeReason } };
+  return sendAction({
+    command: 'complete',
+    action_id: input.actionId,
+    expected_version: input.expectedVersion,
+    ...outcome,
+  });
+}
+
+function parseHistoryEntry(value: unknown): CommercialActionHistoryEntry {
+  const record = asObject(value);
+  return {
+    eventId: text(record.event_id, 255),
+    actionId: text(record.action_id, 255),
+    type: member(record.type, ['created', 'rescheduled', 'completed', 'replaced'] as const),
+    actor: text(record.actor, 128),
+    timestamp: timestamp(record.timestamp),
+    origin: member(record.origin, ORIGINS),
+    reason: text(record.reason, 500),
+    state: member(record.state, STATES),
+    replacementActionId:
+      record.replacement_action_id === null || record.replacement_action_id === undefined
+        ? null
+        : text(record.replacement_action_id, 255),
+  };
+}
+
+export async function getCommercialActionHistory(
+  opportunityId: string
+): Promise<CommercialActionHistoryEntry[]> {
+  const query = new URLSearchParams({ opportunity_id: opportunityId, view: 'history' });
+  const response = await fetch(`/api/commercial-queue?${query.toString()}`, { method: 'GET' });
+  const body: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new CommercialQueueApiError(
+      errorMessage(body, 'Não foi possível carregar o histórico da ação.'),
+      response.status
+    );
+  }
+  const record = asObject(body);
+  if (!Array.isArray(record.data)) invalidResponse();
+  return record.data.map(parseHistoryEntry);
 }
