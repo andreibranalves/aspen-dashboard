@@ -314,6 +314,20 @@ export const quotations = pgTable(
     quoteLeadId: uuid('quote_lead_id').references((): AnyPgColumn => quoteLeads.id, {
       onDelete: 'restrict',
     }),
+    // The demand this proposal belongs to. A proposal has exactly one
+    // opportunity; an opportunity can accumulate several alternative
+    // proposals. Nullable so proposals created by older flows stay valid and
+    // an unlinked proposal never invents a demand.
+    opportunityId: uuid('opportunity_id').references((): AnyPgColumn => crmDeals.id, {
+      onDelete: 'set null',
+    }),
+    // Stable client-generated creation key. A retry that loses the first
+    // response replays the original quotation instead of creating another one.
+    // Nullable so every legacy consumer without a key keeps working.
+    creationRequestId: uuid('creation_request_id'),
+    // Canonical digest of the content that produced this quotation. A different
+    // payload reusing the same key is a conflict, never a silent replay.
+    creationFingerprint: text('creation_fingerprint'),
     status: varchar('status', { length: 32 }).$type<QuotationStatus>().notNull().default('rascunho'),
     issuedAt: timestamp('issued_at', { withTimezone: true }),
     lossReason: text('loss_reason'),
@@ -326,6 +340,12 @@ export const quotations = pgTable(
     index('quotations_quote_lead_id_idx')
       .on(table.quoteLeadId)
       .where(sql`${table.quoteLeadId} IS NOT NULL`),
+    index('quotations_opportunity_id_idx')
+      .on(table.opportunityId)
+      .where(sql`${table.opportunityId} IS NOT NULL`),
+    uniqueIndex('quotations_creation_request_unique')
+      .on(table.creationRequestId)
+      .where(sql`${table.creationRequestId} IS NOT NULL`),
     check(
       'quotations_business_number_format_check',
       sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`

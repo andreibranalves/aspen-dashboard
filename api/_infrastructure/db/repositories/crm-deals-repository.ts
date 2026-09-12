@@ -99,6 +99,11 @@ export interface CrmDealUpsertInput {
   quote_lead_id?: unknown;
   clientId?: unknown;
   client_id?: unknown;
+  /** Demanda persistida na proposta. Quando informada, é a identidade da
+   * oportunidade: o upsert resolve esse registro e nunca infere outro por
+   * cliente, telefone ou pela ponteiro legado `quotation_id`. */
+  opportunityId?: unknown;
+  opportunity_id?: unknown;
   id?: unknown;
   nome?: unknown;
   lead_name?: unknown;
@@ -454,6 +459,26 @@ async function selectDealForLead(
   return byLead || null;
 }
 
+/**
+ * Resolves the demand explicitly carried by the proposal. Unlike the legacy
+ * search by `quotation_id` or lead, this is an identity lookup: it never picks
+ * a candidate by client, phone or recency, so an established demand cannot be
+ * shadowed by a stale legacy pointer.
+ */
+async function selectDemandById(
+  database: CrmDatabase,
+  opportunityId: string
+): Promise<CrmDealRow> {
+  const [deal] = await database
+    .select()
+    .from(crmDeals)
+    .where(eq(crmDeals.id, opportunityId))
+    .for('update')
+    .limit(1);
+  if (!deal) throw new CrmDealInputError('A oportunidade informada não foi encontrada.');
+  return deal;
+}
+
 async function resolveExistingDeal(
   database: CrmDatabase,
   quotationId: string,
@@ -520,11 +545,22 @@ export async function upsertCrmDealForQuotation(
     quoteLeadId === undefined || quoteLeadId === null
       ? null
       : normalizedId(quoteLeadId, 'quote_lead_id');
+  const opportunityValue = input?.opportunityId ?? input?.opportunity_id;
+  const normalizedOpportunityId =
+    opportunityValue === undefined || opportunityValue === null
+      ? null
+      : normalizedId(opportunityValue, 'opportunity_id');
   const timestamp = asValidDate(options.now);
   const makeId = options.idFactory || randomUUID;
 
   const lead = await selectLeadForQuotation(database, quotationId);
-  const existing = await resolveExistingDeal(database, quotationId, lead);
+  const viaOpportunity = normalizedOpportunityId !== null;
+  const existing = viaOpportunity
+    ? await selectDemandById(database, normalizedOpportunityId)
+    : await resolveExistingDeal(database, quotationId, lead);
+  if (existing && viaOpportunity && existing.clientId && normalizedClientId && existing.clientId !== normalizedClientId) {
+    throw new CrmDealInputError('A oportunidade informada não pertence a este cliente.');
+  }
   const quoteLeadPatch =
     quoteLeadId !== undefined
       ? { quoteLeadId: normalizedQuoteLeadId }
@@ -547,7 +583,9 @@ export async function upsertCrmDealForQuotation(
         ? {}
         : { clientId: normalizedClientId }),
       ...quoteLeadPatch,
-      quotationId,
+      // The legacy single pointer is never rewritten when the demand is the
+      // authority: it cannot drive the cardinality nor shadow the new link.
+      ...(viaOpportunity ? {} : { quotationId }),
       updatedAt,
     };
     if (existing.status === CRM_PRUNE_LOST_STATUS) {

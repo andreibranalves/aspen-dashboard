@@ -219,6 +219,32 @@ test('repository template selection preserves custom versions under official key
   assert.equal((await readSelectedTemplate({} as never, settings, {}, lookup))?.version.id, 'custom-version');
 });
 
+test('quote core forwards the demand link or the new-demand intent', async () => {
+  const received: Array<Record<string, unknown>> = [];
+  const handler = createCoreHandler({
+    repository: {
+      createDraft: async (input) => {
+        received.push(input as Record<string, unknown>);
+        return draft;
+      },
+    },
+  });
+
+  const opportunityId = '55555555-5555-4555-8555-555555555555';
+  const linked = await handler(
+    event({ extracted: { client_id: draft.cliente_id, opportunity_id: opportunityId, items: [] } })
+  );
+  assert.equal(linked.statusCode, 201);
+  assert.equal(received[0].opportunity_id, opportunityId);
+
+  const created = await handler(
+    event({ extracted: { client_id: draft.cliente_id, new_demand: true, demand_summary: 'Cangas 100', items: [] } })
+  );
+  assert.equal(created.statusCode, 201);
+  assert.equal(received[1].new_demand, true);
+  assert.equal(received[1].demand_summary, 'Cangas 100');
+});
+
 test('quote core maps invalid template selection to 400', async () => {
   const handler = createCoreHandler({
     repository: {

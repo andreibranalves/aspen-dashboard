@@ -12,11 +12,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
+import { fmtPhone, formatBRL, formatDateTime } from '@/lib/formatting/formatters';
 import {
   listCommercialQueue,
   type CommercialQueueItem,
   type CommercialQueuePage,
+  type CommercialQueueProposal,
 } from '@/lib/api/commercialQueueApi';
 
 const PAGE_SIZE = 25;
@@ -31,6 +32,11 @@ function contactLabel(item: CommercialQueueItem): string {
 
 function contactDetail(item: CommercialQueueItem): string | null {
   return fmtPhone(item.contactPhone) || item.contactEmail;
+}
+
+function proposalLabel(proposal: CommercialQueueProposal): string {
+  const value = proposal.total === null ? 'Sem valor' : formatBRL(proposal.total);
+  return `${proposal.businessNumber} · ${proposal.status} · ${value}`;
 }
 
 export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelProps) {
@@ -174,6 +180,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 <TableRow>
                   <TableHead>Contato</TableHead>
                   <TableHead>Demanda</TableHead>
+                  <TableHead>Propostas</TableHead>
                   <TableHead>Motivo</TableHead>
                   <TableHead>Prazo</TableHead>
                 </TableRow>
@@ -189,6 +196,19 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     </TableCell>
                     <TableCell className="max-w-96 truncate text-fg-muted">
                       {item.demandSummary || 'Demanda não informada'}
+                    </TableCell>
+                    <TableCell className="text-fg-muted">
+                      {item.proposals.length === 0 ? (
+                        <span className="text-xs">Sem propostas</span>
+                      ) : (
+                        <ul className="space-y-1 text-xs">
+                          {item.proposals.map((proposal) => (
+                            <li key={proposal.quotationId} className="whitespace-nowrap">
+                              {proposalLabel(proposal)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={item.reasonCode} label={item.reasonLabel} />
@@ -217,6 +237,13 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 <p className="mt-3 text-sm text-fg-muted">
                   {item.demandSummary || 'Demanda não informada'}
                 </p>
+                {item.proposals.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs text-fg-muted">
+                    {item.proposals.map((proposal) => (
+                      <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>
+                    ))}
+                  </ul>
+                )}
                 <p className="mt-2 text-xs text-fg-muted">{formatDateTime(item.dueAt)}</p>
               </article>
             ))}

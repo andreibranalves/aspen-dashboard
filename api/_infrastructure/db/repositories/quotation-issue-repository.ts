@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
-import { quoteRevisionItems, quoteRevisions, quotations, quotationIssueRequests, quotationTemplates, quotationTemplateVersions } from '../schema.js';
+import { crmDeals, quoteRevisionItems, quoteRevisions, quotations, quotationIssueRequests, quotationTemplates, quotationTemplateVersions } from '../schema.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
 import { renderQuotationDocument } from '../../../_modules/quotation-document.js';
@@ -60,6 +60,9 @@ export class QuotationIssueRepositoryError extends Error {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LEASE_MS = 30_000;
+/** Commercial outcomes that close prospecting. An issued proposal must never
+ * officialize into a demand that already lost or closed while it was edited. */
+const CLOSED_OPPORTUNITY_STATUSES = ['Pedido Fechado', 'Perdido'] as const;
 
 export function quotationIssueFingerprint(input: Pick<QuotationIssueInput, 'revisionId'>): string {
   return createHash('sha256').update(JSON.stringify({ revisionId: String(input.revisionId || '').trim() })).digest('hex');
@@ -213,6 +216,31 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         if (quotationConcurrencyToken(quotation.updatedAt) !== input.concurrencyToken.trim()) {
           throw new QuotationIssueConflictError('O orçamento foi alterado por outro usuário. Recarregue antes de emitir.');
         }
+        // The demand can be closed between saving and issuing. Revalidate it
+        // under the same lock before flipping status or rendering the PDF.
+        if (quotation.opportunityId) {
+          const [opportunity] = await tx
+            .select()
+            .from(crmDeals)
+            .where(eq(crmDeals.id, quotation.opportunityId))
+            .for('update')
+            .limit(1);
+          if (!opportunity) {
+            throw new QuotationIssueConflictError(
+              'A oportunidade vinculada a este orçamento não foi encontrada.'
+            );
+          }
+          if (CLOSED_OPPORTUNITY_STATUSES.includes(opportunity.status as (typeof CLOSED_OPPORTUNITY_STATUSES)[number])) {
+            throw new QuotationIssueConflictError(
+              'Não é possível emitir um orçamento vinculado a uma oportunidade encerrada. Crie uma nova proposta para este cliente.'
+            );
+          }
+          if (opportunity.clientId && opportunity.clientId !== quotation.clientId) {
+            throw new QuotationIssueConflictError(
+              'A oportunidade vinculada não pertence ao cliente deste orçamento.'
+            );
+          }
+        }
         const items = await tx.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revision.id)).orderBy(asc(quoteRevisionItems.position));
         if (items.length === 0) throw new QuotationIssueInputError('Informe o cliente e ao menos um item antes de emitir o orçamento.');
         let templateVersion: QuotationTemplateSnapshot['templateVersion'] = null;
@@ -232,6 +260,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         await upsertCrmDeal(tx, {
           quotationId: quotation.id,
           clientId: quotation.clientId,
+          opportunityId: quotation.opportunityId,
           nome: revision.clienteNome,
           email: revision.clienteEmail,
           telefone: revision.clienteTelefone,

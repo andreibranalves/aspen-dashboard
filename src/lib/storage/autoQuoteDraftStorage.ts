@@ -12,6 +12,7 @@ export const AUTO_QUOTE_DRAFTS_STORAGE_VERSION = 1;
 type RecordValue = Record<string, unknown>;
 type ReadStorage = Pick<Storage, 'getItem'>;
 type WriteStorage = Pick<Storage, 'setItem'>;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -58,6 +59,18 @@ function isQuotationIssueProjection(value: unknown): value is QuotationIssueProj
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined;
+}
+
+function optionalUuid(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return UUID_PATTERN.test(normalized) ? normalized : undefined;
+}
+
+function optionalBoundedString(value: unknown, maximum: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim();
+  return normalized && normalized.length <= maximum ? normalized : undefined;
 }
 
 function savedReference(value: unknown): StoredAutoQuoteDraft['saved'] | undefined {
@@ -136,6 +149,12 @@ function isStoredAutoQuoteDraft(value: unknown): value is StoredAutoQuoteDraft {
 function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | null {
   if (!isStoredAutoQuoteDraft(value)) return null;
   const edited = value.edited as unknown as RecordValue;
+  const opportunityId = optionalUuid(edited.opportunity_id);
+  const newDemand = typeof edited.new_demand === 'boolean' ? edited.new_demand : undefined;
+  const normalizedNewDemand = opportunityId ? false : newDemand;
+  const demandSummary = normalizedNewDemand === true
+    ? optionalBoundedString(edited.demand_summary, 4000)
+    : undefined;
   const nextEdited = {
     nome: edited.nome as string,
     ...(typeof edited.empresa === 'string' ? { empresa: edited.empresa } : {}),
@@ -163,6 +182,9 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     ...(optionalString(edited.client_id) ? { client_id: edited.client_id as string } : {}),
     ...(optionalString(edited.quote_lead_id) ? { quote_lead_id: edited.quote_lead_id as string } : {}),
     ...(optionalString(edited.crm_deal_id) ? { crm_deal_id: edited.crm_deal_id as string } : {}),
+    ...(opportunityId ? { opportunity_id: opportunityId } : {}),
+    ...(typeof normalizedNewDemand === 'boolean' ? { new_demand: normalizedNewDemand } : {}),
+    ...(demandSummary ? { demand_summary: demandSummary } : {}),
   };
   const issueIdempotencyKey = typeof value.issueIdempotencyKey === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.issueIdempotencyKey)
@@ -188,6 +210,12 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     ...(result ? { result } : {}),
     ...(saved ? { saved } : {}),
     ...(issueIdempotencyKey ? { issueIdempotencyKey } : {}),
+    ...(typeof value.creationRequestId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.creationRequestId
+    )
+      ? { creationRequestId: value.creationRequestId }
+      : {}),
     ...(value.issueDispatchStarted === true && hasIssueIdentity ? { issueDispatchStarted: true } : {}),
     ...(value.issueRecoveryRequired === true && hasIssueIdentity ? { issueRecoveryRequired: true } : {}),
     ...(value.issueOrigin === 'conversation' || value.issueOrigin === 'manual'

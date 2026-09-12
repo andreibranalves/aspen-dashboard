@@ -34,6 +34,7 @@ function item(overrides: Partial<OpportunityQueuePage['data'][number]> = {}) {
     contactEmail: null,
     clientId: null,
     clientName: null,
+    proposals: [],
     ...overrides,
   };
 }
@@ -72,6 +73,55 @@ test('GET /api/commercial-queue returns the prioritized page in snake_case', asy
   assert.equal(row.contact_email, null);
   assert.equal(row.client_id, null);
   assert.equal(row.client_name, null);
+  assert.deepEqual(row.proposals, []);
+});
+
+test('GET /api/commercial-queue exposes every linked proposal with value and state', async () => {
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      listActive: async () => ({
+        data: [
+          item({
+            proposals: [
+              {
+                quotationId: '00000000-0000-4000-8000-0000000000a1',
+                businessNumber: 'ORC-20260001',
+                status: 'rascunho',
+                total: '250.00',
+                createdAt: '2026-09-11T12:00:00.000Z',
+              },
+              {
+                quotationId: '00000000-0000-4000-8000-0000000000b2',
+                businessNumber: 'ORC-20260002',
+                status: 'emitido',
+                total: '310.50',
+                createdAt: '2026-09-11T13:00:00.000Z',
+              },
+            ],
+          }),
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      }),
+    }),
+  });
+  const result = await handler(event('GET'));
+  const body = JSON.parse(result.body || '{}');
+  assert.deepEqual(body.data[0].proposals, [
+    {
+      quotation_id: '00000000-0000-4000-8000-0000000000a1',
+      business_number: 'ORC-20260001',
+      status: 'rascunho',
+      total: '250.00',
+    },
+    {
+      quotation_id: '00000000-0000-4000-8000-0000000000b2',
+      business_number: 'ORC-20260002',
+      status: 'emitido',
+      total: '310.50',
+    },
+  ]);
 });
 
 test('GET /api/commercial-queue forwards the client context once linked', async () => {

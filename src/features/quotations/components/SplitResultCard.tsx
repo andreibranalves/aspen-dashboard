@@ -1,7 +1,7 @@
 // src/components/SplitResultCard.tsx
 // Compact result card for the split-panel auto page.
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import {
   Pencil,
   X,
@@ -78,6 +78,10 @@ export interface SplitResultCardProps {
   onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
   onSendWhatsApp?: (draftIdx: number) => void;
   onResolveDelivery?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
+  /** Demand selector rendered for automatic results before saving/issuing. */
+  opportunitySelector?: ReactNode;
+  /** Portuguese, user-facing reason the automatic result cannot be issued yet. */
+  opportunityBlockMessage?: string | null;
 }
 
 export default function SplitResultCard({
@@ -120,6 +124,8 @@ export default function SplitResultCard({
   onSelectWhatsAppFlow,
   onSendWhatsApp,
   onResolveDelivery,
+  opportunitySelector,
+  opportunityBlockMessage = null,
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(reviewOnly);
   const [templateExpanded, setTemplateExpanded] = useState(false);
@@ -303,7 +309,9 @@ export default function SplitResultCard({
           ? 'Selecione a origem para continuar.'
           : !isValidLeadSource(draft.edited.origem)
             ? 'Selecione uma origem válida para continuar.'
-            : null;
+            : opportunityBlockMessage
+              ? opportunityBlockMessage
+              : null;
   const canCreate = actionBlockMessage === null;
   const canApply = canCreate && items.every((item) => Number.isFinite(Number(item.rate)) && Number(item.rate) > 0);
   const actionStatusId = `quotation-action-status-${draft.index}`;
@@ -465,6 +473,13 @@ export default function SplitResultCard({
           )}
         </div>
       </div>
+
+      {/* ── Demand selector (automatic flow) ── */}
+      {!isDone && opportunitySelector && (
+        <div className="border-b border-line bg-surface/20 px-4 py-3">
+          {opportunitySelector}
+        </div>
+      )}
 
       {/* ── Template selector ── */}
       {!isDone && (

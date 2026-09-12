@@ -38,3 +38,12 @@ test('rejects malformed required manual storage without throwing', () => {
   assert.equal(sanitizeManualQuoteDraft({ ...valid, newClient: { nome: 42, email: '', telefone: '' } }), null);
   assert.equal(loadManualQuoteDraft(storage('{broken')), null);
 });
+
+test('preserves a valid creation key and strips malformed ones', () => {
+  const key = '550e8400-e29b-41d4-a716-446655440000';
+  assert.equal(loadManualQuoteDraft(storage({ ...valid, creationRequestId: key }))?.creationRequestId, key);
+  assert.equal(
+    loadManualQuoteDraft(storage({ ...valid, creationRequestId: 'not-a-uuid' }))?.creationRequestId,
+    undefined
+  );
+});

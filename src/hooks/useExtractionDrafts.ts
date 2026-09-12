@@ -42,6 +42,8 @@ function invalidateSavedDraft(draft: Draft): Draft {
   delete next.issue;
   delete next.result;
   delete next.status;
+  // The creation key belongs to the draft, not to its current contents. It
+  // must survive edits so a retry can reach the server's fingerprint check.
   return next;
 }
 

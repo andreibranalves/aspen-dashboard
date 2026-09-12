@@ -2,6 +2,13 @@ export type OpportunityActionKind = 'first_contact';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
 export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
 
+export interface CommercialQueueProposal {
+  quotationId: string;
+  businessNumber: string;
+  status: string;
+  total: string | null;
+}
+
 export interface CommercialQueueItem {
   actionId: string;
   opportunityId: string;
@@ -17,6 +24,8 @@ export interface CommercialQueueItem {
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
+  /** Every proposal linked to the demand, with value and state. */
+  proposals: CommercialQueueProposal[];
 }
 
 export interface CommercialQueuePage {
@@ -110,8 +119,19 @@ function pageInteger(value: unknown, minimum: number, maximum: number): number {
   return value;
 }
 
+function parseProposal(value: unknown): CommercialQueueProposal {
+  const record = asObject(value);
+  return {
+    quotationId: text(record.quotation_id, 255),
+    businessNumber: text(record.business_number, 32),
+    status: text(record.status, 32),
+    total: optionalText(record.total, 64),
+  };
+}
+
 export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
   const record = asObject(value);
+  if (!Array.isArray(record.proposals)) invalidResponse();
   return {
     actionId: text(record.action_id, 255),
     opportunityId: text(record.opportunity_id, 255),
@@ -127,6 +147,7 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     contactEmail: optionalText(record.contact_email, 254),
     clientId: optionalIdentifier(record.client_id),
     clientName: optionalIdentifier(record.client_name),
+    proposals: record.proposals.map(parseProposal),
   };
 }
 

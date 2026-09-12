@@ -22,6 +22,7 @@ import type { QuotationTemplateSnapshot } from '../../api/_infrastructure/db/rep
 import { readQuotationTemplateSnapshot } from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';
 import { createPostgresQuoteDraftManagementRepository, QuoteManagementConflictError } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
 import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
+import { ensureFirstContactAction } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
@@ -34,6 +35,7 @@ const VALID_PDF = Buffer.from('%PDF-1.4\n% task4\n%%EOF', 'utf8');
 let migrationPromise: Promise<void> | undefined;
 async function clearIssueFixtures(db: AppDatabase) {
   await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
+  await db.delete(schema.opportunityNextActions);
   await db.delete(schema.crmDeals);
   await db.delete(schema.quoteLeads);
   await db.delete(schema.quotationIssueRequests);
@@ -384,6 +386,62 @@ gated('issuing does not reopen a lost deal or create a second active opportunity
   assert.equal(deals[0]?.status, 'Perdido');
 }));
 
+gated('issuing proposals linked to one demand reuses the opportunity instead of inserting another', async () => withDatabase(async (db) => {
+  await seed(db);
+  const clientId = randomUUID();
+  await db.insert(schema.clients).values({ id: clientId, nome: 'Cliente emissão', email: 'cliente@teste.com', arquivado: false });
+  const opportunityId = randomUUID();
+  const drafts = createPostgresQuoteDraftRepository(() => db, { now: () => NOW });
+  // A legacy pointer that resolves to a different proposal must not drive the
+  // emission cardinality: the quotation's own opportunity_id does.
+  const decoy = await drafts.createDraft({
+    client_id: clientId,
+    items: [{ item_code: 'TASK4-SKU', item_name: 'Produto teste', qty: '1.000', rate: '12.30', manual_rate: true }],
+  });
+  await db.insert(schema.crmDeals).values({
+    id: opportunityId,
+    clientId,
+    quotationId: decoy.quotation_uuid,
+    nome: 'Cliente emissão',
+    email: 'cliente@teste.com',
+    status: 'Novo Lead',
+    demandSummary: 'Cangas 100',
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  await ensureFirstContactAction(db, { opportunityId, dueAt: NOW, idFactory: () => randomUUID() });
+
+  const first = await drafts.createDraft({
+    client_id: clientId,
+    opportunity_id: opportunityId,
+    items: [{ item_code: 'TASK4-SKU', item_name: 'Produto teste', qty: '2.000', rate: '12.30', manual_rate: true }],
+  });
+  const second = await drafts.createDraft({
+    client_id: clientId,
+    opportunity_id: opportunityId,
+    items: [{ item_code: 'TASK4-SKU', item_name: 'Produto teste', qty: '3.000', rate: '12.30', manual_rate: true }],
+  });
+  assert.equal(first.quotation_uuid === decoy.quotation_uuid, false);
+
+  const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+  await repository.issue({ idempotencyKey: randomUUID(), revisionId: first.revision_id, concurrencyToken: first.concurrency_token });
+  await repository.issue({ idempotencyKey: randomUUID(), revisionId: second.revision_id, concurrencyToken: second.concurrency_token });
+
+  const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.clientId, clientId));
+  assert.equal(deals.length, 1, 'the demand keeps exactly one opportunity after two emissions');
+  assert.equal(deals[0]?.id, opportunityId);
+  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  // The legacy single pointer stays where it was: it is not the cardinality
+  // source and the new emission path never rewrites it.
+  assert.equal(deals[0]?.quotationId, decoy.quotation_uuid);
+
+  const actions = await db.select().from(schema.opportunityNextActions).where(eq(schema.opportunityNextActions.opportunityId, opportunityId));
+  assert.equal(actions.length, 1, 'the shared demand keeps a single first-contact action');
+
+  const linked = await db.select().from(schema.quotations).where(eq(schema.quotations.opportunityId, opportunityId));
+  assert.equal(linked.length, 2, 'both proposals stay linked to the same demand');
+}));
+
 test('fingerprint binds the idempotency key to the revision reference', () => {
   const revisionId = randomUUID();
   assert.equal(quotationIssueFingerprint({ revisionId }), quotationIssueFingerprint({ revisionId }));
@@ -405,3 +463,40 @@ test('lease decisions cover replay, conflict, active, and stale claims', () => {
   assert.equal(quotationIssueLeaseDecision('processing', 'same', 'same', new Date(now.getTime() + 1), now), 'active');
   assert.equal(quotationIssueLeaseDecision('processing', 'same', 'same', new Date(now.getTime() - 1), now), 'claim');
 });
+
+gated('issuing a proposal whose linked demand closed meanwhile is rejected before officializing', async () => withDatabase(async (db) => {
+  await seed(db);
+  const clientId = randomUUID();
+  await db.insert(schema.clients).values({ id: clientId, nome: 'Cliente encerrado', email: 'cliente@teste.com', arquivado: false });
+  const opportunityId = randomUUID();
+  await db.insert(schema.crmDeals).values({
+    id: opportunityId,
+    clientId,
+    nome: 'Cliente encerrado',
+    status: 'Novo Lead',
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
+  const drafts = createPostgresQuoteDraftRepository(() => db, { now: () => NOW });
+  const created = await drafts.createDraft({
+    client_id: clientId,
+    opportunity_id: opportunityId,
+    items: [{ item_code: 'TASK4-SKU', item_name: 'Produto teste', qty: '2.000', rate: '12.30', manual_rate: true }],
+  });
+  const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+
+  for (const status of ['Pedido Fechado', 'Perdido']) {
+    await db.update(schema.crmDeals).set({ status }).where(eq(schema.crmDeals.id, opportunityId));
+    await assert.rejects(
+      repository.issue({ idempotencyKey: randomUUID(), revisionId: created.revision_id, concurrencyToken: created.concurrency_token }),
+      (error: unknown) => error instanceof QuotationIssueConflictError
+        && error.statusCode === 409
+        && /encerrada/i.test(error.message)
+        && !/\b(sql|postgres|stack|uuid)\b/i.test(error.message),
+    );
+    const [revision] = await db.select().from(schema.quoteRevisions).where(eq(schema.quoteRevisions.id, created.revision_id));
+    assert.equal(revision?.status, 'rascunho', 'no status flip or PDF is officialized for a closed demand');
+    const [quotation] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, created.quotation_uuid));
+    assert.equal(quotation?.status, 'rascunho');
+  }
+}));

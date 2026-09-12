@@ -274,6 +274,13 @@
       "when": 1789191603492,
       "tag": "0038_evolution_receipt_inbox",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789217908352,
+      "tag": "0039_quotation_opportunity_link",
+      "breakpoints": true
     }
   ]
 }

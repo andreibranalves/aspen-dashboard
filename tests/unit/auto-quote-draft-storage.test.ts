@@ -208,3 +208,58 @@ test('reports storage write failures', () => {
   const storage = { setItem: () => { throw new Error('quota'); } };
   assert.equal(saveAutoQuoteDrafts(storage, [validDraft]), false);
 });
+
+test('round-trips the durable creation key and strips malformed ones', () => {
+  const storage = createStorage();
+  const key = '550e8400-e29b-41d4-a716-446655440000';
+  const withKey = { ...validDraft, creationRequestId: key };
+  const malformed = { ...validDraft, creationRequestId: 'not-a-uuid' };
+  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [withKey, malformed] }));
+  const drafts = loadAutoQuoteDrafts(storage);
+  assert.equal(drafts[0]?.creationRequestId, key);
+  assert.equal(drafts[1]?.creationRequestId, undefined);
+});
+
+test('round-trips the automatic demand decision and sanitizes its contract', () => {
+  const storage = createStorage();
+  const opportunityId = '11111111-1111-4111-8111-111111111111';
+  const selected = {
+    ...validDraft,
+    edited: {
+      ...validDraft.edited,
+      client_id: '22222222-2222-4222-8222-222222222222',
+      opportunity_id: opportunityId,
+      new_demand: false,
+    },
+  };
+  const invalid = {
+    ...validDraft,
+    index: 2,
+    edited: {
+      ...validDraft.edited,
+      opportunity_id: 'not-a-uuid',
+      new_demand: 'true',
+      demand_summary: 'x'.repeat(4001),
+    },
+  };
+  const newDemand = {
+    ...validDraft,
+    index: 1,
+    edited: {
+      ...validDraft.edited,
+      new_demand: true,
+      demand_summary: '  Cangas 100 unidades  ',
+    },
+  };
+  storage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [selected, newDemand, invalid] }));
+
+  const [restored, restoredNewDemand, sanitized] = loadAutoQuoteDrafts(storage);
+  assert.equal(restored.edited.opportunity_id, opportunityId);
+  assert.equal(restored.edited.new_demand, false);
+  assert.equal(restored.edited.demand_summary, undefined);
+  assert.equal(restoredNewDemand.edited.new_demand, true);
+  assert.equal(restoredNewDemand.edited.demand_summary, 'Cangas 100 unidades');
+  assert.equal(sanitized.edited.opportunity_id, undefined);
+  assert.equal(sanitized.edited.new_demand, undefined);
+  assert.equal(sanitized.edited.demand_summary, undefined);
+});

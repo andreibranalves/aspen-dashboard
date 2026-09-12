@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { opportunityNextActions } from '../schema.js';
+import type { OpportunityProposal } from './proposal-opportunity-repository.js';
 
 export type OpportunityActionKind = 'first_contact';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
@@ -22,6 +23,8 @@ export interface OpportunityQueueItem {
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
+  /** Every proposal linked to the demand, with value and state. */
+  proposals: OpportunityProposal[];
 }
 
 export interface OpportunityQueuePage {
@@ -102,6 +105,34 @@ interface QueueRow {
   contact_email: string | null;
   client_id: string | null;
   client_name: string | null;
+  proposals: unknown;
+}
+
+interface ProposalJsonRow {
+  quotation_id?: unknown;
+  business_number?: unknown;
+  status?: unknown;
+  total?: unknown;
+  created_at?: unknown;
+}
+
+function parseProposals(value: unknown): OpportunityProposal[] {
+  if (!Array.isArray(value)) return [];
+  const proposals: OpportunityProposal[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const row = entry as ProposalJsonRow;
+    if (typeof row.quotation_id !== 'string' || typeof row.business_number !== 'string') continue;
+    const createdAt = row.created_at instanceof Date ? row.created_at : new Date(String(row.created_at));
+    proposals.push({
+      quotationId: row.quotation_id,
+      businessNumber: row.business_number,
+      status: typeof row.status === 'string' ? row.status : 'rascunho',
+      total: row.total === null || row.total === undefined ? null : String(row.total),
+      createdAt: Number.isNaN(createdAt.getTime()) ? new Date(0).toISOString() : createdAt.toISOString(),
+    });
+  }
+  return proposals;
 }
 
 /**
@@ -168,7 +199,30 @@ export function createPostgresOpportunityActionRepository(
               d.telefone AS contact_phone,
               d.email AS contact_email,
               d.client_id,
-              c.nome AS client_name
+              c.nome AS client_name,
+              (
+                SELECT coalesce(
+                  json_agg(
+                    json_build_object(
+                      'quotation_id', q.id,
+                      'business_number', q.business_number,
+                      'status', q.status,
+                      'total', r.total,
+                      'created_at', q.created_at
+                    ) ORDER BY q.created_at, q.id
+                  ),
+                  '[]'::json
+                )
+                FROM quotations q
+                LEFT JOIN LATERAL (
+                  SELECT rv.total
+                  FROM quote_revisions rv
+                  WHERE rv.quotation_id = q.id
+                  ORDER BY rv.version DESC, rv.id ASC
+                  LIMIT 1
+                ) r ON true
+                WHERE q.opportunity_id = d.id
+              ) AS proposals
             FROM opportunity_next_actions a
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
@@ -217,6 +271,7 @@ export function createPostgresOpportunityActionRepository(
               contactEmail: row.contact_email,
               clientId: row.client_id,
               clientName: row.client_name,
+              proposals: parseProposals(row.proposals),
             })),
           total: Number(first.total ?? 0),
           page: Number(first.page ?? 1),

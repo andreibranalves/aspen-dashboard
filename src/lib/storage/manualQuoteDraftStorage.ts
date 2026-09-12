@@ -1,4 +1,5 @@
 import type { QuotationOriginPrefill } from '../../features/crm/quotationOriginPrefill.ts';
+import type { OpportunitySelection } from '../../features/quotations/opportunitySelection.ts';
 import { EMPTY_ADDRESS, normalizeAddress, type Address } from '../clientMetadata.ts';
 
 export const MANUAL_QUOTE_DRAFT_STORAGE_KEY = 'aspen_manual_draft';
@@ -37,6 +38,9 @@ export interface ManualQuoteDraft {
   urgente: boolean;
   templateKey: string;
   originPrefill?: QuotationOriginPrefill;
+  opportunity: OpportunitySelection;
+  /** Stable creation key for the first dispatch of this manual draft. */
+  creationRequestId?: string;
 }
 
 type RecordValue = Record<string, unknown>;
@@ -79,6 +83,19 @@ function cartItem(value: unknown): ManualQuoteCartItem | null {
     qty: value.qty,
     rate: value.rate,
     _rateManual: value._rateManual,
+  };
+}
+
+function opportunity(value: unknown): OpportunitySelection {
+  if (!isRecord(value)) return { mode: 'new', opportunityId: null, demandSummary: '' };
+  const mode = value.mode === 'existing' ? 'existing' : 'new';
+  const opportunityId = typeof value.opportunityId === 'string' && value.opportunityId ? value.opportunityId : null;
+  // An `existing` selection without an id is the unresolved state: it stays
+  // unresolved so a restored draft still requires an explicit decision.
+  return {
+    mode,
+    opportunityId,
+    demandSummary: stringValue(value.demandSummary),
   };
 }
 
@@ -126,6 +143,13 @@ export function sanitizeManualQuoteDraft(value: unknown): ManualQuoteDraft | nul
     urgente: value.urgente === true,
     templateKey: stringValue(value.templateKey),
     ...(validOrigin ? { originPrefill: validOrigin } : {}),
+    opportunity: opportunity(value.opportunity),
+    ...(typeof value.creationRequestId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.creationRequestId
+    )
+      ? { creationRequestId: value.creationRequestId }
+      : {}),
   };
 }
 
