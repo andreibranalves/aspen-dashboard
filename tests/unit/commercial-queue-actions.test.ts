@@ -47,6 +47,18 @@ function repository(
     createAction: async () => result,
     rescheduleAction: async () => result,
     completeAction: async () => result,
+    recordManualContact: async () => ({
+      ...result,
+      eventId: 'manual-event',
+      commandId: 'manual-command',
+      contactType: 'phone_call' as const,
+      occurredAt: '2026-09-11T12:00:00.000Z',
+      note: null,
+      resultCode: 'other' as const,
+      countsAsFollowUp: false,
+      continuationType: 'wait' as const,
+      source: 'operator_statement' as const,
+    }),
     listHistory: async () => [],
     ...overrides,
   };
@@ -93,6 +105,158 @@ test('POST /api/commercial-queue exige sucessor ou fechamento ao concluir', asyn
   );
   assert.equal(response.statusCode, 400);
   assert.match(JSON.parse(response.body || '{}').error, /sucessora|fechar/i);
+});
+
+test('POST /api/commercial-queue registra contato manual e continuidade sem transporte', async () => {
+  let received: Record<string, unknown> | undefined;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      recordManualContact: async (input) => {
+        received = input as unknown as Record<string, unknown>;
+        return {
+          ...result,
+          state: 'completed',
+          eventId: 'manual-event',
+          commandId: 'manual-command',
+          contactType: 'phone_call',
+          occurredAt: '2026-09-12T11:30:00.000Z',
+          note: 'Cliente confirmou interesse.',
+          resultCode: 'follow_up_agreed',
+          countsAsFollowUp: true,
+          continuationType: 'successor',
+          source: 'operator_statement',
+        };
+      },
+    }),
+  });
+  const response = await handler(
+    event('POST', {
+      command: 'manual_contact',
+      command_id: 'manual-command',
+      opportunity_id: result.opportunityId,
+      action_id: result.actionId,
+      expected_version: 1,
+      contact_type: 'phone_call',
+      occurred_at: '2026-09-12T11:30:00.000Z',
+      note: 'Cliente confirmou interesse.',
+      result_code: 'follow_up_agreed',
+      counts_as_follow_up: true,
+      continuation: {
+        type: 'successor',
+        schedule: {
+          kind: 'review',
+          due_date: '2026-09-15',
+          due_time: '14:00',
+          reason: 'Revisar retorno',
+        },
+      },
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(received?.commandId, 'manual-command');
+  assert.equal(received?.actor, 'authenticated-operator');
+  assert.equal(received?.countsAsFollowUp, true);
+  assert.deepEqual(received?.continuation, {
+    type: 'successor',
+    schedule: {
+      kind: 'review',
+      dueDate: '2026-09-15',
+      dueTime: '14:00',
+      reason: 'Revisar retorno',
+    },
+  });
+  assert.deepEqual(JSON.parse(response.body || '{}'), {
+    action_id: result.actionId,
+    opportunity_id: result.opportunityId,
+    state: 'completed',
+    version: result.version,
+    closed: false,
+    successor: null,
+    event_id: 'manual-event',
+    command_id: 'manual-command',
+    contact_type: 'phone_call',
+    occurred_at: '2026-09-12T11:30:00.000Z',
+    note: 'Cliente confirmou interesse.',
+    result_code: 'follow_up_agreed',
+    result_label: 'Próximo passo combinado',
+    counts_as_follow_up: true,
+    continuation_type: 'successor',
+    source: 'operator_statement',
+  });
+});
+
+test('POST /api/commercial-queue exige continuidade no contato manual', async () => {
+  let calls = 0;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      recordManualContact: async () => {
+        calls += 1;
+        throw new Error('não deveria chamar o repositório');
+      },
+    }),
+  });
+  const response = await handler(
+    event('POST', {
+      command: 'manual_contact',
+      command_id: 'manual-command',
+      opportunity_id: result.opportunityId,
+      action_id: result.actionId,
+      expected_version: 1,
+      contact_type: 'phone_call',
+      occurred_at: '2026-09-12T11:30:00.000Z',
+      result_code: 'other',
+      counts_as_follow_up: false,
+    })
+  );
+  assert.equal(response.statusCode, 400);
+  assert.match(
+    JSON.parse(response.body || '{}').error,
+    /continuidade|sucessora|aguardar|fechamento/i
+  );
+  assert.equal(calls, 0);
+});
+
+test('POST /api/commercial-queue rejeita data impossível antes do repositório', async () => {
+  let calls = 0;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      recordManualContact: async () => {
+        calls += 1;
+        return {
+          ...result,
+          state: 'completed',
+          eventId: 'manual-event',
+          commandId: 'manual-command',
+          contactType: 'phone_call',
+          occurredAt: '2026-02-31T10:00:00-03:00',
+          note: null,
+          resultCode: 'not_interested',
+          countsAsFollowUp: false,
+          continuationType: 'close',
+          source: 'operator_statement',
+        };
+      },
+    }),
+  });
+  const response = await handler(
+    event('POST', {
+      command: 'manual_contact',
+      command_id: 'manual-command',
+      opportunity_id: result.opportunityId,
+      action_id: result.actionId,
+      expected_version: 1,
+      contact_type: 'phone_call',
+      occurred_at: '2026-02-31T10:00:00-03:00',
+      result_code: 'not_interested',
+      counts_as_follow_up: false,
+      continuation: { type: 'close', reason: 'Cliente não prosseguiu.' },
+    })
+  );
+
+  assert.equal(response.statusCode, 400);
+  assert.match(JSON.parse(response.body || '{}').error, /data e hora|inválid/i);
+  assert.equal(calls, 0);
 });
 
 test('POST /api/commercial-queue retorna conflito seguro sem vazar erro do banco', async () => {

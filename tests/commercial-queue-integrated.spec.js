@@ -176,6 +176,9 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   if (!sql) return;
   if (createdLeadIds.length) {
+    await sql`DELETE FROM manual_contact_events WHERE opportunity_id IN (
+      SELECT id FROM crm_deals WHERE quote_lead_id = ANY(${createdLeadIds}::uuid[])
+    )`;
     await sql`DELETE FROM opportunity_next_actions WHERE opportunity_id IN (
       SELECT id FROM crm_deals WHERE quote_lead_id = ANY(${createdLeadIds}::uuid[])
     )`;
@@ -189,12 +192,139 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   if (!sql || createdLeadIds.length === 0) return;
   const ids = createdLeadIds.splice(0, createdLeadIds.length);
+  await sql`DELETE FROM manual_contact_events WHERE opportunity_id IN (
+    SELECT id FROM crm_deals WHERE quote_lead_id = ANY(${ids}::uuid[])
+  )`;
   await sql`DELETE FROM opportunity_next_actions WHERE opportunity_id IN (
     SELECT id FROM crm_deals WHERE quote_lead_id = ANY(${ids}::uuid[])
   )`;
   await sql`UPDATE quote_leads SET crm_deal_id = NULL WHERE id = ANY(${ids}::uuid[])`;
   await sql`DELETE FROM crm_deals WHERE quote_lead_id = ANY(${ids}::uuid[])`;
   await sql`DELETE FROM quote_leads WHERE id = ANY(${ids}::uuid[])`;
+});
+
+test('operador registra contato manual com continuidade e histórico separado', async ({
+  page,
+  request,
+}) => {
+  test.skip(!HAS_INTEGRATED_STACK, SKIP_REASON);
+  const externalCommunication = [];
+  page.on('request', (browserRequest) => {
+    if (EXTERNAL_COMMUNICATION.test(browserRequest.url())) {
+      externalCommunication.push(browserRequest.url());
+    }
+  });
+
+  const payload = submission('contato manual');
+  await ingest(request, payload);
+  const [lead] = await sql`
+    SELECT id, crm_deal_id FROM quote_leads
+    WHERE external_id = ${payload.externalId} AND source = 'site_form'
+  `;
+  createdLeadIds.push(lead.id);
+  await page.goto('/#/crm?tab=queue');
+  const row = page.getByRole('row', { name: new RegExp(payload.nome) });
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Registrar contato' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Registrar contato' })).toBeVisible();
+
+  const requests = [];
+  page.on('request', (browserRequest) => {
+    if (browserRequest.url().includes('/api/commercial-queue')) requests.push(browserRequest);
+  });
+  await dialog.getByRole('button', { name: 'Registrar contato' }).click();
+  expect(
+    requests.filter((browserRequest) => browserRequest.method() === 'POST'),
+    'continuidade vazia não envia o comando'
+  ).toHaveLength(0);
+
+  await dialog
+    .getByRole('combobox', { name: 'Resultado do contato' })
+    .selectOption('follow_up_agreed');
+  await dialog.getByRole('combobox', { name: 'Continuidade' }).selectOption('successor');
+  await dialog.getByLabel('Data da próxima ação').fill('2026-09-15');
+  await dialog.getByLabel('Motivo da continuidade').fill('Confirmar pedido');
+  const submitRequest = page.waitForRequest(
+    (browserRequest) =>
+      browserRequest.url().includes('/api/commercial-queue') && browserRequest.method() === 'POST'
+  );
+  await dialog.getByRole('button', { name: 'Registrar contato' }).click();
+  const manualRequest = await submitRequest;
+  expect(JSON.parse(manualRequest.postData() || '{}').command).toBe('manual_contact');
+
+  const refreshedRow = page.getByRole('row', { name: new RegExp(payload.nome) });
+  await expect(refreshedRow).toBeVisible();
+  await refreshedRow.getByRole('button', { name: 'Histórico' }).click();
+  await expect(page.getByRole('heading', { name: 'Histórico da próxima ação' })).toBeVisible();
+  await expect(page.getByText('Declaração manual')).toBeVisible();
+  await expect(page.getByText('Próximo passo combinado')).toBeVisible();
+  expect(externalCommunication).toEqual([]);
+});
+
+test('operador fecha contato manual preenchendo somente o motivo explícito', async ({
+  page,
+  request,
+}) => {
+  test.skip(!HAS_INTEGRATED_STACK, SKIP_REASON);
+  const externalCommunication = [];
+  page.on('request', (browserRequest) => {
+    if (EXTERNAL_COMMUNICATION.test(browserRequest.url())) {
+      externalCommunication.push(browserRequest.url());
+    }
+  });
+
+  const before = await durableEffectCounts();
+  const egressBefore = serverEgressEntries().length;
+  const payload = submission('fechamento manual');
+  await ingest(request, payload);
+  const [lead] = await sql`
+    SELECT id FROM quote_leads
+    WHERE external_id = ${payload.externalId} AND source = 'site_form'
+  `;
+  createdLeadIds.push(lead.id);
+
+  await page.goto('/#/crm?tab=queue');
+  const row = page.getByRole('row', { name: new RegExp(payload.nome) });
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'Registrar contato' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('combobox', { name: 'Continuidade' }).selectOption('close');
+  await expect(dialog.getByLabel('Data local')).toHaveCount(0);
+  await expect(dialog.getByLabel('Motivo', { exact: true })).toHaveCount(0);
+  await dialog.getByLabel('Motivo do fechamento').fill('Cliente não prosseguiu.');
+
+  const submitRequest = page.waitForRequest(
+    (browserRequest) =>
+      browserRequest.url().includes('/api/commercial-queue') && browserRequest.method() === 'POST'
+  );
+  await dialog.getByRole('button', { name: 'Registrar contato' }).click();
+  const manualRequest = await submitRequest;
+  expect(JSON.parse(manualRequest.postData() || '{}')).toMatchObject({
+    command: 'manual_contact',
+    continuation: { type: 'close', reason: 'Cliente não prosseguiu.' },
+  });
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole('tab', { name: 'Encerradas' }).click();
+  const closedRow = page.getByRole('row', { name: new RegExp(payload.nome) });
+  await expect(closedRow).toBeVisible();
+  await expect(closedRow.getByText('Status final: Perdido')).toBeVisible();
+  await expect(
+    closedRow.getByText('Motivo do encerramento: Cliente não prosseguiu.')
+  ).toBeVisible();
+
+  expect(await durableEffectCounts()).toEqual(before);
+  expect(externalCommunication).toEqual([]);
+  const audit = serverEgressAudit();
+  expect(audit.instrumented).toBe(true);
+  expect(audit.malformed).toBe(false);
+  expect(audit.blocked).toBe(0);
+  expect(
+    serverEgressEntries()
+      .slice(egressBefore)
+      .filter((entry) => entry.event === 'blocked')
+  ).toEqual([]);
 });
 
 test('lead ingested over HTTP reaches the queue UI once, even on retry, without external communication', async ({

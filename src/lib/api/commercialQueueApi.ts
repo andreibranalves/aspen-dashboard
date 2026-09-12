@@ -86,6 +86,34 @@ export interface CommercialActionScheduleInput {
   reason: string;
 }
 
+export type CommercialManualContactType = 'phone_call' | 'external_conversation';
+export type CommercialManualContactResultCode =
+  | 'follow_up_agreed'
+  | 'interested'
+  | 'not_interested'
+  | 'no_response'
+  | 'wrong_contact'
+  | 'other';
+export type CommercialManualContactContinuationType = 'successor' | 'wait' | 'close';
+
+export type CommercialManualContactContinuation =
+  | { type: 'successor'; schedule: CommercialActionScheduleInput }
+  | { type: 'wait'; schedule: CommercialActionScheduleInput }
+  | { type: 'close'; closeReason: string };
+
+export interface CommercialManualContactInput {
+  commandId: string;
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  contactType: CommercialManualContactType;
+  occurredAt: string;
+  note: string | null;
+  resultCode: CommercialManualContactResultCode;
+  countsAsFollowUp: boolean;
+  continuation: CommercialManualContactContinuation;
+}
+
 export interface CommercialActionCommandResult {
   actionId: string;
   opportunityId: string;
@@ -107,6 +135,18 @@ export interface CommercialActionCommandResult {
   } | null;
 }
 
+export interface CommercialManualContactResult extends CommercialActionCommandResult {
+  eventId: string;
+  commandId: string;
+  contactType: CommercialManualContactType;
+  occurredAt: string;
+  note: string | null;
+  resultCode: CommercialManualContactResultCode;
+  countsAsFollowUp: boolean;
+  continuationType: CommercialManualContactContinuationType;
+  source: 'operator_statement';
+}
+
 export interface CommercialUrgencyResult {
   opportunityId: string;
   actionId: string;
@@ -117,13 +157,23 @@ export interface CommercialUrgencyResult {
 export interface CommercialActionHistoryEntry {
   eventId: string;
   actionId: string;
-  type: 'created' | 'rescheduled' | 'completed' | 'replaced';
+  type: 'created' | 'rescheduled' | 'completed' | 'replaced' | 'manual_contact';
   actor: string;
   timestamp: string;
   origin: OpportunityActionOrigin;
   reason: string;
   state: OpportunityActionState;
   replacementActionId: string | null;
+  contactType?: CommercialManualContactType;
+  occurredAt?: string;
+  note?: string | null;
+  resultCode?: CommercialManualContactResultCode;
+  resultLabel?: string;
+  countsAsFollowUp?: boolean;
+  source?: 'operator_statement';
+  continuationType?: CommercialManualContactContinuationType;
+  successorActionId?: string | null;
+  closeReason?: string | null;
 }
 
 export class CommercialQueueApiError extends Error {
@@ -149,6 +199,16 @@ const STATES = ['active', 'completed', 'cancelled', 'superseded'] as const;
 const SCHEDULE_TYPES = ['date_only', 'timed'] as const;
 const DUE_STATUSES = ['upcoming', 'today', 'overdue', 'closed'] as const;
 const FILTERS = ['active', 'overdue', 'today', 'scheduled', 'closed'] as const;
+const MANUAL_CONTACT_TYPES = ['phone_call', 'external_conversation'] as const;
+const MANUAL_CONTACT_RESULTS = [
+  'follow_up_agreed',
+  'interested',
+  'not_interested',
+  'no_response',
+  'wrong_contact',
+  'other',
+] as const;
+const MANUAL_CONTACT_CONTINUATIONS = ['successor', 'wait', 'close'] as const;
 const ISO_TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -192,7 +252,32 @@ function optionalIdentifier(value: unknown): string | null {
 
 function timestamp(value: unknown): string {
   const result = text(value, 80);
-  if (!ISO_TIMESTAMP.test(result) || Number.isNaN(Date.parse(result))) invalidResponse();
+  const match = ISO_TIMESTAMP.exec(result);
+  if (!match) invalidResponse();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const daysInMonth =
+    month === 2
+      ? year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+        ? 29
+        : 28
+      : [4, 6, 9, 11].includes(month)
+        ? 30
+        : 31;
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth ||
+    Number(match[4]) > 23 ||
+    Number(match[5]) > 59 ||
+    Number(match[6]) > 59 ||
+    (match[7] !== 'Z' && (Number(match[9]) > 23 || Number(match[10]) > 59)) ||
+    Number.isNaN(Date.parse(result))
+  ) {
+    invalidResponse();
+  }
   return result;
 }
 
@@ -243,7 +328,10 @@ function parseProposal(value: unknown): CommercialQueueProposal {
   };
 }
 
-function parseContactContext(value: unknown, record: Record<string, unknown>): CommercialQueueContactContext {
+function parseContactContext(
+  value: unknown,
+  record: Record<string, unknown>
+): CommercialQueueContactContext {
   const source = value === undefined ? record : asObject(value);
   const status = source.status;
   const normalizedStatus: CommercialQueueContactContextStatus =
@@ -255,8 +343,7 @@ function parseContactContext(value: unknown, record: Record<string, unknown>): C
       source.last_contact_at === null || source.last_contact_at === undefined
         ? null
         : timestamp(source.last_contact_at),
-    lastContactDirection:
-      direction === 'inbound' || direction === 'outbound' ? direction : null,
+    lastContactDirection: direction === 'inbound' || direction === 'outbound' ? direction : null,
     blockers: Array.isArray(source.blockers)
       ? source.blockers.map((entry) => {
           const blocker = asObject(entry);
@@ -286,14 +373,11 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     dueDate: optionalDate(record.due_date),
     dueTime: optionalTime(record.due_time),
     scheduleType:
-      record.schedule_type === undefined
-        ? 'timed'
-        : member(record.schedule_type, SCHEDULE_TYPES),
+      record.schedule_type === undefined ? 'timed' : member(record.schedule_type, SCHEDULE_TYPES),
     dueStatus:
       record.due_status === undefined ? 'upcoming' : member(record.due_status, DUE_STATUSES),
     version: optionalNumber(record.version, 1),
-    actor:
-      typeof record.actor === 'string' && record.actor.trim() ? record.actor : 'legacy-system',
+    actor: typeof record.actor === 'string' && record.actor.trim() ? record.actor : 'legacy-system',
     isUrgent: record.is_urgent === true,
     priority: record.priority === undefined ? 8 : optionalNumber(record.priority, 8),
     opportunityStatus: optionalText(record.opportunity_status, 32) || '',
@@ -413,6 +497,27 @@ function parseCommandResult(value: unknown): CommercialActionCommandResult {
   };
 }
 
+function parseManualContactResult(value: unknown): CommercialManualContactResult {
+  const record = asObject(value);
+  const base = parseCommandResult(record);
+  if (record.counts_as_follow_up !== true && record.counts_as_follow_up !== false) {
+    invalidResponse();
+  }
+  if (record.source !== 'operator_statement') invalidResponse();
+  return {
+    ...base,
+    eventId: text(record.event_id, 255),
+    commandId: text(record.command_id, 255),
+    contactType: member(record.contact_type, MANUAL_CONTACT_TYPES),
+    occurredAt: timestamp(record.occurred_at),
+    note: optionalText(record.note, 4000),
+    resultCode: member(record.result_code, MANUAL_CONTACT_RESULTS),
+    countsAsFollowUp: record.counts_as_follow_up,
+    continuationType: member(record.continuation_type, MANUAL_CONTACT_CONTINUATIONS),
+    source: 'operator_statement',
+  };
+}
+
 async function sendActionBody(payload: Record<string, unknown>): Promise<unknown> {
   const response = await fetch('/api/commercial-queue', {
     method: 'POST',
@@ -429,7 +534,9 @@ async function sendActionBody(payload: Record<string, unknown>): Promise<unknown
   return body;
 }
 
-async function sendAction(payload: Record<string, unknown>): Promise<CommercialActionCommandResult> {
+async function sendAction(
+  payload: Record<string, unknown>
+): Promise<CommercialActionCommandResult> {
   return parseCommandResult(await sendActionBody(payload));
 }
 
@@ -474,14 +581,16 @@ export type CommercialActionCompletion =
   | { closeReason: string };
 
 export function completeCommercialAction(
-  input:
-    & { actionId: string; expectedVersion: number }
-    & (CommercialActionCompletion | { outcome: CommercialActionCompletion })
+  input: { actionId: string; expectedVersion: number } & (
+    | CommercialActionCompletion
+    | { outcome: CommercialActionCompletion }
+  )
 ): Promise<CommercialActionCommandResult> {
   const selected = 'outcome' in input ? input.outcome : input;
-  const outcome = 'successor' in selected
-    ? { successor: schedulePayload(selected.successor) }
-    : { close: { reason: selected.closeReason } };
+  const outcome =
+    'successor' in selected
+      ? { successor: schedulePayload(selected.successor) }
+      : { close: { reason: selected.closeReason } };
   return sendAction({
     command: 'complete',
     action_id: input.actionId,
@@ -490,12 +599,67 @@ export function completeCommercialAction(
   });
 }
 
+function manualContactPayload(input: CommercialManualContactInput): Record<string, unknown> {
+  const continuation =
+    input.continuation.type === 'close'
+      ? { type: 'close', reason: input.continuation.closeReason }
+      : {
+          type: input.continuation.type,
+          schedule: schedulePayload(input.continuation.schedule),
+        };
+  return {
+    command: 'manual_contact',
+    command_id: input.commandId,
+    opportunity_id: input.opportunityId,
+    action_id: input.actionId,
+    expected_version: input.expectedVersion,
+    contact_type: input.contactType,
+    occurred_at: input.occurredAt,
+    note: input.note,
+    result_code: input.resultCode,
+    counts_as_follow_up: input.countsAsFollowUp,
+    continuation,
+  };
+}
+
+export function recordManualContact(
+  input: CommercialManualContactInput
+): Promise<CommercialManualContactResult> {
+  return sendActionBody(manualContactPayload(input)).then(parseManualContactResult);
+}
+
 function parseHistoryEntry(value: unknown): CommercialActionHistoryEntry {
   const record = asObject(value);
+  const type = member(record.type, [
+    'created',
+    'rescheduled',
+    'completed',
+    'replaced',
+    'manual_contact',
+  ] as const);
+  const manual = type === 'manual_contact';
+  const contactType =
+    record.contact_type === undefined
+      ? undefined
+      : member(record.contact_type, MANUAL_CONTACT_TYPES);
+  const resultCode =
+    record.result_code === undefined
+      ? undefined
+      : member(record.result_code, MANUAL_CONTACT_RESULTS);
+  const continuationType =
+    record.continuation_type === undefined
+      ? undefined
+      : member(record.continuation_type, MANUAL_CONTACT_CONTINUATIONS);
+  if (
+    manual &&
+    (record.source !== 'operator_statement' || !contactType || !resultCode || !continuationType)
+  ) {
+    invalidResponse();
+  }
   return {
     eventId: text(record.event_id, 255),
     actionId: text(record.action_id, 255),
-    type: member(record.type, ['created', 'rescheduled', 'completed', 'replaced'] as const),
+    type,
     actor: text(record.actor, 128),
     timestamp: timestamp(record.timestamp),
     origin: member(record.origin, ORIGINS),
@@ -505,6 +669,26 @@ function parseHistoryEntry(value: unknown): CommercialActionHistoryEntry {
       record.replacement_action_id === null || record.replacement_action_id === undefined
         ? null
         : text(record.replacement_action_id, 255),
+    ...(manual
+      ? {
+          contactType,
+          occurredAt: timestamp(record.occurred_at),
+          note: optionalText(record.note, 4000),
+          resultCode,
+          resultLabel: text(record.result_label, 255),
+          countsAsFollowUp:
+            record.counts_as_follow_up === true || record.counts_as_follow_up === false
+              ? record.counts_as_follow_up
+              : invalidResponse(),
+          source: 'operator_statement' as const,
+          continuationType,
+          successorActionId:
+            record.successor_action_id === null || record.successor_action_id === undefined
+              ? null
+              : text(record.successor_action_id, 255),
+          closeReason: optionalText(record.close_reason, 500),
+        }
+      : {}),
   };
 }
 

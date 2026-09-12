@@ -867,6 +867,79 @@ export const opportunityNextActions = pgTable(
   ]
 );
 
+/**
+ * Immutable operator statements about commercial contacts.  This is not a
+ * provider event: it records what the operator declared happened and keeps
+ * the command key/fingerprint needed to make retries safe.
+ */
+export const manualContactEvents = pgTable(
+  'manual_contact_events',
+  {
+    id: uuid('id').primaryKey(),
+    commandId: varchar('command_id', { length: 255 }).notNull(),
+    commandFingerprint: varchar('command_fingerprint', { length: 64 }).notNull(),
+    opportunityId: uuid('opportunity_id')
+      .notNull()
+      .references(() => crmDeals.id, { onDelete: 'restrict' }),
+    actionId: uuid('action_id')
+      .notNull()
+      .references(() => opportunityNextActions.id, { onDelete: 'restrict' }),
+    contactType: varchar('contact_type', { length: 32 }).notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    note: text('note'),
+    resultCode: varchar('result_code', { length: 32 }).notNull(),
+    countsAsFollowUp: boolean('counts_as_follow_up').notNull().default(false),
+    source: varchar('source', { length: 32 }).notNull().default('operator_statement'),
+    actor: varchar('actor', { length: 128 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    continuationType: varchar('continuation_type', { length: 16 }).notNull(),
+    successorActionId: uuid('successor_action_id').references(() => opportunityNextActions.id, {
+      onDelete: 'restrict',
+    }),
+    closeReason: varchar('close_reason', { length: 500 }),
+    resultVersion: integer('result_version').notNull(),
+    closed: boolean('closed').notNull().default(false),
+  },
+  (table) => [
+    uniqueIndex('manual_contact_events_command_id_unique').on(table.commandId),
+    index('manual_contact_events_opportunity_created_idx').on(table.opportunityId, table.createdAt),
+    index('manual_contact_events_action_idx').on(table.actionId),
+    check(
+      'manual_contact_events_command_id_not_blank_check',
+      sql`char_length(btrim(${table.commandId})) > 0`
+    ),
+    check(
+      'manual_contact_events_command_fingerprint_check',
+      sql`${table.commandFingerprint} ~ '^[0-9a-f]{64}$'`
+    ),
+    check(
+      'manual_contact_events_contact_type_check',
+      sql`${table.contactType} IN ('phone_call', 'external_conversation')`
+    ),
+    check(
+      'manual_contact_events_result_code_check',
+      sql`${table.resultCode} IN ('follow_up_agreed', 'interested', 'not_interested', 'no_response', 'wrong_contact', 'other')`
+    ),
+    check(
+      'manual_contact_events_source_check',
+      sql`${table.source} = 'operator_statement'`
+    ),
+    check(
+      'manual_contact_events_continuation_check',
+      sql`${table.continuationType} IN ('successor', 'wait', 'close')`
+    ),
+    check(
+      'manual_contact_events_continuation_consistency_check',
+      sql`(
+        (${table.continuationType} IN ('successor', 'wait') AND ${table.successorActionId} IS NOT NULL AND ${table.closeReason} IS NULL AND ${table.closed} = false)
+        OR (${table.continuationType} = 'close' AND ${table.successorActionId} IS NULL AND char_length(btrim(${table.closeReason})) > 0 AND ${table.closed} = true)
+      )`
+    ),
+    check('manual_contact_events_note_length_check', sql`${table.note} IS NULL OR char_length(${table.note}) <= 4000`),
+    check('manual_contact_events_result_version_check', sql`${table.resultVersion} > 0`),
+  ]
+);
+
 export const salesOrderSequences = pgTable(
   'sales_order_sequences',
   {

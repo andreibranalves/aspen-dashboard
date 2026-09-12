@@ -69,6 +69,9 @@ function repository(
 ): OpportunityActionRepository {
   return {
     listActive: async () => ({ data: [item()], total: 1, page: 1, pageSize: 25 }),
+    recordManualContact: async () => {
+      throw new Error('manual contact is not part of this test');
+    },
     setUrgency: async () => ({
       opportunityId: resultOpportunityId,
       actionId: resultActionId,

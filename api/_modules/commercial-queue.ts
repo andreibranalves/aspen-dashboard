@@ -5,10 +5,15 @@ import {
   createPostgresOpportunityActionRepository,
   OpportunityActionInputError,
   OpportunityActionRepositoryError,
+  isStrictIsoTimestamp,
   type OpportunityActionCommandResult,
   type OpportunityActionHistoryEntry,
   type OpportunityActionRepository,
   type OpportunityActionScheduleInput,
+  type ManualContactCommandResult,
+  type ManualContactContinuationType,
+  type ManualContactResultCode,
+  type ManualContactType,
   type OpportunityQueueFilter,
   type OpportunityQueueItem,
 } from '../_infrastructure/db/repositories/opportunity-actions-repository.js';
@@ -41,6 +46,15 @@ const KIND_LABELS: Record<string, string> = {
   customer_contact: 'Contato com cliente',
   agreed_commitment: 'Compromisso acordado',
   review: 'Revisão',
+};
+
+const MANUAL_CONTACT_RESULT_LABELS: Record<string, string> = {
+  follow_up_agreed: 'Próximo passo combinado',
+  interested: 'Interessado',
+  not_interested: 'Sem interesse',
+  no_response: 'Sem resposta',
+  wrong_contact: 'Contato incorreto',
+  other: 'Outro resultado',
 };
 
 const QUEUE_FILTERS: readonly OpportunityQueueFilter[] = [
@@ -105,7 +119,10 @@ function optionalTime(payload: Record<string, unknown>, name = 'due_time'): stri
 function queueFilter(value: unknown): OpportunityQueueFilter {
   const candidate = value === undefined || value === '' ? 'active' : value;
   if (candidate === 'all') return 'active';
-  if (typeof candidate !== 'string' || !QUEUE_FILTERS.includes(candidate as OpportunityQueueFilter)) {
+  if (
+    typeof candidate !== 'string' ||
+    !QUEUE_FILTERS.includes(candidate as OpportunityQueueFilter)
+  ) {
     throw new HandlerInputError('Filtro da fila inválido.');
   }
   return candidate as OpportunityQueueFilter;
@@ -132,14 +149,77 @@ function scheduleFrom(
 }
 
 function scheduleFromSuccessor(payload: Record<string, unknown>): OpportunityActionScheduleInput {
-  if (!isRecord(payload.successor)) throw new HandlerInputError('A próxima ação sucessora é inválida.');
+  if (!isRecord(payload.successor))
+    throw new HandlerInputError('A próxima ação sucessora é inválida.');
   return scheduleFrom(payload, payload.successor);
 }
 
 function closeFrom(payload: Record<string, unknown>): { reason: string } | undefined {
   if (payload.close === undefined) return undefined;
-  if (!isRecord(payload.close)) throw new HandlerInputError('O fechamento da oportunidade é inválido.');
+  if (!isRecord(payload.close))
+    throw new HandlerInputError('O fechamento da oportunidade é inválido.');
   return { reason: textField(payload.close, 'reason') };
+}
+
+function manualContactContinuationFrom(payload: Record<string, unknown>): {
+  type: ManualContactContinuationType;
+  schedule?: OpportunityActionScheduleInput;
+  reason?: string;
+} {
+  const value = payload.continuation;
+  if (!isRecord(value)) {
+    throw new HandlerInputError(
+      'O contato manual exige uma continuidade: próxima ação, espera ou fechamento.'
+    );
+  }
+  const type = value.type;
+  if (type !== 'successor' && type !== 'wait' && type !== 'close') {
+    throw new HandlerInputError('A continuidade do contato manual é inválida.');
+  }
+  if (type === 'close') {
+    const reason = value.reason ?? value.close_reason;
+    if (typeof reason !== 'string' || !reason.trim()) {
+      throw new HandlerInputError('O motivo do fechamento é obrigatório.');
+    }
+    return { type, reason: reason.trim() };
+  }
+  const source = isRecord(value.schedule) ? value.schedule : value;
+  return { type, schedule: scheduleFrom(payload, source) };
+}
+
+function manualContactFrom(payload: Record<string, unknown>) {
+  const continuation = manualContactContinuationFrom(payload);
+  const contactType = textField(payload, 'contact_type') as ManualContactType;
+  const resultCode = textField(payload, 'result_code') as ManualContactResultCode;
+  const occurredAt = textField(payload, 'occurred_at');
+  if (!isStrictIsoTimestamp(occurredAt)) {
+    throw new HandlerInputError('A data e hora do contato são inválidas.');
+  }
+  const commandId = textField(payload, 'command_id');
+  const counted = payload.counts_as_follow_up;
+  if (typeof counted !== 'boolean') {
+    throw new HandlerInputError('A marcação de follow-up concluído é obrigatória.');
+  }
+  const note = payload.note;
+  if (note !== undefined && note !== null && typeof note !== 'string') {
+    throw new HandlerInputError('A observação do contato é inválida.');
+  }
+  return {
+    commandId,
+    opportunityId: textField(payload, 'opportunity_id'),
+    actionId: textField(payload, 'action_id'),
+    expectedVersion: expectedVersion(payload),
+    contactType,
+    occurredAt,
+    note: note as string | null | undefined,
+    resultCode,
+    countsAsFollowUp: counted,
+    actor: AUTHENTICATED_OPERATOR,
+    continuation:
+      continuation.type === 'close'
+        ? { type: 'close' as const, reason: continuation.reason! }
+        : { type: continuation.type, schedule: continuation.schedule! },
+  };
 }
 
 function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
@@ -230,8 +310,24 @@ function publicCommand(result: OpportunityActionCommandResult): Record<string, u
   };
 }
 
-function publicHistory(entry: OpportunityActionHistoryEntry): Record<string, unknown> {
+function publicManualContact(result: ManualContactCommandResult): Record<string, unknown> {
   return {
+    ...publicCommand(result),
+    event_id: result.eventId,
+    command_id: result.commandId,
+    contact_type: result.contactType,
+    occurred_at: result.occurredAt,
+    note: result.note,
+    result_code: result.resultCode,
+    result_label: MANUAL_CONTACT_RESULT_LABELS[result.resultCode] || result.resultCode,
+    counts_as_follow_up: result.countsAsFollowUp,
+    continuation_type: result.continuationType,
+    source: result.source,
+  };
+}
+
+function publicHistory(entry: OpportunityActionHistoryEntry): Record<string, unknown> {
+  const result: Record<string, unknown> = {
     event_id: entry.eventId,
     action_id: entry.actionId,
     type: entry.type,
@@ -242,13 +338,23 @@ function publicHistory(entry: OpportunityActionHistoryEntry): Record<string, unk
     state: entry.state,
     replacement_action_id: entry.replacementActionId,
   };
+  if (entry.type === 'manual_contact') {
+    result.contact_type = entry.contactType;
+    result.occurred_at = entry.occurredAt;
+    result.note = entry.note ?? null;
+    result.result_code = entry.resultCode;
+    result.result_label = MANUAL_CONTACT_RESULT_LABELS[entry.resultCode || ''] || entry.resultCode;
+    result.counts_as_follow_up = entry.countsAsFollowUp;
+    result.source = entry.source;
+    result.continuation_type = entry.continuationType;
+    result.successor_action_id = entry.successorActionId ?? null;
+    result.close_reason = entry.closeReason ?? null;
+  }
+  return result;
 }
 
 function mapError(error: unknown, operation: 'load' | 'update'): FunctionResult {
-  if (
-    error instanceof HandlerInputError ||
-    error instanceof OpportunityActionInputError
-  ) {
+  if (error instanceof HandlerInputError || error instanceof OpportunityActionInputError) {
     return json(400, { error: error.message });
   }
   if (error instanceof ActionNotFoundError) return json(404, { error: error.message });
@@ -312,7 +418,8 @@ export function createCommercialQueueHandler(
 
       const payload = parseBody(event.body);
       const command = payload.command ?? payload.operation;
-      if (typeof command !== 'string') throw new HandlerInputError('Comando da ação é obrigatório.');
+      if (typeof command !== 'string')
+        throw new HandlerInputError('Comando da ação é obrigatório.');
       const actor = AUTHENTICATED_OPERATOR;
 
       if (command === 'create' || command === 'replace') {
@@ -327,7 +434,10 @@ export function createCommercialQueueHandler(
             typeof payload.expected_version === 'number' ? payload.expected_version : undefined,
         };
         const created = await repository.createAction(input);
-        return json(command === 'create' && !input.replaceActionId ? 201 : 200, publicCommand(created));
+        return json(
+          command === 'create' && !input.replaceActionId ? 201 : 200,
+          publicCommand(created)
+        );
       }
 
       if (command === 'reschedule') {
@@ -341,7 +451,8 @@ export function createCommercialQueueHandler(
       }
 
       if (command === 'complete') {
-        const successor = payload.successor === undefined ? undefined : scheduleFromSuccessor(payload);
+        const successor =
+          payload.successor === undefined ? undefined : scheduleFromSuccessor(payload);
         const close = closeFrom(payload);
         if ((successor === undefined) === (close === undefined)) {
           throw new HandlerInputError(
@@ -356,6 +467,11 @@ export function createCommercialQueueHandler(
           close,
         });
         return json(200, publicCommand(completed));
+      }
+
+      if (command === 'manual_contact' || command === 'record_manual_contact') {
+        const recorded = await repository.recordManualContact(manualContactFrom(payload));
+        return json(200, publicManualContact(recorded));
       }
 
       if (command === 'set_urgency' || command === 'set_urgent') {
