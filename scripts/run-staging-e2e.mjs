@@ -14,6 +14,7 @@
 
 import { spawnSync } from 'node:child_process';
 import {
+  fillFromExternalConfig,
   formatOperationEnvStatus,
   inspectOperationEnv,
 } from './lib/operation-env.mjs';
@@ -25,6 +26,9 @@ function fail(message) {
 }
 
 // 1. Pré-voo redigido por operação (origem externa explícita).
+// Carrega os mesmos valores que acabamos de inspecionar antes de criar o
+// processo filho; `inspectOperationEnv` sozinho não altera `process.env`.
+fillFromExternalConfig();
 const status = inspectOperationEnv('staging-e2e');
 process.stdout.write(formatOperationEnvStatus(status));
 if (!status.ok) {
