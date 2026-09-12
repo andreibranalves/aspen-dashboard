@@ -1,7 +1,8 @@
 ## Risk level
 
-- [ ] FAST (padrão)
-- [ ] CRITICAL — justifique o gatilho: perda destrutiva/irreversível de dados, envio real externo, valores oficialmente emitidos, auth/permissões, concorrência/idempotência
+SHIP (padrão) / SAFE / CRITICAL — justificativa em uma linha:
+
+<!-- Consequência concreta do diff. Fonte normativa: docs/release-lanes.md -->
 
 ## Objetivo
 
@@ -25,4 +26,4 @@
 
 ## Validação esperada
 
-<!-- Ex.: verify:fast + testes focados + smoke da jornada alterada (FAST); invariantes, PostgreSQL descartável, E2E das jornadas afetadas e revisão independente (CRITICAL) -->
+<!-- Escolha pelo risco; ver docs/release-lanes.md. Ex.: verify:fast; testes focados das garantias alteradas; PostgreSQL descartável/E2E somente quando a garantia depender; review leve ou orientado ao risco -->

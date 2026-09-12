@@ -56,10 +56,4 @@ Ao alterar uma boundary, atualize este documento e os guards arquiteturais relac
 
 ## Verificação
 
-Durante o desenvolvimento (lane FAST):
-
-```bash
-npm run verify:fast
-```
-
-A verificação exigida para concluir depende da lane da mudança, conforme definido na fonte normativa [`docs/release-lanes.md`](docs/release-lanes.md). FAST usa somente `verify:fast` mais testes focados; `verify:full` é exigido pela lane RELEASE ou por mudanças CRITICAL, não por toda alteração reversível.
+A verificação exigida para concluir depende da classificação de risco da mudança, conforme a fonte normativa [`docs/release-lanes.md`](docs/release-lanes.md), que escolhe os checks pelo risco e reserva a suíte ampla para um `RELEASE` justificado.
