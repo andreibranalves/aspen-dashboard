@@ -761,6 +761,7 @@ export const crmDeals = pgTable(
     followUpStage: integer('follow_up_stage').notNull().default(0),
     nextStep: varchar('next_step', { length: 500 }),
     demandSummary: varchar('demand_summary', { length: 4000 }),
+    isUrgent: boolean('is_urgent').notNull().default(false),
     lostReason: varchar('lost_reason', { length: 500 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

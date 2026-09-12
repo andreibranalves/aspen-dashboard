@@ -26,6 +26,7 @@ import {
   crmDeals,
   opportunityNextActions,
   quoteLeads,
+  whatsappContactActivity,
 } from '../../api/_infrastructure/db/schema.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
@@ -793,6 +794,325 @@ test(
       assert.equal(page.total, 1);
       assert.equal(page.page, 1);
       assert.equal(page.data.length, 1);
+    } finally {
+      await clearIngestedLeads([record.id]);
+    }
+  }
+);
+
+test(
+  'commercial queue prioritizes urgency and context before pagination and supports its cuts',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const clock = { current: NOW };
+    const leads = leadRepository(clock);
+    const created: string[] = [];
+    const seed = async (label: string, dueAt: string) => {
+      const record = await leads.upsert(
+        leadInput(`conv-queue-priority-${label}`, { pedidoTexto: `Demanda ${label}` })
+      );
+      created.push(record.id);
+      await db
+        .update(opportunityNextActions)
+        .set({
+          dueAt: new Date(dueAt),
+          dueDate: dueAt.slice(0, 10),
+          dueTime: '09:00',
+        })
+        .where(eq(opportunityNextActions.opportunityId, record.crmDealId!));
+      return record;
+    };
+
+    const urgent = await seed('urgente-futuro', '2026-09-20T12:00:00.000Z');
+    const agreed = await seed('compromisso-atrasado', '2026-09-01T12:00:00.000Z');
+    const awaiting = await seed('aguarda-resposta', '2026-09-20T12:00:00.000Z');
+    const firstContact = await seed('primeiro-atendimento-atrasado', '2026-09-02T12:00:00.000Z');
+    const otherOverdue = await seed('retorno-atrasado', '2026-09-03T12:00:00.000Z');
+    const today = await seed('hoje', '2026-09-11T15:00:00.000Z');
+    const scheduled = await seed('agendado', '2026-09-22T12:00:00.000Z');
+    const records = [urgent, agreed, awaiting, firstContact, otherOverdue, today, scheduled];
+
+    try {
+      await db
+        .update(crmDeals)
+        .set({ isUrgent: true })
+        .where(eq(crmDeals.id, urgent.crmDealId!));
+      await db
+        .update(opportunityNextActions)
+        .set({ kind: 'agreed_commitment', reason: 'Compromisso confirmado' })
+        .where(eq(opportunityNextActions.opportunityId, agreed.crmDealId!));
+      await db
+        .update(opportunityNextActions)
+        .set({ kind: 'review', reason: 'Retorno comercial' })
+        .where(eq(opportunityNextActions.opportunityId, otherOverdue.crmDealId!));
+      for (const record of [today, scheduled]) {
+        await db
+          .update(opportunityNextActions)
+          .set({ kind: 'review', reason: 'Retorno comercial' })
+          .where(eq(opportunityNextActions.opportunityId, record.crmDealId!));
+      }
+      await db.insert(whatsappContactActivity).values({
+        id: randomUUID(),
+        instance: 'priority-test',
+        providerConversationId: 'conv-queue-priority-aguarda-resposta',
+        lastInboundAt: new Date('2026-09-11T11:30:00.000Z'),
+        lastInboundProviderMessageId: 'inbound-priority',
+        lastOutboundAt: new Date('2026-09-10T12:00:00.000Z'),
+        lastOutboundProviderMessageId: 'outbound-priority',
+        canonicalPhone: '5521999900000',
+        identityStatus: 'verified',
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+
+      const queue = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date(clock.current),
+      });
+      const firstPage = await queue.listActive({ page: 1, pageSize: 4 });
+      assert.equal(firstPage.total, 7);
+      assert.deepEqual(firstPage.data.map((row) => row.demandSummary), [
+        'Demanda urgente-futuro',
+        'Demanda compromisso-atrasado',
+        'Demanda aguarda-resposta',
+        'Demanda primeiro-atendimento-atrasado',
+      ]);
+      const responseRow = firstPage.data[2];
+      assert.equal(responseRow.contactContext.status, 'available');
+      assert.equal(responseRow.contactContext.lastContactAt, '2026-09-11T11:30:00.000Z');
+      assert.equal(responseRow.contactContext.lastContactDirection, 'inbound');
+      assert.equal(responseRow.whatsappHref, 'https://wa.me/5521999990000');
+
+      const ordered = await queue.listActive({ pageSize: 100 });
+      assert.deepEqual(ordered.data.map((row) => row.demandSummary), [
+        'Demanda urgente-futuro',
+        'Demanda compromisso-atrasado',
+        'Demanda aguarda-resposta',
+        'Demanda primeiro-atendimento-atrasado',
+        'Demanda retorno-atrasado',
+        'Demanda hoje',
+        'Demanda agendado',
+      ]);
+
+      const overdue = await queue.listActive({ filter: 'overdue', pageSize: 100 });
+      assert.deepEqual(overdue.data.map((row) => row.demandSummary), [
+        'Demanda compromisso-atrasado',
+        'Demanda primeiro-atendimento-atrasado',
+        'Demanda retorno-atrasado',
+      ]);
+      assert.equal((await queue.listActive({ filter: 'today', pageSize: 100 })).total, 1);
+      assert.equal((await queue.listActive({ filter: 'scheduled', pageSize: 100 })).total, 3);
+      assert.equal((await queue.listActive({ filter: 'closed', pageSize: 100 })).total, 0);
+
+      for (const record of records) {
+        await sql`DELETE FROM opportunity_next_actions WHERE opportunity_id = ${record.crmDealId!}::uuid`;
+        await sql`UPDATE quote_leads SET crm_deal_id = NULL WHERE id = ${record.id}::uuid`;
+        await sql`DELETE FROM crm_deals WHERE id = ${record.crmDealId!}::uuid`;
+        await sql`DELETE FROM quote_leads WHERE id = ${record.id}::uuid`;
+      }
+      await sql`DELETE FROM whatsapp_contact_activity WHERE instance = 'priority-test'`;
+      created.length = 0;
+    } finally {
+      for (const leadId of created) await clearIngestedLeads([leadId]);
+      await sql`DELETE FROM whatsapp_contact_activity WHERE instance = 'priority-test'`;
+    }
+  }
+);
+
+test(
+  'ambiguous inbound WhatsApp identity stays in review and cannot prioritize a response',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const clock = { current: NOW };
+    const leads = leadRepository(clock);
+    const records: Array<{ leadId: string; opportunityId: string; externalId: string }> = [];
+    const instance = 'identity-review-test';
+
+    try {
+      for (const identityStatus of ['unresolved', 'conflict'] as const) {
+        const externalId = `conv-queue-identity-${identityStatus}`;
+        const record = await leads.upsert(
+          leadInput(externalId, { pedidoTexto: `Identidade ${identityStatus}` })
+        );
+        records.push({ leadId: record.id, opportunityId: record.crmDealId!, externalId });
+        await db
+          .update(opportunityNextActions)
+          .set({
+            kind: 'customer_contact',
+            reason: 'Aguardar resposta',
+            dueAt: new Date('2026-09-20T12:00:00.000Z'),
+            dueDate: '2026-09-20',
+            dueTime: '09:00',
+          })
+          .where(eq(opportunityNextActions.opportunityId, record.crmDealId!));
+        await db.insert(whatsappContactActivity).values({
+          id: randomUUID(),
+          instance,
+          providerConversationId: externalId,
+          lastInboundAt: new Date('2026-09-11T11:30:00.000Z'),
+          lastInboundProviderMessageId: `${identityStatus}-inbound`,
+          lastOutboundAt: null,
+          lastOutboundProviderMessageId: null,
+          canonicalPhone: '5521999990000',
+          identityStatus,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
+
+      const rows = await createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date(clock.current),
+      }).listActive({ pageSize: 100 });
+
+      assert.equal(rows.total, 2);
+      for (const record of records) {
+        const row = rows.data.find((item) => item.opportunityId === record.opportunityId);
+        assert.ok(row);
+        assert.equal(row.contactContext.status, 'review');
+        assert.equal(row.contactContext.lastContactAt, null);
+        assert.equal(row.contactContext.lastContactDirection, null);
+        assert.equal(row.priority, 7, 'an ambiguous inbound activity cannot be priority 3');
+      }
+    } finally {
+      await sql`DELETE FROM whatsapp_contact_activity WHERE instance = ${instance}`;
+      for (const record of records) await clearIngestedLeads([record.leadId]);
+    }
+  }
+);
+
+test(
+  'closed queue keeps one latest action per terminal opportunity and exposes terminal context',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const clock = { current: NOW };
+    const leads = leadRepository(clock);
+    const records: Array<{
+      leadId: string;
+      opportunityId: string;
+      successorActionId: string;
+      terminalAt: Date;
+      terminalReason: string;
+    }> = [];
+    const queue = createPostgresOpportunityActionRepository(() => db, {
+      now: () => new Date(clock.current),
+    });
+
+    try {
+      for (const [index, terminalAt] of [
+        new Date('2026-09-11T14:00:00.000Z'),
+        new Date('2026-09-11T16:00:00.000Z'),
+      ].entries()) {
+        const record = await leads.upsert(
+          leadInput(`conv-queue-closed-${index + 1}`, {
+            pedidoTexto: `Oportunidade encerrada ${index + 1}`,
+          })
+        );
+        const [initial] = await db
+          .select()
+          .from(opportunityNextActions)
+          .where(eq(opportunityNextActions.opportunityId, record.crmDealId!));
+        const successor = await queue.completeAction({
+          actionId: initial.id,
+          expectedVersion: initial.version,
+          actor: 'authenticated-operator',
+          now: new Date(terminalAt.getTime() - 60 * 60 * 1000),
+          successor: {
+            kind: 'review',
+            dueDate: '2026-09-20',
+            dueTime: '09:00',
+            reason: `Ação ativa após fechamento ${index + 1}`,
+          },
+        });
+        assert.ok(successor.successor);
+        const successorActionId = successor.successor.actionId;
+        await db
+          .update(opportunityNextActions)
+          .set({ updatedAt: new Date(terminalAt.getTime() - 30 * 60 * 1000) })
+          .where(eq(opportunityNextActions.id, successorActionId));
+        const terminalReason = `Motivo terminal ${index + 1}`;
+        await db
+          .update(crmDeals)
+          .set({ status: 'Perdido', lostReason: terminalReason, updatedAt: terminalAt })
+          .where(eq(crmDeals.id, record.crmDealId!));
+        records.push({
+          leadId: record.id,
+          opportunityId: record.crmDealId!,
+          successorActionId,
+          terminalAt,
+          terminalReason,
+        });
+      }
+
+      const firstPage = await queue.listActive({ filter: 'closed', page: 1, pageSize: 1 });
+      const secondPage = await queue.listActive({ filter: 'closed', page: 2, pageSize: 1 });
+      const served = [...firstPage.data, ...secondPage.data];
+      assert.equal(firstPage.total, 2);
+      assert.equal(secondPage.total, 2);
+      assert.equal(firstPage.data.length, 1);
+      assert.equal(secondPage.data.length, 1);
+      assert.equal(new Set(served.map((row) => row.opportunityId)).size, 2);
+
+      for (const record of records) {
+        const row = served.find((item) => item.opportunityId === record.opportunityId);
+        assert.ok(row);
+        assert.equal(row.actionId, record.successorActionId);
+        assert.equal(row.state, 'active');
+        assert.equal(row.dueStatus, 'closed');
+        assert.equal(row.terminalStatus, 'Perdido');
+        assert.equal(row.terminalReason, record.terminalReason);
+        assert.equal(row.terminalAt, record.terminalAt.toISOString());
+      }
+    } finally {
+      for (const record of records) await clearIngestedLeads([record.leadId]);
+    }
+  }
+);
+
+test(
+  'urgency command requires the current active action and refuses a closed opportunity',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const clock = { current: NOW };
+    const leads = leadRepository(clock);
+    const record = await leads.upsert(leadInput('conv-queue-urgency-command'));
+    try {
+      const [action] = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(eq(opportunityNextActions.opportunityId, record.crmDealId!));
+      const queue = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date(clock.current),
+      });
+      const marked = await queue.setUrgency({
+        opportunityId: record.crmDealId!,
+        actionId: action.id,
+        expectedVersion: action.version,
+        isUrgent: true,
+        actor: 'authenticated-operator',
+      });
+      assert.equal(marked.isUrgent, true);
+      await assert.rejects(
+        () =>
+          queue.setUrgency({
+            opportunityId: record.crmDealId!,
+            actionId: action.id,
+            expectedVersion: action.version + 1,
+            isUrgent: false,
+            actor: 'authenticated-operator',
+          }),
+        /fila mudou/i
+      );
+      await db.update(crmDeals).set({ status: 'Perdido' }).where(eq(crmDeals.id, record.crmDealId!));
+      await assert.rejects(
+        () =>
+          queue.setUrgency({
+            opportunityId: record.crmDealId!,
+            actionId: action.id,
+            expectedVersion: action.version,
+            isUrgent: false,
+            actor: 'authenticated-operator',
+          }),
+        /encerrada/i
+      );
     } finally {
       await clearIngestedLeads([record.id]);
     }

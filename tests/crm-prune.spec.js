@@ -120,7 +120,7 @@ test('reviews and marks stale Kanban deals as Perdido @crm', async ({ page }) =>
     });
   });
 
-  await page.goto('/#/crm');
+  await page.goto('/#/crm?tab=deals');
 
   await expect(page.getByText('(11) 99999-0000', { exact: true })).toBeVisible();
   await expect(page.getByText('Revisar pipeline', { exact: true }).first()).toBeVisible();
@@ -167,7 +167,7 @@ test('moves a deal from the accessible Mover para menu and restores focus @crm',
     });
   });
 
-  await page.goto('/#/crm');
+  await page.goto('/#/crm?tab=deals');
 
   const moveMenu = page.getByRole('combobox', { name: 'Mover para Cliente Antigo' });
   await expect(moveMenu).toHaveValue('Orcamento Enviado');
@@ -215,7 +215,7 @@ test('refetches the server state after a failed deal move @crm', async ({ page }
     });
   });
 
-  await page.goto('/#/crm');
+  await page.goto('/#/crm?tab=deals');
 
   const moveMenu = page.getByRole('combobox', { name: 'Mover para Cliente Antigo' });
   await moveMenu.selectOption('Em Negociacao');
@@ -327,7 +327,7 @@ test('creates, renames, reorders and removes an empty pipeline stage @crm', asyn
     });
   });
 
-  await page.goto('/#/crm');
+  await page.goto('/#/crm?tab=deals');
   await page.getByRole('button', { name: 'Editar etapas' }).click();
   await expect(page.getByRole('dialog', { name: 'Editar etapas do funil' })).toBeVisible();
   await expect(

@@ -6,6 +6,7 @@ import {
   createCommercialAction,
   getCommercialActionHistory,
   rescheduleCommercialAction,
+  setCommercialUrgency,
 } from '../../src/lib/api/commercialQueueApi.ts';
 
 const actionId = '11111111-1111-4111-8111-111111111111';
@@ -126,6 +127,38 @@ test('cliente da fila lê histórico da oportunidade', async () => {
     assert.match(requestedUrl, /commercial-queue/);
     assert.match(requestedUrl, /view=history/);
     assert.match(requestedUrl, /opportunity_id=/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('cliente da fila alterna urgência usando o token da ação ativa', async () => {
+  const originalFetch = globalThis.fetch;
+  let request: { body?: string } | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = { body: String(init?.body || '') };
+    return response({
+      opportunity_id: opportunityId,
+      action_id: actionId,
+      version: 1,
+      is_urgent: true,
+    });
+  };
+  try {
+    const result = await setCommercialUrgency({
+      opportunityId,
+      actionId,
+      expectedVersion: 1,
+      isUrgent: true,
+    });
+    assert.equal(result.isUrgent, true);
+    assert.deepEqual(JSON.parse(request!.body || ''), {
+      command: 'set_urgency',
+      opportunity_id: opportunityId,
+      action_id: actionId,
+      expected_version: 1,
+      is_urgent: true,
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -27,7 +27,7 @@ interface CommercialPageProps {
 }
 
 export default function CommercialPage({ navigate }: CommercialPageProps) {
-  const [tab, setTab] = useHashQueryState<CommercialTab>('tab', 'deals', parseCommercialTab);
+  const [tab, setTab] = useHashQueryState<CommercialTab>('tab', 'queue', parseCommercialTab);
   const [returnView, setReturnView] = useHashQueryState<FollowUpReturnView>(
     'return',
     'unanswered',

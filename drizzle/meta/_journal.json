@@ -288,6 +288,13 @@
       "when": 1789226119149,
       "tag": "0040_opportunity_action_continuity",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789230752157,
+      "tag": "0041_commercial_queue_priority",
+      "breakpoints": true
     }
   ]
 }

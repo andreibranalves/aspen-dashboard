@@ -7,13 +7,28 @@ export type OpportunityActionKind =
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
 export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
 export type OpportunityActionScheduleType = 'date_only' | 'timed';
-export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue';
+export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'closed';
+export type CommercialQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
+export type CommercialQueueContactContextStatus = 'available' | 'unavailable' | 'review';
+export type CommercialQueueContactDirection = 'inbound' | 'outbound' | null;
 
 export interface CommercialQueueProposal {
   quotationId: string;
   businessNumber: string;
   status: string;
   total: string | null;
+}
+
+export interface CommercialQueueBlocker {
+  code: string;
+  label: string;
+}
+
+export interface CommercialQueueContactContext {
+  status: CommercialQueueContactContextStatus;
+  lastContactAt: string | null;
+  lastContactDirection: CommercialQueueContactDirection;
+  blockers: CommercialQueueBlocker[];
 }
 
 export interface CommercialQueueItem {
@@ -33,6 +48,14 @@ export interface CommercialQueueItem {
   dueStatus: OpportunityActionDueStatus;
   version: number;
   actor: string;
+  isUrgent: boolean;
+  priority: number;
+  opportunityStatus: string;
+  terminalStatus: string | null;
+  terminalReason: string | null;
+  terminalAt: string | null;
+  contactContext: CommercialQueueContactContext;
+  whatsappHref: string | null;
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
@@ -53,6 +76,7 @@ export interface CommercialQueuePage {
 export interface CommercialQueueFilters {
   page?: number;
   pageSize?: number;
+  filter?: CommercialQueueFilter;
 }
 
 export interface CommercialActionScheduleInput {
@@ -81,6 +105,13 @@ export interface CommercialActionCommandResult {
     scheduleType: OpportunityActionScheduleType;
     version: number;
   } | null;
+}
+
+export interface CommercialUrgencyResult {
+  opportunityId: string;
+  actionId: string;
+  version: number;
+  isUrgent: boolean;
 }
 
 export interface CommercialActionHistoryEntry {
@@ -116,7 +147,8 @@ const KINDS = [
 const ORIGINS = ['manual', 'automatic', 'event'] as const;
 const STATES = ['active', 'completed', 'cancelled', 'superseded'] as const;
 const SCHEDULE_TYPES = ['date_only', 'timed'] as const;
-const DUE_STATUSES = ['upcoming', 'today', 'overdue'] as const;
+const DUE_STATUSES = ['upcoming', 'today', 'overdue', 'closed'] as const;
+const FILTERS = ['active', 'overdue', 'today', 'scheduled', 'closed'] as const;
 const ISO_TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -211,6 +243,29 @@ function parseProposal(value: unknown): CommercialQueueProposal {
   };
 }
 
+function parseContactContext(value: unknown, record: Record<string, unknown>): CommercialQueueContactContext {
+  const source = value === undefined ? record : asObject(value);
+  const status = source.status;
+  const normalizedStatus: CommercialQueueContactContextStatus =
+    status === 'available' || status === 'review' ? status : 'unavailable';
+  const direction = source.last_contact_direction;
+  return {
+    status: normalizedStatus,
+    lastContactAt:
+      source.last_contact_at === null || source.last_contact_at === undefined
+        ? null
+        : timestamp(source.last_contact_at),
+    lastContactDirection:
+      direction === 'inbound' || direction === 'outbound' ? direction : null,
+    blockers: Array.isArray(source.blockers)
+      ? source.blockers.map((entry) => {
+          const blocker = asObject(entry);
+          return { code: text(blocker.code, 64), label: text(blocker.label, 255) };
+        })
+      : [],
+  };
+}
+
 export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
   const record = asObject(value);
   if (!Array.isArray(record.proposals)) invalidResponse();
@@ -239,6 +294,17 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     version: optionalNumber(record.version, 1),
     actor:
       typeof record.actor === 'string' && record.actor.trim() ? record.actor : 'legacy-system',
+    isUrgent: record.is_urgent === true,
+    priority: record.priority === undefined ? 8 : optionalNumber(record.priority, 8),
+    opportunityStatus: optionalText(record.opportunity_status, 32) || '',
+    terminalStatus: optionalText(record.terminal_status, 32),
+    terminalReason: optionalText(record.terminal_reason, 500),
+    terminalAt:
+      record.terminal_at === null || record.terminal_at === undefined
+        ? null
+        : timestamp(record.terminal_at),
+    contactContext: parseContactContext(record.contact_context, record),
+    whatsappHref: optionalText(record.whatsapp_href, 500),
     demandSummary: optionalText(record.demand_summary),
     contactName: text(record.contact_name, 255),
     contactPhone: optionalText(record.contact_phone, 32),
@@ -274,7 +340,13 @@ export async function listCommercialQueue(
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
     invalidInput('Tamanho da página inválido.');
   }
-  const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  const filter = filters.filter ?? 'active';
+  if (!(FILTERS as readonly string[]).includes(filter)) invalidInput('Filtro inválido.');
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+    filter,
+  });
   const response = await fetch(`/api/commercial-queue?${query.toString()}`, { method: 'GET' });
   const body: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -284,6 +356,31 @@ export async function listCommercialQueue(
     );
   }
   return parseCommercialQueuePage(body);
+}
+
+function parseUrgencyResult(value: unknown): CommercialUrgencyResult {
+  const record = asObject(value);
+  return {
+    opportunityId: text(record.opportunity_id, 255),
+    actionId: text(record.action_id, 255),
+    version: optionalNumber(record.version, 1),
+    isUrgent: record.is_urgent === true,
+  };
+}
+
+export function setCommercialUrgency(input: {
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  isUrgent: boolean;
+}): Promise<CommercialUrgencyResult> {
+  return sendActionBody({
+    command: 'set_urgency',
+    opportunity_id: input.opportunityId,
+    action_id: input.actionId,
+    expected_version: input.expectedVersion,
+    is_urgent: input.isUrgent,
+  }).then(parseUrgencyResult);
 }
 
 function parseCommandResult(value: unknown): CommercialActionCommandResult {
@@ -316,7 +413,7 @@ function parseCommandResult(value: unknown): CommercialActionCommandResult {
   };
 }
 
-async function sendAction(payload: Record<string, unknown>): Promise<CommercialActionCommandResult> {
+async function sendActionBody(payload: Record<string, unknown>): Promise<unknown> {
   const response = await fetch('/api/commercial-queue', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -329,7 +426,11 @@ async function sendAction(payload: Record<string, unknown>): Promise<CommercialA
       response.status
     );
   }
-  return parseCommandResult(body);
+  return body;
+}
+
+async function sendAction(payload: Record<string, unknown>): Promise<CommercialActionCommandResult> {
+  return parseCommandResult(await sendActionBody(payload));
 }
 
 function schedulePayload(input: CommercialActionScheduleInput): Record<string, unknown> {

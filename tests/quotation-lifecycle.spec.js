@@ -1449,7 +1449,7 @@ test('empty local CRM and leads retain loading/error/retry states @quotations @c
       meta: { threshold_days: 30, protect_recent_days: 7, count: 0 },
     })
   );
-  await page.goto('/#/crm');
+  await page.goto('/#/crm?tab=deals');
   await expect(page.getByText('Nenhum negócio no pipeline.', { exact: true })).toBeVisible();
 
   let leadAttempts = 0;
