@@ -355,6 +355,43 @@ test(
 );
 
 test(
+  'aguardando informação é um resultado manual persistível com continuidade única',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const opportunityId = await opportunity();
+    try {
+      const initial = await action(opportunityId);
+      const repository = createPostgresOpportunityActionRepository(() => db);
+      const result = await repository.recordManualContact(
+        contact(opportunityId, initial.actionId, initial.version, {
+          resultCode: 'awaiting_information',
+          countsAsFollowUp: false,
+          continuation: {
+            type: 'wait',
+            schedule: {
+              kind: 'customer_contact',
+              dueDate: '2026-09-15',
+              dueTime: null,
+              reason: 'Acompanhar informações pendentes',
+            },
+          },
+        })
+      );
+
+      assert.equal(result.resultCode, 'awaiting_information');
+      assert.equal(result.continuationType, 'wait');
+      const [event] = await db
+        .select({ resultCode: manualContactEvents.resultCode })
+        .from(manualContactEvents)
+        .where(eq(manualContactEvents.opportunityId, opportunityId));
+      assert.equal(event?.resultCode, 'awaiting_information');
+    } finally {
+      await cleanup(opportunityId);
+    }
+  }
+);
+
+test(
   'fechamento manual exige e armazena o motivo explícito',
   { skip: databaseSkip, concurrency: false },
   async () => {

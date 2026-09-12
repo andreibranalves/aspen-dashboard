@@ -13,6 +13,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     origin: 'automatic',
     state: 'active',
     due_at: '2026-09-11T12:00:00.000Z',
+    follow_up_stage: 0,
     demand_summary: 'Cangas 100 unidades',
     contact_name: 'Cliente Sintético',
     contact_phone: null,
@@ -23,6 +24,16 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     ...overrides,
   };
 }
+
+test('parses the server-owned follow-up stage without queue-owned suggestion dates', () => {
+  const page = parseCommercialQueuePage({
+    data: [row({ follow_up_stage: 1 })],
+    total: 1,
+    page: 1,
+    page_size: 25,
+  });
+  assert.equal(page.data[0].followUpStage, 1);
+});
 
 test('parses linked proposals with value and state', () => {
   const page = parseCommercialQueuePage({

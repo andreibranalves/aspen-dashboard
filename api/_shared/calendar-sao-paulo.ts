@@ -20,9 +20,36 @@ function civilDateFromUtcMillis(millis: number): string {
   return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
 }
 
+function dateOnlyToUtcMillis(isoDate: string): number {
+  if (typeof isoDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    throw new Error('A data civil deve estar no formato AAAA-MM-DD.');
+  }
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const millis = Date.UTC(year, month - 1, day);
+  if (civilDateFromUtcMillis(millis) !== isoDate) {
+    throw new Error('A data civil é inválida.');
+  }
+  return millis;
+}
+
 export function addCalendarDays(isoDate: string, days: number): string {
   const [year, month, day] = isoDate.split('-').map(Number);
   return civilDateFromUtcMillis(Date.UTC(year, month - 1, day + days));
+}
+
+/** Adds Monday-to-Friday calendar days without applying holiday rules. */
+export function addBusinessDays(isoDate: string, businessDays: number): string {
+  if (!Number.isSafeInteger(businessDays) || businessDays < 0) {
+    throw new Error('A quantidade de dias úteis é inválida.');
+  }
+  let millis = dateOnlyToUtcMillis(isoDate);
+  let remaining = businessDays;
+  while (remaining > 0) {
+    millis += 24 * 60 * 60 * 1000;
+    const weekday = new Date(millis).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) remaining -= 1;
+  }
+  return civilDateFromUtcMillis(millis);
 }
 
 export function calendarDateInSaoPaulo(

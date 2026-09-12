@@ -42,6 +42,7 @@ function item(overrides: Partial<OpportunityQueuePage['data'][number]> = {}) {
     actor: 'system',
     isUrgent: false,
     priority: 4,
+    followUpStage: 0,
     opportunityStatus: 'Novo Lead',
     terminalStatus: null,
     terminalReason: null,
@@ -109,6 +110,9 @@ test('GET /api/commercial-queue returns the prioritized page in snake_case', asy
   assert.equal(row.due_status, 'overdue');
   assert.equal(row.version, 1);
   assert.equal(row.actor, 'system');
+  assert.equal(row.follow_up_stage, 0);
+  assert.equal('first_return_suggestion_date' in row, false);
+  assert.equal('second_return_suggestion_date' in row, false);
   assert.equal(row.terminal_status, null);
   assert.equal(row.terminal_reason, null);
   assert.equal(row.terminal_at, null);
@@ -119,6 +123,96 @@ test('GET /api/commercial-queue returns the prioritized page in snake_case', asy
   assert.equal(row.client_id, null);
   assert.equal(row.client_name, null);
   assert.deepEqual(row.proposals, []);
+});
+
+test('GET /api/commercial-queue calculates two business days from the São Paulo occurrence date', async () => {
+  let repositoryCalls = 0;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      listActive: async () => {
+        repositoryCalls += 1;
+        return { data: [], total: 0, page: 1, pageSize: 25 };
+      },
+    }),
+  });
+
+  const result = await handler(
+    event('GET', {
+      view: 'follow_up_suggestion',
+      occurred_at: '2026-09-12T01:00:00.000Z',
+      business_days: '2',
+    })
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), {
+    anchor_date: '2026-09-11',
+    suggested_date: '2026-09-15',
+    business_days: 2,
+  });
+  assert.equal(repositoryCalls, 0);
+});
+
+test('GET /api/commercial-queue calculates three business days from a Tuesday occurrence', async () => {
+  let repositoryCalls = 0;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      listActive: async () => {
+        repositoryCalls += 1;
+        return { data: [], total: 0, page: 1, pageSize: 25 };
+      },
+    }),
+  });
+
+  const result = await handler(
+    event('GET', {
+      view: 'follow_up_suggestion',
+      occurred_at: '2026-09-15T12:00:00.000Z',
+      business_days: '3',
+    })
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), {
+    anchor_date: '2026-09-15',
+    suggested_date: '2026-09-18',
+    business_days: 3,
+  });
+  assert.equal(repositoryCalls, 0);
+});
+
+test('GET /api/commercial-queue rejects invalid suggestion date and count without repository access', async () => {
+  let repositoryCalls = 0;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      listActive: async () => {
+        repositoryCalls += 1;
+        return { data: [], total: 0, page: 1, pageSize: 25 };
+      },
+    }),
+  });
+
+  for (const query of [
+    {
+      view: 'follow_up_suggestion',
+      occurred_at: '2026-09-11T12:00:00.000Z',
+      business_days: '1',
+    },
+    {
+      view: 'follow_up_suggestion',
+      occurred_at: '2026-02-31T12:00:00.000Z',
+      business_days: '2',
+    },
+    {
+      view: 'follow_up_suggestion',
+      occurred_at: '2026-09-11T12:00:00',
+      business_days: '3',
+    },
+  ]) {
+    const result = await handler(event('GET', query));
+    assert.equal(result.statusCode, 400);
+  }
+  assert.equal(repositoryCalls, 0);
 });
 
 test('GET /api/commercial-queue exposes every linked proposal with value and state', async () => {

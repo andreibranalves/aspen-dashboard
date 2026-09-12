@@ -50,6 +50,7 @@ export interface CommercialQueueItem {
   actor: string;
   isUrgent: boolean;
   priority: number;
+  followUpStage: number;
   opportunityStatus: string;
   terminalStatus: string | null;
   terminalReason: string | null;
@@ -79,6 +80,14 @@ export interface CommercialQueueFilters {
   filter?: CommercialQueueFilter;
 }
 
+export type CommercialFollowUpBusinessDays = 2 | 3;
+
+export interface CommercialFollowUpSuggestion {
+  anchorDate: string;
+  suggestedDate: string;
+  businessDays: CommercialFollowUpBusinessDays;
+}
+
 export interface CommercialActionScheduleInput {
   kind: OpportunityActionKind;
   dueDate: string;
@@ -92,6 +101,7 @@ export type CommercialManualContactResultCode =
   | 'interested'
   | 'not_interested'
   | 'no_response'
+  | 'awaiting_information'
   | 'wrong_contact'
   | 'other';
 export type CommercialManualContactContinuationType = 'successor' | 'wait' | 'close';
@@ -205,6 +215,7 @@ const MANUAL_CONTACT_RESULTS = [
   'interested',
   'not_interested',
   'no_response',
+  'awaiting_information',
   'wrong_contact',
   'other',
 ] as const;
@@ -285,6 +296,15 @@ function optionalDate(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const result = text(value, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) invalidResponse();
+  return result;
+}
+
+function strictDate(value: unknown): string {
+  const result = text(value, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) invalidResponse();
+  const [year, month, day] = result.split('-').map(Number);
+  const millis = Date.UTC(year, month - 1, day);
+  if (new Date(millis).toISOString().slice(0, 10) !== result) invalidResponse();
   return result;
 }
 
@@ -380,6 +400,7 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     actor: typeof record.actor === 'string' && record.actor.trim() ? record.actor : 'legacy-system',
     isUrgent: record.is_urgent === true,
     priority: record.priority === undefined ? 8 : optionalNumber(record.priority, 8),
+    followUpStage: pageInteger(record.follow_up_stage, 0, MAX_TOTAL),
     opportunityStatus: optionalText(record.opportunity_status, 32) || '',
     terminalStatus: optionalText(record.terminal_status, 32),
     terminalReason: optionalText(record.terminal_reason, 500),
@@ -440,6 +461,41 @@ export async function listCommercialQueue(
     );
   }
   return parseCommercialQueuePage(body);
+}
+
+export async function getCommercialFollowUpSuggestion(input: {
+  occurredAt: string;
+  businessDays: CommercialFollowUpBusinessDays;
+  signal?: AbortSignal;
+}): Promise<CommercialFollowUpSuggestion> {
+  timestamp(input.occurredAt);
+  if (input.businessDays !== 2 && input.businessDays !== 3) {
+    invalidInput('A quantidade de dias úteis é inválida.');
+  }
+  const query = new URLSearchParams({
+    view: 'follow_up_suggestion',
+    occurred_at: input.occurredAt,
+    business_days: String(input.businessDays),
+  });
+  const response = await fetch(`/api/commercial-queue?${query.toString()}`, {
+    method: 'GET',
+    signal: input.signal,
+  });
+  const body: unknown = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new CommercialQueueApiError(
+      errorMessage(body, 'Não foi possível calcular a sugestão de retorno.'),
+      response.status
+    );
+  }
+  const record = asObject(body);
+  const businessDays = pageInteger(record.business_days, 2, 3) as CommercialFollowUpBusinessDays;
+  if (businessDays !== input.businessDays) invalidResponse();
+  return {
+    anchorDate: strictDate(record.anchor_date),
+    suggestedDate: strictDate(record.suggested_date),
+    businessDays,
+  };
 }
 
 function parseUrgencyResult(value: unknown): CommercialUrgencyResult {
