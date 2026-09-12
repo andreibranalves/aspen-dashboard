@@ -29,7 +29,7 @@ test('drawer suggests ninth digit, confirms once, reopens and unlinks', async ({
   page.on('dialog', dialog => dialog.accept());
   await drawer.getByRole('button', { name: 'Vincular cliente', exact: true }).click();
   await expect(drawer.getByText('Nenhum orçamento ainda.')).toBeVisible();
-  await drawer.getByRole('button', { name: 'Fechar painel', exact: true }).click();
+  await page.getByRole('button', { name: 'Fechar painel', exact: true }).click();
   await page.locator('.aspen-drawer-toggle').click();
   await expect(drawer.getByRole('button', { name: 'Desvincular cliente' })).toBeVisible();
   await drawer.getByRole('button', { name: 'Desvincular cliente' }).click();

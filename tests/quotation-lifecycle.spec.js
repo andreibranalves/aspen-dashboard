@@ -657,7 +657,7 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
   const itemRow = page.locator('tr').filter({ hasText: 'Produto lifecycle' }).first();
-  await expect(itemRow.getByText('10 un.', { exact: true })).toBeVisible();
+  await expect(itemRow.getByText('10', { exact: true })).toBeVisible();
   await expect(itemRow.getByText('10.000', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Título da seção Dados para pagamento')).toHaveCount(0);
 });
@@ -1105,7 +1105,6 @@ test('new revision prices a product selected from an added item row @quotations 
   await page.getByText('Histórico e revisões').click();
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
-  await page.getByRole('button', { name: 'Editar' }).click();
   await page.getByRole('button', { name: 'Item', exact: true }).click();
 
   const row = page.locator('table').first().locator('tbody tr').last();
@@ -1211,7 +1210,11 @@ test('sales order detail presents one origin, one progress summary, and protecte
   await expect(pendingProgress.getByText('Faturado', { exact: true })).toBeVisible();
   await expect(pendingProgress.getByText('0%', { exact: true })).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Abrir orçamento de origem' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Voltar aos pedidos' })).toHaveCount(1);
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Trilha de navegação' })
+      .getByRole('button', { name: 'Pedidos', exact: true })
+  ).toHaveCount(1);
 
   const pendingActions = page.getByRole('complementary', { name: 'Atualizar pedido' });
   const billButton = pendingActions.getByRole('button', { name: 'Marcar faturado' });
