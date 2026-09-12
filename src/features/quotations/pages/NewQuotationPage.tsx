@@ -217,6 +217,21 @@ function draftHasOrigin(draft: Draft): boolean {
   return Boolean(draft.edited.quote_lead_id && draft.edited.crm_deal_id);
 }
 
+function draftHasDurableQuotationState(draft: Draft): boolean {
+  const stored = draft as StoredAutoQuoteDraft;
+  return Boolean(
+    stored.saved ||
+      stored.issueIdempotencyKey ||
+      stored.issueDispatchStarted ||
+      stored.issue ||
+      stored.issueRecoveryRequired ||
+      stored.sourceQuotationId ||
+      stored.sourceRevisionId ||
+      stored.status ||
+      stored.result,
+  );
+}
+
 function conversationOpportunityBlockMessage(
   draft: Draft,
   choices: OpportunityChoice[],
@@ -448,6 +463,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     addDraftItem,
     removeDraftItem,
     updateDraftField,
+    updateDraftSystemField,
     selectProduct,
     buildDraftsFromOrders,
   } = useExtractionDrafts(initialDrafts);
@@ -1755,6 +1771,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     }
     for (const draft of activeDrafts) {
       const index = draft.index;
+      const hasDurableState = draftHasDurableQuotationState(draft);
       if (draftHasOrigin(draft)) {
         draftOpportunityRequests.current.delete(index);
         clearDraftOpportunityState(index);
@@ -1764,7 +1781,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       if (!clientId) {
         draftOpportunityRequests.current.delete(index);
         clearDraftOpportunityState(index);
-        if (draft.edited.new_demand !== true) updateDraftField(index, 'new_demand', true);
+        if (!hasDurableState && draft.edited.new_demand !== true) {
+          updateDraftSystemField(index, 'new_demand', true);
+        }
         continue;
       }
       const key = draftOpportunityRequestKey(index, clientId);
@@ -1791,7 +1810,11 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         .then((choices) => {
           const latest = draftsRef.current.find((candidate) => candidate.index === index);
           const decided = Boolean(
-            latest && (latest.edited.opportunity_id || latest.edited.new_demand === true)
+            latest && (
+              draftHasDurableQuotationState(latest) ||
+              latest.edited.opportunity_id ||
+              latest.edited.new_demand === true
+            )
           );
           const decision = decide(decided);
           if (!decision.choices) return;
@@ -1799,9 +1822,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           if (!decision.selection) return;
           const selection = initialOpportunitySelection(choices);
           if (selection.mode === 'existing' && selection.opportunityId) {
-            updateDraftField(index, 'opportunity_id', selection.opportunityId);
+            updateDraftSystemField(index, 'opportunity_id', selection.opportunityId);
           } else if (selection.mode === 'new') {
-            updateDraftField(index, 'new_demand', true);
+            updateDraftSystemField(index, 'new_demand', true);
           }
         })
         .catch(() => {
@@ -1815,7 +1838,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           }
         });
     }
-  }, [activeDrafts, updateDraftField]);
+  }, [activeDrafts, updateDraftSystemField]);
 
   const subtotal = manual.items.reduce((sum, item) => sum + item.qty * item.rate, 0);
   const manualValidationBlockMessage = !manualToEdited(manual).nome && !manual.items.length
