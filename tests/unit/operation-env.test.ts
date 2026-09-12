@@ -53,8 +53,78 @@ function contractValues(operation, root, overrides = {}) {
 
 const OPERATIONS = operationNames();
 
-test('contratos existem para as seis operações e são distintos entre si', () => {
-  assert.deepEqual([...OPERATIONS].sort(), ['backup-restore', 'canary', 'cleanup', 'migration', 'runtime', 'staging-e2e']);
+test('contratos existem para as operações e são distintos entre si', () => {
+  assert.deepEqual([...OPERATIONS].sort(), [
+    'backup-restore',
+    'canary',
+    'cleanup',
+    'migration',
+    'migration-production',
+    'runtime',
+    'staging-e2e',
+  ]);
+});
+
+test('migration-production exige os guardas de identidade de produção, não os de staging', () => {
+  const contract = OPERATION_ENV_CONTRACTS['migration-production'];
+  for (const key of [
+    'PRODUCTION_DATABASE_URL',
+    'DATABASE_URL',
+    'PRODUCTION_PG_SERVICE',
+    'CUTOVER_PG_SERVICE',
+    'CUTOVER_EXPECTED_DATABASE',
+    'PGSERVICEFILE',
+    'PGPASSFILE',
+  ])
+    assert.ok(contract.keys.includes(key), `migration-production deve exigir ${key}`);
+  assert.ok(!contract.keys.includes('STAGING_DATABASE_URL'));
+  assert.ok(!contract.keys.includes('STAGING_PG_SERVICE'));
+  assert.equal(contract.paths.PGSERVICEFILE, true);
+  assert.equal(contract.paths.PGPASSFILE, true);
+});
+
+test('migration-production exige CUTOVER_BACKUP_DIR ou BACKUP_DIR e marca o irmão como not-needed', () => {
+  withTempDir((root) => {
+    const base = contractValues('migration-production', root);
+    const withoutBackup: NodeJS.ProcessEnv = { ...base, CUTOVER_ENV_FILE: '/nao/existe.env' };
+    delete withoutBackup.CUTOVER_BACKUP_DIR;
+    delete withoutBackup.BACKUP_DIR;
+
+    const missingBoth = inspectOperationEnv('migration-production', { env: withoutBackup });
+    assert.equal(missingBoth.ok, false);
+    assert.deepEqual(missingBoth.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'), {
+      name: 'CUTOVER_BACKUP_DIR',
+      status: 'missing',
+    });
+
+    const withOne = inspectOperationEnv('migration-production', {
+      env: { ...withoutBackup, BACKUP_DIR: 'valor-de-BACKUP_DIR' },
+    });
+    assert.equal(withOne.ok, true);
+    assert.deepEqual(withOne.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'), {
+      name: 'CUTOVER_BACKUP_DIR',
+      status: 'not-needed',
+    });
+  });
+});
+
+test('checkOperationEnv satisfaz anyOf de backup com um membro e falha sem nenhum', () => {
+  withTempDir((root) => {
+    const values = contractValues('migration-production', root);
+    delete values.CUTOVER_BACKUP_DIR;
+    const withOne = checkOperationEnv('migration-production', values);
+    assert.equal(withOne.ok, true);
+    assert.deepEqual(withOne.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'), {
+      name: 'CUTOVER_BACKUP_DIR',
+      status: 'not-needed',
+    });
+
+    const withoutBoth = checkOperationEnv('migration-production', {
+      ...values,
+      BACKUP_DIR: '',
+    });
+    assert.equal(withoutBoth.ok, false);
+  });
 });
 
 test('operações não exigem credenciais de workflows não relacionados', () => {

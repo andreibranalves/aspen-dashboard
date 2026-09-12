@@ -62,6 +62,26 @@ Pare na primeira falha.
 
 Nunca execute o apply usando somente `DATABASE_URL`.
 
+## Gate produção
+
+A seleção explícita do alvo de produção é um caminho separado do staging. O shell operacional aprovado precisa fornecer, além de `PGSERVICEFILE` e `PGPASSFILE` em modo `0600`:
+
+- `PRODUCTION_DATABASE_URL` e `DATABASE_URL` identificando o mesmo database;
+- `PRODUCTION_PG_SERVICE` no `PGSERVICEFILE`, confirmado por `SELECT current_database()`;
+- `CUTOVER_PG_SERVICE` e `CUTOVER_EXPECTED_DATABASE` identificando o mesmo alvo;
+- `CUTOVER_BACKUP_DIR` ou `BACKUP_DIR` externo ao checkout.
+
+Execute, nesta ordem:
+
+```bash
+npm run check:db-migrations
+npm run migrate:apply -- --target production
+```
+
+O comando prova a identidade do alvo e então executa o backup existente (`npm run db:backup`) antes de abrir o apply. Se a prova de identidade ou o backup falhar, o apply não é chamado. A migration permanece forward-only; não existe rollback automático.
+
+Sem argumento, `npm run migrate:apply` mantém exatamente o fluxo de staging. Alvos diferentes de `staging` ou `production` são recusados.
+
 ## Evidência
 
 Salve stdout dos gates em diretório operacional protegido fora do checkout.
