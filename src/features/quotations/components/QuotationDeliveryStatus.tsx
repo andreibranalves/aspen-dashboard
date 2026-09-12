@@ -177,7 +177,7 @@ export function QuotationDeliveryStatus({
               </h2>
               <p className="mt-1 text-xs leading-5 text-fg-muted">
                 {decision === 'confirmed_received'
-                  ? 'Confirme que o cliente recebeu a mensagem.'
+                  ? 'Confirme que o cliente recebeu as mensagens já enviadas. O restante não enviado continua na fila.'
                   : 'Confirme que o cliente não recebeu. Uma nova tentativa pode gerar duplicidade.'}
               </p>
             </div>

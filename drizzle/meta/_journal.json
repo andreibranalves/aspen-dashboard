@@ -267,6 +267,13 @@
       "when": 1789161885776,
       "tag": "0037_opportunity_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789191603492,
+      "tag": "0038_evolution_receipt_inbox",
+      "breakpoints": true
     }
   ]
 }

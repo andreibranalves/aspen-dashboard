@@ -114,25 +114,24 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   });
   const deliveredDelivery = delivery('delivered', { number: 'ORC-DELIVERED' });
   let firstQuery;
+  let resolvedDelivery = null;
 
   await mockList(page, (route, url) => {
     if (route.request().method() === 'PATCH') {
       const body = route.request().postDataJSON();
       expect(body.decision).toBe('confirmed_received');
       expect(body.note).toBe('Cliente confirmou recebimento por ligação.');
-      return json(
-        route,
-        delivery('delivered', {
-          id: needsReviewDelivery.id,
-          number: needsReviewDelivery.business_number,
-          clientName: needsReviewDelivery.client_name,
-        })
-      );
+      resolvedDelivery = delivery('delivered', {
+        id: needsReviewDelivery.id,
+        number: needsReviewDelivery.business_number,
+        clientName: needsReviewDelivery.client_name,
+      });
+      return json(route, resolvedDelivery);
     }
     if (!firstQuery) firstQuery = url.searchParams;
     return json(
       route,
-      listResponse([needsReviewDelivery, processingDelivery], {
+      listResponse([resolvedDelivery || needsReviewDelivery, processingDelivery], {
         total: 2,
         summary: {
           active: 1,
@@ -251,6 +250,8 @@ test('browser absent while cron completes delivery leaves one durable delivered 
   let workerCalls = 0;
   let transportCalls = 0;
   let sendCalls = 0;
+  const cronRow = () =>
+    delivery(durableState, { number: 'ORC-CRON-COMPLETE', id: 'delivery-cron-complete' });
   await page.route('**/api/send-whatsapp-flow', (route) => {
     sendCalls += 1;
     return json(route, { success: false, error: 'browser send must not run' }, 500);
@@ -261,13 +262,18 @@ test('browser absent while cron completes delivery leaves one durable delivered 
     durableState = 'delivered';
     return json(route, { processed: 1, remaining: false });
   });
-  await page.route('**/api/quotation-deliveries**', (route) =>
-    json(route, listResponse([delivery(durableState, { number: 'ORC-CRON-COMPLETE' })]))
-  );
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    return url.searchParams.has('id') ? json(route, cronRow()) : json(route, listResponse([cronRow()]));
+  });
 
   await page.goto('/#/whatsapp-deliveries');
   await expect(page.getByText('ORC-CRON-COMPLETE', { exact: true })).toHaveCount(1);
-  await expect(page.getByText('Enviando', { exact: true })).toBeVisible();
+  await expect(page.getByLabel(/^Estado: Enviando\./)).toBeVisible();
+  await page.getByRole('button', { name: 'Abrir detalhes de ORC-CRON-COMPLETE, linha 1' }).click();
+  const drawer = page.getByRole('dialog', { name: 'delivery-cron-complete' });
+  const drawerSteps = drawer.getByLabel('Passos da entrega ORC-CRON-COMPLETE');
+  await expect(drawerSteps.getByText('Enviando', { exact: true })).toBeVisible();
 
   const cronPage = await context.newPage();
   const workerResponse = await cronPage.goto('/api/quotation-delivery-worker');
@@ -276,10 +282,13 @@ test('browser absent while cron completes delivery leaves one durable delivered 
   expect(await workerResponse.json()).toEqual({ processed: 1, remaining: false });
   await cronPage.close();
 
+  // The list and the open detail poll the durable state: no browser reload needed.
+  await expect(page.getByLabel(/^Estado: Entregue\./)).toBeVisible({ timeout: 15000 });
+  await expect(drawerSteps.getByText('Entregue', { exact: true })).toBeVisible({ timeout: 15000 });
+
   await page.reload();
   await expect(page.getByText('ORC-CRON-COMPLETE', { exact: true })).toHaveCount(1);
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByText('Enviando', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel(/^Estado: Entregue\./)).toBeVisible();
   expect(workerCalls).toBe(1);
   expect(transportCalls).toBe(1);
   expect(sendCalls).toBe(0);
@@ -414,4 +423,213 @@ test('empty state and API failure remain readable and actionable', async ({ page
   await page.getByRole('button', { name: 'Atualizar' }).click();
   await expect(page.getByRole('alert')).toContainText('Não foi possível consultar as entregas.');
   await expect(page.getByRole('heading', { name: 'Envios' })).toBeVisible();
+});
+
+async function openResolvableDrawer(page, active) {
+  await expect(page.getByText(active.business_number, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: `Abrir detalhes de ${active.business_number}, linha 1` }).click();
+  const drawer = page.getByRole('dialog', { name: active.id });
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
+
+test('a stale detail success released after PATCH cannot reopen the drawer', async ({ page }) => {
+  const active = delivery('provider_accepted', {
+    id: 'delivery-stale-success',
+    number: 'ORC-STALE-SUCCESS',
+    clientName: 'Cliente stale success',
+    delayed: true,
+  });
+  const resolved = delivery('delivered', {
+    id: active.id,
+    number: active.business_number,
+    clientName: active.client_name,
+  });
+  let patchCount = 0;
+  let postCount = 0;
+  let detailReads = 0;
+  const staleReleased = Promise.withResolvers();
+  const patchReleased = Promise.withResolvers();
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    postCount += 1;
+    return json(route, { error: 'unexpected provider POST' }, 500);
+  });
+  await page.route('**/api/communication-send-events**', (route) =>
+    json(route, { success: true, items: [], total: 0, source: 'postgres' })
+  );
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      patchCount += 1;
+      await patchReleased.promise;
+      return json(route, resolved);
+    }
+    if (url.searchParams.has('id')) {
+      detailReads += 1;
+      await staleReleased.promise;
+      return json(route, active);
+    }
+    return json(route, listResponse([active]));
+  });
+
+  await page.goto('/#/whatsapp-deliveries');
+  const drawer = await openResolvableDrawer(page, active);
+  // Wait for the active-state detail poll to start and stay in flight.
+  await expect.poll(() => detailReads, { timeout: 15000 }).toBeGreaterThan(0);
+
+  await drawer.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  await page.getByLabel('Justificativa').fill('Cliente confirmou recebimento por ligação.');
+  await page.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => patchCount).toBe(1);
+
+  // Release the resolution first, then the stale provider_accepted detail read.
+  patchReleased.resolve();
+  staleReleased.resolve();
+
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(patchCount).toBe(1);
+  expect(postCount).toBe(0);
+});
+
+test('a stale detail rejection released after PATCH cannot restore controls or an error', async ({ page }) => {
+  const active = delivery('provider_accepted', {
+    id: 'delivery-stale-rejection',
+    number: 'ORC-STALE-REJECTION',
+    clientName: 'Cliente stale rejection',
+    delayed: true,
+  });
+  const resolved = delivery('delivered', {
+    id: active.id,
+    number: active.business_number,
+    clientName: active.client_name,
+  });
+  let patchCount = 0;
+  let postCount = 0;
+  let detailReads = 0;
+  const staleReleased = Promise.withResolvers();
+  const patchReleased = Promise.withResolvers();
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    postCount += 1;
+    return json(route, { error: 'unexpected provider POST' }, 500);
+  });
+  await page.route('**/api/communication-send-events**', (route) =>
+    json(route, { success: true, items: [], total: 0, source: 'postgres' })
+  );
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      patchCount += 1;
+      await patchReleased.promise;
+      return json(route, resolved);
+    }
+    if (url.searchParams.has('id')) {
+      detailReads += 1;
+      await staleReleased.promise;
+      return json(route, { error: 'detail unavailable' }, 503);
+    }
+    return json(route, listResponse([active]));
+  });
+
+  await page.goto('/#/whatsapp-deliveries');
+  const drawer = await openResolvableDrawer(page, active);
+  await expect.poll(() => detailReads, { timeout: 15000 }).toBeGreaterThan(0);
+
+  await drawer.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  await page.getByLabel('Justificativa').fill('Cliente confirmou recebimento por ligação.');
+  await page.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => patchCount).toBe(1);
+
+  patchReleased.resolve();
+  staleReleased.resolve();
+
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
+  expect(patchCount).toBe(1);
+  expect(postCount).toBe(0);
+});
+
+test('a held foreground list GET released after PATCH cannot restore the stale row or loading', async ({
+  page,
+}) => {
+  const active = delivery('needs_review', {
+    id: 'delivery-foreground-stale',
+    number: 'ORC-FG-STALE',
+    clientName: 'Cliente foreground stale',
+  });
+  const resolved = delivery('delivered', {
+    id: active.id,
+    number: active.business_number,
+    clientName: active.client_name,
+  });
+  let heldCount = 0;
+  let holdForeground = false;
+  let patchCount = 0;
+  let postCount = 0;
+  const heldReleased = Promise.withResolvers();
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    postCount += 1;
+    return json(route, { error: 'unexpected provider POST' }, 500);
+  });
+  await page.route('**/api/communication-send-events**', (route) =>
+    json(route, { success: true, items: [], total: 0, source: 'postgres' })
+  );
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      patchCount += 1;
+      return json(route, resolved);
+    }
+    if (url.searchParams.has('id')) {
+      return json(route, active);
+    }
+    // Initial (and StrictMode-duplicated) loads resolve immediately; only the
+    // foreground Atualizar GET requested after the flag is held.
+    if (!holdForeground) return json(route, listResponse([active]));
+    heldCount += 1;
+    await heldReleased.promise;
+    return json(route, listResponse([active]));
+  });
+
+  await page.goto('/#/whatsapp-deliveries');
+  await expect(page.getByText(active.business_number, { exact: true })).toBeVisible();
+
+  holdForeground = true;
+  await page.getByRole('button', { name: 'Atualizar' }).click();
+  await expect.poll(() => heldCount, { timeout: 15000 }).toBeGreaterThan(0);
+
+  const table = page.getByRole('table', { name: 'Tabela de entregas WhatsApp' });
+  const drawer = page.getByRole('dialog', { name: active.id });
+  await page
+    .getByRole('button', { name: `Abrir detalhes de ${active.business_number}, linha 1` })
+    .click();
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  await page.getByLabel('Justificativa').fill('Cliente confirmou recebimento por ligação.');
+  await page.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => patchCount).toBe(1);
+
+  // The resolution is authoritative and finalizes loading while the stale GET is
+  // still held.
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(drawer).toHaveCount(0);
+  await expect(table).toHaveAttribute('aria-busy', 'false');
+  await expect(page.getByRole('button', { name: 'Atualizar' })).toBeEnabled();
+
+  // Releasing the old GET carrying needs_review must change neither the row, nor
+  // the error banner, nor the loading state.
+  heldReleased.resolve();
+  await expect(page.getByText('Requer revisão', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(table).toHaveAttribute('aria-busy', 'false');
+  expect(patchCount).toBe(1);
+  expect(postCount).toBe(0);
 });

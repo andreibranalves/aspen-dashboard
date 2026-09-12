@@ -280,47 +280,52 @@ export async function sendFrozenStep(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const unrefTimer = timer as ReturnType<typeof setTimeout> & { unref?: () => void };
   unrefTimer.unref?.();
-  let response: Response;
   try {
-    response = await client.request(request.path, request.body, { signal: controller.signal });
-  } catch (error) {
-    clearTimeout(timer);
-    if (
-      error &&
-      typeof error === 'object' &&
-      (error as { statusCode?: unknown }).statusCode === 503
-    ) {
-      throw failure(
-        'Integração do WhatsApp desativada neste ambiente.',
-        'permanent_pre_transport',
-        'EXTERNAL_WRITES_DISABLED',
-      );
+    let response: Response;
+    try {
+      response = await client.request(request.path, request.body, { signal: controller.signal });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'statusCode' in error &&
+        error.statusCode === 503
+      ) {
+        throw failure(
+          'Integração do WhatsApp desativada neste ambiente.',
+          'permanent_pre_transport',
+          'EXTERNAL_WRITES_DISABLED',
+        );
+      }
+      throw failure('Falha ao conectar com o WhatsApp.', 'ambiguous', 'EVOLUTION_NETWORK');
     }
-    throw failure('Falha ao conectar com o WhatsApp.', 'ambiguous', 'EVOLUTION_NETWORK');
-  }
-  clearTimeout(timer);
 
-  const status = Number(response?.status);
-  if (status === 429) {
-    throw failure('O provedor limitou temporariamente o transporte.', 'transient_pre_transport', 'EVOLUTION_RATE_LIMIT');
-  }
-  if (status >= 400 && status < 500) {
-    throw failure('O provedor rejeitou o transporte.', 'permanent_pre_transport', `EVOLUTION_HTTP_${status}`);
-  }
-  if (status < 200 || status >= 300) {
-    throw failure('O resultado do transporte requer reconciliação.', 'ambiguous', `EVOLUTION_HTTP_${status || 'UNKNOWN'}`);
-  }
+    const status = Number(response?.status);
+    if (status === 429) {
+      throw failure('O provedor limitou temporariamente o transporte.', 'transient_pre_transport', 'EVOLUTION_RATE_LIMIT');
+    }
+    if (status >= 400 && status < 500) {
+      throw failure('O provedor rejeitou o transporte.', 'permanent_pre_transport', `EVOLUTION_HTTP_${status}`);
+    }
+    if (status < 200 || status >= 300) {
+      throw failure('O resultado do transporte requer reconciliação.', 'ambiguous', `EVOLUTION_HTTP_${status || 'UNKNOWN'}`);
+    }
 
-  let body: unknown;
-  try {
-    body = await readJson(response);
-  } catch {
-    throw failure('O provedor não confirmou o transporte.', 'ambiguous', 'EVOLUTION_MALFORMED_RESPONSE');
+    let body: unknown;
+    try {
+      // The same deadline must cover the body: headers arriving does not mean
+      // the provider decided, and a hung body would otherwise outlive the timeout.
+      body = await readJson(response);
+    } catch {
+      throw failure('O provedor não confirmou o transporte.', 'ambiguous', 'EVOLUTION_MALFORMED_RESPONSE');
+    }
+    const normalized = normalizeEvolutionDelivery(body);
+    const id = providerMessageId(body);
+    if (!normalized || !id) {
+      throw failure('O provedor não confirmou o transporte.', 'ambiguous', 'EVOLUTION_MISSING_PROVIDER_ID');
+    }
+    return { accepted: true, providerMessageId: id };
+  } finally {
+    clearTimeout(timer);
   }
-  const normalized = normalizeEvolutionDelivery(body);
-  const id = providerMessageId(body);
-  if (!normalized || !id) {
-    throw failure('O provedor não confirmou o transporte.', 'ambiguous', 'EVOLUTION_MISSING_PROVIDER_ID');
-  }
-  return { accepted: true, providerMessageId: id };
 }

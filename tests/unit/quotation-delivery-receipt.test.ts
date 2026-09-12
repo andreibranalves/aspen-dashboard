@@ -10,7 +10,7 @@ test('receipt hook upserts delivery receipts without recording a new outbound ac
   let receiptCount = 0;
   const module = createQuotationDeliveryModule({
     repository: {
-      applyReceipt: async () => {
+      receiveReceipt: async () => {
         receiptCount += 1;
         return {
           id: 'delivery-1',
@@ -71,7 +71,7 @@ test('receipt for a LID reaches the follow-up writer without recording activity'
   const activities: unknown[] = [];
   const module = createQuotationDeliveryModule({
     repository: {
-      applyReceipt: async () => ({
+      receiveReceipt: async () => ({
         id: 'delivery-1',
         revisionId: 'revision-1',
         phone: '5511999990000',
@@ -105,7 +105,7 @@ test('group receipt updates delivery state without writing a follow-up candidate
   const activities: unknown[] = [];
   const module = createQuotationDeliveryModule({
     repository: {
-      applyReceipt: async () => ({
+      receiveReceipt: async () => ({
         id: 'delivery-1',
         revisionId: 'revision-1',
         phone: '5511999990000',

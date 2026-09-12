@@ -8,6 +8,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNull,
   lte,
   lt,
   notInArray,
@@ -18,6 +19,7 @@ import {
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import {
+  evolutionReceiptInbox,
   quoteRevisions,
   quotations,
   quotationDeliveries,
@@ -63,6 +65,10 @@ const RECEIPT_STATUSES = [
   'READ',
   'PLAYED',
 ] as const;
+// Receipt statuses that carry the provider delivery clock. `PLAYED` means the
+// same as `READ` for our state machine, so it dates the delivery identically.
+const RECEIPT_CLOCK_STATUSES: readonly EvolutionReceiptStatus[] = ['DELIVERY_ACK', 'READ', 'PLAYED'];
+const READ_CLOCK_STATUSES: readonly EvolutionReceiptStatus[] = ['READ', 'PLAYED'];
 const FAILURE_KINDS = ['transient_pre_transport', 'permanent_pre_transport', 'ambiguous'] as const;
 const COMPLETION_SOURCES = ['provider_receipt', 'operator', 'legacy_provider_ack'] as const;
 const ACTIVE_STATES = [
@@ -87,6 +93,8 @@ const MAX_SNAPSHOT_FILE_NAME = 255;
 const MAX_STEPS = 100;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
+const RECEIPT_RETENTION_MS = 30 * 86_400_000;
+const RECEIPT_RETENTION_BATCH = 200;
 
 export class QuotationDeliveryOutboxInputError extends Error {
   readonly statusCode = 400;
@@ -241,6 +249,12 @@ export interface MarkAcceptedInput {
   providerMessageId: string;
 }
 
+export interface RenewLeaseInput {
+  deliveryId: string;
+  stepId: string;
+  leaseToken: string;
+}
+
 export interface MarkFailureInput {
   deliveryId: string;
   stepId: string;
@@ -250,7 +264,7 @@ export interface MarkFailureInput {
   publicError: string;
 }
 
-export interface ApplyReceiptInput {
+export interface ReceiveReceiptInput {
   providerMessageId: string;
   status: EvolutionReceiptStatus;
 }
@@ -275,10 +289,11 @@ export interface QuotationDeliveryOutboxRepository {
   getByIdentity(identity: DeliveryIdentity): Promise<DeliveryAggregate | null>;
   list(filters: DeliveryListFilters): Promise<DeliveryListResult>;
   claim(input?: { deliveryId?: string }): Promise<ClaimedDeliveryStep | null>;
+  renewLease(input: RenewLeaseInput): Promise<boolean>;
   expandQuotationWebpStep(input: ExpandQuotationWebpStepInput): Promise<void>;
   markAccepted(input: MarkAcceptedInput): Promise<DeliveryAggregate>;
   markFailure(input: MarkFailureInput): Promise<DeliveryAggregate>;
-  applyReceipt(input: ApplyReceiptInput): Promise<DeliveryAggregate | null>;
+  receiveReceipt(input: ReceiveReceiptInput): Promise<DeliveryAggregate | null>;
   expireReconciliations(limit: number): Promise<number>;
   cancelPending(): Promise<number>;
   resolve(input: ResolveDeliveryInput): Promise<DeliveryAggregate>;
@@ -720,6 +735,19 @@ async function lockDelivery(db: DeliveryDatabase, deliveryId: string): Promise<D
   return row || null;
 }
 
+// Lease authority must come from the database clock, read inside the locked
+// transaction. The application clock can be skewed and, more importantly, a
+// timestamp captured before a row-lock wait is already stale by the time the
+// lock is granted; recovery evaluates the lease against this same clock.
+async function databaseClock(db: DeliveryDatabase): Promise<Date> {
+  const rows = (await db.execute(sql`SELECT clock_timestamp() AS now`)) as unknown as Array<{
+    now: Date | string | null;
+  }>;
+  const value = asDate(rows[0]?.now);
+  if (!value) throw new QuotationDeliveryOutboxRepositoryError();
+  return value;
+}
+
 async function syncDeliveryState(
   db: DeliveryDatabase,
   deliveryId: string,
@@ -737,11 +765,17 @@ async function syncDeliveryState(
     .select()
     .from(quotationDeliverySteps)
     .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
-  const state =
-    stateOverride ||
-    (steps.length > 0
-      ? aggregateDeliveryState(steps.map((step) => step.state as DeliveryStepState))
-      : (delivery.state as DeliveryState));
+  // An operator cancellation (`cancelPending`) is terminal: a later receipt may
+  // move an already accepted step to `needs_review`/`delivered`, but it must
+  // never reopen the delivery or clear its operator completion marker.
+  const operatorCancelled =
+    delivery.state === 'failed' && safeCompletionSource(delivery.completionSource) === 'operator';
+  const state = operatorCancelled
+    ? 'failed'
+    : stateOverride ||
+      (steps.length > 0
+        ? aggregateDeliveryState(steps.map((step) => step.state as DeliveryStepState))
+        : (delivery.state as DeliveryState));
   const nextAttemptAt =
     steps
       .filter(
@@ -755,14 +789,20 @@ async function syncDeliveryState(
       .filter((step) => step.state === 'reconciling' && step.reconciliationDeadline)
       .map((step) => asDate(step.reconciliationDeadline)!)
       .sort((a, b) => a.getTime() - b.getTime())[0] || null;
-  const completionSource =
-    completionSourceOverride !== undefined
+  const completionSource = operatorCancelled
+    ? 'operator'
+    : completionSourceOverride !== undefined
       ? completionSourceOverride
       : state === 'delivered'
         ? safeCompletionSource(delivery.completionSource) || 'provider_receipt'
         : null;
   const deliveredAt =
     state === 'delivered' ? asDate(delivery.deliveredAt) || new Date(now.getTime()) : null;
+  // A delivery-level error is stale once no step still carries one (for example
+  // after a delayed DELIVERY_ACK/READ cleared the step that had failed).
+  const hasStepError = steps.some((step) => step.publicError);
+  const publicError =
+    state === 'delivered' ? null : steps.length === 0 || hasStepError ? delivery.publicError : null;
   await db
     .update(quotationDeliveries)
     .set({
@@ -771,10 +811,121 @@ async function syncDeliveryState(
       reconciliationDeadline,
       completionSource,
       deliveredAt,
-      publicError: state === 'delivered' ? null : delivery.publicError,
+      publicError,
       updatedAt: now,
     })
     .where(eq(quotationDeliveries.id, deliveryId));
+}
+
+/**
+ * Folds every pending inbox receipt for one provider message id into its
+ * correlated step, in received order. Receipt state is monotonic and operator
+ * cancellations (`failed`) never regress, so duplicate callbacks are no-ops.
+ * Rows stay pending while the id is not correlated yet (receipt raced ahead of
+ * `markAccepted`); `markAccepted` re-runs this in the same transaction that
+ * persists the provider id, which makes the correlation durable without any
+ * provider replay.
+ */
+async function applyPendingReceipts(
+  db: DeliveryDatabase,
+  providerMessageId: string,
+  now: Date
+): Promise<string | null> {
+  const [candidate] = await db
+    .select()
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.providerMessageId, providerMessageId))
+    .limit(1);
+  if (!candidate) return null;
+  const delivery = await lockDelivery(db, candidate.deliveryId);
+  if (!delivery) return null;
+  const pending = await db
+    .select({
+      status: evolutionReceiptInbox.status,
+      receivedAt: evolutionReceiptInbox.receivedAt,
+    })
+    .from(evolutionReceiptInbox)
+    .where(
+      and(
+        eq(evolutionReceiptInbox.providerMessageId, providerMessageId),
+        isNull(evolutionReceiptInbox.appliedAt)
+      )
+    )
+    .orderBy(asc(evolutionReceiptInbox.receivedAt));
+  const [step] = await db
+    .select()
+    .from(quotationDeliverySteps)
+    .where(
+      and(
+        eq(quotationDeliverySteps.id, candidate.id),
+        eq(quotationDeliverySteps.deliveryId, candidate.deliveryId),
+        eq(quotationDeliverySteps.providerMessageId, providerMessageId)
+      )
+    )
+    .limit(1);
+  if (!step) return null;
+  const nextState = pending.reduce(
+    (state, row) => applyDeliveryReceipt(state, row.status as EvolutionReceiptStatus),
+    step.state as DeliveryStepState
+  );
+  if (nextState !== step.state) {
+    // The durable inbox `received_at` is the true provider receipt time. Using
+    // the clock at fold time would shift `first_provider_receipt_at` and the
+    // follow-up due time whenever a receipt is folded later (for example during
+    // an acceptance that happens after the receipt arrived). The earliest
+    // delivery-confirming receipt dates the delivery; the earliest READ/PLAYED
+    // dates the read, so a read-after-delivery never overwrites the delivery
+    // clock. `PLAYED` advances the step to `read` exactly like `READ`, so it must
+    // participate in the durable clock folding too: an early `PLAYED` folded
+    // during a later acceptance must not fall back to the acceptance clock.
+    const receiptTimes = pending
+      .filter((row) => RECEIPT_CLOCK_STATUSES.includes(row.status as EvolutionReceiptStatus))
+      .map((row) => ({ status: row.status as EvolutionReceiptStatus, at: asDate(row.receivedAt) }))
+      .filter((entry): entry is { status: EvolutionReceiptStatus; at: Date } => entry.at !== null)
+      .sort((left, right) => left.at.getTime() - right.at.getTime());
+    const firstReceiptAt = receiptTimes[0]?.at || null;
+    const firstReadAt = receiptTimes.find((entry) => READ_CLOCK_STATUSES.includes(entry.status))?.at || null;
+    const deliveredAt =
+      nextState === 'delivered' || nextState === 'read'
+        ? asDate(step.deliveredAt) || firstReceiptAt || now
+        : step.deliveredAt;
+    const readAt =
+      nextState === 'read'
+        ? asDate(step.readAt) || firstReadAt || firstReceiptAt || now
+        : step.readAt;
+    const receiptArrived = nextState === 'delivered' || nextState === 'read';
+    await db
+      .update(quotationDeliverySteps)
+      .set({
+        state: nextState,
+        deliveredAt,
+        readAt,
+        reconciliationDeadline: null,
+        // A successful delayed receipt clears the error that was blocking the step.
+        publicError: receiptArrived ? null : step.publicError,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(quotationDeliverySteps.id, step.id),
+          eq(quotationDeliverySteps.deliveryId, candidate.deliveryId),
+          eq(quotationDeliverySteps.providerMessageId, providerMessageId)
+        )
+      );
+    await syncDeliveryState(db, candidate.deliveryId, now);
+  }
+  if (pending.length > 0) {
+    await db
+      .update(evolutionReceiptInbox)
+      .set({ appliedAt: now })
+      .where(
+        and(
+          eq(evolutionReceiptInbox.providerMessageId, providerMessageId),
+          isNull(evolutionReceiptInbox.appliedAt)
+        )
+      );
+  }
+  return candidate.deliveryId;
 }
 
 function stepUpdateCondition(deliveryId: string, stepId: string, leaseToken: string): SQL {
@@ -1172,25 +1323,43 @@ export function createPostgresQuotationDeliveryOutboxRepository(
       const db = getDb();
       return await db.transaction(async (tx) => {
         const nowIso = now.toISOString();
-        const recovered = (await tx.execute(sql`
-          UPDATE quotation_delivery_steps s
-          SET state = 'reconciling',
-              next_attempt_at = NULL,
-              reconciliation_deadline = ${new Date(now.getTime() + configuredReconciliationMs).toISOString()},
-              updated_at = ${nowIso}
-          WHERE s.state = 'sending'
-            AND s.provider_message_id IS NULL
+        // Expired recovery and pre-dispatch renewal must serialize on the same
+        // delivery row. Lock the delivery (FOR UPDATE) before touching any step
+        // and re-evaluate `lease_until` under that lock: a worker that renewed
+        // concurrently extended the lease, so the predicate no longer matches
+        // and recovery cannot revoke a live owner. A worker that lost the race
+        // finds its token revoked here and makes zero provider calls.
+        const expired = (await tx.execute(sql`
+          SELECT d.id
+          FROM quotation_deliveries d
+          WHERE d.lease_until IS NOT NULL
+            AND d.lease_until <= clock_timestamp()
+            AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
             AND EXISTS (
               SELECT 1
-              FROM quotation_deliveries d
-              WHERE d.id = s.delivery_id
-                AND d.lease_until IS NOT NULL
-                AND d.lease_until <= ${nowIso}
-                AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
+              FROM quotation_delivery_steps s
+              WHERE s.delivery_id = d.id
+                AND s.state = 'sending'
+                AND s.provider_message_id IS NULL
             )
-          RETURNING s.delivery_id
-        `)) as Array<{ delivery_id: string }>;
-        for (const deliveryId of [...new Set(recovered.map((row) => row.delivery_id))]) {
+          FOR UPDATE OF d SKIP LOCKED
+        `)) as Array<{ id: string }>;
+        for (const { id: deliveryId } of expired) {
+          await tx
+            .update(quotationDeliverySteps)
+            .set({
+              state: 'reconciling',
+              nextAttemptAt: null,
+              reconciliationDeadline: new Date(now.getTime() + configuredReconciliationMs),
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(quotationDeliverySteps.deliveryId, deliveryId),
+                eq(quotationDeliverySteps.state, 'sending'),
+                isNull(quotationDeliverySteps.providerMessageId)
+              )
+            );
           await tx
             .update(quotationDeliveries)
             .set({
@@ -1207,7 +1376,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           WHERE s.state IN ('queued', 'retry_scheduled')
             AND s.next_attempt_at IS NOT NULL
             AND s.next_attempt_at <= ${nowIso}
-            AND (d.lease_until IS NULL OR d.lease_until <= ${nowIso})
+            AND (d.lease_until IS NULL OR d.lease_until <= clock_timestamp())
             AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
             AND NOT EXISTS (
               SELECT 1
@@ -1226,7 +1395,10 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         const selected = rows[0];
         if (!selected) return null;
         const token = randomUUID();
-        const until = leaseUntil(now, configuredLeaseMs);
+        // The lease clock is read under the same row lock as the selection, from
+        // the database, so the granted lease is live at the moment it is granted.
+        const leaseNow = await databaseClock(tx);
+        const until = leaseUntil(leaseNow, configuredLeaseMs);
         const [updatedDelivery] = await tx
           .update(quotationDeliveries)
           .set({
@@ -1279,6 +1451,56 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     }
   }
 
+  async function renewLease(input: RenewLeaseInput): Promise<boolean> {
+    const deliveryId = uuid(input?.deliveryId, 'Identificador da entrega');
+    const stepId = uuid(input?.stepId, 'Identificador do passo');
+    const token = uuid(input?.leaseToken, 'Lease');
+    try {
+      const db = getDb();
+      return await db.transaction(async (tx) => {
+        // Take the same delivery row lock as expired recovery before reading
+        // state, so the two orders are strictly serialized:
+        // - renewal first extends `lease_until`, so recovery's expiry predicate
+        //   no longer matches and cannot revoke a live owner;
+        // - recovery first revokes the token / moves the step to `reconciling`,
+        //   so this renewal fails and the worker never reaches the provider.
+        const delivery = await lockDelivery(tx, deliveryId);
+        if (!delivery || delivery.leaseToken !== token) return false;
+        const [step] = await tx
+          .select()
+          .from(quotationDeliverySteps)
+          .where(
+            and(
+              eq(quotationDeliverySteps.id, stepId),
+              eq(quotationDeliverySteps.deliveryId, deliveryId)
+            )
+          )
+          .limit(1);
+        if (!step || step.state !== 'sending') return false;
+        // Read the database clock only after the serialization lock is granted,
+        // so a lock wait longer than the requested lease can never write an
+        // already-expired `lease_until` and still return true.
+        const leaseNow = await databaseClock(tx);
+        const updated = await tx
+          .update(quotationDeliveries)
+          .set({
+            leaseUntil: leaseUntil(leaseNow, configuredLeaseMs),
+            updatedAt: leaseNow,
+          })
+          .where(
+            and(
+              eq(quotationDeliveries.id, deliveryId),
+              eq(quotationDeliveries.leaseToken, token)
+            )
+          )
+          .returning({ id: quotationDeliveries.id });
+        return updated.length > 0;
+      });
+    } catch (error) {
+      return rethrowRepositoryError(error);
+    }
+  }
+
   async function markAccepted(input: MarkAcceptedInput): Promise<DeliveryAggregate> {
     const deliveryId = uuid(input?.deliveryId, 'Identificador da entrega');
     const stepId = uuid(input?.stepId, 'Identificador do passo');
@@ -1289,6 +1511,12 @@ export function createPostgresQuotationDeliveryOutboxRepository(
       const db = getDb();
       return await db.transaction(async (tx) => {
         const nowIso = now.toISOString();
+        // Same lock as `receiveReceipt`: an early receipt is either folded here
+        // (its inbox row is already committed and visible) or it will fold
+        // itself after this transaction commits — the receipt cannot be lost.
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${providerMessageId}, 0))
+        `);
         const delivery = await lockDelivery(tx, deliveryId);
         if (!delivery || delivery.leaseToken !== token) {
           throw new QuotationDeliveryOutboxConflictError('O lease da etapa expirou ou é inválido.');
@@ -1372,6 +1600,9 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               )
             );
         }
+        // Receipts that arrived before this acceptance was persisted are folded
+        // in now, monotonically, without any provider replay.
+        await applyPendingReceipts(tx, providerMessageId, now);
         await syncDeliveryState(tx, deliveryId, now);
         const cleared = await tx
           .update(quotationDeliveries)
@@ -1474,63 +1705,55 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     }
   }
 
-  async function applyReceipt(input: ApplyReceiptInput): Promise<DeliveryAggregate | null> {
+  async function receiveReceipt(input: ReceiveReceiptInput): Promise<DeliveryAggregate | null> {
     const providerMessageId = normalizeProviderMessageId(input?.providerMessageId);
     const status = normalizeReceiptStatus(input?.status);
     const now = nowFrom(clock);
     try {
       const db = getDb();
       return await db.transaction(async (tx) => {
-        const [candidate] = await tx
-          .select()
-          .from(quotationDeliverySteps)
-          .where(eq(quotationDeliverySteps.providerMessageId, providerMessageId))
-          .limit(1);
-        if (!candidate) return null;
-        const delivery = await lockDelivery(tx, candidate.deliveryId);
-        if (!delivery) return null;
-        const [step] = await tx
-          .select()
-          .from(quotationDeliverySteps)
-          .where(
-            and(
-              eq(quotationDeliverySteps.id, candidate.id),
-              eq(quotationDeliverySteps.deliveryId, candidate.deliveryId),
-              eq(quotationDeliverySteps.providerMessageId, providerMessageId)
-            )
-          )
-          .limit(1);
-        if (!step) return null;
-        const nextState = applyDeliveryReceipt(step.state as DeliveryStepState, status);
-        if (nextState !== step.state) {
-          const deliveredAt =
-            nextState === 'delivered' || nextState === 'read'
-              ? asDate(step.deliveredAt) || now
-              : step.deliveredAt;
-          const readAt = nextState === 'read' ? asDate(step.readAt) || now : step.readAt;
-          await tx
-            .update(quotationDeliverySteps)
-            .set({
-              state: nextState,
-              deliveredAt,
-              readAt,
-              reconciliationDeadline: null,
-              updatedAt: now,
-            })
-            .where(
-              and(
-                eq(quotationDeliverySteps.id, step.id),
-                eq(quotationDeliverySteps.deliveryId, candidate.deliveryId),
-                eq(quotationDeliverySteps.providerMessageId, providerMessageId)
-              )
-            );
-          await syncDeliveryState(tx, candidate.deliveryId, now);
-        }
-        return readAggregate(tx, candidate.deliveryId, now);
+        // Serializes with `markAccepted` for the same provider message id so the
+        // inbox row is either folded into the step inside markAccepted's
+        // transaction or picked up by this one — never dropped between them.
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${providerMessageId}, 0))
+        `);
+        await tx
+          .insert(evolutionReceiptInbox)
+          .values({
+            id: randomUUID(),
+            providerMessageId,
+            status,
+            receivedAt: now,
+          })
+          .onConflictDoNothing({
+            target: [evolutionReceiptInbox.providerMessageId, evolutionReceiptInbox.status],
+          });
+        await pruneReceiptInbox(tx, now);
+        const deliveryId = await applyPendingReceipts(tx, providerMessageId, now);
+        return deliveryId ? readAggregate(tx, deliveryId, now) : null;
       });
     } catch (error) {
       return rethrowRepositoryError(error);
     }
+  }
+
+  async function pruneReceiptInbox(db: DeliveryDatabase, now: Date): Promise<void> {
+    // Age-based, regardless of `applied_at`: an id that never correlates (for
+    // example an outbound message from a path with no outbox step) must not grow
+    // the table forever. No acceptance can legitimately land this long after a
+    // receipt, since a step is accepted within the lease/reconciliation window.
+    const cutoff = new Date(now.getTime() - RECEIPT_RETENTION_MS).toISOString();
+    await db.execute(sql`
+      DELETE FROM evolution_receipt_inbox
+      WHERE id IN (
+        SELECT id
+        FROM evolution_receipt_inbox
+        WHERE received_at <= ${cutoff}
+        ORDER BY received_at
+        LIMIT ${RECEIPT_RETENTION_BATCH}
+      )
+    `);
   }
 
   async function expireReconciliations(limit: number): Promise<number> {
@@ -1662,6 +1885,38 @@ export function createPostgresQuotationDeliveryOutboxRepository(
       return await db.transaction(async (tx) => {
         const delivery = await lockDelivery(tx, deliveryId);
         if (!delivery) throw new QuotationDeliveryOutboxNotFoundError();
+        // A persisted `sending` step is an in-flight dispatch that may already be
+        // at the provider, even when its lease timestamp elapsed: the worker can
+        // be slow, not dead. Manual resolution must not reinterpret, requeue or
+        // release it, because clearing the lease would orphan the step (nothing
+        // could ever reclaim or classify it). The step's own external result —
+        // or the worker's reconciliation, which requires the lease to recover —
+        // is the only honest classifier.
+        const [sendingStep] = await tx
+          .select({ id: quotationDeliverySteps.id })
+          .from(quotationDeliverySteps)
+          .where(
+            and(
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+              eq(quotationDeliverySteps.state, 'sending')
+            )
+          )
+          .limit(1);
+        if (sendingStep) {
+          throw new QuotationDeliveryOutboxConflictError(
+            'Há um envio em andamento. Aguarde a conclusão antes de resolver.'
+          );
+        }
+        // A live lease means a worker already owns a `sending` step and may have
+        // handed it to the provider. Manual resolution must not reinterpret,
+        // revoke or reschedule that dispatch until its external result is
+        // durably classified (accepted or failed).
+        const leaseExpiresAt = asDate(delivery.leaseUntil);
+        if (delivery.leaseToken && leaseExpiresAt && leaseExpiresAt.getTime() > now.getTime()) {
+          throw new QuotationDeliveryOutboxConflictError(
+            'Há um envio em andamento. Aguarde a conclusão antes de resolver.'
+          );
+        }
         const updatedAt = asDate(delivery.updatedAt);
         if (delivery.state !== 'needs_review' && delivery.state !== 'provider_accepted') {
           throw new QuotationDeliveryOutboxConflictError(
@@ -1683,6 +1938,23 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         if (existingSteps.length === 0 && input.decision === 'confirmed_not_received') {
           throw new QuotationDeliveryOutboxConflictError(
             'A entrega legada não possui etapas para reenvio.'
+          );
+        }
+        const resolutionConditions = [
+          eq(quotationDeliverySteps.deliveryId, deliveryId),
+          // `sending` is an in-flight dispatch: never reinterpreted or requeued
+          // by a manual decision. `failed` covers operator-cancelled steps,
+          // which must never be revived.
+          notInArray(quotationDeliverySteps.state, ['delivered', 'read', 'sending', 'failed']),
+        ];
+        if (input.decision === 'confirmed_received') {
+          // `confirmed_received` is evidence that the messages already handed to
+          // the provider arrived — never a licence to retire steps that were
+          // never attempted (`queued`/`retry_scheduled`) or explicitly
+          // cancelled (`failed`). Only accepted or ambiguous dispatches are
+          // promoted; the unsent remainder keeps its own honest state.
+          resolutionConditions.push(
+            inArray(quotationDeliverySteps.state, ['server_ack', 'reconciling', 'needs_review']),
           );
         }
         await tx
@@ -1707,33 +1979,26 @@ export function createPostgresQuotationDeliveryOutboxRepository(
                   updatedAt: now,
                 }
           )
+          .where(and(...resolutionConditions));
+        const [nextStep] = await tx
+          .select()
+          .from(quotationDeliverySteps)
           .where(
             and(
               eq(quotationDeliverySteps.deliveryId, deliveryId),
-              notInArray(quotationDeliverySteps.state, ['delivered', 'read'])
+              inArray(quotationDeliverySteps.state, ['queued', 'retry_scheduled'])
             )
-          );
-        if (input.decision === 'confirmed_not_received') {
-          const [nextStep] = await tx
-            .select()
-            .from(quotationDeliverySteps)
-            .where(
-              and(
-                eq(quotationDeliverySteps.deliveryId, deliveryId),
-                eq(quotationDeliverySteps.state, 'queued')
-              )
-            )
-            .orderBy(asc(quotationDeliverySteps.position))
-            .limit(1);
-          if (nextStep) {
-            await tx
-              .update(quotationDeliverySteps)
-              .set({
-                nextAttemptAt: new Date(now.getTime() + stepSnapshot(nextStep).delayMs),
-                updatedAt: now,
-              })
-              .where(eq(quotationDeliverySteps.id, nextStep.id));
-          }
+          )
+          .orderBy(asc(quotationDeliverySteps.position))
+          .limit(1);
+        if (nextStep && nextStep.nextAttemptAt === null) {
+          await tx
+            .update(quotationDeliverySteps)
+            .set({
+              nextAttemptAt: new Date(now.getTime() + stepSnapshot(nextStep).delayMs),
+              updatedAt: now,
+            })
+            .where(eq(quotationDeliverySteps.id, nextStep.id));
         }
         await tx
           .update(quotationDeliveries)
@@ -1752,7 +2017,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           tx,
           deliveryId,
           now,
-          input.decision === 'confirmed_received' ? 'operator' : null,
+          undefined,
           existingSteps.length === 0 && input.decision === 'confirmed_received'
             ? 'delivered'
             : undefined
@@ -1772,10 +2037,11 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     getByIdentity,
     list,
     claim,
+    renewLease,
     expandQuotationWebpStep,
     markAccepted,
     markFailure,
-    applyReceipt,
+    receiveReceipt,
     expireReconciliations,
     cancelPending,
     resolve,

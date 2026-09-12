@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
 import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   cancelPendingDeliveries,
+  deliveryPollDelay,
   fetchDelivery,
   listDeliveries,
   projectDelivery,
@@ -352,6 +353,21 @@ export default function WhatsAppDeliveriesPage() {
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState('');
   const historyDetailRequestRef = useRef(0);
+  // Every selected-delivery detail request (poll or history fetch) carries an
+  // identity checked before any state write. Resolution, drawer close, selection
+  // change and a newer detail fetch all bump it, so a stale success or rejection
+  // can never reopen the drawer or restore obsolete controls.
+  const detailRequestRef = useRef(0);
+  const invalidateDetailRequests = () => {
+    detailRequestRef.current += 1;
+  };
+  const selectDelivery = (next: DeliveryView | null) => {
+    invalidateDetailRequests();
+    setSelectedDelivery(next);
+  };
+  // A silent poll must never overwrite a newer authoritative write (filters,
+  // manual reload, resolution). Foreground writers bump this epoch.
+  const resultEpochRef = useRef(0);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('all');
   const [historySearch, setHistorySearch] = useState('');
@@ -366,6 +382,7 @@ export default function WhatsAppDeliveriesPage() {
 
   // Texto em edição nos campos de data; o filtro só recebe data completa e válida.
   const [dateDraft, setDateDraft] = useState({ from: '', to: '' });
+
   useEffect(() => {
     setDateDraft({
       from: filters.from ? filters.from.split('-').reverse().join('/') : '',
@@ -390,6 +407,7 @@ export default function WhatsAppDeliveriesPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const generation = (resultEpochRef.current += 1);
     setLoading(true);
     setError(null);
     if (activeTab === 'history') {
@@ -398,20 +416,72 @@ export default function WhatsAppDeliveriesPage() {
     }
     listDeliveries(requestFilters)
       .then((nextResult) => {
-        if (cancelled) return;
+        if (cancelled || generation !== resultEpochRef.current) return;
         setResult(nextResult);
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || generation !== resultEpochRef.current) return;
         setError('Não foi possível consultar as entregas. Tente novamente.');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        // A resolution or a newer foreground load owns the epoch now: this
+        // stale completion must not overwrite result, error or loading.
+        if (!cancelled && generation === resultEpochRef.current) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [activeTab, reloadVersion, requestFilters]);
+
+  // The outbox keeps moving after the first load (worker, receipts, manual
+  // resolution). Reuse the same poll cadence as the per-delivery hook instead of
+  // requiring a browser reload to see progress.
+  const refreshListSilently = useCallback(async () => {
+    const epoch = resultEpochRef.current;
+    try {
+      const next = await listDeliveries(requestFilters);
+      if (epoch !== resultEpochRef.current) return;
+      setResult(next);
+    } catch {
+      // A polling failure must not replace a readable screen with an error banner.
+    }
+  }, [requestFilters]);
+
+  useEffect(() => {
+    if (activeTab === 'history' || !result) return undefined;
+    const delays = result.data
+      .map((delivery) => deliveryPollDelay(delivery.state))
+      .filter((delay): delay is number => delay !== null);
+    if (delays.length === 0) return undefined;
+    const timer = setTimeout(() => void refreshListSilently(), Math.min(...delays));
+    return () => clearTimeout(timer);
+  }, [activeTab, result, refreshListSilently]);
+
+  useEffect(() => {
+    if (!selectedDelivery) return undefined;
+    const delay = deliveryPollDelay(selectedDelivery.state);
+    if (delay === null) return undefined;
+    const id = selectedDelivery.id;
+    const generation = ++detailRequestRef.current;
+    const timer = setTimeout(() => {
+      void fetchDelivery({ id })
+        .then((next) => {
+          // A stale success released after resolution/close must not touch
+          // state: the generation is checked before every write.
+          if (generation !== detailRequestRef.current || !next) return;
+          setSelectedDelivery(next);
+        })
+        .catch(() => {
+          // A stale rejection must not surface an error; keep the last
+          // readable detail and let the next poll recover.
+        });
+    }, delay);
+    return () => {
+      clearTimeout(timer);
+      // A selection change, close or newer request invalidates the in-flight one.
+      if (generation === detailRequestRef.current) detailRequestRef.current += 1;
+    };
+  }, [selectedDelivery]);
 
   const updateFilters = (update: (current: DeliveryFilters) => DeliveryFilters) => {
     setPage(1);
@@ -462,6 +532,13 @@ export default function WhatsAppDeliveriesPage() {
     setResolvingId(delivery.id);
     try {
       const resolved = await resolveDelivery(delivery.id, decision, note);
+      // Resolution is authoritative: invalidate every in-flight detail request
+      // before closing so a stale GET cannot reopen the drawer with old state.
+      invalidateDetailRequests();
+      resultEpochRef.current += 1;
+      // Resolution supersedes any held foreground list load: finalize its
+      // loading state so the ignored stale completion cannot leave it stuck.
+      setLoading(false);
       setResult((current) => {
         if (!current) return current;
         const before = current.data.find((item) => item.id === delivery.id);
@@ -482,6 +559,7 @@ export default function WhatsAppDeliveriesPage() {
 
   const openHistoryDetails = async (event: SendEvent) => {
     const requestId = ++historyDetailRequestRef.current;
+    invalidateDetailRequests();
     setSelectedHistoryEvent(event);
     setSelectedDelivery(null);
     setHistoryDetailError('');
@@ -500,6 +578,7 @@ export default function WhatsAppDeliveriesPage() {
 
   const closeDetails = () => {
     historyDetailRequestRef.current += 1;
+    invalidateDetailRequests();
     setSelectedDelivery(null);
     setSelectedHistoryEvent(null);
     setHistoryDetailError('');
@@ -914,7 +993,7 @@ export default function WhatsAppDeliveriesPage() {
                           variant="outline"
                           size="sm"
                           aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
-                          onClick={() => setSelectedDelivery(delivery)}
+                          onClick={() => selectDelivery(delivery)}
                         >
                           Detalhes
                         </Button>

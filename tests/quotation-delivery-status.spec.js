@@ -28,7 +28,7 @@ function stepState(state) {
   }[state];
 }
 
-function delivery(state, selectedFlowId = flowId, selectedRevisionId = revisionId) {
+function delivery(state, selectedFlowId = flowId, selectedRevisionId = revisionId, overrides = {}) {
   const delivered = state === 'delivered';
   return {
     id: `delivery-${selectedRevisionId}-${selectedFlowId}`,
@@ -60,6 +60,7 @@ function delivery(state, selectedFlowId = flowId, selectedRevisionId = revisionI
       : null,
     delivered_at: delivered ? updatedAt : null,
     updated_at: updatedAt,
+    ...overrides,
   };
 }
 
@@ -286,7 +287,7 @@ async function mockDeliveryLifecycle(page, states) {
   return { getSendCount: () => sendCount, getLastSendBody: () => lastSendBody };
 }
 
-async function mockDetail(page, state = 'delivered', selectedFlowId = flowId) {
+async function mockDetail(page, state = 'delivered', selectedFlowId = flowId, overrides = {}) {
   await page.route('**/api/settings**', (route) => json(route, {}));
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash: 'a'.repeat(64) }],
@@ -369,7 +370,7 @@ async function mockDetail(page, state = 'delivered', selectedFlowId = flowId) {
       steps: [{ id: 'step-1', type: 'text', template: 'Olá' }],
     }],
   }));
-  await page.route('**/api/quotation-deliveries**', (route) => json(route, delivery(state, selectedFlowId)));
+  await page.route('**/api/quotation-deliveries**', (route) => json(route, delivery(state, selectedFlowId, revisionId, overrides)));
 }
 
 test('single click persists status across reload and never offers blind retry', async ({ page }) => {
@@ -490,6 +491,27 @@ test('quotation detail loads the same durable delivery without clicking send', a
   await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
 });
 
+test('quotation detail observes a delivery created under another flow and blocks a duplicate send', async ({ page }) => {
+  await mockDetail(page, 'delivered', 'flow-2');
+  let sendCount = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    return json(route, { error: 'unexpected' }, 500);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    // The selected flow (flow-2) has no delivery of its own; the revision does,
+    // under flow-1. The detail must observe it instead of offering a new send.
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    return json(route, deliveryPage([delivery('delivered', flowId)]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(sendCount).toBe(0);
+});
+
 test('browser reload during processing keeps the durable processing state', async ({ page }) => {
   await mockDetail(page, 'processing');
   let transportCalls = 0;
@@ -597,4 +619,367 @@ test('polling failure keeps the last delivery status and shows a non-destructive
   await expect.poll(() => statusReads, { timeout: 15000 }).toBeGreaterThan(1);
   await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
   await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+});
+
+test('an ambiguous detail enqueue stays blocked and never repeats the POST', async ({ page }) => {
+  await mockDetail(page);
+  let sendCount = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    return json(route, { error: 'gateway timeout' }, 503);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    // Neither the selected flow nor the revision has a row yet: the lost POST
+    // may still have persisted, so the action must remain blocked.
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    return json(route, deliveryPage([]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  await send.click();
+  await expect(
+    page.getByText('O envio anterior ficou sem resposta. Aguarde a confirmação antes de reenviar.'),
+  ).toBeVisible({ timeout: 15000 });
+  expect(sendCount).toBe(1);
+  await expect(send).toBeDisabled();
+  await expect(page.getByLabel('Fluxo WhatsApp')).toBeDisabled();
+  await send.click({ force: true });
+  expect(sendCount).toBe(1);
+});
+
+test('an ambiguous detail enqueue recovers the delayed row without a second POST', async ({ page }) => {
+  await mockDetail(page);
+  let sendCount = 0;
+  let revisionReads = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    return json(route, { error: 'gateway timeout' }, 503);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    revisionReads += 1;
+    // The row lands only after the POST response was lost; the bounded read
+    // discovery must find it and attach it without repeating the request.
+    return revisionReads === 1
+      ? json(route, deliveryPage([]))
+      : json(route, deliveryPage([delivery('provider_accepted')]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await page.getByRole('button', { name: /enviar whatsapp/i }).click();
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(sendCount).toBe(1);
+});
+
+test('a failed revision lookup keeps the detail send blocked with a safe error', async ({ page }) => {
+  await mockDetail(page);
+  let sendCount = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    return json(route, { error: 'unexpected' }, 500);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    // The revision-wide read fails: absence cannot be proven, so an existing
+    // delivery under another flow must not be presented as permission to send.
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    return json(route, { error: 'unavailable' }, 503);
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(sendCount).toBe(0);
+});
+
+test('a stale polling read never overwrites an operator resolution', async ({ page }) => {
+  await mockDetail(page, 'provider_accepted', flowId, {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  const staleReadReleased = Promise.withResolvers();
+  const patchReleased = Promise.withResolvers();
+  let identityReads = 0;
+  const staleState = delivery('provider_accepted', flowId, revisionId, {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      // Held so the polling read starts and stays in flight across the resolve.
+      await patchReleased.promise;
+      return json(route, delivery('delivered'));
+    }
+    if (url.searchParams.has('flow_id')) {
+      identityReads += 1;
+      if (identityReads === 2) {
+        await staleReadReleased.promise;
+        return json(route, staleState);
+      }
+      return json(route, staleState);
+    }
+    return json(route, deliveryPage([staleState]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => identityReads, { timeout: 15000 }).toBe(2);
+
+  patchReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+
+  // The stale read still returns the old accepted state.
+  staleReadReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
+});
+
+test('a stale rejected poll never reintroduces an error after a resolution', async ({ page }) => {
+  await mockDetail(page, 'provider_accepted', flowId, {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  const staleRejectionReleased = Promise.withResolvers();
+  const patchReleased = Promise.withResolvers();
+  let identityReads = 0;
+  const staleState = delivery('provider_accepted', flowId, revisionId, {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      // Held so the polling read starts and stays in flight across the resolve.
+      await patchReleased.promise;
+      return json(route, delivery('delivered'));
+    }
+    if (url.searchParams.has('flow_id')) {
+      identityReads += 1;
+      if (identityReads === 2) {
+        // Started before the resolution and rejected only after it landed.
+        await staleRejectionReleased.promise;
+        return json(route, { error: 'status unavailable' }, 503);
+      }
+      return json(route, staleState);
+    }
+    return json(route, deliveryPage([staleState]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => identityReads, { timeout: 15000 }).toBe(2);
+
+  patchReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+
+  // The held read now rejects with a stale generation: the newer authoritative
+  // resolution must win and no warning may reappear beside it.
+  staleRejectionReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toHaveCount(0);
+});
+
+test('an active delivery from another flow keeps polling to delivered without another POST', async ({ page }) => {
+  await mockDetail(page, 'delivered', 'flow-2');
+  let sendCount = 0;
+  let revisionReads = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    return json(route, { error: 'unexpected' }, 500);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    // The selected flow has no delivery; the revision's delivery lives under
+    // flow-1 and must keep progressing by its own identity.
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    revisionReads += 1;
+    return json(
+      route,
+      deliveryPage([revisionReads === 1 ? delivery('processing', flowId) : delivery('delivered', flowId)]),
+    );
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Enviando', { exact: true })).toBeVisible();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(sendCount).toBe(0);
+});
+
+test('selected flow B resolves the actual flow A delivery once and drops the stale alias controls', async ({ page }) => {
+  await mockDetail(page, 'needs_review', 'flow-2');
+  let patchCount = 0;
+  let revisionReads = 0;
+  const patchReleased = Promise.withResolvers();
+  // The selected flow (flow-2) has no delivery of its own; the revision's row
+  // lives under flow-1. The Detail must fall back to it, resolve it once, and
+  // update the selected alias instead of leaving `needs_review` controls around.
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      patchCount += 1;
+      await patchReleased.promise;
+      return json(route, delivery('delivered', flowId));
+    }
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    revisionReads += 1;
+    return json(route, deliveryPage([delivery('needs_review', flowId)]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Revisão necessária', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => patchCount).toBe(1);
+
+  patchReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  // The selected flow alias must reflect the resolution immediately: no stale
+  // needs_review controls and no blind send.
+  await expect(page.getByRole('button', { name: /cliente confirmou recebimento/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(patchCount).toBe(1);
+  expect(revisionReads).toBeGreaterThan(0);
+
+  // A forced second attempt must not issue a duplicate PATCH.
+  await page.getByRole('button', { name: /enviar whatsapp/i }).click({ force: true });
+  expect(patchCount).toBe(1);
+});
+
+test('a stale cross-flow success read released after resolution never restores old controls', async ({ page }) => {
+  await mockDetail(page, 'provider_accepted', 'flow-2', {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  let patchCount = 0;
+  let postCount = 0;
+  let selectedReads = 0;
+  let revisionReads = 0;
+  const staleReadReleased = Promise.withResolvers();
+  const patchReleased = Promise.withResolvers();
+  const staleActual = delivery('provider_accepted', flowId, revisionId, {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    postCount += 1;
+    return json(route, { error: 'unexpected' }, 500);
+  });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      patchCount += 1;
+      await patchReleased.promise;
+      return json(route, delivery('delivered', flowId));
+    }
+    // Selected flow B has no delivery of its own.
+    if (url.searchParams.has('flow_id')) {
+      selectedReads += 1;
+      return json(route, { error: 'not found' }, 404);
+    }
+    // Actual flow A read: the second one is held across the resolution.
+    revisionReads += 1;
+    if (revisionReads === 2) {
+      await staleReadReleased.promise;
+      return json(route, deliveryPage([staleActual]));
+    }
+    return json(route, deliveryPage([staleActual]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  // The poll starts before the resolution lands and reads both the selected
+  // flow and the actual flow.
+  await expect.poll(() => revisionReads, { timeout: 15000 }).toBe(2);
+  await expect.poll(() => selectedReads, { timeout: 15000 }).toBeGreaterThanOrEqual(2);
+
+  patchReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+
+  // Releasing the stale actual-flow success must not roll the resolved state back.
+  staleReadReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
+  expect(patchCount).toBe(1);
+  expect(postCount).toBe(0);
+
+  // A forced second attempt must not issue a duplicate PATCH or a POST.
+  await page.getByRole('button', { name: /enviar whatsapp/i }).click({ force: true });
+  expect(patchCount).toBe(1);
+  expect(postCount).toBe(0);
+});
+
+test('a stale cross-flow rejection released after resolution never reintroduces a warning', async ({ page }) => {
+  await mockDetail(page, 'provider_accepted', 'flow-2', {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  let patchCount = 0;
+  let postCount = 0;
+  let selectedReads = 0;
+  let revisionReads = 0;
+  const staleRejectionReleased = Promise.withResolvers();
+  const patchReleased = Promise.withResolvers();
+  const staleActual = delivery('provider_accepted', flowId, revisionId, {
+    action_deadline: '2020-01-01T00:00:00.000Z',
+  });
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    postCount += 1;
+    return json(route, { error: 'unexpected' }, 500);
+  });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      patchCount += 1;
+      await patchReleased.promise;
+      return json(route, delivery('delivered', flowId));
+    }
+    if (url.searchParams.has('flow_id')) {
+      selectedReads += 1;
+      return json(route, { error: 'not found' }, 404);
+    }
+    revisionReads += 1;
+    if (revisionReads === 2) {
+      await staleRejectionReleased.promise;
+      return json(route, { error: 'status unavailable' }, 503);
+    }
+    return json(route, deliveryPage([staleActual]));
+  });
+
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect.poll(() => revisionReads, { timeout: 15000 }).toBe(2);
+  await expect.poll(() => selectedReads, { timeout: 15000 }).toBeGreaterThanOrEqual(2);
+
+  patchReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+
+  staleRejectionReleased.resolve();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
+  expect(patchCount).toBe(1);
+  expect(postCount).toBe(0);
 });

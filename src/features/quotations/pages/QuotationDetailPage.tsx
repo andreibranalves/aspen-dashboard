@@ -1189,6 +1189,8 @@ function CoreQuotationDetail({
       !deliveryFlowId ||
       deliveryPending ||
       Boolean(delivery) ||
+      Boolean(enqueueError) ||
+      Boolean(deliveryError) ||
       Boolean(data.expired)
     )
       return;
@@ -1206,9 +1208,11 @@ function CoreQuotationDetail({
     data.expired,
     data.revisionId,
     delivery,
+    deliveryError,
     deliveryFlowId,
     deliveryPending,
     enqueue,
+    enqueueError,
   ]);
   const sendQuotationEmail = useCallback(
     async (recipient: string) => {
@@ -1268,14 +1272,18 @@ function CoreQuotationDetail({
   const whatsappDisabledReason = deliveryPending
     ? 'Envio em andamento.'
     : delivery
-      ? 'Este orçamento já foi enviado pelo WhatsApp.'
-      : deliveryError
-        ? deliveryError
-        : data.expired
-          ? 'Validade expirada — crie uma nova revisão para reenviar.'
-          : !deliveryFlowId
-            ? 'Selecione um fluxo para enviar pelo WhatsApp.'
-            : '';
+      ? delivery.state === 'failed'
+        ? 'A entrega falhou e esta revisão não pode ser reenviada.'
+        : 'Este orçamento já foi enviado pelo WhatsApp.'
+      : enqueueError
+        ? 'O envio anterior ficou sem resposta. Aguarde a confirmação antes de reenviar.'
+        : deliveryError
+          ? deliveryError
+          : data.expired
+            ? 'Validade expirada — crie uma nova revisão para reenviar.'
+            : !deliveryFlowId
+              ? 'Selecione um fluxo para enviar pelo WhatsApp.'
+              : '';
 
   const issuedDetail = issuedView ? (
     <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_336px]">
@@ -1575,7 +1583,7 @@ function CoreQuotationDetail({
               containerClassName="w-full"
               value={deliveryFlowId}
               onChange={(event) => setDeliveryFlowId(event.target.value)}
-              disabled={deliveryPending}
+              disabled={deliveryPending || Boolean(enqueueError)}
             >
               {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
               {deliveryFlows.map((flow) => (

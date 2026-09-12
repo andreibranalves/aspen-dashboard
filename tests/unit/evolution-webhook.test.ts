@@ -72,7 +72,7 @@ function dependencies() {
     deliveryModule: {
       applyEvolutionEvent: async (value: unknown) => {
         calls.push(value);
-        return null;
+        return { id: 'delivery-receipt-test' };
       },
     },
     activityRepository: {
@@ -201,6 +201,33 @@ test('webhook rejects missing secret and accepts duplicate known event neutrally
       remoteJid: '5511999990000@s.whatsapp.net',
     },
   ]);
+});
+
+test('webhook acknowledges a receipt whose step is not correlated yet', async () => {
+  // The durable inbox already stored the receipt, so a 200 is safe even though
+  // the response carries no aggregate: it will be folded when the provider id
+  // is persisted by `markAccepted`, without any provider replay.
+  const deps = dependencies();
+  deps.deliveryModule.applyEvolutionEvent = async (value: unknown) => {
+    deps.calls.push(value);
+    return null;
+  };
+  const result = await webhook(event(authorization), deps);
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), { received: true });
+  assert.equal((deps.calls as unknown[]).length, 1);
+  assert.doesNotMatch(String(result.body), /provider-message-1/);
+});
+
+test('webhook fails closed when the durable receipt store rejects the receipt', async () => {
+  const deps = dependencies();
+  deps.deliveryModule.applyEvolutionEvent = async () => {
+    throw new Error('database unavailable');
+  };
+  const result = await webhook(event(authorization), deps);
+  assert.equal(result.statusCode, 503);
+  assert.doesNotMatch(String(result.body), /provider-message-1/);
+  assert.doesNotMatch(String(result.body), /database unavailable/);
 });
 
 test('webhook validates instance, event, fromMe, keyId, and status before module access', async () => {

@@ -302,6 +302,19 @@ class FakeRepository {
     return null;
   }
 
+  async renewLease(input: {
+    deliveryId: string;
+    stepId: string;
+    leaseToken: string;
+  }): Promise<boolean> {
+    const row = this.rows.get(input.deliveryId)!;
+    const step = row.aggregate.steps.find((candidate) => candidate.id === input.stepId);
+    if (!step || step.state !== 'sending') return false;
+    if (row.leaseToken !== input.leaseToken) return false;
+    row.leaseUntil = new Date(this.clock().getTime() + 90_000);
+    return true;
+  }
+
   async markAccepted(input: {
     deliveryId: string;
     stepId: string;
@@ -361,7 +374,7 @@ class FakeRepository {
     return this.clone(row);
   }
 
-  async applyReceipt(input: {
+  async receiveReceipt(input: {
     providerMessageId: string;
     status: 'ERROR' | 'PENDING' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED';
   }): Promise<DeliveryAggregate | null> {
@@ -638,7 +651,7 @@ test('follow-up persistence failure retries after the accepted step is no longer
           providerMessageId,
         });
       }
-      return missing;
+      return { data: missing, hasMore: false };
     },
   };
   const transport = new FakeTransport();
@@ -772,6 +785,62 @@ test('transient failure schedules a bounded retry and permanent failure does not
   assert.equal(permanentTransport.calls.length, 1);
   assert.equal((await permanent.module.process(failed.id))?.state, 'failed');
   assert.equal(permanentTransport.calls.length, 1);
+  // A permanent pre-transport failure is terminal for this revision: the copy
+  // must state that next step instead of inviting a retry that cannot happen.
+  assert.equal(
+    failed.steps[0]?.publicError,
+    'O envio foi rejeitado antes do transporte. Esta revisão não pode ser reenviada; emita uma nova revisão.'
+  );
+  assert.doesNotMatch(failed.steps[0]!.publicError!, /tente novamente/i);
+});
+
+test('exhausted transient failures drop the retry instruction for transport and document preparation', async () => {
+  const clock = { value: new Date(start) };
+  const transportRun = dependencies({
+    clock,
+    transportSend: async () => {
+      throw new EvolutionTransportError(
+        'Tente novamente.',
+        'transient_pre_transport',
+        'EVOLUTION_RATE_LIMIT',
+      );
+    },
+  });
+  let result = await transportRun.module.enqueue(identity);
+  for (const delay of [60_000, 300_000, 900_000]) {
+    assert.equal(result.state, 'retry_scheduled');
+    assert.equal(result.steps[0]?.publicError, 'Falha transitória antes do transporte. Tente novamente.');
+    clock.value = new Date(clock.value.getTime() + delay);
+    result = (await transportRun.module.process(result.id))!;
+  }
+  assert.equal(result.state, 'failed');
+  assert.equal(
+    result.steps[0]?.publicError,
+    'As tentativas de envio se esgotaram. Esta revisão não pode ser reenviada; emita uma nova revisão.'
+  );
+  assert.doesNotMatch(result.steps[0]!.publicError!, /tente novamente/i);
+
+  const pdfClock = { value: new Date(start) };
+  const pdfTransport = new FakeTransport();
+  const pdfRun = dependencies({
+    clock: pdfClock,
+    transport: pdfTransport,
+    steps: [pdfStep(0)],
+    preparePdf: async () => {
+      throw new Error('pdf render failed');
+    },
+  });
+  let pdf = await pdfRun.module.enqueue(identity);
+  for (const delay of [60_000, 300_000, 900_000]) {
+    assert.equal(pdf.state, 'retry_scheduled');
+    assert.equal(pdf.steps[0]?.publicError, 'PDF indisponível. Tentar novamente.');
+    pdfClock.value = new Date(pdfClock.value.getTime() + delay);
+    pdf = (await pdfRun.module.process(pdf.id))!;
+  }
+  assert.equal(pdf.state, 'failed');
+  assert.equal(pdfTransport.calls.length, 0);
+  assert.doesNotMatch(pdf.steps[0]!.publicError!, /tentar novamente/i);
+  assert.match(pdf.steps[0]!.publicError!, /emita uma nova revisão/i);
 });
 
 test('enqueue processes short inter-step delays without waiting for the scheduler', async () => {
@@ -999,6 +1068,21 @@ test('operator completion plus one provider receipt does not start the follow-up
   assert.equal(followUpReceiptUpserts[0]?.allStepsDelivered, false);
 });
 
+test('a provider PENDING receipt never promotes a step to delivered', async () => {
+  const { module, repository, transport } = dependencies({ steps: [textStep(0)] });
+  const accepted = await module.enqueue({ ...identity, flowId: 'pending-receipt' });
+  const pending = await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'PENDING',
+  });
+  assert.equal(pending?.state, 'provider_accepted');
+  assert.equal(pending?.steps[0]?.state, 'server_ack');
+  assert.equal(repository.rows.get(accepted.id)?.aggregate.state, 'provider_accepted');
+  assert.equal(transport.calls.length, 1);
+});
+
 test('a delayed DELIVERY_ACK resolves a needs_review step without another transport call', async () => {
   const { module, repository, transport } = dependencies({ steps: [textStep(0)] });
   const accepted = await module.enqueue({ ...identity, flowId: 'delayed-delivery-ack' });
@@ -1151,6 +1235,94 @@ test('processDue is bounded and rejects invalid limits', async () => {
   await assert.rejects(module.processDue(51), /Limite/i);
 });
 
+test('an uninspectable acceptance source fails closed and still claims due outbound work', async () => {
+  const clock = { value: new Date(start) };
+  const repository = new FakeRepository(() => new Date(clock.value));
+  const transport = new FakeTransport();
+  await repository.enqueue({ ...plan([textStep(0)]), flowId: 'acceptance-source-failure' });
+  const module = createQuotationDeliveryModule({
+    repository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: async () => {
+        throw new Error('acceptance source unavailable');
+      },
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+    },
+    transport: transport.send.bind(transport),
+    now: () => new Date(clock.value),
+    logger: () => {},
+  });
+
+  const batch = await module.processDue(20);
+  // Unknown reconciliation state is never reported drained, and the outbound
+  // claim path still gets its share of the invocation.
+  assert.equal(batch.remaining, true);
+  assert.equal(batch.processed, 1);
+  assert.equal(transport.calls.length, 1);
+});
+
+test('an uninspectable receipt source fails closed and still claims due outbound work', async () => {
+  const clock = { value: new Date(start) };
+  const repository = new FakeRepository(() => new Date(clock.value));
+  const transport = new FakeTransport();
+  await repository.enqueue({ ...plan([textStep(0)]), flowId: 'receipt-source-failure' });
+  const module = createQuotationDeliveryModule({
+    repository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: async () => ({ data: [], hasMore: false }),
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+      listAwaitingReceiptWithCompletedDelivery: async () => {
+        throw new Error('receipt source unavailable');
+      },
+      upsertFromDeliveryReceipt: async () => {},
+      markReceiptProjectionAttempt: async () => {},
+    },
+    transport: transport.send.bind(transport),
+    now: () => new Date(clock.value),
+    logger: () => {},
+  });
+
+  const batch = await module.processDue(20);
+  assert.equal(batch.remaining, true);
+  assert.equal(batch.processed, 1);
+  assert.equal(transport.calls.length, 1);
+});
+
+test('a held reconciliation source is bounded and never consumes outbound claim capacity', async () => {
+  const clock = { value: new Date(start) };
+  const repository = new FakeRepository(() => new Date(clock.value));
+  const transport = new FakeTransport();
+  await repository.enqueue({ ...plan([textStep(0)]), flowId: 'held-receipt-source' });
+  let listCalls = 0;
+  const held = new Promise<never>(() => {});
+  const module = createQuotationDeliveryModule({
+    repository,
+    followUpRepository: {
+      listAcceptedDeliveriesMissingFollowUp: async () => ({ data: [], hasMore: false }),
+      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
+      listAwaitingReceiptWithCompletedDelivery: () => {
+        listCalls += 1;
+        return held;
+      },
+      upsertFromDeliveryReceipt: async () => {},
+      markReceiptProjectionAttempt: async () => {},
+    },
+    transport: transport.send.bind(transport),
+    now: () => new Date(clock.value),
+    logger: () => {},
+  });
+
+  const startedAt = Date.now();
+  // 18s budget leaves a ~3s reconciliation window before the 15s reserve.
+  const batch = await module.processDue(1, 18_000);
+  const elapsed = Date.now() - startedAt;
+  assert.equal(listCalls, 1);
+  assert.equal(batch.processed, 1);
+  assert.equal(batch.remaining, true);
+  assert.equal(transport.calls.length, 1);
+  assert.ok(elapsed < 15_000, `bounded pass must not wait for the held source (took ${elapsed}ms)`);
+});
+
 test('processDue continues short inter-step delays within its time budget', async () => {
   const clock = { value: new Date(start) };
   const sleeps: number[] = [];
@@ -1173,4 +1345,82 @@ test('processDue continues short inter-step delays within its time budget', asyn
     delayed.transport.calls.map((call) => call.step.position),
     [0, 1, 2]
   );
+});
+
+// Instrument the deadline timers created by `processDue` (two per invocation:
+// the overall budget and the earlier reconciliation budget). Every timer must be
+// disposed in `finally`, including when the body throws or returns early.
+async function withTimerInstrumentation<T>(run: () => Promise<T>): Promise<{
+  result: T;
+  created: number;
+  cleared: number;
+}> {
+  const created: unknown[] = [];
+  const cleared: unknown[] = [];
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const fakeTimer = { unref() {} };
+  globalThis.setTimeout = ((..._args: unknown[]) => {
+    created.push(fakeTimer);
+    return fakeTimer as unknown as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = ((timer: unknown) => {
+    cleared.push(timer);
+  }) as typeof clearTimeout;
+  try {
+    const result = await run();
+    return { result, created: created.length, cleared: cleared.length };
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+}
+
+test('an exceptional claim disposes every deadline timer', async () => {
+  const repository = new FakeRepository(() => new Date(start));
+  (repository as unknown as { claim: () => Promise<never> }).claim = async () => {
+    throw new Error('claim exploded');
+  };
+  const module = createQuotationDeliveryModule({
+    repository,
+    planner: async () => plan(),
+    transport: async () => ({ accepted: true as const, providerMessageId: 'provider-timer' }),
+    now: () => new Date(start),
+    instance: 'test-instance',
+    logger: () => {},
+  });
+
+  let caught: unknown;
+  const { created, cleared } = await withTimerInstrumentation(async () => {
+    try {
+      await module.processDue(1, 5_000);
+    } catch (error) {
+      caught = error;
+    }
+  });
+
+  assert.ok(caught instanceof Error, 'the exceptional claim must propagate');
+  assert.equal(created, 2, 'the overall and reconciliation budgets each create one timer');
+  assert.equal(cleared, 2, 'an exceptional claim must still clear both timers');
+});
+
+test('an early return with no due work disposes every deadline timer', async () => {
+  const repository = new FakeRepository(() => new Date(start));
+  (repository as unknown as { claim: () => Promise<null> }).claim = async () => null;
+  const module = createQuotationDeliveryModule({
+    repository,
+    planner: async () => plan(),
+    transport: async () => ({ accepted: true as const, providerMessageId: 'provider-timer' }),
+    now: () => new Date(start),
+    instance: 'test-instance',
+    logger: () => {},
+  });
+
+  const { result, created, cleared } = await withTimerInstrumentation(() =>
+    module.processDue(1, 5_000)
+  );
+
+  assert.equal(result.processed, 0);
+  assert.equal(created, 2, 'the overall and reconciliation budgets each create one timer');
+  assert.equal(cleared, 2, 'an early return must still clear both timers');
 });

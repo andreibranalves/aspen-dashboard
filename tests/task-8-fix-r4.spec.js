@@ -23,11 +23,11 @@ function stepState(state) {
   }[state];
 }
 
-function delivery(state, flowId = 'flow-1') {
+function delivery(state, flowId = 'flow-1', revision = revisionId) {
   const delivered = state === 'delivered';
   return {
-    id: `delivery-${revisionId}-${flowId}`,
-    revision_id: revisionId,
+    id: `delivery-${revision}-${flowId}`,
+    revision_id: revision,
     business_number: quotationId,
     client_name: 'Cliente teste',
     phone: '5511999990000',
@@ -378,6 +378,36 @@ test('same component double click sends one backend request and unsafe failure s
   expect(sendCount).toBe(1);
 });
 
+test('lost enqueue response rediscovers the durable delivery without a second send', async ({ page }) => {
+  await setupAuto(page);
+  let sendCount = 0;
+  let durable = null;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCount += 1;
+    const body = route.request().postDataJSON();
+    // The server persisted and dispatched, but the answer never reached the browser.
+    durable = { state: 'provider_accepted', flowId: body.flow_id };
+    return json(route, { error: 'Não foi possível processar o envio. Tente novamente.' }, 503);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    const url = new globalThis.URL(route.request().url());
+    // Identity lookup misses on purpose: only the revision read is authoritative.
+    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
+    return json(
+      route,
+      durable ? deliveryPage([delivery(durable.state, durable.flowId)]) : deliveryPage(),
+    );
+  });
+
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  await send.click();
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toHaveCount(0);
+  await expect(send).toBeDisabled();
+  await send.click({ force: true });
+  expect(sendCount).toBe(1);
+});
+
 test('malformed 2xx cannot render sent and leaves no local success authority', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
@@ -401,4 +431,195 @@ test('malformed 2xx cannot render sent and leaves no local success authority', a
   await expect(page.getByText('Entregue', { exact: true })).toHaveCount(0);
   await expect(send).toBeDisabled();
   expect(sendCount).toBe(1);
+});
+
+// ── Per-key authoritative generations ──
+// Two issued drafts share one hook instance (NewQuotationPage tracks every
+// active draft's identity). A mutation for draft A must never discard a late
+// authoritative read for draft B: otherwise B silently loses its delivery (or
+// its blocking error) and offers an unnecessary POST.
+
+const revisionA = '22222222-2222-4222-8222-2222222222a1';
+const revisionB = '22222222-2222-4222-8222-2222222222b1';
+
+function issuedDraft(index, nome, revision, quotationUuid, businessNumber) {
+  return {
+    index,
+    original: { nome },
+    edited: {
+      nome,
+      email: 'cliente@example.test',
+      telefone: '5511999990000',
+      urgente: false,
+      origem: 'Google Ads',
+      cnpj: '',
+      prazo_producao: '',
+      endereco: { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
+      items: [{ item_code: 'CNG-001', item_name: 'Canga', qty: 1, rate: 9, _rateManual: false }],
+      template_key: 'padrao',
+    },
+    approved: false,
+    discarded: false,
+    issueIdempotencyKey: quotationUuid.replace(/[^0-9a-f]/gi, '0').padEnd(36, '0').slice(0, 36),
+    issue: {
+      quotationId: quotationUuid,
+      businessNumber,
+      revisionId: revision,
+      revisionNumber: 1,
+      status: 'emitido',
+      issuedAt: updatedAt,
+      validUntil: '2026-08-28',
+      pdfUrl: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
+    },
+  };
+}
+
+function draftDelivery(state, revision, flow) {
+  const body = delivery(state, flow, revision);
+  body.id = `delivery-${revision}-${flow}`;
+  body.business_number = revision === revisionA ? 'ORC-20260091' : 'ORC-20260092';
+  body.client_name = revision === revisionA ? 'Cliente A' : 'Cliente B';
+  return body;
+}
+
+async function setupTwoIssuedDrafts(page, { heldB }) {
+  const drafts = [
+    issuedDraft(0, 'Cliente A', revisionA, '11111111-1111-4111-8111-1111111119a1', 'ORC-20260091'),
+    issuedDraft(1, 'Cliente B', revisionB, '11111111-1111-4111-8111-1111111119b1', 'ORC-20260092'),
+  ];
+  await page.addInitScript(
+    (initial) => globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: initial })),
+    drafts,
+  );
+  const state = {
+    sendCount: 0,
+    bIdentityReads: 0,
+    resolveCount: 0,
+    resolvedIds: new Set(),
+  };
+  await page.route('**/api/settings**', (route) => json(route, {}));
+  await page.route('**/api/quotation-templates**', (route) => json(route, {
+    templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash: 'a'.repeat(64) }],
+  }));
+  await page.route('**/api/pricing-lookup**', (route) => json(route, {
+    success: true,
+    items: [{ item_code: 'CNG-001', item_name: 'Canga', rate: 9 }],
+  }));
+  await page.route('**/api/communication-flows**', (route) => json(route, {
+    success: true,
+    selectedFlowId: 'flow-1',
+    flows: [{
+      id: 'flow-1',
+      name: 'Fluxo 1',
+      context: 'manual',
+      channel: 'whatsapp',
+      vendor_name: 'Juliana',
+      enabled: true,
+      delay_min_seconds: 0,
+      delay_max_seconds: 0,
+      max_media_per_product_group: 1,
+      steps: [
+        { id: 'step-1', type: 'text', template: 'Olá' },
+        { id: 'document-1', type: 'document', source: 'quotation_pdf' },
+      ],
+    }],
+  }));
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    state.sendCount += 1;
+    return json(route, enqueueResponse('delivered', 'flow-1'));
+  });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'PATCH') {
+      state.resolveCount += 1;
+      const id = url.searchParams.get('id');
+      if (id) state.resolvedIds.add(id);
+      return json(route, draftDelivery('delivered', revisionA, 'flow-1'));
+    }
+    if (url.searchParams.has('flow_id')) {
+      const revision = url.searchParams.get('revision_id');
+      if (revision === revisionB) {
+        state.bIdentityReads += 1;
+        if (state.bIdentityReads === 1) return heldB(route, state);
+      }
+      if (revision !== revisionA && revision !== revisionB) {
+        return json(route, { error: 'not found' }, 404);
+      }
+      const target = revision === revisionB ? revisionB : revisionA;
+      const durable =
+        target === revisionA && state.resolvedIds.has(draftDelivery('provider_accepted', revisionA, 'flow-1').id)
+          ? 'delivered'
+          : 'provider_accepted';
+      return json(route, draftDelivery(durable, target, 'flow-1'));
+    }
+    // Revision-wide reads stay empty: only the identity read is authoritative.
+    return json(route, deliveryPage());
+  });
+  return state;
+}
+
+test('a late authoritative success for another draft survives a same-hook mutation', async ({ page }) => {
+  const held = Promise.withResolvers();
+  const state = await setupTwoIssuedDrafts(page, {
+    heldB: async (route) => {
+      await held.promise;
+      return json(route, draftDelivery('provider_accepted', revisionB, 'flow-1'));
+    },
+  });
+
+  await page.goto('/#/novo-orcamento');
+  // Draft A resolves while draft B's identity read is still in flight.
+  await page.getByLabel('Rascunho ativo').selectOption('0');
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente A confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  expect(state.resolveCount).toBe(1);
+
+  // B's read — started before A's mutation — now returns its authoritative row.
+  held.resolve();
+  await expect.poll(() => state.bIdentityReads >= 1).toBe(true);
+  await page.getByLabel('Rascunho ativo').selectOption('1');
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible({ timeout: 15000 });
+
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  await expect(send).toBeDisabled();
+  await send.click({ force: true });
+  expect(state.sendCount).toBe(0);
+});
+
+test('a late rejection for another draft still blocks with a safe error after a same-hook mutation', async ({ page }) => {
+  const held = Promise.withResolvers();
+  const state = await setupTwoIssuedDrafts(page, {
+    heldB: async (route) => {
+      await held.promise;
+      return json(route, { error: 'status unavailable' }, 503);
+    },
+  });
+
+  await page.goto('/#/novo-orcamento');
+  await page.getByLabel('Rascunho ativo').selectOption('0');
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
+  await dialog.getByLabel('Justificativa').fill('Cliente A confirmou o recebimento.');
+  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+
+  // B's read rejects after A's mutation: the blocking warning must survive for
+  // B; only B's own generation is relevant.
+  held.resolve();
+  await expect.poll(() => state.bIdentityReads >= 1).toBe(true);
+  await page.getByLabel('Rascunho ativo').selectOption('1');
+  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
+
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  await expect(send).toBeDisabled();
+  await send.click({ force: true });
+  expect(state.sendCount).toBe(0);
 });
