@@ -401,10 +401,15 @@ test('lost enqueue response rediscovers the durable delivery without a second se
 
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible({ timeout: 15000 });
+  // The durable provider_accepted delivery is rediscovered and exposes the
+  // delayed manual-resolution control instead of a repeat send.
+  await expect(
+    page.getByRole('button', { name: 'Cliente confirmou recebimento' }),
+  ).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toHaveCount(0);
-  await expect(send).toBeDisabled();
-  await send.click({ force: true });
+  const deliveredSend = page.getByRole('button', { name: 'Enviado' });
+  await expect(deliveredSend).toBeDisabled();
+  await deliveredSend.click({ force: true });
   expect(sendCount).toBe(1);
 });
 
@@ -571,21 +576,24 @@ test('a late authoritative success for another draft survives a same-hook mutati
   await page.goto('/#/novo-orcamento');
   // Draft A resolves while draft B's identity read is still in flight.
   await page.getByLabel('Rascunho ativo').selectOption('0');
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const resolveControl = page.getByRole('button', { name: 'Cliente confirmou recebimento' });
+  await expect(resolveControl).toBeVisible();
+  await resolveControl.click();
   const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
   await dialog.getByLabel('Justificativa').fill('Cliente A confirmou o recebimento.');
   await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  // A is delivered: the provider-acceptance action is gone, the send stays locked.
+  await expect(resolveControl).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Enviado' })).toBeDisabled();
   expect(state.resolveCount).toBe(1);
 
   // B's read — started before A's mutation — now returns its authoritative row.
   held.resolve();
   await expect.poll(() => state.bIdentityReads >= 1).toBe(true);
   await page.getByLabel('Rascunho ativo').selectOption('1');
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(resolveControl).toBeVisible({ timeout: 15000 });
 
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  const send = page.getByRole('button', { name: 'Enviado' });
   await expect(send).toBeDisabled();
   await send.click({ force: true });
   expect(state.sendCount).toBe(0);
@@ -602,24 +610,23 @@ test('a late rejection for another draft still blocks with a safe error after a 
 
   await page.goto('/#/novo-orcamento');
   await page.getByLabel('Rascunho ativo').selectOption('0');
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
+  const resolveControl = page.getByRole('button', { name: 'Cliente confirmou recebimento' });
+  await expect(resolveControl).toBeVisible();
+  await resolveControl.click();
   const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
   await dialog.getByLabel('Justificativa').fill('Cliente A confirmou o recebimento.');
   await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  await expect(resolveControl).toHaveCount(0);
 
   // B's read rejects after A's mutation: the blocking warning must survive for
   // B; only B's own generation is relevant.
   held.resolve();
   await expect.poll(() => state.bIdentityReads >= 1).toBe(true);
   await page.getByLabel('Rascunho ativo').selectOption('1');
-  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible({
-    timeout: 15000,
-  });
-
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  const send = page.getByRole('button', { name: 'Falha no envio' });
+  await expect(send).toBeVisible({ timeout: 15000 });
   await expect(send).toBeDisabled();
+  await expect(send).toHaveAttribute('title', 'Não foi possível atualizar a entrega.');
   await send.click({ force: true });
   expect(state.sendCount).toBe(0);
 });
