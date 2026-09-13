@@ -108,8 +108,10 @@ test('follow-up worker sends one claimed text step and records the provider id',
 
 test('follow-up worker maps 429 to failed and ambiguous transport to needs_review', async () => {
   const reasons: string[] = [];
+  let available = true;
+  let transportCalls = 0;
   const module = {
-    claimApproved: async () => claim(),
+    claimApproved: async () => (available ? claim() : null),
     markTransportStarted: async () => true,
     completeSent: async () => null,
     completeFailed: async (input: { reason: string }) => {
@@ -118,6 +120,7 @@ test('follow-up worker maps 429 to failed and ambiguous transport to needs_revie
     },
     completeNeedsReview: async (input: { reason: string }) => {
       reasons.push(input.reason);
+      available = false;
       return null;
     },
     reapExpiredLeases: async () => 0,
@@ -126,6 +129,7 @@ test('follow-up worker maps 429 to failed and ambiguous transport to needs_revie
   await worker(authorized(), {
     followUpModule: module,
     sendStep: async () => {
+      transportCalls += 1;
       throw Object.assign(new Error('rate'), { status: 429 });
     },
     environment: enabledEnv,
@@ -133,9 +137,40 @@ test('follow-up worker maps 429 to failed and ambiguous transport to needs_revie
   await worker(authorized(), {
     followUpModule: module,
     sendStep: async () => {
+      transportCalls += 1;
       throw new EvolutionTransportError('timeout', 'transient', 'EVOLUTION_TIMEOUT');
     },
     environment: enabledEnv,
   });
+  await worker(authorized(), {
+    followUpModule: module,
+    sendStep: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: 'must-not-send' };
+    },
+    environment: enabledEnv,
+  });
   assert.deepEqual(reasons, ['rate_limited', 'transport_ambiguous']);
+  assert.equal(transportCalls, 2);
+});
+
+test('follow-up worker never calls transport when the lease revalidation rejects the start', async () => {
+  let transportCalls = 0;
+  const result = await worker(authorized(), {
+    followUpModule: {
+      claimApproved: async () => claim(),
+      markTransportStarted: async () => false,
+      completeSent: async () => null,
+      completeFailed: async () => null,
+      completeNeedsReview: async () => null,
+      reapExpiredLeases: async () => 0,
+    },
+    sendStep: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: 'must-not-send' };
+    },
+    environment: enabledEnv,
+  });
+  assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 0, remaining: false, reaped: 0 });
+  assert.equal(transportCalls, 0);
 });

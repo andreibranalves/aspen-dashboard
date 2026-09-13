@@ -58,6 +58,28 @@ test('0031 expands follow-up queue states as a destructive migration', () => {
   assert.match(sql, /lower\(right\(btrim\("provider_conversation_id"\), 4\)\) = '@lid'/);
 });
 
+test('0045 adds approval context, its uniqueness guard, and the instance retirement reason', () => {
+  const migrationSql = readFileSync(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      'drizzle',
+      '0045_follow_up_approval_context.sql',
+    ),
+    'utf8',
+  );
+  assert.equal(migrationSql.split(/\r?\n/).find((line) => line.trim() !== ''), '-- migration-risk: additive');
+  assert.match(migrationSql, /ALTER TABLE "quotation_follow_ups" ADD COLUMN "approved_opportunity_id" uuid/);
+  assert.match(migrationSql, /REFERENCES "public"\."crm_deals"\("id"\) ON DELETE restrict/i);
+  assert.match(
+    migrationSql,
+    /CREATE UNIQUE INDEX "quotation_follow_ups_approved_opportunity_unique"[\s\S]*WHERE "quotation_follow_ups"\."approved_opportunity_id" IS NOT NULL AND "quotation_follow_ups"\."state" IN \('approved', 'processing'\)/,
+  );
+  assert.match(migrationSql, /DROP CONSTRAINT "quotation_follow_ups_closed_reason_check"/);
+  assert.match(migrationSql, /'instance_changed'/);
+});
+
 test(
   '0030 creates follow-up tables with restrict FKs and partial unique provider id',
   { skip: migrationSkip, concurrency: false },

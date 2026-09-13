@@ -35,6 +35,9 @@ const VALID_PDF = Buffer.from('%PDF-1.4\n% task4\n%%EOF', 'utf8');
 let migrationPromise: Promise<void> | undefined;
 async function clearIssueFixtures(db: AppDatabase) {
   await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
+  await db.delete(schema.quotationFollowUps);
+  await db.delete(schema.opportunityDeliveryAnchors);
+  await db.delete(schema.manualContactEvents);
   await db.delete(schema.opportunityNextActions);
   await db.delete(schema.crmDeals);
   await db.delete(schema.quoteLeads);

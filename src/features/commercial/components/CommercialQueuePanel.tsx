@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import {
@@ -43,6 +44,7 @@ import {
   type CommercialManualContactResultCode,
   type CommercialManualContactType,
 } from '@/lib/api/commercialQueueApi';
+import { getFollowUp, type FollowUpView } from '@/lib/api/followUpApi';
 
 const PAGE_SIZE = 25;
 const QUEUE_FILTERS: ReadonlyArray<[CommercialQueueFilter, string]> = [
@@ -302,6 +304,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [urgencySubmitting, setUrgencySubmitting] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<CommercialQueueFilter>('active');
   const [manualSuggestion, setManualSuggestion] = useState<ManualContactSuggestion | null>(null);
+  const [followUpReview, setFollowUpReview] = useState<FollowUpView | null>(null);
+  const [followUpReviewLoading, setFollowUpReviewLoading] = useState(false);
   const requestGenerationRef = useRef(0);
   const manualSuggestionRequestRef = useRef(0);
   const manualSuggestionAbortRef = useRef<AbortController | null>(null);
@@ -447,6 +451,23 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     setDialog({ type: 'manual-contact', item, commandId: globalThis.crypto.randomUUID() });
     setDraft(manualContactDraft(item));
     setDialogError(null);
+  }
+
+  async function openFollowUpReview(item: CommercialQueueItem) {
+    if (item.reasonCode !== 'proposal_delivery_confirmed' || !item.sourceQuotationId) return;
+    setFollowUpReview(null);
+    setFollowUpReviewLoading(true);
+    try {
+      setFollowUpReview(await getFollowUp({
+        quotationId: item.sourceQuotationId,
+        expectedOpportunityId: item.opportunityId,
+        expectedActionId: item.actionId,
+      }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Não foi possível carregar o follow-up.');
+    } finally {
+      setFollowUpReviewLoading(false);
+    }
   }
 
   async function openHistory(item: CommercialQueueItem) {
@@ -937,6 +958,17 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     }
     return (
       <div className="flex flex-wrap gap-2">
+        {item.reasonCode === 'proposal_delivery_confirmed' && item.sourceQuotationId && (
+          <Button
+            type="button"
+            variant="success"
+            size="sm"
+            disabled={followUpReviewLoading}
+            onClick={() => void openFollowUpReview(item)}
+          >
+            {followUpReviewLoading ? 'Carregando…' : 'Revisar retorno'}
+          </Button>
+        )}
         <Button type="button" variant="outline" size="sm" onClick={() => openCreate(item)}>
           Nova ação
         </Button>
@@ -1362,6 +1394,15 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           </div>
         </div>
       )}
+
+      <FollowUpReviewDrawer
+        followUp={followUpReview}
+        onClose={() => setFollowUpReview(null)}
+        onChanged={() => {
+          setFollowUpReview(null);
+          void load(currentPage, filter);
+        }}
+      />
     </div>
   );
 }

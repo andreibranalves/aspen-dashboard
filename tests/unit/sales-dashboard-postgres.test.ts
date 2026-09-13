@@ -84,6 +84,10 @@ function event(
 
 async function resetSharedCommerce(db: AppDatabase) {
   await db.update(schema.quoteLeads).set({ crmDealId: null, quotationId: null });
+  await db.delete(schema.quotationFollowUps);
+  await db.delete(schema.opportunityDeliveryAnchors);
+  await db.delete(schema.manualContactEvents);
+  await db.delete(schema.opportunityNextActions);
   await db.delete(schema.crmDeals);
   await db.delete(schema.quoteLeads);
   await db.delete(schema.quotationIssueRequests);

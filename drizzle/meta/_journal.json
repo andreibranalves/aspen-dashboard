@@ -316,6 +316,13 @@
       "when": 1789249404102,
       "tag": "0044_opportunity_delivery_anchor",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789254649215,
+      "tag": "0045_follow_up_approval_context",
+      "breakpoints": true
     }
   ]
 }

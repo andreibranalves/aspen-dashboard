@@ -18,6 +18,9 @@ import {
   clients,
   crmDeals,
   evolutionReceiptInbox,
+  manualContactEvents,
+  opportunityDeliveryAnchors,
+  opportunityNextActions,
   quotationDeliveries,
   quotationDeliverySteps,
   quotationFollowUps,
@@ -254,6 +257,9 @@ test.beforeEach(async () => {
   if (!TEST_DATABASE_URL || !db) return;
   await db.delete(evolutionReceiptInbox);
   await db.delete(quotationFollowUps);
+  await db.delete(opportunityDeliveryAnchors);
+  await db.delete(manualContactEvents);
+  await db.delete(opportunityNextActions);
   for (const { clientId, quotationId, revisionId, crmDealId } of followUpCleanupIds) {
     await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, revisionId));
     await db.delete(quoteRevisions).where(eq(quoteRevisions.id, revisionId));
@@ -275,7 +281,10 @@ test.beforeEach(async () => {
 test.after(async () => {
   if (!TEST_DATABASE_URL || !db || !sqlClient) return;
   await db.delete(evolutionReceiptInbox);
-  await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
+  await db.delete(quotationFollowUps);
+  await db.delete(opportunityDeliveryAnchors);
+  await db.delete(manualContactEvents);
+  await db.delete(opportunityNextActions);
   // Seeded receipt-reconciliation fixtures must not survive a filtered run:
   // their `business_number` sequence restarts, so leftovers collide with the
   // next standalone invocation.

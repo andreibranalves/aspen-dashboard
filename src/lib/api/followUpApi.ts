@@ -36,6 +36,7 @@ export interface FollowUpView {
   reason: string;
   reasonLabel: string;
   followUpId: string | null;
+  approvedOpportunityId?: string | null;
   messageSnapshot: string | null;
   closedReason: string | null;
   approvedAt: string | null;
@@ -188,6 +189,10 @@ function parseFollowUp(value: unknown): FollowUpView {
     reason: text(value.reason, true, 100),
     reasonLabel: text(value.reason_label, true, 255),
     followUpId,
+    approvedOpportunityId:
+      value.approved_opportunity_id === null || value.approved_opportunity_id === undefined
+        ? null
+        : text(value.approved_opportunity_id, true, 255),
     messageSnapshot,
     closedReason: optionalText(value.closed_reason, 100),
     approvedAt: timestamp(value.approved_at, true),
@@ -237,6 +242,28 @@ export async function listFollowUps(filters: FollowUpListFilters): Promise<Follo
   const query = new URLSearchParams({ view: selectedView, page: String(page), page_size: String(pageSize) });
   const body = await request<unknown>(`/follow-ups?${query.toString()}`, { method: 'GET' }, 'Não foi possível carregar os follow-ups.');
   return parseFollowUpPage(body);
+}
+
+export async function getFollowUp(input: {
+  quotationId: string;
+  expectedOpportunityId: string;
+  expectedActionId: string;
+}): Promise<FollowUpView> {
+  const selectedQuotation = identifier(input.quotationId, 'Orçamento');
+  const expectedOpportunityId = identifier(input.expectedOpportunityId, 'Oportunidade');
+  const expectedActionId = identifier(input.expectedActionId, 'Ação');
+  const query = new URLSearchParams({
+    quotation_id: selectedQuotation,
+    opportunity_id: expectedOpportunityId,
+    action_id: expectedActionId,
+  });
+  const body = await request<unknown>(
+    `/follow-ups?${query.toString()}`,
+    { method: 'GET' },
+    'Não foi possível carregar o follow-up.',
+  );
+  if (!isRecord(body) || !isRecord(body.data)) invalidResponse();
+  return parseFollowUp(body.data);
 }
 
 export async function approveFollowUp(input: ApproveFollowUpInput): Promise<FollowUpMutationResult> {

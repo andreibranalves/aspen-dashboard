@@ -8,6 +8,7 @@ const row = { quotationId: '00000000-0000-4000-8000-000000000001', revisionId: '
 function fake(overrides: Partial<QuotationFollowUpRepository> = {}): QuotationFollowUpRepository {
   return {
     list: async () => ({ data: [], total: 0, page: 1, pageSize: 25 }),
+    get: async () => null,
     approve: async () => ({ ...row, state: 'approved' as const, followUpId: '00000000-0000-4000-8000-000000000004' }),
     dismiss: async () => ({ ...row, state: 'dismissed' as const, followUpId: '00000000-0000-4000-8000-000000000005' }),
     claimApproved: async () => null,
@@ -17,7 +18,6 @@ function fake(overrides: Partial<QuotationFollowUpRepository> = {}): QuotationFo
     completeNeedsReview: async () => null,
     reapExpiredLeases: async () => 0,
     countApprovalsTodayUtc: async () => 0,
-    get: async () => null,
     ...overrides,
   };
 }

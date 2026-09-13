@@ -8,6 +8,7 @@ import {
   type DismissInput,
   type FollowUpListInput,
   type FollowUpListResult,
+  type FollowUpGetOptions,
   type FollowUpRecord,
   type FollowUpProjection,
   type QuotationFollowUpRepository,
@@ -17,6 +18,7 @@ import { followUpExternalWritesEnabled, type DismissReason, type FollowUpListVie
 
 export { ConflictError, InputError, NotFoundError, RepositoryError };
 export type { FollowUpListResult, FollowUpProjection, FollowUpRecord, ClaimedFollowUp };
+export type { FollowUpGetOptions };
 
 export interface QuotationFollowUpModuleDependencies {
   repository?: QuotationFollowUpRepository;
@@ -25,6 +27,7 @@ export interface QuotationFollowUpModuleDependencies {
 }
 export interface QuotationFollowUpModule {
   list(input?: { view?: FollowUpListView; page?: number; pageSize?: number }): Promise<FollowUpListResult>;
+  get(quotationId: string, options?: FollowUpGetOptions): Promise<FollowUpProjection | null>;
   approve(input: { quotationId: string; eligibilityVersion: string; message: string }): Promise<FollowUpRecord>;
   dismiss(input: { quotationId: string; eligibilityVersion: string; reason: DismissReason }): Promise<FollowUpRecord>;
   promoteDueWaitingToReady?(now?: Date): Promise<number>;
@@ -50,6 +53,9 @@ export function createQuotationFollowUpModule(dependencies: QuotationFollowUpMod
   return {
     list(input = {}) {
       return repository.list(input as FollowUpListInput);
+    },
+    get(quotationId, options) {
+      return repository.get(quotationId, options);
     },
     approve(input) {
       if (!followUpExternalWritesEnabled(env)) throw new ConflictError('Envio automático desativado');
