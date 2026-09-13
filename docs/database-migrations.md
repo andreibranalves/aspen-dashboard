@@ -42,9 +42,9 @@ Execute `npm run check:db-migrations`.
 
 O gate recusa alteração de migration histórica e classificação inválida.
 
-## Gate staging
+## Gate do alvo não-produtivo de migration
 
-O shell operacional aprovado fornece `STAGING_DATABASE_URL`, `STAGING_PG_SERVICE`, `PRODUCTION_DATABASE_URL`, `PGSERVICEFILE` e `PGPASSFILE`.
+O shell operacional aprovado fornece `STAGING_DATABASE_URL`, `STAGING_PG_SERVICE`, `PRODUCTION_DATABASE_URL`, `PGSERVICEFILE` e `PGPASSFILE`. Esses nomes são contratos técnicos preexistentes do alvo não-produtivo de migration; não representam uma homologação permanente nem uma VPS de staging.
 
 `PGSERVICEFILE` e `PGPASSFILE` devem ter modo `0600`.
 
@@ -53,10 +53,29 @@ Execute, nesta ordem:
 ```bash
 npm run check:db-migrations
 npm run migrate:apply
-npm run test:e2e:staging
 ```
 
 Pare na primeira falha.
+
+Quando uma jornada mutável precisar de ensaio, o operador seleciona o banco
+isolado correspondente no contrato aprovado e executa o E2E do deployment
+Preview separadamente, conforme [Preview isolado](./preview-isolation.md):
+
+```bash
+PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview
+```
+
+O executor protegido pré-configura `DATABASE_URL`,
+`PRODUCTION_DATABASE_URL` e as credenciais/atestações E2E; não coloque URLs de
+banco ou segredos no comando. `DATABASE_URL` deve ser verificada pelo operador
+como a URL efetiva do deployment do PR. O preflight local compara identidades e o endpoint
+`/api/operational-status`, junto da fixture atestada, comprova ambiente,
+writes-off, conectividade e persistência servida; nenhuma dessas etapas prova
+sozinha a identidade única da branch. `PRODUCTION_DATABASE_URL` é exigida no
+executor protegido apenas para a comparação e não é passada ao Playwright.
+
+O alvo de migration selecionado continua sendo o contrato existente; não crie
+alias Preview, dual-read ou dual-write para migrations.
 
 `cutover-env-status` é um gate de release/cutover, não um pré-requisito geral de migration de banco. Execute-o quando a operação também envolver canário Production, deploy/promoção, rollback, cleanup, cutover de e-mail ou outra etapa de cutover explicitamente declarada.
 
@@ -64,7 +83,9 @@ Nunca execute o apply usando somente `DATABASE_URL`.
 
 ## Gate produção
 
-A seleção explícita do alvo de produção é um caminho separado do staging. O shell operacional aprovado precisa fornecer, além de `PGSERVICEFILE` e `PGPASSFILE` em modo `0600`:
+A seleção explícita do alvo de produção é um caminho separado do alvo
+não-produtivo de migration. O shell operacional aprovado precisa fornecer, além
+de `PGSERVICEFILE` e `PGPASSFILE` em modo `0600`:
 
 - `PRODUCTION_DATABASE_URL` e `DATABASE_URL` identificando o mesmo database;
 - `PRODUCTION_PG_SERVICE` no `PGSERVICEFILE`, confirmado por `SELECT current_database()`;
@@ -80,7 +101,8 @@ npm run migrate:apply -- --target production
 
 O comando prova a identidade do alvo e então executa o backup existente (`npm run db:backup`) antes de abrir o apply. Se a prova de identidade ou o backup falhar, o apply não é chamado. A migration permanece forward-only; não existe rollback automático.
 
-Sem argumento, `npm run migrate:apply` mantém exatamente o fluxo de staging. Alvos diferentes de `staging` ou `production` são recusados.
+Sem argumento, `npm run migrate:apply` mantém exatamente o fluxo técnico de
+`staging`. Alvos diferentes de `staging` ou `production` são recusados.
 
 ## Evidência
 

@@ -29,6 +29,7 @@
 - Prefira estado local ou contexto; não adicione biblioteca de estado global sem aprovação.
 - PostgreSQL é a fonte de verdade para produtos, clientes, orçamentos, CRM, pedidos e atividades.
 - Evolution API é o único transporte de WhatsApp.
+
 ## Fluxo de git
 
 - Mudanças triviais e reversíveis (CSS, copy, navegação, ajuste pequeno de UI) podem seguir no fluxo direto já autorizado, sem issue, branch ou worktree.
@@ -65,15 +66,21 @@ Dados reais e contratos em uso precisam ser preservados; não implemente compati
 
 Antes de adicionar abstração ou infraestrutura para requisito futuro, siga a seção Complexidade de `docs/release-lanes.md`.
 
-## Classificação de risco
+## Ritmo de entrega
 
-A fonte normativa única das lanes, do processo de revisão e dos limites de correção é `docs/release-lanes.md`. Leia antes de classificar, delegar ou revisar; não replique aqui definições, testes ou limites.
+`docs/release-lanes.md` é a fonte normativa: leia-a antes de classificar,
+revisar ou escolher checks. SHIP é o padrão para CRUD recuperável; PostgreSQL
+não implica CRITICAL. Valide conforme o dano concreto do diff.
 
-Classifique pela consequência concreta do **diff** (não por palavra-chave, número de arquivos ou domínio): `SHIP` (padrão), `SAFE` e `CRITICAL`. `RELEASE` é um gate periódico do conjunto integrado, não um quarto tipo de tarefa. Criar/testar migration aditiva local faz parte da implementação; aplicar em staging/produção exige autorização operacional explícita e separada, e alterar migration histórica, criar migration destrutiva ou mudar a estratégia exige decisão explícita.
+SHIP não exige reviewer; SAFE usa um reviewer; CRITICAL usa um reviewer
+aprofundado e aprovações operacionais separadas quando cabíveis. Não repita
+testes sem alteração, dúvida concreta ou reprodução. `verify:full` é periódico,
+não o inner loop.
 
-Issues de implementação devem ter 1 objetivo, 1 jornada principal, domínio coeso e normalmente 3–7 acceptance criteria. Ajustes pequenos e relacionados viajam juntos; não crie uma issue por botão.
-
-Relatórios finais são curtos: implementado, validação realizada e checks amplos omitidos intencionalmente.
+Preview é a única homologação e Production é o `master`. Migration, deploy,
+env operacional e efeitos externos têm aprovações separadas. Preserve os
+consumidores técnicos existentes do pipeline de migrations até decisão
+explícita; não crie aliases ou compatibilidade hipotética.
 
 ## Comandos
 

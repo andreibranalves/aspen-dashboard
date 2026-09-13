@@ -56,7 +56,7 @@
     "test:e2e": "npx playwright test",
     "test:e2e:smoke": "npm run build:api && npx playwright test --grep \"@smoke\"",
     "test:e2e:safe": "npm run build:api && node scripts/run-safe-e2e.mjs",
-    "test:e2e:staging": "node scripts/run-staging-e2e.mjs",
+    "test:e2e:preview": "node scripts/run-preview-e2e.mjs",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report",
     "whatsapp:readiness": "node scripts/whatsapp-delivery-readiness.mjs"

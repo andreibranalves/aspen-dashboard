@@ -126,56 +126,64 @@ recebimento no dispositivo. Em seguida, verifique o estado persistido e os logs 
 segredos, telefones ou texto da mensagem. Se houver qualquer divergência, desligue o
 kill switch e não repita o envio.
 
-## Gate controlado de staging
+## Gate controlado do Preview
 
-A execução local termina antes do passo controlado de staging.
+A execução local termina antes do ensaio controlado do deployment Preview. A
+homologação é o Preview da própria branch/PR; não há VPS de staging nem alvo
+permanente de branch neste fluxo.
+
+No executor protegido, pré-configure `DATABASE_URL`,
+`PRODUCTION_DATABASE_URL`, `E2E_USERNAME`, `E2E_PASSWORD`,
+`PREVIEW_E2E_USERNAME`, os dois IDs `KNOWN_POSTGRES_*` e as atestações
+`PREVIEW_EGRESS_BLOCKED=1` e `PREVIEW_FIXTURE_RESET=1`. `DATABASE_URL` deve
+corresponder ao deployment do PR após verificação do operador; não coloque
+URLs de banco ou credenciais inline.
+
+O preflight entra automaticamente no runner protegido antes do Playwright. Ele
+não entra no build normal nem no deployment comum.
 
 No gate, execute primeiro:
 
 ```bash
-node scripts/cutover-env-status.mjs
-npm run test:e2e:staging -- --list
+node scripts/cutover-env-status.mjs preview-e2e
+PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview -- --list
 ```
 
-Depois, use somente o orçamento controlado identificado pelo ambiente do operador.
+O operador deve verificar que `DATABASE_URL` é a URL efetiva do deployment do
+PR e selecionar o banco isolado correspondente no contrato aprovado. O
+preflight local compara identidades; `/api/operational-status` prova
+ambiente, writes-off, conectividade e persistência servida, e a fixture prova
+que o deployment atende ao alvo atestado. Isso não prova, sozinho, a identidade
+única da branch. A URL de produção fica somente no executor protegido e não é
+passada ao Playwright.
 
-Não crie uma cotação ou fixture para essa validação.
+Depois, use somente o orçamento e a fixture descartável identificados pelo
+ambiente do operador. Não crie cotação nem fixture novos para essa validação.
 
-Confirme recebimento do webhook, execução do worker, entrega no dispositivo, estado da página e ausência de mensagem duplicada.
+Confirme o estado da página, o banco isolado, o egress atestado pelo executor e
+a ausência de mensagem duplicada. O listener de requests do browser é uma
+atestação independente; não representa prova de egress da Vercel.
 
-Se não houver `DELIVERY_ACK`, interrompa o corte e mantenha os módulos de reserva Redis até corrigir a configuração do provedor.
+`DELIVERY_ACK` não é gate do Preview: essa validação de envio real ocorre
+somente na operação Production aprovada, documentada acima.
 
 ## Comandos de verificação e corte
 
-Execute as verificações locais antes dos testes de staging:
+Execute somente o comando da lane em [release-lanes.md](./release-lanes.md):
+`verify:fast` ocorre uma vez antes da entrega de código. O Preview acima é a
+homologação controlada quando a lane exigir jornada relevante; não repita
+corpus, build ou checks de banco por hábito.
+
+Use a suíte controlada de Preview somente com o deployment do PR, banco
+isolado, egress bloqueado e fixtures descartáveis:
 
 ```bash
-node scripts/check-no-legacy-provider.mjs
-npm run build:api
-TZ=UTC node --test tests/unit/*.test.{js,ts}
-npm run lint -- --max-warnings=0
-npm run build
-```
-
-Execute as suítes de staging somente com PostgreSQL, egress bloqueado e fixtures descartáveis:
-
-```bash
-STAGING_E2E=1 \
-BASE_URL="$STAGING_BASE_URL" \
-STAGING_BASE_URL="$STAGING_BASE_URL" \
-E2E_USERNAME="$E2E_USERNAME" \
-E2E_PASSWORD="$E2E_PASSWORD" \
-STAGING_E2E_USERNAME="$E2E_USERNAME" \
-KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
-KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
-STAGING_EXTERNAL_PROVIDERS_DISABLED=1 \
-STAGING_EGRESS_BLOCKED=1 \
-STAGING_FIXTURE_RESET=1 \
-npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js
+PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview
 ```
 
 O canário Production é somente leitura e não envia WhatsApp nem cria leads Typebot.
-A cobertura de fluxos mutáveis pertence exclusivamente à suíte de staging.
+A cobertura de fluxos mutáveis pertence exclusivamente à suíte controlada do
+Preview; Production continua sendo o deployment de `master`.
 
 Execute o canário depois de configurar os identificadores PostgreSQL existentes:
 
