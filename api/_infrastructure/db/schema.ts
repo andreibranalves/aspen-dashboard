@@ -1425,6 +1425,9 @@ export const quotationFollowUps = pgTable(
     deliveryId: uuid('delivery_id')
       .notNull()
       .references(() => quotationDeliveries.id),
+    approvedOpportunityId: uuid('approved_opportunity_id').references(() => crmDeals.id, {
+      onDelete: 'restrict',
+    }),
     instance: varchar('instance', { length: 120 }).notNull(),
     providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
     canonicalPhone: varchar('canonical_phone', { length: 15 }).notNull(),
@@ -1449,6 +1452,11 @@ export const quotationFollowUps = pgTable(
     uniqueIndex('quotation_follow_ups_provider_message_id_unique')
       .on(table.providerMessageId)
       .where(sql`${table.providerMessageId} IS NOT NULL`),
+    uniqueIndex('quotation_follow_ups_approved_opportunity_unique')
+      .on(table.approvedOpportunityId)
+      .where(
+        sql`${table.approvedOpportunityId} IS NOT NULL AND ${table.state} IN ('approved', 'processing')`
+      ),
     index('quotation_follow_ups_state_due_idx').on(table.state, table.dueAt),
     check(
       'quotation_follow_ups_instance_not_blank_check',
@@ -1503,7 +1511,8 @@ export const quotationFollowUps = pgTable(
         'provider_rejected',
         'rate_limited',
         'transport_ambiguous',
-        'lease_expired_after_transport'
+        'lease_expired_after_transport',
+        'instance_changed'
       )`
     ),
     check(

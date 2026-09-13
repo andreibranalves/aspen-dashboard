@@ -92,6 +92,7 @@ function iso(value: Date | string | null | undefined): string | null {
 function publicRecord(record: Record<string, unknown>): Record<string, unknown> {
   return {
     follow_up_id: record.followUpId ?? record.id ?? null,
+    approved_opportunity_id: record.approvedOpportunityId ?? null,
     quotation_id: record.quotationId,
     revision_id: record.revisionId,
     delivery_id: record.deliveryId,
@@ -146,6 +147,21 @@ export function createFollowUpsHandler(
 
     try {
       if (method === 'GET') {
+        const quotationId = event.queryStringParameters?.quotation_id;
+        if (quotationId !== undefined) {
+          const requestedQuotation = text(quotationId, 'Identificador do orçamento inválido.');
+          const expectedOpportunity = event.queryStringParameters?.opportunity_id;
+          const expectedAction = event.queryStringParameters?.action_id;
+          if (expectedOpportunity === undefined || expectedAction === undefined) {
+            throw new HandlerInputError('Oportunidade e ação de origem são obrigatórias.');
+          }
+          const result = await module.get(requestedQuotation, {
+            expectedOpportunityId: text(expectedOpportunity, 'Identificador da oportunidade inválido.'),
+            expectedActionId: text(expectedAction, 'Identificador da ação inválido.'),
+          });
+          if (!result) throw new NotFoundError();
+          return json(200, { data: publicRecord(result as unknown as Record<string, unknown>) });
+        }
         const pageNumber = page(event.queryStringParameters?.page, 'Página', 1);
         const pageSize = page(event.queryStringParameters?.page_size, 'Tamanho da página', 25);
         if (pageSize > 100) throw new HandlerInputError('Tamanho máximo da página é 100.');

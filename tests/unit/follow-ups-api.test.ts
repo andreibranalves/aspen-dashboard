@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFollowUpsHandler } from '../../api/_modules/follow-ups.js';
-import type { QuotationFollowUpModule } from '../../api/_modules/quotation-follow-ups.js';
+import { ConflictError, type QuotationFollowUpModule } from '../../api/_modules/quotation-follow-ups.js';
 
 const version = 'a'.repeat(64);
 const quotationId = '00000000-0000-4000-8000-000000000001';
@@ -45,6 +45,7 @@ function row() {
 function module(overrides: Partial<QuotationFollowUpModule> = {}): QuotationFollowUpModule {
   return {
     list: async () => ({ data: [row()], total: 1, page: 1, pageSize: 25 }),
+    get: async () => row(),
     approve: async () => ({ ...row(), state: 'approved', followUpId }),
     dismiss: async () => ({ ...row(), state: 'dismissed', followUpId, closedReason: 'other' }),
     claimApproved: async () => null,
@@ -74,6 +75,56 @@ test('GET /api/follow-ups returns snake_case page', async () => {
   assert.equal(body.data[0].quotation_id, quotationId);
   assert.equal(body.data[0].business_number, 'ORC-20260001');
   assert.equal(body.data[0].eligibility_version, version);
+});
+
+test('GET /api/follow-ups validates the source opportunity and action without writing', async () => {
+  let request: { quotationId: string; expectedOpportunityId?: string; expectedActionId?: string } | undefined;
+  const handler = createFollowUpsHandler({
+    followUpModule: module({
+      get: async (quotation, options) => {
+        request = { quotationId: quotation, ...options };
+        return row();
+      },
+    }),
+  });
+  const result = await handler(event('GET', {}, {
+    quotation_id: quotationId,
+    opportunity_id: '00000000-0000-4000-8000-000000000005',
+    action_id: '00000000-0000-4000-8000-000000000006',
+  }));
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(request, {
+    quotationId,
+    expectedOpportunityId: '00000000-0000-4000-8000-000000000005',
+    expectedActionId: '00000000-0000-4000-8000-000000000006',
+  });
+  assert.equal(JSON.parse(result.body || '{}').data.quotation_id, quotationId);
+});
+
+test('GET /api/follow-ups rejects a source request without its action binding', async () => {
+  const handler = createFollowUpsHandler({ followUpModule: module() });
+  const result = await handler(event('GET', {}, {
+    quotation_id: quotationId,
+    opportunity_id: '00000000-0000-4000-8000-000000000005',
+  }));
+  assert.equal(result.statusCode, 400);
+});
+
+test('GET /api/follow-ups keeps a relinked source out of the approvable drawer', async () => {
+  const handler = createFollowUpsHandler({
+    followUpModule: module({
+      get: async () => {
+        throw new ConflictError('A fila mudou. Recarregue e tente novamente.');
+      },
+    }),
+  });
+  const result = await handler(event('GET', {}, {
+    quotation_id: quotationId,
+    opportunity_id: '00000000-0000-4000-8000-000000000005',
+    action_id: '00000000-0000-4000-8000-000000000006',
+  }));
+  assert.equal(result.statusCode, 409);
+  assert.equal(JSON.parse(result.body || '{}').error, 'A fila mudou. Recarregue e tente novamente.');
 });
 
 test('POST approve is blocked when the kill switch is off', async () => {

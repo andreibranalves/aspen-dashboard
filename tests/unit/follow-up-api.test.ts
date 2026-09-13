@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   approveFollowUp,
   dismissFollowUp,
+  getFollowUp,
   FollowUpApiError,
   listFollowUps,
   parseFollowUpPage,
@@ -141,6 +142,29 @@ test('uses snake_case requests for listing, approve, and dismiss', async () => {
     eligibility_version: version,
     reason: 'other',
   });
+});
+
+test('loads a follow-up by quotation and binds the read-only GET to opportunity and action', async () => {
+  let request: { url: string; method: string } | undefined;
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    request = { url: String(input), method: String(init.method || 'GET') };
+    return response({ data: fixture({ followUpId: 'follow-up-source' }) });
+  };
+  try {
+    const loaded = await getFollowUp({
+      quotationId: 'quotation-source',
+      expectedOpportunityId: 'opportunity-source',
+      expectedActionId: 'action-source',
+    });
+    assert.equal(loaded.followUpId, 'follow-up-source');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+  assert.equal(request?.method, 'GET');
+  assert.match(request?.url || '', /quotation_id=quotation-source/);
+  assert.match(request?.url || '', /opportunity_id=opportunity-source/);
+  assert.match(request?.url || '', /action_id=action-source/);
 });
 
 test('dismiss sends an empty eligibility version for awaiting receipt', async () => {

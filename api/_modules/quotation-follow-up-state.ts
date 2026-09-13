@@ -27,6 +27,7 @@ export const CANCELLATION_REASONS = [
   'inbound_after_anchor',
   'outbound_after_anchor',
   'already_attempted',
+  'instance_changed',
 ] as const;
 
 export const TEMPORARY_HOLD_REASONS = [
@@ -66,6 +67,7 @@ export const FOLLOW_UP_REASON_LABELS: Record<string, string> = {
   rate_limited: 'Limite do WhatsApp',
   transport_ambiguous: 'Falha de transporte',
   lease_expired_after_transport: 'Envio sem confirmação',
+  instance_changed: 'Instância do WhatsApp alterada',
   already_handled: 'Já tratado',
   do_not_contact: 'Não contatar',
   no_continuity: 'Sem continuidade',

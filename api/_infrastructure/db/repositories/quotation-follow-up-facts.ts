@@ -102,9 +102,13 @@ export async function materializeQuotationFollowUpQueue(
         q.id AS quotation_id,
         q.status AS quotation_status,
         cl.arquivado AS client_archived,
+        pg_advisory_xact_lock(hashtextextended(
+          COALESCE(q.opportunity_id::text, legacy.id::text, q.id::text), 0
+        )) AS opportunity_lock,
         EXISTS (
           SELECT 1 FROM crm_deals cd
-          WHERE cd.quotation_id = q.id AND cd.status = 'Orcamento Enviado'
+          WHERE cd.status = 'Orcamento Enviado'
+            AND (cd.id = q.opportunity_id OR (q.opportunity_id IS NULL AND cd.quotation_id = q.id))
         ) AS crm_eligible,
         r.id AS revision_id,
         d.id AS delivery_id,
@@ -118,6 +122,14 @@ export async function materializeQuotationFollowUpQueue(
       JOIN quote_revisions r ON r.quotation_id = q.id
       JOIN clients cl ON cl.id = q.client_id
       JOIN quotation_deliveries d ON d.revision_id = r.id
+      LEFT JOIN LATERAL (
+        SELECT cd.id
+        FROM crm_deals cd
+        WHERE q.opportunity_id IS NULL
+          AND cd.quotation_id = q.id
+        ORDER BY cd.updated_at DESC, cd.id DESC
+        LIMIT 1
+      ) legacy ON true
       WHERE d.created_at >= ${timestamp(started)}::timestamptz
         AND d.phone NOT ILIKE '%@g.us'
         AND d.phone NOT ILIKE '%status%'

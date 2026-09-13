@@ -20,6 +20,7 @@ test('follow-up schema exposes activity, health, and attempt tables', () => {
   assert.equal(quotationFollowUps.messageSnapshot.name, 'message_snapshot');
   assert.equal(quotationFollowUps.firstProviderReceiptAt.name, 'first_provider_receipt_at');
   assert.equal(quotationFollowUps.transportStartedAt.name, 'transport_started_at');
+  assert.equal(quotationFollowUps.approvedOpportunityId.name, 'approved_opportunity_id');
 
   const followUp = getTableConfig(quotationFollowUps);
   const activity = getTableConfig(whatsappContactActivity);
@@ -28,6 +29,23 @@ test('follow-up schema exposes activity, health, and attempt tables', () => {
   assert.ok(followUp.foreignKeys.every((fk) => fk.onDelete !== 'cascade'));
   assert.ok(
     followUp.indexes.some((index) => index.config.name === 'quotation_follow_ups_quotation_id_unique')
+  );
+  assert.ok(
+    followUp.indexes.some(
+      (index) => index.config.name === 'quotation_follow_ups_approved_opportunity_unique',
+    ),
+  );
+  const schemaSource = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '../../api/_infrastructure/db/schema.ts'),
+    'utf8',
+  );
+  const opportunityIndexSource = schemaSource.slice(
+    schemaSource.indexOf("uniqueIndex('quotation_follow_ups_approved_opportunity_unique')"),
+    schemaSource.indexOf("index('quotation_follow_ups_state_due_idx')"),
+  );
+  assert.match(
+    opportunityIndexSource,
+    /\.where\([\s\S]*table\.approvedOpportunityId[\s\S]*table\.state[\s\S]*'approved', 'processing'/,
   );
   assert.ok(
     activity.indexes.some(

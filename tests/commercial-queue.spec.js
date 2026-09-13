@@ -54,6 +54,64 @@ function queue(items) {
   return { data: items, total: items.length, page: 1, page_size: 25 };
 }
 
+const proposalDeliveryAction = {
+  ...firstContact,
+  action_id: '33333333-3333-4333-8333-333333333333',
+  opportunity_id: '44444444-4444-4444-8444-444444444444',
+  kind: 'customer_contact',
+  kind_label: 'Contato com cliente',
+  reason_code: 'proposal_delivery_confirmed',
+  reason_label: 'Entrega confirmada da proposta',
+  reason: 'Entrega confirmada da proposta',
+  origin: 'event',
+  source_quotation_id: '55555555-5555-4555-8555-555555555555',
+  source_revision_id: '66666666-6666-4666-8666-666666666666',
+  source_delivery_id: '77777777-7777-4777-8777-777777777777',
+  client_id: '88888888-8888-4888-8888-888888888888',
+  client_name: 'Cliente da proposta',
+  contact_name: 'Cliente da proposta',
+  contact_phone: '5521999990000',
+  contact_context: {
+    status: 'available',
+    last_contact_at: null,
+    last_contact_direction: null,
+    blockers: [],
+  },
+  proposals: [
+    {
+      quotation_id: '55555555-5555-4555-8555-555555555555',
+      business_number: 'ORC-20260001',
+      status: 'emitido',
+      total: '1250.00',
+    },
+  ],
+};
+
+const followUpContext = {
+  follow_up_id: '99999999-9999-4999-8999-999999999999',
+  quotation_id: proposalDeliveryAction.source_quotation_id,
+  revision_id: proposalDeliveryAction.source_revision_id,
+  delivery_id: proposalDeliveryAction.source_delivery_id,
+  business_number: 'ORC-20260001',
+  client_name: 'Cliente da proposta',
+  amount: '1250.00',
+  instance: 'synthetic-instance',
+  provider_conversation_id: '5521999990000@s.whatsapp.net',
+  canonical_phone: '5521999990000',
+  delivery_created_at: '2026-09-01T12:00:00.000Z',
+  first_provider_receipt_at: '2026-09-01T12:01:00.000Z',
+  due_at: '2026-09-02T12:01:00.000Z',
+  eligibility_version: 'a'.repeat(64),
+  state: 'ready',
+  reason: 'ready',
+  reason_label: 'Silêncio após o recibo',
+  message_snapshot: 'Olá, Cliente da proposta.\n\nRetorno confirmado.',
+  closed_reason: null,
+  approved_at: null,
+  sent_at: null,
+  updated_at: '2026-09-12T12:00:00.000Z',
+};
+
 function followUpSuggestion(url) {
   const query = new globalThis.URL(url).searchParams;
   const occurredAt = query.get('occurred_at');
@@ -140,6 +198,84 @@ test('contato aguardando informação oferece sugestão explícita de dois dias 
       schedule: { due_date: '2026-09-19' },
     },
   });
+});
+
+test('ação de entrega confirmada abre o follow-up da proposta e aprova o texto editado', async ({
+  page,
+}) => {
+  const followUpWrites = [];
+  const queueReads = [];
+  const followUpReads = [];
+  await page.route('**/api/commercial-queue**', (route) => {
+    queueReads.push(route.request().method());
+    return json(route, queue([proposalDeliveryAction]));
+  });
+  await page.route('**/api/follow-ups**', (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.has('quotation_id')) {
+      followUpReads.push(url);
+      return json(route, { data: followUpContext });
+    }
+    if (request.method() === 'POST') {
+      followUpWrites.push(request.postDataJSON());
+      return json(route, {
+        follow_up_id: followUpContext.follow_up_id,
+        state: 'approved',
+      }, 201);
+    }
+    return json(route, { data: [] });
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  const row = page.getByRole('row', { name: /Cliente da proposta/ });
+  await row.getByRole('button', { name: 'Revisar retorno' }).click();
+
+  const drawer = page.getByRole('dialog', { name: /ORC-20260001/ });
+  await expect(drawer).toContainText('Cliente da proposta');
+  await expect(drawer.getByLabel('Mensagem')).toHaveValue(/Retorno confirmado/);
+  expect(followUpWrites).toEqual([]);
+
+  const editedMessage = 'Olá, Cliente da proposta.\n\nMensagem revisada pelo operador.';
+  await drawer.getByLabel('Mensagem').fill(editedMessage);
+  await drawer.getByRole('button', { name: 'Aprovar e enviar retorno' }).click();
+
+  await expect.poll(() => followUpWrites).toHaveLength(1);
+  expect(followUpWrites[0]).toEqual({
+    quotation_id: followUpContext.quotation_id,
+    eligibility_version: followUpContext.eligibility_version,
+    message: editedMessage,
+  });
+  expect(queueReads.every((method) => method === 'GET')).toBe(true);
+  expect(followUpReads).toHaveLength(1);
+  expect(followUpReads[0].searchParams.get('quotation_id')).toBe(proposalDeliveryAction.source_quotation_id);
+  expect(followUpReads[0].searchParams.get('opportunity_id')).toBe(proposalDeliveryAction.opportunity_id);
+  expect(followUpReads[0].searchParams.get('action_id')).toBe(proposalDeliveryAction.action_id);
+});
+
+test('relink before opening a proposal follow-up returns a safe conflict without a drawer', async ({
+  page,
+}) => {
+  await page.route('**/api/commercial-queue**', (route) =>
+    json(route, queue([proposalDeliveryAction])),
+  );
+  await page.route('**/api/follow-ups**', (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.has('quotation_id')) {
+      return json(route, { error: 'A fila mudou. Recarregue e tente novamente.' }, 409);
+    }
+    return json(route, { data: [] });
+  });
+
+  await page.goto('/#/crm?tab=queue');
+  await page
+    .getByRole('row', { name: /Cliente da proposta/ })
+    .getByRole('button', { name: 'Revisar retorno' })
+    .click();
+
+  await expect(page.getByText('A fila mudou. Recarregue e tente novamente.')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: /ORC-20260001/ })).toHaveCount(0);
 });
 
 test('primeiro sem resposta contado oferece sugestão de três dias úteis', async ({ page }) => {
