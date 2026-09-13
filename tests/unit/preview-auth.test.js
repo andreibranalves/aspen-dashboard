@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertAnonymousAdminUnauthorized,
   assertDeploymentIdentity,
   assertSafeApiPath,
+  assertPreviewConfig,
+  bootstrapPreviewProtection,
   getPreviewConfig,
+  loginToPreview,
 } from '../support/preview-auth.js';
 
 function validEnv(overrides = {}) {
@@ -15,6 +19,7 @@ function validEnv(overrides = {}) {
     E2E_USERNAME: 'preview-operator',
     E2E_PASSWORD: 'test-password',
     PREVIEW_E2E_USERNAME: 'preview-operator',
+    VERCEL_AUTOMATION_BYPASS_SECRET: 'synthetic-vercel-bypass-secret',
     KNOWN_POSTGRES_QUOTATION_ID: 'ORC-20260001',
     KNOWN_POSTGRES_SCRATCH_QUOTATION_ID: 'ORC-20269999',
     PREVIEW_EGRESS_BLOCKED: '1',
@@ -34,9 +39,32 @@ test('aceita Preview com writes desativados e atestações independentes', () =>
     baseUrl: 'https://preview.example.test',
     username: 'preview-operator',
     password: 'test-password',
+    bypassSecret: 'synthetic-vercel-bypass-secret',
     postgresQuotationId: 'ORC-20260001',
     scratchQuotationId: 'ORC-20269999',
   });
+});
+
+test('config exige segredo de bypass sem expô-lo na mensagem', () => {
+  assert.throws(
+    () => getPreviewConfig(without(validEnv(), 'VERCEL_AUTOMATION_BYPASS_SECRET')),
+    (error) => {
+      assert.match(error.message, /VERCEL_AUTOMATION_BYPASS_SECRET/);
+      assert.doesNotMatch(error.message, /synthetic-vercel-bypass-secret/);
+      return true;
+    }
+  );
+});
+
+test('config de Preview recusa origem HTTP antes do bootstrap', () => {
+  assert.throws(
+    () => getPreviewConfig(validEnv({ PREVIEW_BASE_URL: 'http://preview.example.test' })),
+    /HTTPS/
+  );
+});
+
+test('assertPreviewConfig exige a capability do runner', () => {
+  assert.throws(() => assertPreviewConfig(validEnv()), /capability do E2E seguro/);
 });
 
 test('rejeita ambiente diferente de Preview', () => {
@@ -114,9 +142,160 @@ const proofConfig = {
   baseUrl: 'https://preview.example.test',
   username: 'preview-operator',
   password: 'test-password',
+  bypassSecret: 'synthetic-vercel-bypass-secret',
   postgresQuotationId: 'ORC-20260001',
   scratchQuotationId: 'ORC-20269999',
 };
+
+test('login usa a config validada no carregamento sem revalidar a capability por teste', async () => {
+  const previous = {
+    APP_ENV: process.env.APP_ENV,
+    PREVIEW_BASE_URL: process.env.PREVIEW_BASE_URL,
+    BASE_URL: process.env.BASE_URL,
+    E2E_PASSWORD: process.env.E2E_PASSWORD,
+    PREVIEW_E2E_USERNAME: process.env.PREVIEW_E2E_USERNAME,
+  };
+  Object.assign(process.env, {
+    APP_ENV: 'preview',
+    PREVIEW_BASE_URL: proofConfig.baseUrl,
+    BASE_URL: proofConfig.baseUrl,
+    E2E_PASSWORD: '',
+    PREVIEW_E2E_USERNAME: 'different-operator',
+  });
+
+  const calls = [];
+  const page = {
+    request: {
+      get: async (url, options) => {
+        calls.push({ type: 'get', url, options });
+        if (url === proofConfig.baseUrl) return { status: () => 200 };
+        if (url.endsWith('/api/operational-status')) {
+          return { status: () => 200, json: async () => identityBody() };
+        }
+        return { status: () => 200, json: async () => ({ revision_id: 'rev-1' }) };
+      },
+    },
+    setExtraHTTPHeaders: async (headers) => calls.push({ type: 'headers', headers }),
+    goto: async (url) => calls.push({ type: 'goto', url }),
+    getByPlaceholder: () => ({ fill: async (value) => calls.push({ type: 'fill', value }) }),
+    waitForResponse: async () => ({ status: () => 200 }),
+    getByRole: () => ({ click: async () => calls.push({ type: 'click' }) }),
+    waitForURL: async (pattern) => calls.push({ type: 'waitForURL', pattern }),
+  };
+
+  try {
+    const config = await loginToPreview(page, proofConfig);
+    assert.equal(config, proofConfig);
+    assert.equal(calls[0].type, 'get');
+    assert.equal(calls[0].url, proofConfig.baseUrl);
+    assert.equal(calls.at(-1).url, `${proofConfig.baseUrl}/api/quotations?id=ORC-20260001`);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('bootstrap usa headers por request somente na origem exata e sem redirects', async () => {
+  const calls = [];
+  const request = {
+    get: async (url, options) => {
+      calls.push({ url, options });
+      return { status: () => 200 };
+    },
+  };
+
+  await bootstrapPreviewProtection(request, proofConfig);
+
+  assert.deepEqual(calls, [
+    {
+      url: 'https://preview.example.test',
+      options: {
+        headers: {
+          'x-vercel-protection-bypass': 'synthetic-vercel-bypass-secret',
+          'x-vercel-set-bypass-cookie': 'true',
+        },
+        maxRedirects: 0,
+        failOnStatusCode: false,
+      },
+    },
+  ]);
+});
+
+test('bootstrap rejeita 302 sem imprimir o sentinel nem o segredo', async () => {
+  const request = {
+    get: async () => ({ status: () => 302 }),
+  };
+
+  await assert.rejects(
+    () => bootstrapPreviewProtection(request, proofConfig),
+    (error) => {
+      assert.match(error.message, /HTTP 302/);
+      assert.doesNotMatch(error.message, /sentinel|synthetic-vercel-bypass-secret/);
+      return true;
+    }
+  );
+});
+
+test('bootstrap sanitiza falha de transporte sem propagar sentinel ou segredo', async () => {
+  const sentinel = 'preview-bypass-redaction-sentinel';
+  const secret = 'synthetic-vercel-bypass-secret';
+  const request = {
+    get: async () => {
+      throw new Error(`connect ECONNREFUSED ${sentinel} ${secret}`);
+    },
+  };
+
+  await assert.rejects(
+    () => bootstrapPreviewProtection(request, { ...proofConfig, bypassSecret: secret }),
+    (error) => {
+      assert.equal(error.message, 'Bootstrap da proteção Preview falhou antes da resposta.');
+      assert.doesNotMatch(error.message, new RegExp(sentinel));
+      assert.doesNotMatch(error.message, new RegExp(secret));
+      assert.equal(Object.hasOwn(error, 'cause'), false);
+      return true;
+    }
+  );
+});
+
+test('contexto anônimo faz bootstrap antes do GET administrativo e preserva 401', async () => {
+  const calls = [];
+  const anonymousRequest = {
+    get: async (url, options) => {
+      calls.push({ type: 'get', url, options });
+      return { status: () => (url === proofConfig.baseUrl ? 200 : 401) };
+    },
+  };
+  const anonymous = {
+    request: anonymousRequest,
+    close: async () => calls.push({ type: 'close' }),
+  };
+  const browser = {
+    newContext: async (options) => {
+      calls.push({ type: 'newContext', options });
+      return anonymous;
+    },
+  };
+
+  await assertAnonymousAdminUnauthorized(browser, proofConfig);
+
+  assert.equal(calls[0].type, 'newContext');
+  assert.deepEqual(calls[0].options, { baseURL: proofConfig.baseUrl });
+  assert.equal(calls[1].type, 'get');
+  assert.equal(calls[1].url, proofConfig.baseUrl);
+  assert.deepEqual(calls[1].options, {
+    headers: {
+      'x-vercel-protection-bypass': 'synthetic-vercel-bypass-secret',
+      'x-vercel-set-bypass-cookie': 'true',
+    },
+    maxRedirects: 0,
+    failOnStatusCode: false,
+  });
+  assert.equal(calls[2].type, 'get');
+  assert.match(calls[2].url, /\/api\/view\?q=/);
+  assert.deepEqual(calls[3], { type: 'close' });
+});
 
 function identityBody(overrides = {}) {
   return {

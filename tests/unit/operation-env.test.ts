@@ -180,6 +180,7 @@ test('Preview E2E usa o contrato do deployment e não o alvo técnico de migrati
     'E2E_USERNAME',
     'E2E_PASSWORD',
     'PREVIEW_E2E_USERNAME',
+    'VERCEL_AUTOMATION_BYPASS_SECRET',
     'PREVIEW_EGRESS_BLOCKED',
     'PREVIEW_FIXTURE_RESET',
   ]) {

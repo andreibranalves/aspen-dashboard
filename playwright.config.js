@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { loadLocalEnv } from './scripts/load-env.mjs';
 import { PREVIEW_E2E_SPECS } from './scripts/lib/preview-e2e-specs.mjs';
 import { SAFE_E2E_SPECS } from './scripts/lib/safe-e2e-env.mjs';
+import { assertSafeE2eCapability } from './scripts/lib/safe-e2e-capability.mjs';
 import { isPreviewMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
 loadLocalEnv();
@@ -12,6 +13,15 @@ const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173);
 // Configurações contraditórias falham no carregamento deste arquivo —
 // antes do primeiro request HTTP de qualquer suite.
 const IS_PREVIEW = isPreviewMode();
+if (IS_PREVIEW) {
+  // Reutilizamos a capability interna SAFE_E2E_* já existente para impedir que
+  // uma invocação direta importe os specs Preview sem passar pelo runner.
+  // Esses nomes não são configuração operacional do usuário.
+  assertSafeE2eCapability(process.env, {
+    config: 'playwright.config.js',
+    specs: PREVIEW_E2E_SPECS,
+  });
+}
 const BASE_URL = resolveE2eBaseUrl(process.env, { port: PORT });
 process.env.BASE_URL = BASE_URL;
 
@@ -29,7 +39,7 @@ export default defineConfig({
 
   use: {
     baseURL: BASE_URL,
-    trace: 'on-first-retry',
+    trace: IS_PREVIEW ? 'off' : 'on-first-retry',
     screenshot: 'only-on-failure',
   },
 

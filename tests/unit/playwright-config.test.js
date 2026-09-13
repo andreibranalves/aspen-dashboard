@@ -12,6 +12,7 @@ import {
   SAFE_E2E_RUN_ID_VAR,
   SAFE_E2E_SPECS,
 } from '../../scripts/lib/safe-e2e-env.mjs';
+import { PREVIEW_E2E_SPECS } from '../../scripts/lib/preview-e2e-specs.mjs';
 import {
   createSafeE2eCapability,
   deleteSafeE2eCapability,
@@ -26,8 +27,10 @@ const playwrightCli = fileURLToPath(
   new URL('../../node_modules/@playwright/test/cli.js', import.meta.url)
 );
 const disposableDatabaseUrl = 'postgresql://review:review@127.0.0.1:55432/aspen_safe_e2e';
+const syntheticVercelBypassSecret = 'synthetic-vercel-bypass-secret';
 const probe = `
   const { default: config } = await import(${JSON.stringify(configUrl.href)});
+  const extraHTTPHeaders = config.use.extraHTTPHeaders || {};
   process.stdout.write(JSON.stringify({
     workers: config.workers,
     webServer: Boolean(config.webServer),
@@ -35,20 +38,50 @@ const probe = `
     testIgnore: config.testIgnore || null,
     baseURL: config.use.baseURL,
     environmentBaseURL: process.env.BASE_URL,
+    trace: config.use.trace,
+    extraHTTPHeaderNames: Object.keys(extraHTTPHeaders).sort(),
+    bypassHeaderMatchesSynthetic: extraHTTPHeaders['x-vercel-protection-bypass'] === ${JSON.stringify(syntheticVercelBypassSecret)},
+    setBypassCookieHeaderMatches: extraHTTPHeaders['x-vercel-set-bypass-cookie'] === 'true',
   }));
 `;
 
+function spawnConfigProbe(env, { withCapability = env.APP_ENV === 'preview' } = {}) {
+  let directory;
+  let capability;
+  const childEnv = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    DOTENV_CONFIG_PATH: missingEnvPath,
+    ...env,
+  };
+  if (withCapability) {
+    directory = mkdtempSync(join(tmpdir(), 'preview-config-capability-'));
+    capability = createSafeE2eCapability({
+      runId: 'preview-config-test-run',
+      config: 'playwright.config.js',
+      specs: PREVIEW_E2E_SPECS,
+      dir: directory,
+    });
+    Object.assign(childEnv, {
+      [SAFE_E2E_RUN_ID_VAR]: capability.runId,
+      [SAFE_E2E_CAPABILITY_PATH_VAR]: capability.path,
+      [SAFE_E2E_CAPABILITY_PROOF_VAR]: capability.proof,
+    });
+  }
+  try {
+    return spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
+      cwd: projectRoot,
+      env: childEnv,
+      encoding: 'utf8',
+    });
+  } finally {
+    deleteSafeE2eCapability(capability);
+    if (directory) rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function loadConfig(env) {
-  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
-    cwd: projectRoot,
-    env: {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-      DOTENV_CONFIG_PATH: missingEnvPath,
-      ...env,
-    },
-    encoding: 'utf8',
-  });
+  const result = spawnConfigProbe(env);
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
@@ -112,7 +145,11 @@ function safeEnvWithCapability({
 }
 
 test('APP_ENV=development mantém servidor local e ignora specs Preview e integrada', () => {
-  const config = loadConfig({ APP_ENV: 'development', BASE_URL: 'http://127.0.0.1:5173' });
+  const config = loadConfig({
+    APP_ENV: 'development',
+    BASE_URL: 'http://127.0.0.1:5173',
+    VERCEL_AUTOMATION_BYPASS_SECRET: syntheticVercelBypassSecret,
+  });
   assert.equal(config.workers, 2);
   assert.equal(config.webServer, true);
   assert.deepEqual(config.testIgnore, [
@@ -121,6 +158,10 @@ test('APP_ENV=development mantém servidor local e ignora specs Preview e integr
     ...SAFE_E2E_SPECS,
   ]);
   assert.equal(config.baseURL, 'http://127.0.0.1:5173');
+  assert.equal(config.trace, 'on-first-retry');
+  assert.deepEqual(config.extraHTTPHeaderNames, []);
+  assert.equal(config.bypassHeaderMatchesSynthetic, false);
+  assert.equal(config.setBypassCookieHeaderMatches, false);
 });
 
 test('o marcador SAFE_E2E isolado não libera a suíte integrada no modo local', () => {
@@ -165,12 +206,49 @@ test('APP_ENV=preview usa origem remota, um worker e nenhum servidor local', () 
     EXTERNAL_WRITES_ENABLED: '0',
     PREVIEW_BASE_URL: 'https://preview.example.test',
     BASE_URL: 'https://preview.example.test',
+    VERCEL_AUTOMATION_BYPASS_SECRET: syntheticVercelBypassSecret,
   });
   assert.equal(config.workers, 1);
   assert.equal(config.webServer, false);
   assert.equal(config.testIgnore, null);
   assert.equal(config.baseURL, 'https://preview.example.test');
   assert.equal(config.environmentBaseURL, config.baseURL);
+  assert.equal(config.trace, 'off');
+  assert.deepEqual(config.extraHTTPHeaderNames, []);
+  assert.equal(config.bypassHeaderMatchesSynthetic, false);
+  assert.equal(config.setBypassCookieHeaderMatches, false);
+});
+
+test('Preview direta com ambiente público e segredo, mas sem capability, falha antes do discovery', () => {
+  const result = spawnConfigProbe(
+    {
+      APP_ENV: 'preview',
+      EXTERNAL_WRITES_ENABLED: '0',
+      PREVIEW_BASE_URL: 'https://preview.example.test',
+      BASE_URL: 'https://preview.example.test',
+      VERCEL_AUTOMATION_BYPASS_SECRET: syntheticVercelBypassSecret,
+    },
+    { withCapability: false }
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /capability do E2E seguro/);
+  assert.doesNotMatch(result.stdout, /postgres-only-cutover|quotation-cutover-preview/);
+  assert.doesNotMatch(result.stderr, /synthetic-vercel-bypass-secret/);
+});
+
+test('Preview exige capability antes de carregar a config, mesmo sem segredo', () => {
+  const result = spawnConfigProbe(
+    {
+      APP_ENV: 'preview',
+      EXTERNAL_WRITES_ENABLED: '0',
+      PREVIEW_BASE_URL: 'https://preview.example.test',
+      BASE_URL: 'https://preview.example.test',
+    },
+    { withCapability: false }
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /capability do E2E seguro/);
+  assert.doesNotMatch(result.stderr, /synthetic-vercel-bypass-secret/);
 });
 
 test('PLAYWRIGHT_PORT mantém config e testes no mesmo servidor local', () => {
@@ -180,18 +258,12 @@ test('PLAYWRIGHT_PORT mantém config e testes no mesmo servidor local', () => {
 });
 
 test('Preview rejeita BASE_URL fora da origem do deployment', () => {
-  const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
-    cwd: fileURLToPath(new URL('../..', import.meta.url)),
-    env: {
-      PATH: process.env.PATH,
-      HOME: process.env.HOME,
-      DOTENV_CONFIG_PATH: missingEnvPath,
-      APP_ENV: 'preview',
-      EXTERNAL_WRITES_ENABLED: '0',
-      PREVIEW_BASE_URL: 'https://preview.example.test',
-      BASE_URL: 'https://outside.example.test',
-    },
-    encoding: 'utf8',
+  const result = spawnConfigProbe({
+    APP_ENV: 'preview',
+    EXTERNAL_WRITES_ENABLED: '0',
+    PREVIEW_BASE_URL: 'https://preview.example.test',
+    BASE_URL: 'https://outside.example.test',
+    VERCEL_AUTOMATION_BYPASS_SECRET: syntheticVercelBypassSecret,
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /BASE_URL must match PREVIEW_BASE_URL during Preview E2E/);

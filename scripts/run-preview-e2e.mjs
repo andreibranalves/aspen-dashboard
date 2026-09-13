@@ -6,12 +6,15 @@
 //   1. Carrega e reporta o contrato da operação a partir da origem externa.
 //   2. Fixa APP_ENV=preview, EXTERNAL_WRITES_ENABLED=0 e DOTENV_CONFIG_PATH=/dev/null.
 //   3. Executa o preflight de Preview e valida PREVIEW_BASE_URL.
-//   4. Entrega ao Playwright somente a origem, credenciais e atestações E2E;
-//      DATABASE_URL/PRODUCTION_DATABASE_URL ficam no executor do preflight.
-//   5. Invoca apenas a lista controlada e repassa filtros úteis, sem permitir
+//   4. Cria uma capability efêmera para esta config e lista de specs.
+//   5. Entrega ao Playwright somente a origem, credenciais, atestações E2E e
+//      os três valores da capability; DATABASE_URL/PRODUCTION_DATABASE_URL
+//      ficam no executor do preflight.
+//   6. Invoca apenas a lista controlada e repassa filtros úteis, sem permitir
 //      uma config alternativa que amplie o discovery remoto.
 
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { formatPreviewPreflight, runPreviewPreflight } from './preview-preflight.mjs';
 import {
   fillFromExternalConfig,
@@ -19,6 +22,13 @@ import {
   inspectOperationEnv,
 } from './lib/operation-env.mjs';
 import { PREVIEW_E2E_SPECS } from './lib/preview-e2e-specs.mjs';
+import { SAFE_E2E_RUN_ID_VAR } from './lib/safe-e2e-env.mjs';
+import {
+  createSafeE2eCapability,
+  deleteSafeE2eCapability,
+  SAFE_E2E_CAPABILITY_PATH_VAR,
+  SAFE_E2E_CAPABILITY_PROOF_VAR,
+} from './lib/safe-e2e-capability.mjs';
 import { resolveE2eBaseUrl } from './lib/e2e-mode.mjs';
 
 const CHILD_ENV_KEYS = [
@@ -43,13 +53,17 @@ const CHILD_ENV_KEYS = [
   'E2E_USERNAME',
   'E2E_PASSWORD',
   'PREVIEW_E2E_USERNAME',
+  'VERCEL_AUTOMATION_BYPASS_SECRET',
+  // SAFE_E2E_* names are reused internally for the ephemeral Preview runner
+  // capability; they are not operational configuration exposed to the user.
+  'SAFE_E2E_RUN_ID',
+  'SAFE_E2E_CAPABILITY_PATH',
+  'SAFE_E2E_CAPABILITY_PROOF',
   'KNOWN_POSTGRES_QUOTATION_ID',
   'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
   'PREVIEW_EGRESS_BLOCKED',
   'PREVIEW_FIXTURE_RESET',
 ];
-
-const FORBIDDEN_PLAYWRIGHT_ARGS = /^(?:--config(?:=|$)|-c(?:$|=|[^-]))|^(?:--test-dir|--test-match|--test-ignore)(?:=|$)/;
 
 function fail(message) {
   process.stderr.write(`${message}\n`);
@@ -66,11 +80,26 @@ function buildPlaywrightEnvironment(env = process.env) {
 }
 
 function assertPlaywrightArgs(args) {
-  const forbidden = args.find((arg) => FORBIDDEN_PLAYWRIGHT_ARGS.test(String(arg)));
-  if (forbidden) {
-    throw new Error(
-      'configuração alternativa do Playwright recusada: o E2E de Preview mantém a config e a lista controlada.'
-    );
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = String(args[index]);
+    if (arg === '--list') continue;
+
+    if (arg === '--grep' || arg === '--grep-invert') {
+      const value = args[index + 1];
+      if (value === undefined || String(value).length === 0 || String(value).startsWith('-')) {
+        throw new Error(`Argumento do Playwright recusado: ${arg}`);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--grep=') || arg.startsWith('--grep-invert=')) {
+      const value = arg.slice(arg.indexOf('=') + 1);
+      if (value.length === 0) throw new Error(`Argumento do Playwright recusado: ${arg}`);
+      continue;
+    }
+
+    throw new Error(`Argumento do Playwright recusado: ${arg}`);
   }
 }
 
@@ -102,8 +131,27 @@ try {
 }
 
 const args = ['playwright', 'test', ...PREVIEW_E2E_SPECS, ...process.argv.slice(2)];
-const result = spawnSync('npx', args, {
-  stdio: 'inherit',
-  env: buildPlaywrightEnvironment(),
+// Reutiliza a capability efêmera existente do E2E seguro, vinculada aqui ao
+// config comum e à lista exata do Preview depois de todos os preflights.
+const capability = createSafeE2eCapability({
+  runId: randomBytes(16).toString('hex'),
+  config: 'playwright.config.js',
+  specs: PREVIEW_E2E_SPECS,
 });
+
+let result;
+try {
+  const childEnv = {
+    ...process.env,
+    [SAFE_E2E_RUN_ID_VAR]: capability.runId,
+    [SAFE_E2E_CAPABILITY_PATH_VAR]: capability.path,
+    [SAFE_E2E_CAPABILITY_PROOF_VAR]: capability.proof,
+  };
+  result = spawnSync('npx', args, {
+    stdio: 'inherit',
+    env: buildPlaywrightEnvironment(childEnv),
+  });
+} finally {
+  deleteSafeE2eCapability(capability);
+}
 process.exit(result.status ?? 1);

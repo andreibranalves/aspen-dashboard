@@ -3,9 +3,9 @@ import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
 import { expect, test } from '@playwright/test';
 import {
+  assertAnonymousAdminUnauthorized,
   apiRequest,
   assertNoForbiddenEgress,
-  assertSafeApiPath,
   assertPreviewConfig,
   loginToPreview,
 } from './support/preview-auth.js';
@@ -21,7 +21,7 @@ test.describe('quotation cutover Preview @quotations @database @critical', () =>
     const testPage = page;
     testPage.__cutoverRequests = requests;
     page.on('request', (request) => requests.push(request.url()));
-    await loginToPreview(page);
+    await loginToPreview(page, CONFIG);
   });
 
   test.afterEach(async ({ page }) => {
@@ -80,15 +80,7 @@ test.describe('quotation cutover Preview @quotations @database @critical', () =>
     expect(new globalThis.URL(pdfResponse.url()).pathname).toBe('/api/quotation-preview');
     await pdfPopup.close();
 
-    const anonymous = await browser.newContext({ baseURL: CONFIG.baseUrl });
-    try {
-      const adminPath = `/api/view?q=${encodeURIComponent(CONFIG.postgresQuotationId)}`;
-      assertSafeApiPath(adminPath);
-      const adminResponse = await anonymous.request.get(adminPath);
-      expect(adminResponse.status()).toBe(401);
-    } finally {
-      await anonymous.close();
-    }
+    await assertAnonymousAdminUnauthorized(browser, CONFIG);
   });
 
   test('uses disposable scratch quotation for public link and UI revision edit', async ({
