@@ -56,7 +56,7 @@ npm run leads:reconcile -- \
   --from 2026-09-04T00:00:00-03:00 \
   --to 2026-09-05T00:00:00-03:00 \
   --apply \
-  --target staging
+  --target "$APP_ENV"
 ```
 
 Não usar `--apply` em produção sem lista e intervalo aprovados. Uma falha intermediária não cria checkpoint: corrigir a causa e repetir todo o intervalo, pois a ingestão é idempotente. Conflito de fingerprint exige revisão do documento e não autoriza sobrescrever o lead.

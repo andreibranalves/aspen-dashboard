@@ -38,7 +38,13 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
   },
   migration: {
     description: 'Preflight e apply operacional de migrations.',
-    keys: ['STAGING_DATABASE_URL', 'STAGING_PG_SERVICE', 'PRODUCTION_DATABASE_URL', 'PGSERVICEFILE', 'PGPASSFILE'],
+    keys: [
+      'STAGING_DATABASE_URL',
+      'STAGING_PG_SERVICE',
+      'PRODUCTION_DATABASE_URL',
+      'PGSERVICEFILE',
+      'PGPASSFILE',
+    ],
     anyOf: [],
     paths: { PGSERVICEFILE: true, PGPASSFILE: true },
   },
@@ -56,19 +62,19 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
     anyOf: [['CUTOVER_BACKUP_DIR', 'BACKUP_DIR']],
     paths: { PGSERVICEFILE: true, PGPASSFILE: true },
   },
-  'staging-e2e': {
-    description: 'E2E controlado contra o ambiente de staging.',
+  'preview-e2e': {
+    description: 'E2E controlado contra um deployment Preview.',
     keys: [
-      'STAGING_BASE_URL',
-      'STAGING_DATABASE_URL',
-      'STAGING_PG_SERVICE',
+      'PREVIEW_BASE_URL',
+      'DATABASE_URL',
+      'PRODUCTION_DATABASE_URL',
       'E2E_USERNAME',
       'E2E_PASSWORD',
-      'STAGING_E2E_USERNAME',
+      'PREVIEW_E2E_USERNAME',
       'KNOWN_POSTGRES_QUOTATION_ID',
       'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
-      'STAGING_EGRESS_BLOCKED',
-      'STAGING_FIXTURE_RESET',
+      'PREVIEW_EGRESS_BLOCKED',
+      'PREVIEW_FIXTURE_RESET',
     ],
     anyOf: [],
     paths: {},
@@ -91,13 +97,15 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
     paths: {},
   },
   'backup-restore': {
-    description: 'Backup, restore validado e preflight de capacidade. A URL de produção é exigida no validate; serviços nomeados protegem alvos quando configurados (guardas do próprio comando).',
+    description:
+      'Backup, restore validado e preflight de capacidade. A URL de produção é exigida no validate; serviços nomeados protegem alvos quando configurados (guardas do próprio comando).',
     keys: ['DATABASE_URL'],
     anyOf: [['BLOB_READ_WRITE_TOKEN', 'QUOTATION_BLOB_READ_WRITE_TOKEN']],
     paths: {},
   },
   cleanup: {
-    description: 'Limpeza de dados; identidade positiva do alvo e evidências de recuperação permanecem gates do próprio comando.',
+    description:
+      'Limpeza de dados; identidade positiva do alvo e evidências de recuperação permanecem gates do próprio comando.',
     keys: ['DATABASE_URL', 'CLEANUP_TARGET_IDENTITY'],
     anyOf: [],
     paths: {},
@@ -110,7 +118,9 @@ export function operationNames() {
 
 export function assertKnownOperation(operation) {
   if (!Object.hasOwn(OPERATION_ENV_CONTRACTS, operation)) {
-    throw new Error(`Operação desconhecida: ${operation}. Use uma de ${operationNames().join(', ')}.`);
+    throw new Error(
+      `Operação desconhecida: ${operation}. Use uma de ${operationNames().join(', ')}.`
+    );
   }
 }
 
@@ -119,7 +129,8 @@ export function resolveOperationConfigFiles(env = process.env) {
   const override = String(env.CUTOVER_ENV_FILE || '').trim();
   if (override) return [override];
 
-  const configHome = String(env.XDG_CONFIG_HOME || '').trim() || join(env.HOME || homedir(), '.config');
+  const configHome =
+    String(env.XDG_CONFIG_HOME || '').trim() || join(env.HOME || homedir(), '.config');
   const configDir = join(configHome, 'aspen-dashboard');
   return [join(configDir, '.env.local'), join(configDir, '.env')];
 }
@@ -160,7 +171,10 @@ function readFileOrNothing(filePath, readFile) {
  * o restante. Estados possíveis por chave: present | missing | not-needed |
  * invalid-permission | unreadable.
  */
-export function inspectOperationEnv(operation, { env = process.env, exists = existsSync, lstat = lstatSync, readFile = readFileSync } = {}) {
+export function inspectOperationEnv(
+  operation,
+  { env = process.env, exists = existsSync, lstat = lstatSync, readFile = readFileSync } = {}
+) {
   assertKnownOperation(operation);
   const contract = OPERATION_ENV_CONTRACTS[operation];
   const paths = resolveOperationConfigFiles(env);
@@ -187,9 +201,7 @@ export function inspectOperationEnv(operation, { env = process.env, exists = exi
 
   const hasValue = (key) => String(combined[key] ?? '').trim().length > 0;
   const missingRequired = contract.keys.filter((key) => !hasValue(key));
-  const satisfiedAnyOf = new Set(
-    contract.anyOf.filter((group) => group.some(hasValue)).flat(),
-  );
+  const satisfiedAnyOf = new Set(contract.anyOf.filter((group) => group.some(hasValue)).flat());
 
   const allContractKeys = [...contract.keys, ...contract.anyOf.flat()];
   const keyStatus = {};
@@ -293,7 +305,7 @@ export function assertOperationEnv(operation, options = {}) {
   if (!result.ok) {
     throw new Error(
       `Ambiente incompleto para a operação ${operation}: ${missingOperationKeys(result).join(', ')}. ` +
-        'Configure na origem externa única ($HOME/.config/aspen-dashboard ou CUTOVER_ENV_FILE).',
+        'Configure na origem externa única ($HOME/.config/aspen-dashboard ou CUTOVER_ENV_FILE).'
     );
   }
   return result;

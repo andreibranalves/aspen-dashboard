@@ -17,7 +17,7 @@ test('reports PostgreSQL and local settings readiness', async () => {
   );
 });
 
-test('exposes non-sensitive deployment identity for staging E2E proof (#118)', async () => {
+test('exposes non-sensitive deployment identity for Preview E2E proof (#118)', async () => {
   const previewEnv = { APP_ENV: 'Preview', EXTERNAL_WRITES_ENABLED: '0' } as NodeJS.ProcessEnv;
   const body = JSON.parse((await handler({ httpMethod: 'GET' }, previewEnv)).body || '{}');
   // Ticket #118: o deployment remoto comprova ambiente e writes-off.
@@ -31,7 +31,9 @@ test('exposes non-sensitive deployment identity for staging E2E proof (#118)', a
     APP_ENV: 'production',
     EXTERNAL_WRITES_ENABLED: '1',
   } as NodeJS.ProcessEnv;
-  const productionBody = JSON.parse((await handler({ httpMethod: 'GET' }, productionEnv)).body || '{}');
+  const productionBody = JSON.parse(
+    (await handler({ httpMethod: 'GET' }, productionEnv)).body || '{}'
+  );
   assert.deepEqual(productionBody.deployment_identity, {
     app_env: 'production',
     external_writes_enabled: true,
@@ -40,7 +42,9 @@ test('exposes non-sensitive deployment identity for staging E2E proof (#118)', a
 });
 
 test('deployment identity is missing-safe when environment is absent', async () => {
-  const body = JSON.parse((await handler({ httpMethod: 'GET' }, {} as NodeJS.ProcessEnv)).body || '{}');
+  const body = JSON.parse(
+    (await handler({ httpMethod: 'GET' }, {} as NodeJS.ProcessEnv)).body || '{}'
+  );
   assert.deepEqual(body.deployment_identity, {
     app_env: '',
     external_writes_enabled: false,

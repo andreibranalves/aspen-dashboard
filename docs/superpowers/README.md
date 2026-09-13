@@ -5,4 +5,5 @@ Planos, specs e reports nesta árvore (`plans/`, `specs/`, `reports/`) são **hi
 Nenhum comando ou sequência aqui é política executável atual. Consulte:
 
 - lanes operacionais: [`../release-lanes.md`](../release-lanes.md);
+- ambientes Preview: [`../preview-isolation.md`](../preview-isolation.md);
 - convenções do repositório: [`../../AGENTS.md`](../../AGENTS.md).

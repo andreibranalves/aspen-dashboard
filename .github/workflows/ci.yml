@@ -11,10 +11,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Detects whether a PR can affect code invariants at all. Docs-only changes
-  # keep the light structural jobs green while skipping the heavy database and
-  # browser lanes (AC #3). Scoping is conservative: anything outside the listed
-  # non-source roots runs every lane, never fewer.
+  # Classifica o diff de forma conservadora. Só documentação Markdown conhecida
+  # pode seguir pelo job barato; qualquer configuração, script, runtime ou
+  # caminho desconhecido mantém as lanes de código.
   #
   # NOTE: branch protection for master could NOT be confirmed remotely (GitHub
   # REST returns 403 on this plan/repository visibility — see ticket evidence).
@@ -32,18 +31,30 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - id: filter
-        run: |
-          BASE="${{ github.event.pull_request.base.sha }}"
-          FILES="$(git diff --name-only "$BASE"...HEAD)"
-          echo "changed files:"
-          echo "$FILES"
-          if echo "$FILES" | grep -qE '^(src/|api/|drizzle/|scripts/|tests/|extension/|\.github/workflows/ci\.yml|package\.json|package-lock\.json|playwright\.config\.js|vite\.config\..*|tsconfig.*\.json|index\.html|public/)'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/classify-ci-changes.mjs
+
+  docs:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check documentation diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --check "$BASE_SHA...$HEAD_SHA"
 
   lint:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -58,6 +69,8 @@ jobs:
       - run: npm run lint
 
   types:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -72,6 +85,8 @@ jobs:
       - run: npm run typecheck
 
   unit:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -86,6 +101,8 @@ jobs:
       - run: npm run test:unit
 
   boundary:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -155,6 +172,8 @@ jobs:
           TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
 
   migrations:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -171,8 +190,8 @@ jobs:
           MIGRATION_BASE_REF: ${{ github.event.pull_request.base.sha }}
 
   build:
-    needs: [changes, lint, types, unit, boundary, migrations, postgres]
-    if: '!cancelled() && needs.lint.result == ''success'' && needs.types.result == ''success'' && needs.unit.result == ''success'' && needs.boundary.result == ''success'' && needs.migrations.result == ''success'' && (needs.postgres.result == ''success'' || needs.postgres.result == ''skipped'')'
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -187,11 +206,10 @@ jobs:
       - run: npm run build
 
   smoke:
-    needs: [build, changes]
+    needs: [build]
     if: >-
       !cancelled() &&
-      needs.build.result == 'success' &&
-      needs.changes.outputs.code == 'true'
+      needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

@@ -32,7 +32,7 @@ O comando:
    operacional (`PRODUCTION_/STAGING_/RESTORE_DATABASE_URL`,
    `MIGRATION_*`, `CLIENT_CONSOLIDATION_*`),
    `PG*`/`CUTOVER_*`/`LITE_BASELINE_*`/`CLEANUP_*`;
-3. descarta qualquer URL de alvo herdada (`BASE_URL`, `STAGING_BASE_URL`,
+3. descarta qualquer URL de alvo herdada (`BASE_URL`, `PREVIEW_BASE_URL`,
    `VERCEL_URL`, `DEPLOYMENT_URL`, `PREVIEW_DEPLOYMENT_URL`, `CANARY_BASE_URL`,
    `KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL`), todo modo/origem de plataforma de
    deployment realmente consumido (`VERCEL`, `VERCEL_PROJECT_PRODUCTION_URL`,

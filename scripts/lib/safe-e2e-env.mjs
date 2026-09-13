@@ -7,7 +7,7 @@
 // credenciais de integração, fixa APP_ENV não-produção,
 // EXTERNAL_WRITES_ENABLED=0, força DOTENV_CONFIG_PATH=/dev/null, exige um
 // PostgreSQL descartável em loopback e FORÇA o alvo HTTP para loopback derivado
-// de PLAYWRIGHT_PORT — nunca herda BASE_URL/STAGING_BASE_URL.
+// de PLAYWRIGHT_PORT — nunca herda BASE_URL/PREVIEW_BASE_URL.
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -107,7 +107,7 @@ const OPERATIONAL_KEY_PATTERNS = [
   /^npm_config_/i,
   /^NPM_TOKEN$/i,
   // Alvos remotos e modos de execução: o E2E seguro deriva o próprio loopback.
-  /^(?:BASE_URL|STAGING_BASE_URL|DEPLOYMENT_URL|PREVIEW_DEPLOYMENT_URL|PREVIOUS_PRODUCTION_DEPLOYMENT_URL|POST_CLEANUP_PREVIEW_URL|CANARY_BASE_URL|CANARY_PUBLIC_QUOTATION_URL|KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL)$/,
+  /^(?:BASE_URL|PREVIEW_BASE_URL|DEPLOYMENT_URL|PREVIEW_DEPLOYMENT_URL|PREVIOUS_PRODUCTION_DEPLOYMENT_URL|POST_CLEANUP_PREVIEW_URL|CANARY_BASE_URL|CANARY_PUBLIC_QUOTATION_URL|KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL)$/,
 ];
 
 /**
@@ -347,7 +347,7 @@ export function safeE2eEnvironmentIsValid(env = process.env) {
   }
   const port = Number(String(env.PLAYWRIGHT_PORT ?? '').trim());
   if (!Number.isInteger(port) || port < 1 || port > 65535) return false;
-  if (String(env.STAGING_BASE_URL || '').trim()) return false;
+  if (String(env.PREVIEW_BASE_URL || '').trim()) return false;
   // BASE_URL só é aceita quando é exatamente o loopback forçado pela porta
   // validada; qualquer outro alvo herdado reprova o ambiente.
   const expected = `http://localhost:${port}`;

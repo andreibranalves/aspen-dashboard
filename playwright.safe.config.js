@@ -12,10 +12,10 @@
 import { defineConfig, devices } from '@playwright/test';
 import { assertSafeE2eCapability } from './scripts/lib/safe-e2e-capability.mjs';
 import { SAFE_E2E_SPECS, safeE2eEnvironmentIsValid } from './scripts/lib/safe-e2e-env.mjs';
-import { isStagingMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
+import { isPreviewMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
-if (isStagingMode()) {
-  throw new Error('A config segura do E2E não roda em modo Preview de staging.');
+if (isPreviewMode()) {
+  throw new Error('A config segura do E2E não roda contra um deployment Preview.');
 }
 if (!safeE2eEnvironmentIsValid(process.env)) {
   throw new Error(

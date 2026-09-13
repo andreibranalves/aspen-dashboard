@@ -28,7 +28,12 @@ function withTempDir(callback) {
 
 function externalFileFixture(root, values) {
   const filePath = join(root, 'external.env');
-  writeFileSync(filePath, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n');
+  writeFileSync(
+    filePath,
+    Object.entries(values)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n') + '\n'
+  );
   return filePath;
 }
 
@@ -60,8 +65,8 @@ test('contratos existem para as operações e são distintos entre si', () => {
     'cleanup',
     'migration',
     'migration-production',
+    'preview-e2e',
     'runtime',
-    'staging-e2e',
   ]);
 });
 
@@ -92,19 +97,25 @@ test('migration-production exige CUTOVER_BACKUP_DIR ou BACKUP_DIR e marca o irm�
 
     const missingBoth = inspectOperationEnv('migration-production', { env: withoutBackup });
     assert.equal(missingBoth.ok, false);
-    assert.deepEqual(missingBoth.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'), {
-      name: 'CUTOVER_BACKUP_DIR',
-      status: 'missing',
-    });
+    assert.deepEqual(
+      missingBoth.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'),
+      {
+        name: 'CUTOVER_BACKUP_DIR',
+        status: 'missing',
+      }
+    );
 
     const withOne = inspectOperationEnv('migration-production', {
       env: { ...withoutBackup, BACKUP_DIR: 'valor-de-BACKUP_DIR' },
     });
     assert.equal(withOne.ok, true);
-    assert.deepEqual(withOne.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'), {
-      name: 'CUTOVER_BACKUP_DIR',
-      status: 'not-needed',
-    });
+    assert.deepEqual(
+      withOne.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'),
+      {
+        name: 'CUTOVER_BACKUP_DIR',
+        status: 'not-needed',
+      }
+    );
   });
 });
 
@@ -114,10 +125,13 @@ test('checkOperationEnv satisfaz anyOf de backup com um membro e falha sem nenhu
     delete values.CUTOVER_BACKUP_DIR;
     const withOne = checkOperationEnv('migration-production', values);
     assert.equal(withOne.ok, true);
-    assert.deepEqual(withOne.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'), {
-      name: 'CUTOVER_BACKUP_DIR',
-      status: 'not-needed',
-    });
+    assert.deepEqual(
+      withOne.keys.find(({ name }) => name === 'CUTOVER_BACKUP_DIR'),
+      {
+        name: 'CUTOVER_BACKUP_DIR',
+        status: 'not-needed',
+      }
+    );
 
     const withoutBoth = checkOperationEnv('migration-production', {
       ...values,
@@ -130,7 +144,16 @@ test('checkOperationEnv satisfaz anyOf de backup com um membro e falha sem nenhu
 test('operações não exigem credenciais de workflows não relacionados', () => {
   const separations = [
     ['migration', ['CANARY_PASSWORD', 'RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
-    ['staging-e2e', ['RESEND_API_KEY', 'CANARY_PASSWORD', 'BLOB_READ_WRITE_TOKEN']],
+    [
+      'preview-e2e',
+      [
+        'RESEND_API_KEY',
+        'CANARY_PASSWORD',
+        'BLOB_READ_WRITE_TOKEN',
+        'STAGING_DATABASE_URL',
+        'STAGING_PG_SERVICE',
+      ],
+    ],
     ['cleanup', ['STAGING_DATABASE_URL', 'CANARY_BASE_URL', 'E2E_PASSWORD', 'RESEND_API_KEY']],
     ['backup-restore', ['RESEND_API_KEY', 'CANARY_PASSWORD', 'STAGING_DATABASE_URL']],
     ['canary', ['DATABASE_URL', 'RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
@@ -140,8 +163,30 @@ test('operações não exigem credenciais de workflows não relacionados', () =>
     const contract = OPERATION_ENV_CONTRACTS[operation];
     for (const key of unrelated) {
       assert.ok(!contract.keys.includes(key), `${operation} não deve exigir ${key} em keys`);
-      assert.ok(!contract.anyOf.some((group) => group.includes(key)), `${operation} não deve exigir ${key} em anyOf`);
+      assert.ok(
+        !contract.anyOf.some((group) => group.includes(key)),
+        `${operation} não deve exigir ${key} em anyOf`
+      );
     }
+  }
+});
+
+test('Preview E2E usa o contrato do deployment e não o alvo técnico de migrations', () => {
+  const contract = OPERATION_ENV_CONTRACTS['preview-e2e'];
+  for (const key of [
+    'PREVIEW_BASE_URL',
+    'DATABASE_URL',
+    'PRODUCTION_DATABASE_URL',
+    'E2E_USERNAME',
+    'E2E_PASSWORD',
+    'PREVIEW_E2E_USERNAME',
+    'PREVIEW_EGRESS_BLOCKED',
+    'PREVIEW_FIXTURE_RESET',
+  ]) {
+    assert.ok(contract.keys.includes(key), `preview-e2e deve exigir ${key}`);
+  }
+  for (const key of ['STAGING_DATABASE_URL', 'STAGING_PG_SERVICE']) {
+    assert.ok(!contract.keys.includes(key), `preview-e2e não deve exigir ${key}`);
   }
 });
 
@@ -158,10 +203,18 @@ for (const operation of OPERATIONS) {
   });
 
   test(`[${operation}] sem origem carregável falha fechada apenas com nomes`, () => {
-    const result = inspectOperationEnv(operation, { env: { CUTOVER_ENV_FILE: '/nao/existe.env', CUTOVER_EXPECTED_DATABASE: undefined } as NodeJS.ProcessEnv });
+    const result = inspectOperationEnv(operation, {
+      env: {
+        CUTOVER_ENV_FILE: '/nao/existe.env',
+        CUTOVER_EXPECTED_DATABASE: undefined,
+      } as NodeJS.ProcessEnv,
+    });
     assert.equal(result.ok, false);
     const firstRequired = OPERATION_ENV_CONTRACTS[operation].keys[0];
-    assert.deepEqual(result.keys.find(({ name }) => name === firstRequired), { name: firstRequired, status: 'missing' });
+    assert.deepEqual(
+      result.keys.find(({ name }) => name === firstRequired),
+      { name: firstRequired, status: 'missing' }
+    );
     assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
   });
 }
@@ -177,7 +230,7 @@ test('valores vazios ou somente aspas contam como ausentes', () => {
     });
     assert.throws(
       () => loadOperationEnv('runtime', { env: { CUTOVER_ENV_FILE: filePath } }),
-      /Ambiente incompleto para a operação runtime/,
+      /Ambiente incompleto para a operação runtime/
     );
   });
 });
@@ -200,17 +253,26 @@ test('checkOperationEnv valida o ambiente fornecido e protege arquivos 0600', ()
     };
     const result = checkOperationEnv('migration', env);
     assert.equal(result.ok, false);
-    assert.deepEqual(result.keys.find(({ name }) => name === 'PGPASSFILE'), { name: 'PGPASSFILE', status: 'invalid-permission' });
+    assert.deepEqual(
+      result.keys.find(({ name }) => name === 'PGPASSFILE'),
+      { name: 'PGPASSFILE', status: 'invalid-permission' }
+    );
     assert.doesNotMatch(String(env.PGPASSFILE), new RegExp(secret));
 
     chmodSync(insecure, 0o600);
     assert.equal(checkOperationEnv('migration', env).ok, true);
 
     try {
-      assertOperationEnv('migration', { env: { ...env, STAGING_DATABASE_URL: '' }, exists: () => false });
+      assertOperationEnv('migration', {
+        env: { ...env, STAGING_DATABASE_URL: '' },
+        exists: () => false,
+      });
       assert.fail('deveria lançar');
     } catch (error) {
-      assert.match(String((error as Error).message), /Ambiente incompleto para a operação migration/);
+      assert.match(
+        String((error as Error).message),
+        /Ambiente incompleto para a operação migration/
+      );
     }
   });
 });
@@ -247,17 +309,23 @@ test('anyOf de tokens: basta um membro presente; o irmão fica not-needed', () =
     });
     const result = inspectOperationEnv('backup-restore', { env: { CUTOVER_ENV_FILE: filePath } });
     assert.equal(result.ok, true);
-    assert.deepEqual(result.keys.find(({ name }) => name === 'QUOTATION_BLOB_READ_WRITE_TOKEN'), {
-      name: 'QUOTATION_BLOB_READ_WRITE_TOKEN',
-      status: 'not-needed',
-    });
+    assert.deepEqual(
+      result.keys.find(({ name }) => name === 'QUOTATION_BLOB_READ_WRITE_TOKEN'),
+      {
+        name: 'QUOTATION_BLOB_READ_WRITE_TOKEN',
+        status: 'not-needed',
+      }
+    );
     assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
   });
 });
 
 test('loadOperationEnv preenche ausentes da origem externa e falha fechada sem origem', () => {
   withTempDir((root) => {
-    const filePath = externalFileFixture(root, contractValues('cleanup', root, { DATABASE_URL: secret }));
+    const filePath = externalFileFixture(
+      root,
+      contractValues('cleanup', root, { DATABASE_URL: secret })
+    );
     const env = { CUTOVER_ENV_FILE: filePath };
     const result = loadOperationEnv('cleanup', { env });
     assert.equal(result.ok, true);
@@ -265,7 +333,7 @@ test('loadOperationEnv preenche ausentes da origem externa e falha fechada sem o
 
     assert.throws(
       () => loadOperationEnv('cleanup', { env: { CUTOVER_ENV_FILE: '/nao/existe.env' } }),
-      /Ambiente incompleto para a operação cleanup: DATABASE_URL \(missing\)/,
+      /Ambiente incompleto para a operação cleanup: DATABASE_URL \(missing\)/
     );
   });
 });
@@ -286,15 +354,21 @@ test('fillFromExternalConfig nunca sobrescreve variáveis presentes no processo'
       PGSERVICEFILE: secure,
       PGPASSFILE: secure,
     });
-    fillFromExternalConfig({ CUTOVER_ENV_FILE: filePath, PGPASSFILE: insecure } as NodeJS.ProcessEnv);
-    // prova de precedência: o valor do processo venceu e rejeita modo 0644
-    assert.equal(checkOperationEnv('migration', {
-      STAGING_DATABASE_URL: 'x',
-      STAGING_PG_SERVICE: 'y',
-      PRODUCTION_DATABASE_URL: 'z',
-      PGSERVICEFILE: secure,
+    fillFromExternalConfig({
+      CUTOVER_ENV_FILE: filePath,
       PGPASSFILE: insecure,
-    }).ok, false);
+    } as NodeJS.ProcessEnv);
+    // prova de precedência: o valor do processo venceu e rejeita modo 0644
+    assert.equal(
+      checkOperationEnv('migration', {
+        STAGING_DATABASE_URL: 'x',
+        STAGING_PG_SERVICE: 'y',
+        PRODUCTION_DATABASE_URL: 'z',
+        PGSERVICEFILE: secure,
+        PGPASSFILE: insecure,
+      }).ok,
+      false
+    );
     assert.match(readFileSync(filePath, 'utf8'), /PGPASSFILE=/);
   });
 });

@@ -36,4 +36,4 @@ npm run test:postgres
 npm run verify:fast
 ```
 
-Não há nova configuração operacional. A aplicação de migração em staging ou produção, backfill e ativação externa não fazem parte desta entrega. Em rollback de aplicação, preserve a coluna e os vínculos já gravados; não remova a coluna nem tente reconstruir a origem por contato.
+Não há nova configuração operacional. A aplicação de migração em Preview ou Production, backfill e ativação externa não fazem parte desta entrega. Em rollback de aplicação, preserve a coluna e os vínculos já gravados; não remova a coluna nem tente reconstruir a origem por contato.

@@ -1,49 +1,53 @@
 import assert from 'node:assert/strict';
 
-const REQUIRED_STAGING_VARS = [
-  'STAGING_BASE_URL',
+const REQUIRED_PREVIEW_VARS = [
+  'PREVIEW_BASE_URL',
   'E2E_USERNAME',
   'E2E_PASSWORD',
-  'STAGING_E2E_USERNAME',
+  'PREVIEW_E2E_USERNAME',
   'KNOWN_POSTGRES_QUOTATION_ID',
   'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
 ];
 
-function safeStagingOrigin(value) {
+function safePreviewOrigin(value) {
   let parsed;
   try {
     parsed = new globalThis.URL(String(value || '').trim());
   } catch {
-    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+    throw new Error('PREVIEW_BASE_URL must be a valid HTTP(S) origin without credentials');
   }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+    throw new Error('PREVIEW_BASE_URL must be a valid HTTP(S) origin without credentials');
   }
   return parsed.origin;
 }
 
-export function getStagingConfig(env = process.env) {
-  const missing = REQUIRED_STAGING_VARS.filter((name) => !String(env[name] || '').trim());
+export function getPreviewConfig(env = process.env) {
+  const missing = REQUIRED_PREVIEW_VARS.filter((name) => !String(env[name] || '').trim());
   if (missing.length) {
-    throw new Error(`Staging E2E precondition missing: ${missing.join(', ')}`);
+    throw new Error(`Preview E2E precondition missing: ${missing.join(', ')}`);
   }
-  if (String(env.APP_ENV || '').trim().toLowerCase() !== 'preview') {
+  if (
+    String(env.APP_ENV || '')
+      .trim()
+      .toLowerCase() !== 'preview'
+  ) {
     throw new Error('APP_ENV=preview is required');
   }
   if (String(env.EXTERNAL_WRITES_ENABLED || '').trim() !== '0') {
     throw new Error('EXTERNAL_WRITES_ENABLED=0 is required');
   }
-  if (String(env.STAGING_E2E_USERNAME).trim() !== String(env.E2E_USERNAME).trim()) {
-    throw new Error('Staging E2E username attestation does not match E2E_USERNAME');
+  if (String(env.PREVIEW_E2E_USERNAME).trim() !== String(env.E2E_USERNAME).trim()) {
+    throw new Error('Preview E2E username attestation does not match E2E_USERNAME');
   }
-  if (env.STAGING_EGRESS_BLOCKED !== '1') {
-    throw new Error('STAGING_EGRESS_BLOCKED=1 is required');
+  if (env.PREVIEW_EGRESS_BLOCKED !== '1') {
+    throw new Error('PREVIEW_EGRESS_BLOCKED=1 is required');
   }
-  if (env.STAGING_FIXTURE_RESET !== '1') {
-    throw new Error('STAGING_FIXTURE_RESET=1 is required for disposable fixture cleanup');
+  if (env.PREVIEW_FIXTURE_RESET !== '1') {
+    throw new Error('PREVIEW_FIXTURE_RESET=1 is required for disposable fixture cleanup');
   }
   return {
-    baseUrl: safeStagingOrigin(env.STAGING_BASE_URL),
+    baseUrl: safePreviewOrigin(env.PREVIEW_BASE_URL),
     username: String(env.E2E_USERNAME).trim(),
     password: String(env.E2E_PASSWORD),
     postgresQuotationId: String(env.KNOWN_POSTGRES_QUOTATION_ID).trim(),
@@ -51,8 +55,8 @@ export function getStagingConfig(env = process.env) {
   };
 }
 
-export function assertStagingConfig(env = process.env) {
-  return getStagingConfig(env);
+export function assertPreviewConfig(env = process.env) {
+  return getPreviewConfig(env);
 }
 
 /**
@@ -62,21 +66,26 @@ export function assertStagingConfig(env = process.env) {
  * - writes-off: deployment reporta escritas externas desativadas;
  * - identidade de persistência aprovada: a cotação atestada pelo operador
  *   (KNOWN_POSTGRES_QUOTATION_ID) existe na persistência servida por este
- *   deployment — prova de conexão ao staging aprovado, não apenas flags locais.
+ *   deployment — prova de ambiente, conectividade e fixture, não de identidade
+ *   única da branch nem apenas de flags locais.
  * Falha fechada: qualquer divergência lança antes dos cenários mutáveis.
  */
-export async function assertDeploymentIdentity(page, config = getStagingConfig()) {
+export async function assertDeploymentIdentity(page, config = getPreviewConfig()) {
   const statusResponse = await apiRequest(page, 'GET', '/api/operational-status');
   if (statusResponse.status() !== 200) {
-    throw new Error(`Prova do deployment falhou: operational-status HTTP ${statusResponse.status()}`);
+    throw new Error(
+      `Prova do deployment falhou: operational-status HTTP ${statusResponse.status()}`
+    );
   }
   const body = await statusResponse.json();
   const identity = body?.deployment_identity;
   if (identity?.app_env !== 'preview') {
-    throw new Error('Deployment não está no ambiente de staging esperado (app_env != preview).');
+    throw new Error('Deployment não está no ambiente de Preview esperado (app_env != preview).');
   }
   if (identity?.external_writes_enabled !== false) {
-    throw new Error('Deployment remoto reports external writes enabled; mutable scenarios are blocked.');
+    throw new Error(
+      'Deployment remoto reports external writes enabled; mutable scenarios are blocked.'
+    );
   }
   if (identity?.persistence !== 'postgres' || body?.checks?.database_connected !== true) {
     throw new Error('Deployment não comprova persistência PostgreSQL conectada.');
@@ -86,7 +95,7 @@ export async function assertDeploymentIdentity(page, config = getStagingConfig()
   const quotationResponse = await apiRequest(
     page,
     'GET',
-    `/api/quotations?id=${encodeURIComponent(config.postgresQuotationId)}`,
+    `/api/quotations?id=${encodeURIComponent(config.postgresQuotationId)}`
   );
   if (quotationResponse.status() !== 200) {
     throw new Error(
@@ -96,34 +105,42 @@ export async function assertDeploymentIdentity(page, config = getStagingConfig()
   return identity;
 }
 
-function effectiveStagingOrigin(env = process.env) {
-  if (String(env.APP_ENV || '').trim().toLowerCase() !== 'preview') return null;
-  const stagingOrigin = safeStagingOrigin(env.STAGING_BASE_URL);
-  const configuredBaseOrigin = safeStagingOrigin(env.BASE_URL || stagingOrigin);
-  if (configuredBaseOrigin !== stagingOrigin) {
-    throw new Error('BASE_URL must match STAGING_BASE_URL during staging E2E');
+function effectivePreviewOrigin(env = process.env) {
+  if (
+    String(env.APP_ENV || '')
+      .trim()
+      .toLowerCase() !== 'preview'
+  )
+    return null;
+  const previewOrigin = safePreviewOrigin(env.PREVIEW_BASE_URL);
+  const configuredBaseOrigin = safePreviewOrigin(env.BASE_URL || previewOrigin);
+  if (configuredBaseOrigin !== previewOrigin) {
+    throw new Error('BASE_URL must match PREVIEW_BASE_URL during Preview E2E');
   }
-  return stagingOrigin;
+  return previewOrigin;
 }
 
 export function assertSafeApiPath(path) {
   const value = String(path || '');
-  const expectedOrigin = effectiveStagingOrigin();
+  const expectedOrigin = effectivePreviewOrigin();
   let parsed;
   try {
-    parsed = new globalThis.URL(value, expectedOrigin || process.env.BASE_URL || 'http://staging.invalid');
+    parsed = new globalThis.URL(
+      value,
+      expectedOrigin || process.env.BASE_URL || 'http://preview.invalid'
+    );
   } catch {
-    throw new Error('Staging test attempted an invalid API URL');
+    throw new Error('Preview test attempted an invalid API URL');
   }
   if (parsed.username || parsed.password || (expectedOrigin && parsed.origin !== expectedOrigin)) {
-    throw new Error('Staging test attempted an API request outside the staging origin');
+    throw new Error('Preview test attempted an API request outside the Preview origin');
   }
   if (
     /\/api\/send-whatsapp(?:-flow)?(?:[/?]|$)|(?:hubspot|salesforce|external-crm|external-erp)/i.test(
-      `${parsed.hostname}${parsed.pathname}`,
+      `${parsed.hostname}${parsed.pathname}`
     )
   ) {
-    throw new Error('Staging test attempted a forbidden external/send request');
+    throw new Error('Preview test attempted a forbidden external/send request');
   }
   return expectedOrigin ? parsed.href : value;
 }
@@ -154,15 +171,17 @@ export function assertNoForbiddenEgress(requests) {
         ['external', '-crm'],
         ['external', '-erp'],
         ['/api/', 'send-whatsapp'],
-      ].map((parts) => parts.slice(0, 2).join('')).join('|'),
+      ]
+        .map((parts) => parts.slice(0, 2).join(''))
+        .join('|')
     );
     return forbiddenPattern.test(target);
   });
-  assert.equal(forbidden.length, 0, 'staging browser made a forbidden external request');
+  assert.equal(forbidden.length, 0, 'Preview browser made a forbidden external request');
 }
 
-export async function loginToStaging(page) {
-  const config = assertStagingConfig();
+export async function loginToPreview(page) {
+  const config = assertPreviewConfig();
   // The application intentionally has password-only auth and no username input.
   // The designated account is attested through x-e2e-username; the server rejects
   // a mismatched account.
@@ -170,11 +189,11 @@ export async function loginToStaging(page) {
   await page.goto('/#/login');
   await page.getByPlaceholder('Senha de acesso').fill(config.password);
   const loginResponse = page.waitForResponse(
-    (response) => response.url().endsWith('/api/login') && response.request().method() === 'POST',
+    (response) => response.url().endsWith('/api/login') && response.request().method() === 'POST'
   );
   await page.getByRole('button', { name: 'Entrar' }).click();
   const response = await loginResponse;
-  assert.equal(response.status(), 200, 'staging login must return HTTP 200');
+  assert.equal(response.status(), 200, 'Preview login must return HTTP 200');
   await page.waitForURL(/#\/quotations(?:$|\/)/);
   // Prova do deployment ANTES de qualquer cenário mutável rodar.
   await assertDeploymentIdentity(page);

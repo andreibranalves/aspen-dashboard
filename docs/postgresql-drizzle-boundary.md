@@ -37,7 +37,7 @@ Migrations não executam no startup, no build ou no CI padrão de validação es
 
 Exceção explícita: o job `postgres` do CI de pull request aplica a cadeia versionada
 somente em um PostgreSQL service container descartável, antes dos testes de repositories.
-Esse job não usa staging, produção ou credenciais operacionais.
+Esse job não usa bancos de Preview ou Production nem credenciais operacionais.
 
 ## Exceções atuais
 
@@ -89,6 +89,6 @@ Extraia uma exceção para um repository quando uma mudança de domínio tocar a
 
 A extração deve preservar o comportamento, adicionar testes de comportamento e remover a entrada correspondente da allowlist na mesma mudança.
 
-A política operacional HIGH está em [Migrations PostgreSQL](./database-migrations.md).
+A classificação de risco segue [Lanes de entrega](./release-lanes.md); operações de banco seguem [Migrations PostgreSQL](./database-migrations.md).
 
 Não altere migrations históricas para resolver uma violação de boundary.
