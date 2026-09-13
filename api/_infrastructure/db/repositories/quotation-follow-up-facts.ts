@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { followUpAttemptNumber, followUpCycleNumber } from './follow-up-cycle.js';
 
 export type FollowUpFactsDatabase = {
   execute(query: SQL): Promise<unknown>;
@@ -100,6 +101,7 @@ export async function materializeQuotationFollowUpQueue(
     latest_delivery AS (
       SELECT DISTINCT ON (q.id)
         q.id AS quotation_id,
+        COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
         q.status AS quotation_status,
         cl.arquivado AS client_archived,
         pg_advisory_xact_lock(hashtextextended(
@@ -110,6 +112,14 @@ export async function materializeQuotationFollowUpQueue(
           WHERE cd.status = 'Orcamento Enviado'
             AND (cd.id = q.opportunity_id OR (q.opportunity_id IS NULL AND cd.quotation_id = q.id))
         ) AS crm_eligible,
+        COALESCE((
+          SELECT cd.follow_up_stage
+          FROM crm_deals cd
+          WHERE cd.status = 'Orcamento Enviado'
+            AND (cd.id = q.opportunity_id OR (q.opportunity_id IS NULL AND cd.quotation_id = q.id))
+          ORDER BY cd.updated_at DESC, cd.id DESC
+          LIMIT 1
+        ), 0) AS follow_up_stage,
         r.id AS revision_id,
         d.id AS delivery_id,
         d.phone,
@@ -189,6 +199,7 @@ export async function materializeQuotationFollowUpQueue(
     )
     INSERT INTO quotation_follow_ups (
       id, quotation_id, revision_id, delivery_id, instance, provider_conversation_id,
+      cycle_number, attempt_number, source_action_id,
       canonical_phone, eligibility_version, message_snapshot, state, closed_reason,
       first_provider_receipt_at, due_at, approved_at, sent_at, closed_at,
       provider_message_id, lease_token, lease_until, transport_started_at, created_at, updated_at
@@ -196,6 +207,7 @@ export async function materializeQuotationFollowUpQueue(
     SELECT
       gen_random_uuid(), c.quotation_id, c.revision_id, c.delivery_id, ${instance},
       CASE WHEN c.phone ILIKE '%@lid' THEN btrim(c.phone) ELSE c.canonical_phone || '@s.whatsapp.net' END,
+      ${followUpCycleNumber(sql`c.opportunity_id`)}, ${followUpAttemptNumber(sql`c.follow_up_stage`)}, NULL,
       CASE WHEN c.phone ILIKE '%@lid' THEN '' ELSE c.canonical_phone END,
       NULL, NULL, c.candidate_state,
       CASE

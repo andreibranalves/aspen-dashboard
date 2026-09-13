@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { sql, type SQL } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
 import { createDbDeadline, runBoundedStatement, type DbDeadline } from '../deadline.js';
 import { addBusinessDays, calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
@@ -15,6 +15,9 @@ import {
   type FollowUpPersistedState,
   type FollowUpProjectionState,
 } from '../../../_modules/quotation-follow-up-state.js';
+import { advanceConfirmedFollowUp } from './opportunity-actions-repository.js';
+import { followUpAttemptNumber, followUpCycleNumber } from './follow-up-cycle.js';
+import { quotationFollowUpAttemptHistory, quotationFollowUps } from '../schema.js';
 
 type Database = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 type DatabaseProvider = () => AppDatabase;
@@ -59,6 +62,9 @@ export interface FollowUpProjection {
   quotationId: string;
   revisionId: string;
   deliveryId: string;
+  cycleNumber: number;
+  attemptNumber: 1 | 2;
+  sourceActionId: string | null;
   businessNumber: string;
   clientName: string;
   amount: string;
@@ -198,7 +204,12 @@ export interface QuotationFollowUpRepository {
   promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<ClaimedFollowUp | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
-  completeSent(input: { id: string; leaseToken: string; providerMessageId: string }): Promise<FollowUpRecord | null>;
+  completeSent(input: {
+    id: string;
+    leaseToken: string;
+    providerMessageId: string;
+    now?: Date;
+  }): Promise<FollowUpRecord | null>;
   completeFailed(input: { id: string; leaseToken: string; reason: 'provider_rejected' | 'rate_limited' }): Promise<FollowUpRecord | null>;
   completeNeedsReview(input: {
     id: string;
@@ -250,6 +261,10 @@ const HASH_KEYS = [
   'approvedCanonicalPhone',
   'approvedProviderConversationId',
   'unresolvedLidWatermark',
+  'followUpCycleNumber',
+  'followUpAttemptNumber',
+  'followUpSourceActionId',
+  'followUpStage',
 ] as const;
 const DISMISSED_MESSAGE_SNAPSHOT = 'dispensado';
 
@@ -366,6 +381,10 @@ function projection(
         quotationId: String(row.quotation_id),
         revisionId: String(row.follow_up_revision_id || row.revision_id),
         deliveryId: String(row.follow_up_delivery_id || row.delivery_id),
+        cycleNumber: Number(row.follow_up_cycle_number || 1),
+        attemptNumber: (Number(row.follow_up_attempt_number || 1) === 2 ? 2 : 1) as 1 | 2,
+        sourceActionId:
+            row.follow_up_source_action_id == null ? null : String(row.follow_up_source_action_id),
         businessNumber,
         clientName,
         amount: String(row.amount),
@@ -455,11 +474,15 @@ function factsSql(started: Date, instance: string): SQL {
       blocked.blocked_at IS NOT NULL contact_blocked,
       crm.status crm_status,
       crm.updated_at "crmUpdatedAt",
+      crm.follow_up_stage,
       source_action.created_action_id source_action_id,
       source_action.state source_action_state,
       source_action.version source_action_version,
       source_action.updated_at source_action_updated_at,
       f.id follow_up_id,
+      f.cycle_number follow_up_cycle_number,
+      f.attempt_number follow_up_attempt_number,
+      f.source_action_id follow_up_source_action_id,
       f.state follow_up_state,
       f.delivery_id follow_up_delivery_id,
       f.revision_id follow_up_revision_id,
@@ -533,12 +556,17 @@ function factsSql(started: Date, instance: string): SQL {
       ORDER BY cd.updated_at DESC, cd.id DESC LIMIT 1
     ) crm ON true
     LEFT JOIN LATERAL (
+      SELECT action.id created_action_id, action.state, action.version, action.updated_at
+      FROM opportunity_next_actions action
+      WHERE action.id = f.source_action_id
+      UNION ALL
       SELECT anchor.created_action_id, action.state, action.version, action.updated_at
       FROM opportunity_delivery_anchors anchor
       LEFT JOIN opportunity_next_actions action ON action.id = anchor.created_action_id
-      WHERE anchor.opportunity_id = COALESCE(q.opportunity_id, crm.id)
+      WHERE f.source_action_id IS NULL
+        AND anchor.opportunity_id = COALESCE(q.opportunity_id, crm.id)
         AND anchor.quotation_id = q.id
-      ORDER BY anchor.receipt_at DESC, anchor.created_at DESC
+      ORDER BY updated_at DESC NULLS LAST, created_action_id DESC
       LIMIT 1
     ) source_action ON true
     LEFT JOIN whatsapp_follow_up_ingestion_health ih ON ih.instance = ${instance}
@@ -586,6 +614,18 @@ function factsSql(started: Date, instance: string): SQL {
             SELECT 1 FROM quotation_delivery_steps own
             WHERE own.delivery_id = d.id AND own.provider_message_id = x.last_outbound_provider_message_id
           )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM quotation_follow_ups own_follow_up
+            WHERE own_follow_up.quotation_id = q.id
+              AND own_follow_up.provider_message_id = x.last_outbound_provider_message_id
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM quotation_follow_up_attempt_history own_history
+            WHERE own_history.quotation_id = q.id
+              AND own_history.provider_message_id = x.last_outbound_provider_message_id
+          )
         UNION ALL
         SELECT true FROM quotation_delivery_steps other
         JOIN quotation_deliveries od ON od.id = other.delivery_id
@@ -632,6 +672,8 @@ function evaluate(row: Record<string, unknown>, now: Date, started: Date): Follo
         unresolvedIdentityBarrier: Boolean(row.unresolvedLidWatermark),
         inboundAfterAnchor: Boolean(row.inbound_after_anchor),
         outboundAfterAnchor: Boolean(row.outbound_after_anchor),
+        commercialFollowUpStage: row.follow_up_stage == null ? undefined : Number(row.follow_up_stage),
+        followUpAttempt: row.follow_up_attempt_number == null ? undefined : Number(row.follow_up_attempt_number),
     });
 }
 function visibleState(
@@ -902,11 +944,80 @@ export function createPostgresQuotationFollowUpRepository(
   getDb: DatabaseProvider = getDatabase,
 ): QuotationFollowUpRepository {
     const currentRows = async (db: Database, started: Date, now: Date) => (await rows(db, started)).map((row) => ({ row, e: evaluate(row, now, started) }));
+    const currentCandidate = (candidates: Array<{ row: Record<string, unknown>; e: FollowUpEvaluation }>) => {
+        const sorted = [...candidates].sort((left, right) => {
+            const cycleDifference = Number(right.row.follow_up_cycle_number || 1) - Number(left.row.follow_up_cycle_number || 1);
+            if (cycleDifference) return cycleDifference;
+            const attemptDifference = Number(right.row.follow_up_attempt_number || 1) - Number(left.row.follow_up_attempt_number || 1);
+            if (attemptDifference) return attemptDifference;
+            const updatedDifference = (asDate(right.row.follow_up_updated_at)?.getTime() || 0) - (asDate(left.row.follow_up_updated_at)?.getTime() || 0);
+            if (updatedDifference) return updatedDifference;
+            return String(right.row.follow_up_id || '').localeCompare(String(left.row.follow_up_id || ''));
+        });
+        const cycle = Number(sorted[0]?.row.follow_up_cycle_number || 1);
+        const attempt = Number(sorted[0]?.row.follow_up_attempt_number || 1);
+        const latest = sorted.filter(({ row }) =>
+            Number(row.follow_up_cycle_number || 1) === cycle &&
+            Number(row.follow_up_attempt_number || 1) === attempt,
+        );
+        const active = latest.filter(({ row }) => ['awaiting_receipt', 'waiting', 'ready', 'held', 'approved', 'processing'].includes(String(row.follow_up_state)));
+        return (active.length ? active : latest)[0];
+    };
+    const currentRowsByQuotation = (candidates: Array<{ row: Record<string, unknown>; e: FollowUpEvaluation }>) => {
+        const selected = new Map<string, { row: Record<string, unknown>; e: FollowUpEvaluation }>();
+        for (const candidate of candidates) {
+            const quotationId = String(candidate.row.quotation_id);
+            const previous = selected.get(quotationId);
+            if (!previous || currentCandidate([previous, candidate]) === candidate) {
+                selected.set(quotationId, candidate);
+            }
+        }
+        return [...selected.values()];
+    };
     const loadRecord = async (db: Database, quotationId: string, started: Date, now: Date) => {
-        const found = (await currentRows(db, started, now)).find(({ row }) => String(row.quotation_id) === quotationId);
+        const found = currentCandidate((await currentRows(db, started, now)).filter(({ row }) => String(row.quotation_id) === quotationId));
         if (!found || !found.row.follow_up_state)
             return null;
         return record(found.row);
+    };
+    const loadRecordById = async (db: Database, followUpId: string, started: Date, now: Date) => {
+        const found = (await currentRows(db, started, now)).find(({ row }) => String(row.follow_up_id) === followUpId);
+        return found?.row.follow_up_state ? record(found.row) : null;
+    };
+    const loadCompletedReplay = async (
+        db: Database,
+        followUpId: string,
+        providerMessageId: string,
+        started: Date,
+        now: Date,
+    ) => {
+        const [history] = await db
+            .select()
+            .from(quotationFollowUpAttemptHistory)
+            .where(
+                and(
+                    eq(quotationFollowUpAttemptHistory.followUpId, followUpId),
+                    eq(quotationFollowUpAttemptHistory.providerMessageId, providerMessageId),
+                ),
+            )
+            .limit(1);
+        const current = await loadRecordById(db, followUpId, started, now);
+        if (!current || !history) return current;
+        return {
+            ...current,
+            cycleNumber: Number(history.cycleNumber),
+            attemptNumber: (Number(history.attemptNumber) === 2 ? 2 : 1) as 1 | 2,
+            sourceActionId: history.sourceActionId,
+            firstProviderReceiptAt: asDate(history.firstProviderReceiptAt),
+            dueAt: asDate(history.dueAt),
+            eligibilityVersion: history.eligibilityVersion,
+            messageSnapshot: history.messageSnapshot,
+            state: 'sent' as const,
+            closedReason: history.closedReason,
+            approvedAt: asDate(history.approvedAt),
+            sentAt: asDate(history.sentAt),
+            updatedAt: asDate(history.confirmedAt) || current.updatedAt,
+        };
     };
     return {
         async list(input: FollowUpListInput = {}) {
@@ -920,7 +1031,7 @@ export function createPostgresQuotationFollowUpRepository(
                 throw new InputError('Visualização inválida.');
             }
             try {
-                const all = await currentRows(getDb(), started, now);
+                const all = currentRowsByQuotation(await currentRows(getDb(), started, now));
                 const filtered = all.filter(({ row, e }) => {
                     const view = followUpVisibleListView((row.follow_up_state as FollowUpPersistedState) || null, e);
                     return view !== null && (!input.view || view === input.view);
@@ -950,7 +1061,7 @@ export function createPostgresQuotationFollowUpRepository(
                 return null;
             const now = options.now instanceof Date ? options.now : new Date();
             try {
-                const found = (await currentRows(getDb(), started, now)).find(({ row }) => String(row.quotation_id) === quotation);
+                const found = currentCandidate((await currentRows(getDb(), started, now)).filter(({ row }) => String(row.quotation_id) === quotation));
                 if (!found) {
                     return null;
                 }
@@ -983,14 +1094,14 @@ export function createPostgresQuotationFollowUpRepository(
             const now = input.now instanceof Date ? input.now : new Date();
             try {
                 return await getDb().transaction(async (tx) => {
-                    let found = (await currentRows(tx, started, now)).find(({ row }) => String(row.quotation_id) === quotationId);
+                    let found = currentCandidate((await currentRows(tx, started, now)).filter(({ row }) => String(row.quotation_id) === quotationId));
                     if (!found)
                         throw new NotFoundError();
                     if (!found.row.follow_up_id)
                         throw new ConflictError(STALE);
                     if (!await lockFollowUpContext(tx, String(found.row.follow_up_id)))
                         throw new ConflictError(STALE);
-                    found = (await currentRows(tx, started, now)).find(({ row }) => String(row.quotation_id) === quotationId);
+                    found = currentCandidate((await currentRows(tx, started, now)).filter(({ row }) => String(row.quotation_id) === quotationId));
                     if (!found)
                         throw new ConflictError(STALE);
                     if (found.e.kind !== 'ready' ||
@@ -1038,7 +1149,7 @@ export function createPostgresQuotationFollowUpRepository(
             const now = input.now instanceof Date ? input.now : new Date();
             try {
                 return await getDb().transaction(async (tx) => {
-                    const found = (await currentRows(tx, started, now)).find(({ row }) => String(row.quotation_id) === quotationId);
+                    const found = currentCandidate((await currentRows(tx, started, now)).filter(({ row }) => String(row.quotation_id) === quotationId));
                     if (!found)
                         throw new NotFoundError();
                     if (!found.row.follow_up_id)
@@ -1119,23 +1230,34 @@ export function createPostgresQuotationFollowUpRepository(
             // connection past the caller's return.
             const fragment = sql `
           WITH source AS MATERIALIZED (
-            SELECT q.id AS quotation_id, pg_advisory_xact_lock(hashtextextended(q.id::text, 0)) AS lock
+            SELECT q.id AS quotation_id, pg_advisory_xact_lock(hashtextextended(
+              COALESCE(q.opportunity_id::text, legacy.id::text, q.id::text), 0
+            )) AS lock
             FROM quotation_deliveries d
             JOIN quote_revisions r ON r.id = d.revision_id
             JOIN quotations q ON q.id = r.quotation_id
             JOIN clients cl ON cl.id = q.client_id
+            LEFT JOIN LATERAL (
+              SELECT cd.id
+              FROM crm_deals cd
+              WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+              ORDER BY cd.updated_at DESC, cd.id DESC
+              LIMIT 1
+            ) legacy ON true
             WHERE d.id = ${deliveryId} AND d.revision_id = ${revisionId}
             FOR UPDATE OF cl
           ),
           upsert AS (
             INSERT INTO quotation_follow_ups (
               id, quotation_id, revision_id, delivery_id, instance, provider_conversation_id,
+              cycle_number, attempt_number, source_action_id,
               canonical_phone, eligibility_version, message_snapshot, state, closed_reason,
               first_provider_receipt_at, due_at, approved_at, sent_at, closed_at,
               provider_message_id, lease_token, lease_until, transport_started_at, created_at, updated_at
             )
             SELECT
               ${randomUUID()}, q.id, r.id, d.id, ${instance}, ${conversation},
+              ${followUpCycleNumber(sql`COALESCE(q.opportunity_id, cd.id)`)}, ${followUpAttemptNumber(sql`cd.follow_up_stage`)}, NULL,
               ${phoneValue}, NULL, NULL,
               CASE
                 WHEN cl.arquivado THEN 'cancelled'
@@ -1596,12 +1718,14 @@ export function createPostgresQuotationFollowUpRepository(
           upsert AS (
             INSERT INTO quotation_follow_ups (
               id, quotation_id, revision_id, delivery_id, instance, provider_conversation_id,
+              cycle_number, attempt_number, source_action_id,
               canonical_phone, eligibility_version, message_snapshot, state, closed_reason,
               first_provider_receipt_at, due_at, approved_at, sent_at, closed_at,
               provider_message_id, lease_token, lease_until, transport_started_at, created_at, updated_at
             )
             SELECT
               ${randomUUID()}, q.id, r.id, d.id, ${instance}, ${providerConversationId},
+              ${followUpCycleNumber(sql`COALESCE(q.opportunity_id, cd.id)`)}, ${followUpAttemptNumber(sql`cd.follow_up_stage`)}, NULL,
               ${phoneValue}, NULL, NULL,
               CASE
                 WHEN cl.arquivado THEN 'cancelled'
@@ -2050,9 +2174,17 @@ export function createPostgresQuotationFollowUpRepository(
                 )
                 AND (
                   ${input.fromMe ? true : false} = false
-                  OR NOT EXISTS (
-                    SELECT 1 FROM quotation_delivery_steps own
-                    WHERE own.delivery_id = f.delivery_id AND own.provider_message_id = ${providerMessageId}
+                  OR (
+                    NOT EXISTS (
+                      SELECT 1 FROM quotation_delivery_steps own
+                      WHERE own.delivery_id = f.delivery_id AND own.provider_message_id = ${providerMessageId}
+                    )
+                    AND NOT EXISTS (
+                      SELECT 1
+                      FROM quotation_follow_ups own_follow_up
+                      WHERE own_follow_up.quotation_id = f.quotation_id
+                        AND own_follow_up.provider_message_id = ${providerMessageId}
+                    )
                   )
                 )
               )
@@ -2355,24 +2487,164 @@ export function createPostgresQuotationFollowUpRepository(
                 throw new RepositoryError();
             }
         },
-        async completeSent(input: { id: string; leaseToken: string; providerMessageId: string }) {
+        async completeSent(input: {
+            id: string;
+            leaseToken: string;
+            providerMessageId: string;
+            now?: Date;
+        }) {
             const idValue = id(input.id, 'Follow-up');
             const token = id(input.leaseToken, 'Lease');
             const provider = typeof input.providerMessageId === 'string' ? input.providerMessageId.trim() : '';
             if (!provider)
                 throw new InputError('Identificador da mensagem inválido.');
-            const now = new Date();
+            const now = input.now instanceof Date ? input.now : new Date();
             const started = tracking();
             if (!started)
                 throw new RepositoryError();
             try {
-                const result = await getDb().execute(sql `UPDATE quotation_follow_ups SET
-            state = 'sent', provider_message_id = ${provider}, sent_at = ${iso(now)}::timestamptz, closed_at = ${iso(now)}::timestamptz,
-            lease_token = NULL, lease_until = NULL, updated_at = ${iso(now)}::timestamptz
-          WHERE id = ${idValue} AND state = 'processing' AND lease_token = ${token} AND lease_until > ${iso(now)}::timestamptz
-          RETURNING quotation_id`);
-                const row = Array.from(result)[0];
-                return row ? loadRecord(getDb(), String(row.quotation_id), started, now) : null;
+                return await getDb().transaction(async (tx) => {
+                    const contextResult = await tx.execute(sql `
+              SELECT
+                f.id,
+                f.quotation_id,
+                f.revision_id,
+                f.delivery_id,
+                f.cycle_number,
+                f.attempt_number,
+                f.instance,
+                f.provider_conversation_id,
+                f.canonical_phone,
+                f.first_provider_receipt_at,
+                f.state,
+                f.lease_token,
+                f.lease_until,
+                f.provider_message_id,
+                f.source_action_id,
+                COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+                crm.follow_up_stage
+              FROM quotation_follow_ups f
+              JOIN quotations q ON q.id = f.quotation_id
+              JOIN clients cl ON cl.id = q.client_id
+              JOIN quotation_deliveries delivery ON delivery.id = f.delivery_id
+              LEFT JOIN LATERAL (
+                SELECT cd.id
+                FROM crm_deals cd
+                WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+                ORDER BY cd.updated_at DESC, cd.id DESC
+                LIMIT 1
+              ) legacy ON true
+              LEFT JOIN crm_deals crm ON crm.id = COALESCE(q.opportunity_id, legacy.id)
+              WHERE f.id = ${idValue}
+            `);
+                    const context = Array.from(contextResult) as Record<string, unknown>[];
+                    if (!context.length)
+                        return null;
+                    const quotationId = String(context[0].quotation_id);
+                    const opportunityId = context[0].opportunity_id == null ? null : String(context[0].opportunity_id);
+                    await lockOpportunity(tx, opportunityId, quotationId);
+                    const lockedResult = await tx.execute(sql `
+              SELECT
+                f.id,
+                f.quotation_id,
+                f.revision_id,
+                f.delivery_id,
+                f.cycle_number,
+                f.attempt_number,
+                f.instance,
+                f.provider_conversation_id,
+                f.canonical_phone,
+                f.first_provider_receipt_at,
+                f.state,
+                f.lease_token,
+                f.lease_until,
+                f.provider_message_id,
+                f.source_action_id,
+                COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+                crm.follow_up_stage
+              FROM quotation_follow_ups f
+              JOIN quotations q ON q.id = f.quotation_id
+              JOIN clients cl ON cl.id = q.client_id
+              JOIN quotation_deliveries delivery ON delivery.id = f.delivery_id
+              LEFT JOIN LATERAL (
+                SELECT cd.id
+                FROM crm_deals cd
+                WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+                ORDER BY cd.updated_at DESC, cd.id DESC
+                LIMIT 1
+              ) legacy ON true
+              LEFT JOIN crm_deals crm ON crm.id = COALESCE(q.opportunity_id, legacy.id)
+              WHERE f.id = ${idValue}
+              FOR UPDATE OF f, q, cl, delivery
+            `);
+                    const locked = Array.from(lockedResult) as Record<string, unknown>[];
+                    if (!locked.length)
+                        return null;
+                    const row = locked[0];
+                    const persistedState = String(row.state);
+                    if (persistedState === 'sent' && String(row.provider_message_id || '') === provider) {
+                        return loadRecordById(tx, idValue, started, now);
+                    }
+                    const historyReplay = await tx.execute(sql`
+              SELECT id
+              FROM quotation_follow_up_attempt_history
+              WHERE follow_up_id = ${idValue}
+                AND provider_message_id = ${provider}
+              LIMIT 1
+                    `);
+                    if (Array.from(historyReplay).length) {
+                        return loadCompletedReplay(tx, idValue, provider, started, now);
+                    }
+                    if (persistedState !== 'processing' || String(row.lease_token || '') !== token) {
+                        return null;
+                    }
+                    const leaseUntil = asDate(row.lease_until);
+                    if (!leaseUntil || leaseUntil.getTime() <= now.getTime())
+                        return null;
+
+                    const completed = await tx.execute(sql `UPDATE quotation_follow_ups SET
+              state = 'sent', provider_message_id = ${provider}, sent_at = ${iso(now)}::timestamptz,
+              closed_at = ${iso(now)}::timestamptz, lease_token = NULL, lease_until = NULL,
+              updated_at = ${iso(now)}::timestamptz
+            WHERE id = ${idValue} AND state = 'processing' AND lease_token = ${token}
+              AND lease_until > ${iso(now)}::timestamptz
+            RETURNING id`);
+                    if (!Array.from(completed).length)
+                        return null;
+
+                    const persistedAttempt = Number(row.attempt_number || 1);
+                    const stage = Number(row.follow_up_stage || 0);
+                    // An alternative proposal may have been materialized while
+                    // the opportunity was still at stage 0. Once the first
+                    // follow-up is confirmed, that still-open candidate is the
+                    // second return even though its row predates the stage
+                    // transition.
+                    const attempt = persistedAttempt === 1 && stage === 1 ? 2 : persistedAttempt;
+                    const expectedStage = attempt - 1;
+                    if ((attempt !== 1 && attempt !== 2) || stage !== expectedStage || !opportunityId) {
+                        return loadRecordById(tx, idValue, started, now);
+                    }
+
+                    const [current] = await tx
+                        .select()
+                        .from(quotationFollowUps)
+                        .where(eq(quotationFollowUps.id, idValue))
+                        .limit(1);
+                    if (!current) return null;
+                    await advanceConfirmedFollowUp({
+                        database: tx,
+                        opportunityId,
+                        current,
+                        stage,
+                        attemptNumber: attempt as 1 | 2,
+                        confirmedAt: now,
+                        source: 'worker',
+                        actor: 'system',
+                        providerMessageId: provider,
+                        idFactory: randomUUID,
+                    });
+                    return loadRecordById(tx, idValue, started, now);
+                });
             }
             catch (error) {
                 if (unique(error))

@@ -154,6 +154,10 @@ export type FollowUpCandidateFacts = {
   unresolvedIdentityBarrier: boolean;
   inboundAfterAnchor: boolean;
   outboundAfterAnchor: boolean;
+  /** Current commercial cycle stage, when the quotation is linked to CRM. */
+  commercialFollowUpStage?: number;
+  /** Attempt number within the current cycle, when persisted on the queue row. */
+  followUpAttempt?: number;
 };
 
 
@@ -325,6 +329,15 @@ function hold(
 export function evaluateFollowUp(input: FollowUpCandidateFacts): FollowUpEvaluation {
   if (input.persistedState && TERMINAL.has(input.persistedState)) {
     return { kind: 'absent', reason: 'already_attempted' };
+  }
+
+  if (
+    input.followUpAttempt !== undefined &&
+    input.commercialFollowUpStage !== undefined &&
+    (input.commercialFollowUpStage >= 2 ||
+      input.followUpAttempt > input.commercialFollowUpStage + 1)
+  ) {
+    return fail(input.persistedState, 'already_attempted');
   }
 
   const delivery = input.latestDelivery;

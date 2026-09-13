@@ -14,6 +14,7 @@ export async function prepareQuotationDeletion(tx: Transaction, id: string): Pro
   await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
   await tx.execute(sql`LOCK TABLE sales_orders, quotation_issue_requests,
     quotation_deliveries, quotation_email_deliveries, quotation_follow_ups,
+    quotation_follow_up_attempt_history,
     quotation_delivery_steps, crm_deals, quote_leads IN SHARE ROW EXCLUSIVE MODE`);
   const orders = await tx.execute(sql`SELECT id FROM sales_orders WHERE quotation_id = ${id}::uuid
     OR quotation_revision_id IN (SELECT id FROM quote_revisions WHERE quotation_id = ${id}::uuid) LIMIT 1`);
@@ -28,6 +29,7 @@ export async function prepareQuotationDeletion(tx: Transaction, id: string): Pro
     WHERE (quotation_id = ${id}::uuid OR revision_id IN (SELECT id FROM quote_revisions WHERE quotation_id = ${id}::uuid))
       AND state <> 'completed'`);
   if (busy.length) throw new QuotationDeletionConflictError('Há um envio ou emissão pendente. Conclua ou resolva o envio antes de excluir.');
+  await tx.execute(sql`DELETE FROM quotation_follow_up_attempt_history WHERE quotation_id = ${id}::uuid`);
   await tx.execute(sql`DELETE FROM quotation_follow_ups WHERE quotation_id = ${id}::uuid`);
   await tx.execute(sql`DELETE FROM quotation_deliveries WHERE revision_id IN (SELECT id FROM quote_revisions WHERE quotation_id = ${id}::uuid)`);
   // Retain idempotency keys so a delayed retry cannot issue a deleted quotation.
