@@ -6,22 +6,22 @@ import {
   apiRequest,
   assertNoForbiddenEgress,
   assertSafeApiPath,
-  assertStagingConfig,
-  loginToStaging,
-} from './support/staging-auth.js';
+  assertPreviewConfig,
+  loginToPreview,
+} from './support/preview-auth.js';
 
-const CONFIG = assertStagingConfig();
+const CONFIG = assertPreviewConfig();
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('quotation cutover staging @quotations @database @critical', () => {
+test.describe('quotation cutover Preview @quotations @database @critical', () => {
   test.beforeEach(async ({ page }) => {
     const requests = [];
     /** @type {any} */
     const testPage = page;
     testPage.__cutoverRequests = requests;
     page.on('request', (request) => requests.push(request.url()));
-    await loginToStaging(page);
+    await loginToPreview(page);
   });
 
   test.afterEach(async ({ page }) => {
@@ -30,12 +30,23 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
     assertNoForbiddenEgress(testPage.__cutoverRequests || []);
   });
 
-  test('opens the PostgreSQL quotation from the list and binds PDF to its revision', async ({ page, browser }) => {
+  test('opens the PostgreSQL quotation from the list and binds PDF to its revision', async ({
+    page,
+    browser,
+  }) => {
     const detailResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.postgresQuotationId));
     expect(detailResponse.status()).toBe(200);
     const detail = await detailResponse.json();
-    assert.equal(Object.keys(detail).some((key) => key.endsWith('_mode')), false, 'quotation detail must not expose rollout metadata');
-    assert.equal(Object.prototype.hasOwnProperty.call(detail, 'origin'), false, 'quotation detail must not expose origin metadata');
+    assert.equal(
+      Object.keys(detail).some((key) => key.endsWith('_mode')),
+      false,
+      'quotation detail must not expose rollout metadata'
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(detail, 'origin'),
+      false,
+      'quotation detail must not expose origin metadata'
+    );
     assert.ok(detail.revision_id, 'known PostgreSQL quotation must expose revision_id');
 
     await page.goto('/#/quotations');
@@ -80,20 +91,34 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
     }
   });
 
-  test('uses disposable scratch quotation for public link and UI revision edit', async ({ page }) => {
+  test('uses disposable scratch quotation for public link and UI revision edit', async ({
+    page,
+  }) => {
     let scratchDetail;
     let mainError;
     let cleanupError;
     try {
-      const detailResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
+      const detailResponse = await apiRequest(
+        page,
+        'GET',
+        quotationPath(CONFIG.scratchQuotationId)
+      );
       expect(detailResponse.status()).toBe(200);
       scratchDetail = await detailResponse.json();
-      assert.equal(Object.keys(scratchDetail).some((key) => key.endsWith('_mode')), false, 'scratch quotation must not expose rollout metadata');
-      assert.equal(Object.prototype.hasOwnProperty.call(scratchDetail, 'origin'), false, 'scratch quotation must not expose origin metadata');
+      assert.equal(
+        Object.keys(scratchDetail).some((key) => key.endsWith('_mode')),
+        false,
+        'scratch quotation must not expose rollout metadata'
+      );
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(scratchDetail, 'origin'),
+        false,
+        'scratch quotation must not expose origin metadata'
+      );
       assert.equal(
         scratchDetail.status_canonical,
         'emitido',
-        'scratch quotation must be a disposable sent fixture; draft transition is unsupported',
+        'scratch quotation must be a disposable sent fixture; draft transition is unsupported'
       );
       assert.ok(scratchDetail.revision_id && scratchDetail.concurrency_token);
 
@@ -108,7 +133,7 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       const publicResponse = await apiRequest(
         page,
         'GET',
-        `/api/public-quotation?token=${encodeURIComponent(issued.token)}`,
+        `/api/public-quotation?token=${encodeURIComponent(issued.token)}`
       );
       expect(publicResponse.status()).toBe(200);
       expect(publicResponse.headers()['x-document-revision']).toBe(scratchDetail.revision_id);
@@ -119,13 +144,13 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       const revoked = await apiRequest(
         page,
         'DELETE',
-        `/api/public-quotation?token=${encodeURIComponent(issued.token)}`,
+        `/api/public-quotation?token=${encodeURIComponent(issued.token)}`
       );
       expect(revoked.status()).toBe(204);
       const revokedRead = await apiRequest(
         page,
         'GET',
-        `/api/public-quotation?token=${encodeURIComponent(issued.token)}`,
+        `/api/public-quotation?token=${encodeURIComponent(issued.token)}`
       );
       expect(revokedRead.status()).toBe(404);
 
@@ -137,7 +162,7 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       const expiringRead = await apiRequest(
         page,
         'GET',
-        `/api/public-quotation?token=${encodeURIComponent(expiring.token)}`,
+        `/api/public-quotation?token=${encodeURIComponent(expiring.token)}`
       );
       expect(expiringRead.status()).toBe(200);
       expect(expiringRead.headers()['x-document-revision']).toBe(scratchDetail.revision_id);
@@ -145,18 +170,26 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       const expiredRead = await apiRequest(
         page,
         'GET',
-        `/api/public-quotation?token=${encodeURIComponent(expiring.token)}`,
+        `/api/public-quotation?token=${encodeURIComponent(expiring.token)}`
       );
       expect([404, 410]).toContain(expiredRead.status());
 
       await page.goto('/#/quotations');
-      await expect(page.getByText(CONFIG.scratchQuotationId, { exact: true }).first()).toBeVisible();
+      await expect(
+        page.getByText(CONFIG.scratchQuotationId, { exact: true }).first()
+      ).toBeVisible();
       await page.getByText(CONFIG.scratchQuotationId, { exact: true }).first().click();
-      await expect(page.getByText(CONFIG.scratchQuotationId, { exact: true }).first()).toBeVisible();
+      await expect(
+        page.getByText(CONFIG.scratchQuotationId, { exact: true }).first()
+      ).toBeVisible();
       await page.getByRole('button', { name: 'Nova revisão' }).click();
       await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
 
-      const revisedResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
+      const revisedResponse = await apiRequest(
+        page,
+        'GET',
+        quotationPath(CONFIG.scratchQuotationId)
+      );
       expect(revisedResponse.status()).toBe(200);
       const revisedDetail = await revisedResponse.json();
       expect(revisedDetail.revision_id).not.toBe(scratchDetail.revision_id);
@@ -164,9 +197,10 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       assert.ok(Array.isArray(revisedDetail.items) && revisedDetail.items.length > 0);
 
       await page.getByRole('button', { name: 'Editar' }).click();
-      await page.getByLabel('Observações padrão').fill('staging cutover Playwright');
+      await page.getByLabel('Observações padrão').fill('Preview cutover Playwright');
       const saveResponsePromise = page.waitForResponse(
-        (response) => response.url().includes('/api/quotations') && response.request().method() === 'PUT',
+        (response) =>
+          response.url().includes('/api/quotations') && response.request().method() === 'PUT'
       );
       await page.getByRole('button', { name: 'Salvar' }).click();
       const saveResponse = await saveResponsePromise;
@@ -174,26 +208,40 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       const edited = await saveResponse.json();
       expect(edited.revision_id).toBe(revisedDetail.revision_id);
       expect(edited.status_canonical).toBe('rascunho');
-      expect(edited.observacoes).toBe('<p>staging cutover Playwright</p>');
+      expect(edited.observacoes).toBe('<p>Preview cutover Playwright</p>');
     } catch (error) {
       mainError = error;
     }
 
     {
       try {
-        const currentResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
+        const currentResponse = await apiRequest(
+          page,
+          'GET',
+          quotationPath(CONFIG.scratchQuotationId)
+        );
         if (currentResponse.status() === 404) {
           // Already cleaned by a prior attempt.
         } else if (!currentResponse.ok()) {
-          throw new Error(`STAGING_FIXTURE_RESET failed: scratch lookup returned ${currentResponse.status()}`);
+          throw new Error(
+            `PREVIEW_FIXTURE_RESET failed: scratch lookup returned ${currentResponse.status()}`
+          );
         } else {
           const current = await currentResponse.json();
           if (current.status_canonical !== 'rascunho') {
-            throw new Error('STAGING_FIXTURE_RESET failed: scratch quotation is not disposable draft');
+            throw new Error(
+              'PREVIEW_FIXTURE_RESET failed: scratch quotation is not disposable draft'
+            );
           }
-          const cleanup = await apiRequest(page, 'DELETE', quotationPath(CONFIG.scratchQuotationId));
+          const cleanup = await apiRequest(
+            page,
+            'DELETE',
+            quotationPath(CONFIG.scratchQuotationId)
+          );
           if (cleanup.status() !== 200 && cleanup.status() !== 404) {
-            throw new Error(`STAGING_FIXTURE_RESET failed: quotation cleanup returned ${cleanup.status()}`);
+            throw new Error(
+              `PREVIEW_FIXTURE_RESET failed: quotation cleanup returned ${cleanup.status()}`
+            );
           }
         }
       } catch (error) {
@@ -201,14 +249,13 @@ test.describe('quotation cutover staging @quotations @database @critical', () =>
       }
     }
     if (mainError && cleanupError) {
-      throw Object.assign(new Error('Staging flow and fixture cleanup both failed'), {
+      throw Object.assign(new Error('Preview flow and fixture cleanup both failed'), {
         cause: [mainError, cleanupError],
       });
     }
     if (mainError) throw mainError;
     if (cleanupError) throw cleanupError;
   });
-
 });
 
 function quotationPath(id) {

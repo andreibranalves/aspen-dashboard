@@ -1,9 +1,9 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 import { loadLocalEnv } from './scripts/load-env.mjs';
-import { STAGING_E2E_SPECS } from './scripts/lib/staging-e2e-specs.mjs';
+import { PREVIEW_E2E_SPECS } from './scripts/lib/preview-e2e-specs.mjs';
 import { SAFE_E2E_SPECS } from './scripts/lib/safe-e2e-env.mjs';
-import { isStagingMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
+import { isPreviewMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
 loadLocalEnv();
 
@@ -11,18 +11,18 @@ const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173);
 // Modos mutuamente exclusivos (fonte única: scripts/lib/e2e-mode.mjs).
 // Configurações contraditórias falham no carregamento deste arquivo —
 // antes do primeiro request HTTP de qualquer suite.
-const IS_STAGING = isStagingMode();
+const IS_PREVIEW = isPreviewMode();
 const BASE_URL = resolveE2eBaseUrl(process.env, { port: PORT });
 process.env.BASE_URL = BASE_URL;
 
 export default defineConfig({
   testDir: './tests',
   testMatch: '**/*.spec.js',
-  fullyParallel: !IS_STAGING,
+  fullyParallel: !IS_PREVIEW,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   // Database-backed local specs share one disposable schema and must not migrate it concurrently.
-  workers: IS_STAGING || process.env.TEST_DATABASE_URL ? 1 : 2,
+  workers: IS_PREVIEW || process.env.TEST_DATABASE_URL ? 1 : 2,
   reporter: [['html', { outputFolder: 'playwright-report' }], ['list']],
   timeout: 60000,
   expect: { timeout: 10000 },
@@ -41,16 +41,16 @@ export default defineConfig({
   ],
 
   // Seleção mutuamente exclusiva definida pela fonte única
-  // scripts/lib/staging-e2e-specs.mjs:
-  // - Preview roda SOMENTE a suíte controlada de staging contra STAGING_BASE_URL.
-  // - Modo local nunca seleciona specs de staging (mesmo por filtros explícitos).
+  // scripts/lib/preview-e2e-specs.mjs:
+  // - Preview roda SOMENTE a suíte controlada contra PREVIEW_BASE_URL.
+  // - Modo local nunca seleciona specs de Preview (mesmo por filtros explícitos).
   // A suíte integrada (scripts/lib/safe-e2e-env.mjs) é SEMPRE excluída aqui: só
   // `playwright.safe.config.js`, com a capability viva do runner, a descobre.
   // `test:e2e` genérico, `--grep @smoke` e invocações diretas não a importam.
-  ...(IS_STAGING
-    ? { testMatch: [...STAGING_E2E_SPECS] }
+  ...(IS_PREVIEW
+    ? { testMatch: [...PREVIEW_E2E_SPECS] }
     : {
-        testIgnore: [...STAGING_E2E_SPECS, ...SAFE_E2E_SPECS],
+        testIgnore: [...PREVIEW_E2E_SPECS, ...SAFE_E2E_SPECS],
         webServer: {
           command: 'node scripts/vite-dev.mjs',
           url: BASE_URL,

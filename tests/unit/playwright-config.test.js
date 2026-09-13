@@ -111,13 +111,13 @@ function safeEnvWithCapability({
   return { dir, capability, baseEnv: env, env: fullEnv };
 }
 
-test('APP_ENV=development mantém servidor local e ignora specs staging e integrada', () => {
+test('APP_ENV=development mantém servidor local e ignora specs Preview e integrada', () => {
   const config = loadConfig({ APP_ENV: 'development', BASE_URL: 'http://127.0.0.1:5173' });
   assert.equal(config.workers, 2);
   assert.equal(config.webServer, true);
   assert.deepEqual(config.testIgnore, [
     'tests/postgres-only-cutover.spec.js',
-    'tests/quotation-cutover-staging.spec.js',
+    'tests/quotation-cutover-preview.spec.js',
     ...SAFE_E2E_SPECS,
   ]);
   assert.equal(config.baseURL, 'http://127.0.0.1:5173');
@@ -133,7 +133,7 @@ test('o marcador SAFE_E2E isolado não libera a suíte integrada no modo local',
     config.testIgnore,
     [
       'tests/postgres-only-cutover.spec.js',
-      'tests/quotation-cutover-staging.spec.js',
+      'tests/quotation-cutover-preview.spec.js',
       ...SAFE_E2E_SPECS,
     ],
     'um marcador herdado do shell não comprova o ambiente seguro completo'
@@ -148,7 +148,7 @@ test('a config comum nunca libera a suíte integrada, nem com o ambiente seguro 
       config.testIgnore,
       [
         'tests/postgres-only-cutover.spec.js',
-        'tests/quotation-cutover-staging.spec.js',
+        'tests/quotation-cutover-preview.spec.js',
         ...SAFE_E2E_SPECS,
       ],
       'a suíte integrada só existe na config dedicada, nunca na comum'
@@ -163,7 +163,7 @@ test('APP_ENV=preview usa origem remota, um worker e nenhum servidor local', () 
   const config = loadConfig({
     APP_ENV: 'preview',
     EXTERNAL_WRITES_ENABLED: '0',
-    STAGING_BASE_URL: 'https://preview.example.test',
+    PREVIEW_BASE_URL: 'https://preview.example.test',
     BASE_URL: 'https://preview.example.test',
   });
   assert.equal(config.workers, 1);
@@ -179,7 +179,7 @@ test('PLAYWRIGHT_PORT mantém config e testes no mesmo servidor local', () => {
   assert.equal(config.environmentBaseURL, config.baseURL);
 });
 
-test('Preview rejeita BASE_URL fora da origem staging', () => {
+test('Preview rejeita BASE_URL fora da origem do deployment', () => {
   const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
     cwd: fileURLToPath(new URL('../..', import.meta.url)),
     env: {
@@ -188,13 +188,13 @@ test('Preview rejeita BASE_URL fora da origem staging', () => {
       DOTENV_CONFIG_PATH: missingEnvPath,
       APP_ENV: 'preview',
       EXTERNAL_WRITES_ENABLED: '0',
-      STAGING_BASE_URL: 'https://preview.example.test',
+      PREVIEW_BASE_URL: 'https://preview.example.test',
       BASE_URL: 'https://outside.example.test',
     },
     encoding: 'utf8',
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /BASE_URL must match STAGING_BASE_URL during staging E2E/);
+  assert.match(result.stderr, /BASE_URL must match PREVIEW_BASE_URL during Preview E2E/);
 });
 
 const FORGED_PUBLIC_ENV = {

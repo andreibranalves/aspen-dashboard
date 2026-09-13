@@ -67,9 +67,9 @@ const POISONED = {
   LITE_BASELINE_BACKUP_FILE: '/home/operator/backup.sql',
   APP_PASSWORD_HASH: 'real-password-hash',
   APP_SESSION_SECRET: 'real-session-secret',
-  E2E_PASSWORD: 'staging-e2e-password',
+  E2E_PASSWORD: 'preview-e2e-password',
   BASE_URL: 'https://preview.aspen.example',
-  STAGING_BASE_URL: 'https://preview.aspen.example',
+  PREVIEW_BASE_URL: 'https://preview.aspen.example',
   VERCEL: 'deployed-vercel-mode',
   VERCEL_PROJECT_PRODUCTION_URL: 'aspen-production.vercel.app',
   DEPLOY_PRIME_URL: 'https://aspen-prime.netlify.app',
@@ -216,7 +216,7 @@ test('the effective HTTP target is forced to loopback derived from the validated
   assert.equal(baseUrl, 'http://localhost:5311');
   assert.equal(env.BASE_URL, 'http://localhost:5311');
   assert.equal(env.PLAYWRIGHT_PORT, '5311');
-  assert.equal('STAGING_BASE_URL' in env, false);
+  assert.equal('PREVIEW_BASE_URL' in env, false);
   assert.throws(
     () => buildSafeE2eEnvironment({ ...BASE_ENV, PLAYWRIGHT_PORT: 'not-a-port' }),
     /PLAYWRIGHT_PORT/

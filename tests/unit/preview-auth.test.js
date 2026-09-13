@@ -1,20 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assertDeploymentIdentity, assertSafeApiPath, getStagingConfig } from '../support/staging-auth.js';
+import {
+  assertDeploymentIdentity,
+  assertSafeApiPath,
+  getPreviewConfig,
+} from '../support/preview-auth.js';
 
 function validEnv(overrides = {}) {
   return {
     APP_ENV: 'preview',
     EXTERNAL_WRITES_ENABLED: '0',
-    STAGING_BASE_URL: 'https://preview.example.test',
+    PREVIEW_BASE_URL: 'https://preview.example.test',
     BASE_URL: 'https://preview.example.test',
     E2E_USERNAME: 'preview-operator',
     E2E_PASSWORD: 'test-password',
-    STAGING_E2E_USERNAME: 'preview-operator',
+    PREVIEW_E2E_USERNAME: 'preview-operator',
     KNOWN_POSTGRES_QUOTATION_ID: 'ORC-20260001',
     KNOWN_POSTGRES_SCRATCH_QUOTATION_ID: 'ORC-20269999',
-    STAGING_EGRESS_BLOCKED: '1',
-    STAGING_FIXTURE_RESET: '1',
+    PREVIEW_EGRESS_BLOCKED: '1',
+    PREVIEW_FIXTURE_RESET: '1',
     ...overrides,
   };
 }
@@ -25,8 +29,8 @@ function without(env, key) {
   return copy;
 }
 
-test('aceita Preview com writes desativados e guardrails staging', () => {
-  assert.deepEqual(getStagingConfig(validEnv()), {
+test('aceita Preview com writes desativados e atestações independentes', () => {
+  assert.deepEqual(getPreviewConfig(validEnv()), {
     baseUrl: 'https://preview.example.test',
     username: 'preview-operator',
     password: 'test-password',
@@ -41,7 +45,7 @@ test('rejeita ambiente diferente de Preview', () => {
     validEnv({ APP_ENV: 'development' }),
     validEnv({ APP_ENV: 'production' }),
   ]) {
-    assert.throws(() => getStagingConfig(env), /APP_ENV=preview is required/);
+    assert.throws(() => getPreviewConfig(env), /APP_ENV=preview is required/);
   }
 });
 
@@ -50,37 +54,37 @@ test('rejeita writes externos ausentes ou habilitados', () => {
     without(validEnv(), 'EXTERNAL_WRITES_ENABLED'),
     validEnv({ EXTERNAL_WRITES_ENABLED: '1' }),
   ]) {
-    assert.throws(() => getStagingConfig(env), /EXTERNAL_WRITES_ENABLED=0 is required/);
+    assert.throws(() => getPreviewConfig(env), /EXTERNAL_WRITES_ENABLED=0 is required/);
   }
 });
 
 test('mantém egress e reset como atestações independentes', () => {
   assert.throws(
-    () => getStagingConfig(without(validEnv(), 'STAGING_EGRESS_BLOCKED')),
-    /STAGING_EGRESS_BLOCKED=1 is required/
+    () => getPreviewConfig(without(validEnv(), 'PREVIEW_EGRESS_BLOCKED')),
+    /PREVIEW_EGRESS_BLOCKED=1 is required/
   );
   assert.throws(
-    () => getStagingConfig(validEnv({ STAGING_FIXTURE_RESET: '0' })),
-    /STAGING_FIXTURE_RESET=1 is required for disposable fixture cleanup/
+    () => getPreviewConfig(validEnv({ PREVIEW_FIXTURE_RESET: '0' })),
+    /PREVIEW_FIXTURE_RESET=1 is required for disposable fixture cleanup/
   );
 });
 
 test('restringe requests à origem Preview', () => {
   const previous = {
     APP_ENV: process.env.APP_ENV,
-    STAGING_BASE_URL: process.env.STAGING_BASE_URL,
+    PREVIEW_BASE_URL: process.env.PREVIEW_BASE_URL,
     BASE_URL: process.env.BASE_URL,
   };
   Object.assign(process.env, {
     APP_ENV: 'preview',
-    STAGING_BASE_URL: 'https://preview.example.test',
+    PREVIEW_BASE_URL: 'https://preview.example.test',
     BASE_URL: 'https://preview.example.test',
   });
   try {
     assert.equal(assertSafeApiPath('/api/products'), 'https://preview.example.test/api/products');
     assert.throws(
       () => assertSafeApiPath('https://outside.example.test/api/products'),
-      /outside the staging origin/
+      /outside the Preview origin/
     );
   } finally {
     for (const [key, value] of Object.entries(previous)) {
@@ -131,12 +135,12 @@ function identityBody(overrides = {}) {
 async function withPreviewEnv(run) {
   const previous = {
     APP_ENV: process.env.APP_ENV,
-    STAGING_BASE_URL: process.env.STAGING_BASE_URL,
+    PREVIEW_BASE_URL: process.env.PREVIEW_BASE_URL,
     BASE_URL: process.env.BASE_URL,
   };
   Object.assign(process.env, {
     APP_ENV: 'preview',
-    STAGING_BASE_URL: 'https://preview.example.test',
+    PREVIEW_BASE_URL: 'https://preview.example.test',
     BASE_URL: 'https://preview.example.test',
   });
   try {
@@ -166,23 +170,56 @@ test('prova do deployment passa com ambiente, writes-off e persistência aprovad
 
 test('falha fechada quando o deployment não é Preview', async () => {
   await withPreviewEnv(async () => {
-    const page = fakePage([[200, identityBody({ deployment_identity: { app_env: 'production', external_writes_enabled: false, persistence: 'postgres' } })]]);
-    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /não está no ambiente de staging esperado/);
+    const page = fakePage([
+      [
+        200,
+        identityBody({
+          deployment_identity: {
+            app_env: 'production',
+            external_writes_enabled: false,
+            persistence: 'postgres',
+          },
+        }),
+      ],
+    ]);
+    await assert.rejects(
+      () => assertDeploymentIdentity(page, proofConfig),
+      /não está no ambiente de Preview esperado/
+    );
     assert.equal(page.calls.length, 1);
   });
 });
 
 test('falha fechada quando o deployment reporta escritas externas habilitadas', async () => {
   await withPreviewEnv(async () => {
-    const page = fakePage([[200, identityBody({ deployment_identity: { app_env: 'preview', external_writes_enabled: true, persistence: 'postgres' } })]]);
-    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /external writes enabled/);
+    const page = fakePage([
+      [
+        200,
+        identityBody({
+          deployment_identity: {
+            app_env: 'preview',
+            external_writes_enabled: true,
+            persistence: 'postgres',
+          },
+        }),
+      ],
+    ]);
+    await assert.rejects(
+      () => assertDeploymentIdentity(page, proofConfig),
+      /external writes enabled/
+    );
   });
 });
 
 test('falha fechada sem persistência PostgreSQL conectada', async () => {
   await withPreviewEnv(async () => {
-    const page = fakePage([[200, identityBody({ checks: { database_connected: false, mandatory_settings: false } })]]);
-    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /persistência PostgreSQL/);
+    const page = fakePage([
+      [200, identityBody({ checks: { database_connected: false, mandatory_settings: false } })],
+    ]);
+    await assert.rejects(
+      () => assertDeploymentIdentity(page, proofConfig),
+      /persistência PostgreSQL/
+    );
   });
 });
 
@@ -199,7 +236,10 @@ test('falha fechada se o deployment não serve a cotação atestada (persistênc
       [200, identityBody()],
       [404, {}],
     ]);
-    await assert.rejects(() => assertDeploymentIdentity(page, proofConfig), /persistência não aprovada/);
+    await assert.rejects(
+      () => assertDeploymentIdentity(page, proofConfig),
+      /persistência não aprovada/
+    );
     assert.equal(page.calls.length, 2);
   });
 });

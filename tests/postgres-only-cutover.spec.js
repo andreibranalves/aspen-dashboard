@@ -3,11 +3,11 @@ import { expect, test } from '@playwright/test';
 import {
   apiRequest,
   assertNoForbiddenEgress,
-  assertStagingConfig,
-  loginToStaging,
-} from './support/staging-auth.js';
+  assertPreviewConfig,
+  loginToPreview,
+} from './support/preview-auth.js';
 
-const CONFIG = assertStagingConfig();
+const CONFIG = assertPreviewConfig();
 const routes = [
   '/#/dashboard',
   '/#/products',
@@ -29,12 +29,12 @@ const requestsByPage = new WeakMap();
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('PostgreSQL-only cutover staging smoke @database @critical', () => {
+test.describe('PostgreSQL-only cutover Preview smoke @database @critical', () => {
   test.beforeEach(async ({ page }) => {
     const requests = [];
     requestsByPage.set(page, requests);
     page.on('request', (request) => requests.push(request.url()));
-    await loginToStaging(page);
+    await loginToPreview(page);
   });
 
   test.afterEach(async ({ page }) => {
