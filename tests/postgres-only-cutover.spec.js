@@ -34,7 +34,7 @@ test.describe('PostgreSQL-only cutover Preview smoke @database @critical', () =>
     const requests = [];
     requestsByPage.set(page, requests);
     page.on('request', (request) => requests.push(request.url()));
-    await loginToPreview(page);
+    await loginToPreview(page, CONFIG);
   });
 
   test.afterEach(async ({ page }) => {

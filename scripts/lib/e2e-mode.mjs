@@ -10,7 +10,7 @@
 
 export const LOCAL_E2E_PORT = 5173;
 
-function parseOrigin(value, label) {
+function parseOrigin(value, label, { httpsOnly = false } = {}) {
   let parsed;
   try {
     parsed = new globalThis.URL(String(value ?? '').trim());
@@ -19,6 +19,9 @@ function parseOrigin(value, label) {
   }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
     throw new Error(`${label} must be a valid HTTP(S) origin without credentials`);
+  }
+  if (httpsOnly && parsed.protocol !== 'https:') {
+    throw new Error(`${label} must use HTTPS in Preview E2E`);
   }
   return parsed.origin;
 }
@@ -40,11 +43,12 @@ export function isPreviewMode(env = process.env) {
  * origem validada.
  */
 export function resolveE2eBaseUrl(env = process.env, { port = LOCAL_E2E_PORT } = {}) {
+  const previewMode = isPreviewMode(env);
   const preview = env.PREVIEW_BASE_URL
-    ? parseOrigin(env.PREVIEW_BASE_URL, 'PREVIEW_BASE_URL')
+    ? parseOrigin(env.PREVIEW_BASE_URL, 'PREVIEW_BASE_URL', { httpsOnly: previewMode })
     : null;
 
-  if (!isPreviewMode(env)) {
+  if (!previewMode) {
     // Modo local: somente alvo local EXPLICITamente configurado (BASE_URL);
     // PREVIEW_BASE_URL presente no ambiente é deliberadamente ignorado.
     const localBase = env.BASE_URL
