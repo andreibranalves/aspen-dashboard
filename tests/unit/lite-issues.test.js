@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseBetaCleanupCandidates } from '../../api/_infrastructure/db/repositories/beta-cleanup-repository.js';
 import { createWhatsappContextHandler } from '../../api/_modules/whatsapp-context.js';
-import { sendQuotationEmailViaResend } from '../../api/_modules/quotation-email.js';
+import { sendQuotationEmailViaResend } from '../../api/_infrastructure/integrations/resend/client.js';
 import { assertCleanupRecoveryEvidence } from '../../scripts/beta-cleanup.mjs';
 import { parseBaselineArgs as parseLiteBaselineArgs } from '../../scripts/lite-baseline.mjs';
 import { runPreviewPreflight } from '../../scripts/preview-preflight.mjs';
