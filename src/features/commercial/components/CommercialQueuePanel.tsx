@@ -26,6 +26,7 @@ import {
 import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formatting/formatters';
 import {
   completeCommercialAction,
+  continueCommercialFollowUp,
   createCommercialAction,
   getCommercialFollowUpSuggestion,
   getCommercialActionHistory,
@@ -40,6 +41,7 @@ import {
   type CommercialActionHistoryEntry,
   type CommercialActionScheduleInput,
   type CommercialFollowUpBusinessDays,
+  type CommercialFollowUpContinuityType,
   type CommercialFollowUpSuggestion,
   type CommercialManualContactResultCode,
   type CommercialManualContactType,
@@ -81,6 +83,7 @@ type Dialog =
   | { type: 'schedule'; item: CommercialQueueItem }
   | { type: 'complete'; item: CommercialQueueItem }
   | { type: 'manual-contact'; item: CommercialQueueItem; commandId: string }
+  | { type: 'continue-follow-up'; item: CommercialQueueItem; commandId: string }
   | { type: 'history'; item: CommercialQueueItem };
 
 interface ScheduleDraft {
@@ -298,6 +301,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [draft, setDraft] = useState<ScheduleDraft | ManualContactDraft | null>(null);
   const [completionMode, setCompletionMode] = useState<'successor' | 'close'>('successor');
+  const [continuityType, setContinuityType] =
+    useState<CommercialFollowUpContinuityType>('new_cycle');
   const [history, setHistory] = useState<CommercialActionHistoryEntry[]>([]);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -450,6 +455,17 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     appliedManualSuggestionRef.current = null;
     setDialog({ type: 'manual-contact', item, commandId: globalThis.crypto.randomUUID() });
     setDraft(manualContactDraft(item));
+    setDialogError(null);
+  }
+
+  function openContinueFollowUp(item: CommercialQueueItem) {
+    setDialog({
+      type: 'continue-follow-up',
+      item,
+      commandId: globalThis.crypto.randomUUID(),
+    });
+    setContinuityType('new_cycle');
+    setDraft(scheduleDraft(item));
     setDialogError(null);
   }
 
@@ -651,6 +667,39 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     } catch (reason) {
       setDialogError(
         reason instanceof Error ? reason.message : 'Não foi possível concluir a ação.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitContinueFollowUp() {
+    if (!dialog || dialog.type !== 'continue-follow-up' || !draft) return;
+    if (!draft.dueDate || !draft.reason.trim()) {
+      setDialogError('Informe a data e o motivo da continuidade.');
+      return;
+    }
+    setSubmitting(true);
+    setDialogError(null);
+    try {
+      await continueCommercialFollowUp({
+        commandId: dialog.commandId,
+        opportunityId: dialog.item.opportunityId,
+        actionId: dialog.item.actionId,
+        expectedVersion: dialog.item.version,
+        type: continuityType,
+        schedule: {
+          kind: draft.kind,
+          dueDate: draft.dueDate,
+          dueTime: draft.dueTime || null,
+          reason: draft.reason,
+        },
+      });
+      closeDialog(true);
+      await load(currentPage, filter);
+    } catch (reason) {
+      setDialogError(
+        reason instanceof Error ? reason.message : 'Não foi possível registrar a continuidade.'
       );
     } finally {
       setSubmitting(false);
@@ -956,6 +1005,18 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         <span className="text-xs text-fg-muted">Resultado: {item.reason || item.reasonLabel}</span>
       );
     }
+    if (item.reasonCode === 'follow_up_decide_continuity') {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={() => openContinueFollowUp(item)}>
+            Decidir continuidade
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+            Histórico
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-wrap gap-2">
         {item.reasonCode === 'proposal_delivery_confirmed' && item.sourceQuotationId && (
@@ -1256,10 +1317,12 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                   : dialog.type === 'schedule'
                     ? 'Reagendar próxima ação'
                     : dialog.type === 'complete'
-                      ? 'Concluir próxima ação'
-                      : dialog.type === 'manual-contact'
-                        ? 'Registrar contato'
-                        : 'Histórico da próxima ação'}
+                        ? 'Concluir próxima ação'
+                        : dialog.type === 'manual-contact'
+                          ? 'Registrar contato'
+                          : dialog.type === 'continue-follow-up'
+                            ? 'Decidir continuidade'
+                          : 'Histórico da próxima ação'}
               </h2>
               <Button
                 type="button"
@@ -1326,10 +1389,31 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     ? submitSchedule()
                     : dialog.type === 'manual-contact'
                       ? submitManualContact()
-                      : submitComplete());
+                      : dialog.type === 'continue-follow-up'
+                        ? submitContinueFollowUp()
+                        : submitComplete());
                 }}
               >
                 {dialog.type === 'manual-contact' && manualContactFields()}
+                {dialog.type === 'continue-follow-up' && (
+                  <>
+                    <label className="grid gap-1 text-sm">
+                      Decisão de continuidade
+                      <select
+                        aria-label="Decisão de continuidade"
+                        className="h-9 rounded-sm border border-input bg-background px-3"
+                        value={continuityType}
+                        onChange={(event) =>
+                          setContinuityType(event.target.value as CommercialFollowUpContinuityType)
+                        }
+                      >
+                        <option value="new_cycle">Iniciar novo ciclo</option>
+                        <option value="manual_date">Confirmar uma data</option>
+                      </select>
+                    </label>
+                    {scheduleFields()}
+                  </>
+                )}
                 {dialog.type === 'complete' && (
                   <label className="grid gap-1 text-sm">
                     Resultado
@@ -1346,7 +1430,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     </select>
                   </label>
                 )}
-                {dialog.type === 'manual-contact' ? null : dialog.type === 'complete' &&
+                {dialog.type === 'manual-contact' || dialog.type === 'continue-follow-up' ? null : dialog.type === 'complete' &&
                   completionMode === 'close' ? (
                   <label className="grid gap-1 text-sm">
                     Motivo do fechamento
@@ -1384,6 +1468,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                           ? 'Reagendar'
                           : dialog.type === 'manual-contact'
                             ? 'Registrar contato'
+                            : dialog.type === 'continue-follow-up'
+                              ? 'Confirmar continuidade'
                             : completionMode === 'successor'
                               ? 'Concluir e criar próxima'
                               : 'Concluir e fechar'}

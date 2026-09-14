@@ -36,6 +36,7 @@ test('operator deletes issued quotation then client, preserving orders and in-fl
     await connection`CREATE TEMP TABLE quotation_delivery_steps (id uuid PRIMARY KEY, delivery_id uuid REFERENCES quotation_deliveries(id) ON DELETE CASCADE)`;
     await connection`CREATE TEMP TABLE quotation_email_deliveries (id uuid PRIMARY KEY, revision_id uuid REFERENCES quote_revisions(id) ON DELETE CASCADE, state text)`;
     await connection`CREATE TEMP TABLE quotation_follow_ups (id uuid PRIMARY KEY, quotation_id uuid REFERENCES quotations(id), delivery_id uuid REFERENCES quotation_deliveries(id), state text)`;
+    await connection`CREATE TEMP TABLE quotation_follow_up_attempt_history (id uuid PRIMARY KEY, quotation_id uuid REFERENCES quotations(id))`;
     await connection`CREATE TEMP TABLE quotation_issue_requests (id uuid PRIMARY KEY, idempotency_key uuid UNIQUE, fingerprint text, state text, lease_expires_at timestamptz, public_error text, quotation_id uuid REFERENCES quotations(id), revision_id uuid REFERENCES quote_revisions(id), created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`;
     const client = randomUUID(), quotation = randomUUID(), revision = randomUUID(), deal = randomUUID(), delivery = randomUUID(), key = randomUUID();
     await connection`INSERT INTO clients VALUES (${client})`;
@@ -46,6 +47,7 @@ test('operator deletes issued quotation then client, preserving orders and in-fl
     await connection`INSERT INTO quotation_deliveries VALUES (${delivery},${revision},'processing')`;
     await connection`INSERT INTO quotation_delivery_steps VALUES (${randomUUID()},${delivery})`;
     await connection`INSERT INTO quotation_follow_ups VALUES (${randomUUID()},${quotation},${delivery},'approved')`;
+    await connection`INSERT INTO quotation_follow_up_attempt_history VALUES (${randomUUID()},${quotation})`;
     await connection`INSERT INTO quotation_email_deliveries VALUES (${randomUUID()},${revision},'accepted')`;
     await connection`INSERT INTO quotation_issue_requests (id,idempotency_key,fingerprint,state,quotation_id,revision_id) VALUES (${randomUUID()},${key},${quotationIssueFingerprint({ revisionId: revision })},'completed',${quotation},${revision})`;
     const quotes = createPostgresQuoteDraftManagementRepository(() => db);
@@ -67,6 +69,7 @@ test('operator deletes issued quotation then client, preserving orders and in-fl
     assert.equal((await connection`SELECT * FROM quotations`).length, 0);
     assert.equal((await connection`SELECT * FROM quote_revisions`).length, 0);
     assert.equal((await connection`SELECT * FROM quotation_follow_ups`).length, 0);
+    assert.equal((await connection`SELECT * FROM quotation_follow_up_attempt_history`).length, 0);
     assert.equal((await connection`SELECT * FROM quotation_delivery_steps`).length, 0);
     const [request] = await connection`SELECT * FROM quotation_issue_requests`;
     assert.equal(request.state, 'completed');

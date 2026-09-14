@@ -1,9 +1,17 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 
-import { calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
+import { addBusinessDays, calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
 import { getDatabase, type AppDatabase } from '../client.js';
-import { crmDeals, manualContactEvents, opportunityNextActions } from '../schema.js';
+import { nextFollowUpCycleNumber } from './follow-up-cycle.js';
+import {
+  crmDeals,
+  manualContactEvents,
+  opportunityNextActions,
+  quotationFollowUpAttemptHistory,
+  quotationFollowUps,
+  quotations,
+} from '../schema.js';
 import type { OpportunityProposal } from './proposal-opportunity-repository.js';
 
 export type OpportunityActionKind =
@@ -29,6 +37,7 @@ export type ManualContactResultCode =
   | 'wrong_contact'
   | 'other';
 export type ManualContactContinuationType = 'successor' | 'wait' | 'close';
+export type FollowUpContinuityType = 'new_cycle' | 'manual_date';
 
 export interface OpportunityQueueBlocker {
   code: string;
@@ -79,6 +88,11 @@ const MANUAL_CONTINUATIONS: readonly ManualContactContinuationType[] = [
   'wait',
   'close',
 ];
+const FOLLOW_UP_CONTINUITY_TYPES: readonly FollowUpContinuityType[] = [
+  'new_cycle',
+  'manual_date',
+];
+const FOLLOW_UP_DECISION_REASON_CODE = 'follow_up_decide_continuity';
 
 /** One prioritized item of the commercial queue: a demand and its pending work. */
 export interface OpportunityQueueItem {
@@ -189,6 +203,17 @@ export interface ManualContactInput {
   now?: Date;
 }
 
+export interface ContinueFollowUpInput {
+  commandId: string;
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  type: FollowUpContinuityType;
+  schedule: OpportunityActionScheduleInput;
+  actor: string;
+  now?: Date;
+}
+
 export interface OpportunityActionRecord {
   actionId: string;
   opportunityId: string;
@@ -286,6 +311,7 @@ export interface OpportunityActionRepository {
   ): Promise<OpportunityActionCommandResult>;
   completeAction(input: CompleteOpportunityActionInput): Promise<OpportunityActionCommandResult>;
   recordManualContact(input: ManualContactInput): Promise<ManualContactCommandResult>;
+  continueFollowUp(input: ContinueFollowUpInput): Promise<OpportunityActionCommandResult>;
   listHistory(opportunityId: string): Promise<OpportunityActionHistoryEntry[]>;
   setUrgency(input: SetOpportunityUrgencyInput): Promise<OpportunityUrgencyResult>;
 }
@@ -487,6 +513,16 @@ interface NormalizedManualContact {
   };
 }
 
+interface NormalizedFollowUpContinuity {
+  commandId: string;
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  type: FollowUpContinuityType;
+  schedule: NormalizedSchedule;
+  actor: string;
+}
+
 function validateManualContactType(value: unknown): ManualContactType {
   if (!MANUAL_CONTACT_TYPES.includes(value as ManualContactType)) {
     throw new OpportunityActionInputError('Tipo de contato manual inválido.');
@@ -597,6 +633,21 @@ function normalizeManualContact(input: ManualContactInput): NormalizedManualCont
   };
 }
 
+function normalizeFollowUpContinuity(input: ContinueFollowUpInput): NormalizedFollowUpContinuity {
+  if (!FOLLOW_UP_CONTINUITY_TYPES.includes(input.type)) {
+    throw new OpportunityActionInputError('A decisão de continuidade é inválida.');
+  }
+  return {
+    commandId: cleanText(input.commandId, 'O ID do comando', 255),
+    opportunityId: cleanText(input.opportunityId, 'O ID da oportunidade', 255),
+    actionId: cleanText(input.actionId, 'O ID da ação', 255),
+    expectedVersion: validateVersion(input.expectedVersion),
+    type: input.type,
+    schedule: normalizeSchedule({ ...input.schedule, origin: 'manual' }),
+    actor: cleanText(input.actor, 'O ator', MAX_ACTOR_LENGTH),
+  };
+}
+
 function manualContactFingerprint(input: NormalizedManualContact): string {
   const semantic = {
     opportunityId: input.opportunityId,
@@ -619,6 +670,24 @@ function manualContactFingerprint(input: NormalizedManualContact): string {
       : { type: 'close', closeReason: input.continuation.closeReason },
   };
   return createHash('sha256').update(JSON.stringify(semantic)).digest('hex');
+}
+
+function followUpContinuityFingerprint(input: NormalizedFollowUpContinuity): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        opportunityId: input.opportunityId,
+        actionId: input.actionId,
+        expectedVersion: input.expectedVersion,
+        type: input.type,
+        kind: input.schedule.kind,
+        dueDate: input.schedule.dueDate,
+        dueTime: input.schedule.dueTime,
+        reasonCode: input.schedule.reasonCode,
+        reason: input.schedule.reason,
+      })
+    )
+    .digest('hex');
 }
 
 function localPartsFromInstant(value: Date): { dueDate: string; dueTime: string } {
@@ -917,7 +986,8 @@ async function insertAction(
   schedule: NormalizedSchedule,
   actor: string,
   now: Date,
-  version: number
+  version: number,
+  continuity?: { commandId: string; fingerprint: string; type: FollowUpContinuityType }
 ): Promise<OpportunityActionRecord> {
   const [created] = await database
     .insert(opportunityNextActions)
@@ -937,6 +1007,9 @@ async function insertAction(
       actor,
       createdAt: now,
       updatedAt: now,
+      continuityCommandId: continuity?.commandId,
+      continuityCommandFingerprint: continuity?.fingerprint,
+      continuityType: continuity?.type,
     })
     .returning();
   if (!created) throw new OpportunityActionRepositoryError();
@@ -1002,9 +1075,11 @@ async function completeWithSuccessor(
   transitionOrigin: OpportunityActionOrigin,
   reason: string,
   now: Date,
-  idFactory: () => string
+  idFactory: () => string,
+  continuity?: { commandId: string; fingerprint: string; type: FollowUpContinuityType },
+  successorIdOverride?: string,
 ): Promise<OpportunityActionCommandResult> {
-  const successorId = idFactory();
+  const successorId = successorIdOverride || idFactory();
   const changed = await database
     .update(opportunityNextActions)
     .set({
@@ -1032,7 +1107,8 @@ async function completeWithSuccessor(
     schedule,
     actor,
     now,
-    oldAction.version + 1
+    oldAction.version + 1,
+    continuity
   );
   return {
     actionId: oldAction.id,
@@ -1043,6 +1119,644 @@ async function completeWithSuccessor(
     successor,
     closed: false,
   };
+}
+
+export interface ConfirmedFollowUpTransitionInput {
+  database: ActionDatabase;
+  opportunityId: string;
+  current: typeof quotationFollowUps.$inferSelect;
+  stage: number;
+  confirmedAt: Date;
+  source: 'worker' | 'manual';
+  /** The worker can treat a pre-stage alternative quotation as attempt 2. */
+  attemptNumber?: 1 | 2;
+  actor: string;
+  providerMessageId?: string | null;
+  confirmationCommandId?: string | null;
+  activeAction?: typeof opportunityNextActions.$inferSelect | null;
+  idFactory: () => string;
+}
+
+function followUpTransitionSchedule(
+  attempt: 1 | 2,
+  confirmedAt: Date,
+  origin: OpportunityActionOrigin,
+): NormalizedSchedule {
+  const nextDate = addBusinessDays(calendarDateInSaoPaulo(confirmedAt), 3);
+  return {
+    kind: 'customer_contact',
+    dueDate: nextDate,
+    dueTime: null,
+    scheduleType: 'date_only',
+    dueAt: new Date(`${nextDate}T00:00:00-03:00`),
+    reason: attempt === 1 ? 'Segundo retorno' : 'Decidir continuidade',
+    reasonCode: attempt === 1 ? 'follow_up_second_return' : FOLLOW_UP_DECISION_REASON_CODE,
+    origin,
+  };
+}
+
+/**
+ * Applies the durable commercial consequence of a confirmed return. Both the
+ * provider worker and the operator's silent manual contact use this seam while
+ * holding the opportunity row lock. The current queue row is reused; the
+ * immutable attempt snapshot is written once to the history table first.
+ */
+export async function advanceConfirmedFollowUp(
+  input: ConfirmedFollowUpTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  const {
+    database,
+    opportunityId,
+    current,
+    stage,
+    confirmedAt,
+    source,
+    actor,
+    providerMessageId = null,
+    confirmationCommandId = null,
+    idFactory,
+  } = input;
+  const attempt = input.attemptNumber ?? Number(current.attemptNumber);
+  if (attempt !== stage + 1 || (attempt !== 1 && attempt !== 2)) {
+    throw new ActionConflictError('A tentativa de follow-up não está no ciclo atual.');
+  }
+  if (source === 'worker' && !providerMessageId) {
+    throw new ActionConflictError('A confirmação do provedor é obrigatória.');
+  }
+
+  const nextSchedule = followUpTransitionSchedule(
+    attempt,
+    confirmedAt,
+    source === 'worker' ? 'event' : 'manual',
+  );
+
+  const currentAction =
+    input.activeAction === undefined
+      ? await activeAction(database, opportunityId)
+      : input.activeAction;
+  const sourceActionId = current.sourceActionId || currentAction?.id || null;
+  const successorId = idFactory();
+  const actionResult = currentAction
+    ? await completeWithSuccessor(
+        database,
+        currentAction,
+        nextSchedule,
+        actor,
+        source === 'worker' ? 'event' : 'manual',
+        source === 'worker'
+          ? attempt === 1
+            ? 'Primeiro retorno enviado'
+            : 'Segundo retorno enviado'
+          : attempt === 1
+            ? 'Primeiro retorno registrado manualmente'
+            : 'Segundo retorno registrado manualmente',
+        confirmedAt,
+        idFactory,
+      )
+    : {
+        actionId: successorId,
+        opportunityId,
+        state: 'active' as const,
+        version: 1,
+        action: null,
+        successor: await insertAction(
+          database,
+          opportunityId,
+          successorId,
+          nextSchedule,
+          actor,
+          confirmedAt,
+          1,
+        ),
+        closed: false,
+      };
+  const nextActionId = actionResult.successor?.actionId;
+  if (!nextActionId) throw new OpportunityActionRepositoryError();
+  const persistedNextDueAt = actionResult.successor
+    ? new Date(actionResult.successor.dueAt)
+    : nextSchedule.dueAt;
+
+  const historyValues = {
+    id: idFactory(),
+    opportunityId,
+    quotationId: current.quotationId,
+    followUpId: current.id,
+    cycleNumber: current.cycleNumber,
+    attemptNumber: attempt,
+    revisionId: current.revisionId,
+    deliveryId: current.deliveryId,
+    sourceActionId,
+    instance: current.instance,
+    providerConversationId: current.providerConversationId,
+    canonicalPhone: current.canonicalPhone,
+    eligibilityVersion: current.eligibilityVersion,
+    messageSnapshot: current.messageSnapshot,
+    state: source === 'worker' ? 'sent' : 'manual',
+    closedReason: current.closedReason,
+    leaseToken: current.leaseToken,
+    leaseUntil: current.leaseUntil,
+    transportStartedAt: current.transportStartedAt,
+    providerMessageId: source === 'worker' ? providerMessageId : null,
+    firstProviderReceiptAt: current.firstProviderReceiptAt,
+    dueAt: current.dueAt,
+    approvedAt: current.approvedAt,
+    sentAt: source === 'worker' ? confirmedAt : current.sentAt,
+    closedAt: confirmedAt,
+    confirmationSource: source,
+    confirmationCommandId,
+    confirmedAt,
+    createdAt: confirmedAt,
+  } as const;
+  await database.insert(quotationFollowUpAttemptHistory).values(historyValues);
+
+  await database
+    .update(crmDeals)
+    .set({ followUpStage: attempt, updatedAt: confirmedAt })
+    .where(and(eq(crmDeals.id, opportunityId), eq(crmDeals.followUpStage, stage)));
+
+  const nextState = attempt === 1 ? 'waiting' : 'sent';
+  await database
+    .update(quotationFollowUps)
+    .set({
+      attemptNumber: 2,
+      sourceActionId: nextActionId,
+      state: nextState,
+      closedReason: null,
+      approvedOpportunityId: null,
+      leaseToken: null,
+      leaseUntil: null,
+      transportStartedAt: null,
+      providerMessageId: attempt === 1 ? null : source === 'worker' ? providerMessageId : null,
+      firstProviderReceiptAt: current.firstProviderReceiptAt,
+      dueAt: attempt === 1 ? persistedNextDueAt : current.dueAt,
+      eligibilityVersion: null,
+      messageSnapshot: null,
+      approvedAt: null,
+      sentAt: attempt === 1 ? null : source === 'worker' ? confirmedAt : null,
+      closedAt: attempt === 1 ? null : confirmedAt,
+      updatedAt: confirmedAt,
+    })
+    .where(eq(quotationFollowUps.id, current.id));
+
+  if (attempt === 2) {
+    const startedOtherTransports = await database.execute(sql`
+      SELECT follow_up.id
+      FROM quotation_follow_ups follow_up
+      JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+      WHERE follow_up.id <> ${current.id}::uuid
+        AND COALESCE(
+          quotation.opportunity_id,
+          (SELECT legacy.id FROM crm_deals legacy
+           WHERE legacy.quotation_id = quotation.id
+           ORDER BY legacy.updated_at DESC, legacy.id DESC
+           LIMIT 1)
+        ) = ${opportunityId}::uuid
+        AND follow_up.state = 'processing'
+        AND follow_up.transport_started_at IS NOT NULL
+      FOR UPDATE OF follow_up
+    `);
+    if (Array.from(startedOtherTransports).length) {
+      throw new ActionConflictError('Outro envio técnico do negócio já começou. Recarregue a fila.');
+    }
+    await database.execute(sql`
+      UPDATE quotation_follow_ups AS follow_up
+      SET state = 'dismissed',
+          closed_reason = 'already_attempted',
+          closed_at = ${confirmedAt.toISOString()}::timestamptz,
+          approved_opportunity_id = NULL,
+          eligibility_version = NULL,
+          message_snapshot = NULL,
+          approved_at = NULL,
+          lease_token = NULL,
+          lease_until = NULL,
+          transport_started_at = NULL,
+          updated_at = ${confirmedAt.toISOString()}::timestamptz
+      FROM quotations quotation
+      WHERE quotation.id = follow_up.quotation_id
+        AND follow_up.id <> ${current.id}::uuid
+        AND COALESCE(
+          quotation.opportunity_id,
+          (SELECT legacy.id FROM crm_deals legacy
+           WHERE legacy.quotation_id = quotation.id
+           ORDER BY legacy.updated_at DESC, legacy.id DESC
+           LIMIT 1)
+        ) = ${opportunityId}::uuid
+        AND follow_up.state IN ('awaiting_receipt', 'waiting', 'ready', 'held', 'approved')
+    `);
+  }
+
+  return actionResult;
+}
+
+async function archiveManualFollowUpAttempt(
+  database: ActionDatabase,
+  input: {
+    opportunityId: string;
+    current: typeof quotationFollowUps.$inferSelect;
+    stage: number;
+    confirmedAt: Date;
+    commandId: string;
+    successorActionId?: string | null;
+    idFactory: () => string;
+  },
+): Promise<void> {
+  const {
+    current,
+    opportunityId,
+    stage,
+    confirmedAt,
+    commandId,
+    successorActionId,
+    idFactory,
+  } = input;
+  if (Number(current.attemptNumber) !== stage + 1) {
+    throw new ActionConflictError('A tentativa de follow-up não está no ciclo atual.');
+  }
+  await database.insert(quotationFollowUpAttemptHistory).values({
+    id: idFactory(),
+    opportunityId,
+    quotationId: current.quotationId,
+    followUpId: current.id,
+    cycleNumber: current.cycleNumber,
+    attemptNumber: current.attemptNumber,
+    revisionId: current.revisionId,
+    deliveryId: current.deliveryId,
+    sourceActionId: current.sourceActionId,
+    instance: current.instance,
+    providerConversationId: current.providerConversationId,
+    canonicalPhone: current.canonicalPhone,
+    eligibilityVersion: current.eligibilityVersion,
+    messageSnapshot: current.messageSnapshot,
+    state: 'manual',
+    closedReason: 'already_handled',
+    leaseToken: current.leaseToken,
+    leaseUntil: current.leaseUntil,
+    transportStartedAt: current.transportStartedAt,
+    providerMessageId: null,
+    firstProviderReceiptAt: current.firstProviderReceiptAt,
+    dueAt: current.dueAt,
+    approvedAt: current.approvedAt,
+    sentAt: null,
+    closedAt: confirmedAt,
+    confirmationSource: 'manual',
+    confirmationCommandId: commandId,
+    confirmedAt,
+    createdAt: confirmedAt,
+  });
+  await database
+    .update(crmDeals)
+    .set({ followUpStage: stage + 1, updatedAt: confirmedAt })
+    .where(and(eq(crmDeals.id, opportunityId), eq(crmDeals.followUpStage, stage)));
+  await database
+    .update(quotationFollowUps)
+    .set({
+      state: 'sent',
+      attemptNumber: 2,
+      sourceActionId: successorActionId || current.sourceActionId,
+      closedReason: 'already_handled',
+      closedAt: confirmedAt,
+      approvedOpportunityId: null,
+      eligibilityVersion: null,
+      messageSnapshot: null,
+      approvedAt: null,
+      leaseToken: null,
+      leaseUntil: null,
+      transportStartedAt: null,
+      providerMessageId: null,
+      sentAt: null,
+      updatedAt: confirmedAt,
+    })
+    .where(eq(quotationFollowUps.id, current.id));
+}
+
+async function closePendingTechnicalFollowUp(
+  database: ActionDatabase,
+  opportunityId: string,
+  actionId: string,
+  now: Date,
+): Promise<void> {
+  const rows = await database
+    .select({ followUp: quotationFollowUps })
+    .from(quotationFollowUps)
+    .innerJoin(quotations, eq(quotations.id, quotationFollowUps.quotationId))
+    .where(
+      and(
+        sql`COALESCE(
+          ${quotations.opportunityId},
+          (SELECT legacy.id FROM crm_deals legacy
+           WHERE legacy.quotation_id = ${quotations.id}
+           ORDER BY legacy.updated_at DESC, legacy.id DESC
+           LIMIT 1)
+        ) = ${opportunityId}::uuid`,
+        sql`${quotationFollowUps.state} IN ('awaiting_receipt', 'waiting', 'ready', 'held', 'approved', 'processing')`,
+      ),
+    )
+    .orderBy(
+      sql`CASE WHEN ${quotationFollowUps.sourceActionId} = ${actionId}::uuid THEN 0 ELSE 1 END`,
+      sql`${quotationFollowUps.cycleNumber} DESC`,
+      sql`${quotationFollowUps.attemptNumber} DESC`,
+    )
+    .for('update');
+  const current = rows[0]?.followUp;
+  if (!current) return;
+  if (current.state === 'processing' && current.transportStartedAt) {
+    throw new ActionConflictError('O envio técnico já começou. Recarregue a fila.');
+  }
+  await database
+    .update(quotationFollowUps)
+    .set({
+      state: 'dismissed',
+      closedReason: 'already_handled',
+      closedAt: now,
+      approvedOpportunityId: null,
+      eligibilityVersion: null,
+      messageSnapshot: null,
+      approvedAt: null,
+      leaseToken: null,
+      leaseUntil: null,
+      transportStartedAt: null,
+      updatedAt: now,
+    })
+    .where(eq(quotationFollowUps.id, current.id));
+}
+
+async function lockCurrentFollowUp(
+  database: ActionDatabase,
+  opportunityId: string,
+  actionId: string,
+  options: { rejectStartedTransport?: boolean } = {},
+): Promise<typeof quotationFollowUps.$inferSelect | null> {
+  const rows = await database
+    .select({ followUp: quotationFollowUps })
+    .from(quotationFollowUps)
+    .innerJoin(quotations, eq(quotations.id, quotationFollowUps.quotationId))
+    .where(
+      sql`COALESCE(
+        ${quotations.opportunityId},
+        (SELECT legacy.id FROM crm_deals legacy
+         WHERE legacy.quotation_id = ${quotations.id}
+         ORDER BY legacy.updated_at DESC, legacy.id DESC
+         LIMIT 1)
+      ) = ${opportunityId}::uuid`,
+    )
+    .orderBy(
+      sql`CASE WHEN ${quotationFollowUps.sourceActionId} = ${actionId}::uuid THEN 0 ELSE 1 END`,
+      sql`CASE WHEN EXISTS (
+        SELECT 1 FROM opportunity_delivery_anchors anchor
+        WHERE anchor.created_action_id = ${actionId}::uuid
+          AND anchor.quotation_id = ${quotationFollowUps.quotationId}
+      ) THEN 0 ELSE 1 END`,
+      sql`${quotationFollowUps.cycleNumber} DESC`,
+      sql`${quotationFollowUps.attemptNumber} DESC`,
+      sql`${quotationFollowUps.updatedAt} DESC`,
+      asc(quotationFollowUps.id),
+    )
+    .for('update');
+  if (
+    options.rejectStartedTransport &&
+    rows.some(
+      ({ followUp }) => followUp.state === 'processing' && followUp.transportStartedAt !== null,
+    )
+  ) {
+    throw new ActionConflictError('Outro envio técnico do negócio já começou. Recarregue a fila.');
+  }
+  return rows[0]?.followUp || null;
+}
+
+type NewCycleDelivery = {
+  quotationId: string;
+  revisionId: string;
+  deliveryId: string;
+  phone: string;
+  receiptAt: Date | null;
+};
+
+type FollowUpIdentity = {
+  instance: string;
+  providerConversationId: string;
+  canonicalPhone: string;
+};
+
+function phoneDigits(value: unknown): string {
+  return String(value || '').replace(/[^0-9]/g, '');
+}
+
+async function eligibleNewCycleDelivery(
+  database: ActionDatabase,
+  opportunityId: string,
+): Promise<NewCycleDelivery | null> {
+  const result = await database.execute(sql`
+    SELECT
+      q.id AS quotation_id,
+      r.id AS revision_id,
+      d.id AS delivery_id,
+      d.phone,
+      MAX(COALESCE(step.delivered_at, step.read_at)) AS receipt_at
+    FROM quotations q
+    JOIN quote_revisions r ON r.quotation_id = q.id
+    JOIN quotation_deliveries d ON d.revision_id = r.id
+    JOIN quotation_delivery_steps step ON step.delivery_id = d.id
+    JOIN clients client ON client.id = q.client_id
+    LEFT JOIN LATERAL (
+      SELECT legacy.id
+      FROM crm_deals legacy
+      WHERE q.opportunity_id IS NULL AND legacy.quotation_id = q.id
+      ORDER BY legacy.updated_at DESC, legacy.id DESC
+      LIMIT 1
+    ) legacy ON true
+    WHERE COALESCE(q.opportunity_id, legacy.id) = ${opportunityId}::uuid
+      AND q.status = 'emitido'
+      AND client.arquivado = false
+      AND d.state = 'delivered'
+      AND d.completion_source = 'provider_receipt'
+    GROUP BY q.id, r.id, d.id
+    HAVING COUNT(step.id) > 0
+       AND COUNT(*) FILTER (WHERE step.delivered_at IS NULL AND step.read_at IS NULL) = 0
+    ORDER BY d.created_at DESC, d.id DESC
+    LIMIT 1
+  `);
+  const row = Array.from(result as Iterable<Record<string, unknown>>)[0];
+  if (!row) return null;
+  const receiptAt = row.receipt_at instanceof Date
+    ? new Date(row.receipt_at.getTime())
+    : row.receipt_at == null
+      ? null
+      : new Date(String(row.receipt_at));
+  return {
+    quotationId: String(row.quotation_id),
+    revisionId: String(row.revision_id),
+    deliveryId: String(row.delivery_id),
+    phone: String(row.phone || ''),
+    receiptAt: receiptAt && !Number.isNaN(receiptAt.getTime()) ? receiptAt : null,
+  };
+}
+
+async function deliveryPhone(
+  database: ActionDatabase,
+  deliveryId: string,
+): Promise<string> {
+  const result = await database.execute(sql`
+    SELECT phone FROM quotation_deliveries WHERE id = ${deliveryId}::uuid LIMIT 1
+  `);
+  const row = Array.from(result as Iterable<Record<string, unknown>>)[0];
+  return String(row?.phone || '');
+}
+
+async function verifiedFollowUpIdentity(
+  database: ActionDatabase,
+  instance: string,
+  candidatePhone: string,
+  candidateConversation: string,
+): Promise<FollowUpIdentity> {
+  const result = await database.execute(sql`
+    SELECT activity.provider_conversation_id, activity.canonical_phone
+    FROM whatsapp_contact_activity activity
+    WHERE activity.instance = ${instance}
+      AND activity.identity_status IN ('verified', 'derived')
+      AND activity.blocked_at IS NULL
+      AND activity.canonical_phone ~ '^[0-9]{10,15}$'
+      AND (
+        (${candidatePhone} <> '' AND activity.canonical_phone = ${candidatePhone})
+        OR (
+          ${candidateConversation} <> ''
+          AND activity.provider_conversation_id = ${candidateConversation}
+        )
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM whatsapp_follow_up_ingestion_health health
+        WHERE health.instance = ${instance}
+          AND health.blocked_at IS NOT NULL
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM whatsapp_contact_activity blocked
+        WHERE blocked.instance = ${instance}
+          AND blocked.blocked_at IS NOT NULL
+          AND (
+            blocked.provider_conversation_id = activity.provider_conversation_id
+            OR blocked.canonical_phone = activity.canonical_phone
+          )
+      )
+    ORDER BY CASE WHEN activity.canonical_phone = ${candidatePhone} THEN 0 ELSE 1 END,
+             activity.updated_at DESC,
+             activity.id
+    LIMIT 1
+  `);
+  const row = Array.from(result as Iterable<Record<string, unknown>>)[0];
+  const canonicalPhone = phoneDigits(row?.canonical_phone);
+  const providerConversationId = String(row?.provider_conversation_id || '').trim();
+  if (!row || !/^[0-9]{10,15}$/.test(canonicalPhone) || !providerConversationId) {
+    throw new ActionConflictError(
+      'A identidade do contato não foi validada na instância configurada.',
+    );
+  }
+  return { instance, providerConversationId, canonicalPhone };
+}
+
+async function materializeNewCycleFollowUp(
+  database: ActionDatabase,
+  opportunityId: string,
+  current: typeof quotationFollowUps.$inferSelect | null,
+  successorActionId: string,
+  schedule: NormalizedSchedule,
+  now: Date,
+  instance: string,
+): Promise<void> {
+  const delivery = current
+    ? {
+        quotationId: current.quotationId,
+        revisionId: current.revisionId,
+        deliveryId: current.deliveryId,
+        phone: await deliveryPhone(database, current.deliveryId),
+        receiptAt: current.firstProviderReceiptAt,
+      }
+    : await eligibleNewCycleDelivery(database, opportunityId);
+  if (!delivery) {
+    throw new ActionConflictError(
+      'Não há proposta entregue e identificada para iniciar um novo ciclo.',
+    );
+  }
+  const identity = await verifiedFollowUpIdentity(
+    database,
+    instance,
+    phoneDigits(current?.canonicalPhone) || phoneDigits(delivery.phone),
+    String(current?.providerConversationId || delivery.phone).trim(),
+  );
+  const cycleResult = await database.execute(sql`
+    SELECT ${nextFollowUpCycleNumber(sql`${opportunityId}::uuid`)} AS cycle_number
+  `);
+  const cycleRow = Array.from(cycleResult as Iterable<Record<string, unknown>>)[0];
+  const cycleNumber = Number(cycleRow?.cycle_number || 1);
+  if (!Number.isInteger(cycleNumber) || cycleNumber < 1) {
+    throw new OpportunityActionRepositoryError();
+  }
+  const firstProviderReceiptAt = current?.firstProviderReceiptAt || delivery.receiptAt;
+  if (current) {
+    const [updated] = await database
+      .update(quotationFollowUps)
+      .set({
+        revisionId: delivery.revisionId,
+        deliveryId: delivery.deliveryId,
+        cycleNumber,
+        attemptNumber: 1,
+        sourceActionId: successorActionId,
+        instance: identity.instance,
+        providerConversationId: identity.providerConversationId,
+        canonicalPhone: identity.canonicalPhone,
+        state: 'waiting',
+        closedReason: null,
+        approvedOpportunityId: null,
+        leaseToken: null,
+        leaseUntil: null,
+        transportStartedAt: null,
+        providerMessageId: null,
+        firstProviderReceiptAt,
+        dueAt: schedule.dueAt,
+        eligibilityVersion: null,
+        messageSnapshot: null,
+        approvedAt: null,
+        sentAt: null,
+        closedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(quotationFollowUps.id, current.id))
+      .returning({ id: quotationFollowUps.id });
+    if (!updated) throw new ActionConflictError();
+    return;
+  }
+  const [inserted] = await database
+    .insert(quotationFollowUps)
+    .values({
+      id: randomUUID(),
+      quotationId: delivery.quotationId,
+      revisionId: delivery.revisionId,
+      deliveryId: delivery.deliveryId,
+      cycleNumber,
+      attemptNumber: 1,
+      sourceActionId: successorActionId,
+      approvedOpportunityId: null,
+      instance: identity.instance,
+      providerConversationId: identity.providerConversationId,
+      canonicalPhone: identity.canonicalPhone,
+      eligibilityVersion: null,
+      messageSnapshot: null,
+      state: 'waiting',
+      closedReason: null,
+      leaseToken: null,
+      leaseUntil: null,
+      transportStartedAt: null,
+      providerMessageId: null,
+      firstProviderReceiptAt,
+      dueAt: schedule.dueAt,
+      approvedAt: null,
+      sentAt: null,
+      closedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning({ id: quotationFollowUps.id });
+  if (!inserted) throw new ActionConflictError();
 }
 
 async function completeWithClose(
@@ -1167,6 +1881,57 @@ async function replayManualContact(
   return manualContactResultFromEvent(event, action || null, successor);
 }
 
+async function findFollowUpContinuityAction(
+  database: ActionDatabase,
+  commandId: string
+): Promise<typeof opportunityNextActions.$inferSelect | null> {
+  const [action] = await database
+    .select()
+    .from(opportunityNextActions)
+    .where(eq(opportunityNextActions.continuityCommandId, commandId))
+    .limit(1);
+  return action || null;
+}
+
+async function replayFollowUpContinuity(
+  database: ActionDatabase,
+  successor: typeof opportunityNextActions.$inferSelect,
+  fingerprint: string
+): Promise<OpportunityActionCommandResult> {
+  if (successor.continuityCommandFingerprint !== fingerprint) {
+    throw new ActionConflictError('O ID do comando já foi usado com outra decisão.');
+  }
+  const [action] = await database
+    .select()
+    .from(opportunityNextActions)
+    .where(eq(opportunityNextActions.replacedById, successor.id))
+    .limit(1);
+  const initialSuccessor = rowRecord({
+    ...successor,
+    state: 'active',
+    version: successor.version,
+    updatedAt: successor.createdAt,
+    transitionActor: null,
+    transitionAt: null,
+    transitionOrigin: null,
+    transitionReason: null,
+    replacedById: null,
+  });
+  return {
+    actionId: action?.id || successor.id,
+    opportunityId: successor.opportunityId,
+    state: action ? rowState(action.state) : 'completed',
+    version: successor.version,
+    action: action ? rowRecord(action) : null,
+    successor: initialSuccessor,
+    closed: false,
+  };
+}
+
+function isFollowUpDecisionAction(action: typeof opportunityNextActions.$inferSelect): boolean {
+  return action.reasonCode === FOLLOW_UP_DECISION_REASON_CODE;
+}
+
 /**
  * Guarantees the first-contact action of an opportunity exists exactly once.
  * The first action ever created for a demand is the admission work; later
@@ -1271,9 +2036,9 @@ export function createPostgresOpportunityActionRepository(
               d.email AS contact_email,
               d.client_id,
               c.nome AS client_name,
-              anchor.quotation_id AS source_quotation_id,
-              anchor.revision_id AS source_revision_id,
-              anchor.delivery_id AS source_delivery_id,
+              COALESCE(anchor.quotation_id, source_follow_up.quotation_id) AS source_quotation_id,
+              COALESCE(anchor.revision_id, source_follow_up.revision_id) AS source_revision_id,
+              COALESCE(anchor.delivery_id, source_follow_up.delivery_id) AS source_delivery_id,
               CASE
                 WHEN a.schedule_type = 'date_only' THEN
                   CASE
@@ -1312,6 +2077,13 @@ export function createPostgresOpportunityActionRepository(
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
             LEFT JOIN opportunity_delivery_anchors anchor ON anchor.created_action_id = a.id
+            LEFT JOIN LATERAL (
+              SELECT f.quotation_id, f.revision_id, f.delivery_id
+              FROM quotation_follow_ups f
+              WHERE f.source_action_id = a.id
+              ORDER BY f.cycle_number DESC, f.attempt_number DESC, f.updated_at DESC
+              LIMIT 1
+            ) source_follow_up ON true
             WHERE (
               ${
                 filter === 'closed'
@@ -1599,6 +2371,11 @@ export function createPostgresOpportunityActionRepository(
           if (!input.replaceActionId || input.replaceActionId !== active.id) {
             throw new ActionConflictError('A oportunidade já possui uma próxima ação ativa.');
           }
+          if (isFollowUpDecisionAction(active)) {
+            throw new ActionConflictError(
+              'A decisão de continuidade exige escolher novo ciclo ou data confirmada.'
+            );
+          }
           const expectedVersion = validateVersion(input.expectedVersion);
           assertExpectedAction(active, expectedVersion);
           return replaceActiveAction(
@@ -1638,6 +2415,11 @@ export function createPostgresOpportunityActionRepository(
           assertOpenOpportunity(deal.status);
           const active = await lockAction(database, actionId, reference.opportunityId);
           assertExpectedAction(active, expectedVersion);
+          if (isFollowUpDecisionAction(active)) {
+            throw new ActionConflictError(
+              'A decisão de continuidade exige escolher novo ciclo ou data confirmada.'
+            );
+          }
           return replaceActiveAction(
             database,
             active,
@@ -1687,6 +2469,12 @@ export function createPostgresOpportunityActionRepository(
           assertOpenOpportunity(deal.status);
           const active = await lockAction(database, actionId, reference.opportunityId);
           assertExpectedAction(active, expectedVersion);
+
+          if (isFollowUpDecisionAction(active)) {
+            throw new ActionConflictError(
+              'A decisão de continuidade exige escolher novo ciclo ou data confirmada.'
+            );
+          }
 
           if (successor) {
             return completeWithSuccessor(
@@ -1762,30 +2550,97 @@ export function createPostgresOpportunityActionRepository(
           assertOpenOpportunity(deal.status);
           const active = await lockAction(database, normalized.actionId, normalized.opportunityId);
           assertExpectedAction(active, normalized.expectedVersion);
+          if (isFollowUpDecisionAction(active)) {
+            throw new ActionConflictError(
+              'A decisão de continuidade exige escolher novo ciclo ou data confirmada.'
+            );
+          }
+          if (normalized.countsAsFollowUp && deal.followUpStage >= 2) {
+            throw new ActionConflictError(
+              'O limite de dois retornos foi atingido. Registre uma decisão de continuidade.'
+            );
+          }
 
           const eventId = idFactory();
           const continuation = normalized.continuation;
-          const actionResult = continuation.schedule
-            ? await completeWithSuccessor(
+          const current = await lockCurrentFollowUp(
+            database,
+            normalized.opportunityId,
+            active.id,
+            { rejectStartedTransport: normalized.countsAsFollowUp },
+          );
+          if (current?.state === 'processing' && current.transportStartedAt) {
+            throw new ActionConflictError('O envio técnico já começou. Recarregue a fila.');
+          }
+          const silentCount =
+            normalized.countsAsFollowUp && normalized.resultCode === 'no_response';
+          const legacyFollowUpSchedule = normalized.countsAsFollowUp && !current
+            ? followUpTransitionSchedule((deal.followUpStage + 1) as 1 | 2, now, 'manual')
+            : null;
+          const actionResult = silentCount && current
+            ? await advanceConfirmedFollowUp({
                 database,
-                active,
-                continuation.schedule,
-                normalized.actor,
-                'manual',
-                active.reason,
-                now,
-                idFactory
-              )
-            : await completeWithClose(
-                database,
-                deal,
-                active,
-                normalized.actor,
-                continuation.closeReason!,
-                now
-              );
+                opportunityId: normalized.opportunityId,
+                current,
+                stage: deal.followUpStage,
+                confirmedAt: now,
+                source: 'manual',
+                actor: normalized.actor,
+                confirmationCommandId: normalized.commandId,
+                activeAction: active,
+                idFactory,
+              })
+            : legacyFollowUpSchedule
+              ? await completeWithSuccessor(
+                  database,
+                  active,
+                  legacyFollowUpSchedule,
+                  normalized.actor,
+                  'manual',
+                  legacyFollowUpSchedule.reason,
+                  now,
+                  idFactory,
+                )
+            : continuation.schedule
+              ? await completeWithSuccessor(
+                  database,
+                  active,
+                  continuation.schedule,
+                  normalized.actor,
+                  'manual',
+                  active.reason,
+                  now,
+                  idFactory
+                )
+              : await completeWithClose(
+                  database,
+                  deal,
+                  active,
+                  normalized.actor,
+                  continuation.closeReason!,
+                  now
+                );
 
-          if (normalized.countsAsFollowUp) {
+          if (normalized.countsAsFollowUp && current && !silentCount) {
+            await archiveManualFollowUpAttempt(database, {
+              opportunityId: normalized.opportunityId,
+              current,
+              stage: deal.followUpStage,
+              confirmedAt: now,
+              commandId: normalized.commandId,
+              successorActionId: actionResult.successor?.actionId,
+              idFactory,
+            });
+          } else if (!normalized.countsAsFollowUp) {
+            await closePendingTechnicalFollowUp(
+              database,
+              normalized.opportunityId,
+              active.id,
+              now,
+            );
+          }
+
+          if (normalized.countsAsFollowUp && !current) {
             const [updated] = await database
               .update(crmDeals)
               .set({
@@ -1843,6 +2698,99 @@ export function createPostgresOpportunityActionRepository(
         if (isUniqueViolation(error)) {
           const winner = await findManualContactEvent(getDb(), normalized.commandId);
           if (winner) return replayManualContact(getDb(), winner, fingerprint);
+        }
+        return preserveKnownError(error);
+      }
+    },
+
+    async continueFollowUp(input: ContinueFollowUpInput): Promise<OpportunityActionCommandResult> {
+      const normalized = normalizeFollowUpContinuity(input);
+      const fingerprint = followUpContinuityFingerprint(normalized);
+      const now = nowDate(input.now, nowFactory);
+      try {
+        const existing = await findFollowUpContinuityAction(getDb(), normalized.commandId);
+        if (existing) return replayFollowUpContinuity(getDb(), existing, fingerprint);
+
+        return await getDb().transaction(async (database) => {
+          const beforeLock = await findFollowUpContinuityAction(database, normalized.commandId);
+          if (beforeLock) return replayFollowUpContinuity(database, beforeLock, fingerprint);
+
+          const deal = await lockOpportunity(database, normalized.opportunityId);
+          assertOpenOpportunity(deal.status);
+          if (deal.followUpStage !== 2) {
+            throw new ActionConflictError(
+              'A decisão de continuidade só está disponível após o segundo retorno.'
+            );
+          }
+          const active = await lockAction(database, normalized.actionId, normalized.opportunityId);
+          assertExpectedAction(active, normalized.expectedVersion);
+          if (!isFollowUpDecisionAction(active)) {
+            throw new ActionConflictError('A ação atual não é uma decisão de continuidade.');
+          }
+
+          const current = await lockCurrentFollowUp(
+            database,
+            normalized.opportunityId,
+            active.id,
+            { rejectStartedTransport: true },
+          );
+          if (current?.state === 'processing' && current.transportStartedAt) {
+            throw new ActionConflictError('O envio técnico já começou. Recarregue a fila.');
+          }
+          const successorSchedule =
+            normalized.type === 'new_cycle'
+              ? {
+                  ...normalized.schedule,
+                  kind: 'customer_contact' as const,
+                  reasonCode: 'proposal_delivery_confirmed',
+                  origin: 'event' as const,
+                  reason: normalized.schedule.reason || 'Primeiro retorno do novo ciclo',
+                }
+              : normalized.schedule;
+
+          const successorActionId = normalized.type === 'new_cycle' ? idFactory() : undefined;
+          const successor = await completeWithSuccessor(
+            database,
+            active,
+            successorSchedule,
+            normalized.actor,
+            normalized.type === 'new_cycle' ? 'event' : 'manual',
+            normalized.type === 'new_cycle'
+              ? 'Novo ciclo confirmado pelo operador'
+              : 'Data de continuidade confirmada pelo operador',
+            now,
+            idFactory,
+            { commandId: normalized.commandId, fingerprint, type: normalized.type },
+            successorActionId,
+          );
+          if (normalized.type === 'new_cycle') {
+            const [reset] = await database
+              .update(crmDeals)
+              .set({ followUpStage: 0, updatedAt: now })
+              .where(and(eq(crmDeals.id, normalized.opportunityId), eq(crmDeals.followUpStage, 2)))
+              .returning({ id: crmDeals.id });
+            if (!reset) throw new ActionConflictError();
+
+            const instance = String(process.env.EVOLUTION_INSTANCE || '').trim();
+            if (!instance) {
+              throw new ActionConflictError('A instância do WhatsApp não está configurada.');
+            }
+            await materializeNewCycleFollowUp(
+              database,
+              normalized.opportunityId,
+              current,
+              successor.successor!.actionId,
+              successorSchedule,
+              now,
+              instance,
+            );
+          }
+          return successor;
+        });
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          const winner = await findFollowUpContinuityAction(getDb(), normalized.commandId);
+          if (winner) return replayFollowUpContinuity(getDb(), winner, fingerprint);
         }
         return preserveKnownError(error);
       }

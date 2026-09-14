@@ -833,6 +833,9 @@ export const opportunityNextActions = pgTable(
     transitionOrigin: varchar('transition_origin', { length: 16 }),
     transitionReason: varchar('transition_reason', { length: 500 }),
     replacedById: uuid('replaced_by_id'),
+    continuityCommandId: varchar('continuity_command_id', { length: 255 }),
+    continuityCommandFingerprint: varchar('continuity_command_fingerprint', { length: 64 }),
+    continuityType: varchar('continuity_type', { length: 16 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -874,6 +877,17 @@ export const opportunityNextActions = pgTable(
     check(
       'opportunity_next_actions_transition_origin_check',
       sql`${table.transitionOrigin} IS NULL OR ${table.transitionOrigin} IN ('manual', 'automatic', 'event')`
+    ),
+    uniqueIndex('opportunity_next_actions_continuity_command_unique')
+      .on(table.continuityCommandId)
+      .where(sql`${table.continuityCommandId} IS NOT NULL`),
+    check(
+      'opportunity_next_actions_continuity_fingerprint_check',
+      sql`(${table.continuityCommandId} IS NULL AND ${table.continuityCommandFingerprint} IS NULL AND ${table.continuityType} IS NULL) OR (${table.continuityCommandId} IS NOT NULL AND char_length(btrim(${table.continuityCommandId})) > 0 AND ${table.continuityCommandFingerprint} ~ '^[0-9a-f]{64}$' AND ${table.continuityType} IN ('new_cycle', 'manual_date'))`
+    ),
+    check(
+      'opportunity_next_actions_continuity_type_check',
+      sql`${table.continuityType} IS NULL OR ${table.continuityType} IN ('new_cycle', 'manual_date')`
     ),
   ]
 );
@@ -1408,9 +1422,9 @@ export const whatsappFollowUpIngestionHealth = pgTable(
 );
 
 /**
- * One durable follow-up attempt per quotation. Queue rows are created when a
- * quotation delivery is accepted; approval-only fields remain nullable until
- * a human approves or dismisses the attempt.
+ * One durable current follow-up attempt per quotation. Completed attempts are
+ * copied to quotationFollowUpAttemptHistory before this row is reused for the
+ * next attempt or cycle.
  */
 export const quotationFollowUps = pgTable(
   'quotation_follow_ups',
@@ -1425,6 +1439,11 @@ export const quotationFollowUps = pgTable(
     deliveryId: uuid('delivery_id')
       .notNull()
       .references(() => quotationDeliveries.id),
+    cycleNumber: integer('cycle_number').notNull().default(1),
+    attemptNumber: integer('attempt_number').notNull().default(1),
+    sourceActionId: uuid('source_action_id').references(() => opportunityNextActions.id, {
+      onDelete: 'restrict',
+    }),
     approvedOpportunityId: uuid('approved_opportunity_id').references(() => crmDeals.id, {
       onDelete: 'restrict',
     }),
@@ -1448,6 +1467,9 @@ export const quotationFollowUps = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
   (table) => [
+    // This unique index is the rollout seam used by the previous app's
+    // `ON CONFLICT (quotation_id)` statements. Keep it for the entire expand
+    // release while history lives in a separate table.
     uniqueIndex('quotation_follow_ups_quotation_id_unique').on(table.quotationId),
     uniqueIndex('quotation_follow_ups_provider_message_id_unique')
       .on(table.providerMessageId)
@@ -1458,6 +1480,12 @@ export const quotationFollowUps = pgTable(
         sql`${table.approvedOpportunityId} IS NOT NULL AND ${table.state} IN ('approved', 'processing')`
       ),
     index('quotation_follow_ups_state_due_idx').on(table.state, table.dueAt),
+    index('quotation_follow_ups_source_action_idx').on(table.sourceActionId),
+    check('quotation_follow_ups_cycle_number_check', sql`${table.cycleNumber} > 0`),
+    check(
+      'quotation_follow_ups_attempt_number_check',
+      sql`${table.attemptNumber} IN (1, 2)`,
+    ),
     check(
       'quotation_follow_ups_instance_not_blank_check',
       sql`char_length(btrim(${table.instance})) > 0`
@@ -1535,6 +1563,91 @@ export const quotationFollowUps = pgTable(
       )`
     ),
   ]
+);
+
+/**
+ * Immutable commercial audit of a confirmed follow-up attempt. The current
+ * queue row is deliberately not referenced with a foreign key: it is reused
+ * for the next attempt, while this record must survive that reuse. The
+ * opportunity/cycle/attempt identity is the durable idempotency boundary.
+ */
+export const quotationFollowUpAttemptHistory = pgTable(
+  'quotation_follow_up_attempt_history',
+  {
+    id: uuid('id').primaryKey(),
+    opportunityId: uuid('opportunity_id')
+      .notNull()
+      .references(() => crmDeals.id, { onDelete: 'restrict' }),
+    quotationId: uuid('quotation_id')
+      .notNull()
+      .references(() => quotations.id, { onDelete: 'restrict' }),
+    followUpId: uuid('follow_up_id').notNull(),
+    cycleNumber: integer('cycle_number').notNull(),
+    attemptNumber: integer('attempt_number').notNull(),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id, { onDelete: 'restrict' }),
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .references(() => quotationDeliveries.id, { onDelete: 'restrict' }),
+    sourceActionId: uuid('source_action_id').references(() => opportunityNextActions.id, {
+      onDelete: 'restrict',
+    }),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }).notNull(),
+    eligibilityVersion: varchar('eligibility_version', { length: 64 }),
+    messageSnapshot: varchar('message_snapshot', { length: 4000 }),
+    state: varchar('state', { length: 20 }).notNull(),
+    closedReason: varchar('closed_reason', { length: 64 }),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    transportStartedAt: timestamp('transport_started_at', { withTimezone: true }),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    firstProviderReceiptAt: timestamp('first_provider_receipt_at', { withTimezone: true }),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    confirmationSource: varchar('confirmation_source', { length: 16 }).notNull(),
+    confirmationCommandId: varchar('confirmation_command_id', { length: 255 }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('quotation_follow_up_attempt_history_opportunity_cycle_attempt_unique').on(
+      table.opportunityId,
+      table.cycleNumber,
+      table.attemptNumber,
+    ),
+    uniqueIndex('quotation_follow_up_attempt_history_provider_message_unique')
+      .on(table.providerMessageId)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+    index('quotation_follow_up_attempt_history_quotation_idx').on(
+      table.quotationId,
+      table.confirmedAt,
+    ),
+    check(
+      'quotation_follow_up_attempt_history_cycle_number_check',
+      sql`${table.cycleNumber} > 0`,
+    ),
+    check(
+      'quotation_follow_up_attempt_history_attempt_number_check',
+      sql`${table.attemptNumber} IN (1, 2)`,
+    ),
+    check(
+      'quotation_follow_up_attempt_history_confirmation_source_check',
+      sql`${table.confirmationSource} IN ('worker', 'manual')`,
+    ),
+    check(
+      'quotation_follow_up_attempt_history_state_check',
+      sql`${table.state} IN ('sent', 'manual')`,
+    ),
+    check(
+      'quotation_follow_up_attempt_history_provider_message_check',
+      sql`(${table.confirmationSource} = 'worker' AND char_length(btrim(${table.providerMessageId})) > 0) OR (${table.confirmationSource} = 'manual' AND ${table.providerMessageId} IS NULL)`,
+    ),
+  ],
 );
 
 

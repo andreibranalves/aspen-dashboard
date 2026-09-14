@@ -17,6 +17,7 @@ import {
   type ManualContactType,
   type OpportunityQueueFilter,
   type OpportunityQueueItem,
+  type FollowUpContinuityType,
 } from '../_infrastructure/db/repositories/opportunity-actions-repository.js';
 
 export interface CommercialQueueHandlerDependencies {
@@ -40,6 +41,8 @@ const REASON_LABELS: Record<string, string> = {
   new_lead: 'Primeiro atendimento',
   manual_action: 'Ação manual',
   proposal_delivery_confirmed: 'Entrega confirmada da proposta',
+  follow_up_second_return: 'Segundo retorno',
+  follow_up_decide_continuity: 'Decidir continuidade',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -243,6 +246,22 @@ function manualContactFrom(payload: Record<string, unknown>) {
       continuation.type === 'close'
         ? { type: 'close' as const, reason: continuation.reason! }
         : { type: continuation.type, schedule: continuation.schedule! },
+  };
+}
+
+function continueFollowUpFrom(payload: Record<string, unknown>) {
+  const type = payload.continuity_type ?? payload.type;
+  if (type !== 'new_cycle' && type !== 'manual_date') {
+    throw new HandlerInputError('A decisão de continuidade é inválida.');
+  }
+  return {
+    commandId: textField(payload, 'command_id'),
+    opportunityId: textField(payload, 'opportunity_id'),
+    actionId: textField(payload, 'action_id'),
+    expectedVersion: expectedVersion(payload),
+    type: type as FollowUpContinuityType,
+    schedule: { ...scheduleFrom(payload), origin: 'manual' as const },
+    actor: AUTHENTICATED_OPERATOR,
   };
 }
 
@@ -501,6 +520,11 @@ export function createCommercialQueueHandler(
       if (command === 'manual_contact' || command === 'record_manual_contact') {
         const recorded = await repository.recordManualContact(manualContactFrom(payload));
         return json(200, publicManualContact(recorded));
+      }
+
+      if (command === 'continue_follow_up' || command === 'follow_up_continuity') {
+        const continued = await repository.continueFollowUp(continueFollowUpFrom(payload));
+        return json(200, publicCommand(continued));
       }
 
       if (command === 'set_urgency' || command === 'set_urgent') {

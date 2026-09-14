@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, notInArray, or } from 'drizzle-orm';
+import { and, eq, inArray, like, notInArray, or, sql } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
 import {
   clients,
@@ -268,6 +268,14 @@ async function buildPlan(db: CleanupDatabase, candidates: BetaCleanupCandidate[]
         .where(inArray(opportunityNextActions.opportunityId, [...dealIds])),
     );
     for (const row of historyRows) blockers.push({ type: 'commercial_history', id: row.opportunityId });
+    const followUpHistoryRows = await db.execute(sql`
+      SELECT DISTINCT opportunity_id
+      FROM quotation_follow_up_attempt_history
+      WHERE opportunity_id IN (${sql.join([...dealIds].map((id) => sql`${id}::uuid`), sql`, `)})
+    `);
+    for (const row of Array.from(followUpHistoryRows) as Array<{ opportunity_id?: unknown }>) {
+      if (row.opportunity_id) blockers.push({ type: 'commercial_history', id: String(row.opportunity_id) });
+    }
   }
   if (clientIds.size) {
     const clientList = [...clientIds];

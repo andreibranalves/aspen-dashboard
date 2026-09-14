@@ -73,6 +73,9 @@ function repository(
     recordManualContact: async () => {
       throw new Error('manual contact is not part of this test');
     },
+    continueFollowUp: async () => {
+      throw new Error('continuity is not part of this test');
+    },
     setUrgency: async () => ({
       opportunityId: resultOpportunityId,
       actionId: resultActionId,
@@ -413,5 +416,61 @@ test('POST /api/commercial-queue encaminha a urgência do negócio com token da 
     action_id: resultActionId,
     version: 2,
     is_urgent: true,
+  });
+});
+
+test('POST /api/commercial-queue encaminha a decisão explícita de continuidade', async () => {
+  let received: Record<string, unknown> | undefined;
+  const handler = createCommercialQueueHandler({
+    repository: repository({
+      continueFollowUp: async (input) => {
+        received = input as unknown as Record<string, unknown>;
+        return {
+          actionId: resultActionId,
+          opportunityId: resultOpportunityId,
+          state: 'completed',
+          version: 2,
+          action: null,
+          successor: null,
+          closed: false,
+        };
+      },
+    }),
+  });
+  const response = await handler(
+    event('POST', {}, {
+      command: 'continue_follow_up',
+      command_id: 'continuity-command-1',
+      opportunity_id: resultOpportunityId,
+      action_id: resultActionId,
+      expected_version: 3,
+      continuity_type: 'new_cycle',
+      kind: 'customer_contact',
+      due_date: '2026-09-18',
+      due_time: null,
+      reason: 'Retomar novo ciclo',
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(received?.commandId, 'continuity-command-1');
+  assert.equal(received?.opportunityId, resultOpportunityId);
+  assert.equal(received?.actionId, resultActionId);
+  assert.equal(received?.expectedVersion, 3);
+  assert.equal(received?.type, 'new_cycle');
+  assert.deepEqual(received?.schedule, {
+    kind: 'customer_contact',
+    dueDate: '2026-09-18',
+    dueTime: null,
+    reason: 'Retomar novo ciclo',
+    origin: 'manual',
+  });
+  assert.deepEqual(JSON.parse(response.body || '{}'), {
+    action_id: resultActionId,
+    opportunity_id: resultOpportunityId,
+    state: 'completed',
+    version: 2,
+    closed: false,
+    successor: null,
   });
 });

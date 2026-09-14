@@ -108,6 +108,7 @@ export type CommercialManualContactResultCode =
   | 'wrong_contact'
   | 'other';
 export type CommercialManualContactContinuationType = 'successor' | 'wait' | 'close';
+export type CommercialFollowUpContinuityType = 'new_cycle' | 'manual_date';
 
 export type CommercialManualContactContinuation =
   | { type: 'successor'; schedule: CommercialActionScheduleInput }
@@ -158,6 +159,15 @@ export interface CommercialManualContactResult extends CommercialActionCommandRe
   countsAsFollowUp: boolean;
   continuationType: CommercialManualContactContinuationType;
   source: 'operator_statement';
+}
+
+export interface CommercialFollowUpContinuityInput {
+  commandId: string;
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  type: CommercialFollowUpContinuityType;
+  schedule: CommercialActionScheduleInput;
 }
 
 export interface CommercialUrgencyResult {
@@ -688,6 +698,20 @@ export function recordManualContact(
   input: CommercialManualContactInput
 ): Promise<CommercialManualContactResult> {
   return sendActionBody(manualContactPayload(input)).then(parseManualContactResult);
+}
+
+export function continueCommercialFollowUp(
+  input: CommercialFollowUpContinuityInput
+): Promise<CommercialActionCommandResult> {
+  return sendAction({
+    command: 'continue_follow_up',
+    command_id: input.commandId,
+    opportunity_id: input.opportunityId,
+    action_id: input.actionId,
+    expected_version: input.expectedVersion,
+    continuity_type: input.type,
+    ...schedulePayload(input.schedule),
+  });
 }
 
 function parseHistoryEntry(value: unknown): CommercialActionHistoryEntry {
