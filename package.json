@@ -43,7 +43,7 @@
     "check:vercel-functions": "node scripts/check-vercel-function-layout.mjs",
     "check": "npm run lint && npm run typecheck && npm run check:tailwind && npm run build",
     "verify:fast": "npm run lint && npm run typecheck && npm run check:tailwind && npm run check:db-boundary && npm run check:integration-boundary && npm run check:whatsapp-extension && npm run check:db-migrations && npm run check:vercel-functions",
-    "verify:full": "npm run verify:fast && env -u TEST_DATABASE_URL -u DATABASE_URL npm run test:unit && npm run build:web && npm run test:e2e",
+    "verify:full": "node scripts/lib/local-e2e-env.mjs && npm run verify:fast && env -u TEST_DATABASE_URL -u DATABASE_URL npm run test:unit && npm run build:web && npm run test:e2e",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit:run": "TZ=UTC node --test --test-concurrency=4 tests/unit/*.test.{js,ts}",
     "test:unit": "npm run build:api && npm run test:unit:run",

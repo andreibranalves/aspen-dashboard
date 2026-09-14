@@ -59,6 +59,10 @@ export function resolveE2eBaseUrl(env = process.env, { port = LOCAL_E2E_PORT } =
         'Configuração contraditória: BASE_URL aponta para a origem de Preview sem APP_ENV=preview.'
       );
     }
+    const host = new globalThis.URL(localBase).hostname;
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) {
+      throw new Error('BASE_URL do E2E local deve usar loopback. Alvos remotos usam o runner Preview.');
+    }
     return localBase;
   }
 

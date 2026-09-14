@@ -3,7 +3,8 @@
 Esta é a fonte normativa única das lanes, da revisão e dos limites de correção.
 A prioridade é ship fast: classifique pela consequência concreta do diff,
 remova validação sem valor e preserve rigor onde há dano real. `SHIP` é o
-padrão. `RELEASE` é um gate periódico, não uma lane de issue.
+padrão. `RELEASE` é um gate periódico, não uma lane de issue. Classifique o
+diff inteiro pela maior consequência concreta, não pelo arquivo ou pela skill.
 
 ## SHIP (padrão)
 
@@ -55,10 +56,27 @@ improvável são FOLLOW-UP ou IGNORE.
 
 O limite GLOBAL de ciclos após review é: SHIP 1, SAFE 2, CRITICAL 3. A contagem
 não reinicia por agente, reviewer ou CI. Não repita a mesma suíte entre
-implementador, Hermes e reviewer sem alteração, dúvida concreta ou reprodução;
+implementador e reviewer sem alteração, dúvida concreta ou reprodução;
 entregue logs e testes como evidência sem repetição ritual. Ao atingir o limite,
 STOP: registre o blocker e não faça merge inseguro nem peça mais reviewers para
-resetar a contagem. Hermes arbitra `BLOCKER`, `FOLLOW-UP` ou `IGNORE`.
+resetar a contagem. O agente principal propõe `BLOCKER`, `FOLLOW-UP` ou `IGNORE`;
+o operador arbitra divergências e autoriza operações sensíveis.
+
+O agente principal classifica o risco, implementa e reúne evidências. O reviewer
+independente avalia requisito e correção no mesmo review; dois eixos não exigem
+dois subagentes. Se o harness não oferecer execução independente, registre o
+review como pendente; uma segunda leitura própria não o substitui.
+
+Em entrega ou handoff, registre no PR/issue ou documento de passagem: objetivo,
+base/HEAD e diff não commitado, branch/worktree, lane e dano, autorizações,
+checks executados e código avaliado, ciclos consumidos, blockers e próximo passo.
+Evidência de outro agente é reutilizável quando corresponde ao código atual;
+perda de contexto não autoriza repetir efeitos externos.
+
+Skills orientam a técnica, não concedem autorização para commit, publicação ou
+operações. Orquestradores opcionais devem respeitar este contador global e os
+checks da lane. Recursos globais de outros projetos não são pré-requisitos do
+Aspen; sua instalação ou reconfiguração exige decisão separada.
 
 Backup ajuda a recuperar CRUD comum, mas não desfaz envio duplicado, orçamento
 oficialmente emitido errado, pedido real ou corrupção comercial. Esses efeitos
@@ -70,6 +88,10 @@ PR/branch usa CI e Vercel Preview, com URL própria, `APP_ENV=preview`,
 `EXTERNAL_WRITES_ENABLED=0` e PostgreSQL isolado por branch. O prune existente
 no fechamento do PR é best-effort; não há claim de remoção garantida sem
 evidência operacional.
+
+A publicação passa por PR e CI; push direto em `master` não é caminho de entrega.
+Proteção de branch e vínculo entre CI e promoção precisam de confirmação no
+provedor; um workflow configurado não comprova que o merge está tecnicamente bloqueado.
 
 Merge em `master` usa Vercel Production, banco e integrações reais conforme a
 configuração operacional. Preview é a única homologação. VPS de staging,
@@ -87,7 +109,11 @@ deploy, migration, envio ou outro efeito externo é sempre separada.
 
 Use `npm run verify:full` somente para release importante, milestone, mudança
 transversal relevante ou pedido explícito. Ele reúne `verify:fast`, corpus,
-build e E2E; não pertence ao inner loop de toda issue.
+build e E2E; não pertence ao inner loop de toda issue. Exige `TEST_DATABASE_URL`
+de PostgreSQL local descartável já disponível; o preflight inicial falha antes
+da suíte se o alvo estiver ausente ou for remoto. O E2E deriva `DATABASE_URL`
+desse alvo e recusa um valor herdado diferente. Não carrega `.env` operacional.
+Veja [E2E seguro](./safe-e2e.md) para a separação entre teste mockado, integrado e Preview.
 
 ## Ciclo de vida das branches de Preview
 

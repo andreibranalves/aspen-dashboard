@@ -1,4 +1,4 @@
-import { shouldPublishFollowUpImmediately } from './quotation-follow-up-state.js';
+import { shouldPublishFollowUpImmediately } from '../../../_modules/quotation-follow-up-state.js';
 
 export interface QuotationFollowUpQstashEnvironment {
   QSTASH_TOKEN?: string;

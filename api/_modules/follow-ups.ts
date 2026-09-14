@@ -17,7 +17,7 @@ import {
 import {
   publishQuotationFollowUp,
   type QuotationFollowUpQstashDependencies,
-} from './quotation-follow-up-qstash.js';
+} from '../_infrastructure/integrations/qstash/client.js';
 
 export interface FollowUpsHandlerDependencies {
   followUpModule?: QuotationFollowUpModule;

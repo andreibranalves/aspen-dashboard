@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { getBlobClient } from '../_infrastructure/integrations/blob/client.js';
-import { createHttpError } from '../_shared/http-error.js';
+import { createHttpError, isPublicHttpError } from '../_shared/http-error.js';
 import {
   MAX_IMAGE_BYTES,
   MAX_VIDEO_BYTES,
@@ -191,11 +191,11 @@ function storeFor(dependencies: CommunicationMediaDependencies = {}): MediaKvSto
   return (dependencies.kvClient || kv) as unknown as MediaKvStore;
 }
 
-function kvFailure(operation: string, id: string, error: unknown): never {
+function kvFailure(operation: string): never {
   throw createHttpError(
     503,
     'Não foi possível acessar o catálogo de mídias. Tente novamente.',
-    `[communication-media] KV ${operation} ${id} failed: ${error instanceof Error ? error.message : String(error)}`
+    `[communication-media] KV ${operation} failed.`
   );
 }
 
@@ -217,8 +217,8 @@ export async function readMediaState(
       version: version == null ? '' : String(version),
     };
   } catch (error) {
-    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-    kvFailure('CAS read', id, error);
+    if (isPublicHttpError(error)) throw error;
+    kvFailure('CAS read');
   }
 }
 
@@ -238,8 +238,8 @@ export async function compareAndSetMedia(
     );
     return Number(result) === 1;
   } catch (error) {
-    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-    kvFailure('CAS write', id, error);
+    if (isPublicHttpError(error)) throw error;
+    kvFailure('CAS write');
   }
 }
 
@@ -256,8 +256,8 @@ export async function deleteMediaIfCurrent(
     );
     return Number(result) === 1;
   } catch (error) {
-    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-    kvFailure('CAS delete', id, error);
+    if (isPublicHttpError(error)) throw error;
+    kvFailure('CAS delete');
   }
 }
 
@@ -282,8 +282,8 @@ async function scanMediaKeys(store: MediaKvStore): Promise<string[]> {
       if (cursor === 0) break;
     }
     return [...keys].sort();
-  } catch (error) {
-    kvFailure('scan', 'media', error);
+  } catch {
+    kvFailure('scan');
   }
 }
 
@@ -302,8 +302,8 @@ async function readMediaByKey(
     }
     return record;
   } catch (error) {
-    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-    kvFailure('get', key, error);
+    if (isPublicHttpError(error)) throw error;
+    kvFailure('get');
   }
 }
 
@@ -333,8 +333,8 @@ async function createMediaIfAbsent(
     );
     return Number(result) === 1;
   } catch (error) {
-    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-    kvFailure('create', id, error);
+    if (isPublicHttpError(error)) throw error;
+    kvFailure('create');
   }
 }
 
@@ -519,16 +519,9 @@ function filterItems(items: Record<string, unknown>[], query: Record<string, str
   return filtered;
 }
 
-function errorLog(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
 function errorResult(error: unknown, fallback: string, fallbackStatus = 503): FunctionResult {
-  const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
-  const known = Number.isInteger(details.statusCode);
-  return jsonResponse(known ? Number(details.statusCode) : fallbackStatus, {
-    error: known && typeof details.message === 'string' ? details.message : fallback,
+  return jsonResponse(isPublicHttpError(error) ? error.statusCode : fallbackStatus, {
+    error: isPublicHttpError(error) ? error.message : fallback,
   });
 }
 
@@ -549,8 +542,8 @@ async function readFallbackMedia(
   try {
     return dependencies.readMedia ? dependencies.readMedia(id) : readMedia(id, store);
   } catch (error) {
-    if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-    kvFailure('get', id, error);
+    if (isPublicHttpError(error)) throw error;
+    kvFailure('get');
   }
 }
 
@@ -582,7 +575,7 @@ export async function handler(
       );
       return jsonResponse(200, { success: true, items });
     } catch (error) {
-      console.error('[communication-media]', errorLog(error));
+      console.error('[communication-media] falha ao listar mídias.');
       return errorResult(error, 'Não foi possível listar as mídias. Tente novamente.');
     }
   }
@@ -596,7 +589,7 @@ export async function handler(
         return jsonResponse(404, { error: 'Mídia não encontrada.' });
       return jsonResponse(200, { success: true, item: publicMediaRecord(media) });
     } catch (error) {
-      console.error('[communication-media]', errorLog(error));
+      console.error('[communication-media] falha ao buscar mídia.');
       return errorResult(error, 'Não foi possível buscar a mídia. Tente novamente.');
     }
   }
@@ -646,7 +639,7 @@ export async function handler(
       await writer(asset);
       return jsonResponse(201, { success: true, item: publicMediaRecord(asset) });
     } catch (error) {
-      console.error('[communication-media]', errorLog(error));
+      console.error('[communication-media] falha ao criar mídia.');
       return errorResult(error, 'Não foi possível criar a mídia. Tente novamente.');
     }
   }
@@ -736,7 +729,7 @@ export async function handler(
         throw createHttpError(409, MEDIA_CONFLICT_ERROR);
       return jsonResponse(200, { success: true, item: publicMediaRecord(asset) });
     } catch (error) {
-      console.error('[communication-media]', errorLog(error));
+      console.error('[communication-media] falha ao atualizar mídia.');
       return errorResult(error, 'Não foi possível atualizar a mídia. Tente novamente.');
     }
   }
@@ -784,19 +777,13 @@ export async function handler(
             origin
           );
         } catch (error) {
-          console.warn(
-            `[communication-media] Blob URL validation failed for ${id}:`,
-            error instanceof Error ? error.message : String(error)
-          );
+          console.warn('[communication-media] Blob URL validation failed.');
           throw error;
         }
         try {
           await (dependencies.blobDelete || getBlobClient().del)(blobUrl);
-        } catch (error) {
-          console.warn(
-            `[communication-media] Blob delete failed for ${id}:`,
-            error instanceof Error ? error.message : String(error)
-          );
+        } catch {
+          console.warn('[communication-media] Blob delete failed.');
           throw createHttpError(
             503,
             MEDIA_BLOB_DELETE_ERROR,
@@ -813,7 +800,7 @@ export async function handler(
       }
       return jsonResponse(200, { success: true, deleted: id });
     } catch (error) {
-      console.error('[communication-media]', errorLog(error));
+      console.error('[communication-media] falha ao remover mídia.');
       return errorResult(error, MEDIA_DELETE_ERROR);
     }
   }

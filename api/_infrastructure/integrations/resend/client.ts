@@ -8,7 +8,7 @@ export interface SendQuotationEmailTransportInput {
   text: string;
 }
 
-import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
+import { assertExternalWritesAllowed } from '../../../_shared/external-writes.js';
 
 export interface ResendTransportDependencies {
   fetchFn?: typeof fetch;

@@ -18,6 +18,23 @@ test('normalizes active Blob credentials on every call', () => {
   assert.equal(getBlobConfig(env).storeId, 'second-store');
 });
 
+test('Preview blocks deletion and token issuance before the SDK, including contradictory env', async () => {
+  for (const env of [
+    {},
+    { APP_ENV: 'preview', EXTERNAL_WRITES_ENABLED: '0' },
+    { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', VERCEL_ENV: 'preview' },
+  ]) {
+    let writes = 0;
+    const client = getBlobClient({
+      del: async () => { writes += 1; },
+      handleUpload: async () => { writes += 1; return {} as never; },
+    }, env);
+    await assert.rejects(client.del('https://blob.example/a'), { statusCode: 503 });
+    await assert.rejects(client.handleUpload({} as never), { statusCode: 503 });
+    assert.equal(writes, 0);
+  }
+});
+
 test('allows minimal SDK operation injection', async () => {
   const calls: string[] = [];
   const client = getBlobClient({
@@ -32,7 +49,7 @@ test('allows minimal SDK operation injection', async () => {
       calls.push('upload');
       return {} as never;
     },
-  });
+  }, { APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1' });
   await client.head('https://blob.example/a');
   await client.del('https://blob.example/a');
   await client.handleUpload({} as never);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { publishQuotationFollowUp } from '../../api/_modules/quotation-follow-up-qstash.js';
+import { publishQuotationFollowUp } from '../../api/_infrastructure/integrations/qstash/client.js';
 
 const followUpId = '00000000-0000-4000-8000-000000000004';
 const environment = {

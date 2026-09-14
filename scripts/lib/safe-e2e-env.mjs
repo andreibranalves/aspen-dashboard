@@ -1,8 +1,7 @@
 // Isolamento de ambiente do E2E integrado local (HTTP -> PostgreSQL -> UI).
 //
-// Motivo: o playwright.config.js carrega `.env` operacional quando
-// DOTENV_CONFIG_PATH não aponta para um arquivo. O servidor herda esse ambiente
-// e um listener de browser NÃO enxerga egress do servidor. Esta camada monta um
+// O runner integrado acrescenta instrumentação de egress à sanitização local:
+// um listener de browser NÃO enxerga egress do servidor. Esta camada monta um
 // ambiente explicitamente não-operacional ANTES de qualquer spawn: remove
 // credenciais de integração, fixa APP_ENV não-produção,
 // EXTERNAL_WRITES_ENABLED=0, força DOTENV_CONFIG_PATH=/dev/null, exige um

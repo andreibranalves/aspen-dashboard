@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   ResendTransportError,
   sendQuotationEmailViaResend,
-} from '../../api/_modules/quotation-email.js';
+} from '../../api/_infrastructure/integrations/resend/client.js';
 
 const input = {
   recipient: 'cliente@example.com',

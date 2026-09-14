@@ -75,6 +75,21 @@ test('rejects provider environment reads through properties and literal keys', (
   );
 });
 
+test('reports Resend and QStash transports and credentials in TSX runtime modules', () => {
+  const path = 'api/_modules/renderer.tsx';
+  assert.deepEqual(findExternalIntegrationBoundaryViolations([source(path, [
+    "fetch('https://api.resend.com/emails');",
+    "fetch('https://qstash.upstash.io/v2/publish');",
+    'process.env.RESEND_API_KEY;',
+    'process.env.QSTASH_TOKEN;',
+  ].join('\n'))]), [
+    { path, line: 1, target: 'resend endpoint' },
+    { path, line: 2, target: 'qstash endpoint' },
+    { path, line: 3, target: 'RESEND_API_KEY' },
+    { path, line: 4, target: 'QSTASH_TOKEN' },
+  ]);
+});
+
 test('sorts findings by path, line, and target', () => {
   assert.deepEqual(
     findExternalIntegrationBoundaryViolations([

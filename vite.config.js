@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
+  // Vite não usa DOTENV_CONFIG_PATH: desligar seu loader também no E2E.
+  envDir: process.env.NODE_ENV === 'test' ? false : undefined,
   plugins: [react()],
   resolve: {
     alias: {

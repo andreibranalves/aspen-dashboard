@@ -32,11 +32,11 @@
 
 ## Fluxo de git
 
-- Mudanças triviais e reversíveis (CSS, copy, navegação, ajuste pequeno de UI) podem seguir no fluxo direto já autorizado, sem issue, branch ou worktree.
-- Não há gate por contagem de arquivos. Na dúvida, use branch curta; pergunte somente quando a autorização ou o risco mudar.
-- Demais mudanças vão em branch curta + PR quando a publicação for autorizada. `SHIP` não autoriza push/deploy nem pular check existente.
+- Mudanças triviais e reversíveis (CSS, copy, navegação, ajuste pequeno de UI) podem ser implementadas localmente sem issue ou worktree.
+- Publicação autorizada segue branch curta + PR + CI, inclusive para mudanças triviais. `SHIP` não autoriza push/deploy nem pular check existente.
+- Não há gate por contagem de arquivos. Pergunte somente quando a autorização ou o risco mudar.
 - Sincronize `git pull --ff-only origin <base>` após checar o status e antes das mudanças, preservando trabalho alheio.
-- Após o merge do PR, rode `sh scripts/post-merge-cleanup.sh` para remover worktrees e branches locais cujo remote foi apagado (branches não merged ficam de fora).
+- Após o merge do PR, `sh scripts/post-merge-cleanup.sh` remove somente branches com upstream apagado e ancestralidade comprovada em `origin/master`; worktrees sujos e squash merges sem essa prova ficam para confirmação e limpeza manual.
 - Não edite arquivos gerados pelo Vite em `public/`.
 
 ## Segurança e dados
@@ -69,7 +69,10 @@ Antes de adicionar abstração ou infraestrutura para requisito futuro, siga a s
 ## Ritmo de entrega
 
 `docs/release-lanes.md` é a fonte normativa: leia-a antes de classificar,
-revisar ou escolher checks. SHIP é o padrão para CRUD recuperável; PostgreSQL
+revisar, escolher checks ou fazer handoff. Skills e orquestradores devem seguir
+seus critérios, sem acrescentar suíte completa ou reviewer por padrão.
+Antes de editar um diretório, leia os `AGENTS.md` aplicáveis no caminho; o Pi
+iniciado na raiz não carrega automaticamente instruções de subdiretórios. SHIP é o padrão para CRUD recuperável; PostgreSQL
 não implica CRITICAL. Valide conforme o dano concreto do diff.
 
 SHIP não exige reviewer; SAFE usa um reviewer; CRITICAL usa um reviewer

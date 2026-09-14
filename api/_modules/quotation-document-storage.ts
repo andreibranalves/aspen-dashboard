@@ -36,31 +36,3 @@ export function isValidPdfBuffer(buffer: Buffer): boolean {
     buffer.subarray(Math.max(0, buffer.length - 2048)).includes(Buffer.from('%%EOF'))
   );
 }
-
-/** @deprecated Blob storage removed (#no-pdf-html-only). Kept for migration reference. */
-export function quotationPdfPathname(
-  businessNumber: string,
-  version: number,
-  templateHash: string,
-  sourceHash: string
-): string {
-  const quote = String(businessNumber || '').trim();
-  const hash = String(templateHash || '')
-    .trim()
-    .toLowerCase();
-  const contentHash = String(sourceHash || '')
-    .trim()
-    .toLowerCase();
-  if (
-    !/^ORC-[0-9]{8}$/.test(quote) ||
-    !Number.isInteger(version) ||
-    version < 1 ||
-    !/^[0-9a-f]{64}$/.test(hash) ||
-    !/^[0-9a-f]{64}$/.test(contentHash)
-  ) {
-    throw new QuotationDocumentStorageError(
-      'Não foi possível determinar a chave do PDF do orçamento.'
-    );
-  }
-  return `quotations/${quote}/revision-${version}-${hash}-${contentHash}.pdf`;
-}

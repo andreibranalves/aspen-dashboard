@@ -1,12 +1,18 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
-import { loadLocalEnv } from './scripts/load-env.mjs';
+import { buildLocalE2eEnvironment } from './scripts/lib/local-e2e-env.mjs';
 import { PREVIEW_E2E_SPECS } from './scripts/lib/preview-e2e-specs.mjs';
 import { SAFE_E2E_SPECS } from './scripts/lib/safe-e2e-env.mjs';
 import { assertSafeE2eCapability } from './scripts/lib/safe-e2e-capability.mjs';
 import { isPreviewMode, resolveE2eBaseUrl } from './scripts/lib/e2e-mode.mjs';
 
-loadLocalEnv();
+// Preview só entra pelo runner com capability. Local saneia o processo antes
+// do discovery: specs e servidores não recebem credenciais nem leem o .env.
+if (!isPreviewMode()) {
+  const isolated = buildLocalE2eEnvironment();
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, isolated);
+}
 
 const PORT = Number(process.env.PLAYWRIGHT_PORT || 5173);
 // Modos mutuamente exclusivos (fonte única: scripts/lib/e2e-mode.mjs).

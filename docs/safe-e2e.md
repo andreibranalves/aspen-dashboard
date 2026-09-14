@@ -4,6 +4,26 @@ O E2E integrado (`HTTP -> PostgreSQL descartável -> GET /api/commercial-queue -
 sobe um servidor Node real. Para que ele nunca carregue configuração operacional,
 o ponto de entrada é `scripts/run-safe-e2e.mjs`, exposto como `npm run test:e2e:safe`.
 
+## E2E local comum
+
+`npm run test:e2e` e o discovery direto pela config comum não carregam `.env`.
+Antes de importar os specs, a config reconstrói o ambiente por allowlist,
+remove credenciais, preloads e marcadores de deployment, fixa modo teste e
+writes-off e aceita somente HTTP em loopback IPv4 na `PLAYWRIGHT_PORT`, sem
+reutilizar servidor de desenvolvimento existente. O servidor API de teste escuta
+apenas em `127.0.0.1`.
+
+Testes mockados dispensam banco. Jornadas reais, como `quotation-origin.spec.js`,
+exigem `TEST_DATABASE_URL` local descartável; `DATABASE_URL` é derivada dela.
+Uma `DATABASE_URL` herdada diferente falha no carregamento da config. RELEASE
+valida esse requisito antes da suíte ampla. Prepare o banco pelo procedimento
+em [PostgreSQL descartável](./postgres-test-database.md).
+
+O E2E comum não reivindica a instrumentação de egress/capability do runner
+integrado abaixo. Essa suíte continua exclusiva de `test:e2e:safe`; Preview
+continua exclusivo de `test:e2e:preview`. Banco local por URL de loopback é um
+contrato operacional: não use túnel para banco real nessa porta.
+
 ## Invocação
 
 ```bash
