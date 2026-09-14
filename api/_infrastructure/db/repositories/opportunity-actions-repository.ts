@@ -1348,6 +1348,67 @@ export async function advanceConfirmedFollowUp(
   return actionResult;
 }
 
+export interface ApplyInboundResponseTransitionInput {
+  database: ActionDatabase;
+  opportunityId: string;
+  /** Trusted instant of the inbound message driving the transition. */
+  occurredAt: Date;
+  idFactory: () => string;
+  actor?: string;
+}
+
+const INBOUND_NEEDS_RESPONSE_REASON_CODE = 'inbound_needs_response';
+
+/**
+ * An unambiguously associated inbound message replaces the pending return
+ * action with "Preciso responder" (#249). Idempotent by current state: when
+ * the active action already carries this event's transition
+ * (reasonCode 'inbound_needs_response') nothing new is written and the
+ * current result is returned. The caller supplies the database (pool or
+ * transaction); no transaction is opened here.
+ */
+export async function applyInboundResponseTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  const { database, opportunityId, occurredAt } = input;
+  const actor = input.actor || 'system';
+  const action = await activeAction(database, opportunityId);
+  if (action?.reasonCode === INBOUND_NEEDS_RESPONSE_REASON_CODE) {
+    return {
+      actionId: action.id,
+      opportunityId,
+      state: 'active',
+      version: action.version,
+      action: rowRecord(action),
+      successor: null,
+      closed: false,
+    };
+  }
+  if (!action) {
+    throw new ActionNotFoundError('Nenhuma ação ativa para substituir pela resposta do cliente.');
+  }
+  const dueDate = calendarDateInSaoPaulo(occurredAt);
+  return completeWithSuccessor(
+    database,
+    action,
+    {
+      kind: 'review',
+      dueDate,
+      dueTime: null,
+      scheduleType: 'date_only',
+      dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+      reason: 'Preciso responder',
+      reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
+      origin: 'event',
+    },
+    actor,
+    'event',
+    'Cliente respondeu',
+    occurredAt,
+    input.idFactory,
+  );
+}
+
 async function archiveManualFollowUpAttempt(
   database: ActionDatabase,
   input: {
