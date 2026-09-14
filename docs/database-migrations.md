@@ -11,9 +11,10 @@ contra um PostgreSQL service container descartável, nunca contra staging ou pro
 o apply raw `npm run db:migrate` só é aceito com alvo explicitamente descartável (loopback).
 
 `db:migrate:operational` é um comando interno de `migrate:apply`, não um ponto de
-entrada manual. Sua variável de alvo não comprova preflight ou aprovação por si
-só. Os consumidores técnicos existentes ficam preservados; alterar esse contrato
-ou a estratégia exige decisão explícita.
+entrada manual. Ele só aceita alvo quando `migrate:apply` injeta
+`MIGRATE_APPLY_APPROVED=1` após o preflight; `MIGRATION_TARGET_DATABASE_URL`
+sozinha não basta. Os consumidores técnicos existentes ficam preservados;
+remover esse entrypoint exige decisão explícita.
 
 O job `postgres` cria um fixture determinístico descartável antes de `verify:quotation-company`.
 O fixture exige ao menos uma revisão e uma linha de configurações, portanto a verificação

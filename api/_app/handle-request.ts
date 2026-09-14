@@ -3,6 +3,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { VercelRequestLike, VercelResponseLike } from '../_http/types.js';
 import { getRouteName, isAuthenticated } from '../_shared/auth.js';
+import { isPublicHttpError } from '../_shared/http-error.js';
 import { checkRateLimitAsync } from '../_shared/rate-limit.js';
 import { wrapFunctionHandler } from '../_http/function-adapter.js';
 import { routes } from './routes.js';
@@ -20,22 +21,17 @@ export function normalizeHandlerError(
       message: 'Não foi possível consultar o orçamento. Tente novamente.',
     };
   }
+  if (isPublicHttpError(err)) {
+    return {
+      statusCode: err.statusCode,
+      message: err.statusCode === 500 ? 'Erro interno. Tente novamente.' : err.message,
+    };
+  }
   const statusCode =
     err !== null && typeof err === 'object' && Number.isInteger((err as { statusCode?: unknown }).statusCode)
       ? (err as { statusCode: number }).statusCode
       : 500;
-  // Mensagem pública apenas com opt-in explícito (expose === true) ou marcador logMessage
-  // (HttpError e erros de integração seguros). expose === false ou ausência de marcador cai no genérico.
-  const errLike = err as { expose?: unknown; logMessage?: unknown } | null;
-  const isPublic =
-    errLike !== null &&
-    errLike.expose !== false &&
-    (errLike.expose === true || typeof errLike.logMessage === 'string');
-  const message =
-    statusCode !== 500 && err instanceof Error && isPublic
-      ? err.message
-      : 'Erro interno. Tente novamente.';
-  return { statusCode, message };
+  return { statusCode, message: 'Erro interno. Tente novamente.' };
 }
 
 function requestHeader(request: VercelRequestLike, name: string): string | undefined {

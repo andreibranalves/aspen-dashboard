@@ -1,6 +1,11 @@
 import { createHttpError } from './http-error.js';
 
-export type ExternalWriteProvider = 'evolution' | 'email' | 'google-data-manager' | 'blob';
+export type ExternalWriteProvider =
+  | 'evolution'
+  | 'email'
+  | 'google-data-manager'
+  | 'blob'
+  | 'qstash';
 
 type Environment = typeof process.env;
 

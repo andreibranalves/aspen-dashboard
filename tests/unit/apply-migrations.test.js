@@ -111,6 +111,7 @@ test('successful preflight opens the apply path exactly once with proven target 
     assert.equal(calls, 1);
     assert.deepEqual(seenArgs, ['run', 'db:migrate:operational']);
     assert.equal(seenChildEnv.MIGRATION_TARGET_DATABASE_URL, rawStaging);
+    assert.equal(seenChildEnv.MIGRATE_APPLY_APPROVED, '1');
     assert.ok(!seenChildEnv.TEST_DATABASE_URL || seenChildEnv.TEST_DATABASE_URL !== '');
     assert.ok(!result.output.includes(secret), 'connection string leaked into output');
     assert.ok(result.output.includes('***'));
@@ -240,6 +241,7 @@ test('production run proves identity, then runs the existing backup before apply
     assert.equal(result.applySucceeded, true);
     assert.deepEqual(seenApplyArgs, ['run', 'db:migrate:operational']);
     assert.equal(seenApplyEnv.MIGRATION_TARGET_DATABASE_URL, productionUrl());
+    assert.equal(seenApplyEnv.MIGRATE_APPLY_APPROVED, '1');
     assert.equal(seenApplyEnv.STAGING_DATABASE_URL, undefined);
     assert.ok(!String(result.backupOutput).includes(secret), 'backup output leaked secret');
     assert.ok(String(result.backupOutput).includes('***'), 'backup output not redacted');
