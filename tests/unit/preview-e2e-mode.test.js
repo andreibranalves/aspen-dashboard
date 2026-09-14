@@ -53,6 +53,11 @@ test('Preview com BASE_URL divergente da origem do deployment falha fechada', ()
   assert.throws(() => resolveE2eBaseUrl(env), /must match PREVIEW_BASE_URL/);
 });
 
+test('Preview exige HTTPS na origem do deployment antes de retornar o baseURL', () => {
+  const env = previewEnv({ PREVIEW_BASE_URL: 'http://preview.example.test' });
+  assert.throws(() => resolveE2eBaseUrl(env), /HTTPS/);
+});
+
 test('Preview resolve somente a origem atestada em PREVIEW_BASE_URL', () => {
   const env = previewEnv({ BASE_URL: 'https://preview.example.test/' });
   assert.equal(resolveE2eBaseUrl(env), 'https://preview.example.test');

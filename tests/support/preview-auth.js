@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { PREVIEW_E2E_SPECS } from '../../scripts/lib/preview-e2e-specs.mjs';
+import { assertSafeE2eCapability } from '../../scripts/lib/safe-e2e-capability.mjs';
 
 const REQUIRED_PREVIEW_VARS = [
   'PREVIEW_BASE_URL',
   'E2E_USERNAME',
   'E2E_PASSWORD',
   'PREVIEW_E2E_USERNAME',
+  'VERCEL_AUTOMATION_BYPASS_SECRET',
   'KNOWN_POSTGRES_QUOTATION_ID',
   'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
 ];
@@ -14,10 +17,10 @@ function safePreviewOrigin(value) {
   try {
     parsed = new globalThis.URL(String(value || '').trim());
   } catch {
-    throw new Error('PREVIEW_BASE_URL must be a valid HTTP(S) origin without credentials');
+    throw new Error('PREVIEW_BASE_URL must be a valid HTTPS origin without credentials');
   }
-  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new Error('PREVIEW_BASE_URL must be a valid HTTP(S) origin without credentials');
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new Error('PREVIEW_BASE_URL must be a valid HTTPS origin without credentials');
   }
   return parsed.origin;
 }
@@ -50,13 +53,126 @@ export function getPreviewConfig(env = process.env) {
     baseUrl: safePreviewOrigin(env.PREVIEW_BASE_URL),
     username: String(env.E2E_USERNAME).trim(),
     password: String(env.E2E_PASSWORD),
+    bypassSecret: String(env.VERCEL_AUTOMATION_BYPASS_SECRET).trim(),
     postgresQuotationId: String(env.KNOWN_POSTGRES_QUOTATION_ID).trim(),
     scratchQuotationId: String(env.KNOWN_POSTGRES_SCRATCH_QUOTATION_ID).trim(),
   };
 }
 
 export function assertPreviewConfig(env = process.env) {
-  return getPreviewConfig(env);
+  const config = getPreviewConfig(env);
+  // A capability interna SAFE_E2E_* é reutilizada para vincular os specs ao
+  // runner de Preview; seus nomes não são configuração operacional do usuário.
+  assertSafeE2eCapability(env, {
+    config: 'playwright.config.js',
+    specs: PREVIEW_E2E_SPECS,
+  });
+  return config;
+}
+
+/**
+ * Libera a proteção da origem Preview apenas no request de bootstrap. O
+ * contexto armazena o cookie de bypass recebido, sem contaminar requests a
+ * outras origens com um header global.
+ */
+export async function bootstrapPreviewProtection(request, config) {
+  const baseUrl = safePreviewOrigin(config.baseUrl);
+  let response;
+  try {
+    response = await request.get(baseUrl, {
+      headers: {
+        'x-vercel-protection-bypass': config.bypassSecret,
+        'x-vercel-set-bypass-cookie': 'true',
+      },
+      maxRedirects: 0,
+      failOnStatusCode: false,
+    });
+  } catch {
+    throw new Error('Bootstrap da proteção Preview falhou antes da resposta.');
+  }
+  const status = response.status();
+  if (status === 200) return response;
+  if (status === 307 && (await isValidPreviewHandshake(response, baseUrl))) return response;
+  const classification = status === 307 ? 'handshake inválido' : 'status inesperado';
+  throw new Error(`Bootstrap da proteção Preview falhou: HTTP ${status} (${classification}).`);
+}
+
+async function isValidPreviewHandshake(response, baseUrl) {
+  const headers = await getResponseHeaders(response);
+  const locations = headers
+    .filter(({ name }) => name.toLowerCase() === 'location')
+    .map(({ value }) => value);
+  if (locations.length !== 1) return false;
+
+  let location;
+  try {
+    location = new globalThis.URL(locations[0], baseUrl);
+  } catch {
+    return false;
+  }
+  if (
+    location.origin !== baseUrl ||
+    location.pathname !== '/' ||
+    location.search !== '' ||
+    location.hash !== ''
+  ) {
+    return false;
+  }
+
+  return headers.some(({ name, value }) => {
+    if (name.toLowerCase() !== 'set-cookie') return false;
+    const cookiePair = value.split(';', 1)[0].trim();
+    const separator = cookiePair.indexOf('=');
+    return separator > 0 && cookiePair.slice(0, separator) === '_vercel_jwt';
+  });
+}
+
+async function getResponseHeaders(response) {
+  if (typeof response.headersArray === 'function') {
+    try {
+      const headers = normalizeResponseHeaders(await response.headersArray());
+      if (headers.length) return headers;
+    } catch {
+      // Fall through to the lower-fidelity headers object when available.
+    }
+  }
+  if (typeof response.headers === 'function') {
+    try {
+      return normalizeResponseHeaders(await response.headers());
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function normalizeResponseHeaders(headers) {
+  if (Array.isArray(headers)) {
+    return headers
+      .filter((header) => header && typeof header === 'object')
+      .map(({ name, value }) => ({ name: String(name), value: String(value) }));
+  }
+  if (!headers || typeof headers !== 'object') return [];
+  return Object.entries(headers).flatMap(([name, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .filter((entry) => entry !== undefined && entry !== null)
+      .map((entry) => ({ name, value: String(entry) }));
+  });
+}
+
+/** Cria um contexto sem sessão Aspen e comprova o 401 da aplicação. */
+export async function assertAnonymousAdminUnauthorized(browser, config) {
+  const anonymous = await browser.newContext({ baseURL: config.baseUrl });
+  try {
+    await bootstrapPreviewProtection(anonymous.request, config);
+    const adminPath = `/api/view?q=${encodeURIComponent(config.postgresQuotationId)}`;
+    assertSafeApiPath(adminPath);
+    const adminResponse = await anonymous.request.get(adminPath);
+    assert.equal(adminResponse.status(), 401);
+  } finally {
+    await anonymous.close();
+  }
 }
 
 /**
@@ -180,8 +296,8 @@ export function assertNoForbiddenEgress(requests) {
   assert.equal(forbidden.length, 0, 'Preview browser made a forbidden external request');
 }
 
-export async function loginToPreview(page) {
-  const config = assertPreviewConfig();
+export async function loginToPreview(page, config) {
+  await bootstrapPreviewProtection(page.request, config);
   // The application intentionally has password-only auth and no username input.
   // The designated account is attested through x-e2e-username; the server rejects
   // a mismatched account.
@@ -196,6 +312,6 @@ export async function loginToPreview(page) {
   assert.equal(response.status(), 200, 'Preview login must return HTTP 200');
   await page.waitForURL(/#\/quotations(?:$|\/)/);
   // Prova do deployment ANTES de qualquer cenário mutável rodar.
-  await assertDeploymentIdentity(page);
+  await assertDeploymentIdentity(page, config);
   return config;
 }

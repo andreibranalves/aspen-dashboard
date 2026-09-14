@@ -11,10 +11,13 @@ externos. Production é reservado ao `master`.
 APP_ENV=preview EXTERNAL_WRITES_ENABLED=0 npm run preview:preflight
 ```
 
-O executor protegido injeta `DATABASE_URL` e `PRODUCTION_DATABASE_URL`; não
-coloque valores no checkout nem em comandos. O preflight falha fechado quando
-qualquer valor está ausente, inválido ou aponta para a mesma identidade
-PostgreSQL.
+O executor protegido injeta `DATABASE_URL` e `PRODUCTION_DATABASE_URL` para o
+preflight; não coloque valores no checkout nem em comandos. Esse preflight
+valida somente o modo Preview, as escritas externas e a identidade distinta do
+PostgreSQL de produção. Para o E2E, o contrato `preview-e2e` também exige
+`VERCEL_AUTOMATION_BYPASS_SECRET` na origem externa protegida. O contrato falha
+fechado quando uma variável exigida está ausente; o preflight também falha
+quando as URLs são inválidas ou apontam para a mesma identidade PostgreSQL.
 
 Para a jornada E2E controlada, o operador fornece a URL do deployment do PR e
 as identidades PostgreSQL no executor protegido:
@@ -23,9 +26,13 @@ as identidades PostgreSQL no executor protegido:
 PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview -- --list
 ```
 
-O runner valida a origem, executa o preflight antes do Playwright e não passa a
-URL de produção ao filho. A prova remota ocorre por `/api/operational-status` e
-pela fixture atestada; isso não é prova única da identidade da branch.
+O runner valida a origem, executa o preflight antes do Playwright, passa o
+segredo somente ao filho autorizado e não passa as URLs de banco. O bootstrap
+faz uma única requisição por `APIRequestContext` à origem exata, com os headers
+oficiais do bypass, e recebe o cookie nesse contexto; a config não usa header
+global e desliga traces em Preview. O valor nunca é exibido. A prova remota
+ocorre por `/api/operational-status` e pela fixture atestada; isso não é prova
+única da identidade da branch.
 
 Migração manual futura do arquivo operacional (sem alias):
 
