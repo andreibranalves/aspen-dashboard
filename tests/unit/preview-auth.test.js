@@ -223,6 +223,108 @@ test('bootstrap usa headers por request somente na origem exata e sem redirects'
   ]);
 });
 
+test('bootstrap aceita handshake 307 legítimo com cookie _vercel_jwt', async () => {
+  const calls = [];
+  const request = {
+    get: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        status: () => 307,
+        headersArray: () => [
+          { name: 'Location', value: '/' },
+          { name: 'Set-Cookie', value: '_vercel_jwt=synthetic-cookie; Path=/' },
+        ],
+      };
+    },
+  };
+
+  const response = await bootstrapPreviewProtection(request, proofConfig);
+
+  assert.equal(response.status(), 307);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    url: proofConfig.baseUrl,
+    options: {
+      headers: {
+        'x-vercel-protection-bypass': 'synthetic-vercel-bypass-secret',
+        'x-vercel-set-bypass-cookie': 'true',
+      },
+      maxRedirects: 0,
+      failOnStatusCode: false,
+    },
+  });
+});
+
+function bootstrapResponse(status, headers = []) {
+  return {
+    status: () => status,
+    headersArray: async () => headers,
+  };
+}
+
+function assertSanitizedBootstrapError(error, status, forbiddenValues) {
+  assert.equal(error.message, `Bootstrap da proteção Preview falhou: HTTP ${status} (handshake inválido).`);
+  for (const value of forbiddenValues) assert.doesNotMatch(error.message, new RegExp(value));
+  return true;
+}
+
+test('bootstrap recusa 307 cross-origin sem expor Location, cookie ou segredo', async () => {
+  const location = 'https://outside.example.test/sentinel-location?token=synthetic-secret#fragment';
+  const cookie = '_vercel_jwt=synthetic-cookie-secret; Path=/';
+  const request = {
+    get: async () => bootstrapResponse(307, [
+      { name: 'Location', value: location },
+      { name: 'Set-Cookie', value: cookie },
+    ]),
+  };
+
+  await assert.rejects(
+    () => bootstrapPreviewProtection(request, proofConfig),
+    (error) =>
+      assertSanitizedBootstrapError(error, 307, [
+        'sentinel-location',
+        'synthetic-cookie-secret',
+        'synthetic-secret',
+      ])
+  );
+});
+
+test('bootstrap recusa 307 para outro path, query ou hash', async () => {
+  for (const location of [
+    'https://preview.example.test/other-path',
+    'https://preview.example.test/?sentinel-query',
+    'https://preview.example.test/#sentinel-hash',
+  ]) {
+    const request = {
+      get: async () =>
+        bootstrapResponse(307, [
+          { name: 'Location', value: location },
+          { name: 'Set-Cookie', value: '_vercel_jwt=synthetic-cookie; Path=/' },
+        ]),
+    };
+
+    await assert.rejects(
+      () => bootstrapPreviewProtection(request, proofConfig),
+      (error) => assertSanitizedBootstrapError(error, 307, ['sentinel-query', 'sentinel-hash'])
+    );
+  }
+});
+
+test('bootstrap recusa 307 sem cookie _vercel_jwt exato', async () => {
+  const request = {
+    get: async () =>
+      bootstrapResponse(307, [
+        { name: 'Location', value: '/' },
+        { name: 'Set-Cookie', value: '_vercel_jwt_extra=synthetic-cookie; Path=/' },
+      ]),
+  };
+
+  await assert.rejects(
+    () => bootstrapPreviewProtection(request, proofConfig),
+    (error) => assertSanitizedBootstrapError(error, 307, ['synthetic-cookie'])
+  );
+});
+
 test('bootstrap rejeita 302 sem imprimir o sentinel nem o segredo', async () => {
   const request = {
     get: async () => ({ status: () => 302 }),

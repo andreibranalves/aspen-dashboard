@@ -91,10 +91,74 @@ export async function bootstrapPreviewProtection(request, config) {
     throw new Error('Bootstrap da proteção Preview falhou antes da resposta.');
   }
   const status = response.status();
-  if (status !== 200) {
-    throw new Error(`Bootstrap da proteção Preview falhou: HTTP ${status}`);
+  if (status === 200) return response;
+  if (status === 307 && (await isValidPreviewHandshake(response, baseUrl))) return response;
+  const classification = status === 307 ? 'handshake inválido' : 'status inesperado';
+  throw new Error(`Bootstrap da proteção Preview falhou: HTTP ${status} (${classification}).`);
+}
+
+async function isValidPreviewHandshake(response, baseUrl) {
+  const headers = await getResponseHeaders(response);
+  const locations = headers
+    .filter(({ name }) => name.toLowerCase() === 'location')
+    .map(({ value }) => value);
+  if (locations.length !== 1) return false;
+
+  let location;
+  try {
+    location = new globalThis.URL(locations[0], baseUrl);
+  } catch {
+    return false;
   }
-  return response;
+  if (
+    location.origin !== baseUrl ||
+    location.pathname !== '/' ||
+    location.search !== '' ||
+    location.hash !== ''
+  ) {
+    return false;
+  }
+
+  return headers.some(({ name, value }) => {
+    if (name.toLowerCase() !== 'set-cookie') return false;
+    const cookiePair = value.split(';', 1)[0].trim();
+    const separator = cookiePair.indexOf('=');
+    return separator > 0 && cookiePair.slice(0, separator) === '_vercel_jwt';
+  });
+}
+
+async function getResponseHeaders(response) {
+  if (typeof response.headersArray === 'function') {
+    try {
+      const headers = normalizeResponseHeaders(await response.headersArray());
+      if (headers.length) return headers;
+    } catch {
+      // Fall through to the lower-fidelity headers object when available.
+    }
+  }
+  if (typeof response.headers === 'function') {
+    try {
+      return normalizeResponseHeaders(await response.headers());
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function normalizeResponseHeaders(headers) {
+  if (Array.isArray(headers)) {
+    return headers
+      .filter((header) => header && typeof header === 'object')
+      .map(({ name, value }) => ({ name: String(name), value: String(value) }));
+  }
+  if (!headers || typeof headers !== 'object') return [];
+  return Object.entries(headers).flatMap(([name, value]) => {
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .filter((entry) => entry !== undefined && entry !== null)
+      .map((entry) => ({ name, value: String(entry) }));
+  });
 }
 
 /** Cria um contexto sem sessão Aspen e comprova o 401 da aplicação. */
