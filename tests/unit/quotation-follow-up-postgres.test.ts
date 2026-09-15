@@ -2892,3 +2892,192 @@ databaseTest('manual counted contact fences a started alternative before changin
     await resetSharedFollowUpGraph();
   }
 });
+
+databaseTest('confirmed inbound replaces return with Preciso responder and cancels undelivered approval', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await resetSharedFollowUpGraph();
+  const ready = await projectReady(repository, {
+    ids: { quotation: ids.quotation, revision: ids.revision, delivery: ids.delivery },
+    phone: '5511999999999',
+  });
+  const approved = await repository.approve({
+    quotationId: ids.quotation,
+    eligibilityVersion: ready.eligibilityVersion!,
+    message: 'Retorno pendente',
+    now,
+  });
+  assert.equal(approved.state, 'approved');
+
+  const occurredAt = new Date('2026-09-01T15:30:00.000Z');
+  const handled = await repository.applyConfirmedInboundToOpportunity!({
+    instance,
+    canonicalPhone: '5511999999999',
+    occurredAt,
+    providerMessageId: `inbound-${randomUUID()}`,
+  });
+  assert.deepEqual(handled, { handledOpportunityIds: [ids.crm] });
+
+  const followUps = await db
+    .select({
+      state: quotationFollowUps.state,
+      closedReason: quotationFollowUps.closedReason,
+      approvedOpportunityId: quotationFollowUps.approvedOpportunityId,
+      eligibilityVersion: quotationFollowUps.eligibilityVersion,
+      messageSnapshot: quotationFollowUps.messageSnapshot,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.id, approved.followUpId!));
+  assert.deepEqual(followUps[0], {
+    state: 'cancelled',
+    closedReason: 'inbound_after_anchor',
+    approvedOpportunityId: null,
+    eligibilityVersion: null,
+    messageSnapshot: null,
+  });
+  assert.equal(await repository.claimApproved(approved.followUpId!), null);
+
+  const active = await db
+    .select({
+      reason: opportunityNextActions.reason,
+      reasonCode: opportunityNextActions.reasonCode,
+      state: opportunityNextActions.state,
+    })
+    .from(opportunityNextActions)
+    .where(and(
+      eq(opportunityNextActions.opportunityId, ids.crm),
+      eq(opportunityNextActions.state, 'active'),
+    ));
+  assert.equal(active.length, 1);
+  assert.equal(active[0]?.reason, 'Preciso responder');
+  assert.equal(active[0]?.reasonCode, 'inbound_needs_response');
+
+  const again = await repository.applyConfirmedInboundToOpportunity!({
+    instance,
+    canonicalPhone: '5511999999999',
+    occurredAt,
+    providerMessageId: `inbound-repeat-${randomUUID()}`,
+  });
+  assert.deepEqual(again, { handledOpportunityIds: [ids.crm] });
+  const activeAgain = await db
+    .select({ id: opportunityNextActions.id })
+    .from(opportunityNextActions)
+    .where(and(
+      eq(opportunityNextActions.opportunityId, ids.crm),
+      eq(opportunityNextActions.state, 'active'),
+      eq(opportunityNextActions.reasonCode, 'inbound_needs_response'),
+    ));
+  assert.equal(activeAgain.length, 1);
+});
+
+databaseTest('inbound racing claimApproved never leaves a live undelivered authorization', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await resetSharedFollowUpGraph();
+  const ready = await projectReady(repository, {
+    ids: { quotation: ids.quotation, revision: ids.revision, delivery: ids.delivery },
+    phone: '5511999999999',
+  });
+  const approved = await repository.approve({
+    quotationId: ids.quotation,
+    eligibilityVersion: ready.eligibilityVersion!,
+    message: 'Corrida inbound',
+    now,
+  });
+
+  const occurredAt = new Date('2026-09-01T16:00:00.000Z');
+  const [claimed, handled] = await Promise.all([
+    repository.claimApproved(approved.followUpId!),
+    repository.applyConfirmedInboundToOpportunity!({
+      instance,
+      canonicalPhone: '5511999999999',
+      occurredAt,
+      providerMessageId: `inbound-race-${randomUUID()}`,
+    }),
+  ]);
+
+  assert.deepEqual(handled, { handledOpportunityIds: [ids.crm] });
+  const [row] = await db
+    .select({
+      state: quotationFollowUps.state,
+      closedReason: quotationFollowUps.closedReason,
+      transportStartedAt: quotationFollowUps.transportStartedAt,
+      leaseToken: quotationFollowUps.leaseToken,
+    })
+    .from(quotationFollowUps)
+    .where(eq(quotationFollowUps.id, approved.followUpId!));
+
+  assert.equal(row.state, 'cancelled');
+  assert.equal(row.closedReason, 'inbound_after_anchor');
+  assert.equal(row.transportStartedAt, null);
+  assert.equal(row.leaseToken, null);
+  if (claimed) {
+    assert.equal(
+      await repository.markTransportStarted(approved.followUpId!, claimed.leaseToken),
+      false,
+    );
+  }
+});
+
+databaseTest('ambiguous phone association does not invent Preciso responder or cancel foreign approvals', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await resetSharedFollowUpGraph();
+  const ready = await projectReady(repository, {
+    ids: { quotation: ids.quotation, revision: ids.revision, delivery: ids.delivery },
+    phone: '5511999999999',
+  });
+  const approved = await repository.approve({
+    quotationId: ids.quotation,
+    eligibilityVersion: ready.eligibilityVersion!,
+    message: 'Aprovação da demanda A',
+    now,
+  });
+
+  const other = await createExtraEligibleFixture({ createOpportunity: true });
+  await db
+    .update(quotationDeliveries)
+    .set({ phone: '5511999999999' })
+    .where(eq(quotationDeliveries.id, other.ids.delivery));
+  await projectReady(repository, {
+    ids: {
+      quotation: other.ids.quotation,
+      revision: other.ids.revision,
+      delivery: other.ids.delivery,
+    },
+    phone: '5511999999999',
+  });
+
+  try {
+    const handled = await repository.applyConfirmedInboundToOpportunity!({
+      instance,
+      canonicalPhone: '5511999999999',
+      occurredAt: new Date('2026-09-01T17:00:00.000Z'),
+      providerMessageId: `inbound-ambiguous-${randomUUID()}`,
+    });
+    assert.deepEqual(handled, { handledOpportunityIds: [] });
+
+    const [row] = await db
+      .select({
+        state: quotationFollowUps.state,
+        closedReason: quotationFollowUps.closedReason,
+      })
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.id, approved.followUpId!));
+    assert.equal(row.state, 'approved');
+    assert.equal(row.closedReason, null);
+
+    for (const opportunityId of [ids.crm, other.opportunityId]) {
+      const inboundActions = await db
+        .select({ id: opportunityNextActions.id })
+        .from(opportunityNextActions)
+        .where(and(
+          eq(opportunityNextActions.opportunityId, opportunityId),
+          eq(opportunityNextActions.state, 'active'),
+          eq(opportunityNextActions.reasonCode, 'inbound_needs_response'),
+        ));
+      assert.equal(inboundActions.length, 0);
+    }
+  } finally {
+    await other.cleanup();
+    await resetSharedFollowUpGraph();
+  }
+});
+

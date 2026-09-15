@@ -15,7 +15,11 @@ import {
   type FollowUpPersistedState,
   type FollowUpProjectionState,
 } from '../../../_modules/quotation-follow-up-state.js';
-import { advanceConfirmedFollowUp } from './opportunity-actions-repository.js';
+import {
+  ActionNotFoundError,
+  advanceConfirmedFollowUp,
+  applyInboundResponseTransition,
+} from './opportunity-actions-repository.js';
 import { followUpAttemptNumber, followUpCycleNumber } from './follow-up-cycle.js';
 import { quotationFollowUpAttemptHistory, quotationFollowUps } from '../schema.js';
 
@@ -201,6 +205,12 @@ export interface QuotationFollowUpRepository {
     identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
     canonicalPhone: string | null;
   }): Promise<void>;
+  applyConfirmedInboundToOpportunity?(input: {
+    instance: string;
+    canonicalPhone: string;
+    occurredAt: Date;
+    providerMessageId: string;
+  }): Promise<{ handledOpportunityIds: string[] }>;
   promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<ClaimedFollowUp | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
@@ -1019,7 +1029,7 @@ export function createPostgresQuotationFollowUpRepository(
             updatedAt: asDate(history.confirmedAt) || current.updatedAt,
         };
     };
-    return {
+    const repository: QuotationFollowUpRepository = {
         async list(input: FollowUpListInput = {}) {
             const started = tracking(input.trackingStartedAt);
             const p = page(input.page, 1);
@@ -2200,45 +2210,136 @@ export function createPostgresQuotationFollowUpRepository(
                 )
               )
             )`);
-                if (!input.fromMe && (input.identityStatus === 'verified' || input.identityStatus === 'derived')) {
-                    await getDb().execute(sql `UPDATE opportunity_next_actions action
-            SET state = 'cancelled',
-                updated_at = ${iso(occurredAt)}::timestamptz,
-                transition_actor = 'system',
-                transition_at = ${iso(occurredAt)}::timestamptz,
-                transition_origin = 'event',
-                transition_reason = 'Cliente respondeu após a entrega',
-                replaced_by_id = NULL
-            FROM opportunity_delivery_anchors anchor
-            WHERE anchor.created_action_id = action.id
-              AND action.state = 'active'
-              AND action.origin = 'event'
-              AND action.kind = 'customer_contact'
-              AND anchor.receipt_at < ${iso(occurredAt)}::timestamptz
-              AND (
-                anchor.delivery_id IN (
-                  SELECT f2.delivery_id
-                  FROM quotation_follow_ups f2
-                  WHERE f2.instance = ${instance}
-                    AND (
-                      f2.provider_conversation_id = ${conversation}
-                      OR (
-                        ${phone || null}::text IS NOT NULL
-                        AND f2.canonical_phone = ${phone || null}
-                      )
-                    )
-                )
-                OR EXISTS (
-                  SELECT 1
-                  FROM whatsapp_contact_activity activity
-                  WHERE activity.instance = ${instance}
-                    AND activity.provider_conversation_id = ${conversation}
-                    AND activity.canonical_phone = ${phone || null}
-                )
-              )`);
+                if (
+                    !input.fromMe &&
+                    phone &&
+                    (input.identityStatus === 'verified' || input.identityStatus === 'derived')
+                ) {
+                    // Unambiguous association becomes "Preciso responder" and
+                    // invalidates undelivered send authorization under the same
+                    // opportunity lock used by approve/claim (#249). Ambiguous
+                    // contacts are left for #250.
+                    await repository.applyConfirmedInboundToOpportunity!({
+                        instance,
+                        canonicalPhone: phone,
+                        occurredAt,
+                        providerMessageId,
+                    });
                 }
             }
             catch {
+                throw new RepositoryError();
+            }
+        },
+        async applyConfirmedInboundToOpportunity(input: {
+            instance: string;
+            canonicalPhone: string;
+            occurredAt: Date;
+            providerMessageId: string;
+        }): Promise<{ handledOpportunityIds: string[] }> {
+            const instance = String(input.instance || '').trim();
+            if (!instance || instance !== configuredInstance())
+                throw new InputError('Instância inválida.');
+            const phone = acceptedCanonicalPhone(input.canonicalPhone);
+            if (!phone || !/^[0-9]{10,15}$/.test(phone))
+                throw new InputError('Telefone inválido.');
+            const occurredAt = requiredDate(input.occurredAt, 'atividade');
+            const providerMessageId = String(input.providerMessageId || '').trim();
+            if (!providerMessageId)
+                throw new InputError('Identificador da mensagem inválido.');
+            try {
+                return await getDb().transaction(async (tx) => {
+                    const openOpportunityRows = Array.from(await tx.execute(sql `
+            SELECT DISTINCT COALESCE(q.opportunity_id, legacy.id) AS opportunity_id
+            FROM quotations q
+            JOIN clients cl ON cl.id = q.client_id
+            LEFT JOIN LATERAL (
+              SELECT cd.id
+              FROM crm_deals cd
+              WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+              ORDER BY cd.updated_at DESC, cd.id DESC
+              LIMIT 1
+            ) legacy ON true
+            WHERE cl.arquivado IS NOT TRUE
+              AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+              AND COALESCE(
+                (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+                ''
+              ) NOT IN ('Pedido Fechado', 'Perdido')
+              AND EXISTS (
+                SELECT 1
+                FROM quotation_deliveries d
+                JOIN quote_revisions r ON r.id = d.revision_id
+                WHERE r.quotation_id = q.id
+                  AND regexp_replace(d.phone, '[^0-9]', '', 'g') = ${phone}
+              )
+            ORDER BY 1
+          `)) as Record<string, unknown>[];
+                    const opportunityIds = openOpportunityRows
+                        .map((row) => String(row.opportunity_id))
+                        .sort();
+                    // Ambiguous or empty association is not this ticket's job
+                    // (#250). Do not guess a demand and do not wipe unrelated
+                    // authorizations.
+                    if (opportunityIds.length !== 1) {
+                        return { handledOpportunityIds: [] };
+                    }
+                    const opportunityId = opportunityIds[0];
+                    // Serialize against the worker and the approval flow: the
+                    // advisory + row lock is the same seam used by approve/claim.
+                    await lockOpportunity(tx, opportunityId, opportunityId);
+                    // Invalidate undelivered send authorization first. A racing
+                    // claim that already set transport_started_at is left alone
+                    // for review; everything else must lose its lease before we
+                    // rewrite the commercial next action.
+                    await tx.execute(sql `
+            UPDATE quotation_follow_ups f
+            SET state = 'cancelled',
+                closed_reason = 'inbound_after_anchor',
+                closed_at = ${iso(occurredAt)}::timestamptz,
+                approved_opportunity_id = NULL,
+                eligibility_version = NULL,
+                message_snapshot = NULL,
+                approved_at = NULL,
+                lease_token = NULL,
+                lease_until = NULL,
+                transport_started_at = NULL,
+                updated_at = ${iso(occurredAt)}::timestamptz
+            WHERE (
+                f.state = 'approved'
+                OR (f.state = 'processing' AND f.transport_started_at IS NULL)
+              )
+              AND f.canonical_phone = ${phone}
+              AND (
+                f.approved_opportunity_id = ${opportunityId}
+                OR EXISTS (
+                  SELECT 1
+                  FROM quotations q
+                  LEFT JOIN LATERAL (
+                    SELECT cd.id
+                    FROM crm_deals cd
+                    WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+                    ORDER BY cd.updated_at DESC, cd.id DESC
+                    LIMIT 1
+                  ) legacy ON true
+                  WHERE q.id = f.quotation_id
+                    AND COALESCE(q.opportunity_id, legacy.id) = ${opportunityId}
+                )
+              )
+          `);
+                    await applyInboundResponseTransition({
+                        database: tx,
+                        opportunityId,
+                        occurredAt,
+                        idFactory: randomUUID,
+                        actor: 'system',
+                    });
+                    return { handledOpportunityIds: [opportunityId] };
+                });
+            }
+            catch (error) {
+                if (error instanceof InputError || error instanceof ActionNotFoundError)
+                    throw error;
                 throw new RepositoryError();
             }
         },
@@ -2744,5 +2845,6 @@ export function createPostgresQuotationFollowUpRepository(
             }
         },
     };
+    return repository;
 }
 export const createQuotationFollowUpRepository = createPostgresQuotationFollowUpRepository;
