@@ -65,6 +65,12 @@ async function loadOpportunityFacts(
         SELECT 1 FROM opportunity_next_actions action
         WHERE action.opportunity_id = deal.id AND action.state = 'active'
       ) AS has_active_action,
+      EXISTS (
+        SELECT 1 FROM opportunity_next_actions action
+        WHERE action.opportunity_id = deal.id
+          AND action.state = 'suspended'
+          AND action.transition_reason = 'Não contatar'
+      ) AS has_suspended_restricted_action,
       (
         EXISTS (
           SELECT 1 FROM opportunity_next_actions action
@@ -143,6 +149,7 @@ async function loadOpportunityFacts(
         ? row.sibling_ids.map(String)
         : [],
       hasActiveNextAction,
+      hasSuspendedRestrictedAction: row.has_suspended_restricted_action === true,
       hasAcceptedHistory,
       hasDismissedAttempts: row.has_dismissed_attempts === true,
       contactRestricted: row.contact_restricted === true,
@@ -219,6 +226,89 @@ async function ensureVerifyConversationAction(
   return 'applied';
 }
 
+async function ensureSuspendedRestrictedAction(
+  database: TransitionQueryDatabase,
+  input: {
+    opportunityId: string;
+    occurredAt: Date;
+    idFactory: () => string;
+  },
+): Promise<'applied' | 'skipped'> {
+  const [active] = await database
+    .select()
+    .from(opportunityNextActions)
+    .where(
+      and(
+        eq(opportunityNextActions.opportunityId, input.opportunityId),
+        eq(opportunityNextActions.state, 'active'),
+      ),
+    )
+    .limit(1);
+  if (active) {
+    const [updated] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'suspended',
+        updatedAt: input.occurredAt,
+        transitionActor: 'system',
+        transitionAt: input.occurredAt,
+        transitionOrigin: 'event',
+        transitionReason: 'Não contatar',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.id, active.id),
+          eq(opportunityNextActions.state, 'active'),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    return updated ? 'applied' : 'skipped';
+  }
+  const [existing] = await database
+    .select({ id: opportunityNextActions.id })
+    .from(opportunityNextActions)
+    .where(
+      and(
+        eq(opportunityNextActions.opportunityId, input.opportunityId),
+        eq(opportunityNextActions.state, 'suspended'),
+        eq(opportunityNextActions.transitionReason, 'Não contatar'),
+      ),
+    )
+    .limit(1);
+  if (existing) return 'skipped';
+  const [latest] = await database
+    .select({ version: opportunityNextActions.version })
+    .from(opportunityNextActions)
+    .where(eq(opportunityNextActions.opportunityId, input.opportunityId))
+    .orderBy(sql`${opportunityNextActions.version} DESC`)
+    .limit(1);
+  const dueDate = calendarDateInSaoPaulo(input.occurredAt);
+  await database.insert(opportunityNextActions).values({
+    id: input.idFactory(),
+    opportunityId: input.opportunityId,
+    kind: 'review',
+    reasonCode: VERIFY_CONVERSATION_REASON_CODE,
+    reason: VERIFY_CONVERSATION_REASON,
+    origin: 'event',
+    state: 'suspended',
+    dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+    dueDate,
+    dueTime: null,
+    scheduleType: 'date_only',
+    version: (latest?.version || 0) + 1,
+    actor: 'system',
+    createdAt: input.occurredAt,
+    updatedAt: input.occurredAt,
+    transitionActor: 'system',
+    transitionAt: input.occurredAt,
+    transitionOrigin: 'event',
+    transitionReason: 'Não contatar',
+    replacedById: null,
+  });
+  return 'applied';
+}
+
 async function applyDecision(
   database: TransitionQueryDatabase,
   decision: OpportunityTransitionDecision,
@@ -229,6 +319,12 @@ async function applyDecision(
     case 'noop':
     case 'keep_active_action':
       return 'skipped';
+    case 'ensure_suspended_action':
+      return ensureSuspendedRestrictedAction(database, {
+        opportunityId: decision.opportunityId,
+        occurredAt,
+        idFactory,
+      });
     case 'ensure_first_contact': {
       const before = await database
         .select({ id: opportunityNextActions.id })

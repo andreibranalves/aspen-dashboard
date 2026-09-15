@@ -361,15 +361,12 @@ export function createPostgresWhatsappContactActivityRepository(
     async isContactBlocked({ instance: rawInstance, canonicalPhone: rawPhone }): Promise<boolean> {
       const instance = normalizeRequired(rawInstance, 'instance');
       const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
+      void instance;
       const rows = await getDb()
         .select({ id: activity.id })
         .from(activity)
         .where(
-          and(
-            eq(activity.instance, instance),
-            eq(activity.canonicalPhone, canonicalPhone),
-            eq(activity.blockReason, 'do_not_contact'),
-          ),
+          and(eq(activity.canonicalPhone, canonicalPhone), eq(activity.blockReason, 'do_not_contact')),
         )
         .limit(1);
       return rows.length > 0;
@@ -390,6 +387,9 @@ export function createPostgresWhatsappContactActivityRepository(
       const reason = normalizeRequired(rawReason || 'Não contatar', 'reason');
       const now = normalizeDate(suppliedNow);
       await getDb().transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${canonicalPhone}::text, 0))
+        `);
         await tx
           .insert(activity)
           .values({
@@ -425,7 +425,7 @@ export function createPostgresWhatsappContactActivityRepository(
             blockReason: 'do_not_contact',
             updatedAt: now,
           })
-          .where(and(eq(activity.instance, instance), eq(activity.canonicalPhone, canonicalPhone)));
+          .where(eq(activity.canonicalPhone, canonicalPhone));
         await tx.insert(blockEvents).values({
           id: randomUUID(),
           instance,
@@ -458,6 +458,16 @@ export function createPostgresWhatsappContactActivityRepository(
           ? null
           : normalizeRequired(String(rawConversationId), 'providerConversationId');
       await getDb().transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${canonicalPhone}::text, 0))
+        `);
+        const latestEvents = Array.from(await tx.execute(sql`
+          SELECT event_type
+          FROM whatsapp_contact_block_events
+          WHERE canonical_phone = ${canonicalPhone}
+          ORDER BY occurred_at DESC, created_at DESC, id DESC
+          LIMIT 1
+        `)) as Record<string, unknown>[];
         await tx
           .update(activity)
           .set({
@@ -465,7 +475,41 @@ export function createPostgresWhatsappContactActivityRepository(
             blockReason: null,
             updatedAt: now,
           })
-          .where(and(eq(activity.instance, instance), eq(activity.canonicalPhone, canonicalPhone)));
+          .where(eq(activity.canonicalPhone, canonicalPhone));
+        await tx.execute(sql`
+          UPDATE opportunity_next_actions action
+          SET state = 'active',
+              updated_at = ${now.toISOString()}::timestamptz,
+              transition_actor = NULL,
+              transition_at = NULL,
+              transition_origin = NULL,
+              transition_reason = NULL,
+              replaced_by_id = NULL
+          FROM crm_deals deal
+          LEFT JOIN clients client ON client.id = deal.client_id
+          WHERE action.opportunity_id = deal.id
+            AND action.state = 'suspended'
+            AND action.transition_reason = 'Não contatar'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM opportunity_next_actions active
+              WHERE active.opportunity_id = action.opportunity_id
+                AND active.state = 'active'
+            )
+            AND (
+              deal.telefone = ${canonicalPhone}
+              OR client.telefone = ${canonicalPhone}
+              OR EXISTS (
+                SELECT 1
+                FROM quotations quotation
+                JOIN quote_revisions revision ON revision.quotation_id = quotation.id
+                JOIN quotation_deliveries delivery ON delivery.revision_id = revision.id
+                WHERE (quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id)
+                  AND regexp_replace(delivery.phone, '[^0-9]', '', 'g') = ${canonicalPhone}
+              )
+            )
+        `);
+        if (latestEvents[0]?.event_type === 'unblocked') return;
         await tx.insert(blockEvents).values({
           id: randomUUID(),
           instance,
@@ -489,8 +533,9 @@ export function createPostgresWhatsappContactActivityRepository(
       const rows = await getDb()
         .select()
         .from(blockEvents)
-        .where(and(eq(blockEvents.instance, instance), eq(blockEvents.canonicalPhone, canonicalPhone)))
+        .where(eq(blockEvents.canonicalPhone, canonicalPhone))
         .orderBy(desc(blockEvents.occurredAt), desc(blockEvents.createdAt));
+      void instance;
       return rows.map((row) => ({
         id: String(row.id),
         instance: String(row.instance),

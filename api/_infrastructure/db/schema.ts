@@ -860,7 +860,7 @@ export const opportunityNextActions = pgTable(
     ),
     check(
       'opportunity_next_actions_state_check',
-      sql`${table.state} IN ('active', 'completed', 'cancelled', 'superseded')`
+      sql`${table.state} IN ('active', 'suspended', 'completed', 'cancelled', 'superseded')`
     ),
     check(
       'opportunity_next_actions_reason_not_blank_check',
@@ -1359,7 +1359,7 @@ export const whatsappContactActivity = pgTable(
   {
     id: uuid('id').primaryKey(),
     instance: varchar('instance', { length: 120 }).notNull(),
-    providerConversationId: varchar('provider_conversation_id', { length: 255 }),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
     lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
     lastInboundProviderMessageId: varchar('last_inbound_provider_message_id', { length: 255 }),
     lastOutboundAt: timestamp('last_outbound_at', { withTimezone: true }),

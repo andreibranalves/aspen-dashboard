@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
@@ -236,33 +236,46 @@ test(
   async () => {
     const fixture = await makeFixture();
     const sibling = randomUUID();
-    await db.insert(crmDeals).values({
-      id: sibling,
-      clientId: fixture.ids.client,
-      nome: 'Demanda irmã',
-      status: 'Orcamento Enviado',
-      createdAt: fixture.now,
-      updatedAt: fixture.now,
-    });
-    try {
-      await insertActiveAction(fixture, 'follow_up_second_return');
-      await db.insert(opportunityNextActions).values({
-        id: randomUUID(),
-        opportunityId: sibling,
-        kind: 'customer_contact',
-        reasonCode: 'follow_up_second_return',
-        origin: 'event',
-        state: 'active',
-        dueAt: fixture.now,
-        dueDate: '2026-09-11',
-        dueTime: null,
-        scheduleType: 'date_only',
-        version: 1,
-        actor: 'system',
-        reason: 'Retorno pendente',
+    const losingSibling = randomUUID();
+    await db.insert(crmDeals).values([
+      {
+        id: sibling,
+        clientId: fixture.ids.client,
+        nome: 'Demanda irmã',
+        status: 'Orcamento Enviado',
         createdAt: fixture.now,
         updatedAt: fixture.now,
-      });
+      },
+      {
+        id: losingSibling,
+        clientId: fixture.ids.client,
+        nome: 'Outra demanda irmã',
+        status: 'Orcamento Enviado',
+        createdAt: fixture.now,
+        updatedAt: fixture.now,
+      },
+    ]);
+    try {
+      await insertActiveAction(fixture, 'follow_up_second_return');
+      await db.insert(opportunityNextActions).values(
+        [sibling, losingSibling].map((opportunityId) => ({
+          id: randomUUID(),
+          opportunityId,
+          kind: 'customer_contact',
+          reasonCode: 'follow_up_second_return',
+          origin: 'event',
+          state: 'active',
+          dueAt: fixture.now,
+          dueDate: '2026-09-11',
+          dueTime: null,
+          scheduleType: 'date_only',
+          version: 1,
+          actor: 'system',
+          reason: 'Retorno pendente',
+          createdAt: fixture.now,
+          updatedAt: fixture.now,
+        })),
+      );
 
       const alert = await applyAssociateResponseTransition({
         database: db,
@@ -281,8 +294,12 @@ test(
         .where(eq(opportunityNextActions.id, alert.successor!.actionId));
       await db
         .update(opportunityNextActions)
-        .set({ state: 'cancelled', transitionReason: 'Resposta ambígua aguardando associação' })
-        .where(eq(opportunityNextActions.opportunityId, sibling));
+        .set({
+          state: 'suspended',
+          transitionReason: 'Resposta ambígua aguardando associação',
+          replacedById: alert.successor!.actionId,
+        })
+        .where(inArray(opportunityNextActions.opportunityId, [sibling, losingSibling]));
 
       const repository = createPostgresOpportunityActionRepository(() => db, {
         now: () => new Date('2026-09-11T16:00:00.000Z'),
@@ -298,7 +315,11 @@ test(
       assert.equal(resolved.successor?.reasonCode, 'inbound_needs_response');
 
       const host = await actionsFor(fixture.ids.opportunity);
-      assert.equal(host.filter((row) => row.state === 'active').length, 0);
+      assert.equal(host.filter((row) => row.state === 'active').length, 1);
+      assert.equal(
+        host.find((row) => row.state === 'active')?.reasonCode,
+        'follow_up_second_return',
+      );
       assert.equal(host.find((row) => row.id === alert.successor?.actionId)?.state, 'cancelled');
 
       const sister = await actionsFor(sibling);
@@ -306,9 +327,16 @@ test(
         sister.filter((row) => row.state === 'active' && row.reasonCode === 'inbound_needs_response').length,
         1,
       );
+      const restoredLosingSibling = await actionsFor(losingSibling);
+      assert.equal(restoredLosingSibling.length, 1);
+      assert.equal(restoredLosingSibling[0]?.state, 'active');
+      assert.equal(restoredLosingSibling[0]?.reasonCode, 'follow_up_second_return');
+      assert.equal(restoredLosingSibling[0]?.version, 1);
     } finally {
-      await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, sibling));
-      await db.delete(crmDeals).where(eq(crmDeals.id, sibling));
+      await db
+        .delete(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [sibling, losingSibling]));
+      await db.delete(crmDeals).where(inArray(crmDeals.id, [sibling, losingSibling]));
       await fixture.cleanup();
     }
   },

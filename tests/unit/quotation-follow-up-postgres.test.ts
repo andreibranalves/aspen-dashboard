@@ -3113,6 +3113,10 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
 
   const other = await createExtraEligibleFixture({ createOpportunity: true });
   await db
+    .update(crmDeals)
+    .set({ clientId: ids.client })
+    .where(eq(crmDeals.id, other.opportunityId));
+  await db
     .update(quotationDeliveries)
     .set({ phone: '5511999999999' })
     .where(eq(quotationDeliveries.id, other.ids.delivery));
@@ -3166,11 +3170,13 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
         .select({
           state: quotationFollowUps.state,
           closedReason: quotationFollowUps.closedReason,
+          eligibilityVersion: quotationFollowUps.eligibilityVersion,
         })
         .from(quotationFollowUps)
         .where(eq(quotationFollowUps.id, followUpId));
       assert.equal(row.state, 'cancelled');
       assert.equal(row.closedReason, 'inbound_after_anchor');
+      assert.equal(row.eligibilityVersion, null);
     }
 
     const [foreignRow] = await db
@@ -3194,8 +3200,27 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
     const relevant = associateAlerts.filter((row) =>
       [ids.crm, other.opportunityId].includes(row.opportunityId),
     );
-    assert.equal(relevant.length, 2);
+    assert.equal(relevant.length, 1);
     assert.ok(relevant.every((row) => row.reason === 'Associar resposta'));
+
+    const ambiguityActions = await db
+      .select({
+        id: opportunityNextActions.id,
+        opportunityId: opportunityNextActions.opportunityId,
+        state: opportunityNextActions.state,
+        reasonCode: opportunityNextActions.reasonCode,
+        replacedById: opportunityNextActions.replacedById,
+        version: opportunityNextActions.version,
+      })
+      .from(opportunityNextActions)
+      .where(inArray(opportunityNextActions.opportunityId, [ids.crm, other.opportunityId!]));
+    const alert = ambiguityActions.find(
+      (row) => row.state === 'active' && row.reasonCode === 'associate_response',
+    );
+    const suspended = ambiguityActions.find((row) => row.state === 'suspended');
+    assert.ok(alert);
+    assert.ok(suspended);
+    assert.equal(suspended.replacedById, alert.id);
 
     for (const opportunityId of [ids.crm, other.opportunityId]) {
       const inboundActions = await db
@@ -3223,7 +3248,41 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
         eq(opportunityNextActions.reasonCode, 'associate_response'),
         inArray(opportunityNextActions.opportunityId, [ids.crm, other.opportunityId!]),
       ));
-    assert.equal(associateAgain.length, 2);
+    assert.equal(associateAgain.length, 1);
+
+    const actionRepository = createPostgresOpportunityActionRepository(() => db, {
+      now: () => new Date('2026-09-01T17:10:00.000Z'),
+    });
+    await actionRepository.associateInboundResponse({
+      actionId: alert.id,
+      expectedVersion: alert.version,
+      opportunityId: suspended.opportunityId,
+      actor: 'operator-a',
+    });
+    const afterAssociation = await db
+      .select({
+        opportunityId: opportunityNextActions.opportunityId,
+        state: opportunityNextActions.state,
+        reasonCode: opportunityNextActions.reasonCode,
+      })
+      .from(opportunityNextActions)
+      .where(inArray(opportunityNextActions.opportunityId, [ids.crm, other.opportunityId!]));
+    assert.equal(
+      afterAssociation.filter(
+        (row) =>
+          row.opportunityId === suspended.opportunityId &&
+          row.state === 'active' &&
+          row.reasonCode === 'inbound_needs_response',
+      ).length,
+      1,
+    );
+    const losingOpportunityId = suspended.opportunityId === ids.crm ? other.opportunityId : ids.crm;
+    assert.equal(
+      afterAssociation.filter(
+        (row) => row.opportunityId === losingOpportunityId && row.state === 'active',
+      ).length,
+      1,
+    );
   } finally {
     await foreign.cleanup();
     await other.cleanup();

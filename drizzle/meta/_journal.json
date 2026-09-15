@@ -344,6 +344,13 @@
       "when": 1789301000000,
       "tag": "0048_commercial_inbound_events",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789302000000,
+      "tag": "0049_opportunity_action_suspension",
+      "breakpoints": true
     }
   ]
 }

@@ -15,8 +15,16 @@ import {
   countActiveActionsForOpportunity,
   previewCommercialRecordTransition,
 } from '../../api/_infrastructure/db/repositories/commercial-record-transition-repository.js';
+import { createPostgresOpportunityActionRepository } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
+import { createPostgresWhatsappContactActivityRepository } from '../../api/_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
-import { clients, crmDeals, opportunityNextActions } from '../../api/_infrastructure/db/schema.js';
+import {
+  clients,
+  crmDeals,
+  opportunityNextActions,
+  whatsappContactActivity,
+  whatsappContactBlockEvents,
+} from '../../api/_infrastructure/db/schema.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
@@ -140,6 +148,78 @@ test(
       await db.delete(crmDeals).where(eq(crmDeals.id, openId));
       await db.delete(crmDeals).where(eq(crmDeals.id, siblingId));
       await db.delete(crmDeals).where(eq(crmDeals.id, closedId));
+      await db.delete(clients).where(eq(clients.id, clientId));
+    }
+  },
+);
+
+test(
+  'restricted transition stays visible and unblock restores its action',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const clientId = randomUUID();
+    const opportunityId = randomUUID();
+    const activityId = randomUUID();
+    const phone = '5511666555444';
+    const instance = `transition-${randomUUID()}`;
+    const rotatedInstance = `transition-rotated-${randomUUID()}`;
+    const now = new Date('2026-09-15T12:00:00.000Z');
+    await db.insert(clients).values({ id: clientId, nome: 'Contato restrito', telefone: phone });
+    await db.insert(crmDeals).values({
+      id: opportunityId,
+      clientId,
+      nome: 'Demanda restrita',
+      telefone: phone,
+      status: 'Orcamento Enviado',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(whatsappContactActivity).values({
+      id: activityId,
+      instance,
+      providerConversationId: `${phone}@s.whatsapp.net`,
+      canonicalPhone: phone,
+      identityStatus: 'verified',
+      blockedAt: now,
+      blockReason: 'do_not_contact',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    try {
+      await applyCommercialRecordTransition(db, {
+        authorization: { applyAuthorized: true },
+        occurredAt: now,
+        idFactory: randomUUID,
+      });
+      const [suspended] = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(eq(opportunityNextActions.opportunityId, opportunityId));
+      assert.equal(suspended?.state, 'suspended');
+      assert.equal(suspended?.transitionReason, 'Não contatar');
+
+      const queue = await createPostgresOpportunityActionRepository(() => db).listActive();
+      assert.equal(queue.data.find((item) => item.opportunityId === opportunityId)?.state, 'suspended');
+
+      await createPostgresWhatsappContactActivityRepository(() => db).unblockContact({
+        instance: rotatedInstance,
+        canonicalPhone: phone,
+        actor: 'operator-a',
+        reason: 'Cliente autorizou retomada',
+        now: new Date('2026-09-15T13:00:00.000Z'),
+      });
+      const [restored] = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(eq(opportunityNextActions.opportunityId, opportunityId));
+      assert.equal(restored?.state, 'active');
+      assert.equal(restored?.version, suspended?.version);
+    } finally {
+      await db.delete(whatsappContactBlockEvents).where(eq(whatsappContactBlockEvents.canonicalPhone, phone));
+      await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, opportunityId));
+      await db.delete(whatsappContactActivity).where(eq(whatsappContactActivity.id, activityId));
+      await db.delete(crmDeals).where(eq(crmDeals.id, opportunityId));
       await db.delete(clients).where(eq(clients.id, clientId));
     }
   },

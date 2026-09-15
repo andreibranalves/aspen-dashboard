@@ -576,7 +576,7 @@ export function createCommercialQueueHandler(
         return json(200, { unblocked: true, canonical_phone: canonicalPhone });
       }
 
-      if (command === 'associate_inbound' || command === 'associate_response') {
+      if (command === 'associate_response') {
         const associated = await repository.associateInboundResponse({
           opportunityId: textField(payload, 'opportunity_id'),
           actionId: textField(payload, 'action_id'),

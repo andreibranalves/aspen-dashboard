@@ -28,6 +28,7 @@ export type OpportunityTransitionFacts = {
   /** Other open opportunities for the same client/phone — never merge. */
   siblingOpenOpportunityIds: readonly string[];
   hasActiveNextAction: boolean;
+  hasSuspendedRestrictedAction: boolean;
   /** Prior completed/cancelled/superseded actions or accepted follow-up history. */
   hasAcceptedHistory: boolean;
   /** Dismissed follow-up attempts that must remain preserved. */
@@ -44,6 +45,7 @@ export type OpportunityTransitionFacts = {
 export type TransitionApplyPlan =
   | { type: 'noop'; preserve: true }
   | { type: 'keep_active_action'; preserve: true }
+  | { type: 'ensure_suspended_action' }
   | { type: 'ensure_first_contact' }
   | { type: 'ensure_verify_conversation'; reason: string };
 
@@ -88,21 +90,23 @@ export function classifyOpportunityTransition(
     siblingOpenOpportunityIds,
   };
 
-  if (facts.contactRestricted) {
-    return {
-      ...base,
-      classification: 'restricted',
-      reviewReason: null,
-      applyPlan: { type: 'noop', preserve: true },
-    };
-  }
-
   if (isClosedStatus(facts.status)) {
     return {
       ...base,
       classification: 'closed',
       reviewReason: null,
       applyPlan: { type: 'noop', preserve: true },
+    };
+  }
+
+  if (facts.contactRestricted) {
+    return {
+      ...base,
+      classification: 'restricted',
+      reviewReason: null,
+      applyPlan: facts.hasSuspendedRestrictedAction
+        ? { type: 'noop', preserve: true }
+        : { type: 'ensure_suspended_action' },
     };
   }
 

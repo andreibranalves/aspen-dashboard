@@ -17,6 +17,7 @@ function facts(overrides: Partial<OpportunityTransitionFacts> = {}): Opportunity
     clientId: '22222222-2222-4222-8222-222222222222',
     siblingOpenOpportunityIds: [],
     hasActiveNextAction: false,
+    hasSuspendedRestrictedAction: false,
     hasAcceptedHistory: false,
     hasDismissedAttempts: false,
     contactRestricted: false,
@@ -25,12 +26,12 @@ function facts(overrides: Partial<OpportunityTransitionFacts> = {}): Opportunity
   };
 }
 
-test('restricted contact is preserved without inventing a next action', () => {
+test('restricted contact receives suspended continuity', () => {
   const decision = classifyOpportunityTransition(
     facts({ contactRestricted: true, insufficientEvidenceForSilence: true }),
   );
   assert.equal(decision.classification, 'restricted');
-  assert.deepEqual(decision.applyPlan, { type: 'noop', preserve: true });
+  assert.deepEqual(decision.applyPlan, { type: 'ensure_suspended_action' });
 });
 
 test('closed opportunity is preserved', () => {

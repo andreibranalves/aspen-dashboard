@@ -21,7 +21,12 @@ export type OpportunityActionKind =
   | 'agreed_commitment'
   | 'review';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
-export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
+export type OpportunityActionState =
+  | 'active'
+  | 'suspended'
+  | 'completed'
+  | 'cancelled'
+  | 'superseded';
 export type OpportunityActionScheduleType = 'date_only' | 'timed';
 export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'closed';
 export type OpportunityQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
@@ -749,7 +754,12 @@ function rowOriginNullable(value: unknown): OpportunityActionOrigin | null {
 }
 
 function rowState(value: unknown): OpportunityActionState {
-  if (value === 'completed' || value === 'cancelled' || value === 'superseded') return value;
+  if (
+    value === 'suspended' ||
+    value === 'completed' ||
+    value === 'cancelled' ||
+    value === 'superseded'
+  ) return value;
   return 'active';
 }
 
@@ -1535,122 +1545,167 @@ export async function applyVerifyConversationTransition(
  */
 async function resolveAssociateResponseToOpportunity(input: {
   database: ActionDatabase;
-  clientId: string;
-  associationPhone: string;
+  alertActionId: string;
   opportunityId: string;
   occurredAt: Date;
   idFactory: () => string;
   actor: string;
 }): Promise<OpportunityActionCommandResult> {
-  const { database, clientId, associationPhone, opportunityId, occurredAt, idFactory, actor } = input;
+  const {
+    database,
+    alertActionId,
+    opportunityId,
+    occurredAt,
+    idFactory,
+    actor,
+  } = input;
+  const suspendedRows = await database
+    .select({
+      id: opportunityNextActions.id,
+      opportunityId: opportunityNextActions.opportunityId,
+    })
+    .from(opportunityNextActions)
+    .where(
+      and(
+        eq(opportunityNextActions.state, 'suspended'),
+        eq(opportunityNextActions.replacedById, alertActionId),
+      ),
+    );
+  const suspendedTarget = suspendedRows.find((row) => row.opportunityId === opportunityId);
   const targetAction = await activeAction(database, opportunityId);
   if (targetAction && targetAction.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
     throw new ActionConflictError('A oportunidade escolhida já possui outra próxima ação ativa.');
   }
-  if (targetAction) {
-    const result = await applyInboundResponseTransition({
+  if (suspendedTarget) {
+    const [restored] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'active',
+        updatedAt: occurredAt,
+        transitionActor: null,
+        transitionAt: null,
+        transitionOrigin: null,
+        transitionReason: null,
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.id, suspendedTarget.id),
+          eq(opportunityNextActions.state, 'suspended'),
+          eq(opportunityNextActions.replacedById, alertActionId),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    if (!restored) throw new ActionConflictError();
+  }
+  if (!targetAction) {
+    const [closedAlert] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'cancelled',
+        updatedAt: occurredAt,
+        transitionActor: actor,
+        transitionAt: occurredAt,
+        transitionOrigin: 'manual',
+        transitionReason: 'Resposta associada a outra oportunidade',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.id, alertActionId),
+          eq(opportunityNextActions.state, 'active'),
+          eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    if (!closedAlert) throw new ActionConflictError();
+    const [restoredHost] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'active',
+        updatedAt: occurredAt,
+        transitionActor: null,
+        transitionAt: null,
+        transitionOrigin: null,
+        transitionReason: null,
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.state, 'completed'),
+          eq(opportunityNextActions.replacedById, alertActionId),
+          eq(opportunityNextActions.transitionReason, 'Resposta ambígua entre oportunidades'),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    if (!restoredHost) throw new ActionConflictError();
+  }
+  let result: OpportunityActionCommandResult;
+  if (targetAction || suspendedTarget) {
+    result = await applyInboundResponseTransition({
       database,
       opportunityId,
       occurredAt,
       idFactory,
       actor,
     });
-    await database
-      .update(opportunityNextActions)
-      .set({
-        state: 'cancelled',
+  } else {
+    const dueDate = calendarDateInSaoPaulo(occurredAt);
+    const [latest] = await database
+      .select({ version: opportunityNextActions.version })
+      .from(opportunityNextActions)
+      .where(eq(opportunityNextActions.opportunityId, opportunityId))
+      .orderBy(sql`${opportunityNextActions.version} DESC`)
+      .limit(1);
+    const [created] = await database
+      .insert(opportunityNextActions)
+      .values({
+        id: idFactory(),
+        opportunityId,
+        kind: 'review',
+        reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
+        reason: 'Preciso responder',
+        origin: 'event',
+        state: 'active',
+        dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+        dueDate,
+        dueTime: null,
+        scheduleType: 'date_only',
+        version: (latest?.version || 0) + 1,
+        actor,
+        createdAt: occurredAt,
         updatedAt: occurredAt,
-        transitionActor: actor,
-        transitionAt: occurredAt,
-        transitionOrigin: 'manual',
-        transitionReason: 'Resposta associada a outra oportunidade',
-        replacedById: null,
       })
-      .where(
-        and(
-          eq(opportunityNextActions.state, 'active'),
-          eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
-          eq(opportunityNextActions.associationPhone, associationPhone),
-          sql`${opportunityNextActions.opportunityId} IN (
-            SELECT id FROM crm_deals WHERE client_id = ${clientId}
-          )`,
-        ),
-      );
-    return result;
+      .returning();
+    if (!created) throw new OpportunityActionRepositoryError();
+    result = {
+      actionId: created.id,
+      opportunityId,
+      state: 'active',
+      version: created.version,
+      action: null,
+      successor: rowRecord(created),
+      closed: false,
+    };
   }
-  const siblingRows = await database
-    .select({
-      id: opportunityNextActions.id,
-      version: opportunityNextActions.version,
+  await database
+    .update(opportunityNextActions)
+    .set({
+      state: 'active',
+      updatedAt: occurredAt,
+      transitionActor: null,
+      transitionAt: null,
+      transitionOrigin: null,
+      transitionReason: null,
+      replacedById: null,
     })
-    .from(opportunityNextActions)
-    .innerJoin(crmDeals, eq(crmDeals.id, opportunityNextActions.opportunityId))
     .where(
       and(
-        eq(crmDeals.clientId, clientId),
-        eq(opportunityNextActions.state, 'active'),
-        eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
-        eq(opportunityNextActions.associationPhone, associationPhone),
+        eq(opportunityNextActions.state, 'suspended'),
+        eq(opportunityNextActions.replacedById, alertActionId),
       ),
     );
-  for (const sibling of siblingRows) {
-    await database
-      .update(opportunityNextActions)
-      .set({
-        state: 'cancelled',
-        updatedAt: occurredAt,
-        transitionActor: actor,
-        transitionAt: occurredAt,
-        transitionOrigin: 'manual',
-        transitionReason: 'Resposta associada a outra oportunidade',
-        replacedById: null,
-      })
-      .where(
-        and(
-          eq(opportunityNextActions.id, sibling.id),
-          eq(opportunityNextActions.state, 'active'),
-          eq(opportunityNextActions.version, sibling.version),
-        ),
-      );
-  }
-  const dueDate = calendarDateInSaoPaulo(occurredAt);
-  const [latest] = await database
-    .select({ version: opportunityNextActions.version })
-    .from(opportunityNextActions)
-    .where(eq(opportunityNextActions.opportunityId, opportunityId))
-    .orderBy(sql`${opportunityNextActions.version} DESC`)
-    .limit(1);
-  const id = idFactory();
-  const [created] = await database
-    .insert(opportunityNextActions)
-    .values({
-      id,
-      opportunityId,
-      kind: 'review',
-      reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
-      reason: 'Preciso responder',
-      origin: 'event',
-      state: 'active',
-      dueAt: new Date(`${dueDate}T00:00:00-03:00`),
-      dueDate,
-      dueTime: null,
-      scheduleType: 'date_only',
-      version: (latest?.version || 0) + 1,
-      actor,
-      createdAt: occurredAt,
-      updatedAt: occurredAt,
-    })
-    .returning();
-  if (!created) throw new OpportunityActionRepositoryError();
-  return {
-    actionId: created.id,
-    opportunityId,
-    state: 'active',
-    version: created.version,
-    action: null,
-    successor: rowRecord(created),
-    closed: false,
-  };
+  return result;
 }
 
 
@@ -1937,12 +1992,8 @@ async function verifiedFollowUpIdentity(
       AND NOT EXISTS (
         SELECT 1
         FROM whatsapp_contact_activity blocked
-        WHERE blocked.instance = ${instance}
-          AND blocked.blocked_at IS NOT NULL
-          AND (
-            blocked.provider_conversation_id = activity.provider_conversation_id
-            OR blocked.canonical_phone = activity.canonical_phone
-          )
+        WHERE blocked.blocked_at IS NOT NULL
+          AND blocked.canonical_phone = activity.canonical_phone
       )
     ORDER BY CASE WHEN activity.canonical_phone = ${candidatePhone} THEN 0 ELSE 1 END,
              activity.updated_at DESC,
@@ -2438,7 +2489,10 @@ export function createPostgresOpportunityActionRepository(
                       closedStatuses.map((status) => sql`${status}`),
                       sql`, `
                     )})`
-                  : sql`a.state = 'active' AND d.status NOT IN (${sql.join(
+                  : sql`(
+                      a.state = 'active'
+                      OR (a.state = 'suspended' AND a.transition_reason = 'Não contatar')
+                    ) AND d.status NOT IN (${sql.join(
                       closedStatuses.map((status) => sql`${status}`),
                       sql`, `
                     )})`
@@ -2770,8 +2824,7 @@ export function createPostgresOpportunityActionRepository(
           const now = nowFactory();
           return resolveAssociateResponseToOpportunity({
             database: tx,
-            clientId: deal.clientId,
-            associationPhone: alert.associationPhone,
+            alertActionId: alert.id,
             opportunityId,
             occurredAt: now,
             idFactory,

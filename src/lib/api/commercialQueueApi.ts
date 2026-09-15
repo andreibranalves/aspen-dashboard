@@ -5,7 +5,12 @@ export type OpportunityActionKind =
   | 'agreed_commitment'
   | 'review';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
-export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
+export type OpportunityActionState =
+  | 'active'
+  | 'suspended'
+  | 'completed'
+  | 'cancelled'
+  | 'superseded';
 export type OpportunityActionScheduleType = 'date_only' | 'timed';
 export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'closed';
 export type CommercialQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
@@ -219,7 +224,7 @@ const KINDS = [
   'review',
 ] as const;
 const ORIGINS = ['manual', 'automatic', 'event'] as const;
-const STATES = ['active', 'completed', 'cancelled', 'superseded'] as const;
+const STATES = ['active', 'suspended', 'completed', 'cancelled', 'superseded'] as const;
 const SCHEDULE_TYPES = ['date_only', 'timed'] as const;
 const DUE_STATUSES = ['upcoming', 'today', 'overdue', 'closed'] as const;
 const FILTERS = ['active', 'overdue', 'today', 'scheduled', 'closed'] as const;

@@ -1089,6 +1089,23 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         </div>
       );
     }
+    if (
+      item.state === 'suspended' &&
+      item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact')
+    ) {
+      return (
+        <div className="flex flex-wrap gap-2">
+          {item.contactPhone && (
+            <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+              Desbloquear contato
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+            Histórico
+          </Button>
+        </div>
+      );
+    }
     if (item.state !== 'active') {
       return (
         <span className="text-xs text-fg-muted">Resultado: {item.reason || item.reasonLabel}</span>

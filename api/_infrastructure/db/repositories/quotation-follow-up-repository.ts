@@ -569,8 +569,7 @@ function factsSql(started: Date, instance: string): SQL {
     ) a ON true
     LEFT JOIN LATERAL (
       SELECT blocked.blocked_at FROM whatsapp_contact_activity blocked
-      WHERE blocked.instance = ${instance}
-        AND blocked.canonical_phone = regexp_replace(d.phone, '[^0-9]', '', 'g')
+      WHERE blocked.canonical_phone = regexp_replace(d.phone, '[^0-9]', '', 'g')
         AND blocked.blocked_at IS NOT NULL
       LIMIT 1
     ) blocked ON true
@@ -998,13 +997,13 @@ async function findExistingClientReview(
   clientId: string,
   reasonCode: string,
   canonicalPhone?: string,
-): Promise<string | null> {
+): Promise<{ actionId: string; opportunityId: string } | null> {
   const phoneFilter = canonicalPhone
     ? sql`AND a.association_phone = ${canonicalPhone}`
     : sql``;
   const rows = Array.from(
     await tx.execute(sql`
-      SELECT a.opportunity_id
+      SELECT a.id, a.opportunity_id
       FROM opportunity_next_actions a
       INNER JOIN crm_deals d ON d.id = a.opportunity_id
       WHERE d.client_id = ${clientId}
@@ -1015,7 +1014,9 @@ async function findExistingClientReview(
       LIMIT 1
     `),
   ) as Record<string, unknown>[];
-  return rows.length ? String(rows[0].opportunity_id) : null;
+  return rows.length
+    ? { actionId: String(rows[0].id), opportunityId: String(rows[0].opportunity_id) }
+    : null;
 }
 
 async function listOpenOpportunityIdsForConversation(
@@ -1139,20 +1140,8 @@ async function applyAmbiguousInboundInTransaction(
           input.phone,
         )
       : null;
-    const hostOpportunityId = existing || opportunityIds[0];
-    await tx.execute(sql`
-      UPDATE opportunity_next_actions
-      SET state = 'cancelled',
-          updated_at = ${iso(input.occurredAt)}::timestamptz,
-          transition_actor = 'system',
-          transition_at = ${iso(input.occurredAt)}::timestamptz,
-          transition_origin = 'event',
-          transition_reason = 'Resposta ambígua aguardando associação',
-          replaced_by_id = NULL
-      WHERE opportunity_id IN (${sql.join(opportunityIds.map((id) => sql`${id}::uuid`), sql`, `)})
-        AND opportunity_id <> ${hostOpportunityId}::uuid
-        AND state = 'active'
-    `);
+    const hostOpportunityId = existing?.opportunityId || opportunityIds[0];
+    let alertActionId = existing?.actionId || null;
     if (!existing) {
       const transition = await applyAssociateResponseTransition({
         database: tx as never,
@@ -1161,8 +1150,8 @@ async function applyAmbiguousInboundInTransaction(
         idFactory: randomUUID,
         actor: 'system',
       });
+      alertActionId = transition.successor?.actionId || transition.actionId;
       if (clientId) {
-        const alertActionId = transition.successor?.actionId || transition.actionId;
         await tx.execute(sql`
           UPDATE opportunity_next_actions
           SET association_client_id = ${clientId}::uuid,
@@ -1173,6 +1162,21 @@ async function applyAmbiguousInboundInTransaction(
             AND reason_code = ${ASSOCIATE_RESPONSE_REASON_CODE}
         `);
       }
+    }
+    if (alertActionId) {
+      await tx.execute(sql`
+        UPDATE opportunity_next_actions
+        SET state = 'suspended',
+            updated_at = ${iso(input.occurredAt)}::timestamptz,
+            transition_actor = 'system',
+            transition_at = ${iso(input.occurredAt)}::timestamptz,
+            transition_origin = 'event',
+            transition_reason = 'Resposta ambígua aguardando associação',
+            replaced_by_id = ${alertActionId}::uuid
+        WHERE opportunity_id IN (${sql.join(opportunityIds.map((id) => sql`${id}::uuid`), sql`, `)})
+          AND opportunity_id <> ${hostOpportunityId}::uuid
+          AND state = 'active'
+      `);
     }
     firstAlertOpportunityId ||= hostOpportunityId;
   }
@@ -1282,45 +1286,15 @@ async function applyUncertainInboundInTransaction(
     );
   }
   let firstAlertOpportunityId: string | null = null;
-  const grouped = new Map<string, { clientId: string | null; opportunityIds: string[] }>();
-  for (const row of linked) {
-    const key = row.clientId ? `client:${row.clientId}` : `opportunity:${row.opportunityId}`;
-    const group = grouped.get(key) || { clientId: row.clientId, opportunityIds: [] };
-    group.opportunityIds.push(row.opportunityId);
-    grouped.set(key, group);
-  }
-  const groups = [...grouped.values()].map((group) => ({
-    ...group,
-    opportunityIds: [...new Set(group.opportunityIds)].sort(),
-  }));
-  for (const group of groups) {
-    const existing = group.clientId
-      ? await findExistingClientReview(tx, group.clientId, 'verify_conversation')
-      : null;
-    const hostOpportunityId = existing || group.opportunityIds[0];
-    await tx.execute(sql`
-      UPDATE opportunity_next_actions
-      SET state = 'cancelled',
-          updated_at = ${iso(input.occurredAt)}::timestamptz,
-          transition_actor = 'system',
-          transition_at = ${iso(input.occurredAt)}::timestamptz,
-          transition_origin = 'event',
-          transition_reason = 'Conversa aguardando verificação',
-          replaced_by_id = NULL
-      WHERE opportunity_id IN (${sql.join(group.opportunityIds.map((id) => sql`${id}::uuid`), sql`, `)})
-        AND opportunity_id <> ${hostOpportunityId}::uuid
-        AND state = 'active'
-    `);
-    if (!existing) {
-      await applyVerifyConversationTransition({
-        database: tx as never,
-        opportunityId: hostOpportunityId,
-        occurredAt: input.occurredAt,
-        idFactory: randomUUID,
-        actor: 'system',
-      });
-    }
-    firstAlertOpportunityId ||= hostOpportunityId;
+  for (const opportunityId of opportunityIds) {
+    await applyVerifyConversationTransition({
+      database: tx as never,
+      opportunityId,
+      occurredAt: input.occurredAt,
+      idFactory: randomUUID,
+      actor: 'system',
+    });
+    firstAlertOpportunityId ||= opportunityId;
   }
   return { alertOpportunityId: firstAlertOpportunityId };
 }
@@ -1561,6 +1535,9 @@ export function createPostgresQuotationFollowUpRepository(
                         throw new ConflictError(STALE);
                     if (input.reason === 'do_not_contact') {
                         const blockedPhone = String(projected.canonicalPhone || '');
+                        await tx.execute(sql `
+              SELECT pg_advisory_xact_lock(hashtextextended(${blockedPhone}::text, 0))
+            `);
                         await tx.execute(sql `INSERT INTO whatsapp_contact_activity (
               id, instance, provider_conversation_id, canonical_phone, identity_status, blocked_at, block_reason, created_at, updated_at
             ) VALUES (
@@ -1578,8 +1555,7 @@ export function createPostgresQuotationFollowUpRepository(
               SET blocked_at = ${iso(now)}::timestamptz,
                   block_reason = 'do_not_contact',
                   updated_at = ${iso(now)}::timestamptz
-              WHERE instance = ${found.row.instance}
-                AND canonical_phone = ${blockedPhone}`);
+              WHERE canonical_phone = ${blockedPhone}`);
                         await tx.execute(sql `UPDATE quotation_follow_ups
               SET state = 'cancelled',
                   closed_reason = 'contact_blocked',
@@ -1592,8 +1568,7 @@ export function createPostgresQuotationFollowUpRepository(
                   lease_until = NULL,
                   transport_started_at = NULL,
                   updated_at = ${iso(now)}::timestamptz
-              WHERE instance = ${found.row.instance}
-                AND canonical_phone = ${blockedPhone}
+              WHERE canonical_phone = ${blockedPhone}
                 AND (
                   state = 'approved'
                   OR (state = 'processing' AND transport_started_at IS NULL)
@@ -2314,12 +2289,8 @@ export function createPostgresQuotationFollowUpRepository(
               EXISTS (
                 SELECT 1
                 FROM whatsapp_contact_activity activity
-                WHERE activity.instance = ${instance}
-                  AND activity.blocked_at IS NOT NULL
-                  AND (
-                    activity.provider_conversation_id = ${providerConversationId}
-                    OR activity.canonical_phone = ${phoneValue}
-                  )
+                WHERE activity.blocked_at IS NOT NULL
+                  AND activity.canonical_phone = ${phoneValue}
               ) AS contact_blocked,
               EXISTS (
                 SELECT 1
@@ -2905,8 +2876,7 @@ export function createPostgresQuotationFollowUpRepository(
               FROM whatsapp_contact_activity activity
               JOIN quotation_follow_ups f ON f.id = ${idValue}
               JOIN quotation_deliveries delivery ON delivery.id = f.delivery_id
-              WHERE activity.instance = f.instance
-                AND activity.canonical_phone = regexp_replace(delivery.phone, '[^0-9]', '', 'g')
+              WHERE activity.canonical_phone = regexp_replace(delivery.phone, '[^0-9]', '', 'g')
               FOR UPDATE OF activity`);
                     await tx.execute(sql `SELECT step.id
               FROM quotation_delivery_steps step
