@@ -2774,7 +2774,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
           ? previousRoute
           : '/quotations';
     const returnLabel =
-      fromFollowUps || fromCommercial
+      fromCommercial
         ? 'Comercial'
         : fromSendHistory
           ? 'Histórico de envios'

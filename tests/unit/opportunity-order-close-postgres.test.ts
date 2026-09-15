@@ -276,6 +276,36 @@ test(
       assert.equal(completedRows.filter((row) => row.state === 'active').length, 0);
       assert.equal(completedRows.filter((row) => row.state === 'completed').length, 1);
     } finally {
+      // Children of quotations don't all cascade and crm_deals keeps a
+      // restrict foreign key, so leaving fixtures behind breaks the
+      // delete-based cleanup of every later DB-gated suite.
+      await db.delete(schema.salesOrders).where(eq(schema.salesOrders.quotationId, draftQuotationId));
+      await db.delete(schema.salesOrders).where(eq(schema.salesOrders.quotationId, quotationId));
+      await db
+        .delete(schema.opportunityNextActions)
+        .where(eq(schema.opportunityNextActions.opportunityId, closedDealId));
+      await db
+        .delete(schema.opportunityNextActions)
+        .where(eq(schema.opportunityNextActions.opportunityId, siblingDealId));
+      await db.delete(schema.quoteRevisionItems).where(eq(schema.quoteRevisionItems.revisionId, itemId));
+      await db
+        .delete(schema.salesOrderItems)
+        .where(eq(schema.salesOrderItems.productSku, sku));
+      await db
+        .delete(schema.productActivityEvents)
+        .where(eq(schema.productActivityEvents.productSku, sku));
+      await db
+        .delete(schema.productPricingTiers)
+        .where(eq(schema.productPricingTiers.productSku, sku));
+      await db.delete(schema.quoteRevisions).where(eq(schema.quoteRevisions.quotationId, draftQuotationId));
+      await db.delete(schema.quoteRevisions).where(eq(schema.quoteRevisions.quotationId, quotationId));
+      await db.update(schema.crmDeals).set({ quotationId: null }).where(eq(schema.crmDeals.id, closedDealId));
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, siblingDealId));
+      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, closedDealId));
+      await db.delete(schema.quotations).where(eq(schema.quotations.id, draftQuotationId));
+      await db.delete(schema.quotations).where(eq(schema.quotations.id, quotationId));
+      await db.delete(schema.products).where(eq(schema.products.sku, sku));
+      await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
       await client.end({ timeout: 5 });
     }
   },

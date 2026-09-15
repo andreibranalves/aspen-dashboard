@@ -234,7 +234,10 @@ async function resetSharedFollowUpGraph() {
   await db.delete(quotationFollowUps).where(eq(quotationFollowUps.quotationId, ids.quotation));
   await db.delete(opportunityDeliveryAnchors).where(eq(opportunityDeliveryAnchors.opportunityId, ids.crm));
   await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, ids.crm));
-  await db.update(crmDeals).set({ followUpStage: 0 }).where(eq(crmDeals.id, ids.crm));
+  await db
+    .update(crmDeals)
+    .set({ followUpStage: 0, status: 'Orcamento Enviado', lostReason: null, updatedAt: now })
+    .where(eq(crmDeals.id, ids.crm));
 }
 
 test.before(async () => {

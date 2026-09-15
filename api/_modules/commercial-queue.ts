@@ -27,7 +27,7 @@ import {
 export interface CommercialQueueHandlerDependencies {
   repository?: OpportunityActionRepository;
   contactRepository?: Pick<WhatsappContactActivityRepository, 'unblockContact'>;
-  environment?: NodeJS.ProcessEnv;
+  environment?: { EVOLUTION_INSTANCE?: string };
 }
 
 class HandlerInputError extends Error {

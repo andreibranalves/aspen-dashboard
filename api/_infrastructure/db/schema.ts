@@ -1405,7 +1405,7 @@ export const commercialInboundEvents = pgTable(
     id: uuid('id').primaryKey(),
     instance: varchar('instance', { length: 120 }).notNull(),
     providerMessageId: varchar('provider_message_id', { length: 255 }).notNull(),
-    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }),
     canonicalPhone: varchar('canonical_phone', { length: 15 }),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

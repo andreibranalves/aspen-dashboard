@@ -405,7 +405,7 @@ test(
 );
 
 test(
-  'known inbound response after the anchor cancels the event action immediately',
+  'known inbound response after the anchor replaces the event action with Preciso responder',
   { skip: databaseSkip, concurrency: false },
   async () => {
     const fixture = await makeFixture();
@@ -437,12 +437,31 @@ test(
         identityStatus: 'verified',
         canonicalPhone: fixture.phone,
       });
-      const [cancelled] = await db
+      const [closed] = await db
         .select()
         .from(opportunityNextActions)
         .where(eq(opportunityNextActions.id, created!.id));
-      assert.equal(cancelled?.state, 'cancelled');
-      assert.equal(cancelled?.transitionReason, 'Cliente respondeu após a entrega');
+      assert.equal(closed?.state, 'completed');
+      assert.equal(closed?.transitionReason, 'Cliente respondeu');
+      const active = (await actionsFor(fixture.ids.opportunity)).filter(
+        (row) => row.state === 'active'
+      );
+      assert.equal(active.length, 1);
+      assert.equal(active[0]?.reasonCode, 'inbound_needs_response');
+      assert.equal(active[0]?.reason, 'Preciso responder');
+      // Without an accepted delivery step the follow-up guard cannot fire, so
+      // the pre-anchor authorization stays non-live; it must never be claimable.
+      const [followUp] = await db
+        .select({
+          state: quotationFollowUps.state,
+          approvedAt: quotationFollowUps.approvedAt,
+          transportStartedAt: quotationFollowUps.transportStartedAt,
+        })
+        .from(quotationFollowUps)
+        .where(eq(quotationFollowUps.quotationId, fixture.ids.quotation));
+      assert.notEqual(followUp?.state, 'approved');
+      assert.notEqual(followUp?.state, 'processing');
+      assert.equal(followUp?.transportStartedAt, null);
     } finally {
       await fixture.cleanup();
     }
