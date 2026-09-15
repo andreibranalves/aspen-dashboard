@@ -1,5 +1,6 @@
 import { del as blobDelete, head as blobHead } from '@vercel/blob';
 import { handleUpload as blobHandleUpload } from '@vercel/blob/client';
+import { assertExternalWritesAllowed } from '../../../_shared/external-writes.js';
 
 export type { HeadBlobResult } from '@vercel/blob';
 
@@ -9,10 +10,19 @@ export interface BlobClient {
   handleUpload: typeof blobHandleUpload;
 }
 
-export function getBlobClient(overrides: Partial<BlobClient> = {}): BlobClient {
+export function getBlobClient(
+  overrides: Partial<BlobClient> = {},
+  env: typeof process.env = process.env,
+): BlobClient {
   return {
     head: overrides.head || blobHead,
-    del: overrides.del || blobDelete,
-    handleUpload: overrides.handleUpload || blobHandleUpload,
+    del: async (...args) => {
+      assertExternalWritesAllowed('blob', env);
+      return (overrides.del || blobDelete)(...args);
+    },
+    handleUpload: async (...args) => {
+      assertExternalWritesAllowed('blob', env);
+      return (overrides.handleUpload || blobHandleUpload)(...args);
+    },
   };
 }

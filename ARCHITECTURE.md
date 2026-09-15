@@ -43,14 +43,14 @@ Não:
 
 - acessar PostgreSQL ou Drizzle pelo frontend;
 - acessar PostgreSQL ou Drizzle fora do boundary documentado em [`docs/postgresql-drizzle-boundary.md`](docs/postgresql-drizzle-boundary.md);
-- importar SDKs ou ler configuração de ambiente de Evolution API, OpenRouter, Vercel Blob ou Vercel KV em `api/_modules` ou `api/_shared`; use as factories da camada de integrações;
+- importar SDKs ou ler configuração de ambiente de Evolution API, OpenRouter, Resend, QStash, Vercel Blob ou Vercel KV em `api/_modules` ou `api/_shared`; use as factories da camada de integrações;
 - acessar fornecedores diretamente pelo frontend, exceto o upload ao Vercel Blob mediado pelo token do backend descrito acima;
 - adicionar rotas do frontend fora de `src/app/routes.tsx`;
 - adicionar endpoints fora de `api/_app/routes.ts`;
 - criar outra Function implantável ou duplicar adapters HTTP;
 - colocar detalhes de banco, transporte ou fornecedor em regras de negócio;
 - criar novo fallback de provedor, transporte ou persistência;
-- adicionar dependências ou migrations sem aprovação explícita.
+- adicionar dependências sem aprovação explícita; migrations seguem a autorização e os gates de [`docs/database-migrations.md`](docs/database-migrations.md).
 
 Ao alterar uma boundary, atualize este documento e os guards arquiteturais relacionados na mesma mudança.
 

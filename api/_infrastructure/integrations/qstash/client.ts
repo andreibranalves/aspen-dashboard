@@ -1,4 +1,5 @@
-import { shouldPublishFollowUpImmediately } from './quotation-follow-up-state.js';
+import { shouldPublishFollowUpImmediately } from '../../../_modules/quotation-follow-up-state.js';
+import { assertExternalWritesAllowed } from '../../../_shared/external-writes.js';
 
 export interface QuotationFollowUpQstashEnvironment {
   QSTASH_TOKEN?: string;
@@ -76,6 +77,7 @@ export async function publishQuotationFollowUp(
   if (!shouldPublishFollowUpImmediately(input.approvalsCreatedTodayUtc)) return false;
 
   const environment = dependencies.environment || process.env;
+  assertExternalWritesAllowed('qstash', environment as typeof process.env);
   const token = environment.QSTASH_TOKEN?.trim();
   const cronSecret = environment.CRON_SECRET?.trim();
   if (!token || !cronSecret) throw configurationError();

@@ -73,6 +73,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`App server on http://0.0.0.0:${PORT} (frontend: public/, API: pipeline compartilhado)`);
+const HOST = process.env.NODE_ENV === 'test' ? '127.0.0.1' : '0.0.0.0';
+server.listen(PORT, HOST, () => {
+  console.log(`App server on http://${HOST}:${PORT} (frontend: public/, API: pipeline compartilhado)`);
 });

@@ -154,7 +154,7 @@ function collectTypeScriptFiles(directory) {
   )) {
     const path = resolve(directory, entry.name);
     if (entry.isDirectory()) files.push(...collectTypeScriptFiles(path));
-    else if (entry.isFile() && path.endsWith('.ts')) files.push(path);
+    else if (entry.isFile() && /\.tsx?$/.test(path)) files.push(path);
   }
   return files;
 }

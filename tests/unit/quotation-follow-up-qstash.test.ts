@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { publishQuotationFollowUp } from '../../api/_modules/quotation-follow-up-qstash.js';
+import { publishQuotationFollowUp } from '../../api/_infrastructure/integrations/qstash/client.js';
 
 const followUpId = '00000000-0000-4000-8000-000000000004';
 const environment = {
+  APP_ENV: 'production',
+  EXTERNAL_WRITES_ENABLED: '1',
   QSTASH_TOKEN: 'qstash-token',
   QSTASH_API_URL: 'https://qstash.upstash.io',
   CRON_SECRET: 'c'.repeat(32),
@@ -61,4 +63,27 @@ test('rejects preview vercel.app worker URLs', async () => {
       ),
     /não configurada/,
   );
+});
+
+test('blocks QStash publish before fetch when external writes are off', async () => {
+  let called = 0;
+  await assert.rejects(
+    () =>
+      publishQuotationFollowUp(
+        { followUpId, approvalsCreatedTodayUtc: 0 },
+        {
+          environment: { ...environment, APP_ENV: 'preview', EXTERNAL_WRITES_ENABLED: '0' },
+          fetchImpl: async () => {
+            called += 1;
+            return new Response('ok', { status: 200 });
+          },
+        },
+      ),
+    (error: Error & { statusCode?: number }) => {
+      assert.equal(error.statusCode, 503);
+      assert.match(error.message, /desativadas/);
+      return true;
+    },
+  );
+  assert.equal(called, 0);
 });

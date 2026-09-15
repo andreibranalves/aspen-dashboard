@@ -19,7 +19,7 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 ## Fluxo local
 
 1. Execute as verificações automatizadas em uma cópia local.
-2. Confirme que os três mapas de rotas são iguais.
+2. Confirme que os adapters Node e Vercel delegam ao pipeline compartilhado e ao registro único `api/_app/routes.ts`.
 3. Confirme que produtos, clientes, orçamentos, CRM, pedidos, atividade e telas de comunicação usam contratos locais.
 4. Valide o envio WhatsApp somente com mocks da Evolution em testes.
 5. Registre resultados e riscos no relatório de auditoria apropriado.

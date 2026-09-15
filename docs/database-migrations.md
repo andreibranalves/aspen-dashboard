@@ -2,13 +2,19 @@
 
 ## Regra principal
 
-Migrations seguem a classificação de `docs/release-lanes.md`: uma migration genuinamente aditiva pode ser SAFE; migration destrutiva é CRITICAL. Criar ou aplicar migration exige aprovação explícita e separada, qualquer que seja a classificação. Migrations nunca executam implicitamente no startup, build ou CI padrão.
+Migrations seguem a classificação de `docs/release-lanes.md`: uma migration genuinamente aditiva pode ser SAFE; migration destrutiva é CRITICAL. Criar e testar uma migration genuinamente aditiva em PostgreSQL local descartável faz parte da implementação autorizada. Migration destrutiva, alteração histórica ou mudança da estratégia exige decisão explícita; aplicar em staging ou produção exige autorização operacional separada. Migrations nunca executam implicitamente no startup, build ou CI padrão.
 
 Exceção explícita: o job `postgres` do CI de pull request invoca o apply raw (`npm run db:migrate`)
 contra um PostgreSQL service container descartável, nunca contra staging ou produção.
 
 `npm run migrate:apply` é o apply operacional (preflight completo + apply em um comando único);
 o apply raw `npm run db:migrate` só é aceito com alvo explicitamente descartável (loopback).
+
+`db:migrate:operational` é um comando interno de `migrate:apply`, não um ponto de
+entrada manual. Ele só aceita alvo quando `migrate:apply` injeta
+`MIGRATE_APPLY_APPROVED=1` após o preflight; `MIGRATION_TARGET_DATABASE_URL`
+sozinha não basta. Os consumidores técnicos existentes ficam preservados;
+remover esse entrypoint exige decisão explícita.
 
 O job `postgres` cria um fixture determinístico descartável antes de `verify:quotation-company`.
 O fixture exige ao menos uma revisão e uma linha de configurações, portanto a verificação

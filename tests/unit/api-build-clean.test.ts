@@ -36,8 +36,8 @@ test('cleanEmittedApiFiles removes all emitted js and maps, keeping sources', ()
   }
 });
 
-function createSourceAndOutput(apiDir) {
-  const tsFile = path.join(apiDir, 'handler.ts');
+function createSourceAndOutput(apiDir, extension = 'ts') {
+  const tsFile = path.join(apiDir, `handler.${extension}`);
   writeFileSync(tsFile, '');
   const jsFile = path.join(apiDir, 'handler.js');
   // Emitted output must be strictly fresher than its source.
@@ -50,8 +50,10 @@ function createSourceAndOutput(apiDir) {
 test('isApiBuildStale is false for fresh, complete output', () => {
   const apiDir = mkdtempSync(path.join(tmpdir(), 'api-stale-'));
   try {
-    createSourceAndOutput(apiDir);
-    assert.equal(isApiBuildStale(apiDir), false);
+    for (const extension of ['ts', 'tsx']) {
+      createSourceAndOutput(apiDir, extension);
+      assert.equal(isApiBuildStale(apiDir), false, extension);
+    }
   } finally {
     rmSync(apiDir, { recursive: true, force: true });
   }

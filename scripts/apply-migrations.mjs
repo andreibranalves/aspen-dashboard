@@ -66,7 +66,12 @@ function emptyResult() {
 function executeOperationalApply(executeApply, env, targetUrl, result) {
   // MIGRATION_TARGET_DATABASE_URL existe apenas no processo filho e só é
   // definida depois da prova de identidade (e, em produção, do backup).
-  const childEnv = { ...env, MIGRATION_TARGET_DATABASE_URL: targetUrl };
+  // MIGRATE_APPLY_APPROVED prova preflight concluído; drizzle.staging recusa sem ela.
+  const childEnv = {
+    ...env,
+    MIGRATION_TARGET_DATABASE_URL: targetUrl,
+    MIGRATE_APPLY_APPROVED: '1',
+  };
   result.applyAttempted = true;
   let childOutput;
   try {

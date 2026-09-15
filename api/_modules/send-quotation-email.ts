@@ -22,7 +22,7 @@ import { issuePublicQuotationToken } from './public-quotation.js';
 import {
   ResendTransportError,
   sendQuotationEmailViaResend,
-} from './quotation-email.js';
+} from '../_infrastructure/integrations/resend/client.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;

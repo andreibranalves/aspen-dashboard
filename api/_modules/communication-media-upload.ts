@@ -14,7 +14,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 
 import { getBlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { listActiveProductCategories } from '../_infrastructure/db/repositories/products-repository.js';
-import { createHttpError } from '../_shared/http-error.js';
+import { createHttpError, isPublicHttpError } from '../_shared/http-error.js';
 import {
   ALLOWED_MIME_TYPES,
   MAX_SIZE_IMAGE,
@@ -29,10 +29,6 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 });
-
-function errorDetails(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
-}
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
@@ -121,10 +117,9 @@ export async function handler(
 
     return jsonResponse(200, result);
   } catch (err: unknown) {
-    const details = errorDetails(err);
-    const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 400;
-    const message = typeof details.message === 'string' ? details.message : 'Erro ao gerar token de upload.';
-    console.error('[comm-media-upload]', details.logMessage || details.message || err);
+    const code = isPublicHttpError(err) ? err.statusCode : 503;
+    const message = isPublicHttpError(err) ? err.message : 'Erro ao gerar token de upload.';
+    console.error('[comm-media-upload] falha ao gerar token de upload.');
     return jsonResponse(code, { error: message });
   }
 }

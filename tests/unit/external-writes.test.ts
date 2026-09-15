@@ -34,6 +34,13 @@ describe('external writes guard', () => {
     );
   });
 
+  it('a identidade Vercel veta variáveis de produção herdadas no Preview', () => {
+    for (const VERCEL_ENV of ['preview', 'development', ' PREVIEW ']) {
+      assert.equal(isExternalWritesAllowed(env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', VERCEL_ENV })), false);
+    }
+    assert.equal(isExternalWritesAllowed(env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1', VERCEL_ENV: 'production' })), true);
+  });
+
   it('bloqueia development, ambiente ausente e flag diferente de 1', () => {
     for (const candidate of [
       env(),

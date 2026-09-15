@@ -13,7 +13,7 @@ import {
 import {
   ResendTransportError,
   sendQuotationEmailViaResend,
-} from '../../api/_modules/quotation-email.js';
+} from '../../api/_infrastructure/integrations/resend/client.js';
 
 // Os testes exercitam o caminho autorizado (Production + flag explícita).
 // node --test roda cada arquivo em processo próprio, sem vazar para outros arquivos.

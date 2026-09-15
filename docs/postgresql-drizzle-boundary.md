@@ -29,7 +29,7 @@ Módulos novos não devem importar diretamente `drizzle-orm`, `postgres`, o sche
 
 `api/_infrastructure/db/repositories/` concentra consultas e mutações por contrato de domínio.
 
-`api/_infrastructure/db/quotation-write-lock.ts` e `api/_infrastructure/db/quotation-revision-invariants.ts` conhecem Drizzle para proteger invariants transacionais.
+`api/_infrastructure/db/quotation-write-lock.ts` e os repositories de emissão/revisões protegem invariantes transacionais com Drizzle.
 
 `drizzle.config.ts`, a pasta `drizzle/` e `npm run db:migrate` pertencem ao fluxo controlado de migration.
 
@@ -63,7 +63,7 @@ npm run check:db-migrations
 npm run check:vercel-functions
 ```
 
-O check procura imports diretos de Drizzle, `postgres`, schema e client sob `api/_modules/`.
+O check procura imports diretos de Drizzle, `postgres`, schema e client em `.ts` e `.tsx` sob `api/_modules/`; não é um verificador geral de todas as camadas.
 
 Imports de repositories continuam permitidos.
 

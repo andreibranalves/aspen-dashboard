@@ -38,6 +38,10 @@ const probe = `
     testIgnore: config.testIgnore || null,
     baseURL: config.use.baseURL,
     environmentBaseURL: process.env.BASE_URL,
+    databaseUrl: process.env.DATABASE_URL,
+    appEnv: process.env.APP_ENV,
+    dotenvPath: process.env.DOTENV_CONFIG_PATH,
+    leakedCredential: process.env.RESEND_API_KEY || null,
     trace: config.use.trace,
     extraHTTPHeaderNames: Object.keys(extraHTTPHeaders).sort(),
     bypassHeaderMatchesSynthetic: extraHTTPHeaders['x-vercel-protection-bypass'] === ${JSON.stringify(syntheticVercelBypassSecret)},
@@ -162,6 +166,21 @@ test('APP_ENV=development mantém servidor local e ignora specs Preview e integr
   assert.deepEqual(config.extraHTTPHeaderNames, []);
   assert.equal(config.bypassHeaderMatchesSynthetic, false);
   assert.equal(config.setBypassCookieHeaderMatches, false);
+});
+
+test('config local ignora até um arquivo operacional explicitamente indicado', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'local-config-poison-'));
+  try {
+    const file = join(dir, '.env');
+    writeFileSync(file, 'DATABASE_URL=postgresql://secret@remote.example/db\nRESEND_API_KEY=secret\n');
+    const config = loadConfig({ DOTENV_CONFIG_PATH: file, RESEND_API_KEY: 'secret' });
+    assert.equal(config.databaseUrl, '');
+    assert.equal(config.appEnv, 'test');
+    assert.equal(config.dotenvPath, '/dev/null');
+    assert.equal(config.leakedCredential, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('o marcador SAFE_E2E isolado não libera a suíte integrada no modo local', () => {

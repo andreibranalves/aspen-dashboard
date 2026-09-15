@@ -64,7 +64,11 @@ function postgresIdentity(value: string): string {
 }
 
 function assertPreviewIsolation(): void {
-  if (String(process.env.APP_ENV || '').trim().toLowerCase() !== 'preview') return;
+  const appEnv = String(process.env.APP_ENV || '').trim().toLowerCase();
+  if (process.env.VERCEL_ENV?.trim().toLowerCase() === 'preview' && appEnv !== 'preview') {
+    throw new Error('Deployment Preview exige APP_ENV=preview.');
+  }
+  if (appEnv !== 'preview') return;
   if (String(process.env.EXTERNAL_WRITES_ENABLED || '').trim() !== '0') {
     throw new Error('Preview exige EXTERNAL_WRITES_ENABLED=0.');
   }

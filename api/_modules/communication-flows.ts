@@ -7,7 +7,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 // Storage: Vercel KV. Keys: aspen:communication:flows, aspen:communication:flows:selected
 
 import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
-import { createHttpError } from '../_shared/http-error.js';
+import { createHttpError, isPublicHttpError } from '../_shared/http-error.js';
 import {
   KV_KEY_FLOWS,
   KV_KEY_FLOWS_SELECTED,
@@ -22,10 +22,6 @@ type FlowRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is FlowRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function errorDetails(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
 }
 
 // ── Default flows ──────────────────────────────────────────────────────────
@@ -160,9 +156,8 @@ async function readFlows() {
       selectedFlowId: storedSelectedFlowId || firstFlowId,
       source: 'kv',
     };
-  } catch (err: unknown) {
-    const details = errorDetails(err);
-    console.warn('[communication-flows] KV read failed:', details.message || err);
+  } catch {
+    console.warn('[communication-flows] KV read failed.');
     return null;
   }
 }
@@ -173,13 +168,8 @@ async function writeFlows(flows: FlowRecord[], selectedFlowId: string): Promise<
       kv.set(KV_KEY_FLOWS, flows),
       kv.set(KV_KEY_FLOWS_SELECTED, selectedFlowId || ''),
     ]);
-  } catch (err: unknown) {
-    const details = errorDetails(err);
-    throw createHttpError(
-      500,
-      'Falha ao salvar fluxos.',
-      `[communication-flows] KV write failed: ${String(details.message || err)}`
-    );
+  } catch {
+    throw createHttpError(500, 'Falha ao salvar fluxos.', '[communication-flows] KV write failed.');
   }
 }
 
@@ -217,10 +207,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         source: 'defaults',
       });
     } catch (err: unknown) {
-      const details = errorDetails(err);
-      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
-      const message = typeof details.message === 'string' ? details.message : 'Erro ao carregar fluxos.';
-      console.error('[communication-flows]', details.logMessage || details.message || err);
+      const code = isPublicHttpError(err) ? err.statusCode : 500;
+      const message = isPublicHttpError(err) ? err.message : 'Erro ao carregar fluxos.';
+      console.error('[communication-flows] falha ao carregar fluxos.');
       return jsonResponse(code, { error: message });
     }
   }
@@ -256,10 +245,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       await writeFlows(normalized, selectedFlowId || String(normalized[0]?.id || ''));
       return jsonResponse(200, { success: true, source: 'kv' });
     } catch (err: unknown) {
-      const details = errorDetails(err);
-      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
-      const message = typeof details.message === 'string' ? details.message : 'Erro ao salvar fluxos.';
-      console.error('[communication-flows]', details.logMessage || details.message || err);
+      const code = isPublicHttpError(err) ? err.statusCode : 500;
+      const message = isPublicHttpError(err) ? err.message : 'Erro ao salvar fluxos.';
+      console.error('[communication-flows] falha ao salvar fluxos.');
       return jsonResponse(code, { error: message });
     }
   }

@@ -52,7 +52,10 @@ responsabilidade de Andrei, sem alias ou dual-read neste checkout. Se houver
 Deployment Protection configurada na Vercel, o operador usa a credencial já
 aprovada; este fluxo não cria outro mecanismo de autenticação.
 
-Evolution e Resend são bloqueados no Preview. Persistência PostgreSQL pode ser exercitada somente no banco isolado. Não há dual-write, banco fallback ou coluna `is_test`.
+Evolution, Resend, mutações de Blob e emissão de tokens de upload são bloqueados
+no Preview. `VERCEL_ENV=preview` também veta flags de produção contraditórias;
+o banco exige `APP_ENV=preview` nesse deployment. Persistência PostgreSQL pode
+ser exercitada somente no banco isolado. Não há dual-write, banco fallback ou coluna `is_test`.
 
 O provisionamento e a remoção das branches PostgreSQL de Preview seguem a
 política de [ciclo de vida das branches de Preview](./release-lanes.md#ciclo-de-vida-das-branches-de-preview).

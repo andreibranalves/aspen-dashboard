@@ -61,7 +61,7 @@ export function isApiBuildStale(apiDir = API_DIR) {
         continue;
       }
       if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
-        if (isStalePair(full, `${full.slice(0, -3)}.js`)) {
+        if (isStalePair(full, full.replace(/\.tsx?$/, '.js'))) {
           stale = true;
           return;
         }
