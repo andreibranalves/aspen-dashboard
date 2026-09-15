@@ -18,8 +18,12 @@ import {
 import {
   ActionNotFoundError,
   advanceConfirmedFollowUp,
+  applyAssociateResponseTransition,
   applyInboundResponseTransition,
+  applyVerifyConversationTransition,
+  ASSOCIATE_RESPONSE_REASON_CODE,
 } from './opportunity-actions-repository.js';
+import { classifyInboundAssociation } from '../../../_modules/commercial-inbound-association.js';
 import { followUpAttemptNumber, followUpCycleNumber } from './follow-up-cycle.js';
 import { quotationFollowUpAttemptHistory, quotationFollowUps } from '../schema.js';
 
@@ -211,6 +215,20 @@ export interface QuotationFollowUpRepository {
     occurredAt: Date;
     providerMessageId: string;
   }): Promise<{ handledOpportunityIds: string[] }>;
+  applyAmbiguousInboundAssociation?(input: {
+    instance: string;
+    canonicalPhone: string;
+    occurredAt: Date;
+    providerMessageId: string;
+    candidateOpportunityIds: string[];
+  }): Promise<{ alertOpportunityId: string | null }>;
+  applyUncertainInboundReview?(input: {
+    instance: string;
+    occurredAt: Date;
+    providerMessageId: string;
+    providerConversationId?: string;
+    canonicalPhone?: string | null;
+  }): Promise<{ alertOpportunityId: string | null }>;
   promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<ClaimedFollowUp | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
@@ -948,6 +966,204 @@ async function holdUnprojectableProcessing(
       AND state = 'processing'
       AND lease_token = ${leaseToken}
   `);
+}
+
+
+async function suspendUndeliveredApprovalsForPhone(
+  tx: Database,
+  phone: string,
+  occurredAt: Date,
+  closedReason: string,
+): Promise<void> {
+  await tx.execute(sql`
+    UPDATE quotation_follow_ups f
+    SET state = 'cancelled',
+        closed_reason = ${closedReason},
+        closed_at = ${iso(occurredAt)}::timestamptz,
+        approved_opportunity_id = NULL,
+        eligibility_version = NULL,
+        message_snapshot = NULL,
+        approved_at = NULL,
+        lease_token = NULL,
+        lease_until = NULL,
+        transport_started_at = NULL,
+        updated_at = ${iso(occurredAt)}::timestamptz
+    WHERE (
+        f.state = 'approved'
+        OR (f.state = 'processing' AND f.transport_started_at IS NULL)
+      )
+      AND f.canonical_phone = ${phone}
+  `);
+}
+
+async function findExistingClientReview(
+  tx: Database,
+  clientId: string,
+  reasonCode: string,
+): Promise<string | null> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT a.opportunity_id
+      FROM opportunity_next_actions a
+      INNER JOIN crm_deals d ON d.id = a.opportunity_id
+      WHERE d.client_id = ${clientId}
+        AND a.state = 'active'
+        AND a.reason_code = ${reasonCode}
+      ORDER BY a.opportunity_id ASC
+      LIMIT 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.length ? String(rows[0].opportunity_id) : null;
+}
+
+async function listOpenOpportunityIdsForConversation(
+  tx: Database,
+  instance: string,
+  conversation: string,
+): Promise<Array<{ opportunityId: string; clientId: string | null }>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT DISTINCT
+        COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+        COALESCE(q.client_id, legacy.client_id) AS client_id
+      FROM quotation_follow_ups f
+      JOIN quotations q ON q.id = f.quotation_id
+      JOIN clients cl ON cl.id = q.client_id
+      LEFT JOIN LATERAL (
+        SELECT cd.id, cd.client_id
+        FROM crm_deals cd
+        WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+        ORDER BY cd.updated_at DESC, cd.id DESC
+        LIMIT 1
+      ) legacy ON true
+      WHERE f.instance = ${instance}
+        AND f.provider_conversation_id = ${conversation}
+        AND cl.arquivado IS NOT TRUE
+        AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+        AND COALESCE(
+          (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+          ''
+        ) NOT IN ('Pedido Fechado', 'Perdido')
+      ORDER BY 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    opportunityId: String(row.opportunity_id),
+    clientId: row.client_id == null ? null : String(row.client_id),
+  }));
+}
+
+async function listOpenOpportunityIdsForPhone(
+  tx: Database,
+  phone: string,
+): Promise<Array<{ opportunityId: string; clientId: string | null }>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT DISTINCT
+        COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+        COALESCE(q.client_id, legacy.client_id) AS client_id
+      FROM quotations q
+      JOIN clients cl ON cl.id = q.client_id
+      LEFT JOIN LATERAL (
+        SELECT cd.id, cd.client_id
+        FROM crm_deals cd
+        WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+        ORDER BY cd.updated_at DESC, cd.id DESC
+        LIMIT 1
+      ) legacy ON true
+      WHERE cl.arquivado IS NOT TRUE
+        AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+        AND COALESCE(
+          (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+          ''
+        ) NOT IN ('Pedido Fechado', 'Perdido')
+        AND EXISTS (
+          SELECT 1
+          FROM quotation_deliveries d
+          JOIN quote_revisions r ON r.id = d.revision_id
+          WHERE r.quotation_id = q.id
+            AND regexp_replace(d.phone, '[^0-9]', '', 'g') = ${phone}
+        )
+      ORDER BY 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    opportunityId: String(row.opportunity_id),
+    clientId: row.client_id == null ? null : String(row.client_id),
+  }));
+}
+
+async function applyAmbiguousInboundInTransaction(
+  tx: Database,
+  input: {
+    phone: string;
+    occurredAt: Date;
+    candidateOpportunityIds: string[];
+  },
+): Promise<string | null> {
+  const candidates = [
+    ...new Set(input.candidateOpportunityIds.map((id) => id.trim()).filter(Boolean)),
+  ].sort();
+  if (candidates.length < 2) return null;
+  await suspendUndeliveredApprovalsForPhone(
+    tx,
+    input.phone,
+    input.occurredAt,
+    'inbound_after_anchor',
+  );
+  const clientRows = Array.from(
+    await tx.execute(sql`
+      SELECT client_id FROM crm_deals WHERE id = ${candidates[0]} LIMIT 1
+    `),
+  ) as Record<string, unknown>[];
+  const clientId = clientRows[0]?.client_id == null ? null : String(clientRows[0].client_id);
+  if (clientId) {
+    const existing = await findExistingClientReview(tx, clientId, ASSOCIATE_RESPONSE_REASON_CODE);
+    if (existing) return existing;
+  }
+  const hostOpportunityId = candidates[0];
+  await lockOpportunity(tx, hostOpportunityId, hostOpportunityId);
+  await applyAssociateResponseTransition({
+    database: tx as never,
+    opportunityId: hostOpportunityId,
+    occurredAt: input.occurredAt,
+    idFactory: randomUUID,
+    actor: 'system',
+  });
+  return hostOpportunityId;
+}
+
+async function routeInboundCommercialReview(
+  repository: QuotationFollowUpRepository,
+  input: {
+    instance: string;
+    providerConversationId: string;
+    providerMessageId: string;
+    occurredAt: Date;
+    identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
+    canonicalPhone: string | null;
+  },
+): Promise<void> {
+  const phone = input.canonicalPhone;
+  if (
+    phone &&
+    (input.identityStatus === 'verified' || input.identityStatus === 'derived')
+  ) {
+    await repository.applyConfirmedInboundToOpportunity!({
+      instance: input.instance,
+      canonicalPhone: phone,
+      occurredAt: input.occurredAt,
+      providerMessageId: input.providerMessageId,
+    });
+    return;
+  }
+  await repository.applyUncertainInboundReview!({
+    instance: input.instance,
+    occurredAt: input.occurredAt,
+    providerMessageId: input.providerMessageId,
+    providerConversationId: input.providerConversationId,
+    canonicalPhone: phone,
+  });
 }
 
 export function createPostgresQuotationFollowUpRepository(
@@ -2245,20 +2461,17 @@ export function createPostgresQuotationFollowUpRepository(
                 )
               )
             )`);
-                if (
-                    !input.fromMe &&
-                    phone &&
-                    (input.identityStatus === 'verified' || input.identityStatus === 'derived')
-                ) {
-                    // Unambiguous association becomes "Preciso responder" and
-                    // invalidates undelivered send authorization under the same
-                    // opportunity lock used by approve/claim (#249). Ambiguous
-                    // contacts are left for #250.
-                    await repository.applyConfirmedInboundToOpportunity!({
+                if (!input.fromMe) {
+                    // #249/#250: trusted phones classify into Preciso responder or
+                    // Associar resposta; untrusted telemetry becomes Verificar conversa
+                    // and must never be labeled Sem resposta.
+                    await routeInboundCommercialReview(repository, {
                         instance,
-                        canonicalPhone: phone,
-                        occurredAt,
+                        providerConversationId: conversation,
                         providerMessageId,
+                        occurredAt,
+                        identityStatus: input.identityStatus,
+                        canonicalPhone: phone,
                     });
                 }
             }
@@ -2313,13 +2526,24 @@ export function createPostgresQuotationFollowUpRepository(
                     const opportunityIds = openOpportunityRows
                         .map((row) => String(row.opportunity_id))
                         .sort();
-                    // Ambiguous or empty association is not this ticket's job
-                    // (#250). Do not guess a demand and do not wipe unrelated
-                    // authorizations.
-                    if (opportunityIds.length !== 1) {
+                    const classification = classifyInboundAssociation({
+                        direction: 'inbound',
+                        identityStatus: 'verified',
+                        canonicalPhone: phone,
+                        linkedOpportunityIds: opportunityIds,
+                    });
+                    if (classification.outcome === 'ambiguous') {
+                        await applyAmbiguousInboundInTransaction(tx, {
+                            phone,
+                            occurredAt,
+                            candidateOpportunityIds: classification.candidateOpportunityIds,
+                        });
                         return { handledOpportunityIds: [] };
                     }
-                    const opportunityId = opportunityIds[0];
+                    if (classification.outcome !== 'unambiguous') {
+                        return { handledOpportunityIds: [] };
+                    }
+                    const opportunityId = classification.opportunityId;
                     // Serialize against the worker and the approval flow: the
                     // advisory + row lock is the same seam used by approve/claim.
                     await lockOpportunity(tx, opportunityId, opportunityId);
@@ -2378,6 +2602,101 @@ export function createPostgresQuotationFollowUpRepository(
                 throw new RepositoryError();
             }
         },
+
+        async applyAmbiguousInboundAssociation(input: {
+            instance: string;
+            canonicalPhone: string;
+            occurredAt: Date;
+            providerMessageId: string;
+            candidateOpportunityIds: string[];
+        }): Promise<{ alertOpportunityId: string | null }> {
+            const instance = String(input.instance || '').trim();
+            if (!instance || instance !== configuredInstance())
+                throw new InputError('Instância inválida.');
+            const phone = acceptedCanonicalPhone(input.canonicalPhone);
+            if (!phone || !/^[0-9]{10,15}$/.test(phone))
+                throw new InputError('Telefone inválido.');
+            const occurredAt = requiredDate(input.occurredAt, 'atividade');
+            const providerMessageId = String(input.providerMessageId || '').trim();
+            if (!providerMessageId)
+                throw new InputError('Identificador da mensagem inválido.');
+            try {
+                const alertOpportunityId = await getDb().transaction(async (tx) =>
+                    applyAmbiguousInboundInTransaction(tx, {
+                        phone,
+                        occurredAt,
+                        candidateOpportunityIds: input.candidateOpportunityIds,
+                    }),
+                );
+                return { alertOpportunityId };
+            } catch (error) {
+                if (error instanceof InputError) throw error;
+                throw new RepositoryError();
+            }
+        },
+        async applyUncertainInboundReview(input: {
+            instance: string;
+            occurredAt: Date;
+            providerMessageId: string;
+            providerConversationId?: string;
+            canonicalPhone?: string | null;
+        }): Promise<{ alertOpportunityId: string | null }> {
+            const instance = String(input.instance || '').trim();
+            if (!instance || instance !== configuredInstance())
+                throw new InputError('Instância inválida.');
+            const occurredAt = requiredDate(input.occurredAt, 'atividade');
+            const providerMessageId = String(input.providerMessageId || '').trim();
+            if (!providerMessageId)
+                throw new InputError('Identificador da mensagem inválido.');
+            const conversation = String(input.providerConversationId || '').trim();
+            const phone = acceptedCanonicalPhone(input.canonicalPhone);
+            try {
+                return await getDb().transaction(async (tx) => {
+                    let linked = phone ? await listOpenOpportunityIdsForPhone(tx, phone) : [];
+                    if (linked.length === 0 && conversation) {
+                        linked = await listOpenOpportunityIdsForConversation(
+                            tx,
+                            instance,
+                            conversation,
+                        );
+                    }
+                    if (linked.length === 0) {
+                        return { alertOpportunityId: null };
+                    }
+                    const clientId = linked.map((row) => row.clientId).find(Boolean) || null;
+                    if (clientId) {
+                        const existing = await findExistingClientReview(
+                            tx,
+                            clientId,
+                            'verify_conversation',
+                        );
+                        if (existing) return { alertOpportunityId: existing };
+                    }
+                    const hostOpportunityId = [...linked.map((row) => row.opportunityId)].sort()[0];
+                    if (phone) {
+                        await suspendUndeliveredApprovalsForPhone(
+                            tx,
+                            phone,
+                            occurredAt,
+                            'inbound_after_anchor',
+                        );
+                    }
+                    await lockOpportunity(tx, hostOpportunityId, hostOpportunityId);
+                    await applyVerifyConversationTransition({
+                        database: tx as never,
+                        opportunityId: hostOpportunityId,
+                        occurredAt,
+                        idFactory: randomUUID,
+                        actor: 'system',
+                    });
+                    return { alertOpportunityId: hostOpportunityId };
+                });
+            } catch (error) {
+                if (error instanceof InputError) throw error;
+                throw new RepositoryError();
+            }
+        },
+
         async promoteDueWaitingToReady(inputNow: Date = new Date()) {
             const started = tracking();
             if (!started || !configuredInstance())

@@ -43,6 +43,9 @@ const REASON_LABELS: Record<string, string> = {
   proposal_delivery_confirmed: 'Entrega confirmada da proposta',
   follow_up_second_return: 'Segundo retorno',
   follow_up_decide_continuity: 'Decidir continuidade',
+  inbound_needs_response: 'Preciso responder',
+  associate_response: 'Associar resposta',
+  verify_conversation: 'Verificar conversa',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -540,6 +543,18 @@ export function createCommercialQueueHandler(
           actor,
         });
         return json(200, publicUrgency(updated));
+      }
+
+      
+      if (command === 'associate_inbound' || command === 'associate_response') {
+        const associated = await repository.associateInboundResponse({
+          opportunityId: textField(payload, 'opportunity_id'),
+          actionId:
+            typeof payload.action_id === 'string' ? payload.action_id : undefined,
+          expectedVersion: expectedVersion(payload),
+          actor,
+        });
+        return json(200, publicCommand(associated));
       }
 
       throw new HandlerInputError('Comando da ação inválido.');
