@@ -1119,6 +1119,15 @@ async function applyAmbiguousInboundInTransaction(
     group.opportunityIds.push(opportunityId);
     byClient.set(key, group);
   }
+  const activeReasonRows = Array.from(await tx.execute(sql`
+    SELECT a.opportunity_id, a.reason_code
+    FROM opportunity_next_actions a
+    WHERE a.state = 'active'
+      AND a.opportunity_id IN (${sql.join(candidates.map((id) => sql`${id}::uuid`), sql`, `)})
+  `)) as Record<string, unknown>[];
+  const activeReasonByOpportunity = new Map(
+    activeReasonRows.map((row) => [String(row.opportunity_id), String(row.reason_code)]),
+  );
   for (const opportunityId of candidateRows.map((row) => String(row.id)).sort()) {
     await lockOpportunity(tx, opportunityId, opportunityId);
   }
@@ -1131,7 +1140,12 @@ async function applyAmbiguousInboundInTransaction(
       opportunityIds,
       input.phone,
     );
-    const hostOpportunityId = existing?.opportunityId || opportunityIds[0];
+    const hostOpportunityId =
+      existing?.opportunityId ||
+      opportunityIds.find(
+        (id) => activeReasonByOpportunity.get(id) !== ASSOCIATE_RESPONSE_REASON_CODE,
+      );
+    if (!hostOpportunityId) continue;
     let alertActionId = existing?.actionId || null;
     if (!existing) {
       const transition = await applyAssociateResponseTransition({
@@ -1167,6 +1181,7 @@ async function applyAmbiguousInboundInTransaction(
         WHERE opportunity_id IN (${sql.join(opportunityIds.map((id) => sql`${id}::uuid`), sql`, `)})
           AND opportunity_id <> ${hostOpportunityId}::uuid
           AND state = 'active'
+          AND reason_code <> ${ASSOCIATE_RESPONSE_REASON_CODE}
       `);
     }
     firstAlertOpportunityId ||= hostOpportunityId;
@@ -1252,18 +1267,23 @@ async function applyUncertainInboundInTransaction(
     canonicalPhone: string | null;
   },
 ): Promise<{ alertOpportunityId: string | null }> {
-  let linked = input.canonicalPhone
-    ? await listOpenOpportunityIdsForPhone(tx, input.canonicalPhone)
-    : [];
-  if (linked.length === 0 && input.providerConversationId) {
-    linked = await listOpenOpportunityIdsForConversation(
-      tx,
-      input.instance,
-      input.providerConversationId,
-    );
+  const linked = new Map<string, { opportunityId: string; clientId: string | null }>();
+  for (const row of [
+    ...(input.canonicalPhone
+      ? await listOpenOpportunityIdsForPhone(tx, input.canonicalPhone)
+      : []),
+    ...(input.providerConversationId
+      ? await listOpenOpportunityIdsForConversation(
+          tx,
+          input.instance,
+          input.providerConversationId,
+        )
+      : []),
+  ]) {
+    if (!linked.has(row.opportunityId)) linked.set(row.opportunityId, row);
   }
-  if (linked.length === 0) return { alertOpportunityId: null };
-  const opportunityIds = linked.map((row) => row.opportunityId).sort();
+  if (linked.size === 0) return { alertOpportunityId: null };
+  const opportunityIds = [...linked.keys()].sort();
   for (const opportunityId of opportunityIds) {
     await lockOpportunity(tx, opportunityId, opportunityId);
   }

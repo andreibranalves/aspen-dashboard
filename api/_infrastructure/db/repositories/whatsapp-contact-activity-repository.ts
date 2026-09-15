@@ -55,18 +55,6 @@ export interface ContactUnblockInput {
   providerConversationId?: string | null;
 }
 
-export interface ContactBlockEventRecord {
-  id: string;
-  instance: string;
-  canonicalPhone: string;
-  providerConversationId: string | null;
-  eventType: 'blocked' | 'unblocked';
-  actor: string;
-  reason: string;
-  occurredAt: Date;
-  createdAt: Date;
-}
-
 export interface WhatsappContactActivityRecord {
   id: string;
   instance: string;
@@ -105,10 +93,6 @@ export interface WhatsappContactActivityRepository {
   isContactBlocked(input: { instance: string; canonicalPhone: string }): Promise<boolean>;
   blockContact(input: ContactBlockInput): Promise<void>;
   unblockContact(input: ContactUnblockInput): Promise<void>;
-  listContactBlockEvents(input: {
-    instance: string;
-    canonicalPhone: string;
-  }): Promise<ContactBlockEventRecord[]>;
   getActivity(input: {
     instance: string;
     providerConversationId: string;
@@ -507,6 +491,19 @@ export function createPostgresWhatsappContactActivityRepository(
                 WHERE (quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id)
                   AND regexp_replace(delivery.phone, '[^0-9]', '', 'g') = ${canonicalPhone}
               )
+              OR EXISTS (
+                SELECT 1
+                FROM quotation_follow_ups follow_up
+                JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+                WHERE follow_up.canonical_phone = ${canonicalPhone}
+                  AND COALESCE(
+                    follow_up.approved_opportunity_id,
+                    quotation.opportunity_id,
+                    (SELECT legacy.id FROM crm_deals legacy
+                     WHERE legacy.quotation_id = quotation.id
+                     ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+                  ) = deal.id
+              )
             )
         `);
         if (latestEvents[0]?.event_type === 'unblocked') return;
@@ -522,32 +519,6 @@ export function createPostgresWhatsappContactActivityRepository(
           createdAt: now,
         });
       });
-    },
-
-    async listContactBlockEvents({
-      instance: rawInstance,
-      canonicalPhone: rawPhone,
-    }): Promise<ContactBlockEventRecord[]> {
-      const instance = normalizeRequired(rawInstance, 'instance');
-      const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
-      const rows = await getDb()
-        .select()
-        .from(blockEvents)
-        .where(eq(blockEvents.canonicalPhone, canonicalPhone))
-        .orderBy(desc(blockEvents.occurredAt), desc(blockEvents.createdAt));
-      void instance;
-      return rows.map((row) => ({
-        id: String(row.id),
-        instance: String(row.instance),
-        canonicalPhone: String(row.canonicalPhone),
-        providerConversationId:
-          row.providerConversationId == null ? null : String(row.providerConversationId),
-        eventType: row.eventType === 'unblocked' ? 'unblocked' : 'blocked',
-        actor: String(row.actor),
-        reason: String(row.reason),
-        occurredAt: row.occurredAt as Date,
-        createdAt: row.createdAt as Date,
-      }));
     },
 
     async getActivity({ instance: rawInstance, providerConversationId: rawConversationId }) {

@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { desc, eq } from 'drizzle-orm';
 import postgres from 'postgres';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
   createPostgresWhatsappContactActivityRepository,
   type WhatsappContactActivityRepository,
@@ -30,6 +32,7 @@ function databaseTest(name: string, fn: () => Promise<void>) {
 
 let sqlClient: { end(options: { timeout: number }): Promise<void> } | undefined;
 let repository: WhatsappContactActivityRepository;
+let db: AppDatabase | undefined;
 
 const instance = `activity-test-${randomUUID()}`;
 const conversation = `${randomUUID()}@s.whatsapp.net`;
@@ -45,7 +48,7 @@ test.before(async () => {
     idle_timeout: 20,
     onnotice: () => {},
   });
-  const db = drizzle(sqlClient, { schema });
+  db = drizzle(sqlClient, { schema });
   await migrate(db, { migrationsFolder });
   repository = createPostgresWhatsappContactActivityRepository(() => db);
 });
@@ -174,7 +177,17 @@ databaseTest('do-not-contact spreads across phone conversations and unblocks onl
   assert.equal(first?.blockReason, 'do_not_contact');
   assert.equal(second?.blockReason, 'do_not_contact');
 
-  const eventsAfterBlock = await repository.listContactBlockEvents({ instance, canonicalPhone: phone });
+  const blockEventRows = () =>
+    db
+      .select({
+        eventType: schema.whatsappContactBlockEvents.eventType,
+        actor: schema.whatsappContactBlockEvents.actor,
+        reason: schema.whatsappContactBlockEvents.reason,
+      })
+      .from(schema.whatsappContactBlockEvents)
+      .where(eq(schema.whatsappContactBlockEvents.canonicalPhone, phone))
+      .orderBy(desc(schema.whatsappContactBlockEvents.occurredAt));
+  const eventsAfterBlock = await blockEventRows();
   assert.equal(eventsAfterBlock.length, 1);
   assert.equal(eventsAfterBlock[0]?.eventType, 'blocked');
   assert.equal(eventsAfterBlock[0]?.actor, 'operator@aspen');
@@ -225,10 +238,7 @@ databaseTest('do-not-contact spreads across phone conversations and unblocks onl
     providerConversationId: firstConversation,
   });
 
-  const events = await repository.listContactBlockEvents({
-    instance: rotatedInstance,
-    canonicalPhone: phone,
-  });
+  const events = await blockEventRows();
   assert.equal(events.length, 2);
   assert.equal(events[0]?.eventType, 'unblocked');
   assert.equal(events[0]?.actor, 'supervisor@aspen');

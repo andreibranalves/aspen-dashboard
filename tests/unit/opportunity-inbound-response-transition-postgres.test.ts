@@ -548,3 +548,77 @@ test(
     }
   },
 );
+
+test(
+  'associating the ambiguous response to the host restores its suspended siblings',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeClientlessFixture();
+    const originalInstance = process.env.EVOLUTION_INSTANCE;
+    const instance = `inbound-host-resolve-${randomUUID()}`;
+    process.env.EVOLUTION_INSTANCE = instance;
+    try {
+      const repository = createPostgresQuotationFollowUpRepository(() => db);
+      await repository.applyConversationToOpenFollowUps!({
+        instance,
+        providerConversationId: `${fixture.phone}@s.whatsapp.net`,
+        providerMessageId: `inbound-host-resolve-${randomUUID()}`,
+        fromMe: false,
+        occurredAt: new Date('2026-09-11T16:00:00.000Z'),
+        identityStatus: 'verified',
+        canonicalPhone: fixture.phone,
+      });
+
+      const rows = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [fixture.ids.host, fixture.ids.sibling]));
+      const alert = rows.find(
+        (row) => row.state === 'active' && row.reasonCode === 'associate_response',
+      );
+      const suspendedSibling = rows.find((row) => row.state === 'suspended');
+      assert.ok(alert);
+      assert.ok(suspendedSibling);
+
+      const actions = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date('2026-09-11T16:10:00.000Z'),
+      });
+      await actions.associateInboundResponse({
+        actionId: alert.id,
+        expectedVersion: alert.version,
+        opportunityId: alert.opportunityId,
+        actor: 'operator-a',
+      });
+
+      const after = await db
+        .select({
+          opportunityId: opportunityNextActions.opportunityId,
+          state: opportunityNextActions.state,
+          reasonCode: opportunityNextActions.reasonCode,
+        })
+        .from(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [fixture.ids.host, fixture.ids.sibling]));
+      assert.equal(
+        after.filter(
+          (row) =>
+            row.opportunityId === alert.opportunityId &&
+            row.state === 'active' &&
+            row.reasonCode === 'inbound_needs_response',
+        ).length,
+        1,
+      );
+      assert.equal(
+        after.filter(
+          (row) =>
+            row.opportunityId === suspendedSibling.opportunityId &&
+            row.state === 'active' &&
+            row.reasonCode === 'follow_up_second_return',
+        ).length,
+        1,
+      );
+    } finally {
+      process.env.EVOLUTION_INSTANCE = originalInstance;
+      await fixture.cleanup();
+    }
+  },
+);
