@@ -20,7 +20,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
   '/crm': 'Comercial',
-  '/follow-ups': 'Follow-ups',
+  '/follow-ups': 'Comercial',
   '/products': 'Produtos',
   '/catalog': 'Catálogo',
   '/leads': 'Clientes',
@@ -41,7 +41,7 @@ function getQuotationParent(): BreadcrumbItem {
     return { label: 'Comercial', hash: previousRoute };
   }
   if (previousRoute && routePath(previousRoute) === '/follow-ups') {
-    return { label: 'Follow-ups', hash: previousRoute };
+    return { label: 'Comercial', hash: '/crm' };
   }
   if (previousRoute && routePath(previousRoute) === '/whatsapp-deliveries') {
     return { label: 'Envios', hash: previousRoute };
