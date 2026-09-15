@@ -310,8 +310,8 @@ test(
         opportunityId: sibling,
         actor: 'operator-a',
       });
-      assert.equal(resolved.state, 'active');
-      assert.equal(resolved.action, null);
+      assert.equal(resolved.state, 'completed');
+      assert.equal(resolved.action?.state, 'completed');
       assert.equal(resolved.successor?.reasonCode, 'inbound_needs_response');
 
       const host = await actionsFor(fixture.ids.opportunity);
