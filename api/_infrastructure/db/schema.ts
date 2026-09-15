@@ -900,7 +900,7 @@ export const opportunityNextActions = pgTable(
     ),
     check(
       'opportunity_next_actions_association_context_check',
-      sql`(${table.associationClientId} IS NULL AND ${table.associationPhone} IS NULL AND ${table.associationProviderMessageId} IS NULL) OR (${table.associationClientId} IS NOT NULL AND ${table.associationPhone} IS NOT NULL AND ${table.associationProviderMessageId} IS NOT NULL AND char_length(btrim(${table.associationProviderMessageId})) > 0)`,
+      sql`(${table.associationClientId} IS NULL AND ${table.associationPhone} IS NULL AND ${table.associationProviderMessageId} IS NULL) OR (${table.associationPhone} IS NOT NULL AND char_length(btrim(${table.associationPhone})) > 0 AND ${table.associationProviderMessageId} IS NOT NULL AND char_length(btrim(${table.associationProviderMessageId})) > 0)`,
     ),
   ]
 );

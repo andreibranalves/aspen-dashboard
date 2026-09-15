@@ -46,7 +46,6 @@ export type TransitionApplyPlan =
   | { type: 'noop'; preserve: true }
   | { type: 'keep_active_action'; preserve: true }
   | { type: 'ensure_suspended_action' }
-  | { type: 'ensure_first_contact' }
   | { type: 'ensure_verify_conversation'; reason: string };
 
 export type OpportunityTransitionDecision = {
@@ -152,11 +151,17 @@ export function classifyOpportunityTransition(
     };
   }
 
+  // Unreachable when facts follow the repository invariant
+  // (insufficientEvidenceForSilence = !hasActiveNextAction && !hasAcceptedHistory);
+  // the conservative fallback never invents a first contact nor claims silence.
   return {
     ...base,
-    classification: 'open_opportunity',
-    reviewReason: null,
-    applyPlan: { type: 'ensure_first_contact' },
+    classification: 'uncertain_association',
+    reviewReason: INSUFFICIENT_EVIDENCE_REVIEW_REASON,
+    applyPlan: {
+      type: 'ensure_verify_conversation',
+      reason: INSUFFICIENT_EVIDENCE_REVIEW_REASON,
+    },
   };
 }
 

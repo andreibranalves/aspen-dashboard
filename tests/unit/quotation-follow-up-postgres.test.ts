@@ -2914,13 +2914,15 @@ databaseTest('confirmed inbound replaces return with Preciso responder and cance
 
   const occurredAt = new Date('2026-09-01T15:30:00.000Z');
   const providerMessageId = `inbound-${randomUUID()}`;
-  const handled = await repository.applyConfirmedInboundToOpportunity!({
+  await repository.applyConversationToOpenFollowUps!({
     instance,
-    canonicalPhone: '5511999999999',
-    occurredAt,
+    providerConversationId: '5511999999999@s.whatsapp.net',
     providerMessageId,
+    fromMe: false,
+    occurredAt,
+    identityStatus: 'verified',
+    canonicalPhone: '5511999999999',
   });
-  assert.deepEqual(handled, { handledOpportunityIds: [ids.crm] });
 
   const followUps = await db
     .select({
@@ -2969,13 +2971,15 @@ databaseTest('confirmed inbound replaces return with Preciso responder and cance
       reason: 'Aguardar análise interna',
     },
   });
-  const replay = await repository.applyConfirmedInboundToOpportunity!({
+  await repository.applyConversationToOpenFollowUps!({
     instance,
-    canonicalPhone: '5511999999999',
-    occurredAt,
+    providerConversationId: '5511999999999@s.whatsapp.net',
     providerMessageId,
+    fromMe: false,
+    occurredAt,
+    identityStatus: 'verified',
+    canonicalPhone: '5511999999999',
   });
-  assert.deepEqual(replay, { handledOpportunityIds: [] });
   const afterReplay = await db
     .select({ reasonCode: opportunityNextActions.reasonCode })
     .from(opportunityNextActions)
@@ -2985,13 +2989,15 @@ databaseTest('confirmed inbound replaces return with Preciso responder and cance
     ));
   assert.deepEqual(afterReplay, [{ reasonCode: 'manual_action' }]);
 
-  const newer = await repository.applyConfirmedInboundToOpportunity!({
+  await repository.applyConversationToOpenFollowUps!({
     instance,
-    canonicalPhone: '5511999999999',
-    occurredAt: new Date('2026-09-01T16:00:00.000Z'),
+    providerConversationId: '5511999999999@s.whatsapp.net',
     providerMessageId: `inbound-new-${randomUUID()}`,
+    fromMe: false,
+    occurredAt: new Date('2026-09-01T16:00:00.000Z'),
+    identityStatus: 'verified',
+    canonicalPhone: '5511999999999',
   });
-  assert.deepEqual(newer, { handledOpportunityIds: [ids.crm] });
   const activeAgain = await db
     .select({ reasonCode: opportunityNextActions.reasonCode })
     .from(opportunityNextActions)
@@ -3027,13 +3033,15 @@ databaseTest('confirmed inbound reaches a pre-proposal opportunity through its d
       reason: 'Primeiro atendimento',
       actor: 'system',
     });
-    const result = await repository.applyConfirmedInboundToOpportunity!({
+    await repository.applyConversationToOpenFollowUps!({
       instance,
-      canonicalPhone: phone,
-      occurredAt: new Date('2026-09-01T17:00:00.000Z'),
+      providerConversationId: `${phone}@s.whatsapp.net`,
       providerMessageId: `inbound-preproposal-${randomUUID()}`,
+      fromMe: false,
+      occurredAt: new Date('2026-09-01T17:00:00.000Z'),
+      identityStatus: 'verified',
+      canonicalPhone: phone,
     });
-    assert.deepEqual(result, { handledOpportunityIds: [opportunityId] });
     const [active] = await db
       .select({ reasonCode: opportunityNextActions.reasonCode })
       .from(opportunityNextActions)
@@ -3064,17 +3072,19 @@ databaseTest('inbound racing claimApproved never leaves a live undelivered autho
   });
 
   const occurredAt = new Date('2026-09-01T16:00:00.000Z');
-  const [claimed, handled] = await Promise.all([
+  const [claimed] = await Promise.all([
     repository.claimApproved(approved.followUpId!),
-    repository.applyConfirmedInboundToOpportunity!({
+    repository.applyConversationToOpenFollowUps!({
       instance,
-      canonicalPhone: '5511999999999',
-      occurredAt,
+      providerConversationId: '5511999999999@s.whatsapp.net',
       providerMessageId: `inbound-race-${randomUUID()}`,
+      fromMe: false,
+      occurredAt,
+      identityStatus: 'verified',
+      canonicalPhone: '5511999999999',
     }),
   ]);
 
-  assert.deepEqual(handled, { handledOpportunityIds: [ids.crm] });
   const [row] = await db
     .select({
       state: quotationFollowUps.state,
@@ -3157,13 +3167,15 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
   });
 
   try {
-    const handled = await repository.applyConfirmedInboundToOpportunity!({
+    await repository.applyConversationToOpenFollowUps!({
       instance,
-      canonicalPhone: '5511999999999',
-      occurredAt: new Date('2026-09-01T17:00:00.000Z'),
+      providerConversationId: '5511999999999@s.whatsapp.net',
       providerMessageId: `inbound-ambiguous-${randomUUID()}`,
+      fromMe: false,
+      occurredAt: new Date('2026-09-01T17:00:00.000Z'),
+      identityStatus: 'verified',
+      canonicalPhone: '5511999999999',
     });
-    assert.deepEqual(handled, { handledOpportunityIds: [] });
 
     for (const followUpId of [approved.followUpId!, otherApproved.followUpId!]) {
       const [row] = await db
@@ -3234,11 +3246,14 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
       assert.equal(inboundActions.length, 0);
     }
 
-    await repository.applyConfirmedInboundToOpportunity!({
+    await repository.applyConversationToOpenFollowUps!({
       instance,
-      canonicalPhone: '5511999999999',
-      occurredAt: new Date('2026-09-01T17:05:00.000Z'),
+      providerConversationId: '5511999999999@s.whatsapp.net',
       providerMessageId: `inbound-ambiguous-again-${randomUUID()}`,
+      fromMe: false,
+      occurredAt: new Date('2026-09-01T17:05:00.000Z'),
+      identityStatus: 'verified',
+      canonicalPhone: '5511999999999',
     });
     const associateAgain = await db
       .select({ id: opportunityNextActions.id })
@@ -3397,14 +3412,15 @@ databaseTest('uncertain identity creates Verificar conversa without claiming Sem
     phone: '5511999999999',
   });
   try {
-    const result = await repository.applyUncertainInboundReview!({
+    await repository.applyConversationToOpenFollowUps!({
       instance,
-      occurredAt: new Date('2026-09-01T18:00:00.000Z'),
-      providerMessageId: `inbound-uncertain-${randomUUID()}`,
       providerConversationId: '5511999999999@s.whatsapp.net',
+      providerMessageId: `inbound-uncertain-${randomUUID()}`,
+      fromMe: false,
+      occurredAt: new Date('2026-09-01T18:00:00.000Z'),
+      identityStatus: 'unresolved',
       canonicalPhone: null,
     });
-    assert.equal(result.alertOpportunityId, ids.crm);
     const active = await db
       .select({
         reason: opportunityNextActions.reason,

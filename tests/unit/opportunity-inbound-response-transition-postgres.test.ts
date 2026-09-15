@@ -16,6 +16,7 @@ import {
   createPostgresOpportunityActionRepository,
 } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
+import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { clients, crmDeals, opportunityNextActions } from '../../api/_infrastructure/db/schema.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
@@ -384,6 +385,166 @@ test(
     } finally {
       await owner.cleanup();
       await target.cleanup();
+    }
+  },
+);
+
+
+type ClientlessFixture = {
+  ids: { host: string; sibling: string };
+  phone: string;
+  now: Date;
+  cleanup(): Promise<void>;
+};
+
+async function makeClientlessFixture(): Promise<ClientlessFixture> {
+  const ids = { host: randomUUID(), sibling: randomUUID() };
+  const now = new Date('2026-09-11T15:00:00.000Z');
+  const phone = '5511988887777';
+  await db.insert(crmDeals).values([
+    {
+      id: ids.host,
+      nome: 'Pré-proposta A',
+      telefone: phone,
+      status: 'Novo Lead',
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: ids.sibling,
+      nome: 'Pré-proposta B',
+      telefone: phone,
+      status: 'Novo Lead',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ]);
+  await db.insert(opportunityNextActions).values(
+    [ids.host, ids.sibling].map((opportunityId) => ({
+      id: randomUUID(),
+      opportunityId,
+      kind: 'customer_contact',
+      reasonCode: 'follow_up_second_return',
+      origin: 'event',
+      state: 'active',
+      dueAt: now,
+      dueDate: '2026-09-11',
+      dueTime: null,
+      scheduleType: 'date_only',
+      version: 1,
+      actor: 'system',
+      reason: 'Retorno pendente',
+      createdAt: now,
+      updatedAt: now,
+    })),
+  );
+  return {
+    ids,
+    phone,
+    now,
+    async cleanup() {
+      await db
+        .delete(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [ids.host, ids.sibling]));
+      await db.delete(crmDeals).where(inArray(crmDeals.id, [ids.host, ids.sibling]));
+    },
+  };
+}
+
+test(
+  'ambiguous inbound stores phone-keyed context without a client id and stays resolvable',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeClientlessFixture();
+    const originalInstance = process.env.EVOLUTION_INSTANCE;
+    const instance = `inbound-clientless-${randomUUID()}`;
+    process.env.EVOLUTION_INSTANCE = instance;
+    try {
+      const repository = createPostgresQuotationFollowUpRepository(() => db);
+      const providerMessageId = `inbound-clientless-${randomUUID()}`;
+      await repository.applyConversationToOpenFollowUps!({
+        instance,
+        providerConversationId: `${fixture.phone}@s.whatsapp.net`,
+        providerMessageId,
+        fromMe: false,
+        occurredAt: new Date('2026-09-11T16:00:00.000Z'),
+        identityStatus: 'verified',
+        canonicalPhone: fixture.phone,
+      });
+
+      const rows = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [fixture.ids.host, fixture.ids.sibling]));
+      const alerts = rows.filter(
+        (row) => row.state === 'active' && row.reasonCode === 'associate_response',
+      );
+      assert.equal(alerts.length, 1);
+      const alert = alerts[0]!;
+      // The relaxed context check accepts phone-keyed context with no client id.
+      assert.equal(alert.associationClientId, null);
+      assert.equal(alert.associationPhone, fixture.phone);
+      assert.equal(alert.associationProviderMessageId, providerMessageId);
+      const nonHostIds = [fixture.ids.host, fixture.ids.sibling].filter(
+        (id) => id !== alert.opportunityId,
+      );
+      const suspendedSibling = rows.find(
+        (row) => nonHostIds.includes(row.opportunityId) && row.state === 'suspended',
+      );
+      assert.ok(suspendedSibling);
+      assert.equal(suspendedSibling.replacedById, alert.id);
+
+      // A second inbound message on the same phone reuses the existing alert.
+      await repository.applyConversationToOpenFollowUps!({
+        instance,
+        providerConversationId: `${fixture.phone}@s.whatsapp.net`,
+        providerMessageId: `inbound-clientless-2-${randomUUID()}`,
+        fromMe: false,
+        occurredAt: new Date('2026-09-11T16:05:00.000Z'),
+        identityStatus: 'verified',
+        canonicalPhone: fixture.phone,
+      });
+      const afterReplay = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(inArray(opportunityNextActions.opportunityId, [fixture.ids.host, fixture.ids.sibling]));
+      assert.equal(
+        afterReplay.filter(
+          (row) => row.state === 'active' && row.reasonCode === 'associate_response',
+        ).length,
+        1,
+      );
+
+      // The queue resolves association candidates by phone, not client id.
+      const actions = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date('2026-09-11T16:10:00.000Z'),
+      });
+      const queue = await actions.listActive({ filter: 'active' });
+      const queueAlert = queue.data.find((item) => item.actionId === alert.id);
+      assert.ok(queueAlert);
+      assert.deepEqual(
+        queueAlert.associationCandidates.map((candidate) => candidate.opportunityId).sort(),
+        [fixture.ids.host, fixture.ids.sibling].sort(),
+      );
+
+      // The operator resolves the alert onto one demand without any client id.
+      const resolved = await actions.associateInboundResponse({
+        actionId: alert.id,
+        expectedVersion: alert.version,
+        opportunityId: suspendedSibling.opportunityId,
+        actor: 'operator-a',
+      });
+      assert.equal(resolved.successor?.reasonCode, 'inbound_needs_response');
+      const siblingActions = await actionsFor(suspendedSibling.opportunityId);
+      assert.equal(
+        siblingActions.filter(
+          (row) => row.state === 'active' && row.reasonCode === 'inbound_needs_response',
+        ).length,
+        1,
+      );
+    } finally {
+      process.env.EVOLUTION_INSTANCE = originalInstance;
+      await fixture.cleanup();
     }
   },
 );

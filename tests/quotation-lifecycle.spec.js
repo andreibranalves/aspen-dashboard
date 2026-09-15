@@ -1446,12 +1446,6 @@ test('empty local CRM and leads retain loading/error/retry states @quotations @c
   page,
 }) => {
   await page.route('**/api/crm-deals**', async (route) => fulfillJson(route, { columns: [] }));
-  await page.route('**/api/crm-prune-candidates**', async (route) =>
-    fulfillJson(route, {
-      candidates: [],
-      meta: { threshold_days: 30, protect_recent_days: 7, count: 0 },
-    })
-  );
   await page.goto('/#/crm?tab=deals');
   await expect(page.getByText('Nenhum negócio no pipeline.', { exact: true })).toBeVisible();
 

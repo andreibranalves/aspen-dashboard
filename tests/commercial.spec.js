@@ -38,9 +38,6 @@ const crm = {
 
 test('comercial alterna negócios entre Lista e Quadro', async ({ page }) => {
   await page.route('**/api/crm-deals**', (route) => json(route, crm));
-  await page.route('**/api/crm-prune-candidates', (route) =>
-    json(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } })
-  );
 
   await page.goto('/#/crm?tab=deals');
   await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();
@@ -68,9 +65,6 @@ test('comercial expõe Fila e Negócios sem Retornos operacionais (#254)', async
     json(route, { data: [], total: 0, page: 1, page_size: 25 })
   );
   await page.route('**/api/crm-deals**', (route) => json(route, crm));
-  await page.route('**/api/crm-prune-candidates', (route) =>
-    json(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } })
-  );
 
   await page.goto('/#/crm');
   await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();

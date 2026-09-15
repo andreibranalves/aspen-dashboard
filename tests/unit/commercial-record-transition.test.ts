@@ -59,10 +59,10 @@ test('insufficient evidence becomes uncertain review, never Sem resposta', () =>
   assert.doesNotMatch(decision.reviewReason || '', /sem resposta/i);
 });
 
-test('open opportunity without history gets first contact', () => {
+test('open opportunity without history never invents a first contact nor claims silence', () => {
   const decision = classifyOpportunityTransition(facts());
-  assert.equal(decision.classification, 'open_opportunity');
-  assert.deepEqual(decision.applyPlan, { type: 'ensure_first_contact' });
+  assert.equal(decision.applyPlan.type, 'ensure_verify_conversation');
+  assert.doesNotMatch(decision.applyPlan.reason, /sem resposta/i);
 });
 
 test('active next action is kept', () => {

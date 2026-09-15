@@ -1,3 +1,4 @@
+-- migration-risk: additive
 CREATE TABLE "commercial_inbound_events" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"instance" varchar(120) NOT NULL,
@@ -18,7 +19,7 @@ ALTER TABLE "opportunity_next_actions" ADD CONSTRAINT "opportunity_next_actions_
 --> statement-breakpoint
 ALTER TABLE "opportunity_next_actions" ADD CONSTRAINT "opportunity_next_actions_association_phone_check" CHECK ("opportunity_next_actions"."association_phone" IS NULL OR "opportunity_next_actions"."association_phone" ~ '^[0-9]{10,15}$');
 --> statement-breakpoint
-ALTER TABLE "opportunity_next_actions" ADD CONSTRAINT "opportunity_next_actions_association_context_check" CHECK (("opportunity_next_actions"."association_client_id" IS NULL AND "opportunity_next_actions"."association_phone" IS NULL AND "opportunity_next_actions"."association_provider_message_id" IS NULL) OR ("opportunity_next_actions"."association_client_id" IS NOT NULL AND "opportunity_next_actions"."association_phone" IS NOT NULL AND "opportunity_next_actions"."association_provider_message_id" IS NOT NULL AND char_length(btrim("opportunity_next_actions"."association_provider_message_id")) > 0));
+ALTER TABLE "opportunity_next_actions" ADD CONSTRAINT "opportunity_next_actions_association_context_check" CHECK (("opportunity_next_actions"."association_client_id" IS NULL AND "opportunity_next_actions"."association_phone" IS NULL AND "opportunity_next_actions"."association_provider_message_id" IS NULL) OR ("opportunity_next_actions"."association_phone" IS NOT NULL AND char_length(btrim("opportunity_next_actions"."association_phone")) > 0 AND "opportunity_next_actions"."association_provider_message_id" IS NOT NULL AND char_length(btrim("opportunity_next_actions"."association_provider_message_id")) > 0));
 --> statement-breakpoint
 CREATE UNIQUE INDEX "commercial_inbound_events_provider_message_unique" ON "commercial_inbound_events" USING btree ("instance","provider_message_id");
 --> statement-breakpoint

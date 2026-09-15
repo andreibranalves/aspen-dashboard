@@ -9,13 +9,11 @@ export type InboundAssociationResult =
    * order after dedup — never sorted alphabetically; ranking stays with the caller.
    */
   | { outcome: 'ambiguous'; candidateOpportunityIds: string[] }
-  | { outcome: 'none' }
-  | { outcome: 'outbound_generic' };
+  | { outcome: 'none' };
 
 export type InboundIdentityStatus = 'verified' | 'derived' | 'unresolved' | 'conflict';
 
 export interface InboundAssociationInput {
-  direction: 'inbound' | 'outbound';
   identityStatus: InboundIdentityStatus;
   /** null when the identity could not be resolved to a phone (e.g. @lid without one). */
   canonicalPhone: string | null;
@@ -43,17 +41,12 @@ function uniqueTrimmedOpportunityIds(values: readonly string[]): string[] {
 }
 
 /**
- * Generic outbound activity never counts as a reply and never picks an
- * opportunity (#239), even with a trusted identity, a phone and linked deals.
  * Untrusted identities and trusted identities without a canonical phone stay
  * `none` (a later ticket surfaces those as "Verificar conversa"; do not guess).
  */
 export function classifyInboundAssociation(
   input: InboundAssociationInput
 ): InboundAssociationResult {
-  if (input.direction === 'outbound') {
-    return { outcome: 'outbound_generic' };
-  }
   if (!TRUSTED_IDENTITY_STATUSES[input.identityStatus]) {
     return { outcome: 'none' };
   }

@@ -16,7 +16,6 @@ import {
   type FollowUpProjectionState,
 } from '../../../_modules/quotation-follow-up-state.js';
 import {
-  ActionNotFoundError,
   advanceConfirmedFollowUp,
   applyAssociateResponseTransition,
   applyInboundResponseTransition,
@@ -213,19 +212,6 @@ export interface QuotationFollowUpRepository {
     identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
     canonicalPhone: string | null;
   }): Promise<void>;
-  applyConfirmedInboundToOpportunity?(input: {
-    instance: string;
-    canonicalPhone: string;
-    occurredAt: Date;
-    providerMessageId: string;
-  }): Promise<{ handledOpportunityIds: string[] }>;
-  applyUncertainInboundReview?(input: {
-    instance: string;
-    occurredAt: Date;
-    providerMessageId: string;
-    providerConversationId?: string;
-    canonicalPhone?: string | null;
-  }): Promise<{ alertOpportunityId: string | null }>;
   promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<ClaimedFollowUp | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
@@ -994,22 +980,26 @@ async function suspendUndeliveredApprovalsForPhone(
 
 async function findExistingClientReview(
   tx: Database,
-  clientId: string,
+  clientId: string | null,
   reasonCode: string,
-  canonicalPhone?: string,
+  opportunityIds: string[],
+  canonicalPhone: string,
 ): Promise<{ actionId: string; opportunityId: string } | null> {
-  const phoneFilter = canonicalPhone
-    ? sql`AND a.association_phone = ${canonicalPhone}`
-    : sql``;
+  const scopeFilter = clientId
+    ? sql`d.client_id = ${clientId}::uuid`
+    : sql`a.opportunity_id IN (${sql.join(
+        opportunityIds.map((id) => sql`${id}::uuid`),
+        sql`, `
+      )})`;
   const rows = Array.from(
     await tx.execute(sql`
       SELECT a.id, a.opportunity_id
       FROM opportunity_next_actions a
       INNER JOIN crm_deals d ON d.id = a.opportunity_id
-      WHERE d.client_id = ${clientId}
+      WHERE ${scopeFilter}
         AND a.state = 'active'
         AND a.reason_code = ${reasonCode}
-        ${phoneFilter}
+        AND a.association_phone = ${canonicalPhone}
       ORDER BY a.opportunity_id ASC
       LIMIT 1
     `),
@@ -1118,28 +1108,29 @@ async function applyAmbiguousInboundInTransaction(
       ORDER BY id
     `),
   ) as Record<string, unknown>[];
-  const byClient = new Map<string, string[]>();
+  const byClient = new Map<string, { clientId: string | null; opportunityIds: string[] }>();
   for (const row of candidateRows) {
     const opportunityId = String(row.id);
-    const key = row.client_id == null ? `opportunity:${opportunityId}` : `client:${row.client_id}`;
-    const group = byClient.get(key) || [];
-    group.push(opportunityId);
+    const clientId = row.client_id == null ? null : String(row.client_id);
+    // Clientless pre-proposal demands on the same E.164 share one review group:
+    // the association is keyed by phone, never by a client the deal may not have.
+    const key = clientId ? `client:${clientId}` : `phone:${input.phone}`;
+    const group = byClient.get(key) || { clientId, opportunityIds: [] };
+    group.opportunityIds.push(opportunityId);
     byClient.set(key, group);
   }
   for (const opportunityId of candidateRows.map((row) => String(row.id)).sort()) {
     await lockOpportunity(tx, opportunityId, opportunityId);
   }
   let firstAlertOpportunityId: string | null = null;
-  for (const [key, opportunityIds] of byClient) {
-    const clientId = key.startsWith('client:') ? key.slice('client:'.length) : null;
-    const existing = clientId
-      ? await findExistingClientReview(
-          tx,
-          clientId,
-          ASSOCIATE_RESPONSE_REASON_CODE,
-          input.phone,
-        )
-      : null;
+  for (const { clientId, opportunityIds } of byClient.values()) {
+    const existing = await findExistingClientReview(
+      tx,
+      clientId,
+      ASSOCIATE_RESPONSE_REASON_CODE,
+      opportunityIds,
+      input.phone,
+    );
     const hostOpportunityId = existing?.opportunityId || opportunityIds[0];
     let alertActionId = existing?.actionId || null;
     if (!existing) {
@@ -1151,17 +1142,17 @@ async function applyAmbiguousInboundInTransaction(
         actor: 'system',
       });
       alertActionId = transition.successor?.actionId || transition.actionId;
-      if (clientId) {
-        await tx.execute(sql`
-          UPDATE opportunity_next_actions
-          SET association_client_id = ${clientId}::uuid,
-              association_phone = ${input.phone},
-              association_provider_message_id = ${input.providerMessageId}
-          WHERE id = ${alertActionId}::uuid
-            AND state = 'active'
-            AND reason_code = ${ASSOCIATE_RESPONSE_REASON_CODE}
-        `);
-      }
+      await tx.execute(sql`
+        UPDATE opportunity_next_actions
+        SET association_client_id = ${
+          clientId ? sql`${clientId}::uuid` : sql`NULL`
+        },
+            association_phone = ${input.phone},
+            association_provider_message_id = ${input.providerMessageId}
+        WHERE id = ${alertActionId}::uuid
+          AND state = 'active'
+          AND reason_code = ${ASSOCIATE_RESPONSE_REASON_CODE}
+      `);
     }
     if (alertActionId) {
       await tx.execute(sql`
@@ -1218,7 +1209,6 @@ async function applyConfirmedInboundInTransaction(
   const linked = await listOpenOpportunityIdsForPhone(tx, input.canonicalPhone);
   const opportunityIds = linked.map((row) => row.opportunityId).sort();
   const classification = classifyInboundAssociation({
-    direction: 'inbound',
     identityStatus: 'verified',
     canonicalPhone: input.canonicalPhone,
     linkedOpportunityIds: opportunityIds,
@@ -2517,44 +2507,44 @@ export function createPostgresQuotationFollowUpRepository(
                     });
                     if (!claimed) return;
                   }
+                  // Take the opportunity locks in the same (advisory-first) order
+                  // as the claim path before touching follow-up rows, otherwise a
+                  // concurrent claimApproved deadlocks against the bulk UPDATE below.
+                  const linkedOpportunities = [
+                    ...(phone ? await listOpenOpportunityIdsForPhone(tx, phone) : []),
+                    ...(await listOpenOpportunityIdsForConversation(tx, instance, conversation)),
+                  ].sort((left, right) => left.opportunityId.localeCompare(right.opportunityId));
+                  const lockedOpportunities = new Set<string>();
+                  for (const { opportunityId } of linkedOpportunities) {
+                    if (lockedOpportunities.has(opportunityId)) continue;
+                    lockedOpportunities.add(opportunityId);
+                    await lockOpportunity(tx, opportunityId, opportunityId);
+                  }
+                  const holdsRow = sql`(${isUnresolvedLid}
+                    AND NOT (
+                      f.provider_conversation_id = ${conversation}
+                      OR (
+                        ${phone || null}::text IS NOT NULL
+                        AND f.canonical_phone = ${phone || null}
+                      )
+                    ))`;
                   await tx.execute(sql `UPDATE quotation_follow_ups f
-          SET state = CASE
-                WHEN ${isUnresolvedLid}
-                  AND NOT (
-                    f.provider_conversation_id = ${conversation}
-                    OR (
-                      ${phone || null}::text IS NOT NULL
-                      AND f.canonical_phone = ${phone || null}
-                    )
-                  )
-                  THEN 'held'
-                ELSE 'cancelled'
-              END,
+          SET state = CASE WHEN ${holdsRow} THEN 'held' ELSE 'cancelled' END,
               closed_reason = CASE
-                WHEN ${isUnresolvedLid}
-                  AND NOT (
-                    f.provider_conversation_id = ${conversation}
-                    OR (
-                      ${phone || null}::text IS NOT NULL
-                      AND f.canonical_phone = ${phone || null}
-                    )
-                  )
-                  THEN NULL
+                WHEN ${holdsRow} THEN NULL
                 WHEN ${input.fromMe} THEN 'outbound_after_anchor'
                 ELSE 'inbound_after_anchor'
               END,
               closed_at = CASE
-                WHEN ${isUnresolvedLid}
-                  AND NOT (
-                    f.provider_conversation_id = ${conversation}
-                    OR (
-                      ${phone || null}::text IS NOT NULL
-                      AND f.canonical_phone = ${phone || null}
-                    )
-                  )
-                  THEN NULL
+                WHEN ${holdsRow} THEN NULL
                 ELSE ${iso(occurredAt)}::timestamptz
               END,
+              approved_opportunity_id = CASE WHEN ${holdsRow} THEN f.approved_opportunity_id ELSE NULL END,
+              eligibility_version = CASE WHEN ${holdsRow} THEN f.eligibility_version ELSE NULL END,
+              message_snapshot = CASE WHEN ${holdsRow} THEN f.message_snapshot ELSE NULL END,
+              approved_at = CASE WHEN ${holdsRow} THEN f.approved_at ELSE NULL END,
+              lease_token = CASE WHEN ${holdsRow} THEN f.lease_token ELSE NULL END,
+              lease_until = CASE WHEN ${holdsRow} THEN f.lease_until ELSE NULL END,
               updated_at = ${iso(occurredAt)}::timestamptz
           WHERE f.instance = ${instance}
             AND ${iso(occurredAt)}::timestamptz > COALESCE(
@@ -2627,84 +2617,6 @@ export function createPostgresQuotationFollowUpRepository(
                 throw new RepositoryError();
             }
         },
-        async applyConfirmedInboundToOpportunity(input: {
-            instance: string;
-            canonicalPhone: string;
-            occurredAt: Date;
-            providerMessageId: string;
-        }): Promise<{ handledOpportunityIds: string[] }> {
-            const instance = String(input.instance || '').trim();
-            if (!instance || instance !== configuredInstance())
-                throw new InputError('Instância inválida.');
-            const phone = acceptedCanonicalPhone(input.canonicalPhone);
-            if (!phone || !/^[0-9]{10,15}$/.test(phone))
-                throw new InputError('Telefone inválido.');
-            const occurredAt = requiredDate(input.occurredAt, 'atividade');
-            const providerMessageId = String(input.providerMessageId || '').trim();
-            if (!providerMessageId)
-                throw new InputError('Identificador da mensagem inválido.');
-            try {
-                return await getDb().transaction(async (tx) => {
-                    const claimed = await claimCommercialInboundEvent(tx, {
-                        instance,
-                        providerMessageId,
-                        canonicalPhone: phone,
-                        occurredAt,
-                    });
-                    if (!claimed) return { handledOpportunityIds: [] };
-                    return applyConfirmedInboundInTransaction(tx, {
-                        canonicalPhone: phone,
-                        occurredAt,
-                        providerMessageId,
-                    });
-                });
-            }
-            catch (error) {
-                if (error instanceof InputError || error instanceof ActionNotFoundError)
-                    throw error;
-                throw new RepositoryError();
-            }
-        },
-
-        async applyUncertainInboundReview(input: {
-            instance: string;
-            occurredAt: Date;
-            providerMessageId: string;
-            providerConversationId?: string;
-            canonicalPhone?: string | null;
-        }): Promise<{ alertOpportunityId: string | null }> {
-            const instance = String(input.instance || '').trim();
-            if (!instance || instance !== configuredInstance())
-                throw new InputError('Instância inválida.');
-            const occurredAt = requiredDate(input.occurredAt, 'atividade');
-            const providerMessageId = String(input.providerMessageId || '').trim();
-            if (!providerMessageId)
-                throw new InputError('Identificador da mensagem inválido.');
-            const conversation = String(input.providerConversationId || '').trim();
-            const phone = acceptedCanonicalPhone(input.canonicalPhone);
-            try {
-                return await getDb().transaction(async (tx) => {
-                    const claimed = await claimCommercialInboundEvent(tx, {
-                        instance,
-                        providerMessageId,
-                        providerConversationId: conversation || null,
-                        canonicalPhone: phone,
-                        occurredAt,
-                    });
-                    if (!claimed) return { alertOpportunityId: null };
-                    return applyUncertainInboundInTransaction(tx, {
-                        instance,
-                        providerConversationId: conversation,
-                        canonicalPhone: phone,
-                        occurredAt,
-                    });
-                });
-            } catch (error) {
-                if (error instanceof InputError) throw error;
-                throw new RepositoryError();
-            }
-        },
-
         async promoteDueWaitingToReady(inputNow: Date = new Date()) {
             const started = tracking();
             if (!started || !configuredInstance())

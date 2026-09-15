@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
@@ -12,7 +12,6 @@ import postgres from 'postgres';
 import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
   applyCommercialRecordTransition,
-  countActiveActionsForOpportunity,
   previewCommercialRecordTransition,
 } from '../../api/_infrastructure/db/repositories/commercial-record-transition-repository.js';
 import { createPostgresOpportunityActionRepository } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
@@ -51,6 +50,20 @@ test.before(async () => {
 test.after(async () => {
   await client?.end({ timeout: 5 });
 });
+
+/** Test seam: active-action cardinality read straight from persisted state. */
+async function countActiveActions(opportunityId: string): Promise<number> {
+  const rows = await db
+    .select({ id: opportunityNextActions.id })
+    .from(opportunityNextActions)
+    .where(
+      and(
+        eq(opportunityNextActions.opportunityId, opportunityId),
+        eq(opportunityNextActions.state, 'active'),
+      ),
+    );
+  return rows.length;
+}
 
 test(
   'preview classifies open/closed/uncertain without mutating, and authorized apply is idempotent',
@@ -98,7 +111,7 @@ test(
       assert.equal(byId.get(closedId)?.classification, 'closed');
       assert.ok(preview.unmergedClientGroups.some((group) => group.opportunityIds.length === 2));
 
-      const beforeOpen = await countActiveActionsForOpportunity(db, openId);
+      const beforeOpen = await countActiveActions(openId);
       assert.equal(beforeOpen, 0);
 
       await assert.rejects(
@@ -119,9 +132,9 @@ test(
       assert.equal(first.messagesSent, 0);
       assert.equal(first.workerEnabled, false);
       assert.equal(first.historicalBacklogReprocessed, false);
-      assert.equal(await countActiveActionsForOpportunity(db, openId), 1);
-      assert.equal(await countActiveActionsForOpportunity(db, siblingId), 1);
-      assert.equal(await countActiveActionsForOpportunity(db, closedId), 0);
+      assert.equal(await countActiveActions(openId), 1);
+      assert.equal(await countActiveActions(siblingId), 1);
+      assert.equal(await countActiveActions(closedId), 0);
 
       const openActions = await db
         .select()
@@ -136,8 +149,8 @@ test(
         occurredAt: new Date('2026-09-15T13:00:00.000Z'),
         idFactory: randomUUID,
       });
-      assert.equal(await countActiveActionsForOpportunity(db, openId), 1);
-      assert.equal(await countActiveActionsForOpportunity(db, siblingId), 1);
+      assert.equal(await countActiveActions(openId), 1);
+      assert.equal(await countActiveActions(siblingId), 1);
       assert.equal(second.appliedOpportunityIds.includes(openId), false);
     } finally {
       await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, openId));

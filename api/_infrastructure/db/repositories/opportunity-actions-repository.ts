@@ -2444,8 +2444,7 @@ export function createPostgresOpportunityActionRepository(
                   '[]'::json
                 )
                 FROM crm_deals candidate
-                WHERE candidate.client_id = a.association_client_id
-                  AND candidate.status NOT IN (${sql.join(
+                WHERE candidate.status NOT IN (${sql.join(
                     closedStatuses.map((status) => sql`${status}`),
                     sql`, `
                   )})
@@ -2764,10 +2763,9 @@ export function createPostgresOpportunityActionRepository(
             );
           }
           if (
-            !alert.associationClientId ||
             !alert.associationPhone ||
             !alert.associationProviderMessageId ||
-            alert.associationClientId !== ownerDeal.clientId
+            (alert.associationClientId != null && alert.associationClientId !== ownerDeal.clientId)
           ) {
             throw new OpportunityActionInputError(
               'O alerta não possui contexto de associação válido.',
@@ -2781,12 +2779,7 @@ export function createPostgresOpportunityActionRepository(
               'Não é possível associar resposta a uma oportunidade encerrada.',
             );
           }
-          if (!deal.clientId) {
-            throw new OpportunityActionInputError(
-              'A oportunidade não tem cliente para associar a resposta.',
-            );
-          }
-          if (alert.associationClientId !== deal.clientId) {
+          if (alert.associationClientId != null && alert.associationClientId !== deal.clientId) {
             throw new OpportunityActionInputError(
               'A oportunidade escolhida não pertence ao cliente do alerta.',
             );

@@ -8,25 +8,12 @@ import {
 
 function input(overrides: Partial<InboundAssociationInput> = {}): InboundAssociationInput {
   return {
-    direction: 'inbound',
     identityStatus: 'verified',
     canonicalPhone: '+55 11 91234-5678',
     linkedOpportunityIds: [],
     ...overrides,
   };
 }
-
-test('outbound is always generic even with a verified identity, phone and linked opportunities', () => {
-  assert.deepEqual(
-    classifyInboundAssociation(
-      input({
-        direction: 'outbound',
-        linkedOpportunityIds: ['11111111-1111-4111-8111-111111111111'],
-      })
-    ),
-    { outcome: 'outbound_generic' }
-  );
-});
 
 test('inbound with a verified identity and a single linked opportunity is unambiguous', () => {
   assert.deepEqual(

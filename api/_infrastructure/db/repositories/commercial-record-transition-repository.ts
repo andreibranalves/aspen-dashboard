@@ -21,7 +21,6 @@ import {
   type TransitionPreviewSummary,
 } from '../../../_modules/commercial-record-transition.js';
 import {
-  ensureFirstContactAction,
   VERIFY_CONVERSATION_REASON,
   VERIFY_CONVERSATION_REASON_CODE,
 } from './opportunity-actions-repository.js';
@@ -325,22 +324,6 @@ async function applyDecision(
         occurredAt,
         idFactory,
       });
-    case 'ensure_first_contact': {
-      const before = await database
-        .select({ id: opportunityNextActions.id })
-        .from(opportunityNextActions)
-        .where(eq(opportunityNextActions.opportunityId, decision.opportunityId));
-      await ensureFirstContactAction(database, {
-        opportunityId: decision.opportunityId,
-        dueAt: occurredAt,
-        idFactory,
-      });
-      const after = await database
-        .select({ id: opportunityNextActions.id })
-        .from(opportunityNextActions)
-        .where(eq(opportunityNextActions.opportunityId, decision.opportunityId));
-      return after.length > before.length ? 'applied' : 'skipped';
-    }
     case 'ensure_verify_conversation':
       return ensureVerifyConversationAction(database, {
         opportunityId: decision.opportunityId,
@@ -450,21 +433,4 @@ export async function applyCommercialRecordTransition(
     workerEnabled: false,
     historicalBacklogReprocessed: false,
   };
-}
-
-/** Focused proof helper: active-action cardinality for an opportunity. */
-export async function countActiveActionsForOpportunity(
-  database: TransitionQueryDatabase,
-  opportunityId: string,
-): Promise<number> {
-  const rows = await database
-    .select({ id: opportunityNextActions.id })
-    .from(opportunityNextActions)
-    .where(
-      and(
-        eq(opportunityNextActions.opportunityId, opportunityId),
-        eq(opportunityNextActions.state, 'active'),
-      ),
-    );
-  return rows.length;
 }
