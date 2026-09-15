@@ -19,9 +19,15 @@ import {
   type OpportunityQueueItem,
   type FollowUpContinuityType,
 } from '../_infrastructure/db/repositories/opportunity-actions-repository.js';
+import {
+  createPostgresWhatsappContactActivityRepository,
+  type WhatsappContactActivityRepository,
+} from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 
 export interface CommercialQueueHandlerDependencies {
   repository?: OpportunityActionRepository;
+  contactRepository?: Pick<WhatsappContactActivityRepository, 'unblockContact'>;
+  environment?: NodeJS.ProcessEnv;
 }
 
 class HandlerInputError extends Error {
@@ -318,6 +324,10 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
       status: proposal.status,
       total: proposal.total,
     })),
+    association_candidates: item.associationCandidates.map((candidate) => ({
+      opportunity_id: candidate.opportunityId,
+      demand_summary: candidate.demandSummary,
+    })),
   };
 }
 
@@ -436,6 +446,9 @@ export function createCommercialQueueHandler(
   dependencies: CommercialQueueHandlerDependencies = {}
 ): (event: FunctionEvent) => Promise<FunctionResult> {
   const repository = dependencies.repository || createPostgresOpportunityActionRepository();
+  const contactRepository =
+    dependencies.contactRepository || createPostgresWhatsappContactActivityRepository();
+  const environment = dependencies.environment || process.env;
 
   return async function commercialQueueHandler(event: FunctionEvent): Promise<FunctionResult> {
     try {
@@ -545,12 +558,28 @@ export function createCommercialQueueHandler(
         return json(200, publicUrgency(updated));
       }
 
-      
+      if (command === 'unblock_contact') {
+        const instance = String(environment.EVOLUTION_INSTANCE || '').trim();
+        if (!instance) throw new HandlerInputError('WhatsApp não configurado.');
+        const canonicalPhone = textField(payload, 'canonical_phone');
+        if (!/^[0-9]{10,15}$/.test(canonicalPhone)) {
+          throw new HandlerInputError('Telefone inválido.');
+        }
+        const reason = textField(payload, 'reason');
+        if (reason.length > 500) throw new HandlerInputError('O motivo deve ter no máximo 500 caracteres.');
+        await contactRepository.unblockContact({
+          instance,
+          canonicalPhone,
+          actor,
+          reason,
+        });
+        return json(200, { unblocked: true, canonical_phone: canonicalPhone });
+      }
+
       if (command === 'associate_inbound' || command === 'associate_response') {
         const associated = await repository.associateInboundResponse({
           opportunityId: textField(payload, 'opportunity_id'),
-          actionId:
-            typeof payload.action_id === 'string' ? payload.action_id : undefined,
+          actionId: textField(payload, 'action_id'),
           expectedVersion: expectedVersion(payload),
           actor,
         });

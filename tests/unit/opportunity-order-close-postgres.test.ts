@@ -202,6 +202,27 @@ test(
         'rascunho',
       );
       await assert.rejects(() => sales.createFromQuotation(draftQuotationId), /não pode|rascunho|aprovado/i);
+      await db.insert(schema.salesOrders).values({
+        id: randomUUID(),
+        orderNumber: 'PED-2098-9999',
+        quotationId: draftQuotationId,
+        quotationRevisionId: draftRevisionId,
+        clientId,
+        status: 'Draft',
+        transactionDate: '2098-08-10',
+        subtotal: '50.00',
+        grandTotal: '50.00',
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      const existingDraft = await sales.createFromQuotation(draftQuotationId);
+      assert.equal(existingDraft.alreadyExists, true);
+      assert.equal(existingDraft.crmUpdated, false);
+      const [stillOpenDraft] = await db
+        .select({ status: schema.crmDeals.status })
+        .from(schema.crmDeals)
+        .where(eq(schema.crmDeals.id, siblingDealId));
+      assert.equal(stillOpenDraft?.status, 'Novo Lead');
       const [stillActivePrimary] = await db
         .select({ state: schema.opportunityNextActions.state })
         .from(schema.opportunityNextActions)

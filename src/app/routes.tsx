@@ -33,9 +33,6 @@ const ComunicacaoPage = lazy(() => import('@/features/communication/pages/Comuni
 const WhatsAppDeliveriesPage = lazy(
   () => import('@/features/quotations/pages/WhatsAppDeliveriesPage')
 );
-const LegacyFollowUpsRedirect = lazy(
-  () => import('@/features/commercial/pages/LegacyFollowUpsRedirect')
-);
 const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
 
 export interface RouteContext {
@@ -140,11 +137,6 @@ export const routes: AppRoute[] = [
     suspense: true,
     render: ({ navigate }) => <CommercialPage navigate={navigate} />,
     nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2 },
-  },
-  {
-    path: '/follow-ups',
-    suspense: true,
-    render: ({ navigate }) => <LegacyFollowUpsRedirect navigate={navigate} />,
   },
   {
     path: '/quotations',

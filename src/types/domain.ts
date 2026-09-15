@@ -202,17 +202,6 @@ export interface SalesByDay {
   orders?: number;
 }
 
-export interface StaleQuotation {
-  id?: string;
-  customer?: string;
-  client?: string;
-  age?: number;
-  days_old?: number;
-  value?: number;
-  total?: number;
-  status?: string;
-}
-
 export interface DashboardData {
   success?: boolean;
   period?: {
@@ -224,5 +213,4 @@ export interface DashboardData {
   top_products?: TopProduct[];
   top_customers?: TopCustomer[];
   sales_by_day?: SalesByDay[];
-  stale_quotations?: StaleQuotation[];
 }

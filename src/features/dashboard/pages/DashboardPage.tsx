@@ -279,16 +279,12 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
 function AcquisitionPanel({
   data,
   onFinance,
-  navigate,
 }: {
   data: DashboardViewData;
   onFinance: () => void;
-  navigate: DashboardPageProps['navigate'];
 }) {
   const summary = data.summary;
   if (!summary) return <Unavailable>Dados de aquisição não disponíveis.</Unavailable>;
-  const pending = data.attention;
-  const pendingCount = pending?.items.length ?? null;
 
   return (
     <section
@@ -315,37 +311,15 @@ function AcquisitionPanel({
       <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onFinance}>
         Ver gasto mensal
       </Button>
-      <div className="mt-4 rounded-md border border-line bg-surface-muted px-4 py-4">
-        {pending === null ? (
-          <p className="text-sm text-fg-muted">Pendências indisponíveis</p>
-        ) : pending.omitted > 0 && pendingCount === 0 ? (
-          <>
-            <p className="text-sm text-fg-muted">Pendências sem dados confirmados</p>
-            <OmittedRowsNote omitted={pending.omitted} />
-          </>
-        ) : pendingCount === 0 ? (
-          <p className="text-sm font-medium text-fg-muted">Nenhum orçamento sem resposta</p>
-        ) : (
-          <button
-            type="button"
-            className="text-left text-sm font-medium text-link underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            onClick={() => navigate('/crm')}
-          >
-            {pendingCount} {pendingCount === 1 ? 'orçamento' : 'orçamentos'} sem resposta →
-          </button>
-        )}
-      </div>
     </section>
   );
 }
 
 function OverviewPanel({
   data,
-  navigate,
   onFinance,
 }: {
   data: DashboardViewData;
-  navigate: DashboardPageProps['navigate'];
   onFinance: () => void;
 }) {
   const summary = data.summary;
@@ -370,7 +344,7 @@ function OverviewPanel({
             <RevenueChart series={data.salesByDay} />
           </div>
         </section>
-        <AcquisitionPanel data={data} onFinance={onFinance} navigate={navigate} />
+        <AcquisitionPanel data={data} onFinance={onFinance} />
       </div>
     </div>
   );
@@ -766,7 +740,7 @@ function UnavailableResults({
   );
 }
 
-export default function DashboardPage({ navigate }: DashboardPageProps) {
+export default function DashboardPage(_props: DashboardPageProps) {
   const [period, setPeriod] = useHashQueryState('period', 'month', parseDashboardPeriod);
   const [tab, setTab] = useHashQueryState<DashboardTab>('tab', 'overview', parseDashboardTab);
   const [data, setData] = useState<DashboardViewData | null>(null);
@@ -875,7 +849,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       />
       <DashboardTabs tab={tab} onChange={setTab} />
       {tab === 'overview' ? (
-        <OverviewPanel data={data} navigate={navigate} onFinance={() => setTab('finance')} />
+        <OverviewPanel data={data} onFinance={() => setTab('finance')} />
       ) : tab === 'products' ? (
         <ProductsPanel data={data} />
       ) : tab === 'customers' ? (

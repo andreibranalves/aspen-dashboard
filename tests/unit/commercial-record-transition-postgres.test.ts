@@ -104,7 +104,7 @@ test(
       );
 
       const first = await applyCommercialRecordTransition(db, {
-        authorization: { applyAuthorized: true, allowInTests: true },
+        authorization: { applyAuthorized: true },
         occurredAt: now,
         idFactory: randomUUID,
       });
@@ -124,7 +124,7 @@ test(
       assert.notEqual(openActions[0]?.reason, 'Sem resposta');
 
       const second = await applyCommercialRecordTransition(db, {
-        authorization: { applyAuthorized: true, allowInTests: true },
+        authorization: { applyAuthorized: true },
         occurredAt: new Date('2026-09-15T13:00:00.000Z'),
         idFactory: randomUUID,
       });

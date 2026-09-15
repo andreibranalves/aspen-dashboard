@@ -41,14 +41,6 @@ export interface DashboardDayView {
   orders: number;
 }
 
-export interface DashboardQuotationView {
-  id: string;
-  customer: string;
-  age: number;
-  value: number;
-  status: string;
-}
-
 export interface DashboardListView<T> {
   items: T[];
   omitted: number;
@@ -62,7 +54,6 @@ export interface DashboardViewData {
   topProducts: DashboardListView<DashboardProductView> | null;
   topCustomers: DashboardListView<DashboardCustomerView> | null;
   salesByDay: DashboardListView<DashboardDayView> | null;
-  attention: DashboardListView<DashboardQuotationView> | null;
 }
 
 type RecordValue = Record<string, unknown>;
@@ -196,18 +187,6 @@ function projectDay(value: unknown): DashboardDayView | null {
   return { date, revenue, orders };
 }
 
-function projectQuotation(value: unknown): DashboardQuotationView | null {
-  const source = asRecord(value);
-  if (!source) return null;
-  const id = identifier(source.id);
-  const customer = identifier(source.customer);
-  const age = safeCount(source.age);
-  const amount = nonnegativeNumber(source.value);
-  const status = identifier(source.status);
-  if (!id || !customer || age === undefined || amount === undefined || !status) return null;
-  return { id, customer, age, value: amount, status };
-}
-
 /**
  * Keeps a successful response usable when an optional metric/list is absent.
  * Invalid rows are omitted instead of being rendered as invented values.
@@ -224,6 +203,5 @@ export function projectDashboardView(value: unknown): DashboardViewData | null {
     topProducts: projectList(source.top_products, projectProduct),
     topCustomers: projectList(source.top_customers, projectCustomer),
     salesByDay: projectList(source.sales_by_day, projectDay),
-    attention: projectList(source.stale_quotations, projectQuotation),
   };
 }

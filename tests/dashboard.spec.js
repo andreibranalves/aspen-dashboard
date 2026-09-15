@@ -41,9 +41,6 @@ function dashboardResponse({
     top_products: [{ sku: 'SKU-1', product: 'Camiseta', quantity: 20, revenue: 25000, orders: 12 }],
     top_customers: [{ name: 'Cliente exemplo', revenue: 25000, orders: 12 }],
     sales_by_day: [{ date: '2098-08-10', revenue: 25000, orders: 12 }],
-    stale_quotations: [
-      { id: 'ORC-198', customer: 'Cliente pendente', age: 2, value: 3500, status: 'emitido' },
-    ],
   };
 }
 
@@ -85,7 +82,6 @@ for (const scenario of conversionScenarios) {
           top_products: [],
           top_customers: [],
           sales_by_day: [],
-          stale_quotations: [],
         }),
       });
     });
@@ -144,7 +140,7 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
   await page.goto(`${BASE_URL}/#/dashboard`);
 
   await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '1 orçamento sem resposta' })).toBeVisible();
+  await expect(page.getByText(/orçamento sem resposta/i)).toHaveCount(0);
   await page.getByRole('button', { name: 'Ver gasto mensal' }).click();
   await expect(page.getByRole('heading', { name: 'Composição financeira' })).toBeVisible();
 

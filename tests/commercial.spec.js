@@ -72,7 +72,7 @@ test('comercial expõe Fila e Negócios sem Retornos operacionais (#254)', async
     json(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } })
   );
 
-  await page.goto('/#/crm?tab=returns&return=unanswered');
+  await page.goto('/#/crm');
   await expect(page.getByRole('heading', { name: 'Comercial' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Fila' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('tab', { name: 'Negócios' })).toBeVisible();

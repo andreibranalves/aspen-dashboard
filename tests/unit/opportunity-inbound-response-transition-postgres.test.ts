@@ -13,7 +13,7 @@ import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
   applyAssociateResponseTransition,
   applyInboundResponseTransition,
-  resolveAssociateResponseToOpportunity,
+  createPostgresOpportunityActionRepository,
 } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { clients, crmDeals, opportunityNextActions } from '../../api/_infrastructure/db/schema.js';
@@ -56,7 +56,11 @@ async function makeFixture(): Promise<Fixture> {
     opportunity: randomUUID(),
   };
   const now = new Date('2026-09-11T15:00:00.000Z');
-  await db.insert(clients).values({ id: ids.client, nome: 'Resposta sintética' });
+  await db.insert(clients).values({
+    id: ids.client,
+    nome: 'Resposta sintética',
+    telefone: '5511999990000',
+  });
   await db.insert(crmDeals).values({
     id: ids.opportunity,
     clientId: ids.client,
@@ -227,7 +231,7 @@ test(
 );
 
 test(
-  'resolveAssociateResponseToOpportunity turns Associar resposta into Preciso responder',
+  'associateInboundResponse moves a consolidated alert to the chosen demand',
   { skip: databaseSkip, concurrency: false },
   async () => {
     const fixture = await makeFixture();
@@ -260,46 +264,98 @@ test(
         updatedAt: fixture.now,
       });
 
-      await applyAssociateResponseTransition({
+      const alert = await applyAssociateResponseTransition({
         database: db,
         opportunityId: fixture.ids.opportunity,
         occurredAt: fixture.now,
         idFactory: randomUUID,
         actor: 'system',
       });
-      await applyAssociateResponseTransition({
-        database: db,
-        opportunityId: sibling,
-        occurredAt: fixture.now,
-        idFactory: randomUUID,
-        actor: 'system',
-      });
+      await db
+        .update(opportunityNextActions)
+        .set({
+          associationClientId: fixture.ids.client,
+          associationPhone: '5511999990000',
+          associationProviderMessageId: 'inbound-association-test',
+        })
+        .where(eq(opportunityNextActions.id, alert.successor!.actionId));
+      await db
+        .update(opportunityNextActions)
+        .set({ state: 'cancelled', transitionReason: 'Resposta ambígua aguardando associação' })
+        .where(eq(opportunityNextActions.opportunityId, sibling));
 
-      const resolved = await resolveAssociateResponseToOpportunity({
-        database: db,
-        clientId: fixture.ids.client,
-        opportunityId: fixture.ids.opportunity,
-        occurredAt: new Date('2026-09-11T16:00:00.000Z'),
-        idFactory: randomUUID,
+      const repository = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date('2026-09-11T16:00:00.000Z'),
+      });
+      const resolved = await repository.associateInboundResponse({
+        actionId: alert.successor!.actionId,
+        expectedVersion: alert.successor!.version,
+        opportunityId: sibling,
         actor: 'operator-a',
       });
-      assert.equal(resolved.state, 'completed');
-      assert.equal(resolved.action?.reasonCode, 'associate_response');
+      assert.equal(resolved.state, 'active');
+      assert.equal(resolved.action, null);
       assert.equal(resolved.successor?.reasonCode, 'inbound_needs_response');
 
       const host = await actionsFor(fixture.ids.opportunity);
-      assert.equal(host.filter((row) => row.state === 'active').length, 1);
-      assert.equal(host.find((row) => row.state === 'active')?.reasonCode, 'inbound_needs_response');
+      assert.equal(host.filter((row) => row.state === 'active').length, 0);
+      assert.equal(host.find((row) => row.id === alert.successor?.actionId)?.state, 'cancelled');
 
       const sister = await actionsFor(sibling);
       assert.equal(
-        sister.filter((row) => row.state === 'active' && row.reasonCode === 'associate_response').length,
-        0,
+        sister.filter((row) => row.state === 'active' && row.reasonCode === 'inbound_needs_response').length,
+        1,
       );
     } finally {
       await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, sibling));
       await db.delete(crmDeals).where(eq(crmDeals.id, sibling));
       await fixture.cleanup();
+    }
+  },
+);
+
+test(
+  'associateInboundResponse rejects an alert owned by another client',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const owner = await makeFixture();
+    const target = await makeFixture();
+    try {
+      await insertActiveAction(owner, 'follow_up_second_return');
+      const alert = await applyAssociateResponseTransition({
+        database: db,
+        opportunityId: owner.ids.opportunity,
+        occurredAt: owner.now,
+        idFactory: randomUUID,
+      });
+      await db
+        .update(opportunityNextActions)
+        .set({
+          associationClientId: owner.ids.client,
+          associationPhone: '5511999990000',
+          associationProviderMessageId: 'inbound-foreign-client-test',
+        })
+        .where(eq(opportunityNextActions.id, alert.successor!.actionId));
+      const repository = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date('2026-09-11T16:00:00.000Z'),
+      });
+      await assert.rejects(
+        () => repository.associateInboundResponse({
+          actionId: alert.successor!.actionId,
+          expectedVersion: alert.successor!.version,
+          opportunityId: target.ids.opportunity,
+          actor: 'operator-a',
+        }),
+        /cliente do alerta/i,
+      );
+      const [stillOpen] = await db
+        .select({ state: opportunityNextActions.state })
+        .from(opportunityNextActions)
+        .where(eq(opportunityNextActions.id, alert.successor!.actionId));
+      assert.equal(stillOpen?.state, 'active');
+    } finally {
+      await owner.cleanup();
+      await target.cleanup();
     }
   },
 );

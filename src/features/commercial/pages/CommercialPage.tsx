@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent } from 'react';
 import { BriefcaseBusiness, ListChecks, PlusCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -22,30 +22,6 @@ interface CommercialPageProps {
 export default function CommercialPage({ navigate }: CommercialPageProps) {
   const [tab, setTab] = useHashQueryState<CommercialTab>('tab', 'queue', parseCommercialTab);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  useEffect(() => {
-    const route = window.location.hash.replace(/^#/, '') || '/';
-    const separator = route.indexOf('?');
-    if (separator === -1) return;
-    const path = route.slice(0, separator);
-    if (path !== '/crm') return;
-    const params = new URLSearchParams(route.slice(separator + 1));
-    let dirty = false;
-    if (params.has('return')) {
-      params.delete('return');
-      dirty = true;
-    }
-    if (params.get('tab') === 'returns') {
-      params.delete('tab');
-      dirty = true;
-    }
-    if (!dirty) return;
-    const query = params.toString();
-    const nextRoute = query ? `${path}?${query}` : path;
-    window.history.replaceState(window.history.state, '', `#${nextRoute}`);
-    window.dispatchEvent(new Event('aspen:hash-query-change'));
-  }, []);
-
 
   function changeTab(nextTab: CommercialTab) {
     setTab(nextTab);

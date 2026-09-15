@@ -2895,6 +2895,7 @@ databaseTest('manual counted contact fences a started alternative before changin
 
 databaseTest('confirmed inbound replaces return with Preciso responder and cancels undelivered approval', async () => {
   const repository = createPostgresQuotationFollowUpRepository(() => db);
+  const actions = createPostgresOpportunityActionRepository(() => db, { now: () => now });
   await resetSharedFollowUpGraph();
   const ready = await projectReady(repository, {
     ids: { quotation: ids.quotation, revision: ids.revision, delivery: ids.delivery },
@@ -2909,11 +2910,12 @@ databaseTest('confirmed inbound replaces return with Preciso responder and cance
   assert.equal(approved.state, 'approved');
 
   const occurredAt = new Date('2026-09-01T15:30:00.000Z');
+  const providerMessageId = `inbound-${randomUUID()}`;
   const handled = await repository.applyConfirmedInboundToOpportunity!({
     instance,
     canonicalPhone: '5511999999999',
     occurredAt,
-    providerMessageId: `inbound-${randomUUID()}`,
+    providerMessageId,
   });
   assert.deepEqual(handled, { handledOpportunityIds: [ids.crm] });
 
@@ -2938,9 +2940,11 @@ databaseTest('confirmed inbound replaces return with Preciso responder and cance
 
   const active = await db
     .select({
+      id: opportunityNextActions.id,
       reason: opportunityNextActions.reason,
       reasonCode: opportunityNextActions.reasonCode,
       state: opportunityNextActions.state,
+      version: opportunityNextActions.version,
     })
     .from(opportunityNextActions)
     .where(and(
@@ -2951,22 +2955,95 @@ databaseTest('confirmed inbound replaces return with Preciso responder and cance
   assert.equal(active[0]?.reason, 'Preciso responder');
   assert.equal(active[0]?.reasonCode, 'inbound_needs_response');
 
-  const again = await repository.applyConfirmedInboundToOpportunity!({
+  await actions.completeAction({
+    actionId: active[0]!.id,
+    expectedVersion: active[0]!.version,
+    actor: 'operator-a',
+    successor: {
+      kind: 'internal',
+      dueDate: '2026-09-02',
+      dueTime: null,
+      reason: 'Aguardar análise interna',
+    },
+  });
+  const replay = await repository.applyConfirmedInboundToOpportunity!({
     instance,
     canonicalPhone: '5511999999999',
     occurredAt,
-    providerMessageId: `inbound-repeat-${randomUUID()}`,
+    providerMessageId,
   });
-  assert.deepEqual(again, { handledOpportunityIds: [ids.crm] });
-  const activeAgain = await db
-    .select({ id: opportunityNextActions.id })
+  assert.deepEqual(replay, { handledOpportunityIds: [] });
+  const afterReplay = await db
+    .select({ reasonCode: opportunityNextActions.reasonCode })
     .from(opportunityNextActions)
     .where(and(
       eq(opportunityNextActions.opportunityId, ids.crm),
       eq(opportunityNextActions.state, 'active'),
-      eq(opportunityNextActions.reasonCode, 'inbound_needs_response'),
     ));
-  assert.equal(activeAgain.length, 1);
+  assert.deepEqual(afterReplay, [{ reasonCode: 'manual_action' }]);
+
+  const newer = await repository.applyConfirmedInboundToOpportunity!({
+    instance,
+    canonicalPhone: '5511999999999',
+    occurredAt: new Date('2026-09-01T16:00:00.000Z'),
+    providerMessageId: `inbound-new-${randomUUID()}`,
+  });
+  assert.deepEqual(newer, { handledOpportunityIds: [ids.crm] });
+  const activeAgain = await db
+    .select({ reasonCode: opportunityNextActions.reasonCode })
+    .from(opportunityNextActions)
+    .where(and(
+      eq(opportunityNextActions.opportunityId, ids.crm),
+      eq(opportunityNextActions.state, 'active'),
+    ));
+  assert.deepEqual(activeAgain, [{ reasonCode: 'inbound_needs_response' }]);
+});
+
+databaseTest('confirmed inbound reaches a pre-proposal opportunity through its durable phone', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  const actions = createPostgresOpportunityActionRepository(() => db, { now: () => now });
+  const clientId = randomUUID();
+  const opportunityId = randomUUID();
+  const phone = '5511977776655';
+  await db.insert(clients).values({ id: clientId, nome: 'Cliente pré-proposta' });
+  await db.insert(crmDeals).values({
+    id: opportunityId,
+    clientId,
+    nome: 'Demanda sem orçamento',
+    telefone: phone,
+    status: 'Novo Lead',
+    createdAt: now,
+    updatedAt: now,
+  });
+  try {
+    await actions.createAction({
+      opportunityId,
+      kind: 'first_contact',
+      dueDate: '2026-09-01',
+      dueTime: null,
+      reason: 'Primeiro atendimento',
+      actor: 'system',
+    });
+    const result = await repository.applyConfirmedInboundToOpportunity!({
+      instance,
+      canonicalPhone: phone,
+      occurredAt: new Date('2026-09-01T17:00:00.000Z'),
+      providerMessageId: `inbound-preproposal-${randomUUID()}`,
+    });
+    assert.deepEqual(result, { handledOpportunityIds: [opportunityId] });
+    const [active] = await db
+      .select({ reasonCode: opportunityNextActions.reasonCode })
+      .from(opportunityNextActions)
+      .where(and(
+        eq(opportunityNextActions.opportunityId, opportunityId),
+        eq(opportunityNextActions.state, 'active'),
+      ));
+    assert.equal(active?.reasonCode, 'inbound_needs_response');
+  } finally {
+    await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, opportunityId));
+    await db.delete(crmDeals).where(eq(crmDeals.id, opportunityId));
+    await db.delete(clients).where(eq(clients.id, clientId));
+  }
 });
 
 databaseTest('inbound racing claimApproved never leaves a live undelivered authorization', async () => {
@@ -3114,8 +3191,8 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
     const relevant = associateAlerts.filter((row) =>
       [ids.crm, other.opportunityId].includes(row.opportunityId),
     );
-    assert.equal(relevant.length, 1);
-    assert.equal(relevant[0]?.reason, 'Associar resposta');
+    assert.equal(relevant.length, 2);
+    assert.ok(relevant.every((row) => row.reason === 'Associar resposta'));
 
     for (const opportunityId of [ids.crm, other.opportunityId]) {
       const inboundActions = await db
@@ -3129,7 +3206,6 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
       assert.equal(inboundActions.length, 0);
     }
 
-    // Idempotent: a second ambiguous inbound keeps a single Associar resposta.
     await repository.applyConfirmedInboundToOpportunity!({
       instance,
       canonicalPhone: '5511999999999',
@@ -3144,7 +3220,7 @@ databaseTest('ambiguous phone association creates one Associar resposta and susp
         eq(opportunityNextActions.reasonCode, 'associate_response'),
         inArray(opportunityNextActions.opportunityId, [ids.crm, other.opportunityId!]),
       ));
-    assert.equal(associateAgain.length, 1);
+    assert.equal(associateAgain.length, 2);
   } finally {
     await foreign.cleanup();
     await other.cleanup();
@@ -3284,4 +3360,3 @@ databaseTest('uncertain identity creates Verificar conversa without claiming Sem
     await resetSharedFollowUpGraph();
   }
 });
-

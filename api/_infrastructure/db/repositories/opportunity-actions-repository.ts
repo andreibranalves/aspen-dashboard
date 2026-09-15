@@ -131,6 +131,7 @@ export interface OpportunityQueueItem {
   sourceDeliveryId: string | null;
   /** Every proposal linked to the demand, with value and state. */
   proposals: OpportunityProposal[];
+  associationCandidates: Array<{ opportunityId: string; demandSummary: string | null }>;
 }
 
 export interface OpportunityQueuePage {
@@ -298,7 +299,7 @@ export interface SetOpportunityUrgencyInput {
 
 export interface AssociateInboundResponseInput {
   opportunityId: string;
-  actionId?: string;
+  actionId: string;
   expectedVersion: number;
   actor: string;
 }
@@ -837,6 +838,7 @@ interface QueueRow {
   source_revision_id: string | null;
   source_delivery_id: string | null;
   proposals: unknown;
+  association_candidates: unknown;
 }
 
 interface ProposalJsonRow {
@@ -872,6 +874,21 @@ function parseProposals(value: unknown): OpportunityProposal[] {
     });
   }
   return proposals;
+}
+
+function parseAssociationCandidates(
+  value: unknown,
+): Array<{ opportunityId: string; demandSummary: string | null }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const row = entry as { opportunity_id?: unknown; demand_summary?: unknown };
+    if (typeof row.opportunity_id !== 'string') return [];
+    return [{
+      opportunityId: row.opportunity_id,
+      demandSummary: typeof row.demand_summary === 'string' ? row.demand_summary : null,
+    }];
+  });
 }
 
 function parseBlockers(value: unknown): OpportunityQueueBlocker[] {
@@ -1516,19 +1533,54 @@ export async function applyVerifyConversationTransition(
  * opportunity of the same client is cancelled without touching unrelated
  * contacts (#250).
  */
-export async function resolveAssociateResponseToOpportunity(input: {
+async function resolveAssociateResponseToOpportunity(input: {
   database: ActionDatabase;
   clientId: string;
+  associationPhone: string;
   opportunityId: string;
   occurredAt: Date;
   idFactory: () => string;
   actor: string;
 }): Promise<OpportunityActionCommandResult> {
-  const { database, clientId, opportunityId, occurredAt, idFactory, actor } = input;
+  const { database, clientId, associationPhone, opportunityId, occurredAt, idFactory, actor } = input;
+  const targetAction = await activeAction(database, opportunityId);
+  if (targetAction && targetAction.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
+    throw new ActionConflictError('A oportunidade escolhida já possui outra próxima ação ativa.');
+  }
+  if (targetAction) {
+    const result = await applyInboundResponseTransition({
+      database,
+      opportunityId,
+      occurredAt,
+      idFactory,
+      actor,
+    });
+    await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'cancelled',
+        updatedAt: occurredAt,
+        transitionActor: actor,
+        transitionAt: occurredAt,
+        transitionOrigin: 'manual',
+        transitionReason: 'Resposta associada a outra oportunidade',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.state, 'active'),
+          eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
+          eq(opportunityNextActions.associationPhone, associationPhone),
+          sql`${opportunityNextActions.opportunityId} IN (
+            SELECT id FROM crm_deals WHERE client_id = ${clientId}
+          )`,
+        ),
+      );
+    return result;
+  }
   const siblingRows = await database
     .select({
       id: opportunityNextActions.id,
-      opportunityId: opportunityNextActions.opportunityId,
       version: opportunityNextActions.version,
     })
     .from(opportunityNextActions)
@@ -1538,7 +1590,7 @@ export async function resolveAssociateResponseToOpportunity(input: {
         eq(crmDeals.clientId, clientId),
         eq(opportunityNextActions.state, 'active'),
         eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
-        sql`${opportunityNextActions.opportunityId} <> ${opportunityId}`,
+        eq(opportunityNextActions.associationPhone, associationPhone),
       ),
     );
   for (const sibling of siblingRows) {
@@ -1561,13 +1613,44 @@ export async function resolveAssociateResponseToOpportunity(input: {
         ),
       );
   }
-  return applyInboundResponseTransition({
-    database,
+  const dueDate = calendarDateInSaoPaulo(occurredAt);
+  const [latest] = await database
+    .select({ version: opportunityNextActions.version })
+    .from(opportunityNextActions)
+    .where(eq(opportunityNextActions.opportunityId, opportunityId))
+    .orderBy(sql`${opportunityNextActions.version} DESC`)
+    .limit(1);
+  const id = idFactory();
+  const [created] = await database
+    .insert(opportunityNextActions)
+    .values({
+      id,
+      opportunityId,
+      kind: 'review',
+      reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
+      reason: 'Preciso responder',
+      origin: 'event',
+      state: 'active',
+      dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+      dueDate,
+      dueTime: null,
+      scheduleType: 'date_only',
+      version: (latest?.version || 0) + 1,
+      actor,
+      createdAt: occurredAt,
+      updatedAt: occurredAt,
+    })
+    .returning();
+  if (!created) throw new OpportunityActionRepositoryError();
+  return {
+    actionId: created.id,
     opportunityId,
-    occurredAt,
-    idFactory,
-    actor,
-  });
+    state: 'active',
+    version: created.version,
+    action: null,
+    successor: rowRecord(created),
+    closed: false,
+  };
 }
 
 
@@ -2235,6 +2318,9 @@ export function createPostgresOpportunityActionRepository(
               a.schedule_type,
               a.version,
               a.actor,
+              a.association_client_id,
+              a.association_phone,
+              a.association_provider_message_id,
               a.created_at,
               a.updated_at,
               d.quote_lead_id,
@@ -2255,7 +2341,7 @@ export function createPostgresOpportunityActionRepository(
               )}) THEN d.updated_at ELSE NULL END AS terminal_at,
               d.demand_summary,
               d.nome AS contact_name,
-              d.telefone AS contact_phone,
+              COALESCE(d.telefone, c.telefone) AS contact_phone,
               d.email AS contact_email,
               d.client_id,
               c.nome AS client_name,
@@ -2295,7 +2381,45 @@ export function createPostgresOpportunityActionRepository(
                   LIMIT 1
                 ) r ON true
                 WHERE q.opportunity_id = d.id
-              ) AS proposals
+              ) AS proposals,
+              (
+                SELECT coalesce(
+                  json_agg(
+                    json_build_object(
+                      'opportunity_id', candidate.id,
+                      'demand_summary', candidate.demand_summary
+                    ) ORDER BY candidate.created_at, candidate.id
+                  ),
+                  '[]'::json
+                )
+                FROM crm_deals candidate
+                WHERE candidate.client_id = a.association_client_id
+                  AND candidate.status NOT IN (${sql.join(
+                    closedStatuses.map((status) => sql`${status}`),
+                    sql`, `
+                  )})
+                  AND (
+                    candidate.telefone = a.association_phone
+                    OR EXISTS (
+                      SELECT 1 FROM clients candidate_client
+                      WHERE candidate_client.id = candidate.client_id
+                        AND candidate_client.telefone = a.association_phone
+                    )
+                    OR EXISTS (
+                      SELECT 1
+                      FROM quotations candidate_quotation
+                      JOIN quote_revisions candidate_revision
+                        ON candidate_revision.quotation_id = candidate_quotation.id
+                      JOIN quotation_deliveries candidate_delivery
+                        ON candidate_delivery.revision_id = candidate_revision.id
+                      WHERE (
+                        candidate_quotation.opportunity_id = candidate.id
+                        OR candidate_quotation.id = candidate.quotation_id
+                      )
+                        AND regexp_replace(candidate_delivery.phone, '[^0-9]', '', 'g') = a.association_phone
+                    )
+                  )
+              ) AS association_candidates
             FROM opportunity_next_actions a
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
@@ -2359,6 +2483,10 @@ export function createPostgresOpportunityActionRepository(
                 WHERE quotation.opportunity_id = selected.opportunity_id
                   AND follow_up.instance = activity.instance
                   AND follow_up.provider_conversation_id = activity.provider_conversation_id
+              )
+              OR (
+                selected.contact_phone IS NOT NULL
+                AND activity.canonical_phone = selected.contact_phone
               )
             )
           ),
@@ -2510,6 +2638,7 @@ export function createPostgresOpportunityActionRepository(
                 sourceRevisionId: row.source_revision_id,
                 sourceDeliveryId: row.source_delivery_id,
                 proposals: parseProposals(row.proposals),
+                associationCandidates: parseAssociationCandidates(row.association_candidates),
               };
             }),
           total: Number(first.total ?? 0),
@@ -2561,20 +2690,38 @@ export function createPostgresOpportunityActionRepository(
       input: AssociateInboundResponseInput,
     ): Promise<OpportunityActionCommandResult> {
       const opportunityId = cleanText(input.opportunityId, 'O ID da oportunidade', 255);
+      const actionId = cleanText(input.actionId, 'O ID da ação', 255);
       const actor = cleanText(input.actor, 'O operador', MAX_ACTOR_LENGTH);
       const expectedVersion = validateVersion(input.expectedVersion);
       try {
         return await getDb().transaction(async (tx) => {
-          const [deal] = await tx
-            .select({
-              id: crmDeals.id,
-              clientId: crmDeals.clientId,
-              status: crmDeals.status,
-            })
-            .from(crmDeals)
-            .where(eq(crmDeals.id, opportunityId))
+          const [reference] = await tx
+            .select({ opportunityId: opportunityNextActions.opportunityId })
+            .from(opportunityNextActions)
+            .where(eq(opportunityNextActions.id, actionId))
             .limit(1);
-          if (!deal) throw new ActionNotFoundError('Oportunidade não encontrada.');
+          if (!reference) throw new ActionNotFoundError('Alerta Associar resposta não encontrado.');
+          const ownerDeal = await lockOpportunity(tx, reference.opportunityId);
+          const alert = await lockAction(tx, actionId, reference.opportunityId);
+          assertExpectedAction(alert, expectedVersion);
+          if (alert.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
+            throw new OpportunityActionInputError(
+              'A ação informada não é um alerta Associar resposta.',
+            );
+          }
+          if (
+            !alert.associationClientId ||
+            !alert.associationPhone ||
+            !alert.associationProviderMessageId ||
+            alert.associationClientId !== ownerDeal.clientId
+          ) {
+            throw new OpportunityActionInputError(
+              'O alerta não possui contexto de associação válido.',
+            );
+          }
+          const deal = opportunityId === ownerDeal.id
+            ? ownerDeal
+            : await lockOpportunity(tx, opportunityId);
           if (deal.status === 'Pedido Fechado' || deal.status === 'Perdido') {
             throw new OpportunityActionInputError(
               'Não é possível associar resposta a uma oportunidade encerrada.',
@@ -2585,32 +2732,46 @@ export function createPostgresOpportunityActionRepository(
               'A oportunidade não tem cliente para associar a resposta.',
             );
           }
-          const active = await activeAction(tx, opportunityId);
-          if (input.actionId) {
-            const actionId = cleanText(input.actionId, 'O ID da ação', 255);
-            const [alert] = await tx
-              .select()
-              .from(opportunityNextActions)
-              .where(eq(opportunityNextActions.id, actionId))
-              .limit(1);
-            if (!alert || alert.state !== 'active') {
-              throw new ActionNotFoundError('Alerta Associar resposta não encontrado.');
-            }
-            if (alert.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
-              throw new OpportunityActionInputError(
-                'A ação informada não é um alerta Associar resposta.',
-              );
-            }
-            if (alert.opportunityId === opportunityId && alert.version !== expectedVersion) {
-              throw new ActionConflictError();
-            }
-          } else if (!active || active.version !== expectedVersion) {
-            throw new ActionConflictError();
+          if (alert.associationClientId !== deal.clientId) {
+            throw new OpportunityActionInputError(
+              'A oportunidade escolhida não pertence ao cliente do alerta.',
+            );
+          }
+          const phoneMatches = Array.from(await tx.execute(sql`
+            SELECT EXISTS (
+              SELECT 1
+              FROM crm_deals candidate
+              LEFT JOIN clients candidate_client ON candidate_client.id = candidate.client_id
+              WHERE candidate.id = ${opportunityId}::uuid
+                AND (
+                  candidate.telefone = ${alert.associationPhone}
+                  OR candidate_client.telefone = ${alert.associationPhone}
+                  OR EXISTS (
+                    SELECT 1
+                    FROM quotations candidate_quotation
+                    JOIN quote_revisions candidate_revision
+                      ON candidate_revision.quotation_id = candidate_quotation.id
+                    JOIN quotation_deliveries candidate_delivery
+                      ON candidate_delivery.revision_id = candidate_revision.id
+                    WHERE (
+                      candidate_quotation.opportunity_id = candidate.id
+                      OR candidate_quotation.id = candidate.quotation_id
+                    )
+                      AND regexp_replace(candidate_delivery.phone, '[^0-9]', '', 'g') = ${alert.associationPhone}
+                  )
+                )
+            ) AS matches
+          `)) as Record<string, unknown>[];
+          if (phoneMatches[0]?.matches !== true) {
+            throw new OpportunityActionInputError(
+              'A oportunidade escolhida não pertence ao contato do alerta.',
+            );
           }
           const now = nowFactory();
           return resolveAssociateResponseToOpportunity({
             database: tx,
             clientId: deal.clientId,
+            associationPhone: alert.associationPhone,
             opportunityId,
             occurredAt: now,
             idFactory,

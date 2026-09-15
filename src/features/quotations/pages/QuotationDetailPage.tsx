@@ -2761,7 +2761,6 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   if (loading && !data) return <SkeletonDetail />;
   if (error) {
     const previousRoute = getHashHistoryPreviousRoute();
-    const fromFollowUps = previousRoute && routePath(previousRoute) === '/follow-ups';
     const fromCommercial = previousRoute && routePath(previousRoute) === '/crm';
     const fromSendHistory =
       previousRoute &&
@@ -2769,7 +2768,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
     const fromDeliveries = previousRoute && routePath(previousRoute) === '/whatsapp-deliveries';
     const returnRoute =
-      fromFollowUps || fromCommercial
+      fromCommercial
         ? '/crm'
         : fromSendHistory || fromDeliveries
           ? previousRoute

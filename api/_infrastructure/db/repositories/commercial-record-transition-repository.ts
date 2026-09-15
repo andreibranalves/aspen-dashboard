@@ -4,20 +4,16 @@
  * and never replays historical transport backlog.
  */
 
-import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
 import type { AppDatabase } from '../client.js';
 import {
-  crmDeals,
   opportunityNextActions,
-  quotationFollowUps,
-  whatsappContactActivity,
 } from '../schema.js';
 import {
   assertNoFalseSilenceLabel,
   classifyOpportunityTransition,
-  CLOSED_OPPORTUNITY_STATUSES,
   INSUFFICIENT_EVIDENCE_REVIEW_REASON,
   summarizeTransitionDecisions,
   type OpportunityTransitionDecision,
@@ -30,13 +26,14 @@ import {
   VERIFY_CONVERSATION_REASON_CODE,
 } from './opportunity-actions-repository.js';
 
-export type TransitionDatabase = Pick<AppDatabase, 'select' | 'insert' | 'update' | 'transaction'>;
+type TransitionQueryDatabase = Pick<
+  AppDatabase,
+  'select' | 'insert' | 'update' | 'execute'
+>;
+export type TransitionDatabase = TransitionQueryDatabase & Pick<AppDatabase, 'transaction'>;
 
 export type CommercialTransitionAuthorization = {
-  /** Explicit operational authorization for real apply. */
   applyAuthorized: boolean;
-  /** Disposable-test escape hatch; never for production apply. */
-  allowInTests?: boolean;
 };
 
 export type CommercialTransitionApplyResult = {
@@ -48,119 +45,108 @@ export type CommercialTransitionApplyResult = {
   historicalBacklogReprocessed: false;
 };
 
-const DISMISSED_FOLLOW_UP_STATES = ['dismissed', 'cancelled'] as const;
-const ACCEPTED_FOLLOW_UP_STATES = ['sent', 'approved', 'processing'] as const;
-
-function isClosedStatus(status: string): boolean {
-  return (CLOSED_OPPORTUNITY_STATUSES as readonly string[]).includes(status);
-}
-
 async function loadOpportunityFacts(
-  database: TransitionDatabase,
+  database: TransitionQueryDatabase,
+  opportunityId?: string,
 ): Promise<OpportunityTransitionFacts[]> {
-  const deals = await database
-    .select({
-      id: crmDeals.id,
-      status: crmDeals.status,
-      clientId: crmDeals.clientId,
-      telefone: crmDeals.telefone,
-    })
-    .from(crmDeals);
-
-  if (deals.length === 0) return [];
-
-  const opportunityIds = deals.map((deal) => deal.id);
-  const phones = [
-    ...new Set(
-      deals.map((deal) => deal.telefone).filter((value): value is string => Boolean(value)),
-    ),
-  ];
-
-  const activeActions = await database
-    .select({ opportunityId: opportunityNextActions.opportunityId })
-    .from(opportunityNextActions)
-    .where(
-      and(
-        inArray(opportunityNextActions.opportunityId, opportunityIds),
-        eq(opportunityNextActions.state, 'active'),
-      ),
-    );
-  const activeSet = new Set(activeActions.map((row) => row.opportunityId));
-
-  const historicalActions = await database
-    .select({ opportunityId: opportunityNextActions.opportunityId })
-    .from(opportunityNextActions)
-    .where(
-      and(
-        inArray(opportunityNextActions.opportunityId, opportunityIds),
-        ne(opportunityNextActions.state, 'active'),
-      ),
-    );
-  const historyActionSet = new Set(historicalActions.map((row) => row.opportunityId));
-
-  const followUps = await database
-    .select({
-      opportunityId: quotationFollowUps.approvedOpportunityId,
-      state: quotationFollowUps.state,
-    })
-    .from(quotationFollowUps)
-    .where(isNotNull(quotationFollowUps.approvedOpportunityId));
-
-  const dismissedSet = new Set<string>();
-  const acceptedFollowUpSet = new Set<string>();
-  for (const row of followUps) {
-    if (!row.opportunityId) continue;
-    if ((DISMISSED_FOLLOW_UP_STATES as readonly string[]).includes(row.state)) {
-      dismissedSet.add(row.opportunityId);
-    }
-    if ((ACCEPTED_FOLLOW_UP_STATES as readonly string[]).includes(row.state)) {
-      acceptedFollowUpSet.add(row.opportunityId);
-    }
-  }
-
-  const restrictedPhones = new Set<string>();
-  if (phones.length > 0) {
-    const blocked = await database
-      .select({ canonicalPhone: whatsappContactActivity.canonicalPhone })
-      .from(whatsappContactActivity)
-      .where(
-        and(
-          inArray(whatsappContactActivity.canonicalPhone, phones),
-          isNotNull(whatsappContactActivity.blockedAt),
-          eq(whatsappContactActivity.blockReason, 'do_not_contact'),
-        ),
-      );
-    for (const row of blocked) {
-      if (row.canonicalPhone) restrictedPhones.add(row.canonicalPhone);
-    }
-  }
-
-  const openByClient = new Map<string, string[]>();
-  for (const deal of deals) {
-    if (isClosedStatus(deal.status) || !deal.clientId) continue;
-    const list = openByClient.get(deal.clientId) || [];
-    list.push(deal.id);
-    openByClient.set(deal.clientId, list);
-  }
-
-  return deals.map((deal) => {
-    const siblings = deal.clientId ? openByClient.get(deal.clientId) || [] : [];
-    const hasActiveNextAction = activeSet.has(deal.id);
-    const hasAcceptedHistory =
-      historyActionSet.has(deal.id) || acceptedFollowUpSet.has(deal.id);
-    const contactRestricted = Boolean(deal.telefone && restrictedPhones.has(deal.telefone));
-    const insufficientEvidenceForSilence = !hasActiveNextAction && !hasAcceptedHistory;
-
+  const filter = opportunityId ? sql`WHERE deal.id = ${opportunityId}::uuid` : sql``;
+  const rows = Array.from(await database.execute(sql`
+    SELECT
+      deal.id,
+      deal.status,
+      deal.client_id,
+      COALESCE((
+        SELECT array_agg(sibling.id ORDER BY sibling.id)
+        FROM crm_deals sibling
+        WHERE sibling.client_id = deal.client_id
+          AND sibling.status NOT IN ('Pedido Fechado', 'Perdido')
+      ), ARRAY[]::uuid[]) AS sibling_ids,
+      EXISTS (
+        SELECT 1 FROM opportunity_next_actions action
+        WHERE action.opportunity_id = deal.id AND action.state = 'active'
+      ) AS has_active_action,
+      (
+        EXISTS (
+          SELECT 1 FROM opportunity_next_actions action
+          WHERE action.opportunity_id = deal.id AND action.state <> 'active'
+        )
+        OR EXISTS (
+          SELECT 1
+          FROM quotation_follow_ups follow_up
+          JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+          WHERE COALESCE(
+            follow_up.approved_opportunity_id,
+            quotation.opportunity_id,
+            (SELECT legacy.id FROM crm_deals legacy
+             WHERE legacy.quotation_id = quotation.id
+             ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+          ) = deal.id
+            AND follow_up.state IN ('sent', 'approved', 'processing', 'needs_review')
+        )
+      ) AS has_accepted_history,
+      EXISTS (
+        SELECT 1
+        FROM quotation_follow_ups follow_up
+        JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+        WHERE COALESCE(
+          follow_up.approved_opportunity_id,
+          quotation.opportunity_id,
+          (SELECT legacy.id FROM crm_deals legacy
+           WHERE legacy.quotation_id = quotation.id
+           ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+        ) = deal.id
+          AND follow_up.state IN ('dismissed', 'cancelled')
+      ) AS has_dismissed_attempts,
+      EXISTS (
+        SELECT 1
+        FROM whatsapp_contact_activity activity
+        WHERE activity.blocked_at IS NOT NULL
+          AND activity.block_reason = 'do_not_contact'
+          AND activity.canonical_phone IN (
+            SELECT phone FROM (
+              SELECT deal.telefone AS phone
+              UNION ALL
+              SELECT client.telefone FROM clients client WHERE client.id = deal.client_id
+              UNION ALL
+              SELECT follow_up.canonical_phone
+              FROM quotation_follow_ups follow_up
+              JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+              WHERE COALESCE(
+                follow_up.approved_opportunity_id,
+                quotation.opportunity_id,
+                (SELECT legacy.id FROM crm_deals legacy
+                 WHERE legacy.quotation_id = quotation.id
+                 ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+              ) = deal.id
+              UNION ALL
+              SELECT regexp_replace(delivery.phone, '[^0-9]', '', 'g')
+              FROM quotations quotation
+              JOIN quote_revisions revision ON revision.quotation_id = quotation.id
+              JOIN quotation_deliveries delivery ON delivery.revision_id = revision.id
+              WHERE quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id
+            ) linked_phones
+            WHERE phone IS NOT NULL
+          )
+      ) AS contact_restricted
+    FROM crm_deals deal
+    ${filter}
+    ORDER BY deal.id
+  `)) as Record<string, unknown>[];
+  return rows.map((row) => {
+    const hasActiveNextAction = row.has_active_action === true;
+    const hasAcceptedHistory = row.has_accepted_history === true;
     return {
-      opportunityId: deal.id,
-      status: deal.status,
-      clientId: deal.clientId,
-      siblingOpenOpportunityIds: siblings,
+      opportunityId: String(row.id),
+      status: String(row.status),
+      clientId: row.client_id == null ? null : String(row.client_id),
+      siblingOpenOpportunityIds: Array.isArray(row.sibling_ids)
+        ? row.sibling_ids.map(String)
+        : [],
       hasActiveNextAction,
       hasAcceptedHistory,
-      hasDismissedAttempts: dismissedSet.has(deal.id),
-      contactRestricted,
-      insufficientEvidenceForSilence,
+      hasDismissedAttempts: row.has_dismissed_attempts === true,
+      contactRestricted: row.contact_restricted === true,
+      insufficientEvidenceForSilence: !hasActiveNextAction && !hasAcceptedHistory,
     };
   });
 }
@@ -181,7 +167,7 @@ export async function previewCommercialRecordTransition(
 }
 
 async function ensureVerifyConversationAction(
-  database: TransitionDatabase,
+  database: TransitionQueryDatabase,
   input: {
     opportunityId: string;
     reason: string;
@@ -234,7 +220,7 @@ async function ensureVerifyConversationAction(
 }
 
 async function applyDecision(
-  database: TransitionDatabase,
+  database: TransitionQueryDatabase,
   decision: OpportunityTransitionDecision,
   occurredAt: Date,
   idFactory: () => string,
@@ -271,6 +257,36 @@ async function applyDecision(
   }
 }
 
+async function neutralizeHistoricalAuthorizations(
+  database: TransitionQueryDatabase,
+  opportunityId: string,
+  occurredAt: Date,
+): Promise<void> {
+  await database.execute(sql`
+    UPDATE quotation_follow_ups follow_up
+    SET state = 'needs_review',
+        closed_reason = CASE
+          WHEN follow_up.state = 'processing' AND follow_up.transport_started_at IS NOT NULL
+            THEN 'transport_ambiguous'
+          ELSE 'already_handled'
+        END,
+        closed_at = ${occurredAt.toISOString()}::timestamptz,
+        lease_token = NULL,
+        lease_until = NULL,
+        updated_at = ${occurredAt.toISOString()}::timestamptz
+    FROM quotations quotation
+    WHERE quotation.id = follow_up.quotation_id
+      AND follow_up.state IN ('approved', 'processing')
+      AND COALESCE(
+        follow_up.approved_opportunity_id,
+        quotation.opportunity_id,
+        (SELECT legacy.id FROM crm_deals legacy
+         WHERE legacy.quotation_id = quotation.id
+         ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+      ) = ${opportunityId}::uuid
+  `);
+}
+
 /**
  * Applies the transition plan only when explicitly authorized. Refuses to
  * touch transport, workers, or historical send backlog.
@@ -283,7 +299,7 @@ export async function applyCommercialRecordTransition(
     idFactory: () => string;
   },
 ): Promise<CommercialTransitionApplyResult> {
-  if (!input.authorization.applyAuthorized && !input.authorization.allowInTests) {
+  if (!input.authorization.applyAuthorized) {
     throw new Error(
       'Aplicação da transição comercial exige autorização operacional separada.',
     );
@@ -294,12 +310,38 @@ export async function applyCommercialRecordTransition(
   const skippedOpportunityIds: string[] = [];
 
   for (const decision of preview.decisions) {
-    const outcome = await applyDecision(
-      database,
-      decision,
-      input.occurredAt,
-      input.idFactory,
-    );
+    const outcome = await database.transaction(async (tx) => {
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(hashtextextended(${decision.opportunityId}::text, 0))
+      `);
+      const locked = Array.from(await tx.execute(sql`
+        SELECT id FROM crm_deals
+        WHERE id = ${decision.opportunityId}::uuid
+        FOR UPDATE
+      `));
+      if (locked.length === 0) return 'skipped' as const;
+      await tx.execute(sql`
+        SELECT id FROM whatsapp_contact_activity
+        WHERE canonical_phone IN (
+          SELECT phone FROM (
+            SELECT deal.telefone AS phone
+            FROM crm_deals deal WHERE deal.id = ${decision.opportunityId}::uuid
+            UNION ALL
+            SELECT client.telefone
+            FROM crm_deals deal
+            JOIN clients client ON client.id = deal.client_id
+            WHERE deal.id = ${decision.opportunityId}::uuid
+          ) phones WHERE phone IS NOT NULL
+        )
+        FOR UPDATE
+      `);
+      await neutralizeHistoricalAuthorizations(tx, decision.opportunityId, input.occurredAt);
+      const [facts] = await loadOpportunityFacts(tx, decision.opportunityId);
+      if (!facts) return 'skipped' as const;
+      const currentDecision = classifyOpportunityTransition(facts);
+      assertNoFalseSilenceLabel(currentDecision.reviewReason);
+      return applyDecision(tx, currentDecision, input.occurredAt, input.idFactory);
+    });
     if (outcome === 'applied') appliedOpportunityIds.push(decision.opportunityId);
     else skippedOpportunityIds.push(decision.opportunityId);
   }
@@ -316,7 +358,7 @@ export async function applyCommercialRecordTransition(
 
 /** Focused proof helper: active-action cardinality for an opportunity. */
 export async function countActiveActionsForOpportunity(
-  database: TransitionDatabase,
+  database: TransitionQueryDatabase,
   opportunityId: string,
 ): Promise<number> {
   const rows = await database

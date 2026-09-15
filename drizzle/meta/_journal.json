@@ -337,6 +337,13 @@
       "when": 1789300000000,
       "tag": "0047_whatsapp_contact_block_events",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789301000000,
+      "tag": "0048_commercial_inbound_events",
+      "breakpoints": true
     }
   ]
 }
