@@ -10,7 +10,11 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
-import { applyInboundResponseTransition } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
+import {
+  applyAssociateResponseTransition,
+  applyInboundResponseTransition,
+  resolveAssociateResponseToOpportunity,
+} from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { clients, crmDeals, opportunityNextActions } from '../../api/_infrastructure/db/schema.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
@@ -220,4 +224,82 @@ test(
       await fixture.cleanup();
     }
   }
+);
+
+test(
+  'resolveAssociateResponseToOpportunity turns Associar resposta into Preciso responder',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeFixture();
+    const sibling = randomUUID();
+    await db.insert(crmDeals).values({
+      id: sibling,
+      clientId: fixture.ids.client,
+      nome: 'Demanda irmã',
+      status: 'Orcamento Enviado',
+      createdAt: fixture.now,
+      updatedAt: fixture.now,
+    });
+    try {
+      await insertActiveAction(fixture, 'follow_up_second_return');
+      await db.insert(opportunityNextActions).values({
+        id: randomUUID(),
+        opportunityId: sibling,
+        kind: 'customer_contact',
+        reasonCode: 'follow_up_second_return',
+        origin: 'event',
+        state: 'active',
+        dueAt: fixture.now,
+        dueDate: '2026-09-11',
+        dueTime: null,
+        scheduleType: 'date_only',
+        version: 1,
+        actor: 'system',
+        reason: 'Retorno pendente',
+        createdAt: fixture.now,
+        updatedAt: fixture.now,
+      });
+
+      await applyAssociateResponseTransition({
+        database: db,
+        opportunityId: fixture.ids.opportunity,
+        occurredAt: fixture.now,
+        idFactory: randomUUID,
+        actor: 'system',
+      });
+      await applyAssociateResponseTransition({
+        database: db,
+        opportunityId: sibling,
+        occurredAt: fixture.now,
+        idFactory: randomUUID,
+        actor: 'system',
+      });
+
+      const resolved = await resolveAssociateResponseToOpportunity({
+        database: db,
+        clientId: fixture.ids.client,
+        opportunityId: fixture.ids.opportunity,
+        occurredAt: new Date('2026-09-11T16:00:00.000Z'),
+        idFactory: randomUUID,
+        actor: 'operator-a',
+      });
+      assert.equal(resolved.state, 'completed');
+      assert.equal(resolved.action?.reasonCode, 'associate_response');
+      assert.equal(resolved.successor?.reasonCode, 'inbound_needs_response');
+
+      const host = await actionsFor(fixture.ids.opportunity);
+      assert.equal(host.filter((row) => row.state === 'active').length, 1);
+      assert.equal(host.find((row) => row.state === 'active')?.reasonCode, 'inbound_needs_response');
+
+      const sister = await actionsFor(sibling);
+      assert.equal(
+        sister.filter((row) => row.state === 'active' && row.reasonCode === 'associate_response').length,
+        0,
+      );
+    } finally {
+      await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, sibling));
+      await db.delete(crmDeals).where(eq(crmDeals.id, sibling));
+      await fixture.cleanup();
+    }
+  },
 );
