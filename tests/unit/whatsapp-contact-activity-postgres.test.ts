@@ -134,3 +134,77 @@ databaseTest('stores and detects a do-not-contact block without message content'
   assert.equal(row.lastInboundAt, null);
   assert.equal(row.lastOutboundAt, null);
 });
+
+databaseTest('do-not-contact spreads across phone conversations and unblocks only with actor and reason', async () => {
+  const phone = '5511777666555';
+  const firstConversation = `${randomUUID()}@s.whatsapp.net`;
+  const secondConversation = `${randomUUID()}@s.whatsapp.net`;
+  const blockedAt = new Date('2026-03-01T12:00:00.000Z');
+
+  await repository.recordActivity({
+    instance,
+    providerConversationId: secondConversation,
+    providerMessageId: 'seed-outbound',
+    fromMe: true,
+    occurredAt: old,
+    identityStatus: 'verified',
+    canonicalPhone: phone,
+  });
+
+  await repository.blockContact({
+    instance,
+    canonicalPhone: phone,
+    providerConversationId: firstConversation,
+    now: blockedAt,
+    actor: 'operator@aspen',
+    reason: 'Cliente pediu para não ser contatado',
+  });
+
+  assert.equal(await repository.isContactBlocked({ instance, canonicalPhone: phone }), true);
+  const first = await repository.getActivity({ instance, providerConversationId: firstConversation });
+  const second = await repository.getActivity({ instance, providerConversationId: secondConversation });
+  assert.equal(first?.blockReason, 'do_not_contact');
+  assert.equal(second?.blockReason, 'do_not_contact');
+
+  const eventsAfterBlock = await repository.listContactBlockEvents({ instance, canonicalPhone: phone });
+  assert.equal(eventsAfterBlock.length, 1);
+  assert.equal(eventsAfterBlock[0]?.eventType, 'blocked');
+  assert.equal(eventsAfterBlock[0]?.actor, 'operator@aspen');
+  assert.equal(eventsAfterBlock[0]?.reason, 'Cliente pediu para não ser contatado');
+
+  await assert.rejects(
+    () => repository.unblockContact({
+      instance,
+      canonicalPhone: phone,
+      actor: ' ',
+      reason: 'Liberar',
+      now: newer,
+    }),
+    /actor/,
+  );
+
+  const unblockedAt = new Date('2026-03-01T13:00:00.000Z');
+  await repository.unblockContact({
+    instance,
+    canonicalPhone: phone,
+    actor: 'supervisor@aspen',
+    reason: 'Cliente autorizou retomada',
+    now: unblockedAt,
+    providerConversationId: firstConversation,
+  });
+
+  assert.equal(await repository.isContactBlocked({ instance, canonicalPhone: phone }), false);
+  const clearedFirst = await repository.getActivity({ instance, providerConversationId: firstConversation });
+  const clearedSecond = await repository.getActivity({ instance, providerConversationId: secondConversation });
+  assert.equal(clearedFirst?.blockedAt, null);
+  assert.equal(clearedSecond?.blockedAt, null);
+  assert.equal(clearedFirst?.blockReason, null);
+  assert.equal(clearedSecond?.blockReason, null);
+
+  const events = await repository.listContactBlockEvents({ instance, canonicalPhone: phone });
+  assert.equal(events.length, 2);
+  assert.equal(events[0]?.eventType, 'unblocked');
+  assert.equal(events[0]?.actor, 'supervisor@aspen');
+  assert.equal(events[0]?.reason, 'Cliente autorizou retomada');
+  assert.equal(events[1]?.eventType, 'blocked');
+});

@@ -3081,3 +3081,101 @@ databaseTest('ambiguous phone association does not invent Preciso responder or c
   }
 });
 
+databaseTest('do-not-contact cancels undelivered approvals for every opportunity of the phone', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await resetSharedFollowUpGraph();
+  const ready = await projectReady(repository, {
+    ids: { quotation: ids.quotation, revision: ids.revision, delivery: ids.delivery },
+    phone: '5511999999999',
+  });
+
+  const other = await createExtraEligibleFixture({ createOpportunity: true });
+  await db
+    .update(quotationDeliveries)
+    .set({ phone: '5511999999999' })
+    .where(eq(quotationDeliveries.id, other.ids.delivery));
+  const otherReady = await projectReady(repository, {
+    ids: {
+      quotation: other.ids.quotation,
+      revision: other.ids.revision,
+      delivery: other.ids.delivery,
+    },
+    phone: '5511999999999',
+  });
+  const otherApproved = await repository.approve({
+    quotationId: other.ids.quotation,
+    eligibilityVersion: otherReady.eligibilityVersion!,
+    message: 'Outra demanda do mesmo telefone',
+    now,
+  });
+  assert.equal(otherApproved.state, 'approved');
+
+  try {
+    await repository.dismiss({
+      quotationId: ids.quotation,
+      eligibilityVersion: ready.eligibilityVersion!,
+      reason: 'do_not_contact',
+      now,
+    });
+
+    const [otherRow] = await db
+      .select({
+        state: quotationFollowUps.state,
+        closedReason: quotationFollowUps.closedReason,
+      })
+      .from(quotationFollowUps)
+      .where(eq(quotationFollowUps.id, otherApproved.followUpId!));
+    assert.equal(otherRow.state, 'cancelled');
+    assert.equal(otherRow.closedReason, 'contact_blocked');
+    assert.equal(await repository.claimApproved(otherApproved.followUpId!), null);
+
+    await assert.rejects(
+      () => repository.approve({
+        quotationId: other.ids.quotation,
+        eligibilityVersion: otherReady.eligibilityVersion!,
+        message: 'Não deve aprovar com contato bloqueado',
+        now,
+      }),
+    );
+  } finally {
+    await db
+      .update(whatsappContactActivity)
+      .set({ blockedAt: null, blockReason: null, updatedAt: now })
+      .where(eq(whatsappContactActivity.canonicalPhone, '5511999999999'));
+    await other.cleanup();
+    await resetSharedFollowUpGraph();
+  }
+});
+
+databaseTest('closing an opportunity does not mark the contact as do-not-contact', async () => {
+  const repository = createPostgresQuotationFollowUpRepository(() => db);
+  await db
+    .update(whatsappContactActivity)
+    .set({ blockedAt: null, blockReason: null, updatedAt: now })
+    .where(eq(whatsappContactActivity.canonicalPhone, '5511999999999'));
+  await resetSharedFollowUpGraph();
+  await projectReady(repository, {
+    ids: { quotation: ids.quotation, revision: ids.revision, delivery: ids.delivery },
+    phone: '5511999999999',
+  });
+
+  await db
+    .update(crmDeals)
+    .set({ status: 'Perdido', lostReason: 'Sem interesse comercial', updatedAt: now })
+    .where(eq(crmDeals.id, ids.crm));
+
+  const activityRows = await db
+    .select({
+      blockedAt: whatsappContactActivity.blockedAt,
+      blockReason: whatsappContactActivity.blockReason,
+    })
+    .from(whatsappContactActivity)
+    .where(eq(whatsappContactActivity.canonicalPhone, '5511999999999'));
+  assert.ok(activityRows.length >= 1);
+  for (const row of activityRows) {
+    assert.equal(row.blockedAt, null);
+    assert.equal(row.blockReason, null);
+  }
+  await resetSharedFollowUpGraph();
+});
+

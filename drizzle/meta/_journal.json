@@ -330,6 +330,13 @@
       "when": 1789275053806,
       "tag": "0046_follow_up_cycle_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0047_whatsapp_contact_block_events",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ import {
 } from '../deadline.js';
 import {
   whatsappContactActivity,
+  whatsappContactBlockEvents,
   whatsappFollowUpIngestionHealth,
 } from '../schema.js';
 
@@ -41,6 +42,29 @@ export interface ContactBlockInput {
   canonicalPhone: string;
   providerConversationId: string;
   now?: Date;
+  actor?: string;
+  reason?: string;
+}
+
+export interface ContactUnblockInput {
+  instance: string;
+  canonicalPhone: string;
+  actor: string;
+  reason: string;
+  now?: Date;
+  providerConversationId?: string | null;
+}
+
+export interface ContactBlockEventRecord {
+  id: string;
+  instance: string;
+  canonicalPhone: string;
+  providerConversationId: string | null;
+  eventType: 'blocked' | 'unblocked';
+  actor: string;
+  reason: string;
+  occurredAt: Date;
+  createdAt: Date;
 }
 
 export interface WhatsappContactActivityRecord {
@@ -80,6 +104,11 @@ export interface WhatsappContactActivityRepository {
   markIngestion(input: { instance: string; eventKey: string; at: Date }): Promise<void>;
   isContactBlocked(input: { instance: string; canonicalPhone: string }): Promise<boolean>;
   blockContact(input: ContactBlockInput): Promise<void>;
+  unblockContact(input: ContactUnblockInput): Promise<void>;
+  listContactBlockEvents(input: {
+    instance: string;
+    canonicalPhone: string;
+  }): Promise<ContactBlockEventRecord[]>;
   getActivity(input: {
     instance: string;
     providerConversationId: string;
@@ -88,6 +117,7 @@ export interface WhatsappContactActivityRepository {
 }
 
 const activity = whatsappContactActivity;
+const blockEvents = whatsappContactBlockEvents;
 const health = whatsappFollowUpIngestionHealth;
 
 function normalizeRequired(value: string, name: string): string {
@@ -350,37 +380,129 @@ export function createPostgresWhatsappContactActivityRepository(
       canonicalPhone: rawPhone,
       providerConversationId: rawConversationId,
       now: suppliedNow,
+      actor: rawActor,
+      reason: rawReason,
     }): Promise<void> {
       const instance = normalizeRequired(rawInstance, 'instance');
       const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
       const providerConversationId = normalizeRequired(rawConversationId, 'providerConversationId');
+      const actor = normalizeRequired(rawActor || 'system', 'actor');
+      const reason = normalizeRequired(rawReason || 'Não contatar', 'reason');
       const now = normalizeDate(suppliedNow);
-      await getDb()
-        .insert(activity)
-        .values({
-          id: randomUUID(),
-          instance,
-          providerConversationId,
-          lastInboundAt: null,
-          lastInboundProviderMessageId: null,
-          lastOutboundAt: null,
-          lastOutboundProviderMessageId: null,
-          canonicalPhone,
-          identityStatus: 'verified',
-          blockedAt: now,
-          blockReason: 'do_not_contact',
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [activity.instance, activity.providerConversationId],
-          set: {
+      await getDb().transaction(async (tx) => {
+        await tx
+          .insert(activity)
+          .values({
+            id: randomUUID(),
+            instance,
+            providerConversationId,
+            lastInboundAt: null,
+            lastInboundProviderMessageId: null,
+            lastOutboundAt: null,
+            lastOutboundProviderMessageId: null,
             canonicalPhone,
+            identityStatus: 'verified',
+            blockedAt: now,
+            blockReason: 'do_not_contact',
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [activity.instance, activity.providerConversationId],
+            set: {
+              canonicalPhone,
+              blockedAt: now,
+              blockReason: 'do_not_contact',
+              updatedAt: now,
+            },
+          });
+        // Propagate the restriction to every activity row of this phone so a
+        // later conversation id for the same contact stays blocked.
+        await tx
+          .update(activity)
+          .set({
             blockedAt: now,
             blockReason: 'do_not_contact',
             updatedAt: now,
-          },
+          })
+          .where(and(eq(activity.instance, instance), eq(activity.canonicalPhone, canonicalPhone)));
+        await tx.insert(blockEvents).values({
+          id: randomUUID(),
+          instance,
+          canonicalPhone,
+          providerConversationId,
+          eventType: 'blocked',
+          actor,
+          reason,
+          occurredAt: now,
+          createdAt: now,
         });
+      });
+    },
+
+    async unblockContact({
+      instance: rawInstance,
+      canonicalPhone: rawPhone,
+      actor: rawActor,
+      reason: rawReason,
+      now: suppliedNow,
+      providerConversationId: rawConversationId,
+    }): Promise<void> {
+      const instance = normalizeRequired(rawInstance, 'instance');
+      const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
+      const actor = normalizeRequired(rawActor, 'actor');
+      const reason = normalizeRequired(rawReason, 'reason');
+      const now = normalizeDate(suppliedNow);
+      const providerConversationId =
+        rawConversationId == null || String(rawConversationId).trim() === ''
+          ? null
+          : normalizeRequired(String(rawConversationId), 'providerConversationId');
+      await getDb().transaction(async (tx) => {
+        await tx
+          .update(activity)
+          .set({
+            blockedAt: null,
+            blockReason: null,
+            updatedAt: now,
+          })
+          .where(and(eq(activity.instance, instance), eq(activity.canonicalPhone, canonicalPhone)));
+        await tx.insert(blockEvents).values({
+          id: randomUUID(),
+          instance,
+          canonicalPhone,
+          providerConversationId,
+          eventType: 'unblocked',
+          actor,
+          reason,
+          occurredAt: now,
+          createdAt: now,
+        });
+      });
+    },
+
+    async listContactBlockEvents({
+      instance: rawInstance,
+      canonicalPhone: rawPhone,
+    }): Promise<ContactBlockEventRecord[]> {
+      const instance = normalizeRequired(rawInstance, 'instance');
+      const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
+      const rows = await getDb()
+        .select()
+        .from(blockEvents)
+        .where(and(eq(blockEvents.instance, instance), eq(blockEvents.canonicalPhone, canonicalPhone)))
+        .orderBy(desc(blockEvents.occurredAt), desc(blockEvents.createdAt));
+      return rows.map((row) => ({
+        id: String(row.id),
+        instance: String(row.instance),
+        canonicalPhone: String(row.canonicalPhone),
+        providerConversationId:
+          row.providerConversationId == null ? null : String(row.providerConversationId),
+        eventType: row.eventType === 'unblocked' ? 'unblocked' : 'blocked',
+        actor: String(row.actor),
+        reason: String(row.reason),
+        occurredAt: row.occurredAt as Date,
+        createdAt: row.createdAt as Date,
+      }));
     },
 
     async getActivity({ instance: rawInstance, providerConversationId: rawConversationId }) {

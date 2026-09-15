@@ -1185,16 +1185,51 @@ export function createPostgresQuotationFollowUpRepository(
                     if (!Array.from(updated).length)
                         throw new ConflictError(STALE);
                     if (input.reason === 'do_not_contact') {
+                        const blockedPhone = String(projected.canonicalPhone || '');
                         await tx.execute(sql `INSERT INTO whatsapp_contact_activity (
               id, instance, provider_conversation_id, canonical_phone, identity_status, blocked_at, block_reason, created_at, updated_at
             ) VALUES (
-              ${randomUUID()}, ${found.row.instance}, ${projected.providerConversationId}, ${projected.canonicalPhone},
+              ${randomUUID()}, ${found.row.instance}, ${projected.providerConversationId}, ${blockedPhone},
               'derived', ${iso(now)}::timestamptz, 'do_not_contact', ${iso(now)}::timestamptz, ${iso(now)}::timestamptz
             )
             ON CONFLICT (instance, provider_conversation_id) DO UPDATE SET
+              canonical_phone = EXCLUDED.canonical_phone,
               blocked_at = EXCLUDED.blocked_at,
               block_reason = EXCLUDED.block_reason,
               updated_at = EXCLUDED.updated_at`);
+                        // Same phone, every conversation and undelivered send
+                        // authorization across opportunities of this contact.
+                        await tx.execute(sql `UPDATE whatsapp_contact_activity
+              SET blocked_at = ${iso(now)}::timestamptz,
+                  block_reason = 'do_not_contact',
+                  updated_at = ${iso(now)}::timestamptz
+              WHERE instance = ${found.row.instance}
+                AND canonical_phone = ${blockedPhone}`);
+                        await tx.execute(sql `UPDATE quotation_follow_ups
+              SET state = 'cancelled',
+                  closed_reason = 'contact_blocked',
+                  closed_at = ${iso(now)}::timestamptz,
+                  approved_opportunity_id = NULL,
+                  eligibility_version = NULL,
+                  message_snapshot = NULL,
+                  approved_at = NULL,
+                  lease_token = NULL,
+                  lease_until = NULL,
+                  transport_started_at = NULL,
+                  updated_at = ${iso(now)}::timestamptz
+              WHERE instance = ${found.row.instance}
+                AND canonical_phone = ${blockedPhone}
+                AND (
+                  state = 'approved'
+                  OR (state = 'processing' AND transport_started_at IS NULL)
+                )`);
+                        await tx.execute(sql `INSERT INTO whatsapp_contact_block_events (
+              id, instance, canonical_phone, provider_conversation_id, event_type, actor, reason, occurred_at, created_at
+            ) VALUES (
+              ${randomUUID()}, ${found.row.instance}, ${blockedPhone}, ${projected.providerConversationId},
+              'blocked', 'operator', 'Não contatar',
+              ${iso(now)}::timestamptz, ${iso(now)}::timestamptz
+            )`);
                     }
                     const dismissed = await loadRecord(tx, quotationId, started, now);
                     if (!dismissed)

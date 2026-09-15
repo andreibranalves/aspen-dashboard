@@ -1390,6 +1390,48 @@ export const whatsappContactActivity = pgTable(
  * Per-instance ingestion watermark. An unparsed recognized UPSERT blocks the
  * instance until that same event key parses fully.
  */
+export const whatsappContactBlockEvents = pgTable(
+  'whatsapp_contact_block_events',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }),
+    eventType: varchar('event_type', { length: 16 }).notNull(),
+    actor: varchar('actor', { length: 120 }).notNull(),
+    reason: varchar('reason', { length: 500 }).notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('whatsapp_contact_block_events_phone_occurred_idx').on(
+      table.instance,
+      table.canonicalPhone,
+      table.occurredAt,
+    ),
+    check(
+      'whatsapp_contact_block_events_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`,
+    ),
+    check(
+      'whatsapp_contact_block_events_phone_check',
+      sql`${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check(
+      'whatsapp_contact_block_events_event_type_check',
+      sql`${table.eventType} IN ('blocked', 'unblocked')`,
+    ),
+    check(
+      'whatsapp_contact_block_events_actor_not_blank_check',
+      sql`char_length(btrim(${table.actor})) > 0`,
+    ),
+    check(
+      'whatsapp_contact_block_events_reason_not_blank_check',
+      sql`char_length(btrim(${table.reason})) > 0`,
+    ),
+  ],
+);
+
 export const whatsappFollowUpIngestionHealth = pgTable(
   'whatsapp_follow_up_ingestion_health',
   {
