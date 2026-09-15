@@ -15,7 +15,7 @@ import {
   createPostgresOpportunityActionRepository,
 } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
-import { crmDeals, opportunityNextActions } from '../../api/_infrastructure/db/schema.js';
+import { clients, crmDeals, opportunityNextActions, whatsappContactActivity } from '../../api/_infrastructure/db/schema.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
@@ -300,3 +300,126 @@ test(
     }
   }
 );
+
+test(
+  'encerramento manual exige motivo, remove da fila ativa e não bloqueia o contato nem outra demanda',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const clientId = randomUUID();
+    const firstId = randomUUID();
+    const secondId = randomUUID();
+    await db.insert(clients).values({ id: clientId, nome: 'Cliente encerramento' });
+    await db.insert(crmDeals).values([
+      {
+        id: firstId,
+        clientId,
+        nome: 'Demanda A',
+        status: 'Novo Lead',
+        followUpStage: 0,
+      },
+      {
+        id: secondId,
+        clientId,
+        nome: 'Demanda B',
+        status: 'Novo Lead',
+        followUpStage: 0,
+      },
+    ]);
+    await db.insert(whatsappContactActivity).values({
+      id: randomUUID(),
+      instance: 'close-test',
+      providerConversationId: '5511999888777@s.whatsapp.net',
+      canonicalPhone: '5511999888777',
+      identityStatus: 'verified',
+      lastInboundAt: null,
+      lastOutboundAt: null,
+      blockedAt: null,
+      blockReason: null,
+      createdAt: new Date('2026-09-11T12:00:00.000Z'),
+      updatedAt: new Date('2026-09-11T12:00:00.000Z'),
+    });
+    try {
+      const repository = createPostgresOpportunityActionRepository(() => db, {
+        now: () => new Date('2026-09-11T12:00:00.000Z'),
+      });
+      const first = await repository.createAction({
+        opportunityId: firstId,
+        kind: 'customer_contact',
+        dueDate: '2026-09-11',
+        dueTime: null,
+        reason: 'Retorno comercial',
+        actor: 'operator-a',
+      });
+      const second = await repository.createAction({
+        opportunityId: secondId,
+        kind: 'customer_contact',
+        dueDate: '2026-09-12',
+        dueTime: null,
+        reason: 'Outra demanda',
+        actor: 'operator-a',
+      });
+
+      await assert.rejects(
+        () =>
+          repository.completeAction({
+            actionId: first.actionId,
+            expectedVersion: first.version,
+            actor: 'operator-a',
+            close: { reason: '   ' },
+          }),
+        /motivo/i,
+      );
+
+      const closed = await repository.completeAction({
+        actionId: first.actionId,
+        expectedVersion: first.version,
+        actor: 'operator-a',
+        close: { reason: 'Sem interesse no momento' },
+      });
+      assert.equal(closed.closed, true);
+      assert.equal(closed.successor, null);
+
+      const [deal] = await db.select().from(crmDeals).where(eq(crmDeals.id, firstId));
+      assert.equal(deal?.status, 'Perdido');
+      assert.equal(deal?.lostReason, 'Sem interesse no momento');
+
+      const active = await repository.listActive();
+      assert.equal(active.data.some((row) => row.opportunityId === firstId), false);
+      assert.equal(active.data.some((row) => row.opportunityId === secondId), true);
+
+      const [sibling] = await db.select().from(crmDeals).where(eq(crmDeals.id, secondId));
+      assert.equal(sibling?.status, 'Novo Lead');
+
+      const activity = await db
+        .select()
+        .from(whatsappContactActivity)
+        .where(eq(whatsappContactActivity.canonicalPhone, '5511999888777'));
+      assert.equal(activity[0]?.blockedAt, null);
+      assert.equal(activity[0]?.blockReason, null);
+
+      // Repeated close on a terminal opportunity must not invent a new active action.
+      await assert.rejects(
+        () =>
+          repository.completeAction({
+            actionId: first.actionId,
+            expectedVersion: first.version,
+            actor: 'operator-a',
+            close: { reason: 'Repetir fechamento' },
+          }),
+      );
+      const history = await repository.listHistory(firstId);
+      assert.equal(history.filter((entry) => entry.type === 'completed' || entry.type === 'closed').length >= 1, true);
+      const stillActiveSecond = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(eq(opportunityNextActions.id, second.actionId));
+      assert.equal(stillActiveSecond[0]?.state, 'active');
+    } finally {
+      await sql`DELETE FROM opportunity_next_actions WHERE opportunity_id IN (${firstId}::uuid, ${secondId}::uuid)`;
+      await sql`DELETE FROM whatsapp_contact_activity WHERE canonical_phone = ${'5511999888777'}`;
+      await sql`DELETE FROM crm_deals WHERE id IN (${firstId}::uuid, ${secondId}::uuid)`;
+      await sql`DELETE FROM clients WHERE id = ${clientId}::uuid`;
+    }
+  }
+);
+

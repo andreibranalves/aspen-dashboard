@@ -296,6 +296,14 @@ export interface SetOpportunityUrgencyInput {
   now?: Date;
 }
 
+export interface AssociateInboundResponseInput {
+  opportunityId: string;
+  actionId?: string;
+  expectedVersion: number;
+  actor: string;
+}
+
+
 export interface OpportunityUrgencyResult {
   opportunityId: string;
   actionId: string;
@@ -314,6 +322,9 @@ export interface OpportunityActionRepository {
   continueFollowUp(input: ContinueFollowUpInput): Promise<OpportunityActionCommandResult>;
   listHistory(opportunityId: string): Promise<OpportunityActionHistoryEntry[]>;
   setUrgency(input: SetOpportunityUrgencyInput): Promise<OpportunityUrgencyResult>;
+  associateInboundResponse(
+    input: AssociateInboundResponseInput
+  ): Promise<OpportunityActionCommandResult>;
 }
 
 export class OpportunityActionInputError extends Error {
@@ -1348,6 +1359,218 @@ export async function advanceConfirmedFollowUp(
   return actionResult;
 }
 
+export interface ApplyInboundResponseTransitionInput {
+  database: ActionDatabase;
+  opportunityId: string;
+  /** Trusted instant of the inbound message driving the transition. */
+  occurredAt: Date;
+  idFactory: () => string;
+  actor?: string;
+}
+
+export const INBOUND_NEEDS_RESPONSE_REASON_CODE = 'inbound_needs_response';
+export const ASSOCIATE_RESPONSE_REASON_CODE = 'associate_response';
+export const VERIFY_CONVERSATION_REASON_CODE = 'verify_conversation';
+export const ASSOCIATE_RESPONSE_REASON = 'Associar resposta';
+export const VERIFY_CONVERSATION_REASON = 'Verificar conversa';
+
+
+/**
+ * An unambiguously associated inbound message replaces the pending return
+ * action with "Preciso responder" (#249). Idempotent by current state: when
+ * the active action already carries this event's transition
+ * (reasonCode 'inbound_needs_response') nothing new is written and the
+ * current result is returned. The caller supplies the database (pool or
+ * transaction); no transaction is opened here.
+ */
+export async function applyInboundResponseTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  const { database, opportunityId, occurredAt } = input;
+  const actor = input.actor || 'system';
+  const action = await activeAction(database, opportunityId);
+  if (action?.reasonCode === INBOUND_NEEDS_RESPONSE_REASON_CODE) {
+    return {
+      actionId: action.id,
+      opportunityId,
+      state: 'active',
+      version: action.version,
+      action: rowRecord(action),
+      successor: null,
+      closed: false,
+    };
+  }
+  if (!action) {
+    throw new ActionNotFoundError('Nenhuma ação ativa para substituir pela resposta do cliente.');
+  }
+  const dueDate = calendarDateInSaoPaulo(occurredAt);
+  return completeWithSuccessor(
+    database,
+    action,
+    {
+      kind: 'review',
+      dueDate,
+      dueTime: null,
+      scheduleType: 'date_only',
+      dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+      reason: 'Preciso responder',
+      reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
+      origin: 'event',
+    },
+    actor,
+    'event',
+    'Cliente respondeu',
+    occurredAt,
+    input.idFactory,
+  );
+}
+
+function reviewSchedule(
+  occurredAt: Date,
+  reason: string,
+  reasonCode: string,
+): NormalizedSchedule {
+  const dueDate = calendarDateInSaoPaulo(occurredAt);
+  return {
+    kind: 'review',
+    dueDate,
+    dueTime: null,
+    scheduleType: 'date_only',
+    dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+    reason,
+    reasonCode,
+    origin: 'event',
+  };
+}
+
+async function applyReviewReasonTransition(
+  input: ApplyInboundResponseTransitionInput,
+  reason: string,
+  reasonCode: string,
+  transitionReason: string,
+): Promise<OpportunityActionCommandResult> {
+  const { database, opportunityId, occurredAt } = input;
+  const actor = input.actor || 'system';
+  const action = await activeAction(database, opportunityId);
+  if (action?.reasonCode === reasonCode) {
+    return {
+      actionId: action.id,
+      opportunityId,
+      state: 'active',
+      version: action.version,
+      action: rowRecord(action),
+      successor: null,
+      closed: false,
+    };
+  }
+  if (!action) {
+    throw new ActionNotFoundError(
+      'Nenhuma ação ativa para substituir pela revisão comercial.',
+    );
+  }
+  return completeWithSuccessor(
+    database,
+    action,
+    reviewSchedule(occurredAt, reason, reasonCode),
+    actor,
+    'event',
+    transitionReason,
+    occurredAt,
+    input.idFactory,
+  );
+}
+
+/**
+ * Contact-level ambiguity: replace the host opportunity's pending action with
+ * "Associar resposta" (#250). Idempotent when that reason is already active.
+ */
+export async function applyAssociateResponseTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  return applyReviewReasonTransition(
+    input,
+    ASSOCIATE_RESPONSE_REASON,
+    ASSOCIATE_RESPONSE_REASON_CODE,
+    'Resposta ambígua entre oportunidades',
+  );
+}
+
+/**
+ * Missing or inconclusive telemetry becomes "Verificar conversa" (#250). Does
+ * not claim customer silence.
+ */
+export async function applyVerifyConversationTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  return applyReviewReasonTransition(
+    input,
+    VERIFY_CONVERSATION_REASON,
+    VERIFY_CONVERSATION_REASON_CODE,
+    'Telemetria insuficiente para afirmar silêncio',
+  );
+}
+
+/**
+ * Operator resolves an Associar resposta alert onto one opportunity. The chosen
+ * demand receives Preciso responder; a leftover associate alert on another
+ * opportunity of the same client is cancelled without touching unrelated
+ * contacts (#250).
+ */
+export async function resolveAssociateResponseToOpportunity(input: {
+  database: ActionDatabase;
+  clientId: string;
+  opportunityId: string;
+  occurredAt: Date;
+  idFactory: () => string;
+  actor: string;
+}): Promise<OpportunityActionCommandResult> {
+  const { database, clientId, opportunityId, occurredAt, idFactory, actor } = input;
+  const siblingRows = await database
+    .select({
+      id: opportunityNextActions.id,
+      opportunityId: opportunityNextActions.opportunityId,
+      version: opportunityNextActions.version,
+    })
+    .from(opportunityNextActions)
+    .innerJoin(crmDeals, eq(crmDeals.id, opportunityNextActions.opportunityId))
+    .where(
+      and(
+        eq(crmDeals.clientId, clientId),
+        eq(opportunityNextActions.state, 'active'),
+        eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
+        sql`${opportunityNextActions.opportunityId} <> ${opportunityId}`,
+      ),
+    );
+  for (const sibling of siblingRows) {
+    await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'cancelled',
+        updatedAt: occurredAt,
+        transitionActor: actor,
+        transitionAt: occurredAt,
+        transitionOrigin: 'manual',
+        transitionReason: 'Resposta associada a outra oportunidade',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.id, sibling.id),
+          eq(opportunityNextActions.state, 'active'),
+          eq(opportunityNextActions.version, sibling.version),
+        ),
+      );
+  }
+  return applyInboundResponseTransition({
+    database,
+    opportunityId,
+    occurredAt,
+    idFactory,
+    actor,
+  });
+}
+
+
 async function archiveManualFollowUpAttempt(
   database: ActionDatabase,
   input: {
@@ -2334,6 +2557,78 @@ export function createPostgresOpportunityActionRepository(
         return preserveKnownError(error);
       }
     },
+    async associateInboundResponse(
+      input: AssociateInboundResponseInput,
+    ): Promise<OpportunityActionCommandResult> {
+      const opportunityId = cleanText(input.opportunityId, 'O ID da oportunidade', 255);
+      const actor = cleanText(input.actor, 'O operador', MAX_ACTOR_LENGTH);
+      const expectedVersion = validateVersion(input.expectedVersion);
+      try {
+        return await getDb().transaction(async (tx) => {
+          const [deal] = await tx
+            .select({
+              id: crmDeals.id,
+              clientId: crmDeals.clientId,
+              status: crmDeals.status,
+            })
+            .from(crmDeals)
+            .where(eq(crmDeals.id, opportunityId))
+            .limit(1);
+          if (!deal) throw new ActionNotFoundError('Oportunidade não encontrada.');
+          if (deal.status === 'Pedido Fechado' || deal.status === 'Perdido') {
+            throw new OpportunityActionInputError(
+              'Não é possível associar resposta a uma oportunidade encerrada.',
+            );
+          }
+          if (!deal.clientId) {
+            throw new OpportunityActionInputError(
+              'A oportunidade não tem cliente para associar a resposta.',
+            );
+          }
+          const active = await activeAction(tx, opportunityId);
+          if (input.actionId) {
+            const actionId = cleanText(input.actionId, 'O ID da ação', 255);
+            const [alert] = await tx
+              .select()
+              .from(opportunityNextActions)
+              .where(eq(opportunityNextActions.id, actionId))
+              .limit(1);
+            if (!alert || alert.state !== 'active') {
+              throw new ActionNotFoundError('Alerta Associar resposta não encontrado.');
+            }
+            if (alert.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
+              throw new OpportunityActionInputError(
+                'A ação informada não é um alerta Associar resposta.',
+              );
+            }
+            if (alert.opportunityId === opportunityId && alert.version !== expectedVersion) {
+              throw new ActionConflictError();
+            }
+          } else if (!active || active.version !== expectedVersion) {
+            throw new ActionConflictError();
+          }
+          const now = nowFactory();
+          return resolveAssociateResponseToOpportunity({
+            database: tx,
+            clientId: deal.clientId,
+            opportunityId,
+            occurredAt: now,
+            idFactory,
+            actor,
+          });
+        });
+      } catch (error) {
+        if (
+          error instanceof OpportunityActionInputError ||
+          error instanceof ActionNotFoundError ||
+          error instanceof ActionConflictError
+        ) {
+          throw error;
+        }
+        throw new OpportunityActionRepositoryError();
+      }
+    },
+
 
     async createAction(
       input: CreateOpportunityActionInput

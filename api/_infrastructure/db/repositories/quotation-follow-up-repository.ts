@@ -15,7 +15,15 @@ import {
   type FollowUpPersistedState,
   type FollowUpProjectionState,
 } from '../../../_modules/quotation-follow-up-state.js';
-import { advanceConfirmedFollowUp } from './opportunity-actions-repository.js';
+import {
+  ActionNotFoundError,
+  advanceConfirmedFollowUp,
+  applyAssociateResponseTransition,
+  applyInboundResponseTransition,
+  applyVerifyConversationTransition,
+  ASSOCIATE_RESPONSE_REASON_CODE,
+} from './opportunity-actions-repository.js';
+import { classifyInboundAssociation } from '../../../_modules/commercial-inbound-association.js';
 import { followUpAttemptNumber, followUpCycleNumber } from './follow-up-cycle.js';
 import { quotationFollowUpAttemptHistory, quotationFollowUps } from '../schema.js';
 
@@ -201,6 +209,26 @@ export interface QuotationFollowUpRepository {
     identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
     canonicalPhone: string | null;
   }): Promise<void>;
+  applyConfirmedInboundToOpportunity?(input: {
+    instance: string;
+    canonicalPhone: string;
+    occurredAt: Date;
+    providerMessageId: string;
+  }): Promise<{ handledOpportunityIds: string[] }>;
+  applyAmbiguousInboundAssociation?(input: {
+    instance: string;
+    canonicalPhone: string;
+    occurredAt: Date;
+    providerMessageId: string;
+    candidateOpportunityIds: string[];
+  }): Promise<{ alertOpportunityId: string | null }>;
+  applyUncertainInboundReview?(input: {
+    instance: string;
+    occurredAt: Date;
+    providerMessageId: string;
+    providerConversationId?: string;
+    canonicalPhone?: string | null;
+  }): Promise<{ alertOpportunityId: string | null }>;
   promoteDueWaitingToReady?(now?: Date): Promise<number>;
   claimApproved(id?: string): Promise<ClaimedFollowUp | null>;
   markTransportStarted(id: string, leaseToken: string): Promise<boolean>;
@@ -940,6 +968,204 @@ async function holdUnprojectableProcessing(
   `);
 }
 
+
+async function suspendUndeliveredApprovalsForPhone(
+  tx: Database,
+  phone: string,
+  occurredAt: Date,
+  closedReason: string,
+): Promise<void> {
+  await tx.execute(sql`
+    UPDATE quotation_follow_ups f
+    SET state = 'cancelled',
+        closed_reason = ${closedReason},
+        closed_at = ${iso(occurredAt)}::timestamptz,
+        approved_opportunity_id = NULL,
+        eligibility_version = NULL,
+        message_snapshot = NULL,
+        approved_at = NULL,
+        lease_token = NULL,
+        lease_until = NULL,
+        transport_started_at = NULL,
+        updated_at = ${iso(occurredAt)}::timestamptz
+    WHERE (
+        f.state = 'approved'
+        OR (f.state = 'processing' AND f.transport_started_at IS NULL)
+      )
+      AND f.canonical_phone = ${phone}
+  `);
+}
+
+async function findExistingClientReview(
+  tx: Database,
+  clientId: string,
+  reasonCode: string,
+): Promise<string | null> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT a.opportunity_id
+      FROM opportunity_next_actions a
+      INNER JOIN crm_deals d ON d.id = a.opportunity_id
+      WHERE d.client_id = ${clientId}
+        AND a.state = 'active'
+        AND a.reason_code = ${reasonCode}
+      ORDER BY a.opportunity_id ASC
+      LIMIT 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.length ? String(rows[0].opportunity_id) : null;
+}
+
+async function listOpenOpportunityIdsForConversation(
+  tx: Database,
+  instance: string,
+  conversation: string,
+): Promise<Array<{ opportunityId: string; clientId: string | null }>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT DISTINCT
+        COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+        COALESCE(q.client_id, legacy.client_id) AS client_id
+      FROM quotation_follow_ups f
+      JOIN quotations q ON q.id = f.quotation_id
+      JOIN clients cl ON cl.id = q.client_id
+      LEFT JOIN LATERAL (
+        SELECT cd.id, cd.client_id
+        FROM crm_deals cd
+        WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+        ORDER BY cd.updated_at DESC, cd.id DESC
+        LIMIT 1
+      ) legacy ON true
+      WHERE f.instance = ${instance}
+        AND f.provider_conversation_id = ${conversation}
+        AND cl.arquivado IS NOT TRUE
+        AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+        AND COALESCE(
+          (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+          ''
+        ) NOT IN ('Pedido Fechado', 'Perdido')
+      ORDER BY 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    opportunityId: String(row.opportunity_id),
+    clientId: row.client_id == null ? null : String(row.client_id),
+  }));
+}
+
+async function listOpenOpportunityIdsForPhone(
+  tx: Database,
+  phone: string,
+): Promise<Array<{ opportunityId: string; clientId: string | null }>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT DISTINCT
+        COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+        COALESCE(q.client_id, legacy.client_id) AS client_id
+      FROM quotations q
+      JOIN clients cl ON cl.id = q.client_id
+      LEFT JOIN LATERAL (
+        SELECT cd.id, cd.client_id
+        FROM crm_deals cd
+        WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+        ORDER BY cd.updated_at DESC, cd.id DESC
+        LIMIT 1
+      ) legacy ON true
+      WHERE cl.arquivado IS NOT TRUE
+        AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+        AND COALESCE(
+          (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+          ''
+        ) NOT IN ('Pedido Fechado', 'Perdido')
+        AND EXISTS (
+          SELECT 1
+          FROM quotation_deliveries d
+          JOIN quote_revisions r ON r.id = d.revision_id
+          WHERE r.quotation_id = q.id
+            AND regexp_replace(d.phone, '[^0-9]', '', 'g') = ${phone}
+        )
+      ORDER BY 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    opportunityId: String(row.opportunity_id),
+    clientId: row.client_id == null ? null : String(row.client_id),
+  }));
+}
+
+async function applyAmbiguousInboundInTransaction(
+  tx: Database,
+  input: {
+    phone: string;
+    occurredAt: Date;
+    candidateOpportunityIds: string[];
+  },
+): Promise<string | null> {
+  const candidates = [
+    ...new Set(input.candidateOpportunityIds.map((id) => id.trim()).filter(Boolean)),
+  ].sort();
+  if (candidates.length < 2) return null;
+  await suspendUndeliveredApprovalsForPhone(
+    tx,
+    input.phone,
+    input.occurredAt,
+    'inbound_after_anchor',
+  );
+  const clientRows = Array.from(
+    await tx.execute(sql`
+      SELECT client_id FROM crm_deals WHERE id = ${candidates[0]} LIMIT 1
+    `),
+  ) as Record<string, unknown>[];
+  const clientId = clientRows[0]?.client_id == null ? null : String(clientRows[0].client_id);
+  if (clientId) {
+    const existing = await findExistingClientReview(tx, clientId, ASSOCIATE_RESPONSE_REASON_CODE);
+    if (existing) return existing;
+  }
+  const hostOpportunityId = candidates[0];
+  await lockOpportunity(tx, hostOpportunityId, hostOpportunityId);
+  await applyAssociateResponseTransition({
+    database: tx as never,
+    opportunityId: hostOpportunityId,
+    occurredAt: input.occurredAt,
+    idFactory: randomUUID,
+    actor: 'system',
+  });
+  return hostOpportunityId;
+}
+
+async function routeInboundCommercialReview(
+  repository: QuotationFollowUpRepository,
+  input: {
+    instance: string;
+    providerConversationId: string;
+    providerMessageId: string;
+    occurredAt: Date;
+    identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
+    canonicalPhone: string | null;
+  },
+): Promise<void> {
+  const phone = input.canonicalPhone;
+  if (
+    phone &&
+    (input.identityStatus === 'verified' || input.identityStatus === 'derived')
+  ) {
+    await repository.applyConfirmedInboundToOpportunity!({
+      instance: input.instance,
+      canonicalPhone: phone,
+      occurredAt: input.occurredAt,
+      providerMessageId: input.providerMessageId,
+    });
+    return;
+  }
+  await repository.applyUncertainInboundReview!({
+    instance: input.instance,
+    occurredAt: input.occurredAt,
+    providerMessageId: input.providerMessageId,
+    providerConversationId: input.providerConversationId,
+    canonicalPhone: phone,
+  });
+}
+
 export function createPostgresQuotationFollowUpRepository(
   getDb: DatabaseProvider = getDatabase,
 ): QuotationFollowUpRepository {
@@ -1019,7 +1245,7 @@ export function createPostgresQuotationFollowUpRepository(
             updatedAt: asDate(history.confirmedAt) || current.updatedAt,
         };
     };
-    return {
+    const repository: QuotationFollowUpRepository = {
         async list(input: FollowUpListInput = {}) {
             const started = tracking(input.trackingStartedAt);
             const p = page(input.page, 1);
@@ -1175,16 +1401,51 @@ export function createPostgresQuotationFollowUpRepository(
                     if (!Array.from(updated).length)
                         throw new ConflictError(STALE);
                     if (input.reason === 'do_not_contact') {
+                        const blockedPhone = String(projected.canonicalPhone || '');
                         await tx.execute(sql `INSERT INTO whatsapp_contact_activity (
               id, instance, provider_conversation_id, canonical_phone, identity_status, blocked_at, block_reason, created_at, updated_at
             ) VALUES (
-              ${randomUUID()}, ${found.row.instance}, ${projected.providerConversationId}, ${projected.canonicalPhone},
+              ${randomUUID()}, ${found.row.instance}, ${projected.providerConversationId}, ${blockedPhone},
               'derived', ${iso(now)}::timestamptz, 'do_not_contact', ${iso(now)}::timestamptz, ${iso(now)}::timestamptz
             )
             ON CONFLICT (instance, provider_conversation_id) DO UPDATE SET
+              canonical_phone = EXCLUDED.canonical_phone,
               blocked_at = EXCLUDED.blocked_at,
               block_reason = EXCLUDED.block_reason,
               updated_at = EXCLUDED.updated_at`);
+                        // Same phone, every conversation and undelivered send
+                        // authorization across opportunities of this contact.
+                        await tx.execute(sql `UPDATE whatsapp_contact_activity
+              SET blocked_at = ${iso(now)}::timestamptz,
+                  block_reason = 'do_not_contact',
+                  updated_at = ${iso(now)}::timestamptz
+              WHERE instance = ${found.row.instance}
+                AND canonical_phone = ${blockedPhone}`);
+                        await tx.execute(sql `UPDATE quotation_follow_ups
+              SET state = 'cancelled',
+                  closed_reason = 'contact_blocked',
+                  closed_at = ${iso(now)}::timestamptz,
+                  approved_opportunity_id = NULL,
+                  eligibility_version = NULL,
+                  message_snapshot = NULL,
+                  approved_at = NULL,
+                  lease_token = NULL,
+                  lease_until = NULL,
+                  transport_started_at = NULL,
+                  updated_at = ${iso(now)}::timestamptz
+              WHERE instance = ${found.row.instance}
+                AND canonical_phone = ${blockedPhone}
+                AND (
+                  state = 'approved'
+                  OR (state = 'processing' AND transport_started_at IS NULL)
+                )`);
+                        await tx.execute(sql `INSERT INTO whatsapp_contact_block_events (
+              id, instance, canonical_phone, provider_conversation_id, event_type, actor, reason, occurred_at, created_at
+            ) VALUES (
+              ${randomUUID()}, ${found.row.instance}, ${blockedPhone}, ${projected.providerConversationId},
+              'blocked', 'operator', 'Não contatar',
+              ${iso(now)}::timestamptz, ${iso(now)}::timestamptz
+            )`);
                     }
                     const dismissed = await loadRecord(tx, quotationId, started, now);
                     if (!dismissed)
@@ -2200,48 +2461,242 @@ export function createPostgresQuotationFollowUpRepository(
                 )
               )
             )`);
-                if (!input.fromMe && (input.identityStatus === 'verified' || input.identityStatus === 'derived')) {
-                    await getDb().execute(sql `UPDATE opportunity_next_actions action
-            SET state = 'cancelled',
-                updated_at = ${iso(occurredAt)}::timestamptz,
-                transition_actor = 'system',
-                transition_at = ${iso(occurredAt)}::timestamptz,
-                transition_origin = 'event',
-                transition_reason = 'Cliente respondeu após a entrega',
-                replaced_by_id = NULL
-            FROM opportunity_delivery_anchors anchor
-            WHERE anchor.created_action_id = action.id
-              AND action.state = 'active'
-              AND action.origin = 'event'
-              AND action.kind = 'customer_contact'
-              AND anchor.receipt_at < ${iso(occurredAt)}::timestamptz
-              AND (
-                anchor.delivery_id IN (
-                  SELECT f2.delivery_id
-                  FROM quotation_follow_ups f2
-                  WHERE f2.instance = ${instance}
-                    AND (
-                      f2.provider_conversation_id = ${conversation}
-                      OR (
-                        ${phone || null}::text IS NOT NULL
-                        AND f2.canonical_phone = ${phone || null}
-                      )
-                    )
-                )
-                OR EXISTS (
-                  SELECT 1
-                  FROM whatsapp_contact_activity activity
-                  WHERE activity.instance = ${instance}
-                    AND activity.provider_conversation_id = ${conversation}
-                    AND activity.canonical_phone = ${phone || null}
-                )
-              )`);
+                if (!input.fromMe) {
+                    // #249/#250: trusted phones classify into Preciso responder or
+                    // Associar resposta; untrusted telemetry becomes Verificar conversa
+                    // and must never be labeled Sem resposta.
+                    await routeInboundCommercialReview(repository, {
+                        instance,
+                        providerConversationId: conversation,
+                        providerMessageId,
+                        occurredAt,
+                        identityStatus: input.identityStatus,
+                        canonicalPhone: phone,
+                    });
                 }
             }
             catch {
                 throw new RepositoryError();
             }
         },
+        async applyConfirmedInboundToOpportunity(input: {
+            instance: string;
+            canonicalPhone: string;
+            occurredAt: Date;
+            providerMessageId: string;
+        }): Promise<{ handledOpportunityIds: string[] }> {
+            const instance = String(input.instance || '').trim();
+            if (!instance || instance !== configuredInstance())
+                throw new InputError('Instância inválida.');
+            const phone = acceptedCanonicalPhone(input.canonicalPhone);
+            if (!phone || !/^[0-9]{10,15}$/.test(phone))
+                throw new InputError('Telefone inválido.');
+            const occurredAt = requiredDate(input.occurredAt, 'atividade');
+            const providerMessageId = String(input.providerMessageId || '').trim();
+            if (!providerMessageId)
+                throw new InputError('Identificador da mensagem inválido.');
+            try {
+                return await getDb().transaction(async (tx) => {
+                    const openOpportunityRows = Array.from(await tx.execute(sql `
+            SELECT DISTINCT COALESCE(q.opportunity_id, legacy.id) AS opportunity_id
+            FROM quotations q
+            JOIN clients cl ON cl.id = q.client_id
+            LEFT JOIN LATERAL (
+              SELECT cd.id
+              FROM crm_deals cd
+              WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+              ORDER BY cd.updated_at DESC, cd.id DESC
+              LIMIT 1
+            ) legacy ON true
+            WHERE cl.arquivado IS NOT TRUE
+              AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+              AND COALESCE(
+                (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+                ''
+              ) NOT IN ('Pedido Fechado', 'Perdido')
+              AND EXISTS (
+                SELECT 1
+                FROM quotation_deliveries d
+                JOIN quote_revisions r ON r.id = d.revision_id
+                WHERE r.quotation_id = q.id
+                  AND regexp_replace(d.phone, '[^0-9]', '', 'g') = ${phone}
+              )
+            ORDER BY 1
+          `)) as Record<string, unknown>[];
+                    const opportunityIds = openOpportunityRows
+                        .map((row) => String(row.opportunity_id))
+                        .sort();
+                    const classification = classifyInboundAssociation({
+                        direction: 'inbound',
+                        identityStatus: 'verified',
+                        canonicalPhone: phone,
+                        linkedOpportunityIds: opportunityIds,
+                    });
+                    if (classification.outcome === 'ambiguous') {
+                        await applyAmbiguousInboundInTransaction(tx, {
+                            phone,
+                            occurredAt,
+                            candidateOpportunityIds: classification.candidateOpportunityIds,
+                        });
+                        return { handledOpportunityIds: [] };
+                    }
+                    if (classification.outcome !== 'unambiguous') {
+                        return { handledOpportunityIds: [] };
+                    }
+                    const opportunityId = classification.opportunityId;
+                    // Serialize against the worker and the approval flow: the
+                    // advisory + row lock is the same seam used by approve/claim.
+                    await lockOpportunity(tx, opportunityId, opportunityId);
+                    // Invalidate undelivered send authorization first. A racing
+                    // claim that already set transport_started_at is left alone
+                    // for review; everything else must lose its lease before we
+                    // rewrite the commercial next action.
+                    await tx.execute(sql `
+            UPDATE quotation_follow_ups f
+            SET state = 'cancelled',
+                closed_reason = 'inbound_after_anchor',
+                closed_at = ${iso(occurredAt)}::timestamptz,
+                approved_opportunity_id = NULL,
+                eligibility_version = NULL,
+                message_snapshot = NULL,
+                approved_at = NULL,
+                lease_token = NULL,
+                lease_until = NULL,
+                transport_started_at = NULL,
+                updated_at = ${iso(occurredAt)}::timestamptz
+            WHERE (
+                f.state = 'approved'
+                OR (f.state = 'processing' AND f.transport_started_at IS NULL)
+              )
+              AND f.canonical_phone = ${phone}
+              AND (
+                f.approved_opportunity_id = ${opportunityId}
+                OR EXISTS (
+                  SELECT 1
+                  FROM quotations q
+                  LEFT JOIN LATERAL (
+                    SELECT cd.id
+                    FROM crm_deals cd
+                    WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+                    ORDER BY cd.updated_at DESC, cd.id DESC
+                    LIMIT 1
+                  ) legacy ON true
+                  WHERE q.id = f.quotation_id
+                    AND COALESCE(q.opportunity_id, legacy.id) = ${opportunityId}
+                )
+              )
+          `);
+                    await applyInboundResponseTransition({
+                        database: tx,
+                        opportunityId,
+                        occurredAt,
+                        idFactory: randomUUID,
+                        actor: 'system',
+                    });
+                    return { handledOpportunityIds: [opportunityId] };
+                });
+            }
+            catch (error) {
+                if (error instanceof InputError || error instanceof ActionNotFoundError)
+                    throw error;
+                throw new RepositoryError();
+            }
+        },
+
+        async applyAmbiguousInboundAssociation(input: {
+            instance: string;
+            canonicalPhone: string;
+            occurredAt: Date;
+            providerMessageId: string;
+            candidateOpportunityIds: string[];
+        }): Promise<{ alertOpportunityId: string | null }> {
+            const instance = String(input.instance || '').trim();
+            if (!instance || instance !== configuredInstance())
+                throw new InputError('Instância inválida.');
+            const phone = acceptedCanonicalPhone(input.canonicalPhone);
+            if (!phone || !/^[0-9]{10,15}$/.test(phone))
+                throw new InputError('Telefone inválido.');
+            const occurredAt = requiredDate(input.occurredAt, 'atividade');
+            const providerMessageId = String(input.providerMessageId || '').trim();
+            if (!providerMessageId)
+                throw new InputError('Identificador da mensagem inválido.');
+            try {
+                const alertOpportunityId = await getDb().transaction(async (tx) =>
+                    applyAmbiguousInboundInTransaction(tx, {
+                        phone,
+                        occurredAt,
+                        candidateOpportunityIds: input.candidateOpportunityIds,
+                    }),
+                );
+                return { alertOpportunityId };
+            } catch (error) {
+                if (error instanceof InputError) throw error;
+                throw new RepositoryError();
+            }
+        },
+        async applyUncertainInboundReview(input: {
+            instance: string;
+            occurredAt: Date;
+            providerMessageId: string;
+            providerConversationId?: string;
+            canonicalPhone?: string | null;
+        }): Promise<{ alertOpportunityId: string | null }> {
+            const instance = String(input.instance || '').trim();
+            if (!instance || instance !== configuredInstance())
+                throw new InputError('Instância inválida.');
+            const occurredAt = requiredDate(input.occurredAt, 'atividade');
+            const providerMessageId = String(input.providerMessageId || '').trim();
+            if (!providerMessageId)
+                throw new InputError('Identificador da mensagem inválido.');
+            const conversation = String(input.providerConversationId || '').trim();
+            const phone = acceptedCanonicalPhone(input.canonicalPhone);
+            try {
+                return await getDb().transaction(async (tx) => {
+                    let linked = phone ? await listOpenOpportunityIdsForPhone(tx, phone) : [];
+                    if (linked.length === 0 && conversation) {
+                        linked = await listOpenOpportunityIdsForConversation(
+                            tx,
+                            instance,
+                            conversation,
+                        );
+                    }
+                    if (linked.length === 0) {
+                        return { alertOpportunityId: null };
+                    }
+                    const clientId = linked.map((row) => row.clientId).find(Boolean) || null;
+                    if (clientId) {
+                        const existing = await findExistingClientReview(
+                            tx,
+                            clientId,
+                            'verify_conversation',
+                        );
+                        if (existing) return { alertOpportunityId: existing };
+                    }
+                    const hostOpportunityId = [...linked.map((row) => row.opportunityId)].sort()[0];
+                    if (phone) {
+                        await suspendUndeliveredApprovalsForPhone(
+                            tx,
+                            phone,
+                            occurredAt,
+                            'inbound_after_anchor',
+                        );
+                    }
+                    await lockOpportunity(tx, hostOpportunityId, hostOpportunityId);
+                    await applyVerifyConversationTransition({
+                        database: tx as never,
+                        opportunityId: hostOpportunityId,
+                        occurredAt,
+                        idFactory: randomUUID,
+                        actor: 'system',
+                    });
+                    return { alertOpportunityId: hostOpportunityId };
+                });
+            } catch (error) {
+                if (error instanceof InputError) throw error;
+                throw new RepositoryError();
+            }
+        },
+
         async promoteDueWaitingToReady(inputNow: Date = new Date()) {
             const started = tracking();
             if (!started || !configuredInstance())
@@ -2744,5 +3199,6 @@ export function createPostgresQuotationFollowUpRepository(
             }
         },
     };
+    return repository;
 }
 export const createQuotationFollowUpRepository = createPostgresQuotationFollowUpRepository;

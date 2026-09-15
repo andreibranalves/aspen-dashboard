@@ -329,7 +329,7 @@ function AcquisitionPanel({
           <button
             type="button"
             className="text-left text-sm font-medium text-link underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            onClick={() => navigate('/crm?tab=returns&return=unanswered')}
+            onClick={() => navigate('/crm')}
           >
             {pendingCount} {pendingCount === 1 ? 'orçamento' : 'orçamentos'} sem resposta →
           </button>

@@ -225,6 +225,12 @@ function contactDetail(item: CommercialQueueItem): string | null {
 
 function contactContextLabel(item: CommercialQueueItem): string {
   if (item.contactContext.status === 'review') {
+    if (item.reasonCode === 'verify_conversation') {
+      return 'Último contato: verificar conversa (telemetria insuficiente)';
+    }
+    if (item.reasonCode === 'associate_response') {
+      return 'Último contato: associar resposta (mais de uma demanda)';
+    }
     return 'Último contato: revisão necessária (atribuição ambígua)';
   }
   if (item.contactContext.status === 'unavailable' || !item.contactContext.lastContactAt) {

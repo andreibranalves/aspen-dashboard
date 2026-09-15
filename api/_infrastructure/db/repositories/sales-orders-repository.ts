@@ -22,6 +22,7 @@ import { appendProductActivityEvents } from './product-activity-repository.js';
 import {
   clients,
   crmDeals,
+  opportunityNextActions,
   quoteRevisionItems,
   quoteRevisions,
   quotations,
@@ -845,25 +846,79 @@ async function updateDealForQuotation(
   quotationId: string,
   now: Date
 ): Promise<boolean> {
-  const deals = await transaction
-    .select({ id: crmDeals.id, updatedAt: crmDeals.updatedAt })
+  const [quotation] = await transaction
+    .select({ opportunityId: quotations.opportunityId })
+    .from(quotations)
+    .where(eq(quotations.id, quotationId))
+    .limit(1);
+  const linkedDeals = await transaction
+    .select({ id: crmDeals.id, status: crmDeals.status, updatedAt: crmDeals.updatedAt })
     .from(crmDeals)
-    .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, 'Perdido')));
-  if (deals.length === 0) return false;
+    .where(eq(crmDeals.quotationId, quotationId));
+  const opportunityIds = new Set<string>();
+  if (quotation?.opportunityId) opportunityIds.add(String(quotation.opportunityId));
+  for (const deal of linkedDeals) opportunityIds.add(String(deal.id));
+  if (opportunityIds.size === 0) return false;
+
+  const deals = await transaction
+    .select({ id: crmDeals.id, status: crmDeals.status, updatedAt: crmDeals.updatedAt })
+    .from(crmDeals)
+    .where(inArray(crmDeals.id, [...opportunityIds]));
+  let changed = false;
   let cancelledAt: Date | null = null;
   for (const deal of deals) {
+    if (deal.status === 'Perdido' || deal.status === 'Pedido Fechado') {
+      // Terminal already: still ensure the active commercial action is gone so
+      // a repeated order event cannot leave stale queue work behind.
+      await transaction
+        .update(opportunityNextActions)
+        .set({
+          state: 'completed',
+          updatedAt: now,
+          transitionActor: 'system',
+          transitionAt: now,
+          transitionOrigin: 'event',
+          transitionReason: 'Pedido comercial vinculado',
+          replacedById: null,
+        })
+        .where(
+          and(
+            eq(opportunityNextActions.opportunityId, deal.id),
+            eq(opportunityNextActions.state, 'active'),
+          ),
+        );
+      continue;
+    }
     const previous = asDate(deal.updatedAt, new Date(0));
     const updatedAt = now.getTime() > previous.getTime() ? now : new Date(previous.getTime() + 1);
     await transaction
       .update(crmDeals)
       .set({ status: 'Pedido Fechado', updatedAt })
       .where(eq(crmDeals.id, deal.id));
+    await transaction
+      .update(opportunityNextActions)
+      .set({
+        state: 'completed',
+        updatedAt,
+        transitionActor: 'system',
+        transitionAt: updatedAt,
+        transitionOrigin: 'event',
+        transitionReason: 'Pedido comercial vinculado',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.opportunityId, deal.id),
+          eq(opportunityNextActions.state, 'active'),
+        ),
+      );
     cancelledAt = updatedAt;
+    changed = true;
   }
   if (cancelledAt) {
     await cancelQuotationFollowUpForFact(transaction, quotationId, 'crm_not_eligible', cancelledAt);
   }
-  return true;
+  return changed;
 }
 
 async function reserveOrderNumber(
