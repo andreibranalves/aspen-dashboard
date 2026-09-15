@@ -754,7 +754,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   async function submitUnblockContact() {
-    if (!dialog || dialog.type !== 'unblock-contact' || !dialog.item.contactPhone) return;
+    if (!dialog || dialog.type !== 'unblock-contact') return;
+    const target = dialog.item.blockedContactPhone || dialog.item.contactPhone;
+    if (!target) return;
     if (!unblockReason.trim()) {
       setDialogError('Informe o motivo do desbloqueio.');
       return;
@@ -763,7 +765,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     setDialogError(null);
     try {
       await unblockCommercialContact({
-        canonicalPhone: dialog.item.contactPhone,
+        canonicalPhone: target,
         reason: unblockReason.trim(),
       });
       closeDialog(true);
@@ -1081,7 +1083,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             Histórico
           </Button>
           {item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact') &&
-            item.contactPhone && (
+            (item.blockedContactPhone || item.contactPhone) && (
               <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
                 Desbloquear contato
               </Button>
@@ -1095,7 +1097,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     ) {
       return (
         <div className="flex flex-wrap gap-2">
-          {item.contactPhone && (
+          {(item.blockedContactPhone || item.contactPhone) && (
             <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
               Desbloquear contato
             </Button>
@@ -1149,7 +1151,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           Registrar contato
         </Button>
         {item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact') &&
-          item.contactPhone && (
+          (item.blockedContactPhone || item.contactPhone) && (
             <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
               Desbloquear contato
             </Button>

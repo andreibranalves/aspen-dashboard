@@ -312,6 +312,7 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
     demand_summary: item.demandSummary,
     contact_name: item.contactName,
     contact_phone: item.contactPhone,
+    blocked_contact_phone: item.blockedContactPhone,
     contact_email: item.contactEmail,
     client_id: item.clientId,
     client_name: item.clientName,

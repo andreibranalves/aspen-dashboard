@@ -127,6 +127,7 @@ export interface OpportunityQueueItem {
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
+  blockedContactPhone: string | null;
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
@@ -841,6 +842,7 @@ interface QueueRow {
   demand_summary: string | null;
   contact_name: string;
   contact_phone: string | null;
+  blocked_contact_phone: string | null;
   contact_email: string | null;
   client_id: string | null;
   client_name: string | null;
@@ -2519,7 +2521,8 @@ export function createPostgresOpportunityActionRepository(
               activity.last_outbound_at,
               activity.identity_status,
               activity.blocked_at,
-              activity.block_reason
+              activity.block_reason,
+              activity.canonical_phone AS matched_phone
             FROM selected_actions selected
             INNER JOIN whatsapp_contact_activity activity ON (
               EXISTS (
@@ -2570,6 +2573,13 @@ export function createPostgresOpportunityActionRepository(
                 ELSE '[]'::json
               END AS blockers,
               CASE
+                WHEN bool_or(blocked_at IS NOT NULL) THEN
+                  min(matched_phone) FILTER (
+                    WHERE blocked_at IS NOT NULL AND matched_phone ~ '^[0-9]{10,15}$'
+                  )
+                ELSE NULL
+              END AS blocked_contact_phone,
+              CASE
                 WHEN count(*) = 1 AND max(identity_status) IN ('verified', 'derived') THEN true
                 ELSE false
               END AS authoritative_identity
@@ -2587,6 +2597,7 @@ export function createPostgresOpportunityActionRepository(
               context.last_contact_at,
               context.last_contact_direction,
               COALESCE(context.blockers, '[]'::json) AS blockers,
+              context.blocked_contact_phone AS blocked_contact_phone,
               CASE
                 WHEN selected.contact_phone ~ '^[0-9]{10,15}$'
                   THEN 'https://wa.me/' || selected.contact_phone
@@ -2684,6 +2695,7 @@ export function createPostgresOpportunityActionRepository(
                 demandSummary: row.demand_summary,
                 contactName: row.contact_name,
                 contactPhone: row.contact_phone,
+                blockedContactPhone: row.blocked_contact_phone,
                 contactEmail: row.contact_email,
                 clientId: row.client_id,
                 clientName: row.client_name,

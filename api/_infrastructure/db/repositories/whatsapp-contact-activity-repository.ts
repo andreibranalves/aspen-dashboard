@@ -505,6 +505,37 @@ export function createPostgresWhatsappContactActivityRepository(
                   ) = deal.id
               )
             )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM whatsapp_contact_activity blocked_activity
+            WHERE blocked_activity.blocked_at IS NOT NULL
+              AND blocked_activity.block_reason = 'do_not_contact'
+              AND blocked_activity.canonical_phone IN (
+                SELECT phone FROM (
+                  SELECT deal.telefone AS phone
+                  UNION ALL
+                  SELECT client.telefone
+                  UNION ALL
+                  SELECT follow_up.canonical_phone
+                  FROM quotation_follow_ups follow_up
+                  JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+                  WHERE COALESCE(
+                    follow_up.approved_opportunity_id,
+                    quotation.opportunity_id,
+                    (SELECT legacy.id FROM crm_deals legacy
+                     WHERE legacy.quotation_id = quotation.id
+                     ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+                  ) = deal.id
+                  UNION ALL
+                  SELECT regexp_replace(delivery.phone, '[^0-9]', '', 'g')
+                  FROM quotations quotation
+                  JOIN quote_revisions revision ON revision.quotation_id = quotation.id
+                  JOIN quotation_deliveries delivery ON delivery.revision_id = revision.id
+                  WHERE quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id
+                ) linked_phones
+                WHERE phone IS NOT NULL
+              )
+          )
         `);
         if (latestEvents[0]?.event_type === 'unblocked') return;
         await tx.insert(blockEvents).values({

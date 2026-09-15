@@ -65,6 +65,7 @@ export interface CommercialQueueItem {
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
+  blockedContactPhone: string | null;
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
@@ -434,6 +435,7 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     demandSummary: optionalText(record.demand_summary),
     contactName: text(record.contact_name, 255),
     contactPhone: optionalText(record.contact_phone, 32),
+    blockedContactPhone: optionalText(record.blocked_contact_phone, 32),
     contactEmail: optionalText(record.contact_email, 254),
     clientId: optionalIdentifier(record.client_id),
     clientName: optionalIdentifier(record.client_name),

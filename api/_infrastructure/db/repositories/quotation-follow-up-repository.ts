@@ -1143,7 +1143,9 @@ async function applyAmbiguousInboundInTransaction(
     const hostOpportunityId =
       existing?.opportunityId ||
       opportunityIds.find(
-        (id) => activeReasonByOpportunity.get(id) !== ASSOCIATE_RESPONSE_REASON_CODE,
+        (id) =>
+          activeReasonByOpportunity.has(id) &&
+          activeReasonByOpportunity.get(id) !== ASSOCIATE_RESPONSE_REASON_CODE,
       );
     if (!hostOpportunityId) continue;
     let alertActionId = existing?.actionId || null;
