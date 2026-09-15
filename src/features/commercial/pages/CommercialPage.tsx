@@ -1,25 +1,18 @@
-import { useRef, type KeyboardEvent } from 'react';
-import { BriefcaseBusiness, ListChecks, MessageSquare, PlusCircle } from 'lucide-react';
+import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { BriefcaseBusiness, ListChecks, PlusCircle } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import CommercialQueuePanel from '@/features/commercial/components/CommercialQueuePanel';
 import CrmKanbanPage from '@/features/crm/pages/CrmKanbanPage';
-import FollowUpsPage, { type FollowUpReturnView } from '@/features/follow-ups/pages/FollowUpsPage';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
-type CommercialTab = 'deals' | 'returns' | 'queue';
-const parseCommercialTab = parseHashOption<CommercialTab>(['deals', 'returns', 'queue']);
-const parseReturnView = parseHashOption<FollowUpReturnView>(['unanswered', 'sent']);
+type CommercialTab = 'deals' | 'queue';
+const parseCommercialTab = parseHashOption<CommercialTab>(['deals', 'queue']);
 
 const TABS: Array<{ key: CommercialTab; label: string; icon: typeof BriefcaseBusiness }> = [
-  { key: 'deals', label: 'Negócios', icon: BriefcaseBusiness },
-  { key: 'returns', label: 'Retornos', icon: MessageSquare },
   { key: 'queue', label: 'Fila', icon: ListChecks },
-];
-const RETURN_TABS: Array<{ key: FollowUpReturnView; label: string }> = [
-  { key: 'unanswered', label: 'Sem resposta' },
-  { key: 'sent', label: 'Após envio' },
+  { key: 'deals', label: 'Negócios', icon: BriefcaseBusiness },
 ];
 
 interface CommercialPageProps {
@@ -28,13 +21,31 @@ interface CommercialPageProps {
 
 export default function CommercialPage({ navigate }: CommercialPageProps) {
   const [tab, setTab] = useHashQueryState<CommercialTab>('tab', 'queue', parseCommercialTab);
-  const [returnView, setReturnView] = useHashQueryState<FollowUpReturnView>(
-    'return',
-    'unanswered',
-    parseReturnView
-  );
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const returnTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    const route = window.location.hash.replace(/^#/, '') || '/';
+    const separator = route.indexOf('?');
+    if (separator === -1) return;
+    const path = route.slice(0, separator);
+    if (path !== '/crm') return;
+    const params = new URLSearchParams(route.slice(separator + 1));
+    let dirty = false;
+    if (params.has('return')) {
+      params.delete('return');
+      dirty = true;
+    }
+    if (params.get('tab') === 'returns') {
+      params.delete('tab');
+      dirty = true;
+    }
+    if (!dirty) return;
+    const query = params.toString();
+    const nextRoute = query ? `${path}?${query}` : path;
+    window.history.replaceState(window.history.state, '', `#${nextRoute}`);
+    window.dispatchEvent(new Event('aspen:hash-query-change'));
+  }, []);
+
 
   function changeTab(nextTab: CommercialTab) {
     setTab(nextTab);
@@ -50,19 +61,6 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
     event.preventDefault();
     changeTab(TABS[nextIndex].key);
     tabRefs.current[nextIndex]?.focus();
-  }
-
-  function handleReturnTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % RETURN_TABS.length;
-    if (event.key === 'ArrowLeft')
-      nextIndex = (index - 1 + RETURN_TABS.length) % RETURN_TABS.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = RETURN_TABS.length - 1;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    setReturnView(RETURN_TABS[nextIndex].key);
-    returnTabRefs.current[nextIndex]?.focus();
   }
 
   return (
@@ -109,34 +107,6 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
         </div>
       </div>
 
-      {tab === 'returns' && (
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Tipo de retorno">
-          {RETURN_TABS.map((item, index) => (
-            <button
-              key={item.key}
-              ref={(element) => {
-                returnTabRefs.current[index] = element;
-              }}
-              type="button"
-              role="tab"
-              id={`commercial-return-tab-${item.key}`}
-              aria-controls="follow-ups-panel"
-              aria-selected={returnView === item.key}
-              tabIndex={returnView === item.key ? 0 : -1}
-              className={
-                returnView === item.key
-                  ? 'rounded-sm bg-surface-muted px-3 py-2 text-sm font-medium text-fg'
-                  : 'rounded-sm px-3 py-2 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg'
-              }
-              onClick={() => setReturnView(item.key)}
-              onKeyDown={(event) => handleReturnTabKeyDown(event, index)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div
         id="commercial-panel"
         role="tabpanel"
@@ -144,9 +114,6 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
         className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         {tab === 'deals' && <CrmKanbanPage embedded />}
-        {tab === 'returns' && (
-          <FollowUpsPage navigate={navigate} embedded returnView={returnView} />
-        )}
         {tab === 'queue' && <CommercialQueuePanel navigate={navigate} />}
       </div>
     </PageShell>
