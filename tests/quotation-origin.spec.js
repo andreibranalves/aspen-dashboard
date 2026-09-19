@@ -17,6 +17,7 @@ import { requireMatchingDisposableTestDatabaseUrl } from './support/disposable-p
 
 const suffix = randomUUID().slice(0, 8);
 const leadName = `Origem UI ${suffix}`;
+const restoredLeadName = `Origem restaurada UI ${suffix}`;
 const sku = `UI-ORIGIN-${suffix}`;
 let missingQuotation = '';
 let conflictQuotation = '';
@@ -52,6 +53,17 @@ test.beforeAll(async () => {
     nome: leadName,
     email: `ui-${suffix}@example.test`,
     whatsapp: '5511999992222',
+    produto: 'Produto origem UI',
+    quantidade: '30',
+    consent: { given: true, source: 'site_quote_form' },
+  });
+  await repository.ingestSiteSubmission({
+    externalId: `siteQuote.${randomUUID()}`,
+    payloadFingerprint: 'e'.repeat(64),
+    originalCreatedAt: '2026-09-05T12:00:00.000Z',
+    nome: restoredLeadName,
+    email: `restore-${suffix}@example.test`,
+    whatsapp: '5511999993333',
     produto: 'Produto origem UI',
     quantidade: '30',
     consent: { given: true, source: 'site_quote_form' },
@@ -126,8 +138,8 @@ test('opportunity creates quotation whose origin remains visible through approva
 });
 
 test('restoring a manual draft without hash parameters preserves its direct origin', async ({ page }) => {
-  await page.goto(`/#/crm?tab=deals&search=${encodeURIComponent(leadName)}`);
-  const dealRow = page.getByRole('row', { name: new RegExp(`Abrir lead ${leadName}`) });
+  await page.goto(`/#/crm?tab=deals&search=${encodeURIComponent(restoredLeadName)}`);
+  const dealRow = page.getByRole('row', { name: new RegExp(`Abrir lead ${restoredLeadName}`) });
   await expect(dealRow).toBeVisible();
   await dealRow.getByRole('button', { name: 'Novo orçamento' }).click();
 

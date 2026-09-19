@@ -232,7 +232,7 @@ test(
 );
 
 test(
-  'associateInboundResponse moves a consolidated alert to the chosen demand',
+  'associateInboundResponse moves a consolidated alert without replacing newer sibling work',
   { skip: databaseSkip, concurrency: false },
   async () => {
     const fixture = await makeFixture();
@@ -301,6 +301,23 @@ test(
           replacedById: alert.successor!.actionId,
         })
         .where(inArray(opportunityNextActions.opportunityId, [sibling, losingSibling]));
+      await db.insert(opportunityNextActions).values({
+        id: randomUUID(),
+        opportunityId: losingSibling,
+        kind: 'agreed_commitment',
+        reasonCode: 'manual_commitment',
+        origin: 'manual',
+        state: 'active',
+        dueAt: new Date('2026-09-12T12:00:00.000Z'),
+        dueDate: '2026-09-12',
+        dueTime: '09:00',
+        scheduleType: 'timed',
+        version: 2,
+        actor: 'operator-a',
+        reason: 'Compromisso posterior ao alerta',
+        createdAt: new Date('2026-09-11T15:30:00.000Z'),
+        updatedAt: new Date('2026-09-11T15:30:00.000Z'),
+      });
 
       const repository = createPostgresOpportunityActionRepository(() => db, {
         now: () => new Date('2026-09-11T16:00:00.000Z'),
@@ -328,11 +345,16 @@ test(
         sister.filter((row) => row.state === 'active' && row.reasonCode === 'inbound_needs_response').length,
         1,
       );
-      const restoredLosingSibling = await actionsFor(losingSibling);
-      assert.equal(restoredLosingSibling.length, 1);
-      assert.equal(restoredLosingSibling[0]?.state, 'active');
-      assert.equal(restoredLosingSibling[0]?.reasonCode, 'follow_up_second_return');
-      assert.equal(restoredLosingSibling[0]?.version, 1);
+      const losingSiblingActions = await actionsFor(losingSibling);
+      assert.equal(losingSiblingActions.length, 2);
+      assert.equal(
+        losingSiblingActions.find((row) => row.reasonCode === 'follow_up_second_return')?.state,
+        'suspended',
+      );
+      assert.equal(
+        losingSiblingActions.find((row) => row.reasonCode === 'manual_commitment')?.state,
+        'active',
+      );
     } finally {
       await db
         .delete(opportunityNextActions)

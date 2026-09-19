@@ -1340,6 +1340,9 @@ test('manual quotation accepts metadata-free local responses @quotations @critic
         revision_number: 1,
         cliente: 'Cliente local',
         status: 'rascunho',
+        frete: '0.00',
+        total: '300.00',
+        items: [{ item_code: 'SKU-LOCAL', item_name: 'Produto local', qty: 30, applied_unit_price: '10.00' }],
         concurrency_token: '2026-08-17T12:00:00.000Z',
       },
       201

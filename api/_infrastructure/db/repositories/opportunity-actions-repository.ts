@@ -1705,6 +1705,12 @@ async function resolveAssociateResponseToOpportunity(input: {
       and(
         eq(opportunityNextActions.state, 'suspended'),
         eq(opportunityNextActions.replacedById, alertActionId),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM opportunity_next_actions active
+          WHERE active.opportunity_id = ${opportunityNextActions.opportunityId}
+            AND active.state = 'active'
+        )`,
       ),
     );
   return result;

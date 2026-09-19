@@ -145,7 +145,7 @@ async function loadOpportunityFacts(
       status: String(row.status),
       clientId: row.client_id == null ? null : String(row.client_id),
       siblingOpenOpportunityIds: Array.isArray(row.sibling_ids)
-        ? row.sibling_ids.map(String)
+        ? row.sibling_ids.map((id) => String(id))
         : [],
       hasActiveNextAction,
       hasSuspendedRestrictedAction: row.has_suspended_restricted_action === true,

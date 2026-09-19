@@ -172,21 +172,33 @@ test(
   async () => {
     const clientId = randomUUID();
     const opportunityId = randomUUID();
+    const terminalOpportunityId = randomUUID();
     const activityId = randomUUID();
     const phone = '5511666555444';
     const instance = `transition-${randomUUID()}`;
     const rotatedInstance = `transition-rotated-${randomUUID()}`;
     const now = new Date('2026-09-15T12:00:00.000Z');
     await db.insert(clients).values({ id: clientId, nome: 'Contato restrito', telefone: phone });
-    await db.insert(crmDeals).values({
-      id: opportunityId,
-      clientId,
-      nome: 'Demanda restrita',
-      telefone: phone,
-      status: 'Orcamento Enviado',
-      createdAt: now,
-      updatedAt: now,
-    });
+    await db.insert(crmDeals).values([
+      {
+        id: opportunityId,
+        clientId,
+        nome: 'Demanda restrita',
+        telefone: phone,
+        status: 'Orcamento Enviado',
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: terminalOpportunityId,
+        clientId,
+        nome: 'Demanda restrita encerrada',
+        telefone: phone,
+        status: 'Orcamento Enviado',
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
     await db.insert(whatsappContactActivity).values({
       id: activityId,
       instance,
@@ -214,6 +226,10 @@ test(
 
       const queue = await createPostgresOpportunityActionRepository(() => db).listActive();
       assert.equal(queue.data.find((item) => item.opportunityId === opportunityId)?.state, 'suspended');
+      await db
+        .update(crmDeals)
+        .set({ status: 'Pedido Fechado', updatedAt: new Date('2026-09-15T12:30:00.000Z') })
+        .where(eq(crmDeals.id, terminalOpportunityId));
 
       await createPostgresWhatsappContactActivityRepository(() => db).unblockContact({
         instance: rotatedInstance,
@@ -228,11 +244,18 @@ test(
         .where(eq(opportunityNextActions.opportunityId, opportunityId));
       assert.equal(restored?.state, 'active');
       assert.equal(restored?.version, suspended?.version);
+      const [terminalAction] = await db
+        .select()
+        .from(opportunityNextActions)
+        .where(eq(opportunityNextActions.opportunityId, terminalOpportunityId));
+      assert.equal(terminalAction?.state, 'suspended');
     } finally {
       await db.delete(whatsappContactBlockEvents).where(eq(whatsappContactBlockEvents.canonicalPhone, phone));
       await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, opportunityId));
+      await db.delete(opportunityNextActions).where(eq(opportunityNextActions.opportunityId, terminalOpportunityId));
       await db.delete(whatsappContactActivity).where(eq(whatsappContactActivity.id, activityId));
       await db.delete(crmDeals).where(eq(crmDeals.id, opportunityId));
+      await db.delete(crmDeals).where(eq(crmDeals.id, terminalOpportunityId));
       await db.delete(clients).where(eq(clients.id, clientId));
     }
   },

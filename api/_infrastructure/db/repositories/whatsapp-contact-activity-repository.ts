@@ -472,6 +472,7 @@ export function createPostgresWhatsappContactActivityRepository(
           FROM crm_deals deal
           LEFT JOIN clients client ON client.id = deal.client_id
           WHERE action.opportunity_id = deal.id
+            AND deal.status NOT IN ('Pedido Fechado', 'Perdido')
             AND action.state = 'suspended'
             AND action.transition_reason = 'Não contatar'
             AND NOT EXISTS (
