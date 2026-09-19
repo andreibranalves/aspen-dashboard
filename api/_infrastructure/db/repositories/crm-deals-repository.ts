@@ -536,10 +536,10 @@ export async function upsertCrmDealForQuotation(
 }
 
 /**
- * Advances the commercial stage of the deal behind a revision once a provider
- * accepted a real dispatch of that revision — WhatsApp acceptance or an accepted
- * e-mail attempt. Issuing the document no longer calls this: the stage means the
- * customer received the quotation, not that a PDF was generated.
+ * Advances the commercial stage of the deal behind a revision once WhatsApp
+ * accepted the complete dispatch of that revision. Issuing the document no
+ * longer calls this: the stage means the provider accepted the quotation, not
+ * that a PDF was generated.
  *
  * Idempotent by construction: `upsertCrmDealForQuotation` only advances deals
  * that are still before `Orcamento Enviado` and never revives `Perdido`, so a

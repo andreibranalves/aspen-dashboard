@@ -9,14 +9,12 @@ export interface DeliveryDiagnostics {
   worker: {
     name: string;
     lastRunAt: string | null;
+    result: 'success' | 'failure';
     processed: number;
     remaining: boolean;
   } | null;
   reconcilingSteps: number;
-  overdueReconcilingSteps: number;
-  oldestReconciliationDeadline: string | null;
   pendingReceipts: number;
-  oldestPendingReceiptAt: string | null;
 }
 
 function count(value: unknown): number {
@@ -36,14 +34,12 @@ export async function fetchDeliveryDiagnostics(): Promise<DeliveryDiagnostics> {
       ? {
           name: typeof source.name === 'string' ? source.name : '',
           lastRunAt: timestamp(source.last_run_at),
+          result: source.result === 'failure' ? 'failure' : 'success',
           processed: count(source.processed),
           remaining: source.remaining === true,
         }
       : null,
     reconcilingSteps: count(body.reconciling_steps),
-    overdueReconcilingSteps: count(body.overdue_reconciling_steps),
-    oldestReconciliationDeadline: timestamp(body.oldest_reconciliation_deadline),
     pendingReceipts: count(body.pending_receipts),
-    oldestPendingReceiptAt: timestamp(body.oldest_pending_receipt_at),
   };
 }

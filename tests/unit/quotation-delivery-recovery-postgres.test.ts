@@ -429,7 +429,7 @@ databaseTest(
       resolvedBy: 'authenticated-operator',
     });
     assert.equal(resolved.state, 'delivered');
-    assert.equal((await readDeal(quotationId))?.status, 'Orcamento Enviado');
+    assert.equal((await readDeal(quotationId))?.status, 'Novo Lead');
   }
 );
 

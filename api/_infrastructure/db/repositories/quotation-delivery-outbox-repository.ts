@@ -831,13 +831,13 @@ async function syncDeliveryState(
       updatedAt: now,
     })
     .where(eq(quotationDeliveries.id, deliveryId));
-  // The commercial stage is authorized by the provider acceptance of a real
-  // dispatch, never by the document. Only the transition into an accepted
-  // aggregate promotes, in the same transaction that made the acceptance
-  // durable, so no crash can leave the two facts apart; the promotion itself is
-  // monotonic and idempotent, so replays and later receipts are no-ops.
+  const fullyAcceptedByProvider =
+    steps.length > 0 &&
+    steps.every((step) => step.providerMessageId !== null && asDate(step.acceptedAt) !== null);
   const acceptedNow =
-    state !== delivery.state && (state === 'provider_accepted' || state === 'delivered');
+    fullyAcceptedByProvider &&
+    state !== delivery.state &&
+    (state === 'provider_accepted' || state === 'delivered');
   if (acceptedNow) {
     await promoteDealOnProviderAcceptance(db, { revisionId: delivery.revisionId }, { now });
   }

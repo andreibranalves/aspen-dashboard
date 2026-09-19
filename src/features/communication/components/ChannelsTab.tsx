@@ -81,20 +81,17 @@ export default function ChannelsTab() {
               <dt>Última execução do worker:</dt>
               <dd>
                 {diagnostics.worker?.lastRunAt
-                  ? `${formatDateTime(diagnostics.worker.lastRunAt)} (${diagnostics.worker.processed} etapa(s) processada(s)${
-                      diagnostics.worker.remaining ? ', fila restante' : ''
-                    })`
+                  ? diagnostics.worker.result === 'failure'
+                    ? `${formatDateTime(diagnostics.worker.lastRunAt)} (falha)`
+                    : `${formatDateTime(diagnostics.worker.lastRunAt)} (${diagnostics.worker.processed} etapa(s) processada(s)${
+                        diagnostics.worker.remaining ? ', fila restante' : ''
+                      })`
                   : 'nenhuma execução registrada'}
               </dd>
             </div>
             <div className="flex flex-wrap gap-x-2">
               <dt>Etapas em reconciliação:</dt>
-              <dd>
-                {diagnostics.reconcilingSteps}
-                {diagnostics.overdueReconcilingSteps > 0
-                  ? ` (${diagnostics.overdueReconcilingSteps} além do prazo)`
-                  : ''}
-              </dd>
+              <dd>{diagnostics.reconcilingSteps}</dd>
             </div>
             <div className="flex flex-wrap gap-x-2">
               <dt>Recibos sem correlação:</dt>

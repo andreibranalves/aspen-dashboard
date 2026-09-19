@@ -554,10 +554,9 @@ export const quotationDeliverySteps = pgTable(
 );
 
 /**
- * Durable heartbeat of the scheduled delivery worker. Without it "worker stopped"
- * and "worker running with an empty queue" are indistinguishable from the
- * database, which is exactly the ambiguity that hid INC-W02. One row per worker,
- * overwritten on every successful run; no delivery processing reads it.
+ * Durable result of the latest scheduled delivery worker invocation. One row
+ * per worker is overwritten after each success or failure; delivery processing
+ * never reads it.
  */
 export const quotationDeliveryWorkerRuns = pgTable('quotation_delivery_worker_runs', {
   worker: text('worker').primaryKey(),

@@ -153,21 +153,28 @@ test(
       },
     ]);
     const runAt = new Date('2026-09-19T12:00:00.000Z');
-    await recordQuotationDeliveryWorkerRun({ processed: 2, remaining: true, now: runAt }, () => db as never);
+    await recordQuotationDeliveryWorkerRun(
+      { result: 'success', processed: 2, remaining: true, now: runAt },
+      () => db as never
+    );
 
     const diagnostics = await readQuotationDeliveryDiagnostics(() => db as never);
     assert.equal(diagnostics.reconcilingSteps, 2);
-    assert.equal(diagnostics.overdueReconcilingSteps, 1);
     assert.equal(diagnostics.pendingReceipts, 1);
-    assert.equal(diagnostics.oldestPendingReceiptAt?.toISOString(), '2026-09-18T10:30:00.000Z');
     assert.equal(diagnostics.worker?.worker, QUOTATION_DELIVERY_WORKER_NAME);
     assert.equal(diagnostics.worker?.lastRunAt.toISOString(), runAt.toISOString());
+    assert.equal(diagnostics.worker?.result, 'success');
     assert.equal(diagnostics.worker?.processed, 2);
     assert.equal(diagnostics.worker?.remaining, true);
 
     // A later run overwrites the same heartbeat row instead of appending.
     await recordQuotationDeliveryWorkerRun(
-      { processed: 0, remaining: false, now: new Date('2026-09-19T12:02:00.000Z') },
+      {
+        result: 'success',
+        processed: 0,
+        remaining: false,
+        now: new Date('2026-09-19T12:02:00.000Z'),
+      },
       () => db as never
     );
     const rows = await db
@@ -177,6 +184,16 @@ test(
     assert.equal(rows.length, 1);
     assert.equal(rows[0]?.processed, 0);
     assert.equal(rows[0]?.remaining, false);
+
+    await recordQuotationDeliveryWorkerRun(
+      { result: 'failure', now: new Date('2026-09-19T12:03:00.000Z') },
+      () => db as never
+    );
+    const failed = await readQuotationDeliveryDiagnostics(() => db as never);
+    assert.equal(failed.worker?.lastRunAt.toISOString(), '2026-09-19T12:03:00.000Z');
+    assert.equal(failed.worker?.result, 'failure');
+    assert.equal(failed.worker?.processed, 0);
+    assert.equal(failed.worker?.remaining, false);
   }
 );
 
@@ -185,7 +202,12 @@ test(
   { skip: TEST_DATABASE_URL ? false : databaseSkip },
   async () => {
     await recordQuotationDeliveryWorkerRun(
-      { processed: 3, remaining: false, now: new Date('2026-09-19T12:05:00.000Z') },
+      {
+        result: 'success',
+        processed: 3,
+        remaining: false,
+        now: new Date('2026-09-19T12:05:00.000Z'),
+      },
       () => db as never
     );
     const response = await diagnosticsHandler(
@@ -195,10 +217,13 @@ test(
     assert.equal(response.statusCode, 200);
     const body = JSON.parse(response.body || '{}');
     assert.equal(typeof body.reconciling_steps, 'number');
-    assert.equal(typeof body.overdue_reconciling_steps, 'number');
     assert.equal(typeof body.pending_receipts, 'number');
     assert.equal(body.worker.name, QUOTATION_DELIVERY_WORKER_NAME);
     assert.equal(body.worker.last_run_at, '2026-09-19T12:05:00.000Z');
+    assert.equal(body.worker.result, 'success');
+    assert.equal(body.overdue_reconciling_steps, undefined);
+    assert.equal(body.oldest_reconciliation_deadline, undefined);
+    assert.equal(body.oldest_pending_receipt_at, undefined);
 
     const rejected = await diagnosticsHandler(
       { httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: '' } as never,

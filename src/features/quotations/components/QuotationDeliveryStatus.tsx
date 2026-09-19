@@ -20,7 +20,7 @@ export interface QuotationDeliveryStatusProps {
 function formatProgress(delivery: DeliveryView): string {
   const { accepted, delivered, total } = delivery.progress;
   if (total === 0) return 'Nenhuma etapa configurada';
-  return `Aceitas pelo WhatsApp: ${accepted} de ${total} · Confirmadas como entregues: ${delivered} de ${total}`;
+  return `Aceitas pelo WhatsApp: ${accepted} de ${total} - Confirmadas como entregues: ${delivered} de ${total}`;
 }
 
 export function QuotationDeliveryStatus({
@@ -194,7 +194,7 @@ export function QuotationDeliveryStatus({
                 {decision === 'confirmed_received'
                   ? 'Confirme que o cliente recebeu as mensagens já enviadas. O restante não enviado continua na fila.'
                   : decision === 'retry_same_revision'
-                    ? 'O provedor rejeitou o envio antes de qualquer mensagem sair. A mesma revisão volta para a fila; o reenvio depende do worker.'
+                    ? 'Somente a etapa comprovadamente não enviada volta para a fila. O reenvio da mesma revisão depende do worker.'
                     : 'Confirme que o cliente não recebeu. Uma nova tentativa pode gerar duplicidade.'}
               </p>
             </div>

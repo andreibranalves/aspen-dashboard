@@ -37,16 +37,13 @@ export async function handler(
         ? {
             name: diagnostics.worker.worker,
             last_run_at: diagnostics.worker.lastRunAt?.toISOString() ?? null,
+            result: diagnostics.worker.result,
             processed: diagnostics.worker.processed,
             remaining: diagnostics.worker.remaining,
           }
         : null,
       reconciling_steps: diagnostics.reconcilingSteps,
-      overdue_reconciling_steps: diagnostics.overdueReconcilingSteps,
-      oldest_reconciliation_deadline:
-        diagnostics.oldestReconciliationDeadline?.toISOString() ?? null,
       pending_receipts: diagnostics.pendingReceipts,
-      oldest_pending_receipt_at: diagnostics.oldestPendingReceiptAt?.toISOString() ?? null,
     });
   } catch {
     return json(503, { error: 'Não foi possível ler o diagnóstico das entregas. Tente novamente.' });

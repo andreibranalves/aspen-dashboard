@@ -5,6 +5,9 @@ import {
   handler as worker,
   QUOTATION_DELIVERY_WORKER_BATCH_SIZE,
 } from '../../api/_modules/quotation-delivery-worker.js';
+import type {
+  QuotationDeliveryWorkerRunResult,
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-diagnostics-repository.js';
 
 const cronSecret = 'c'.repeat(32);
 
@@ -75,18 +78,33 @@ test('worker supports GET and fails closed without a sufficiently long secret', 
   assert.equal(calls, 1);
 });
 
-test('worker records a durable heartbeat after a successful run without changing its body', async () => {
-  const heartbeats: Array<{ processed: number; remaining: boolean }> = [];
+test('worker records a successful invocation without changing its body', async () => {
+  const heartbeats: QuotationDeliveryWorkerRunResult[] = [];
   const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
     processDue: async () => ({ processed: 2, remaining: false }),
-    recordRun: async (value: { processed: number; remaining: boolean }) => {
+    recordRun: async (value) => {
       heartbeats.push(value);
     },
     environment: { CRON_SECRET: cronSecret },
   });
   assert.equal(result.statusCode, 200);
   assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 2, remaining: false });
-  assert.deepEqual(heartbeats, [{ processed: 2, remaining: false }]);
+  assert.deepEqual(heartbeats, [{ result: 'success', processed: 2, remaining: false }]);
+});
+
+test('worker records a failed invocation when processing throws', async () => {
+  const heartbeats: QuotationDeliveryWorkerRunResult[] = [];
+  const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
+    processDue: async () => {
+      throw new Error('worker failure');
+    },
+    recordRun: async (value) => {
+      heartbeats.push(value);
+    },
+    environment: { CRON_SECRET: cronSecret },
+  });
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(heartbeats, [{ result: 'failure' }]);
 });
 
 test('worker keeps reporting the run when the diagnostics heartbeat fails', async () => {
@@ -102,10 +120,15 @@ test('worker keeps reporting the run when the diagnostics heartbeat fails', asyn
 });
 
 test('worker returns safe service error for invalid module counts', async () => {
+  const heartbeats: QuotationDeliveryWorkerRunResult[] = [];
   const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
     processDue: async () => ({ processed: QUOTATION_DELIVERY_WORKER_BATCH_SIZE + 1, remaining: true }),
+    recordRun: async (value) => {
+      heartbeats.push(value);
+    },
     environment: { CRON_SECRET: cronSecret },
   });
   assert.equal(result.statusCode, 503);
   assert.equal(JSON.parse(result.body || '{}').processed, undefined);
+  assert.deepEqual(heartbeats, [{ result: 'failure' }]);
 });

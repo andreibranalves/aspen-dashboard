@@ -9,33 +9,34 @@ import {
 
 /** Stable identity of the scheduled worker that drains the delivery outbox. */
 export const QUOTATION_DELIVERY_WORKER_NAME = 'quotation-delivery-worker';
+const FAILED_WORKER_RUN_PROCESSED = -1;
 
 type DatabaseProvider = () => AppDatabase;
 
 export interface QuotationDeliveryWorkerRun {
   worker: string;
   lastRunAt: Date;
+  result: 'success' | 'failure';
   processed: number;
   remaining: boolean;
 }
+
+export type QuotationDeliveryWorkerRunResult =
+  | { result: 'success'; processed: number; remaining: boolean; now?: Date }
+  | { result: 'failure'; now?: Date };
 
 /**
  * Operational read model of the delivery pipeline. Pure diagnostics: it reads
  * durable state and never claims, sends, expires or rewrites anything.
  *
- * The three numbers exist to separate failures that looked identical from the
- * screen: "worker stopped" (stale `lastRunAt`), "steps parked in reconciliation"
- * (`reconcilingSteps`, with `overdueReconcilingSteps` counting those already past
- * the window, which only a worker invocation can promote) and "receipts received
- * without a correlated provider id" (`pendingReceipts`).
+ * The values separate failures that looked identical from the screen: worker
+ * execution, steps parked in reconciliation and receipts received without a
+ * correlated provider id.
  */
 export interface QuotationDeliveryDiagnostics {
   worker: QuotationDeliveryWorkerRun | null;
   reconcilingSteps: number;
-  overdueReconcilingSteps: number;
-  oldestReconciliationDeadline: Date | null;
   pendingReceipts: number;
-  oldestPendingReceiptAt: Date | null;
 }
 
 function asDate(value: unknown): Date | null {
@@ -49,26 +50,28 @@ function count(value: unknown): number {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-/** Overwrites the heartbeat of the scheduled worker after a successful run. */
 export async function recordQuotationDeliveryWorkerRun(
-  input: { processed: number; remaining: boolean; now?: Date },
+  input: QuotationDeliveryWorkerRunResult,
   getDb: DatabaseProvider = getDatabase
 ): Promise<void> {
   const now = input?.now instanceof Date ? input.now : new Date();
+  const processed =
+    input.result === 'success' ? count(input.processed) : FAILED_WORKER_RUN_PROCESSED;
+  const remaining = input.result === 'success' && input.remaining === true;
   await getDb()
     .insert(quotationDeliveryWorkerRuns)
     .values({
       worker: QUOTATION_DELIVERY_WORKER_NAME,
       lastRunAt: now,
-      processed: count(input?.processed),
-      remaining: input?.remaining === true,
+      processed,
+      remaining,
     })
     .onConflictDoUpdate({
       target: quotationDeliveryWorkerRuns.worker,
       set: {
         lastRunAt: now,
-        processed: count(input?.processed),
-        remaining: input?.remaining === true,
+        processed,
+        remaining,
       },
     });
 }
@@ -85,14 +88,11 @@ export async function readQuotationDeliveryDiagnostics(
   const [steps] = await db
     .select({
       reconciling: sql<number>`count(*) filter (where ${quotationDeliverySteps.state} = 'reconciling')::int`,
-      overdue: sql<number>`count(*) filter (where ${quotationDeliverySteps.state} = 'reconciling' and ${quotationDeliverySteps.reconciliationDeadline} is not null and ${quotationDeliverySteps.reconciliationDeadline} <= now())::int`,
-      oldest: sql<string | null>`min(${quotationDeliverySteps.reconciliationDeadline}) filter (where ${quotationDeliverySteps.state} = 'reconciling')`,
     })
     .from(quotationDeliverySteps);
   const [receipts] = await db
     .select({
       pending: sql<number>`count(*) filter (where ${evolutionReceiptInbox.appliedAt} is null)::int`,
-      oldest: sql<string | null>`min(${evolutionReceiptInbox.receivedAt}) filter (where ${evolutionReceiptInbox.appliedAt} is null)`,
     })
     .from(evolutionReceiptInbox);
   return {
@@ -100,14 +100,13 @@ export async function readQuotationDeliveryDiagnostics(
       ? {
           worker: worker.worker,
           lastRunAt: asDate(worker.lastRunAt) || new Date(0),
+          result: worker.processed === FAILED_WORKER_RUN_PROCESSED ? 'failure' : 'success',
           processed: count(worker.processed),
-          remaining: worker.remaining === true,
+          remaining:
+            worker.processed !== FAILED_WORKER_RUN_PROCESSED && worker.remaining === true,
         }
       : null,
     reconcilingSteps: count(steps?.reconciling),
-    overdueReconcilingSteps: count(steps?.overdue),
-    oldestReconciliationDeadline: asDate(steps?.oldest),
     pendingReceipts: count(receipts?.pending),
-    oldestPendingReceiptAt: asDate(receipts?.oldest),
   };
 }
