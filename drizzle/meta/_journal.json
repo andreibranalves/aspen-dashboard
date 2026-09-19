@@ -351,6 +351,13 @@
       "when": 1789302000000,
       "tag": "0049_opportunity_action_suspension",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789842458240,
+      "tag": "0050_delivery_failure_kind_and_worker_runs",
+      "breakpoints": true
     }
   ]
 }

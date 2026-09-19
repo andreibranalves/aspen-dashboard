@@ -1905,7 +1905,8 @@ export function createPostgresQuoteDraftRepository(
                 nome: clientSnapshot.nome,
                 email: clientSnapshot.email,
                 telefone: clientSnapshot.telefone,
-                status: 'Orcamento Enviado',
+                // The duplicate is a new document that was never dispatched:
+                // the stage only advances when a provider accepts a real send.
                 followUpStage: 0,
                 nextStep: null,
                 lostReason: null,

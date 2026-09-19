@@ -174,7 +174,8 @@ gated('repeating the same idempotency key returns one single issuance result', a
   assert.equal((await db.select().from(schema.quoteRevisions)).length, 1);
   const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid));
   assert.equal(deals.length, 1);
-  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  // The document alone never claims the commercial stage.
+  assert.equal(deals[0]?.status, 'Novo Lead');
 
   // A different key against the same already-issued revision is refused.
   await assert.rejects(
@@ -267,7 +268,7 @@ gated('repository active and stale leases are enforced by issue', async () => wi
 }));
 
 
-gated('issuing a draft without a deal creates one opportunity in Orcamento Enviado', async () => withDatabase(async (db) => {
+gated('issuing a draft without a deal creates one opportunity in the initial stage', async () => withDatabase(async (db) => {
   await seed(db);
   const draft = await createPersistedDraft(db);
   const repository = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
@@ -276,14 +277,14 @@ gated('issuing a draft without a deal creates one opportunity in Orcamento Envia
   const [revision] = await db.select().from(schema.quoteRevisions).where(eq(schema.quoteRevisions.id, draft.revisionId));
   const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid));
   assert.equal(deals.length, 1);
-  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  assert.equal(deals[0]?.status, 'Novo Lead');
   assert.equal(deals[0]?.quotationId, draft.quotationUuid);
   assert.equal(deals[0]?.clientId, quotation?.clientId);
   assert.equal(deals[0]?.nome, revision?.clienteNome);
   assert.equal(deals[0]?.email, revision?.clienteEmail);
 }));
 
-gated('issuing reuses the quote lead deal and advances Novo Lead to Orcamento Enviado', async () => withDatabase(async (db) => {
+gated('issuing reuses the quote lead deal without claiming the commercial stage', async () => withDatabase(async (db) => {
   await seed(db);
   const draft = await createPersistedDraft(db);
   const leadId = randomUUID();
@@ -317,7 +318,7 @@ gated('issuing reuses the quote lead deal and advances Novo Lead to Orcamento En
   assert.equal(deals.length, 1);
   assert.equal(deals[0]?.id, dealId);
   assert.equal(deals[0]?.quotationId, draft.quotationUuid);
-  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  assert.equal(deals[0]?.status, 'Novo Lead');
   const [lead] = await db.select().from(schema.quoteLeads).where(eq(schema.quoteLeads.id, leadId));
   assert.equal(lead?.crmDealId, dealId);
 }));
@@ -433,7 +434,7 @@ gated('issuing proposals linked to one demand reuses the opportunity instead of 
   const deals = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.clientId, clientId));
   assert.equal(deals.length, 1, 'the demand keeps exactly one opportunity after two emissions');
   assert.equal(deals[0]?.id, opportunityId);
-  assert.equal(deals[0]?.status, 'Orcamento Enviado');
+  assert.equal(deals[0]?.status, 'Novo Lead');
   // The legacy single pointer stays where it was: it is not the cardinality
   // source and the new emission path never rewrites it.
   assert.equal(deals[0]?.quotationId, decoy.quotation_uuid);

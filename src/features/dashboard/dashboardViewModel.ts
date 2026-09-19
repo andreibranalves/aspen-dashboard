@@ -125,8 +125,7 @@ function projectSummary(value: unknown): DashboardSummaryView | null {
     ordersCount === undefined ||
     avgTicket === undefined ||
     openOrders === undefined ||
-    conversionRate === undefined ||
-    conversionRate > 1
+    conversionRate === undefined
   )
     return null;
   return {

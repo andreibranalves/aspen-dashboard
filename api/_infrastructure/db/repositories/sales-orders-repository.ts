@@ -6,7 +6,6 @@ import {
   gte,
   ilike,
   inArray,
-  isNotNull,
   lte,
   ne,
   or,
@@ -459,14 +458,6 @@ function percentageDelta(current: number, previous: number): number {
   return roundNumber(((current - previous) / previous) * 100);
 }
 
-function submittedOrdersPeriodFilter(start: string, end: string) {
-  return and(
-    inArray(salesOrders.status, SUBMITTED_ORDER_STATUSES),
-    gte(salesOrders.transactionDate, start),
-    lte(salesOrders.transactionDate, end)
-  );
-}
-
 function faturamentoOrdersPeriodFilter(start: string, end: string) {
   return and(
     inArray(salesOrders.status, FATURAMENTO_ORDER_STATUSES),
@@ -508,29 +499,50 @@ async function dashboardSummary(
   };
 }
 
+/**
+ * Conversion of one single cohort: of the quotations created in the period
+ * (drafts excluded), how many became an order. The numerator is a subset of the
+ * denominator by construction, so the ratio can never exceed 100% and no
+ * artificial clamp is needed. An order counts regardless of when it was closed,
+ * because the cohort is the quotation, not the order.
+ */
 async function dashboardConversion(
   database: SalesOrderDatabase,
   start: string,
   end: string
 ): Promise<number> {
   const quotationDate = quotationDateExpression();
+  const cohortCondition = and(
+    sql`${quotationDate} >= ${start}`,
+    sql`${quotationDate} <= ${end}`,
+    ne(quotations.status, 'rascunho')
+  );
   const [quotationCount] = await database
+    .select({ count: sql<number>`count(*)::int` })
+    .from(quotations)
+    .where(cohortCondition);
+  const [convertedCount] = await database
     .select({ count: sql<number>`count(*)::int` })
     .from(quotations)
     .where(
       and(
-        sql`${quotationDate} >= ${start}`,
-        sql`${quotationDate} <= ${end}`,
-        ne(quotations.status, 'rascunho')
+        cohortCondition,
+        sql`exists (
+          select 1
+          from sales_orders o
+          where o.quotation_id = ${quotations.id}
+            and o.status in (${sql.join(
+              SUBMITTED_ORDER_STATUSES.map((status) => sql`${status}`),
+              sql`, `
+            )})
+        )`
       )
     );
-  const [convertedCount] = await database
-    .select({ count: sql<number>`count(distinct ${salesOrders.id})::int` })
-    .from(salesOrders)
-    .where(and(submittedOrdersPeriodFilter(start, end), isNotNull(salesOrders.quotationId)));
   const quotationsTotal = Number(quotationCount?.count) || 0;
-  const ordersFromQuotation = Number(convertedCount?.count) || 0;
-  return quotationsTotal > 0 ? roundNumber(ordersFromQuotation / quotationsTotal) : 0;
+  const quotationsConverted = Number(convertedCount?.count) || 0;
+  // Zero quotations in the period: no conversion is defined, and 0% is the
+  // honest reading (nothing was proposed, so nothing converted).
+  return quotationsTotal > 0 ? roundNumber(quotationsConverted / quotationsTotal) : 0;
 }
 
 async function dashboardTopProducts(

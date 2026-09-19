@@ -525,6 +525,11 @@ export const quotationDeliverySteps = pgTable(
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
     reconciliationDeadline: timestamp('reconciliation_deadline', { withTimezone: true }),
     publicError: text('public_error'),
+    // Transport failure class of the last attempt. `failed` only ever holds a
+    // pre-transport class (`ambiguous` is routed to reconciliation instead), so
+    // this is the durable proof that a re-send of the same revision cannot
+    // duplicate a message the provider may already have accepted.
+    failureKind: text('failure_kind'),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     readAt: timestamp('read_at', { withTimezone: true }),
@@ -541,8 +546,25 @@ export const quotationDeliverySteps = pgTable(
       'quotation_delivery_steps_state_check',
       sql`${table.state} IN ('queued', 'sending', 'server_ack', 'reconciling', 'retry_scheduled', 'needs_review', 'delivered', 'read', 'failed')`
     ),
+    check(
+      'quotation_delivery_steps_failure_kind_check',
+      sql`${table.failureKind} IS NULL OR ${table.failureKind} IN ('transient_pre_transport', 'permanent_pre_transport', 'ambiguous')`
+    ),
   ]
 );
+
+/**
+ * Durable heartbeat of the scheduled delivery worker. Without it "worker stopped"
+ * and "worker running with an empty queue" are indistinguishable from the
+ * database, which is exactly the ambiguity that hid INC-W02. One row per worker,
+ * overwritten on every successful run; no delivery processing reads it.
+ */
+export const quotationDeliveryWorkerRuns = pgTable('quotation_delivery_worker_runs', {
+  worker: text('worker').primaryKey(),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }).notNull(),
+  processed: integer('processed').notNull(),
+  remaining: boolean('remaining').notNull(),
+});
 
 /**
  * Durable inbox for Evolution delivery receipts (MESSAGES_UPDATE). A receipt

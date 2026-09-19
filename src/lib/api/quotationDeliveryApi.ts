@@ -9,7 +9,10 @@ export type DeliveryState =
   | 'failed';
 
 export type DeliveryIdentity = { revisionId: string; flowId: string };
-export type DeliveryResolution = 'confirmed_received' | 'confirmed_not_received';
+export type DeliveryResolution =
+  | 'confirmed_received'
+  | 'confirmed_not_received'
+  | 'retry_same_revision';
 
 export interface DeliveryListFilters {
   states?: DeliveryState[];
@@ -39,6 +42,8 @@ export interface DeliveryStepView {
     | 'failed';
   attemptCount: number;
   publicError: string | null;
+  /** Transport failure class of the last attempt; only `permanent_pre_transport` is re-sendable. */
+  failureKind: 'transient_pre_transport' | 'permanent_pre_transport' | 'ambiguous' | null;
   nextAttemptAt?: string | null;
   acceptedAt?: string | null;
   deliveredAt?: string | null;
@@ -71,7 +76,7 @@ export interface DeliveryView {
   state: DeliveryState;
   publicError: string | null;
   completionSource: 'provider_receipt' | 'operator' | 'legacy_provider_ack' | null;
-  progress: { delivered: number; total: number };
+  progress: { accepted: number; delivered: number; total: number };
   steps: DeliveryStepView[];
   nextAttemptAt: string | null;
   actionDeadline: string | null;
@@ -85,6 +90,12 @@ export interface DeliveryProjection {
   label: string;
   requiresAction: boolean;
   delayed: boolean;
+  /** A dispatch was accepted by the provider (or already delivered). */
+  sendConfirmed: boolean;
+  /** Honest reason for the blocked send button, derived from the state. */
+  sendBlockedReason: string;
+  /** The same revision may be re-sent after a provably pre-transport failure. */
+  canRetrySameRevision: boolean;
 }
 
 export class QuotationDeliveryApiError extends Error {
@@ -121,6 +132,8 @@ const DELIVERY_STEP_STATES = [
 ] as const satisfies readonly DeliveryStepView['state'][];
 
 const COMPLETION_SOURCES = ['provider_receipt', 'operator', 'legacy_provider_ack'] as const;
+
+const FAILURE_KINDS = ['transient_pre_transport', 'permanent_pre_transport', 'ambiguous'] as const;
 
 const MAX_PAGE_SIZE = 100;
 const MAX_PAGE_TOTAL = 1_000_000;
@@ -247,6 +260,10 @@ function parseStep(value: unknown): DeliveryStepView {
       value.public_error === null
         ? null
         : text(value.public_error, { required: false, maximum: 500 }),
+    failureKind:
+      value.failure_kind === null || value.failure_kind === undefined
+        ? null
+        : oneOf(value.failure_kind, FAILURE_KINDS),
     nextAttemptAt: nullableTimestamp(value.next_attempt_at),
     acceptedAt: nullableTimestamp(value.accepted_at),
     deliveredAt: nullableTimestamp(value.delivered_at),
@@ -266,6 +283,7 @@ function parseDelivery(
   const steps = value.steps.map(parseStep);
   const total = integer(progress.total, { minimum: 0, maximum: MAX_STEPS });
   const delivered = integer(progress.delivered, { minimum: 0, maximum: total });
+  const accepted = integer(progress.accepted, { minimum: 0, maximum: total });
   if (total !== steps.length || steps.some((step, index) => step.position !== index))
     invalidResponse();
   const phone =
@@ -287,7 +305,7 @@ function parseDelivery(
         : text(value.public_error, { required: false, maximum: 500 }),
     completionSource:
       value.completion_source === null ? null : oneOf(value.completion_source, COMPLETION_SOURCES),
-    progress: { delivered, total },
+    progress: { accepted, delivered, total },
     steps,
     nextAttemptAt: nullableTimestamp(value.next_attempt_at),
     actionDeadline:
@@ -371,13 +389,62 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
     delivery.state === 'provider_accepted' &&
     actionDeadline !== null &&
     Date.parse(actionDeadline) <= Date.now();
+  const steps = Array.isArray(delivery.steps) ? delivery.steps : [];
+  // "Sent" is a claim about the provider, never about the existence of a delivery
+  // row: only an accepted (or further) step proves a message left the machine.
+  const acceptedStep = (step: DeliveryStepView) =>
+    step.state === 'server_ack' || step.state === 'delivered' || step.state === 'read';
+  const sendConfirmed =
+    steps.length > 0
+      ? steps.some(acceptedStep)
+      : delivery.state === 'provider_accepted' || delivery.state === 'delivered';
+  const operatorCancelled =
+    delivery.state === 'failed' && delivery.completionSource === 'operator';
+  // The same revision may be re-sent only when the last attempt of a step was
+  // classified before transport — 4xx, invalid configuration/recipient, local
+  // block, or an exhausted rate-limit/render budget — and nothing was ever
+  // accepted for it. Ambiguous, timed-out, 5xx and lost-response dispatches keep
+  // the block untouched.
+  const canRetrySameRevision =
+    delivery.state === 'failed' &&
+    !operatorCancelled &&
+    steps.some(
+      (step) =>
+        step.state === 'failed' &&
+        (step.failureKind === 'permanent_pre_transport' ||
+          step.failureKind === 'transient_pre_transport') &&
+        !step.acceptedAt
+    );
+  const sendBlockedReason = operatorCancelled
+    ? 'A entrega foi cancelada pelo operador.'
+    : delivery.state === 'delivered'
+      ? 'Este orçamento foi entregue pelo WhatsApp.'
+      : delivery.state === 'provider_accepted'
+        ? 'Este orçamento já foi enviado pelo WhatsApp.'
+        : delivery.state === 'reconciling'
+          ? 'Aguardando a confirmação do WhatsApp. Reenviar agora pode duplicar mensagens.'
+          : delivery.state === 'needs_review'
+            ? 'A entrega precisa da sua decisão antes de qualquer reenvio.'
+            : delivery.state === 'retry_scheduled'
+              ? 'O envio será tentado novamente. Aguarde a confirmação.'
+              : delivery.state === 'queued'
+                ? 'Envio na fila. Aguarde a confirmação.'
+                : delivery.state === 'processing'
+                  ? 'Envio em andamento.'
+                  : canRetrySameRevision
+                    ? 'A entrega falhou antes do envio. Reenvie a mesma revisão no status abaixo.'
+                    : 'A entrega falhou e esta revisão não pode ser reenviada.';
   return {
-    label:
-      delivery.state === 'failed' && delivery.completionSource === 'operator'
-        ? 'Cancelada pelo operador'
+    label: operatorCancelled
+      ? 'Cancelada pelo operador'
+      : canRetrySameRevision
+        ? 'Falhou antes do envio'
         : labels[delivery.state],
     requiresAction: delivery.state === 'needs_review' || delayed,
     delayed,
+    sendConfirmed,
+    sendBlockedReason,
+    canRetrySameRevision,
   };
 }
 
@@ -552,7 +619,11 @@ export async function resolveDelivery(
   note: string
 ): Promise<DeliveryView> {
   const deliveryId = inputIdentifier(id, 'Identificador da entrega');
-  if (decision !== 'confirmed_received' && decision !== 'confirmed_not_received') {
+  if (
+    decision !== 'confirmed_received' &&
+    decision !== 'confirmed_not_received' &&
+    decision !== 'retry_same_revision'
+  ) {
     invalidInput('Decisão de resolução inválida.');
   }
   if (

@@ -75,6 +75,32 @@ test('worker supports GET and fails closed without a sufficiently long secret', 
   assert.equal(calls, 1);
 });
 
+test('worker records a durable heartbeat after a successful run without changing its body', async () => {
+  const heartbeats: Array<{ processed: number; remaining: boolean }> = [];
+  const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
+    processDue: async () => ({ processed: 2, remaining: false }),
+    recordRun: async (value: { processed: number; remaining: boolean }) => {
+      heartbeats.push(value);
+    },
+    environment: { CRON_SECRET: cronSecret },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 2, remaining: false });
+  assert.deepEqual(heartbeats, [{ processed: 2, remaining: false }]);
+});
+
+test('worker keeps reporting the run when the diagnostics heartbeat fails', async () => {
+  const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
+    processDue: async () => ({ processed: 1, remaining: true }),
+    recordRun: async () => {
+      throw new Error('diagnostics unavailable');
+    },
+    environment: { CRON_SECRET: cronSecret },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 1, remaining: true });
+});
+
 test('worker returns safe service error for invalid module counts', async () => {
   const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
     processDue: async () => ({ processed: QUOTATION_DELIVERY_WORKER_BATCH_SIZE + 1, remaining: true }),

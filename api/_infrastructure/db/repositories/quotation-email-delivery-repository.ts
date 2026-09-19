@@ -6,6 +6,7 @@ import {
 } from '../../../_modules/quotation-email-renderer.js';
 import { getDatabase, type AppDatabase } from '../client.js';
 import { quotationEmailDeliveries } from '../schema.js';
+import { promoteDealOnProviderAcceptance } from './crm-deals-repository.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -285,6 +286,13 @@ async function transitionAccepted(
   if (!row) {
     if (updated.length === 0) throw new QuotationEmailDeliveryNotFoundError();
     throw new QuotationEmailDeliveryRepositoryError();
+  }
+  // An accepted e-mail is the same kind of authorization as an accepted
+  // WhatsApp dispatch: the provider took the message and the customer can
+  // receive it. Idempotent and monotonic, so replays of an accepted attempt
+  // (including the retry-same-attempt path) also repair a missed promotion.
+  if (row.state === 'accepted') {
+    await promoteDealOnProviderAcceptance(db, { revisionId: row.revisionId }, { now: current });
   }
   return updated.length === 1 ? toDelivery(row) : resolveAccepted(row, normalized.providerEmailId);
 }

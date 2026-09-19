@@ -206,6 +206,9 @@ test(
           .where(
             inArray(schema.quotationEmailDeliveries.id, [ids.firstAttempt, ids.secondAttempt])
           );
+        // An accepted attempt now promotes the deal behind the quotation, so the
+        // fixture must clear that row before deleting the quotation it points to.
+        await db.delete(schema.crmDeals).where(eq(schema.crmDeals.quotationId, ids.quotation));
         await db
           .delete(schema.quoteRevisions)
           .where(inArray(schema.quoteRevisions.id, [ids.firstRevision, ids.secondRevision]));

@@ -574,7 +574,8 @@ test(
       });
       assert.equal(reattached.id, leadDealId);
       assert.equal(reattached.quotationId, quotationId);
-      assert.equal(reattached.status, 'Orcamento Enviado');
+      // A document-level upsert links identity but never claims the sent stage.
+      assert.equal(reattached.status, 'Novo Lead');
       assert.equal(reattached.nome, 'Ana Upsert Emitida');
       const [lead] = await db.select().from(schema.quoteLeads).where(eq(schema.quoteLeads.id, leadId));
       assert.equal(lead?.crmDealId, leadDealId);

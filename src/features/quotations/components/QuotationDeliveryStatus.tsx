@@ -18,9 +18,9 @@ export interface QuotationDeliveryStatusProps {
 }
 
 function formatProgress(delivery: DeliveryView): string {
-  const { delivered, total } = delivery.progress;
+  const { accepted, delivered, total } = delivery.progress;
   if (total === 0) return 'Nenhuma etapa configurada';
-  return `Etapas entregues: ${delivered} de ${total}`;
+  return `Aceitas pelo WhatsApp: ${accepted} de ${total} · Confirmadas como entregues: ${delivered} de ${total}`;
 }
 
 export function QuotationDeliveryStatus({
@@ -56,6 +56,9 @@ export function QuotationDeliveryStatus({
   const projection = delivery ? projectDelivery(delivery) : null;
   const delayed = projection?.delayed === true;
   const canResolve = Boolean(delivery && !pending && projection?.requiresAction && onResolve);
+  const canRetrySameRevision = Boolean(
+    delivery && !pending && projection?.canRetrySameRevision && onResolve
+  );
   const statusLabel = pending && !delivery ? 'Enviando' : projection?.label || 'Enviando';
   const statusTone =
     delivery?.state === 'failed' || delivery?.state === 'needs_review'
@@ -158,6 +161,18 @@ export function QuotationDeliveryStatus({
           </Button>
         </div>
       )}
+      {canRetrySameRevision && delivery && (
+        <div className="pt-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => openDialog('retry_same_revision')}
+          >
+            Reenviar a mesma revisão
+          </Button>
+        </div>
+      )}
       {decision && (
         <dialog
           ref={dialogRef}
@@ -173,12 +188,14 @@ export function QuotationDeliveryStatus({
           <form onSubmit={submitResolution} className="space-y-4 p-5">
             <div>
               <h2 id={titleId} className="text-base font-semibold">
-                Confirmar resolução
+                {decision === 'retry_same_revision' ? 'Confirmar reenvio' : 'Confirmar resolução'}
               </h2>
               <p className="mt-1 text-xs leading-5 text-fg-muted">
                 {decision === 'confirmed_received'
                   ? 'Confirme que o cliente recebeu as mensagens já enviadas. O restante não enviado continua na fila.'
-                  : 'Confirme que o cliente não recebeu. Uma nova tentativa pode gerar duplicidade.'}
+                  : decision === 'retry_same_revision'
+                    ? 'O provedor rejeitou o envio antes de qualquer mensagem sair. A mesma revisão volta para a fila; o reenvio depende do worker.'
+                    : 'Confirme que o cliente não recebeu. Uma nova tentativa pode gerar duplicidade.'}
               </p>
             </div>
             <label className="block space-y-1" htmlFor={noteId}>
@@ -218,7 +235,11 @@ export function QuotationDeliveryStatus({
                   })
                 }
               >
-                {submitting ? 'Confirmando…' : 'Confirmar resolução'}
+                {submitting
+                  ? 'Confirmando…'
+                  : decision === 'retry_same_revision'
+                    ? 'Reenviar mesma revisão'
+                    : 'Confirmar resolução'}
               </Button>
             </div>
           </form>

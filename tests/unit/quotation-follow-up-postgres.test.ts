@@ -195,7 +195,11 @@ async function createExtraEligibleFixture(options: {
       await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.id, localIds.step));
       await db.delete(quotationDeliveries).where(eq(quotationDeliveries.id, localIds.delivery));
       await db.delete(quoteRevisions).where(eq(quoteRevisions.id, localIds.revision));
-      if (ownOpportunity) await db.delete(crmDeals).where(eq(crmDeals.id, opportunityId));
+      // An accepted dispatch promotes (and may create) the deal behind the
+      // quotation, so the fixture clears every deal pointing at its own
+      // quotation. A shared opportunity passed in by the caller belongs to
+      // another fixture and is never deleted here.
+      await db.delete(crmDeals).where(eq(crmDeals.quotationId, localIds.quotation));
       await db.delete(quotations).where(eq(quotations.id, localIds.quotation));
       await db.delete(clients).where(eq(clients.id, localIds.client));
     },
@@ -361,6 +365,10 @@ test.after(async () => {
   await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.deliveryId, ids.resendDelivery));
   await db.delete(quotationDeliveries).where(eq(quotationDeliveries.id, ids.delivery));
   await db.delete(quotationDeliveries).where(eq(quotationDeliveries.id, ids.resendDelivery));
+  // An accepted dispatch now creates or advances the deal behind the quotation,
+  // so the fixture clears every deal that points at it before the client goes.
+  await db.delete(crmDeals).where(eq(crmDeals.quotationId, ids.quotation));
+  await db.delete(crmDeals).where(eq(crmDeals.clientId, ids.client));
   await db.delete(crmDeals).where(eq(crmDeals.id, ids.crm));
   await db.delete(quoteRevisions).where(eq(quoteRevisions.id, ids.revision));
   await db.delete(quotations).where(eq(quotations.id, ids.quotation));
