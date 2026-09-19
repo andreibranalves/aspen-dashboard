@@ -102,8 +102,7 @@ export async function readQuotationDeliveryDiagnostics(
           lastRunAt: asDate(worker.lastRunAt) || new Date(0),
           result: worker.processed === FAILED_WORKER_RUN_PROCESSED ? 'failure' : 'success',
           processed: count(worker.processed),
-          remaining:
-            worker.processed !== FAILED_WORKER_RUN_PROCESSED && worker.remaining === true,
+          remaining: worker.processed !== FAILED_WORKER_RUN_PROCESSED && worker.remaining === true,
         }
       : null,
     reconcilingSteps: count(steps?.reconciling),

@@ -63,7 +63,13 @@ test('a delivery whose dispatch was never accepted does not claim it was sent', 
   const projection = projectDelivery(
     delivery({
       state: 'reconciling',
-      steps: [step({ state: 'reconciling', publicError: 'O resultado do transporte requer reconciliação. Não reenvie automaticamente.' })],
+      steps: [
+        step({
+          state: 'reconciling',
+          publicError:
+            'O resultado do transporte requer reconciliação. Não reenvie automaticamente.',
+        }),
+      ],
     })
   );
   assert.equal(projection.label, 'Reconciliação em andamento');
@@ -87,7 +93,9 @@ test('acceptance is what authorizes the sent wording, never the delivery row', (
     delivery({
       state: 'delivered',
       deliveredAt: updatedAt,
-      steps: [step({ state: 'read', acceptedAt: updatedAt, deliveredAt: updatedAt, readAt: updatedAt })],
+      steps: [
+        step({ state: 'read', acceptedAt: updatedAt, deliveredAt: updatedAt, readAt: updatedAt }),
+      ],
     })
   );
   assert.equal(delivered.label, 'Entregue');
@@ -129,7 +137,10 @@ test('only a provably pre-transport failure unlocks re-sending the same revision
     delivery({ state: 'failed', steps: [step({ state: 'failed' })] })
   );
   assert.equal(unclassified.canRetrySameRevision, false);
-  assert.equal(unclassified.sendBlockedReason, 'A entrega falhou e esta revisão não pode ser reenviada.');
+  assert.equal(
+    unclassified.sendBlockedReason,
+    'A entrega falhou e esta revisão não pode ser reenviada.'
+  );
 
   // A step that already carried a provider id or acceptance clock is not
   // provably pre-transport, even when its last failure was.
@@ -169,7 +180,10 @@ test('acceptance evidence, not the step state, decides the sent wording', () => 
     })
   );
   assert.equal(regressed.sendConfirmed, true);
-  assert.equal(regressed.sendBlockedReason, 'A entrega precisa da sua decisão antes de qualquer reenvio.');
+  assert.equal(
+    regressed.sendBlockedReason,
+    'A entrega precisa da sua decisão antes de qualquer reenvio.'
+  );
 
   // The operator confirmation carries no provider acceptance, so it never
   // claims a message was confirmed by WhatsApp.

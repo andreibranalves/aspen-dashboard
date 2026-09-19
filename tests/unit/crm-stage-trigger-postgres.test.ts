@@ -14,10 +14,13 @@ import {
   type FixtureRevisionFields,
 } from '../fixtures/quotation-revision-seeds.ts';
 import * as schema from '../../api/_infrastructure/db/schema.js';
-import { clients, crmDeals, quoteRevisions, quotations } from '../../api/_infrastructure/db/schema.js';
 import {
-  createPostgresQuotationEmailDeliveryRepository,
-} from '../../api/_infrastructure/db/repositories/quotation-email-delivery-repository.js';
+  clients,
+  crmDeals,
+  quoteRevisions,
+  quotations,
+} from '../../api/_infrastructure/db/schema.js';
+import { createPostgresQuotationEmailDeliveryRepository } from '../../api/_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 import { promoteDealOnProviderAcceptance } from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
@@ -126,19 +129,22 @@ databaseTest('a provider acceptance advances an earlier stage to Orcamento Envia
   assert.equal(await dealStatus(earlier.quotationId), 'Orcamento Enviado');
 });
 
-databaseTest('an acceptance never regresses an advanced stage nor revives a lost deal', async () => {
-  const advanced = await seedQuotation('Em Negociacao');
-  await promoteDealOnProviderAcceptance(db as never, { revisionId: advanced.revisionId });
-  assert.equal(await dealStatus(advanced.quotationId), 'Em Negociacao');
+databaseTest(
+  'an acceptance never regresses an advanced stage nor revives a lost deal',
+  async () => {
+    const advanced = await seedQuotation('Em Negociacao');
+    await promoteDealOnProviderAcceptance(db as never, { revisionId: advanced.revisionId });
+    assert.equal(await dealStatus(advanced.quotationId), 'Em Negociacao');
 
-  const won = await seedQuotation('Pedido Fechado');
-  await promoteDealOnProviderAcceptance(db as never, { revisionId: won.revisionId });
-  assert.equal(await dealStatus(won.quotationId), 'Pedido Fechado');
+    const won = await seedQuotation('Pedido Fechado');
+    await promoteDealOnProviderAcceptance(db as never, { revisionId: won.revisionId });
+    assert.equal(await dealStatus(won.quotationId), 'Pedido Fechado');
 
-  const lost = await seedQuotation('Perdido');
-  await promoteDealOnProviderAcceptance(db as never, { revisionId: lost.revisionId });
-  assert.equal(await dealStatus(lost.quotationId), 'Perdido');
-});
+    const lost = await seedQuotation('Perdido');
+    await promoteDealOnProviderAcceptance(db as never, { revisionId: lost.revisionId });
+    assert.equal(await dealStatus(lost.quotationId), 'Perdido');
+  }
+);
 
 databaseTest('an accepted e-mail attempt authorizes the commercial stage', async () => {
   const { quotationId, revisionId } = await seedQuotation('Novo Lead');

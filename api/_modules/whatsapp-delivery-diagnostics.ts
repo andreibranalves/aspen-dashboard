@@ -46,7 +46,9 @@ export async function handler(
       pending_receipts: diagnostics.pendingReceipts,
     });
   } catch {
-    return json(503, { error: 'Não foi possível ler o diagnóstico das entregas. Tente novamente.' });
+    return json(503, {
+      error: 'Não foi possível ler o diagnóstico das entregas. Tente novamente.',
+    });
   }
 }
 

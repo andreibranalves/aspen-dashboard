@@ -399,8 +399,7 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
     steps.length > 0
       ? steps.some(acceptedStep)
       : delivery.state === 'provider_accepted' || delivery.state === 'delivered';
-  const operatorCancelled =
-    delivery.state === 'failed' && delivery.completionSource === 'operator';
+  const operatorCancelled = delivery.state === 'failed' && delivery.completionSource === 'operator';
   // The same revision may be re-sent only when the last attempt of a step was
   // classified before transport — 4xx, invalid configuration/recipient, local
   // block, or an exhausted rate-limit/render budget — and nothing was ever

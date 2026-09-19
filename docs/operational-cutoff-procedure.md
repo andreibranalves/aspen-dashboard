@@ -102,6 +102,13 @@ status esperado e a fila está verificada e saudável; em qualquer outro caso im
 Compare o `host=` reportado com o host ativo conhecido. O comando não corrige
 destinos: alteração de QStash ou do webhook é operação do responsável principal.
 
+A aba **Canais** (Comunicação e Configurações) mostra, somente leitura, a última execução
+registrada do worker de entregas, quantas etapas estão em reconciliação e quantos recibos
+aguardam correlação (`GET /api/whatsapp-delivery-diagnostics`). O painel não envia, não
+reivindica lease nem expira nada. `nenhuma execução registrada` significa que nenhuma
+execução autorizada gravou resultado desde o deploy desta versão: confirme o schedule
+QStash e o bearer encaminhado antes de concluir que o worker não rodou.
+
 ## Corte de follow-up de orçamento
 
 O corte do follow-up é separado da aplicação da migration. A migration aditiva deve ser

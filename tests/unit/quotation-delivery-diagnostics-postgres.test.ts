@@ -133,8 +133,14 @@ test(
     await db.delete(quotationDeliveries);
     const overdueDeadline = new Date(Date.now() - 60_000);
     const futureDeadline = new Date(Date.now() + 600_000);
-    await seedDeliveryWithStep({ stepState: 'reconciling', reconciliationDeadline: overdueDeadline });
-    await seedDeliveryWithStep({ stepState: 'reconciling', reconciliationDeadline: futureDeadline });
+    await seedDeliveryWithStep({
+      stepState: 'reconciling',
+      reconciliationDeadline: overdueDeadline,
+    });
+    await seedDeliveryWithStep({
+      stepState: 'reconciling',
+      reconciliationDeadline: futureDeadline,
+    });
     await seedDeliveryWithStep({ stepState: 'queued', reconciliationDeadline: null });
     await db.insert(evolutionReceiptInbox).values([
       {

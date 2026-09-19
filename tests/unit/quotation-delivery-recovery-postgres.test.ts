@@ -122,7 +122,9 @@ async function seedQuotation(options: { dealStatus?: string; dealId?: string | n
 }
 
 function moduleFixture(options: {
-  transport: (input: { step: { type: string } }) => Promise<{ accepted: true; providerMessageId: string }>;
+  transport: (input: {
+    step: { type: string };
+  }) => Promise<{ accepted: true; providerMessageId: string }>;
   clockRef: { value: Date };
   revisionId: string;
   flowId: string;
@@ -311,7 +313,11 @@ databaseTest(
     const finished = await module.get({ deliveryId: delivery.id });
     assert.equal(finished?.state, 'provider_accepted');
     assert.equal(finished?.steps[0]?.state, 'server_ack');
-    assert.equal(accepted.length, 1, 'the same revision was dispatched exactly once after the decision');
+    assert.equal(
+      accepted.length,
+      1,
+      'the same revision was dispatched exactly once after the decision'
+    );
     // Same revision: no new commercial revision was created to bypass the failure.
     const revisions = await db
       .select()
@@ -324,59 +330,56 @@ databaseTest(
   }
 );
 
-databaseTest(
-  'an operator-cancelled delivery never offers the same-revision re-send',
-  async () => {
-    const cancelledSeed = await seedQuotation();
-    const clockRef = { value: new Date('2026-09-18T12:00:00.000Z') };
-    const cancelled = moduleFixture({
-      clockRef,
-      revisionId: cancelledSeed.revisionId,
-      flowId: `flow-${cancelledSeed.revisionId}`,
-      steps: [textStep(0)],
-      transport: async () => {
-        // 429: a retry is scheduled automatically, which is what the operator
-        // then clears from the queue.
-        throw new EvolutionTransportError(
-          'O provedor limitou temporariamente o transporte.',
-          'transient_pre_transport',
-          'EVOLUTION_RATE_LIMIT'
-        );
-      },
-    });
-    const delivery = await cancelled.module.enqueue({
-      revisionId: cancelledSeed.revisionId,
-      flowId: `flow-${cancelledSeed.revisionId}`,
-      quotationId: cancelledSeed.quotationId,
-      phone: '5511900000001',
-      flowName: 'Fluxo recuperação',
-    });
-    assert.equal(delivery.state, 'retry_scheduled');
-    assert.equal(await cancelled.repository.cancelPending(), 1);
-    const cancelledAggregate = await cancelled.module.get({ deliveryId: delivery.id });
-    assert.equal(cancelledAggregate?.state, 'failed');
-    assert.equal(cancelledAggregate?.completionSource, 'operator');
-    assert.equal(
-      (await projectPublicDelivery(cancelledAggregate!)).projection.canRetrySameRevision,
-      false
-    );
-    await assert.rejects(
-      () =>
-        cancelled.module.resolve({
-          deliveryId: delivery.id,
-          decision: 'retry_same_revision',
-          note: 'cancelada não volta',
-          resolvedBy: 'authenticated-operator',
-        }),
-      (error: unknown) => error instanceof QuotationDeliveryOutboxConflictError
-    );
-    const afterCancel = await db
-      .select()
-      .from(quotationDeliverySteps)
-      .where(eq(quotationDeliverySteps.deliveryId, delivery.id));
-    assert.equal(afterCancel[0]?.state, 'failed');
-  }
-);
+databaseTest('an operator-cancelled delivery never offers the same-revision re-send', async () => {
+  const cancelledSeed = await seedQuotation();
+  const clockRef = { value: new Date('2026-09-18T12:00:00.000Z') };
+  const cancelled = moduleFixture({
+    clockRef,
+    revisionId: cancelledSeed.revisionId,
+    flowId: `flow-${cancelledSeed.revisionId}`,
+    steps: [textStep(0)],
+    transport: async () => {
+      // 429: a retry is scheduled automatically, which is what the operator
+      // then clears from the queue.
+      throw new EvolutionTransportError(
+        'O provedor limitou temporariamente o transporte.',
+        'transient_pre_transport',
+        'EVOLUTION_RATE_LIMIT'
+      );
+    },
+  });
+  const delivery = await cancelled.module.enqueue({
+    revisionId: cancelledSeed.revisionId,
+    flowId: `flow-${cancelledSeed.revisionId}`,
+    quotationId: cancelledSeed.quotationId,
+    phone: '5511900000001',
+    flowName: 'Fluxo recuperação',
+  });
+  assert.equal(delivery.state, 'retry_scheduled');
+  assert.equal(await cancelled.repository.cancelPending(), 1);
+  const cancelledAggregate = await cancelled.module.get({ deliveryId: delivery.id });
+  assert.equal(cancelledAggregate?.state, 'failed');
+  assert.equal(cancelledAggregate?.completionSource, 'operator');
+  assert.equal(
+    (await projectPublicDelivery(cancelledAggregate!)).projection.canRetrySameRevision,
+    false
+  );
+  await assert.rejects(
+    () =>
+      cancelled.module.resolve({
+        deliveryId: delivery.id,
+        decision: 'retry_same_revision',
+        note: 'cancelada não volta',
+        resolvedBy: 'authenticated-operator',
+      }),
+    (error: unknown) => error instanceof QuotationDeliveryOutboxConflictError
+  );
+  const afterCancel = await db
+    .select()
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.deliveryId, delivery.id));
+  assert.equal(afterCancel[0]?.state, 'failed');
+});
 
 databaseTest(
   'a sequence only claims the commercial stage when its terminal step is decided',
@@ -440,39 +443,42 @@ databaseTest(
   }
 );
 
-databaseTest('an already advanced or lost stage is never regressed by an accepted dispatch', async () => {
-  const advanced = await seedQuotation({ dealStatus: 'Em Negociacao' });
-  const clockRef = { value: new Date('2026-09-18T14:00:00.000Z') };
-  const advancedFixture = moduleFixture({
-    clockRef,
-    revisionId: advanced.revisionId,
-    flowId: `flow-${advanced.revisionId}`,
-    steps: [textStep(0)],
-    transport: async () => ({ accepted: true, providerMessageId: `fake-${randomUUID()}` }),
-  });
-  await advancedFixture.module.enqueue({
-    revisionId: advanced.revisionId,
-    flowId: `flow-${advanced.revisionId}`,
-    quotationId: advanced.quotationId,
-    phone: '5511900000001',
-    flowName: 'Fluxo recuperação',
-  });
-  assert.equal((await readDeal(advanced.quotationId))?.status, 'Em Negociacao');
+databaseTest(
+  'an already advanced or lost stage is never regressed by an accepted dispatch',
+  async () => {
+    const advanced = await seedQuotation({ dealStatus: 'Em Negociacao' });
+    const clockRef = { value: new Date('2026-09-18T14:00:00.000Z') };
+    const advancedFixture = moduleFixture({
+      clockRef,
+      revisionId: advanced.revisionId,
+      flowId: `flow-${advanced.revisionId}`,
+      steps: [textStep(0)],
+      transport: async () => ({ accepted: true, providerMessageId: `fake-${randomUUID()}` }),
+    });
+    await advancedFixture.module.enqueue({
+      revisionId: advanced.revisionId,
+      flowId: `flow-${advanced.revisionId}`,
+      quotationId: advanced.quotationId,
+      phone: '5511900000001',
+      flowName: 'Fluxo recuperação',
+    });
+    assert.equal((await readDeal(advanced.quotationId))?.status, 'Em Negociacao');
 
-  const lost = await seedQuotation({ dealStatus: 'Perdido' });
-  const lostFixture = moduleFixture({
-    clockRef,
-    revisionId: lost.revisionId,
-    flowId: `flow-${lost.revisionId}`,
-    steps: [textStep(0)],
-    transport: async () => ({ accepted: true, providerMessageId: `fake-${randomUUID()}` }),
-  });
-  await lostFixture.module.enqueue({
-    revisionId: lost.revisionId,
-    flowId: `flow-${lost.revisionId}`,
-    quotationId: lost.quotationId,
-    phone: '5511900000001',
-    flowName: 'Fluxo recuperação',
-  });
-  assert.equal((await readDeal(lost.quotationId))?.status, 'Perdido');
-});
+    const lost = await seedQuotation({ dealStatus: 'Perdido' });
+    const lostFixture = moduleFixture({
+      clockRef,
+      revisionId: lost.revisionId,
+      flowId: `flow-${lost.revisionId}`,
+      steps: [textStep(0)],
+      transport: async () => ({ accepted: true, providerMessageId: `fake-${randomUUID()}` }),
+    });
+    await lostFixture.module.enqueue({
+      revisionId: lost.revisionId,
+      flowId: `flow-${lost.revisionId}`,
+      quotationId: lost.quotationId,
+      phone: '5511900000001',
+      flowName: 'Fluxo recuperação',
+    });
+    assert.equal((await readDeal(lost.quotationId))?.status, 'Perdido');
+  }
+);
