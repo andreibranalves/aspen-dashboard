@@ -143,13 +143,13 @@ export function toPublicDeliveryView(
   const steps = Array.isArray(delivery.steps) ? delivery.steps : [];
   const delivered = steps.filter((step) => step.state === 'delivered' || step.state === 'read').length;
   // Acceptance and delivery are different facts and the screen must never
-  // conflate them: `accepted` counts every step the provider took (and any step
-  // already confirmed as delivered/read), while `delivered` keeps counting only
+  // conflate them: `accepted` counts the durable acceptance clock the provider
+  // wrote (`accepted_at`), so a later ERROR receipt that moves a step to
+  // `needs_review` cannot erase it, and a step the operator confirmed manually
+  // never counts as accepted by the provider. `delivered` keeps counting only
   // device receipts. Derived from `quotation_delivery_steps` on read; no durable
   // counter exists or is introduced.
-  const accepted = steps.filter(
-    (step) => step.state === 'server_ack' || step.state === 'delivered' || step.state === 'read',
-  ).length;
+  const accepted = steps.filter((step) => Boolean(step.acceptedAt)).length;
   const actionDeadline =
     delivery.state === 'provider_accepted'
       ? delivery.actionDeadline instanceof Date && !Number.isNaN(delivery.actionDeadline.getTime())

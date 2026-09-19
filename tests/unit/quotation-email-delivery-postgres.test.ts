@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import {
@@ -206,6 +206,10 @@ test(
           .where(
             inArray(schema.quotationEmailDeliveries.id, [ids.firstAttempt, ids.secondAttempt])
           );
+        // An accepted attempt promotes the deal behind the quotation, so the
+        // fixture clears that row before deleting the quotation it points to.
+        await db.delete(schema.crmDeals).where(eq(schema.crmDeals.quotationId, ids.quotation));
+        await db.delete(schema.crmDeals).where(eq(schema.crmDeals.clientId, ids.client));
         await db
           .delete(schema.quoteRevisions)
           .where(inArray(schema.quoteRevisions.id, [ids.firstRevision, ids.secondRevision]));

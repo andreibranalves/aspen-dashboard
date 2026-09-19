@@ -5,11 +5,14 @@ import {
   type RenderedQuotationEmail,
 } from '../../../_modules/quotation-email-renderer.js';
 import { getDatabase, type AppDatabase } from '../client.js';
+import { promoteDealOnProviderAcceptance } from './crm-deals-repository.js';
 import { quotationEmailDeliveries } from '../schema.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type DatabaseProvider = () => AppDatabase;
+type QuotationEmailTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
+type QuotationEmailDatabase = AppDatabase | QuotationEmailTransaction;
 type QuotationEmailDeliveryRow = typeof quotationEmailDeliveries.$inferSelect;
 type ReserveInput = {
   attemptId: string;
@@ -179,7 +182,7 @@ function toDelivery(row: QuotationEmailDeliveryRow): QuotationEmailDelivery {
 }
 
 async function readDelivery(
-  db: AppDatabase,
+  db: QuotationEmailDatabase,
   attemptId: string
 ): Promise<QuotationEmailDeliveryRow | null> {
   const [row] = await db
@@ -258,7 +261,7 @@ function resolveFailed(
 }
 
 async function transitionAccepted(
-  db: AppDatabase,
+  db: QuotationEmailDatabase,
   input: AcceptedInput,
   current: Date
 ): Promise<QuotationEmailDelivery> {
@@ -285,6 +288,13 @@ async function transitionAccepted(
   if (!row) {
     if (updated.length === 0) throw new QuotationEmailDeliveryNotFoundError();
     throw new QuotationEmailDeliveryRepositoryError();
+  }
+  if (row.state === 'accepted') {
+    // An accepted e-mail is the same authorization as an accepted WhatsApp
+    // dispatch, and it runs in the same transaction that made the acceptance
+    // durable: a crash cannot leave the acceptance without the promotion, and a
+    // replay of an accepted attempt repairs a promotion that never committed.
+    await promoteDealOnProviderAcceptance(db, { revisionId: row.revisionId }, { now: current });
   }
   return updated.length === 1 ? toDelivery(row) : resolveAccepted(row, normalized.providerEmailId);
 }
@@ -381,7 +391,8 @@ export function createPostgresQuotationEmailDeliveryRepository(
     async markAccepted(input) {
       const normalized = validateAcceptedInput(input);
       try {
-        return await transitionAccepted(getDb(), normalized, now());
+        const db = getDb();
+        return await db.transaction((tx) => transitionAccepted(tx, normalized, now()));
       } catch (error) {
         rethrowRepositoryError(error, 'markAccepted');
       }

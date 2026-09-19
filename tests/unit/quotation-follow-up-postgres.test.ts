@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { and, eq, sql, inArray} from 'drizzle-orm';
+import { and, eq, or, sql, inArray} from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
@@ -367,6 +367,19 @@ test.after(async () => {
   await db.delete(quotationDeliveries).where(eq(quotationDeliveries.id, ids.resendDelivery));
   // An accepted dispatch now creates or advances the deal behind the quotation,
   // so the fixture clears every deal that points at it before the client goes.
+  // A deal left by an earlier aborted run is cleared with its dependents first,
+  // otherwise the delete fails on the next-action foreign key and hangs the lane.
+  const fixtureDealIds = (
+    await db
+      .select({ id: crmDeals.id })
+      .from(crmDeals)
+      .where(or(eq(crmDeals.quotationId, ids.quotation), eq(crmDeals.clientId, ids.client)))
+  ).map((row) => row.id);
+  if (fixtureDealIds.length > 0) {
+    await db
+      .delete(opportunityNextActions)
+      .where(inArray(opportunityNextActions.opportunityId, fixtureDealIds));
+  }
   await db.delete(crmDeals).where(eq(crmDeals.quotationId, ids.quotation));
   await db.delete(crmDeals).where(eq(crmDeals.clientId, ids.client));
   await db.delete(crmDeals).where(eq(crmDeals.id, ids.crm));

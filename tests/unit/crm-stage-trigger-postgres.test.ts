@@ -140,7 +140,7 @@ databaseTest('an acceptance never regresses an advanced stage nor revives a lost
   assert.equal(await dealStatus(lost.quotationId), 'Perdido');
 });
 
-databaseTest('an accepted e-mail attempt does not authorize the commercial stage', async () => {
+databaseTest('an accepted e-mail attempt authorizes the commercial stage', async () => {
   const { quotationId, revisionId } = await seedQuotation('Novo Lead');
   const repository = createPostgresQuotationEmailDeliveryRepository(() => db as never);
   const attemptId = randomUUID();
@@ -154,7 +154,12 @@ databaseTest('an accepted e-mail attempt does not authorize the commercial stage
   assert.equal(await dealStatus(quotationId), 'Novo Lead', 'a pending attempt proves nothing');
 
   await repository.markAccepted({ attemptId, providerEmailId: 'resend-email-1' });
-  assert.equal(await dealStatus(quotationId), 'Novo Lead');
+  assert.equal(await dealStatus(quotationId), 'Orcamento Enviado');
+
+  // A replay of the accepted attempt is idempotent and repairs a promotion that
+  // never committed alongside the acceptance.
+  await repository.markAccepted({ attemptId, providerEmailId: 'resend-email-1' });
+  assert.equal(await dealStatus(quotationId), 'Orcamento Enviado');
 });
 
 databaseTest('a failed e-mail attempt never claims the commercial stage', async () => {

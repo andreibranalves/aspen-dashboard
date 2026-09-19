@@ -159,6 +159,31 @@ test('only a provably pre-transport failure unlocks re-sending the same revision
   assert.equal(cancelled.sendBlockedReason, 'A entrega foi cancelada pelo operador.');
 });
 
+test('acceptance evidence, not the step state, decides the sent wording', () => {
+  // An ERROR receipt moves an accepted step back to `needs_review` while the
+  // durable acceptance clock stays: the provider did take the message.
+  const regressed = projectDelivery(
+    delivery({
+      state: 'needs_review',
+      steps: [step({ state: 'needs_review', acceptedAt: updatedAt })],
+    })
+  );
+  assert.equal(regressed.sendConfirmed, true);
+  assert.equal(regressed.sendBlockedReason, 'A entrega precisa da sua decisão antes de qualquer reenvio.');
+
+  // The operator confirmation carries no provider acceptance, so it never
+  // claims a message was confirmed by WhatsApp.
+  const manuallyConfirmed = projectDelivery(
+    delivery({
+      state: 'delivered',
+      completionSource: 'operator',
+      deliveredAt: updatedAt,
+      steps: [step({ state: 'delivered', deliveredAt: updatedAt })],
+    })
+  );
+  assert.equal(manuallyConfirmed.sendConfirmed, false);
+});
+
 test('the public view counts acceptance and delivery as separate facts', () => {
   const view = toPublicDeliveryView({
     id: 'delivery-1',
@@ -225,6 +250,58 @@ test('the public view counts acceptance and delivery as separate facts', () => {
   // The incident showed "0 de 3" for three accepted steps: acceptance and
   // delivery are now counted apart instead of conflated.
   assert.deepEqual(view.progress, { accepted: 3, delivered: 1, total: 3 });
+
+  const regressed = toPublicDeliveryView({
+    id: 'delivery-1',
+    revisionId: 'revision-1',
+    businessNumber: 'ORC-20260001',
+    clientName: 'Cliente',
+    phone: '5511900000001',
+    flowId: 'flow-1',
+    flowName: 'Fluxo',
+    state: 'needs_review',
+    completionSource: null,
+    publicError: null,
+    nextAttemptAt: null,
+    actionDeadline: null,
+    reconciliationDeadline: null,
+    deliveredAt: null,
+    createdAt: new Date(updatedAt),
+    updatedAt: new Date(updatedAt),
+    steps: [
+      {
+        id: 'step-1',
+        position: 0,
+        type: 'text',
+        state: 'needs_review',
+        attemptCount: 1,
+        publicError: null,
+        failureKind: null,
+        nextAttemptAt: null,
+        acceptedAt: new Date(updatedAt),
+        deliveredAt: null,
+        readAt: null,
+        updatedAt: new Date(updatedAt),
+      },
+      {
+        id: 'step-2',
+        position: 1,
+        type: 'text',
+        state: 'delivered',
+        attemptCount: 1,
+        publicError: null,
+        failureKind: null,
+        nextAttemptAt: null,
+        acceptedAt: null,
+        deliveredAt: new Date(updatedAt),
+        readAt: null,
+        updatedAt: new Date(updatedAt),
+      },
+    ],
+  } as never);
+  // The ERROR receipt did not erase the durable acceptance, and the manually
+  // confirmed step is delivery without provider acceptance.
+  assert.deepEqual(regressed.progress, { accepted: 1, delivered: 1, total: 2 });
 });
 
 test('the public view exposes the failure class the retry decision depends on', () => {

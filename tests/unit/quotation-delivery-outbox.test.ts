@@ -785,13 +785,13 @@ test('transient failure schedules a bounded retry and permanent failure does not
   assert.equal(permanentTransport.calls.length, 1);
   assert.equal((await permanent.module.process(failed.id))?.state, 'failed');
   assert.equal(permanentTransport.calls.length, 1);
-  // A permanent pre-transport failure is terminal for this revision: the copy
-  // must state that next step instead of inviting a retry that cannot happen.
+  // A permanent pre-transport failure leaves the same revision re-sendable: the
+  // copy states the cause and never claims the revision is dead.
   assert.equal(
     failed.steps[0]?.publicError,
-    'O envio foi rejeitado antes do transporte. Esta revisão não pode ser reenviada; emita uma nova revisão.'
+    'O envio foi rejeitado antes do transporte.'
   );
-  assert.doesNotMatch(failed.steps[0]!.publicError!, /tente novamente/i);
+  assert.doesNotMatch(failed.steps[0]!.publicError!, /não pode ser reenviada|nova revisão/i);
 });
 
 test('exhausted transient failures drop the retry instruction for transport and document preparation', async () => {
@@ -816,9 +816,9 @@ test('exhausted transient failures drop the retry instruction for transport and 
   assert.equal(result.state, 'failed');
   assert.equal(
     result.steps[0]?.publicError,
-    'As tentativas de envio se esgotaram. Esta revisão não pode ser reenviada; emita uma nova revisão.'
+    'As tentativas de envio se esgotaram antes do transporte.'
   );
-  assert.doesNotMatch(result.steps[0]!.publicError!, /tente novamente/i);
+  assert.doesNotMatch(result.steps[0]!.publicError!, /não pode ser reenviada|nova revisão/i);
 
   const pdfClock = { value: new Date(start) };
   const pdfTransport = new FakeTransport();
@@ -840,7 +840,7 @@ test('exhausted transient failures drop the retry instruction for transport and 
   assert.equal(pdf.state, 'failed');
   assert.equal(pdfTransport.calls.length, 0);
   assert.doesNotMatch(pdf.steps[0]!.publicError!, /tentar novamente/i);
-  assert.match(pdf.steps[0]!.publicError!, /emita uma nova revisão/i);
+  assert.match(pdf.steps[0]!.publicError!, /se esgotaram antes do transporte/i);
 });
 
 test('enqueue processes short inter-step delays without waiting for the scheduler', async () => {

@@ -831,11 +831,24 @@ async function syncDeliveryState(
       updatedAt: now,
     })
     .where(eq(quotationDeliveries.id, deliveryId));
-  const fullyAcceptedByProvider =
-    steps.length > 0 &&
-    steps.every((step) => step.providerMessageId !== null && asDate(step.acceptedAt) !== null);
+  // The commercial stage is decided by the terminal step of the sequence, not
+  // by every step: an earlier step the operator confirmed manually never
+  // invalidates the real acceptance that closed the dispatch. The origin stays
+  // distinguishable — provider acceptance (provider id plus acceptance clock)
+  // or the operator decision registered on the delivery.
+  let terminalStep: (typeof steps)[number] | null = null;
+  for (const step of steps) {
+    if (terminalStep === null || step.position > terminalStep.position) terminalStep = step;
+  }
+  const terminalDecidesSequence =
+    terminalStep === null
+      ? state === 'delivered' && completionSource === 'operator'
+      : (terminalStep.providerMessageId !== null && asDate(terminalStep.acceptedAt) !== null) ||
+        (terminalStep.state === 'delivered' &&
+          asDate(terminalStep.acceptedAt) === null &&
+          completionSource === 'operator');
   const acceptedNow =
-    fullyAcceptedByProvider &&
+    terminalDecidesSequence &&
     state !== delivery.state &&
     (state === 'provider_accepted' || state === 'delivered');
   if (acceptedNow) {

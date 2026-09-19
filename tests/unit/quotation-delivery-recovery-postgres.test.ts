@@ -379,7 +379,7 @@ databaseTest(
 );
 
 databaseTest(
-  'a partial sequence does not claim the commercial stage until the provider accepts the whole dispatch',
+  'a sequence only claims the commercial stage when its terminal step is decided',
   async () => {
     const { quotationId, revisionId } = await seedQuotation();
     const clockRef = { value: new Date('2026-09-18T13:00:00.000Z') };
@@ -429,7 +429,14 @@ databaseTest(
       resolvedBy: 'authenticated-operator',
     });
     assert.equal(resolved.state, 'delivered');
-    assert.equal((await readDeal(quotationId))?.status, 'Novo Lead');
+    // The operator confirmation closed the terminal step without any provider
+    // acceptance of its own; the sequence is decided and the stage advances.
+    assert.equal(resolved.completionSource, 'operator');
+    const terminal = resolved.steps.reduce((last, entry) =>
+      entry.position > last.position ? entry : last
+    );
+    assert.equal(terminal.acceptedAt, null);
+    assert.equal((await readDeal(quotationId))?.status, 'Orcamento Enviado');
   }
 );
 

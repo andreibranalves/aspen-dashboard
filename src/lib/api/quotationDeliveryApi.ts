@@ -391,9 +391,10 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
     Date.parse(actionDeadline) <= Date.now();
   const steps = Array.isArray(delivery.steps) ? delivery.steps : [];
   // "Sent" is a claim about the provider, never about the existence of a delivery
-  // row: only an accepted (or further) step proves a message left the machine.
-  const acceptedStep = (step: DeliveryStepView) =>
-    step.state === 'server_ack' || step.state === 'delivered' || step.state === 'read';
+  // row: only the durable acceptance clock the provider wrote proves a message
+  // left the machine. A step later moved to `needs_review` by an ERROR receipt
+  // keeps its `accepted_at`, and a step the operator confirmed manually has none.
+  const acceptedStep = (step: DeliveryStepView) => Boolean(step.acceptedAt);
   const sendConfirmed =
     steps.length > 0
       ? steps.some(acceptedStep)

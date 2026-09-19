@@ -81,15 +81,16 @@ function isIgnoredRemoteJid(value: string): boolean {
 
 const PUBLIC_ERRORS: Record<TransportFailureKind, string> = {
   transient_pre_transport: 'Falha transitória antes do transporte. Tente novamente.',
-  permanent_pre_transport:
-    'O envio foi rejeitado antes do transporte. Esta revisão não pode ser reenviada; emita uma nova revisão.',
+  permanent_pre_transport: 'O envio foi rejeitado antes do transporte.',
   ambiguous: 'O resultado do transporte requer reconciliação. Não reenvie automaticamente.',
 };
 
-// Retry budget is exhausted on the attempt whose delay is `null`. The copy must
-// then drop the retry invitation: the revision cannot be sent again.
+// Retry budget is exhausted on the attempt whose delay is `null`. The failure is
+// still provably pre-transport, so the copy states the cause and leaves the
+// explicit same-revision re-send (the action offered next to it) to speak for
+// itself.
 const EXHAUSTED_PRE_TRANSPORT_PUBLIC_ERROR =
-  'As tentativas de envio se esgotaram. Esta revisão não pode ser reenviada; emita uma nova revisão.';
+  'As tentativas de envio se esgotaram antes do transporte.';
 
 const PDF_PUBLIC_ERRORS: Record<'transient' | 'permanent', string> = {
   transient: 'PDF indisponível. Tentar novamente.',
