@@ -10,6 +10,7 @@ import {
 } from '../deadline.js';
 import {
   whatsappContactActivity,
+  whatsappContactBlockEvents,
   whatsappFollowUpIngestionHealth,
 } from '../schema.js';
 
@@ -41,6 +42,17 @@ export interface ContactBlockInput {
   canonicalPhone: string;
   providerConversationId: string;
   now?: Date;
+  actor?: string;
+  reason?: string;
+}
+
+export interface ContactUnblockInput {
+  instance: string;
+  canonicalPhone: string;
+  actor: string;
+  reason: string;
+  now?: Date;
+  providerConversationId?: string | null;
 }
 
 export interface WhatsappContactActivityRecord {
@@ -80,6 +92,7 @@ export interface WhatsappContactActivityRepository {
   markIngestion(input: { instance: string; eventKey: string; at: Date }): Promise<void>;
   isContactBlocked(input: { instance: string; canonicalPhone: string }): Promise<boolean>;
   blockContact(input: ContactBlockInput): Promise<void>;
+  unblockContact(input: ContactUnblockInput): Promise<void>;
   getActivity(input: {
     instance: string;
     providerConversationId: string;
@@ -88,6 +101,7 @@ export interface WhatsappContactActivityRepository {
 }
 
 const activity = whatsappContactActivity;
+const blockEvents = whatsappContactBlockEvents;
 const health = whatsappFollowUpIngestionHealth;
 
 function normalizeRequired(value: string, name: string): string {
@@ -331,15 +345,12 @@ export function createPostgresWhatsappContactActivityRepository(
     async isContactBlocked({ instance: rawInstance, canonicalPhone: rawPhone }): Promise<boolean> {
       const instance = normalizeRequired(rawInstance, 'instance');
       const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
+      void instance;
       const rows = await getDb()
         .select({ id: activity.id })
         .from(activity)
         .where(
-          and(
-            eq(activity.instance, instance),
-            eq(activity.canonicalPhone, canonicalPhone),
-            eq(activity.blockReason, 'do_not_contact'),
-          ),
+          and(eq(activity.canonicalPhone, canonicalPhone), eq(activity.blockReason, 'do_not_contact')),
         )
         .limit(1);
       return rows.length > 0;
@@ -350,37 +361,196 @@ export function createPostgresWhatsappContactActivityRepository(
       canonicalPhone: rawPhone,
       providerConversationId: rawConversationId,
       now: suppliedNow,
+      actor: rawActor,
+      reason: rawReason,
     }): Promise<void> {
       const instance = normalizeRequired(rawInstance, 'instance');
       const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
       const providerConversationId = normalizeRequired(rawConversationId, 'providerConversationId');
+      const actor = normalizeRequired(rawActor || 'system', 'actor');
+      const reason = normalizeRequired(rawReason || 'Não contatar', 'reason');
       const now = normalizeDate(suppliedNow);
-      await getDb()
-        .insert(activity)
-        .values({
-          id: randomUUID(),
-          instance,
-          providerConversationId,
-          lastInboundAt: null,
-          lastInboundProviderMessageId: null,
-          lastOutboundAt: null,
-          lastOutboundProviderMessageId: null,
-          canonicalPhone,
-          identityStatus: 'verified',
-          blockedAt: now,
-          blockReason: 'do_not_contact',
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [activity.instance, activity.providerConversationId],
-          set: {
+      await getDb().transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${canonicalPhone}::text, 0))
+        `);
+        await tx
+          .insert(activity)
+          .values({
+            id: randomUUID(),
+            instance,
+            providerConversationId,
+            lastInboundAt: null,
+            lastInboundProviderMessageId: null,
+            lastOutboundAt: null,
+            lastOutboundProviderMessageId: null,
             canonicalPhone,
+            identityStatus: 'verified',
+            blockedAt: now,
+            blockReason: 'do_not_contact',
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [activity.instance, activity.providerConversationId],
+            set: {
+              canonicalPhone,
+              blockedAt: now,
+              blockReason: 'do_not_contact',
+              updatedAt: now,
+            },
+          });
+        // Propagate the restriction to every activity row of this phone so a
+        // later conversation id for the same contact stays blocked.
+        await tx
+          .update(activity)
+          .set({
             blockedAt: now,
             blockReason: 'do_not_contact',
             updatedAt: now,
-          },
+          })
+          .where(eq(activity.canonicalPhone, canonicalPhone));
+        await tx.insert(blockEvents).values({
+          id: randomUUID(),
+          instance,
+          canonicalPhone,
+          providerConversationId,
+          eventType: 'blocked',
+          actor,
+          reason,
+          occurredAt: now,
+          createdAt: now,
         });
+      });
+    },
+
+    async unblockContact({
+      instance: rawInstance,
+      canonicalPhone: rawPhone,
+      actor: rawActor,
+      reason: rawReason,
+      now: suppliedNow,
+      providerConversationId: rawConversationId,
+    }): Promise<void> {
+      const instance = normalizeRequired(rawInstance, 'instance');
+      const canonicalPhone = normalizeRequired(rawPhone, 'canonicalPhone');
+      const actor = normalizeRequired(rawActor, 'actor');
+      const reason = normalizeRequired(rawReason, 'reason');
+      const now = normalizeDate(suppliedNow);
+      const providerConversationId =
+        rawConversationId == null || String(rawConversationId).trim() === ''
+          ? null
+          : normalizeRequired(String(rawConversationId), 'providerConversationId');
+      await getDb().transaction(async (tx) => {
+        await tx.execute(sql`
+          SELECT pg_advisory_xact_lock(hashtextextended(${canonicalPhone}::text, 0))
+        `);
+        const latestEvents = Array.from(await tx.execute(sql`
+          SELECT event_type
+          FROM whatsapp_contact_block_events
+          WHERE canonical_phone = ${canonicalPhone}
+          ORDER BY occurred_at DESC, created_at DESC, id DESC
+          LIMIT 1
+        `)) as Record<string, unknown>[];
+        await tx
+          .update(activity)
+          .set({
+            blockedAt: null,
+            blockReason: null,
+            updatedAt: now,
+          })
+          .where(eq(activity.canonicalPhone, canonicalPhone));
+        await tx.execute(sql`
+          UPDATE opportunity_next_actions action
+          SET state = 'active',
+              updated_at = ${now.toISOString()}::timestamptz,
+              transition_actor = NULL,
+              transition_at = NULL,
+              transition_origin = NULL,
+              transition_reason = NULL,
+              replaced_by_id = NULL
+          FROM crm_deals deal
+          LEFT JOIN clients client ON client.id = deal.client_id
+          WHERE action.opportunity_id = deal.id
+            AND deal.status NOT IN ('Pedido Fechado', 'Perdido')
+            AND action.state = 'suspended'
+            AND action.transition_reason = 'Não contatar'
+            AND NOT EXISTS (
+              SELECT 1
+              FROM opportunity_next_actions active
+              WHERE active.opportunity_id = action.opportunity_id
+                AND active.state = 'active'
+            )
+            AND (
+              deal.telefone = ${canonicalPhone}
+              OR client.telefone = ${canonicalPhone}
+              OR EXISTS (
+                SELECT 1
+                FROM quotations quotation
+                JOIN quote_revisions revision ON revision.quotation_id = quotation.id
+                JOIN quotation_deliveries delivery ON delivery.revision_id = revision.id
+                WHERE (quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id)
+                  AND regexp_replace(delivery.phone, '[^0-9]', '', 'g') = ${canonicalPhone}
+              )
+              OR EXISTS (
+                SELECT 1
+                FROM quotation_follow_ups follow_up
+                JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+                WHERE follow_up.canonical_phone = ${canonicalPhone}
+                  AND COALESCE(
+                    follow_up.approved_opportunity_id,
+                    quotation.opportunity_id,
+                    (SELECT legacy.id FROM crm_deals legacy
+                     WHERE legacy.quotation_id = quotation.id
+                     ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+                  ) = deal.id
+              )
+            )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM whatsapp_contact_activity blocked_activity
+            WHERE blocked_activity.blocked_at IS NOT NULL
+              AND blocked_activity.block_reason = 'do_not_contact'
+              AND blocked_activity.canonical_phone IN (
+                SELECT phone FROM (
+                  SELECT deal.telefone AS phone
+                  UNION ALL
+                  SELECT client.telefone
+                  UNION ALL
+                  SELECT follow_up.canonical_phone
+                  FROM quotation_follow_ups follow_up
+                  JOIN quotations quotation ON quotation.id = follow_up.quotation_id
+                  WHERE COALESCE(
+                    follow_up.approved_opportunity_id,
+                    quotation.opportunity_id,
+                    (SELECT legacy.id FROM crm_deals legacy
+                     WHERE legacy.quotation_id = quotation.id
+                     ORDER BY legacy.updated_at DESC, legacy.id DESC LIMIT 1)
+                  ) = deal.id
+                  UNION ALL
+                  SELECT regexp_replace(delivery.phone, '[^0-9]', '', 'g')
+                  FROM quotations quotation
+                  JOIN quote_revisions revision ON revision.quotation_id = quotation.id
+                  JOIN quotation_deliveries delivery ON delivery.revision_id = revision.id
+                  WHERE quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id
+                ) linked_phones
+                WHERE phone IS NOT NULL
+              )
+          )
+        `);
+        if (latestEvents[0]?.event_type === 'unblocked') return;
+        await tx.insert(blockEvents).values({
+          id: randomUUID(),
+          instance,
+          canonicalPhone,
+          providerConversationId,
+          eventType: 'unblocked',
+          actor,
+          reason,
+          occurredAt: now,
+          createdAt: now,
+        });
+      });
     },
 
     async getActivity({ instance: rawInstance, providerConversationId: rawConversationId }) {

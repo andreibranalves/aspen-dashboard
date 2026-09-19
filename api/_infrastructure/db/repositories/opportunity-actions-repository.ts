@@ -21,7 +21,12 @@ export type OpportunityActionKind =
   | 'agreed_commitment'
   | 'review';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
-export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
+export type OpportunityActionState =
+  | 'active'
+  | 'suspended'
+  | 'completed'
+  | 'cancelled'
+  | 'superseded';
 export type OpportunityActionScheduleType = 'date_only' | 'timed';
 export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'closed';
 export type OpportunityQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
@@ -122,6 +127,7 @@ export interface OpportunityQueueItem {
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
+  blockedContactPhone: string | null;
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
@@ -131,6 +137,7 @@ export interface OpportunityQueueItem {
   sourceDeliveryId: string | null;
   /** Every proposal linked to the demand, with value and state. */
   proposals: OpportunityProposal[];
+  associationCandidates: Array<{ opportunityId: string; demandSummary: string | null }>;
 }
 
 export interface OpportunityQueuePage {
@@ -296,6 +303,14 @@ export interface SetOpportunityUrgencyInput {
   now?: Date;
 }
 
+export interface AssociateInboundResponseInput {
+  opportunityId: string;
+  actionId: string;
+  expectedVersion: number;
+  actor: string;
+}
+
+
 export interface OpportunityUrgencyResult {
   opportunityId: string;
   actionId: string;
@@ -314,6 +329,9 @@ export interface OpportunityActionRepository {
   continueFollowUp(input: ContinueFollowUpInput): Promise<OpportunityActionCommandResult>;
   listHistory(opportunityId: string): Promise<OpportunityActionHistoryEntry[]>;
   setUrgency(input: SetOpportunityUrgencyInput): Promise<OpportunityUrgencyResult>;
+  associateInboundResponse(
+    input: AssociateInboundResponseInput
+  ): Promise<OpportunityActionCommandResult>;
 }
 
 export class OpportunityActionInputError extends Error {
@@ -737,7 +755,12 @@ function rowOriginNullable(value: unknown): OpportunityActionOrigin | null {
 }
 
 function rowState(value: unknown): OpportunityActionState {
-  if (value === 'completed' || value === 'cancelled' || value === 'superseded') return value;
+  if (
+    value === 'suspended' ||
+    value === 'completed' ||
+    value === 'cancelled' ||
+    value === 'superseded'
+  ) return value;
   return 'active';
 }
 
@@ -819,6 +842,7 @@ interface QueueRow {
   demand_summary: string | null;
   contact_name: string;
   contact_phone: string | null;
+  blocked_contact_phone: string | null;
   contact_email: string | null;
   client_id: string | null;
   client_name: string | null;
@@ -826,6 +850,7 @@ interface QueueRow {
   source_revision_id: string | null;
   source_delivery_id: string | null;
   proposals: unknown;
+  association_candidates: unknown;
 }
 
 interface ProposalJsonRow {
@@ -861,6 +886,21 @@ function parseProposals(value: unknown): OpportunityProposal[] {
     });
   }
   return proposals;
+}
+
+function parseAssociationCandidates(
+  value: unknown,
+): Array<{ opportunityId: string; demandSummary: string | null }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const row = entry as { opportunity_id?: unknown; demand_summary?: unknown };
+    if (typeof row.opportunity_id !== 'string') return [];
+    return [{
+      opportunityId: row.opportunity_id,
+      demandSummary: typeof row.demand_summary === 'string' ? row.demand_summary : null,
+    }];
+  });
 }
 
 function parseBlockers(value: unknown): OpportunityQueueBlocker[] {
@@ -1348,6 +1388,335 @@ export async function advanceConfirmedFollowUp(
   return actionResult;
 }
 
+export interface ApplyInboundResponseTransitionInput {
+  database: ActionDatabase;
+  opportunityId: string;
+  /** Trusted instant of the inbound message driving the transition. */
+  occurredAt: Date;
+  idFactory: () => string;
+  actor?: string;
+}
+
+export const INBOUND_NEEDS_RESPONSE_REASON_CODE = 'inbound_needs_response';
+export const ASSOCIATE_RESPONSE_REASON_CODE = 'associate_response';
+export const VERIFY_CONVERSATION_REASON_CODE = 'verify_conversation';
+export const ASSOCIATE_RESPONSE_REASON = 'Associar resposta';
+export const VERIFY_CONVERSATION_REASON = 'Verificar conversa';
+
+
+/**
+ * An unambiguously associated inbound message replaces the pending return
+ * action with "Preciso responder" (#249). Idempotent by current state: when
+ * the active action already carries this event's transition
+ * (reasonCode 'inbound_needs_response') nothing new is written and the
+ * current result is returned. The caller supplies the database (pool or
+ * transaction); no transaction is opened here.
+ */
+export async function applyInboundResponseTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  const { database, opportunityId, occurredAt } = input;
+  const actor = input.actor || 'system';
+  const action = await activeAction(database, opportunityId);
+  if (action?.reasonCode === INBOUND_NEEDS_RESPONSE_REASON_CODE) {
+    return {
+      actionId: action.id,
+      opportunityId,
+      state: 'active',
+      version: action.version,
+      action: rowRecord(action),
+      successor: null,
+      closed: false,
+    };
+  }
+  if (!action) {
+    throw new ActionNotFoundError('Nenhuma ação ativa para substituir pela resposta do cliente.');
+  }
+  const dueDate = calendarDateInSaoPaulo(occurredAt);
+  return completeWithSuccessor(
+    database,
+    action,
+    {
+      kind: 'review',
+      dueDate,
+      dueTime: null,
+      scheduleType: 'date_only',
+      dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+      reason: 'Preciso responder',
+      reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
+      origin: 'event',
+    },
+    actor,
+    'event',
+    'Cliente respondeu',
+    occurredAt,
+    input.idFactory,
+  );
+}
+
+function reviewSchedule(
+  occurredAt: Date,
+  reason: string,
+  reasonCode: string,
+): NormalizedSchedule {
+  const dueDate = calendarDateInSaoPaulo(occurredAt);
+  return {
+    kind: 'review',
+    dueDate,
+    dueTime: null,
+    scheduleType: 'date_only',
+    dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+    reason,
+    reasonCode,
+    origin: 'event',
+  };
+}
+
+async function applyReviewReasonTransition(
+  input: ApplyInboundResponseTransitionInput,
+  reason: string,
+  reasonCode: string,
+  transitionReason: string,
+): Promise<OpportunityActionCommandResult> {
+  const { database, opportunityId, occurredAt } = input;
+  const actor = input.actor || 'system';
+  const action = await activeAction(database, opportunityId);
+  if (action?.reasonCode === reasonCode) {
+    return {
+      actionId: action.id,
+      opportunityId,
+      state: 'active',
+      version: action.version,
+      action: rowRecord(action),
+      successor: null,
+      closed: false,
+    };
+  }
+  if (!action) {
+    throw new ActionNotFoundError(
+      'Nenhuma ação ativa para substituir pela revisão comercial.',
+    );
+  }
+  return completeWithSuccessor(
+    database,
+    action,
+    reviewSchedule(occurredAt, reason, reasonCode),
+    actor,
+    'event',
+    transitionReason,
+    occurredAt,
+    input.idFactory,
+  );
+}
+
+/**
+ * Contact-level ambiguity: replace the host opportunity's pending action with
+ * "Associar resposta" (#250). Idempotent when that reason is already active.
+ */
+export async function applyAssociateResponseTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  return applyReviewReasonTransition(
+    input,
+    ASSOCIATE_RESPONSE_REASON,
+    ASSOCIATE_RESPONSE_REASON_CODE,
+    'Resposta ambígua entre oportunidades',
+  );
+}
+
+/**
+ * Missing or inconclusive telemetry becomes "Verificar conversa" (#250). Does
+ * not claim customer silence.
+ */
+export async function applyVerifyConversationTransition(
+  input: ApplyInboundResponseTransitionInput,
+): Promise<OpportunityActionCommandResult> {
+  return applyReviewReasonTransition(
+    input,
+    VERIFY_CONVERSATION_REASON,
+    VERIFY_CONVERSATION_REASON_CODE,
+    'Telemetria insuficiente para afirmar silêncio',
+  );
+}
+
+/**
+ * Operator resolves an Associar resposta alert onto one opportunity. The chosen
+ * demand receives Preciso responder; a leftover associate alert on another
+ * opportunity of the same client is cancelled without touching unrelated
+ * contacts (#250).
+ */
+async function resolveAssociateResponseToOpportunity(input: {
+  database: ActionDatabase;
+  alertActionId: string;
+  opportunityId: string;
+  occurredAt: Date;
+  idFactory: () => string;
+  actor: string;
+}): Promise<OpportunityActionCommandResult> {
+  const {
+    database,
+    alertActionId,
+    opportunityId,
+    occurredAt,
+    idFactory,
+    actor,
+  } = input;
+  const suspendedRows = await database
+    .select({
+      id: opportunityNextActions.id,
+      opportunityId: opportunityNextActions.opportunityId,
+    })
+    .from(opportunityNextActions)
+    .where(
+      and(
+        eq(opportunityNextActions.state, 'suspended'),
+        eq(opportunityNextActions.replacedById, alertActionId),
+      ),
+    );
+  const suspendedTarget = suspendedRows.find((row) => row.opportunityId === opportunityId);
+  const targetAction = await activeAction(database, opportunityId);
+  if (targetAction && targetAction.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
+    throw new ActionConflictError('A oportunidade escolhida já possui outra próxima ação ativa.');
+  }
+  if (suspendedTarget) {
+    const [restored] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'active',
+        updatedAt: occurredAt,
+        transitionActor: null,
+        transitionAt: null,
+        transitionOrigin: null,
+        transitionReason: null,
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.id, suspendedTarget.id),
+          eq(opportunityNextActions.state, 'suspended'),
+          eq(opportunityNextActions.replacedById, alertActionId),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    if (!restored) throw new ActionConflictError();
+  }
+  if (!targetAction) {
+    const [closedAlert] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'cancelled',
+        updatedAt: occurredAt,
+        transitionActor: actor,
+        transitionAt: occurredAt,
+        transitionOrigin: 'manual',
+        transitionReason: 'Resposta associada a outra oportunidade',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.id, alertActionId),
+          eq(opportunityNextActions.state, 'active'),
+          eq(opportunityNextActions.reasonCode, ASSOCIATE_RESPONSE_REASON_CODE),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    if (!closedAlert) throw new ActionConflictError();
+    const [restoredHost] = await database
+      .update(opportunityNextActions)
+      .set({
+        state: 'active',
+        updatedAt: occurredAt,
+        transitionActor: null,
+        transitionAt: null,
+        transitionOrigin: null,
+        transitionReason: null,
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.state, 'completed'),
+          eq(opportunityNextActions.replacedById, alertActionId),
+          eq(opportunityNextActions.transitionReason, 'Resposta ambígua entre oportunidades'),
+        ),
+      )
+      .returning({ id: opportunityNextActions.id });
+    if (!restoredHost) throw new ActionConflictError();
+  }
+  let result: OpportunityActionCommandResult;
+  if (targetAction || suspendedTarget) {
+    result = await applyInboundResponseTransition({
+      database,
+      opportunityId,
+      occurredAt,
+      idFactory,
+      actor,
+    });
+  } else {
+    const dueDate = calendarDateInSaoPaulo(occurredAt);
+    const [latest] = await database
+      .select({ version: opportunityNextActions.version })
+      .from(opportunityNextActions)
+      .where(eq(opportunityNextActions.opportunityId, opportunityId))
+      .orderBy(sql`${opportunityNextActions.version} DESC`)
+      .limit(1);
+    const [created] = await database
+      .insert(opportunityNextActions)
+      .values({
+        id: idFactory(),
+        opportunityId,
+        kind: 'review',
+        reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
+        reason: 'Preciso responder',
+        origin: 'event',
+        state: 'active',
+        dueAt: new Date(`${dueDate}T00:00:00-03:00`),
+        dueDate,
+        dueTime: null,
+        scheduleType: 'date_only',
+        version: (latest?.version || 0) + 1,
+        actor,
+        createdAt: occurredAt,
+        updatedAt: occurredAt,
+      })
+      .returning();
+    if (!created) throw new OpportunityActionRepositoryError();
+    result = {
+      actionId: created.id,
+      opportunityId,
+      state: 'active',
+      version: created.version,
+      action: null,
+      successor: rowRecord(created),
+      closed: false,
+    };
+  }
+  await database
+    .update(opportunityNextActions)
+    .set({
+      state: 'active',
+      updatedAt: occurredAt,
+      transitionActor: null,
+      transitionAt: null,
+      transitionOrigin: null,
+      transitionReason: null,
+      replacedById: null,
+    })
+    .where(
+      and(
+        eq(opportunityNextActions.state, 'suspended'),
+        eq(opportunityNextActions.replacedById, alertActionId),
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM opportunity_next_actions active
+          WHERE active.opportunity_id = ${opportunityNextActions.opportunityId}
+            AND active.state = 'active'
+        )`,
+      ),
+    );
+  return result;
+}
+
+
 async function archiveManualFollowUpAttempt(
   database: ActionDatabase,
   input: {
@@ -1631,12 +2000,8 @@ async function verifiedFollowUpIdentity(
       AND NOT EXISTS (
         SELECT 1
         FROM whatsapp_contact_activity blocked
-        WHERE blocked.instance = ${instance}
-          AND blocked.blocked_at IS NOT NULL
-          AND (
-            blocked.provider_conversation_id = activity.provider_conversation_id
-            OR blocked.canonical_phone = activity.canonical_phone
-          )
+        WHERE blocked.blocked_at IS NOT NULL
+          AND blocked.canonical_phone = activity.canonical_phone
       )
     ORDER BY CASE WHEN activity.canonical_phone = ${candidatePhone} THEN 0 ELSE 1 END,
              activity.updated_at DESC,
@@ -2012,6 +2377,9 @@ export function createPostgresOpportunityActionRepository(
               a.schedule_type,
               a.version,
               a.actor,
+              a.association_client_id,
+              a.association_phone,
+              a.association_provider_message_id,
               a.created_at,
               a.updated_at,
               d.quote_lead_id,
@@ -2032,7 +2400,7 @@ export function createPostgresOpportunityActionRepository(
               )}) THEN d.updated_at ELSE NULL END AS terminal_at,
               d.demand_summary,
               d.nome AS contact_name,
-              d.telefone AS contact_phone,
+              COALESCE(d.telefone, c.telefone) AS contact_phone,
               d.email AS contact_email,
               d.client_id,
               c.nome AS client_name,
@@ -2072,7 +2440,44 @@ export function createPostgresOpportunityActionRepository(
                   LIMIT 1
                 ) r ON true
                 WHERE q.opportunity_id = d.id
-              ) AS proposals
+              ) AS proposals,
+              (
+                SELECT coalesce(
+                  json_agg(
+                    json_build_object(
+                      'opportunity_id', candidate.id,
+                      'demand_summary', candidate.demand_summary
+                    ) ORDER BY candidate.created_at, candidate.id
+                  ),
+                  '[]'::json
+                )
+                FROM crm_deals candidate
+                WHERE candidate.status NOT IN (${sql.join(
+                    closedStatuses.map((status) => sql`${status}`),
+                    sql`, `
+                  )})
+                  AND (
+                    candidate.telefone = a.association_phone
+                    OR EXISTS (
+                      SELECT 1 FROM clients candidate_client
+                      WHERE candidate_client.id = candidate.client_id
+                        AND candidate_client.telefone = a.association_phone
+                    )
+                    OR EXISTS (
+                      SELECT 1
+                      FROM quotations candidate_quotation
+                      JOIN quote_revisions candidate_revision
+                        ON candidate_revision.quotation_id = candidate_quotation.id
+                      JOIN quotation_deliveries candidate_delivery
+                        ON candidate_delivery.revision_id = candidate_revision.id
+                      WHERE (
+                        candidate_quotation.opportunity_id = candidate.id
+                        OR candidate_quotation.id = candidate.quotation_id
+                      )
+                        AND regexp_replace(candidate_delivery.phone, '[^0-9]', '', 'g') = a.association_phone
+                    )
+                  )
+              ) AS association_candidates
             FROM opportunity_next_actions a
             INNER JOIN crm_deals d ON d.id = a.opportunity_id
             LEFT JOIN clients c ON c.id = d.client_id
@@ -2091,7 +2496,10 @@ export function createPostgresOpportunityActionRepository(
                       closedStatuses.map((status) => sql`${status}`),
                       sql`, `
                     )})`
-                  : sql`a.state = 'active' AND d.status NOT IN (${sql.join(
+                  : sql`(
+                      a.state = 'active'
+                      OR (a.state = 'suspended' AND a.transition_reason = 'Não contatar')
+                    ) AND d.status NOT IN (${sql.join(
                       closedStatuses.map((status) => sql`${status}`),
                       sql`, `
                     )})`
@@ -2119,7 +2527,8 @@ export function createPostgresOpportunityActionRepository(
               activity.last_outbound_at,
               activity.identity_status,
               activity.blocked_at,
-              activity.block_reason
+              activity.block_reason,
+              activity.canonical_phone AS matched_phone
             FROM selected_actions selected
             INNER JOIN whatsapp_contact_activity activity ON (
               EXISTS (
@@ -2136,6 +2545,10 @@ export function createPostgresOpportunityActionRepository(
                 WHERE quotation.opportunity_id = selected.opportunity_id
                   AND follow_up.instance = activity.instance
                   AND follow_up.provider_conversation_id = activity.provider_conversation_id
+              )
+              OR (
+                selected.contact_phone IS NOT NULL
+                AND activity.canonical_phone = selected.contact_phone
               )
             )
           ),
@@ -2166,6 +2579,13 @@ export function createPostgresOpportunityActionRepository(
                 ELSE '[]'::json
               END AS blockers,
               CASE
+                WHEN bool_or(blocked_at IS NOT NULL) THEN
+                  min(matched_phone) FILTER (
+                    WHERE blocked_at IS NOT NULL AND matched_phone ~ '^[0-9]{10,15}$'
+                  )
+                ELSE NULL
+              END AS blocked_contact_phone,
+              CASE
                 WHEN count(*) = 1 AND max(identity_status) IN ('verified', 'derived') THEN true
                 ELSE false
               END AS authoritative_identity
@@ -2183,6 +2603,7 @@ export function createPostgresOpportunityActionRepository(
               context.last_contact_at,
               context.last_contact_direction,
               COALESCE(context.blockers, '[]'::json) AS blockers,
+              context.blocked_contact_phone AS blocked_contact_phone,
               CASE
                 WHEN selected.contact_phone ~ '^[0-9]{10,15}$'
                   THEN 'https://wa.me/' || selected.contact_phone
@@ -2280,6 +2701,7 @@ export function createPostgresOpportunityActionRepository(
                 demandSummary: row.demand_summary,
                 contactName: row.contact_name,
                 contactPhone: row.contact_phone,
+                blockedContactPhone: row.blocked_contact_phone,
                 contactEmail: row.contact_email,
                 clientId: row.client_id,
                 clientName: row.client_name,
@@ -2287,6 +2709,7 @@ export function createPostgresOpportunityActionRepository(
                 sourceRevisionId: row.source_revision_id,
                 sourceDeliveryId: row.source_delivery_id,
                 proposals: parseProposals(row.proposals),
+                associationCandidates: parseAssociationCandidates(row.association_candidates),
               };
             }),
           total: Number(first.total ?? 0),
@@ -2334,6 +2757,103 @@ export function createPostgresOpportunityActionRepository(
         return preserveKnownError(error);
       }
     },
+    async associateInboundResponse(
+      input: AssociateInboundResponseInput,
+    ): Promise<OpportunityActionCommandResult> {
+      const opportunityId = cleanText(input.opportunityId, 'O ID da oportunidade', 255);
+      const actionId = cleanText(input.actionId, 'O ID da ação', 255);
+      const actor = cleanText(input.actor, 'O operador', MAX_ACTOR_LENGTH);
+      const expectedVersion = validateVersion(input.expectedVersion);
+      try {
+        return await getDb().transaction(async (tx) => {
+          const [reference] = await tx
+            .select({ opportunityId: opportunityNextActions.opportunityId })
+            .from(opportunityNextActions)
+            .where(eq(opportunityNextActions.id, actionId))
+            .limit(1);
+          if (!reference) throw new ActionNotFoundError('Alerta Associar resposta não encontrado.');
+          const ownerDeal = await lockOpportunity(tx, reference.opportunityId);
+          const alert = await lockAction(tx, actionId, reference.opportunityId);
+          assertExpectedAction(alert, expectedVersion);
+          if (alert.reasonCode !== ASSOCIATE_RESPONSE_REASON_CODE) {
+            throw new OpportunityActionInputError(
+              'A ação informada não é um alerta Associar resposta.',
+            );
+          }
+          if (
+            !alert.associationPhone ||
+            !alert.associationProviderMessageId ||
+            (alert.associationClientId != null && alert.associationClientId !== ownerDeal.clientId)
+          ) {
+            throw new OpportunityActionInputError(
+              'O alerta não possui contexto de associação válido.',
+            );
+          }
+          const deal = opportunityId === ownerDeal.id
+            ? ownerDeal
+            : await lockOpportunity(tx, opportunityId);
+          if (deal.status === 'Pedido Fechado' || deal.status === 'Perdido') {
+            throw new OpportunityActionInputError(
+              'Não é possível associar resposta a uma oportunidade encerrada.',
+            );
+          }
+          if (alert.associationClientId != null && alert.associationClientId !== deal.clientId) {
+            throw new OpportunityActionInputError(
+              'A oportunidade escolhida não pertence ao cliente do alerta.',
+            );
+          }
+          const phoneMatches = Array.from(await tx.execute(sql`
+            SELECT EXISTS (
+              SELECT 1
+              FROM crm_deals candidate
+              LEFT JOIN clients candidate_client ON candidate_client.id = candidate.client_id
+              WHERE candidate.id = ${opportunityId}::uuid
+                AND (
+                  candidate.telefone = ${alert.associationPhone}
+                  OR candidate_client.telefone = ${alert.associationPhone}
+                  OR EXISTS (
+                    SELECT 1
+                    FROM quotations candidate_quotation
+                    JOIN quote_revisions candidate_revision
+                      ON candidate_revision.quotation_id = candidate_quotation.id
+                    JOIN quotation_deliveries candidate_delivery
+                      ON candidate_delivery.revision_id = candidate_revision.id
+                    WHERE (
+                      candidate_quotation.opportunity_id = candidate.id
+                      OR candidate_quotation.id = candidate.quotation_id
+                    )
+                      AND regexp_replace(candidate_delivery.phone, '[^0-9]', '', 'g') = ${alert.associationPhone}
+                  )
+                )
+            ) AS matches
+          `)) as Record<string, unknown>[];
+          if (phoneMatches[0]?.matches !== true) {
+            throw new OpportunityActionInputError(
+              'A oportunidade escolhida não pertence ao contato do alerta.',
+            );
+          }
+          const now = nowFactory();
+          return resolveAssociateResponseToOpportunity({
+            database: tx,
+            alertActionId: alert.id,
+            opportunityId,
+            occurredAt: now,
+            idFactory,
+            actor,
+          });
+        });
+      } catch (error) {
+        if (
+          error instanceof OpportunityActionInputError ||
+          error instanceof ActionNotFoundError ||
+          error instanceof ActionConflictError
+        ) {
+          throw error;
+        }
+        throw new OpportunityActionRepositoryError();
+      }
+    },
+
 
     async createAction(
       input: CreateOpportunityActionInput

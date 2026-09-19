@@ -134,7 +134,7 @@ test(
       assert.deepEqual(body.top_products, []);
       assert.deepEqual(body.top_customers, []);
       assert.deepEqual(body.sales_by_day, []);
-      assert.deepEqual(body.stale_quotations, []);
+      assert.equal('stale_quotations' in body, false);
     } finally {
       await client.end({ timeout: 5 });
     }
@@ -342,8 +342,7 @@ test(
         event('GET', undefined, { from: '2098-08-01', to: '2098-08-10' })
       );
       assert.equal(response.statusCode, 200);
-      // Ten aggregate statements are expected; any per-row follow-up exceeds this bound.
-      assert.equal(queryCount, 10, `dashboard used ${queryCount} SQL queries`);
+      assert.equal(queryCount, 9, `dashboard used ${queryCount} SQL queries`);
       const body = JSON.parse(response.body || '{}');
       assert.deepEqual(body.period, {
         label: 'De 01/08/2098 a 10/08/2098',
@@ -400,22 +399,7 @@ test(
         { date: '2098-08-01', revenue: 100, orders: 1 },
         { date: '2098-08-10', revenue: 61.7, orders: 13 },
       ]);
-      assert.deepEqual(body.stale_quotations, [
-        {
-          id: 'ORC-20980003',
-          customer: 'Cliente Dashboard B',
-          age: 9,
-          value: 75,
-          status: 'emitido',
-        },
-        {
-          id: 'ORC-20980002',
-          customer: 'Cliente Dashboard B',
-          age: 5,
-          value: 50,
-          status: 'emitido',
-        },
-      ]);
+      assert.equal('stale_quotations' in body, false);
     } finally {
       if (migrated) {
         await db
@@ -463,7 +447,6 @@ test('sales dashboard handler does not call external fetch', async () => {
             top_products: [],
             top_customers: [],
             sales_by_day: [],
-            stale_quotations: [],
           };
         },
       },
@@ -495,7 +478,6 @@ test('PUT rejects Meta spend outside Este mês and Mês passado', async () => {
           top_products: [],
           top_customers: [],
           sales_by_day: [],
-          stale_quotations: [],
         };
       },
     },

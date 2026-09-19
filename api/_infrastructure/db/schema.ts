@@ -836,6 +836,11 @@ export const opportunityNextActions = pgTable(
     continuityCommandId: varchar('continuity_command_id', { length: 255 }),
     continuityCommandFingerprint: varchar('continuity_command_fingerprint', { length: 64 }),
     continuityType: varchar('continuity_type', { length: 16 }),
+    associationClientId: uuid('association_client_id').references(() => clients.id, {
+      onDelete: 'restrict',
+    }),
+    associationPhone: varchar('association_phone', { length: 15 }),
+    associationProviderMessageId: varchar('association_provider_message_id', { length: 255 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -855,7 +860,7 @@ export const opportunityNextActions = pgTable(
     ),
     check(
       'opportunity_next_actions_state_check',
-      sql`${table.state} IN ('active', 'completed', 'cancelled', 'superseded')`
+      sql`${table.state} IN ('active', 'suspended', 'completed', 'cancelled', 'superseded')`
     ),
     check(
       'opportunity_next_actions_reason_not_blank_check',
@@ -888,6 +893,14 @@ export const opportunityNextActions = pgTable(
     check(
       'opportunity_next_actions_continuity_type_check',
       sql`${table.continuityType} IS NULL OR ${table.continuityType} IN ('new_cycle', 'manual_date')`
+    ),
+    check(
+      'opportunity_next_actions_association_phone_check',
+      sql`${table.associationPhone} IS NULL OR ${table.associationPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check(
+      'opportunity_next_actions_association_context_check',
+      sql`(${table.associationClientId} IS NULL AND ${table.associationPhone} IS NULL AND ${table.associationProviderMessageId} IS NULL) OR (${table.associationPhone} IS NOT NULL AND char_length(btrim(${table.associationPhone})) > 0 AND ${table.associationProviderMessageId} IS NOT NULL AND char_length(btrim(${table.associationProviderMessageId})) > 0)`,
     ),
   ]
 );
@@ -1386,10 +1399,87 @@ export const whatsappContactActivity = pgTable(
   ]
 );
 
+export const commercialInboundEvents = pgTable(
+  'commercial_inbound_events',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerMessageId: varchar('provider_message_id', { length: 255 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('commercial_inbound_events_provider_message_unique').on(
+      table.instance,
+      table.providerMessageId,
+    ),
+    check(
+      'commercial_inbound_events_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`,
+    ),
+    check(
+      'commercial_inbound_events_message_not_blank_check',
+      sql`char_length(btrim(${table.providerMessageId})) > 0`,
+    ),
+    check(
+      'commercial_inbound_events_conversation_not_blank_check',
+      sql`${table.providerConversationId} IS NULL OR char_length(btrim(${table.providerConversationId})) > 0`,
+    ),
+    check(
+      'commercial_inbound_events_phone_check',
+      sql`${table.canonicalPhone} IS NULL OR ${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+  ],
+);
+
 /**
  * Per-instance ingestion watermark. An unparsed recognized UPSERT blocks the
  * instance until that same event key parses fully.
  */
+export const whatsappContactBlockEvents = pgTable(
+  'whatsapp_contact_block_events',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }),
+    eventType: varchar('event_type', { length: 16 }).notNull(),
+    actor: varchar('actor', { length: 120 }).notNull(),
+    reason: varchar('reason', { length: 500 }).notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('whatsapp_contact_block_events_phone_occurred_idx').on(
+      table.instance,
+      table.canonicalPhone,
+      table.occurredAt,
+    ),
+    check(
+      'whatsapp_contact_block_events_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`,
+    ),
+    check(
+      'whatsapp_contact_block_events_phone_check',
+      sql`${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check(
+      'whatsapp_contact_block_events_event_type_check',
+      sql`${table.eventType} IN ('blocked', 'unblocked')`,
+    ),
+    check(
+      'whatsapp_contact_block_events_actor_not_blank_check',
+      sql`char_length(btrim(${table.actor})) > 0`,
+    ),
+    check(
+      'whatsapp_contact_block_events_reason_not_blank_check',
+      sql`char_length(btrim(${table.reason})) > 0`,
+    ),
+  ],
+);
+
 export const whatsappFollowUpIngestionHealth = pgTable(
   'whatsapp_follow_up_ingestion_health',
   {

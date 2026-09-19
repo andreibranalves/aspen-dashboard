@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table';
 import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formatting/formatters';
 import {
+  associateCommercialInbound,
   completeCommercialAction,
   continueCommercialFollowUp,
   createCommercialAction,
@@ -34,6 +35,7 @@ import {
   recordManualContact,
   rescheduleCommercialAction,
   setCommercialUrgency,
+  unblockCommercialContact,
   type CommercialQueueFilter,
   type CommercialQueueItem,
   type CommercialQueuePage,
@@ -84,6 +86,8 @@ type Dialog =
   | { type: 'complete'; item: CommercialQueueItem }
   | { type: 'manual-contact'; item: CommercialQueueItem; commandId: string }
   | { type: 'continue-follow-up'; item: CommercialQueueItem; commandId: string }
+  | { type: 'associate-response'; item: CommercialQueueItem }
+  | { type: 'unblock-contact'; item: CommercialQueueItem }
   | { type: 'history'; item: CommercialQueueItem };
 
 interface ScheduleDraft {
@@ -225,6 +229,12 @@ function contactDetail(item: CommercialQueueItem): string | null {
 
 function contactContextLabel(item: CommercialQueueItem): string {
   if (item.contactContext.status === 'review') {
+    if (item.reasonCode === 'verify_conversation') {
+      return 'Último contato: verificar conversa (telemetria insuficiente)';
+    }
+    if (item.reasonCode === 'associate_response') {
+      return 'Último contato: associar resposta (mais de uma demanda)';
+    }
     return 'Último contato: revisão necessária (atribuição ambígua)';
   }
   if (item.contactContext.status === 'unavailable' || !item.contactContext.lastContactAt) {
@@ -311,6 +321,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [manualSuggestion, setManualSuggestion] = useState<ManualContactSuggestion | null>(null);
   const [followUpReview, setFollowUpReview] = useState<FollowUpView | null>(null);
   const [followUpReviewLoading, setFollowUpReviewLoading] = useState(false);
+  const [associationTarget, setAssociationTarget] = useState('');
+  const [unblockReason, setUnblockReason] = useState('');
   const requestGenerationRef = useRef(0);
   const manualSuggestionRequestRef = useRef(0);
   const manualSuggestionAbortRef = useRef<AbortController | null>(null);
@@ -466,6 +478,20 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     });
     setContinuityType('new_cycle');
     setDraft(scheduleDraft(item));
+    setDialogError(null);
+  }
+
+  function openAssociateResponse(item: CommercialQueueItem) {
+    setDialog({ type: 'associate-response', item });
+    setAssociationTarget(item.associationCandidates[0]?.opportunityId || item.opportunityId);
+    setDraft(null);
+    setDialogError(null);
+  }
+
+  function openUnblockContact(item: CommercialQueueItem) {
+    setDialog({ type: 'unblock-contact', item });
+    setUnblockReason('');
+    setDraft(null);
     setDialogError(null);
   }
 
@@ -700,6 +726,53 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     } catch (reason) {
       setDialogError(
         reason instanceof Error ? reason.message : 'Não foi possível registrar a continuidade.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitAssociateResponse() {
+    if (!dialog || dialog.type !== 'associate-response' || !associationTarget) return;
+    setSubmitting(true);
+    setDialogError(null);
+    try {
+      await associateCommercialInbound({
+        alertActionId: dialog.item.actionId,
+        expectedVersion: dialog.item.version,
+        opportunityId: associationTarget,
+      });
+      closeDialog(true);
+      await load(currentPage, filter);
+    } catch (reason) {
+      setDialogError(
+        reason instanceof Error ? reason.message : 'Não foi possível associar a resposta.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitUnblockContact() {
+    if (!dialog || dialog.type !== 'unblock-contact') return;
+    const target = dialog.item.blockedContactPhone || dialog.item.contactPhone;
+    if (!target) return;
+    if (!unblockReason.trim()) {
+      setDialogError('Informe o motivo do desbloqueio.');
+      return;
+    }
+    setSubmitting(true);
+    setDialogError(null);
+    try {
+      await unblockCommercialContact({
+        canonicalPhone: target,
+        reason: unblockReason.trim(),
+      });
+      closeDialog(true);
+      await load(currentPage, filter);
+    } catch (reason) {
+      setDialogError(
+        reason instanceof Error ? reason.message : 'Não foi possível desbloquear o contato.'
       );
     } finally {
       setSubmitting(false);
@@ -1000,6 +1073,41 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         </div>
       );
     }
+    if (item.reasonCode === 'associate_response') {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={() => openAssociateResponse(item)}>
+            Associar resposta
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+            Histórico
+          </Button>
+          {item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact') &&
+            (item.blockedContactPhone || item.contactPhone) && (
+              <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+                Desbloquear contato
+              </Button>
+            )}
+        </div>
+      );
+    }
+    if (
+      item.state === 'suspended' &&
+      item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact')
+    ) {
+      return (
+        <div className="flex flex-wrap gap-2">
+          {(item.blockedContactPhone || item.contactPhone) && (
+            <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+              Desbloquear contato
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+            Histórico
+          </Button>
+        </div>
+      );
+    }
     if (item.state !== 'active') {
       return (
         <span className="text-xs text-fg-muted">Resultado: {item.reason || item.reasonLabel}</span>
@@ -1042,6 +1150,12 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         <Button type="button" variant="outline" size="sm" onClick={() => openManualContact(item)}>
           Registrar contato
         </Button>
+        {item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact') &&
+          (item.blockedContactPhone || item.contactPhone) && (
+            <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+              Desbloquear contato
+            </Button>
+          )}
         <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
           Histórico
         </Button>
@@ -1320,8 +1434,12 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                         ? 'Concluir próxima ação'
                         : dialog.type === 'manual-contact'
                           ? 'Registrar contato'
-                          : dialog.type === 'continue-follow-up'
+                        : dialog.type === 'continue-follow-up'
                             ? 'Decidir continuidade'
+                          : dialog.type === 'associate-response'
+                            ? 'Associar resposta'
+                          : dialog.type === 'unblock-contact'
+                            ? 'Desbloquear contato'
                           : 'Histórico da próxima ação'}
               </h2>
               <Button
@@ -1391,9 +1509,44 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                       ? submitManualContact()
                       : dialog.type === 'continue-follow-up'
                         ? submitContinueFollowUp()
+                        : dialog.type === 'associate-response'
+                          ? submitAssociateResponse()
+                        : dialog.type === 'unblock-contact'
+                          ? submitUnblockContact()
                         : submitComplete());
                 }}
               >
+                {dialog.type === 'associate-response' && (
+                  <label className="grid gap-1 text-sm">
+                    Oportunidade da resposta
+                    <select
+                      aria-label="Oportunidade da resposta"
+                      required
+                      className="h-9 rounded-sm border border-input bg-background px-3"
+                      value={associationTarget}
+                      onChange={(event) => setAssociationTarget(event.target.value)}
+                    >
+                      {dialog.item.associationCandidates.map((candidate) => (
+                        <option key={candidate.opportunityId} value={candidate.opportunityId}>
+                          {candidate.demandSummary || candidate.opportunityId}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {dialog.type === 'unblock-contact' && (
+                  <label className="grid gap-1 text-sm">
+                    Motivo do desbloqueio
+                    <textarea
+                      aria-label="Motivo do desbloqueio"
+                      required
+                      maxLength={500}
+                      className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
+                      value={unblockReason}
+                      onChange={(event) => setUnblockReason(event.target.value)}
+                    />
+                  </label>
+                )}
                 {dialog.type === 'manual-contact' && manualContactFields()}
                 {dialog.type === 'continue-follow-up' && (
                   <>
@@ -1430,7 +1583,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     </select>
                   </label>
                 )}
-                {dialog.type === 'manual-contact' || dialog.type === 'continue-follow-up' ? null : dialog.type === 'complete' &&
+                {dialog.type === 'manual-contact' || dialog.type === 'continue-follow-up' || dialog.type === 'associate-response' || dialog.type === 'unblock-contact' ? null : dialog.type === 'complete' &&
                   completionMode === 'close' ? (
                   <label className="grid gap-1 text-sm">
                     Motivo do fechamento
@@ -1470,6 +1623,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                             ? 'Registrar contato'
                             : dialog.type === 'continue-follow-up'
                               ? 'Confirmar continuidade'
+                            : dialog.type === 'associate-response'
+                              ? 'Associar resposta'
+                            : dialog.type === 'unblock-contact'
+                              ? 'Desbloquear contato'
                             : completionMode === 'successor'
                               ? 'Concluir e criar próxima'
                               : 'Concluir e fechar'}

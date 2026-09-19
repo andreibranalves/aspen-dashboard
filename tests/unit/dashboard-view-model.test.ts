@@ -22,7 +22,6 @@ test('dashboard view model keeps nullable deltas and omits untrusted rows', () =
       { sku: 'SKU-1', product: 'Produto 1', quantity: 3, revenue: 100, orders: 2 },
       { sku: 'SKU-2', product: '', quantity: 1, revenue: 50, orders: 1 },
     ],
-    stale_quotations: [],
     sales_by_day: [],
   });
 
@@ -38,7 +37,6 @@ test('dashboard view model keeps nullable deltas and omits untrusted rows', () =
   ]);
   assert.equal(view.topProducts?.omitted, 1);
   assert.equal(view.topCustomers, null);
-  assert.deepEqual(view.attention?.items, []);
 });
 
 test('dashboard view model keeps available lists when the summary is partial', () => {
@@ -47,7 +45,6 @@ test('dashboard view model keeps available lists when the summary is partial', (
     top_products: [],
     top_customers: [],
     sales_by_day: [],
-    stale_quotations: [],
     summary: { total_revenue: -1 },
   });
 

@@ -896,6 +896,8 @@ test('PostgreSQL send downloads only an owned Blob media before Evolution', asyn
         token: () => publicToken,
         mediaRecords: mediaRecords(),
         headBlob: async () => mediaHeadResult(),
+        blobStoreId: 'store',
+        renderPdf: async () => Buffer.from('%PDF-1.7\n%%EOF'),
       },
     );
     assert.equal(response.statusCode, 200);

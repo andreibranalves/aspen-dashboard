@@ -15,9 +15,20 @@ import {
   type FollowUpPersistedState,
   type FollowUpProjectionState,
 } from '../../../_modules/quotation-follow-up-state.js';
-import { advanceConfirmedFollowUp } from './opportunity-actions-repository.js';
+import {
+  advanceConfirmedFollowUp,
+  applyAssociateResponseTransition,
+  applyInboundResponseTransition,
+  applyVerifyConversationTransition,
+  ASSOCIATE_RESPONSE_REASON_CODE,
+} from './opportunity-actions-repository.js';
+import { classifyInboundAssociation } from '../../../_modules/commercial-inbound-association.js';
 import { followUpAttemptNumber, followUpCycleNumber } from './follow-up-cycle.js';
-import { quotationFollowUpAttemptHistory, quotationFollowUps } from '../schema.js';
+import {
+  commercialInboundEvents,
+  quotationFollowUpAttemptHistory,
+  quotationFollowUps,
+} from '../schema.js';
 
 type Database = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 type DatabaseProvider = () => AppDatabase;
@@ -544,8 +555,7 @@ function factsSql(started: Date, instance: string): SQL {
     ) a ON true
     LEFT JOIN LATERAL (
       SELECT blocked.blocked_at FROM whatsapp_contact_activity blocked
-      WHERE blocked.instance = ${instance}
-        AND blocked.canonical_phone = regexp_replace(d.phone, '[^0-9]', '', 'g')
+      WHERE blocked.canonical_phone = regexp_replace(d.phone, '[^0-9]', '', 'g')
         AND blocked.blocked_at IS NOT NULL
       LIMIT 1
     ) blocked ON true
@@ -940,6 +950,367 @@ async function holdUnprojectableProcessing(
   `);
 }
 
+
+async function suspendUndeliveredApprovalsForPhone(
+  tx: Database,
+  phone: string,
+  occurredAt: Date,
+  closedReason: string,
+): Promise<void> {
+  await tx.execute(sql`
+    UPDATE quotation_follow_ups f
+    SET state = 'cancelled',
+        closed_reason = ${closedReason},
+        closed_at = ${iso(occurredAt)}::timestamptz,
+        approved_opportunity_id = NULL,
+        eligibility_version = NULL,
+        message_snapshot = NULL,
+        approved_at = NULL,
+        lease_token = NULL,
+        lease_until = NULL,
+        transport_started_at = NULL,
+        updated_at = ${iso(occurredAt)}::timestamptz
+    WHERE (
+        f.state = 'approved'
+        OR (f.state = 'processing' AND f.transport_started_at IS NULL)
+      )
+      AND f.canonical_phone = ${phone}
+  `);
+}
+
+async function findExistingClientReview(
+  tx: Database,
+  clientId: string | null,
+  reasonCode: string,
+  opportunityIds: string[],
+  canonicalPhone: string,
+): Promise<{ actionId: string; opportunityId: string } | null> {
+  const scopeFilter = clientId
+    ? sql`d.client_id = ${clientId}::uuid`
+    : sql`a.opportunity_id IN (${sql.join(
+        opportunityIds.map((id) => sql`${id}::uuid`),
+        sql`, `
+      )})`;
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT a.id, a.opportunity_id
+      FROM opportunity_next_actions a
+      INNER JOIN crm_deals d ON d.id = a.opportunity_id
+      WHERE ${scopeFilter}
+        AND a.state = 'active'
+        AND a.reason_code = ${reasonCode}
+        AND a.association_phone = ${canonicalPhone}
+      ORDER BY a.opportunity_id ASC
+      LIMIT 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.length
+    ? { actionId: String(rows[0].id), opportunityId: String(rows[0].opportunity_id) }
+    : null;
+}
+
+async function listOpenOpportunityIdsForConversation(
+  tx: Database,
+  instance: string,
+  conversation: string,
+): Promise<Array<{ opportunityId: string; clientId: string | null }>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT DISTINCT
+        COALESCE(q.opportunity_id, legacy.id) AS opportunity_id,
+        COALESCE(q.client_id, legacy.client_id) AS client_id
+      FROM quotation_follow_ups f
+      JOIN quotations q ON q.id = f.quotation_id
+      JOIN clients cl ON cl.id = q.client_id
+      LEFT JOIN LATERAL (
+        SELECT cd.id, cd.client_id
+        FROM crm_deals cd
+        WHERE q.opportunity_id IS NULL AND cd.quotation_id = q.id
+        ORDER BY cd.updated_at DESC, cd.id DESC
+        LIMIT 1
+      ) legacy ON true
+      WHERE f.instance = ${instance}
+        AND f.provider_conversation_id = ${conversation}
+        AND cl.arquivado IS NOT TRUE
+        AND COALESCE(q.opportunity_id, legacy.id) IS NOT NULL
+        AND COALESCE(
+          (SELECT cd.status FROM crm_deals cd WHERE cd.id = COALESCE(q.opportunity_id, legacy.id)),
+          ''
+        ) NOT IN ('Pedido Fechado', 'Perdido')
+      ORDER BY 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    opportunityId: String(row.opportunity_id),
+    clientId: row.client_id == null ? null : String(row.client_id),
+  }));
+}
+
+async function listOpenOpportunityIdsForPhone(
+  tx: Database,
+  phone: string,
+): Promise<Array<{ opportunityId: string; clientId: string | null }>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      SELECT DISTINCT
+        deal.id AS opportunity_id,
+        deal.client_id
+      FROM crm_deals deal
+      LEFT JOIN clients client ON client.id = deal.client_id
+      WHERE deal.status NOT IN ('Pedido Fechado', 'Perdido')
+        AND client.arquivado IS NOT TRUE
+        AND (
+          deal.telefone = ${phone}
+          OR client.telefone = ${phone}
+          OR EXISTS (
+            SELECT 1
+            FROM quotations quotation
+            JOIN quote_revisions revision ON revision.quotation_id = quotation.id
+            JOIN quotation_deliveries delivery ON delivery.revision_id = revision.id
+            WHERE (quotation.opportunity_id = deal.id OR quotation.id = deal.quotation_id)
+              AND regexp_replace(delivery.phone, '[^0-9]', '', 'g') = ${phone}
+          )
+        )
+      ORDER BY 1
+    `),
+  ) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    opportunityId: String(row.opportunity_id),
+    clientId: row.client_id == null ? null : String(row.client_id),
+  }));
+}
+
+async function applyAmbiguousInboundInTransaction(
+  tx: Database,
+  input: {
+    phone: string;
+    occurredAt: Date;
+    providerMessageId: string;
+    candidateOpportunityIds: string[];
+  },
+): Promise<string | null> {
+  const candidates = [
+    ...new Set(input.candidateOpportunityIds.map((id) => id.trim()).filter(Boolean)),
+  ].sort();
+  if (candidates.length < 2) return null;
+  await suspendUndeliveredApprovalsForPhone(
+    tx,
+    input.phone,
+    input.occurredAt,
+    'inbound_after_anchor',
+  );
+  const candidateRows = Array.from(
+    await tx.execute(sql`
+      SELECT id, client_id
+      FROM crm_deals
+      WHERE id IN (${sql.join(candidates.map((id) => sql`${id}::uuid`), sql`, `)})
+        AND status NOT IN ('Pedido Fechado', 'Perdido')
+      ORDER BY id
+    `),
+  ) as Record<string, unknown>[];
+  const byClient = new Map<string, { clientId: string | null; opportunityIds: string[] }>();
+  for (const row of candidateRows) {
+    const opportunityId = String(row.id);
+    const clientId = row.client_id == null ? null : String(row.client_id);
+    // Clientless pre-proposal demands on the same E.164 share one review group:
+    // the association is keyed by phone, never by a client the deal may not have.
+    const key = clientId ? `client:${clientId}` : `phone:${input.phone}`;
+    const group = byClient.get(key) || { clientId, opportunityIds: [] };
+    group.opportunityIds.push(opportunityId);
+    byClient.set(key, group);
+  }
+  const activeReasonRows = Array.from(await tx.execute(sql`
+    SELECT a.opportunity_id, a.reason_code
+    FROM opportunity_next_actions a
+    WHERE a.state = 'active'
+      AND a.opportunity_id IN (${sql.join(candidates.map((id) => sql`${id}::uuid`), sql`, `)})
+  `)) as Record<string, unknown>[];
+  const activeReasonByOpportunity = new Map(
+    activeReasonRows.map((row) => [String(row.opportunity_id), String(row.reason_code)]),
+  );
+  for (const opportunityId of candidateRows.map((row) => String(row.id)).sort()) {
+    await lockOpportunity(tx, opportunityId, opportunityId);
+  }
+  let firstAlertOpportunityId: string | null = null;
+  for (const { clientId, opportunityIds } of byClient.values()) {
+    const existing = await findExistingClientReview(
+      tx,
+      clientId,
+      ASSOCIATE_RESPONSE_REASON_CODE,
+      opportunityIds,
+      input.phone,
+    );
+    const hostOpportunityId =
+      existing?.opportunityId ||
+      opportunityIds.find(
+        (id) =>
+          activeReasonByOpportunity.has(id) &&
+          activeReasonByOpportunity.get(id) !== ASSOCIATE_RESPONSE_REASON_CODE,
+      );
+    if (!hostOpportunityId) continue;
+    let alertActionId = existing?.actionId || null;
+    if (!existing) {
+      const transition = await applyAssociateResponseTransition({
+        database: tx as never,
+        opportunityId: hostOpportunityId,
+        occurredAt: input.occurredAt,
+        idFactory: randomUUID,
+        actor: 'system',
+      });
+      alertActionId = transition.successor?.actionId || transition.actionId;
+      await tx.execute(sql`
+        UPDATE opportunity_next_actions
+        SET association_client_id = ${
+          clientId ? sql`${clientId}::uuid` : sql`NULL`
+        },
+            association_phone = ${input.phone},
+            association_provider_message_id = ${input.providerMessageId}
+        WHERE id = ${alertActionId}::uuid
+          AND state = 'active'
+          AND reason_code = ${ASSOCIATE_RESPONSE_REASON_CODE}
+      `);
+    }
+    if (alertActionId) {
+      await tx.execute(sql`
+        UPDATE opportunity_next_actions
+        SET state = 'suspended',
+            updated_at = ${iso(input.occurredAt)}::timestamptz,
+            transition_actor = 'system',
+            transition_at = ${iso(input.occurredAt)}::timestamptz,
+            transition_origin = 'event',
+            transition_reason = 'Resposta ambígua aguardando associação',
+            replaced_by_id = ${alertActionId}::uuid
+        WHERE opportunity_id IN (${sql.join(opportunityIds.map((id) => sql`${id}::uuid`), sql`, `)})
+          AND opportunity_id <> ${hostOpportunityId}::uuid
+          AND state = 'active'
+          AND reason_code <> ${ASSOCIATE_RESPONSE_REASON_CODE}
+      `);
+    }
+    firstAlertOpportunityId ||= hostOpportunityId;
+  }
+  return firstAlertOpportunityId;
+}
+
+async function claimCommercialInboundEvent(
+  tx: Database,
+  input: {
+    instance: string;
+    providerMessageId: string;
+    occurredAt: Date;
+    providerConversationId?: string | null;
+    canonicalPhone: string | null;
+  },
+): Promise<boolean> {
+  const inserted = await tx
+    .insert(commercialInboundEvents)
+    .values({
+      id: randomUUID(),
+      instance: input.instance,
+      providerMessageId: input.providerMessageId,
+      providerConversationId: input.providerConversationId || null,
+      canonicalPhone: input.canonicalPhone,
+      occurredAt: input.occurredAt,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({
+      target: [commercialInboundEvents.instance, commercialInboundEvents.providerMessageId],
+    })
+    .returning({ id: commercialInboundEvents.id });
+  return inserted.length === 1;
+}
+
+async function applyConfirmedInboundInTransaction(
+  tx: Database,
+  input: { canonicalPhone: string; occurredAt: Date; providerMessageId: string },
+): Promise<{ handledOpportunityIds: string[] }> {
+  const linked = await listOpenOpportunityIdsForPhone(tx, input.canonicalPhone);
+  const opportunityIds = linked.map((row) => row.opportunityId).sort();
+  const classification = classifyInboundAssociation({
+    identityStatus: 'verified',
+    canonicalPhone: input.canonicalPhone,
+    linkedOpportunityIds: opportunityIds,
+  });
+  if (classification.outcome === 'ambiguous') {
+    await applyAmbiguousInboundInTransaction(tx, {
+      phone: input.canonicalPhone,
+      occurredAt: input.occurredAt,
+      providerMessageId: input.providerMessageId,
+      candidateOpportunityIds: classification.candidateOpportunityIds,
+    });
+    return { handledOpportunityIds: [] };
+  }
+  if (classification.outcome !== 'unambiguous') {
+    return { handledOpportunityIds: [] };
+  }
+  const opportunityId = classification.opportunityId;
+  await lockOpportunity(tx, opportunityId, opportunityId);
+  await suspendUndeliveredApprovalsForPhone(
+    tx,
+    input.canonicalPhone,
+    input.occurredAt,
+    'inbound_after_anchor',
+  );
+  await applyInboundResponseTransition({
+    database: tx,
+    opportunityId,
+    occurredAt: input.occurredAt,
+    idFactory: randomUUID,
+    actor: 'system',
+  });
+  return { handledOpportunityIds: [opportunityId] };
+}
+
+async function applyUncertainInboundInTransaction(
+  tx: Database,
+  input: {
+    instance: string;
+    occurredAt: Date;
+    providerConversationId: string;
+    canonicalPhone: string | null;
+  },
+): Promise<{ alertOpportunityId: string | null }> {
+  const linked = new Map<string, { opportunityId: string; clientId: string | null }>();
+  for (const row of [
+    ...(input.canonicalPhone
+      ? await listOpenOpportunityIdsForPhone(tx, input.canonicalPhone)
+      : []),
+    ...(input.providerConversationId
+      ? await listOpenOpportunityIdsForConversation(
+          tx,
+          input.instance,
+          input.providerConversationId,
+        )
+      : []),
+  ]) {
+    if (!linked.has(row.opportunityId)) linked.set(row.opportunityId, row);
+  }
+  if (linked.size === 0) return { alertOpportunityId: null };
+  const opportunityIds = [...linked.keys()].sort();
+  for (const opportunityId of opportunityIds) {
+    await lockOpportunity(tx, opportunityId, opportunityId);
+  }
+  if (input.canonicalPhone) {
+    await suspendUndeliveredApprovalsForPhone(
+      tx,
+      input.canonicalPhone,
+      input.occurredAt,
+      'inbound_after_anchor',
+    );
+  }
+  let firstAlertOpportunityId: string | null = null;
+  for (const opportunityId of opportunityIds) {
+    await applyVerifyConversationTransition({
+      database: tx as never,
+      opportunityId,
+      occurredAt: input.occurredAt,
+      idFactory: randomUUID,
+      actor: 'system',
+    });
+    firstAlertOpportunityId ||= opportunityId;
+  }
+  return { alertOpportunityId: firstAlertOpportunityId };
+}
+
 export function createPostgresQuotationFollowUpRepository(
   getDb: DatabaseProvider = getDatabase,
 ): QuotationFollowUpRepository {
@@ -1019,7 +1390,7 @@ export function createPostgresQuotationFollowUpRepository(
             updatedAt: asDate(history.confirmedAt) || current.updatedAt,
         };
     };
-    return {
+    const repository: QuotationFollowUpRepository = {
         async list(input: FollowUpListInput = {}) {
             const started = tracking(input.trackingStartedAt);
             const p = page(input.page, 1);
@@ -1175,16 +1546,52 @@ export function createPostgresQuotationFollowUpRepository(
                     if (!Array.from(updated).length)
                         throw new ConflictError(STALE);
                     if (input.reason === 'do_not_contact') {
+                        const blockedPhone = String(projected.canonicalPhone || '');
+                        await tx.execute(sql `
+              SELECT pg_advisory_xact_lock(hashtextextended(${blockedPhone}::text, 0))
+            `);
                         await tx.execute(sql `INSERT INTO whatsapp_contact_activity (
               id, instance, provider_conversation_id, canonical_phone, identity_status, blocked_at, block_reason, created_at, updated_at
             ) VALUES (
-              ${randomUUID()}, ${found.row.instance}, ${projected.providerConversationId}, ${projected.canonicalPhone},
+              ${randomUUID()}, ${found.row.instance}, ${projected.providerConversationId}, ${blockedPhone},
               'derived', ${iso(now)}::timestamptz, 'do_not_contact', ${iso(now)}::timestamptz, ${iso(now)}::timestamptz
             )
             ON CONFLICT (instance, provider_conversation_id) DO UPDATE SET
+              canonical_phone = EXCLUDED.canonical_phone,
               blocked_at = EXCLUDED.blocked_at,
               block_reason = EXCLUDED.block_reason,
               updated_at = EXCLUDED.updated_at`);
+                        // Same phone, every conversation and undelivered send
+                        // authorization across opportunities of this contact.
+                        await tx.execute(sql `UPDATE whatsapp_contact_activity
+              SET blocked_at = ${iso(now)}::timestamptz,
+                  block_reason = 'do_not_contact',
+                  updated_at = ${iso(now)}::timestamptz
+              WHERE canonical_phone = ${blockedPhone}`);
+                        await tx.execute(sql `UPDATE quotation_follow_ups
+              SET state = 'cancelled',
+                  closed_reason = 'contact_blocked',
+                  closed_at = ${iso(now)}::timestamptz,
+                  approved_opportunity_id = NULL,
+                  eligibility_version = NULL,
+                  message_snapshot = NULL,
+                  approved_at = NULL,
+                  lease_token = NULL,
+                  lease_until = NULL,
+                  transport_started_at = NULL,
+                  updated_at = ${iso(now)}::timestamptz
+              WHERE canonical_phone = ${blockedPhone}
+                AND (
+                  state = 'approved'
+                  OR (state = 'processing' AND transport_started_at IS NULL)
+                )`);
+                        await tx.execute(sql `INSERT INTO whatsapp_contact_block_events (
+              id, instance, canonical_phone, provider_conversation_id, event_type, actor, reason, occurred_at, created_at
+            ) VALUES (
+              ${randomUUID()}, ${found.row.instance}, ${blockedPhone}, ${projected.providerConversationId},
+              'blocked', 'operator', 'Não contatar',
+              ${iso(now)}::timestamptz, ${iso(now)}::timestamptz
+            )`);
                     }
                     const dismissed = await loadRecord(tx, quotationId, started, now);
                     if (!dismissed)
@@ -1894,12 +2301,8 @@ export function createPostgresQuotationFollowUpRepository(
               EXISTS (
                 SELECT 1
                 FROM whatsapp_contact_activity activity
-                WHERE activity.instance = ${instance}
-                  AND activity.blocked_at IS NOT NULL
-                  AND (
-                    activity.provider_conversation_id = ${providerConversationId}
-                    OR activity.canonical_phone = ${phoneValue}
-                  )
+                WHERE activity.blocked_at IS NOT NULL
+                  AND activity.canonical_phone = ${phoneValue}
               ) AS contact_blocked,
               EXISTS (
                 SELECT 1
@@ -2115,44 +2518,55 @@ export function createPostgresQuotationFollowUpRepository(
                 !providerMessageId)
                 return;
             try {
-                await getDb().execute(sql `UPDATE quotation_follow_ups f
-          SET state = CASE
-                WHEN ${isUnresolvedLid}
-                  AND NOT (
-                    f.provider_conversation_id = ${conversation}
-                    OR (
-                      ${phone || null}::text IS NOT NULL
-                      AND f.canonical_phone = ${phone || null}
-                    )
-                  )
-                  THEN 'held'
-                ELSE 'cancelled'
-              END,
+                await getDb().transaction(async (tx) => {
+                  if (!input.fromMe) {
+                    const claimed = await claimCommercialInboundEvent(tx, {
+                      instance,
+                      providerMessageId,
+                      providerConversationId: conversation,
+                      canonicalPhone: phone,
+                      occurredAt,
+                    });
+                    if (!claimed) return;
+                  }
+                  // Take the opportunity locks in the same (advisory-first) order
+                  // as the claim path before touching follow-up rows, otherwise a
+                  // concurrent claimApproved deadlocks against the bulk UPDATE below.
+                  const linkedOpportunities = [
+                    ...(phone ? await listOpenOpportunityIdsForPhone(tx, phone) : []),
+                    ...(await listOpenOpportunityIdsForConversation(tx, instance, conversation)),
+                  ].sort((left, right) => left.opportunityId.localeCompare(right.opportunityId));
+                  const lockedOpportunities = new Set<string>();
+                  for (const { opportunityId } of linkedOpportunities) {
+                    if (lockedOpportunities.has(opportunityId)) continue;
+                    lockedOpportunities.add(opportunityId);
+                    await lockOpportunity(tx, opportunityId, opportunityId);
+                  }
+                  const holdsRow = sql`(${isUnresolvedLid}
+                    AND NOT (
+                      f.provider_conversation_id = ${conversation}
+                      OR (
+                        ${phone || null}::text IS NOT NULL
+                        AND f.canonical_phone = ${phone || null}
+                      )
+                    ))`;
+                  await tx.execute(sql `UPDATE quotation_follow_ups f
+          SET state = CASE WHEN ${holdsRow} THEN 'held' ELSE 'cancelled' END,
               closed_reason = CASE
-                WHEN ${isUnresolvedLid}
-                  AND NOT (
-                    f.provider_conversation_id = ${conversation}
-                    OR (
-                      ${phone || null}::text IS NOT NULL
-                      AND f.canonical_phone = ${phone || null}
-                    )
-                  )
-                  THEN NULL
+                WHEN ${holdsRow} THEN NULL
                 WHEN ${input.fromMe} THEN 'outbound_after_anchor'
                 ELSE 'inbound_after_anchor'
               END,
               closed_at = CASE
-                WHEN ${isUnresolvedLid}
-                  AND NOT (
-                    f.provider_conversation_id = ${conversation}
-                    OR (
-                      ${phone || null}::text IS NOT NULL
-                      AND f.canonical_phone = ${phone || null}
-                    )
-                  )
-                  THEN NULL
+                WHEN ${holdsRow} THEN NULL
                 ELSE ${iso(occurredAt)}::timestamptz
               END,
+              approved_opportunity_id = CASE WHEN ${holdsRow} THEN f.approved_opportunity_id ELSE NULL END,
+              eligibility_version = CASE WHEN ${holdsRow} THEN f.eligibility_version ELSE NULL END,
+              message_snapshot = CASE WHEN ${holdsRow} THEN f.message_snapshot ELSE NULL END,
+              approved_at = CASE WHEN ${holdsRow} THEN f.approved_at ELSE NULL END,
+              lease_token = CASE WHEN ${holdsRow} THEN f.lease_token ELSE NULL END,
+              lease_until = CASE WHEN ${holdsRow} THEN f.lease_until ELSE NULL END,
               updated_at = ${iso(occurredAt)}::timestamptz
           WHERE f.instance = ${instance}
             AND ${iso(occurredAt)}::timestamptz > COALESCE(
@@ -2200,43 +2614,26 @@ export function createPostgresQuotationFollowUpRepository(
                 )
               )
             )`);
-                if (!input.fromMe && (input.identityStatus === 'verified' || input.identityStatus === 'derived')) {
-                    await getDb().execute(sql `UPDATE opportunity_next_actions action
-            SET state = 'cancelled',
-                updated_at = ${iso(occurredAt)}::timestamptz,
-                transition_actor = 'system',
-                transition_at = ${iso(occurredAt)}::timestamptz,
-                transition_origin = 'event',
-                transition_reason = 'Cliente respondeu após a entrega',
-                replaced_by_id = NULL
-            FROM opportunity_delivery_anchors anchor
-            WHERE anchor.created_action_id = action.id
-              AND action.state = 'active'
-              AND action.origin = 'event'
-              AND action.kind = 'customer_contact'
-              AND anchor.receipt_at < ${iso(occurredAt)}::timestamptz
-              AND (
-                anchor.delivery_id IN (
-                  SELECT f2.delivery_id
-                  FROM quotation_follow_ups f2
-                  WHERE f2.instance = ${instance}
-                    AND (
-                      f2.provider_conversation_id = ${conversation}
-                      OR (
-                        ${phone || null}::text IS NOT NULL
-                        AND f2.canonical_phone = ${phone || null}
-                      )
-                    )
-                )
-                OR EXISTS (
-                  SELECT 1
-                  FROM whatsapp_contact_activity activity
-                  WHERE activity.instance = ${instance}
-                    AND activity.provider_conversation_id = ${conversation}
-                    AND activity.canonical_phone = ${phone || null}
-                )
-              )`);
-                }
+                  if (!input.fromMe) {
+                    if (
+                      phone &&
+                      (input.identityStatus === 'verified' || input.identityStatus === 'derived')
+                    ) {
+                      await applyConfirmedInboundInTransaction(tx, {
+                        canonicalPhone: phone,
+                        occurredAt,
+                        providerMessageId,
+                      });
+                    } else {
+                      await applyUncertainInboundInTransaction(tx, {
+                        instance,
+                        providerConversationId: conversation,
+                        occurredAt,
+                        canonicalPhone: phone,
+                      });
+                    }
+                  }
+                });
             }
             catch {
                 throw new RepositoryError();
@@ -2413,8 +2810,7 @@ export function createPostgresQuotationFollowUpRepository(
               FROM whatsapp_contact_activity activity
               JOIN quotation_follow_ups f ON f.id = ${idValue}
               JOIN quotation_deliveries delivery ON delivery.id = f.delivery_id
-              WHERE activity.instance = f.instance
-                AND activity.canonical_phone = regexp_replace(delivery.phone, '[^0-9]', '', 'g')
+              WHERE activity.canonical_phone = regexp_replace(delivery.phone, '[^0-9]', '', 'g')
               FOR UPDATE OF activity`);
                     await tx.execute(sql `SELECT step.id
               FROM quotation_delivery_steps step
@@ -2744,5 +3140,6 @@ export function createPostgresQuotationFollowUpRepository(
             }
         },
     };
+    return repository;
 }
 export const createQuotationFollowUpRepository = createPostgresQuotationFollowUpRepository;

@@ -52,7 +52,6 @@ function mapDeal(deal: CrmDealRecord | Record<string, unknown>): Record<string, 
     status,
     quotation: row.quotation ?? row.quotationBusinessNumber ?? null,
     follow_up_stage: followUpStage || 0,
-    next_step: row.nextStep || row.next_step || null,
     criado_em: timestamp(row.createdAt ?? row.criado_em ?? row.creation),
     modificado_em: timestamp(row.updatedAt ?? row.modificado_em ?? row.modified),
   };

@@ -7,14 +7,12 @@ import {
   ilike,
   inArray,
   isNotNull,
-  isNull,
   lte,
   ne,
   or,
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
@@ -22,6 +20,7 @@ import { appendProductActivityEvents } from './product-activity-repository.js';
 import {
   clients,
   crmDeals,
+  opportunityNextActions,
   quoteRevisionItems,
   quoteRevisions,
   quotations,
@@ -229,13 +228,6 @@ export interface SalesDashboardResult {
     date: string;
     revenue: number;
     orders: number;
-  }>;
-  stale_quotations: Array<{
-    id: string;
-    customer: string;
-    age: number;
-    value: number;
-    status: string;
   }>;
 }
 
@@ -622,54 +614,6 @@ async function dashboardSalesByDay(
   }));
 }
 
-async function dashboardStaleQuotations(
-  database: SalesOrderDatabase,
-  now: Date
-): Promise<SalesDashboardResult['stale_quotations']> {
-  const staleRevision = alias(quoteRevisions, 'dashboard_stale_revision');
-  const linkedOrder = alias(salesOrders, 'dashboard_stale_order');
-  const cutoff = addDays(now, -3);
-  const quotationDate = quotationDateExpression();
-  const rows = await database
-    .select({
-      id: quotations.businessNumber,
-      customer: clients.nome,
-      createdAt: quotations.createdAt,
-      value: staleRevision.total,
-      status: quotations.status,
-    })
-    .from(quotations)
-    .innerJoin(clients, eq(quotations.clientId, clients.id))
-    .leftJoin(
-      staleRevision,
-      and(
-        eq(staleRevision.quotationId, quotations.id),
-        sql`${staleRevision.version} = (
-          select max(${quoteRevisions.version})
-          from ${quoteRevisions}
-          where ${quoteRevisions.quotationId} = ${quotations.id}
-        )`
-      )
-    )
-    .leftJoin(linkedOrder, eq(linkedOrder.quotationId, quotations.id))
-    .where(
-      and(
-        eq(quotations.status, 'emitido'),
-        sql`${quotationDate} <= ${cutoff}`,
-        isNull(linkedOrder.id)
-      )
-    )
-    .orderBy(asc(quotations.createdAt), asc(quotations.businessNumber))
-    .limit(20);
-  return rows.map((row) => ({
-    id: row.id,
-    customer: row.customer,
-    age: Math.max(0, Math.floor((now.getTime() - asDate(row.createdAt, now).getTime()) / 86400000)),
-    value: roundNumber(asMoney(row.value)),
-    status: row.status,
-  }));
-}
-
 function quotationPredicate(id: string) {
   return isUuid(id) ? eq(quotations.id, id) : eq(quotations.businessNumber, id);
 }
@@ -845,25 +789,79 @@ async function updateDealForQuotation(
   quotationId: string,
   now: Date
 ): Promise<boolean> {
-  const deals = await transaction
-    .select({ id: crmDeals.id, updatedAt: crmDeals.updatedAt })
+  const [quotation] = await transaction
+    .select({ opportunityId: quotations.opportunityId })
+    .from(quotations)
+    .where(eq(quotations.id, quotationId))
+    .limit(1);
+  const linkedDeals = await transaction
+    .select({ id: crmDeals.id, status: crmDeals.status, updatedAt: crmDeals.updatedAt })
     .from(crmDeals)
-    .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, 'Perdido')));
-  if (deals.length === 0) return false;
+    .where(eq(crmDeals.quotationId, quotationId));
+  const opportunityIds = new Set<string>();
+  if (quotation?.opportunityId) opportunityIds.add(String(quotation.opportunityId));
+  for (const deal of linkedDeals) opportunityIds.add(String(deal.id));
+  if (opportunityIds.size === 0) return false;
+
+  const deals = await transaction
+    .select({ id: crmDeals.id, status: crmDeals.status, updatedAt: crmDeals.updatedAt })
+    .from(crmDeals)
+    .where(inArray(crmDeals.id, [...opportunityIds]));
+  let changed = false;
   let cancelledAt: Date | null = null;
   for (const deal of deals) {
+    if (deal.status === 'Perdido' || deal.status === 'Pedido Fechado') {
+      // Terminal already: still ensure the active commercial action is gone so
+      // a repeated order event cannot leave stale queue work behind.
+      await transaction
+        .update(opportunityNextActions)
+        .set({
+          state: 'completed',
+          updatedAt: now,
+          transitionActor: 'system',
+          transitionAt: now,
+          transitionOrigin: 'event',
+          transitionReason: 'Pedido comercial vinculado',
+          replacedById: null,
+        })
+        .where(
+          and(
+            eq(opportunityNextActions.opportunityId, deal.id),
+            eq(opportunityNextActions.state, 'active'),
+          ),
+        );
+      continue;
+    }
     const previous = asDate(deal.updatedAt, new Date(0));
     const updatedAt = now.getTime() > previous.getTime() ? now : new Date(previous.getTime() + 1);
     await transaction
       .update(crmDeals)
       .set({ status: 'Pedido Fechado', updatedAt })
       .where(eq(crmDeals.id, deal.id));
+    await transaction
+      .update(opportunityNextActions)
+      .set({
+        state: 'completed',
+        updatedAt,
+        transitionActor: 'system',
+        transitionAt: updatedAt,
+        transitionOrigin: 'event',
+        transitionReason: 'Pedido comercial vinculado',
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(opportunityNextActions.opportunityId, deal.id),
+          eq(opportunityNextActions.state, 'active'),
+        ),
+      );
     cancelledAt = updatedAt;
+    changed = true;
   }
   if (cancelledAt) {
     await cancelQuotationFollowUpForFact(transaction, quotationId, 'crm_not_eligible', cancelledAt);
   }
-  return true;
+  return changed;
 }
 
 async function reserveOrderNumber(
@@ -919,7 +917,9 @@ async function insertSalesOrderFromApprovedQuotation(
     .for('update')
     .limit(1);
   if (existing) {
-    const crmUpdated = await updateDealForQuotation(transaction, quotation.id, options.now);
+    const crmUpdated = (SUBMITTED_ORDER_STATUSES as readonly string[]).includes(existing.status)
+      ? await updateDealForQuotation(transaction, quotation.id, options.now)
+      : false;
     return mapCreateResult(existing, true, crmUpdated);
   }
 
@@ -1289,11 +1289,10 @@ export function createPostgresSalesOrdersRepository(
           previous.start,
           previous.end
         );
-        const [topProducts, topCustomers, salesByDay, staleQuotations] = await Promise.all([
+        const [topProducts, topCustomers, salesByDay] = await Promise.all([
           dashboardTopProducts(database, start, end),
           dashboardTopCustomers(database, start, end),
           dashboardSalesByDay(database, start, end),
-          dashboardStaleQuotations(database, now),
         ]);
         const currentAverage = currentSummary.orders
           ? roundNumber(currentSummary.revenue / currentSummary.orders)
@@ -1335,7 +1334,6 @@ export function createPostgresSalesOrdersRepository(
           top_products: topProducts,
           top_customers: topCustomers,
           sales_by_day: salesByDay,
-          stale_quotations: staleQuotations,
         };
       } catch (error) {
         return safeRepositoryError(error);

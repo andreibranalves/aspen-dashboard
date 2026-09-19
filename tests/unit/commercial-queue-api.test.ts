@@ -61,6 +61,7 @@ function item(overrides: Partial<OpportunityQueuePage['data'][number]> = {}) {
     clientId: null,
     clientName: null,
     proposals: [],
+    associationCandidates: [],
     ...overrides,
   };
 }
@@ -264,6 +265,31 @@ test('GET /api/commercial-queue exposes every linked proposal with value and sta
       total: '310.50',
     },
   ]);
+});
+
+test('POST /api/commercial-queue exposes motivated contact unblock', async () => {
+  const calls: unknown[] = [];
+  const handler = createCommercialQueueHandler({
+    repository: repository(),
+    contactRepository: {
+      unblockContact: async (input) => {
+        calls.push(input);
+      },
+    },
+    environment: { EVOLUTION_INSTANCE: 'aspen-test' },
+  });
+  const result = await handler(event('POST', {}, {
+    command: 'unblock_contact',
+    canonical_phone: '5511999990000',
+    reason: 'Cliente solicitou retomada do contato',
+  }));
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(calls, [{
+    instance: 'aspen-test',
+    canonicalPhone: '5511999990000',
+    actor: 'authenticated-operator',
+    reason: 'Cliente solicitou retomada do contato',
+  }]);
 });
 
 test('GET /api/commercial-queue forwards the client context once linked', async () => {

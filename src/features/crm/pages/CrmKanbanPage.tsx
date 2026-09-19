@@ -14,12 +14,11 @@ import {
   Columns3,
   Clipboard,
   Send,
-  X,
   PlusCircle,
   Rows3,
   Settings2,
 } from 'lucide-react';
-import { apiGet, apiPost, apiPut } from '@/lib/api/api';
+import { apiGet, apiPut } from '@/lib/api/api';
 import { useToast } from '@/components/shared/toast';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
@@ -56,7 +55,6 @@ interface Deal {
   quotation_id?: string | null;
   quotation?: string;
   follow_up_stage?: number;
-  next_step?: string;
   modificado_em?: string;
   criado_em?: string;
   status?: string;
@@ -77,32 +75,6 @@ interface UpdateDealResult {
   success: boolean;
 }
 
-interface PruneCandidate {
-  deal_id: string;
-  lead_name: string;
-  quotation: string;
-  quotation_date: string;
-  age_days: number;
-  deal_modified: string;
-  grand_total: number;
-}
-
-interface PruneCandidatesResponse {
-  candidates: PruneCandidate[];
-  meta: {
-    threshold_days: number;
-    protect_recent_days: number;
-    count: number;
-  };
-}
-
-interface PruneResult {
-  success: boolean;
-  updated: number;
-  skipped: number;
-  skipped_deals: Array<{ deal_id: string; reason: string }>;
-}
-
 function daysAgo(dateStr?: string | null): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
@@ -113,20 +85,6 @@ function daysAgo(dateStr?: string | null): string {
   if (diff === 1) return '1 dia';
   return `${diff} dias`;
 }
-
-function formatBRL(value: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-}
-
-function formatDateBR(value?: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-}
-
-const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type CrmView = 'list' | 'board';
 const parseCrmView = parseHashOption<CrmView>(['list', 'board']);
@@ -164,13 +122,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [movingDealIds, setMovingDealIds] = useState<Set<string>>(new Set());
   const [announcement, setAnnouncement] = useState('');
-  const [pruneCandidates, setPruneCandidates] = useState<PruneCandidate[]>([]);
-  const [pruneLoading, setPruneLoading] = useState<boolean>(false);
-  const [pruneError, setPruneError] = useState<string | null>(null);
-  const [pruneOpen, setPruneOpen] = useState<boolean>(false);
-  const [selectedPruneIds, setSelectedPruneIds] = useState<Set<string>>(new Set());
-  const [pruneSubmitting, setPruneSubmitting] = useState<boolean>(false);
-  const [pruneSummary, setPruneSummary] = useState<string | null>(null);
   const [pipelineDialogOpen, setPipelineDialogOpen] = useState(false);
   const [visiblePerColumn, setVisiblePerColumn] = useState<Record<string, number>>({});
   const [narrowLayout, setNarrowLayout] = useState(
@@ -180,7 +131,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
   const pendingMoveMenuFocusRef = useRef<string | null>(null);
-  const pruneDialogRef = useRef<HTMLDivElement>(null);
   const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function navigateFromLink(event: MouseEvent<HTMLAnchorElement>, target: string) {
@@ -244,24 +194,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
     }
   }, []);
 
-  const fetchPruneCandidates = useCallback(async () => {
-    setPruneLoading(true);
-    setPruneError(null);
-    try {
-      const data = await apiGet<PruneCandidatesResponse>('/crm-prune-candidates');
-      if (!data || !Array.isArray(data.candidates)) {
-        throw new Error('Resposta inválida ao carregar a revisão do pipeline.');
-      }
-      const candidates = data.candidates || [];
-      setPruneCandidates(candidates);
-      setSelectedPruneIds(new Set(candidates.map((candidate) => candidate.deal_id)));
-    } catch {
-      setPruneError('Não foi possível carregar as oportunidades para revisão.');
-    } finally {
-      setPruneLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void fetchData(search);
   }, [fetchData, search]);
@@ -275,10 +207,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       setStage('all');
     }
   }, [columns, setStage, stage]);
-
-  useEffect(() => {
-    void fetchPruneCandidates();
-  }, [fetchPruneCandidates]);
 
   useEffect(() => {
     return () => {
@@ -306,42 +234,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
     moveMenuRefs.current.get(dealId)?.focus();
   }, [movingDealIds]);
 
-  // Prune modal: Esc para fechar, foco inicial no diálogo, focus trap e
-  // restauração de foco — mesmo comportamento do ConfirmDialog compartilhado.
-  useEffect(() => {
-    if (!pruneOpen) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    pruneDialogRef.current?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        setPruneOpen(false);
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const dialog = pruneDialogRef.current;
-      if (!dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      previousFocus?.focus?.();
-    };
-  }, [pruneOpen]);
-
   const onSearchChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
@@ -354,39 +246,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
     },
     [setSearch]
   );
-
-  const togglePruneSelection = useCallback((dealId: string) => {
-    setSelectedPruneIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(dealId)) next.delete(dealId);
-      else next.add(dealId);
-      return next;
-    });
-  }, []);
-
-  const submitPrune = useCallback(async () => {
-    const deal_ids = Array.from(selectedPruneIds);
-    if (deal_ids.length === 0) {
-      setPruneError('Selecione ao menos uma oportunidade para limpar.');
-      return;
-    }
-
-    setPruneSubmitting(true);
-    setPruneError(null);
-    setPruneSummary(null);
-    try {
-      const result = await apiPost<PruneResult>('/crm-prune-candidates', { deal_ids });
-      setPruneSummary(
-        `${result.updated} oportunidades marcadas como Perdido. ${result.skipped} ignoradas.`
-      );
-      setPruneOpen(false);
-      await Promise.all([fetchData(search), fetchPruneCandidates()]);
-    } catch {
-      setPruneError('Não foi possível concluir a revisão do pipeline. Tente novamente.');
-    } finally {
-      setPruneSubmitting(false);
-    }
-  }, [fetchData, fetchPruneCandidates, search, selectedPruneIds]);
 
   const moveDeal = useCallback(
     async (dealId: string, newStatus: string) => {
@@ -449,6 +308,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   );
 
   const orderedColumns = columns;
+  // Encerramento acontece somente pelas vias autorizadas (pedido efetivo ou
+  // decisão manual motivada); o seletor nunca oferece etapas terminais.
+  const moveColumns = (currentStatus: string | undefined) =>
+    orderedColumns.filter(
+      (column) =>
+        !['Pedido Fechado', 'Perdido'].includes(column.status) || column.status === currentStatus,
+    );
   const displayColumns =
     stage === 'all' ? orderedColumns : orderedColumns.filter((column) => column.status === stage);
   const allDeals = orderedColumns.flatMap((column) => column.deals);
@@ -545,49 +411,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
         </div>
       )}
 
-      {/* Prune summary */}
-      {pruneSummary && (
-        <div className="rounded-lg border border-success/30 bg-success/10 text-success px-4 py-3 text-sm">
-          {pruneSummary}
-        </div>
-      )}
-
-      {/* Prune error */}
-      {pruneError && (
-        <div
-          role="alert"
-          className="flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive md:flex-row md:items-center md:justify-between"
-        >
-          <span>{pruneError}</span>
-          {!pruneOpen && (
-            <Button variant="outline" size="sm" onClick={fetchPruneCandidates}>
-              Tentar novamente
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Review is intentionally secondary; it only exists when candidates are available. */}
-      {!pruneLoading && pruneCandidates.length > 0 && (
-        <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface-muted px-4 py-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-medium text-fg">Revisar pipeline</p>
-            <p className="text-sm text-fg-muted">
-              {pruneCandidates.length}{' '}
-              {pruneCandidates.length === 1 ? 'oportunidade antiga' : 'oportunidades antigas'}{' '}
-              aguardando revisão antes de serem marcadas como Perdido.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => setPruneOpen(true)}
-            aria-label={`Revisar pipeline (${pruneCandidates.length})`}
-          >
-            Revisar pipeline <span aria-hidden="true">({pruneCandidates.length})</span>
-          </Button>
-        </div>
-      )}
-
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}
       </div>
@@ -655,7 +478,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       )}
 
       {!loading && !error && hasDeals && view === 'list' && (
-        <div className="space-y-3" id="crm-view-panel" aria-hidden={pruneOpen || undefined}>
+        <div className="space-y-3" id="crm-view-panel">
           {!narrowLayout && (
             <div className="overflow-x-auto rounded-lg border border-line bg-surface">
               <Table className="min-w-[900px]">
@@ -665,7 +488,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     <TableHead>Contato</TableHead>
                     <TableHead>Orçamento</TableHead>
                     <TableHead>Etapa</TableHead>
-                    <TableHead>Próximo passo</TableHead>
                     <TableHead>Atualizado</TableHead>
                     <TableHead className="text-right">Mover</TableHead>
                   </TableRow>
@@ -747,9 +569,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             className="tone-neutral-muted"
                           />
                         </TableCell>
-                        <TableCell className="max-w-48 truncate text-sm text-fg-muted">
-                          {deal.next_step || '—'}
-                        </TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-fg-muted">
                           {lastUpdate ? `Atualizado ${daysAgo(lastUpdate)}` : '—'}
                         </TableCell>
@@ -762,7 +581,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             className="h-8 max-w-44 py-1 text-xs"
                             onChange={(event) => moveDeal(deal.id, event.target.value)}
                           >
-                            {orderedColumns.map((destinationColumn) => (
+                            {moveColumns(currentStatus).map((destinationColumn) => (
                               <option
                                 key={destinationColumn.status}
                                 value={destinationColumn.status}
@@ -851,12 +670,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                           {lastUpdate ? daysAgo(lastUpdate) : '—'}
                         </dd>
                       </div>
-                      {deal.next_step && (
-                        <div className="col-span-2">
-                          <dt className="text-xs text-fg-muted">Próximo passo</dt>
-                          <dd className="mt-1 truncate">{deal.next_step}</dd>
-                        </div>
-                      )}
                     </dl>
                     <DealProposals opportunityId={deal.id} />
                     {deal.quote_lead_id && (
@@ -882,7 +695,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         className="w-full text-sm"
                         onChange={(event) => moveDeal(deal.id, event.target.value)}
                       >
-                        {orderedColumns.map((destinationColumn) => (
+                        {moveColumns(currentStatus).map((destinationColumn) => (
                           <option key={destinationColumn.status} value={destinationColumn.status}>
                             {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
                             {destinationColumn.name}
@@ -905,7 +718,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           aria-label="Pipeline CRM"
           id="crm-view-panel"
           tabIndex={0}
-          aria-hidden={pruneOpen || undefined}
           className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-lg border border-line bg-page [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
         >
           <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
@@ -942,7 +754,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         onDrop={(e: DragEvent<HTMLDivElement>) => {
                           e.preventDefault();
                           const dealId = e.dataTransfer.getData('text/plain');
-                          if (dealId && col.status) moveDeal(dealId, col.status);
+                          if (
+                            dealId &&
+                            col.status &&
+                            moveColumns(undefined).some((column) => column.status === col.status)
+                          ) {
+                            moveDeal(dealId, col.status);
+                          }
                           setDraggingId(null);
                         }}
                       >
@@ -1010,11 +828,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               {deal.telefone && (
                                 <p className="mt-0.5 truncate text-xs text-fg-muted">
                                   {fmtPhone(deal.telefone) || deal.telefone}
-                                </p>
-                              )}
-                              {deal.next_step && (
-                                <p className="mt-2 truncate text-xs text-fg-muted">
-                                  Próximo passo: {deal.next_step}
                                 </p>
                               )}
                               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1095,116 +908,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
         </div>
       )}
 
-      {/* Prune modal */}
-      {pruneOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setPruneOpen(false)}
-            aria-hidden="true"
-          />
-
-          {/* Dialog */}
-          <div
-            ref={pruneDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Revisar limpeza de pipeline"
-            tabIndex={-1}
-            className="relative bg-surface border border-line rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col focus:outline-none"
-          >
-            <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-4">
-              <div>
-                <h2 className="font-semibold text-fg">Revisar limpeza de pipeline</h2>
-                <p className="text-sm text-fg-muted mt-1">
-                  Selecione os orçamentos antigos que devem ser marcados como Perdido.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPruneOpen(false)}
-                className="text-fg-muted hover:text-fg"
-                aria-label="Fechar"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="overflow-auto p-5">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-line">
-                    <th className="text-left py-2 pr-2 w-10">&nbsp;</th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
-                      Lead
-                    </th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
-                      Orçamento
-                    </th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
-                      Idade
-                    </th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
-                      Última alteração
-                    </th>
-                    <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
-                      Valor
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pruneCandidates.map((candidate) => (
-                    <tr key={candidate.deal_id} className="border-b border-line/50 last:border-0">
-                      <td className="py-2 pr-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedPruneIds.has(candidate.deal_id)}
-                          onChange={() => togglePruneSelection(candidate.deal_id)}
-                          aria-label={`Selecionar ${candidate.lead_name}`}
-                        />
-                      </td>
-                      <td className="py-2 pr-2 text-fg">{candidate.lead_name || 'Sem nome'}</td>
-                      <td className="py-2 pr-2 font-mono text-xs text-primary">
-                        {candidate.quotation}
-                      </td>
-                      <td className="py-2 pr-2 text-fg-muted">{candidate.age_days} dias</td>
-                      <td className="py-2 pr-2 text-fg-muted">
-                        {formatDateBR(candidate.deal_modified)}
-                      </td>
-                      <td className="py-2 text-right text-fg font-medium">
-                        {formatBRL(candidate.grand_total)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="px-5 py-4 border-t border-line flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <p className="text-sm text-fg-muted">
-                {selectedPruneIds.size} de {pruneCandidates.length} selecionadas
-              </p>
-              <div className="flex items-center gap-2 justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => setPruneOpen(false)}
-                  disabled={pruneSubmitting}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={submitPrune}
-                  disabled={pruneSubmitting || selectedPruneIds.size === 0}
-                >
-                  {pruneSubmitting ? 'Marcando...' : 'Marcar selecionados como Perdido'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       <PipelineStagesDialog
         open={pipelineDialogOpen}
         onClose={() => setPipelineDialogOpen(false)}

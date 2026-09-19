@@ -5,7 +5,12 @@ export type OpportunityActionKind =
   | 'agreed_commitment'
   | 'review';
 export type OpportunityActionOrigin = 'manual' | 'automatic' | 'event';
-export type OpportunityActionState = 'active' | 'completed' | 'cancelled' | 'superseded';
+export type OpportunityActionState =
+  | 'active'
+  | 'suspended'
+  | 'completed'
+  | 'cancelled'
+  | 'superseded';
 export type OpportunityActionScheduleType = 'date_only' | 'timed';
 export type OpportunityActionDueStatus = 'upcoming' | 'today' | 'overdue' | 'closed';
 export type CommercialQueueFilter = 'active' | 'overdue' | 'today' | 'scheduled' | 'closed';
@@ -60,6 +65,7 @@ export interface CommercialQueueItem {
   demandSummary: string | null;
   contactName: string;
   contactPhone: string | null;
+  blockedContactPhone: string | null;
   contactEmail: string | null;
   clientId: string | null;
   clientName: string | null;
@@ -68,6 +74,7 @@ export interface CommercialQueueItem {
   sourceDeliveryId: string | null;
   /** Every proposal linked to the demand, with value and state. */
   proposals: CommercialQueueProposal[];
+  associationCandidates: Array<{ opportunityId: string; demandSummary: string | null }>;
 }
 
 export interface CommercialQueuePage {
@@ -218,7 +225,7 @@ const KINDS = [
   'review',
 ] as const;
 const ORIGINS = ['manual', 'automatic', 'event'] as const;
-const STATES = ['active', 'completed', 'cancelled', 'superseded'] as const;
+const STATES = ['active', 'suspended', 'completed', 'cancelled', 'superseded'] as const;
 const SCHEDULE_TYPES = ['date_only', 'timed'] as const;
 const DUE_STATUSES = ['upcoming', 'today', 'overdue', 'closed'] as const;
 const FILTERS = ['active', 'overdue', 'today', 'scheduled', 'closed'] as const;
@@ -389,6 +396,8 @@ function parseContactContext(
 export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
   const record = asObject(value);
   if (!Array.isArray(record.proposals)) invalidResponse();
+  const associationCandidates = record.association_candidates ?? [];
+  if (!Array.isArray(associationCandidates)) invalidResponse();
   return {
     actionId: text(record.action_id, 255),
     opportunityId: text(record.opportunity_id, 255),
@@ -426,6 +435,7 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     demandSummary: optionalText(record.demand_summary),
     contactName: text(record.contact_name, 255),
     contactPhone: optionalText(record.contact_phone, 32),
+    blockedContactPhone: optionalText(record.blocked_contact_phone, 32),
     contactEmail: optionalText(record.contact_email, 254),
     clientId: optionalIdentifier(record.client_id),
     clientName: optionalIdentifier(record.client_name),
@@ -433,6 +443,13 @@ export function parseCommercialQueueItem(value: unknown): CommercialQueueItem {
     sourceRevisionId: optionalIdentifier(record.source_revision_id),
     sourceDeliveryId: optionalIdentifier(record.source_delivery_id),
     proposals: record.proposals.map(parseProposal),
+    associationCandidates: associationCandidates.map((value) => {
+      const candidate = asObject(value);
+      return {
+        opportunityId: text(candidate.opportunity_id, 255),
+        demandSummary: optionalText(candidate.demand_summary),
+      };
+    }),
   };
 }
 
@@ -537,6 +554,34 @@ export function setCommercialUrgency(input: {
     expected_version: input.expectedVersion,
     is_urgent: input.isUrgent,
   }).then(parseUrgencyResult);
+}
+
+export function associateCommercialInbound(input: {
+  alertActionId: string;
+  expectedVersion: number;
+  opportunityId: string;
+}): Promise<CommercialActionCommandResult> {
+  return sendAction({
+    command: 'associate_response',
+    action_id: input.alertActionId,
+    expected_version: input.expectedVersion,
+    opportunity_id: input.opportunityId,
+  });
+}
+
+export async function unblockCommercialContact(input: {
+  canonicalPhone: string;
+  reason: string;
+}): Promise<void> {
+  const value = await sendActionBody({
+    command: 'unblock_contact',
+    canonical_phone: input.canonicalPhone,
+    reason: input.reason,
+  });
+  const record = asObject(value);
+  if (record.unblocked !== true || record.canonical_phone !== input.canonicalPhone) {
+    invalidResponse();
+  }
 }
 
 function parseCommandResult(value: unknown): CommercialActionCommandResult {

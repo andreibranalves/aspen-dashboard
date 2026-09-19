@@ -19,9 +19,15 @@ import {
   type OpportunityQueueItem,
   type FollowUpContinuityType,
 } from '../_infrastructure/db/repositories/opportunity-actions-repository.js';
+import {
+  createPostgresWhatsappContactActivityRepository,
+  type WhatsappContactActivityRepository,
+} from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 
 export interface CommercialQueueHandlerDependencies {
   repository?: OpportunityActionRepository;
+  contactRepository?: Pick<WhatsappContactActivityRepository, 'unblockContact'>;
+  environment?: { EVOLUTION_INSTANCE?: string };
 }
 
 class HandlerInputError extends Error {
@@ -43,6 +49,9 @@ const REASON_LABELS: Record<string, string> = {
   proposal_delivery_confirmed: 'Entrega confirmada da proposta',
   follow_up_second_return: 'Segundo retorno',
   follow_up_decide_continuity: 'Decidir continuidade',
+  inbound_needs_response: 'Preciso responder',
+  associate_response: 'Associar resposta',
+  verify_conversation: 'Verificar conversa',
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -303,6 +312,7 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
     demand_summary: item.demandSummary,
     contact_name: item.contactName,
     contact_phone: item.contactPhone,
+    blocked_contact_phone: item.blockedContactPhone,
     contact_email: item.contactEmail,
     client_id: item.clientId,
     client_name: item.clientName,
@@ -314,6 +324,10 @@ function publicRecord(item: OpportunityQueueItem): Record<string, unknown> {
       business_number: proposal.businessNumber,
       status: proposal.status,
       total: proposal.total,
+    })),
+    association_candidates: item.associationCandidates.map((candidate) => ({
+      opportunity_id: candidate.opportunityId,
+      demand_summary: candidate.demandSummary,
     })),
   };
 }
@@ -433,6 +447,9 @@ export function createCommercialQueueHandler(
   dependencies: CommercialQueueHandlerDependencies = {}
 ): (event: FunctionEvent) => Promise<FunctionResult> {
   const repository = dependencies.repository || createPostgresOpportunityActionRepository();
+  const contactRepository =
+    dependencies.contactRepository || createPostgresWhatsappContactActivityRepository();
+  const environment = dependencies.environment || process.env;
 
   return async function commercialQueueHandler(event: FunctionEvent): Promise<FunctionResult> {
     try {
@@ -540,6 +557,34 @@ export function createCommercialQueueHandler(
           actor,
         });
         return json(200, publicUrgency(updated));
+      }
+
+      if (command === 'unblock_contact') {
+        const instance = String(environment.EVOLUTION_INSTANCE || '').trim();
+        if (!instance) throw new HandlerInputError('WhatsApp não configurado.');
+        const canonicalPhone = textField(payload, 'canonical_phone');
+        if (!/^[0-9]{10,15}$/.test(canonicalPhone)) {
+          throw new HandlerInputError('Telefone inválido.');
+        }
+        const reason = textField(payload, 'reason');
+        if (reason.length > 500) throw new HandlerInputError('O motivo deve ter no máximo 500 caracteres.');
+        await contactRepository.unblockContact({
+          instance,
+          canonicalPhone,
+          actor,
+          reason,
+        });
+        return json(200, { unblocked: true, canonical_phone: canonicalPhone });
+      }
+
+      if (command === 'associate_response') {
+        const associated = await repository.associateInboundResponse({
+          opportunityId: textField(payload, 'opportunity_id'),
+          actionId: textField(payload, 'action_id'),
+          expectedVersion: expectedVersion(payload),
+          actor,
+        });
+        return json(200, publicCommand(associated));
       }
 
       throw new HandlerInputError('Comando da ação inválido.');

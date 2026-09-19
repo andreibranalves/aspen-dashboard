@@ -20,7 +20,6 @@ import { createPostgresCrmPipelineStageRepository } from '../../api/_infrastruct
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { createCrmDealsHandler } from '../../api/_modules/crm-deals.js';
 import { createCrmUpdateDealHandler } from '../../api/_modules/crm-update-deal.js';
-import { createCrmPruneCandidatesHandler } from '../../api/_modules/crm-prune-candidates.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import {
   CRM_PIPELINE,
@@ -50,7 +49,6 @@ function deal(overrides: Partial<CrmDealRecord> = {}): CrmDealRecord {
     telefone: '5511999990000',
     status: 'Novo Lead',
     followUpStage: 0,
-    nextStep: null,
     lostReason: null,
     createdAt: NOW,
     updatedAt: NOW,
@@ -95,9 +93,6 @@ function memoryRepository(seed: CrmDealRecord[]): CrmDealRepository & { rows: Cr
       });
       rows.push(row);
       return row;
-    },
-    async prune() {
-      return { success: true, updated: 0, skipped: 0, skipped_deals: [] };
     },
   };
 }
@@ -211,7 +206,6 @@ test('groups local deals into canonical Kanban columns without external fetches'
     status: 'Novo Lead',
     quotation: 'ORC-20260001',
     follow_up_stage: 0,
-    next_step: null,
     criado_em: NOW.toISOString(),
     modificado_em: NOW.toISOString(),
   });
@@ -271,7 +265,6 @@ test('returns Brazilian Portuguese errors for unsupported CRM methods', async ()
   const handlers = [
     createCrmDealsHandler({ repository, pipelineRepository: memoryPipelineRepository() }),
     createCrmUpdateDealHandler({ repository }),
-    createCrmPruneCandidatesHandler({ repository }),
   ];
   const results = await Promise.all(handlers.map((handler) => handler(event('PATCH'))));
 
@@ -397,14 +390,9 @@ test(
     const quotationId = randomUUID();
     const revisionId = randomUUID();
     const dealId = randomUUID();
-    const boundaryQuotationId = randomUUID();
-    const boundaryDealId = randomUUID();
-    const orderId = randomUUID();
     const businessSequence = Math.floor(Math.random() * 9999);
     const businessNumber = `ORC-2099${String(businessSequence).padStart(4, '0')}`;
-    const boundaryBusinessNumber = `ORC-2099${String(businessSequence + 1).padStart(4, '0')}`;
     const old = new Date('2026-07-01T12:00:00.000Z');
-    const underThirtyElapsedDays = new Date('2026-07-11T13:00:00.000Z');
     try {
       await migrate(db, { migrationsFolder });
       await db.insert(schema.clients).values({
@@ -446,26 +434,6 @@ test(
         createdAt: old,
         updatedAt: old,
       });
-      await db.insert(schema.quotations).values({
-        id: boundaryQuotationId,
-        businessNumber: boundaryBusinessNumber,
-        clientId,
-        status: 'emitido',
-        createdAt: underThirtyElapsedDays,
-        updatedAt: underThirtyElapsedDays,
-      });
-      await db.insert(schema.crmDeals).values({
-        id: boundaryDealId,
-        clientId,
-        quotationId: boundaryQuotationId,
-        nome: 'Ana Limite',
-        email: 'ana.limite@example.com',
-        telefone: '5511999990000',
-        status: 'Orcamento Enviado',
-        createdAt: underThirtyElapsedDays,
-        updatedAt: old,
-      });
-
       const repository = createPostgresCrmDealRepository(() => db, { now: () => NOW });
       const listed = await repository.list({ search: 'ANA.PG@' });
       assert.equal(listed[0]?.quotation, businessNumber);
@@ -480,52 +448,12 @@ test(
         .update(schema.crmDeals)
         .set({ updatedAt: old })
         .where(eq(schema.crmDeals.id, dealId));
-      assert.equal((await repository.listPruneCandidates!(NOW)).length, 1);
-      assert.deepEqual(await repository.prune([boundaryDealId], NOW), {
-        success: true,
-        updated: 0,
-        skipped: 1,
-        skipped_deals: [
-          {
-            deal_id: boundaryDealId,
-            reason: 'Orçamento não está mais elegível para limpeza.',
-          },
-        ],
-      });
-
-      const pruned = await repository.prune([dealId], NOW);
-      assert.equal(pruned.updated, 1);
-      const [lost] = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
-      assert.equal(lost?.status, 'Perdido');
-      assert.equal(
-        lost?.nextStep,
-        'Marcado como perdido por limpeza de pipeline: sem resposta após 30 dias.'
-      );
-
-      await db.insert(schema.salesOrders).values({
-        id: orderId,
-        orderNumber: 'PED-2099-0001',
-        quotationId,
-        quotationRevisionId: revisionId,
-        clientId,
-        status: 'Draft',
-        transactionDate: '2026-08-10',
-        subtotal: '100.00',
-        grandTotal: '100.00',
-      });
-      await db
-        .update(schema.crmDeals)
-        .set({ status: 'Orcamento Enviado', updatedAt: old })
-        .where(eq(schema.crmDeals.id, dealId));
-      const skipped = await repository.prune([dealId], NOW);
-      assert.deepEqual(skipped.skipped_deals, [
-        { deal_id: dealId, reason: 'Pedido criado após a listagem.' },
-      ]);
+      await repository.updateStatus(dealId, { status: 'Em Negociacao' });
+      const [moved] = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
+      assert.equal(moved?.status, 'Em Negociacao');
+      assert.equal(moved?.lostReason, null);
     } finally {
-      await db.delete(schema.salesOrders).where(eq(schema.salesOrders.id, orderId));
-      await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, boundaryDealId));
       await db.delete(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
-      await db.delete(schema.quotations).where(eq(schema.quotations.id, boundaryQuotationId));
       await db.delete(schema.quotations).where(eq(schema.quotations.id, quotationId));
       await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
       await client.end({ timeout: 5 });

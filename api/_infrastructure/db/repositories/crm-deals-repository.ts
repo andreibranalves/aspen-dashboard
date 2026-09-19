@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, lte, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, ne, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
@@ -6,9 +6,7 @@ import {
   crmDeals,
   crmPipelineStages,
   quoteLeads,
-  quoteRevisions,
   quotations,
-  salesOrders,
 } from '../schema.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 
@@ -25,20 +23,12 @@ export const CRM_PIPELINE = [
 export type CrmDealStatus = (typeof CRM_PIPELINE)[number];
 export type CrmTimestamp = Date | string;
 
-export const CRM_PRUNE_TARGET_STATUS: CrmDealStatus = 'Orcamento Enviado';
-export const CRM_PRUNE_LOST_STATUS: CrmDealStatus = 'Perdido';
-export const CRM_PRUNE_THRESHOLD_DAYS = 30;
-export const CRM_PRUNE_PROTECT_RECENT_DAYS = 7;
-export const CRM_PRUNE_NEXT_STEP =
-  'Marcado como perdido por limpeza de pipeline: sem resposta após 30 dias.';
-export const CRM_PRUNE_LOST_REASON = 'Sem resposta após 30 dias.';
+export const CRM_ISSUED_STATUS: CrmDealStatus = 'Orcamento Enviado';
+export const CRM_LOST_STATUS: CrmDealStatus = 'Perdido';
 
 const DEFAULT_LIST_LIMIT = 500;
 const MAX_LIST_LIMIT = 500;
-const MAX_PRUNE_DEALS = 1000;
-const MAX_PRUNE_REVISIONS = 5000;
 const MAX_SEARCH_LENGTH = 200;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export class CrmDealInputError extends Error {
   readonly statusCode = 400;
@@ -72,14 +62,11 @@ export interface CrmDealRecord {
   telefone: string | null;
   status: string;
   followUpStage: number;
-  nextStep: string | null;
   lostReason: string | null;
   createdAt: CrmTimestamp;
   updatedAt: CrmTimestamp;
   quotation?: string | null;
   leadSource?: string | null;
-  quotationDate?: string | null;
-  grandTotal?: number;
 }
 
 export interface CrmDealListOptions {
@@ -112,35 +99,14 @@ export interface CrmDealUpsertInput {
   status?: unknown;
   followUpStage?: unknown;
   follow_up_stage?: unknown;
-  nextStep?: unknown;
-  next_step?: unknown;
   lostReason?: unknown;
   lost_reason?: unknown;
-}
-
-export interface CrmPruneCandidate {
-  deal_id: string;
-  lead_name: string;
-  quotation: string;
-  quotation_date: string;
-  age_days: number;
-  deal_modified: string;
-  grand_total: number;
-}
-
-export interface CrmPruneResult {
-  success: true;
-  updated: number;
-  skipped: number;
-  skipped_deals: Array<{ deal_id: string; reason: string }>;
 }
 
 export interface CrmDealRepository {
   list(options: CrmDealListOptions): Promise<CrmDealRecord[]>;
   updateStatus(id: string, patch: CrmDealStatusPatch): Promise<CrmDealRecord | null>;
   upsertForQuotation(input: CrmDealUpsertInput): Promise<CrmDealRecord>;
-  prune(ids: string[], now: Date): Promise<CrmPruneResult>;
-  listPruneCandidates?(now: Date): Promise<CrmPruneCandidate[]>;
 }
 
 export interface CrmDealRepositoryOptions {
@@ -175,33 +141,6 @@ function nowFrom(factory: () => Date): Date {
 function strictlyAfter(candidate: Date, previous: unknown): Date {
   const prior = asValidDate(previous, new Date(0));
   return candidate.getTime() > prior.getTime() ? candidate : new Date(prior.getTime() + 1);
-}
-
-function addDays(value: Date, days: number): Date {
-  return new Date(value.getTime() + days * DAY_MS);
-}
-
-function pruneQuotationCutoff(now: Date): Date {
-  return addDays(now, -CRM_PRUNE_THRESHOLD_DAYS);
-}
-
-function isPruneQuotationOldEnough(createdAt: unknown, now: Date): boolean {
-  const created = parseTimestamp(createdAt);
-  return created !== null && created.getTime() <= pruneQuotationCutoff(now).getTime();
-}
-
-function dateOnly(value: unknown): string {
-  return asValidDate(value, new Date(0)).toISOString().slice(0, 10);
-}
-
-function ageInDays(value: unknown, now: Date): number {
-  const created = parseTimestamp(value);
-  if (!created) return -1;
-  return Math.floor((now.getTime() - created.getTime()) / DAY_MS);
-}
-
-function isoTimestamp(value: unknown): string {
-  return asValidDate(value, new Date(0)).toISOString();
 }
 
 function cleanString(value: unknown): string {
@@ -302,7 +241,6 @@ function mapRow(row: CrmDealRow, quotation: string | null = null): CrmDealRecord
     telefone: row.telefone,
     status: row.status,
     followUpStage: row.followUpStage,
-    nextStep: row.nextStep,
     lostReason: row.lostReason,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -331,94 +269,16 @@ async function dealWithQuotation(database: CrmDatabase, id: string): Promise<Crm
   return mapRow(row, quotation?.businessNumber || null);
 }
 
-async function latestRevisionRows(
-  database: CrmDatabase,
-  quotationIds: string[]
-): Promise<Array<typeof quoteRevisions.$inferSelect>> {
-  if (quotationIds.length === 0) return [];
-  return database
-    .select()
-    .from(quoteRevisions)
-    .where(inArray(quoteRevisions.quotationId, quotationIds))
-    .orderBy(asc(quoteRevisions.quotationId), desc(quoteRevisions.version))
-    .limit(MAX_PRUNE_REVISIONS);
-}
-
-function latestByQuotation(rows: Array<typeof quoteRevisions.$inferSelect>) {
-  const latest = new Map<string, typeof quoteRevisions.$inferSelect>();
-  for (const row of rows) {
-    if (!latest.has(row.quotationId)) latest.set(row.quotationId, row);
-  }
-  return latest;
-}
-
-async function activeOrdersFor(
-  database: CrmDatabase,
-  quotationIds: string[],
-  revisionIds: string[]
-) {
-  if (quotationIds.length === 0 && revisionIds.length === 0) return [];
-  const linkage = [
-    quotationIds.length > 0 ? inArray(salesOrders.quotationId, quotationIds) : undefined,
-    revisionIds.length > 0 ? inArray(salesOrders.quotationRevisionId, revisionIds) : undefined,
-  ].filter(Boolean) as Array<ReturnType<typeof inArray>>;
-  return database
-    .select({
-      quotationId: salesOrders.quotationId,
-      quotationRevisionId: salesOrders.quotationRevisionId,
-      status: salesOrders.status,
-    })
-    .from(salesOrders)
-    .where(and(or(...linkage), ne(salesOrders.status, 'Cancelled')))
-    .limit(MAX_PRUNE_DEALS);
-}
-
-async function pruneEligibility(
-  transaction: CrmTransaction,
-  deal: CrmDealRow,
-  now: Date
-): Promise<string | null> {
-  if (deal.status !== CRM_PRUNE_TARGET_STATUS) return 'Status alterado após a listagem.';
-  if (!deal.quotationId) return 'Orçamento não está mais elegível para limpeza.';
-  if (deal.updatedAt > addDays(now, -CRM_PRUNE_PROTECT_RECENT_DAYS)) {
-    return 'Deal atualizado após a listagem.';
-  }
-
-  const [quotation] = await transaction
-    .select()
-    .from(quotations)
-    .where(eq(quotations.id, deal.quotationId))
-    .for('update')
-    .limit(1);
-  if (!quotation) return 'Orçamento não está mais elegível para limpeza.';
-  if (!isPruneQuotationOldEnough(quotation.createdAt, now)) {
-    return 'Orçamento não está mais elegível para limpeza.';
-  }
-
-  const revisions = await transaction
-    .select({ id: quoteRevisions.id })
-    .from(quoteRevisions)
-    .where(eq(quoteRevisions.quotationId, quotation.id))
-    .limit(MAX_PRUNE_REVISIONS);
-  const orders = await activeOrdersFor(
-    transaction,
-    [quotation.id],
-    revisions.map((revision) => revision.id)
-  );
-  if (orders.length > 0) return 'Pedido criado após a listagem.';
-  return null;
-}
-
-const ISSUED_STAGE_INDEX = CRM_PIPELINE.indexOf(CRM_PRUNE_TARGET_STATUS);
+const ISSUED_STAGE_INDEX = CRM_PIPELINE.indexOf(CRM_ISSUED_STATUS);
 
 function nextIssuanceStatus(
   existingStatus: string,
   statusValue: CrmDealStatus | undefined
 ): CrmDealStatus | undefined {
-  if (existingStatus === CRM_PRUNE_LOST_STATUS) return undefined;
+  if (existingStatus === CRM_LOST_STATUS) return undefined;
   if (statusValue !== undefined) return statusValue;
   const currentIndex = CRM_PIPELINE.indexOf(existingStatus as CrmDealStatus);
-  if (currentIndex >= 0 && currentIndex < ISSUED_STAGE_INDEX) return CRM_PRUNE_TARGET_STATUS;
+  if (currentIndex >= 0 && currentIndex < ISSUED_STAGE_INDEX) return CRM_ISSUED_STATUS;
   return undefined;
 }
 
@@ -487,7 +347,7 @@ async function resolveExistingDeal(
   const [active] = await database
     .select()
     .from(crmDeals)
-    .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_PRUNE_LOST_STATUS)))
+    .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_LOST_STATUS)))
     .for('update')
     .limit(1);
   if (active) return active;
@@ -495,7 +355,7 @@ async function resolveExistingDeal(
   const [lost] = await database
     .select()
     .from(crmDeals)
-    .where(and(eq(crmDeals.quotationId, quotationId), eq(crmDeals.status, CRM_PRUNE_LOST_STATUS)))
+    .where(and(eq(crmDeals.quotationId, quotationId), eq(crmDeals.status, CRM_LOST_STATUS)))
     .orderBy(desc(crmDeals.updatedAt), desc(crmDeals.createdAt), asc(crmDeals.id))
     .for('update')
     .limit(1);
@@ -537,7 +397,6 @@ export async function upsertCrmDealForQuotation(
   const quoteLeadId = input?.quoteLeadId ?? input?.quote_lead_id;
   const statusValue = input?.status === undefined ? undefined : normalizedStatus(input.status);
   const followUpStage = normalizedFollowUpStage(input?.followUpStage ?? input?.follow_up_stage);
-  const nextStep = optionalText(input?.nextStep ?? input?.next_step, 'Próxima ação', 500);
   const lostReason = optionalText(input?.lostReason ?? input?.lost_reason, 'Motivo da perda', 500);
   const normalizedClientId =
     clientId === undefined || clientId === null ? null : normalizedId(clientId, 'client_id');
@@ -573,7 +432,7 @@ export async function upsertCrmDealForQuotation(
   if (existing) {
     const nextStatus = nextIssuanceStatus(existing.status, statusValue);
     const status =
-      existing.status === CRM_PRUNE_LOST_STATUS ? existing.status : (nextStatus ?? existing.status);
+      existing.status === CRM_LOST_STATUS ? existing.status : (nextStatus ?? existing.status);
     const updatedAt = strictlyAfter(timestamp, existing.updatedAt);
     const identityPatch = {
       ...(nameValue === undefined ? {} : { nome: requiredName(nameValue) }),
@@ -588,7 +447,7 @@ export async function upsertCrmDealForQuotation(
       ...(viaOpportunity ? {} : { quotationId }),
       updatedAt,
     };
-    if (existing.status === CRM_PRUNE_LOST_STATUS) {
+    if (existing.status === CRM_LOST_STATUS) {
       await database.update(crmDeals).set(identityPatch).where(eq(crmDeals.id, existing.id));
     } else {
       await database
@@ -597,12 +456,11 @@ export async function upsertCrmDealForQuotation(
           ...identityPatch,
           ...(nextStatus === undefined ? {} : { status: nextStatus }),
           ...(followUpStage === undefined ? {} : { followUpStage }),
-          ...(nextStep === undefined ? {} : { nextStep }),
-          lostReason: status === CRM_PRUNE_LOST_STATUS ? lostReason || CRM_PRUNE_LOST_REASON : null,
+          lostReason: status === CRM_LOST_STATUS ? (lostReason ?? null) : null,
         })
         .where(eq(crmDeals.id, existing.id));
     }
-    if (status !== CRM_PRUNE_TARGET_STATUS) {
+    if (status !== CRM_ISSUED_STATUS) {
       await cancelQuotationFollowUpForFact(database, quotationId, 'crm_not_eligible', updatedAt);
     }
     await syncLeadDealLink(database, lead, existing.id, timestamp);
@@ -612,7 +470,7 @@ export async function upsertCrmDealForQuotation(
   }
 
   const nome = requiredName(nameValue);
-  const status = statusValue || CRM_PRUNE_TARGET_STATUS;
+  const status = statusValue || CRM_ISSUED_STATUS;
   const id = normalizedId(input?.id === undefined ? makeId() : input.id, 'id');
   const insertQuoteLeadId = quoteLeadId !== undefined ? normalizedQuoteLeadId : lead?.id || null;
   const [created] = await database
@@ -627,13 +485,7 @@ export async function upsertCrmDealForQuotation(
       telefone: phoneValue === undefined ? null : phoneValue,
       status,
       followUpStage: followUpStage ?? 0,
-      nextStep: nextStep === undefined ? null : nextStep,
-      lostReason:
-        status === CRM_PRUNE_LOST_STATUS
-          ? lostReason || CRM_PRUNE_LOST_REASON
-          : lostReason === undefined
-            ? null
-            : lostReason,
+      lostReason: lostReason ?? null,
       createdAt: timestamp,
       updatedAt: timestamp,
     })
@@ -646,12 +498,12 @@ export async function upsertCrmDealForQuotation(
         .select()
         .from(crmDeals)
         .where(
-          and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_PRUNE_LOST_STATUS))
+          and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, CRM_LOST_STATUS))
         )
         .limit(1)
     )[0];
   if (!winner) throw new CrmDealRepositoryError();
-  if (winner.status !== CRM_PRUNE_TARGET_STATUS) {
+  if (winner.status !== CRM_ISSUED_STATUS) {
     await cancelQuotationFollowUpForFact(database, quotationId, 'crm_not_eligible', timestamp);
   }
   await syncLeadDealLink(database, lead, winner.id, timestamp);
@@ -683,7 +535,6 @@ export function createPostgresCrmDealRepository(
           telefone: crmDeals.telefone,
           status: crmDeals.status,
           followUpStage: crmDeals.followUpStage,
-          nextStep: crmDeals.nextStep,
           lostReason: crmDeals.lostReason,
           createdAt: crmDeals.createdAt,
           updatedAt: crmDeals.updatedAt,
@@ -724,7 +575,6 @@ export function createPostgresCrmDealRepository(
           telefone: row.telefone,
           status: row.status,
           followUpStage: row.followUpStage,
-          nextStep: row.nextStep,
           lostReason: row.lostReason,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
@@ -762,11 +612,11 @@ export function createPostgresCrmDealRepository(
             .set({
               status,
               ...(followUpStage === undefined ? {} : { followUpStage }),
-              lostReason: status === CRM_PRUNE_LOST_STATUS ? CRM_PRUNE_LOST_REASON : null,
+              lostReason: null,
               updatedAt,
             })
             .where(eq(crmDeals.id, dealId));
-          if (status !== CRM_PRUNE_TARGET_STATUS) {
+          if (status !== CRM_ISSUED_STATUS) {
             await cancelQuotationFollowUpForFact(
               transaction,
               current.quotationId,
@@ -795,138 +645,6 @@ export function createPostgresCrmDealRepository(
       }
     },
 
-    async listPruneCandidates(nowValue: Date): Promise<CrmPruneCandidate[]> {
-      const nowAt = asValidDate(nowValue);
-      const oldEnough = pruneQuotationCutoff(nowAt);
-      const protectedAfter = addDays(nowAt, -CRM_PRUNE_PROTECT_RECENT_DAYS);
-      try {
-        const database = getDb();
-        const deals = await database
-          .select()
-          .from(crmDeals)
-          .where(
-            and(
-              eq(crmDeals.status, CRM_PRUNE_TARGET_STATUS),
-              lte(crmDeals.updatedAt, protectedAfter)
-            )
-          )
-          .orderBy(asc(crmDeals.updatedAt), asc(crmDeals.id))
-          .limit(MAX_PRUNE_DEALS);
-        const dealByQuotation = new Map(
-          deals.filter((deal) => deal.quotationId).map((deal) => [deal.quotationId as string, deal])
-        );
-        const quotationIds = [...dealByQuotation.keys()];
-        if (quotationIds.length === 0) return [];
-
-        const quotationRows = await database
-          .select()
-          .from(quotations)
-          .where(and(inArray(quotations.id, quotationIds), lte(quotations.createdAt, oldEnough)))
-          .limit(MAX_PRUNE_DEALS);
-        if (quotationRows.length === 0) return [];
-
-        const eligibleQuotationIds = quotationRows.map((quotation) => quotation.id);
-        const revisionRows = await latestRevisionRows(database, eligibleQuotationIds);
-        const latestRevisions = latestByQuotation(revisionRows);
-        const revisionToQuotation = new Map(
-          revisionRows.map((revision) => [revision.id, revision.quotationId])
-        );
-        const orders = await activeOrdersFor(database, eligibleQuotationIds, [
-          ...revisionToQuotation.keys(),
-        ]);
-        const linkedQuotationIds = new Set<string>();
-        for (const order of orders) {
-          if (order.quotationId) linkedQuotationIds.add(order.quotationId);
-          if (order.quotationRevisionId) {
-            const quotationId = revisionToQuotation.get(order.quotationRevisionId);
-            if (quotationId) linkedQuotationIds.add(quotationId);
-          }
-        }
-
-        return quotationRows
-          .filter((quotation) => isPruneQuotationOldEnough(quotation.createdAt, nowAt))
-          .filter((quotation) => !linkedQuotationIds.has(quotation.id))
-          .map((quotation) => {
-            const deal = dealByQuotation.get(quotation.id)!;
-            const revision = latestRevisions.get(quotation.id);
-            return {
-              deal_id: deal.id,
-              lead_name: deal.nome || 'Sem nome',
-              quotation: quotation.businessNumber,
-              quotation_date: dateOnly(quotation.createdAt),
-              age_days: ageInDays(quotation.createdAt, nowAt),
-              deal_modified: isoTimestamp(deal.updatedAt),
-              grand_total: Number(revision?.total || 0),
-            };
-          })
-          .filter((candidate) => candidate.age_days >= CRM_PRUNE_THRESHOLD_DAYS)
-          .sort((a, b) => b.age_days - a.age_days || a.deal_id.localeCompare(b.deal_id));
-      } catch (error) {
-        return safeRepositoryError(error);
-      }
-    },
-
-    async prune(ids: string[], nowValue: Date): Promise<CrmPruneResult> {
-      const selected = Array.from(new Set(ids.map(cleanString).filter(Boolean)));
-      if (selected.length === 0)
-        throw new CrmDealInputError('Selecione ao menos uma oportunidade para limpar.');
-      if (selected.length > MAX_PRUNE_DEALS) {
-        throw new CrmDealInputError('Selecione no máximo 1000 oportunidades por limpeza.');
-      }
-      const nowAt = asValidDate(nowValue);
-      try {
-        const database = getDb();
-        return await database.transaction(async (transaction) => {
-          let updated = 0;
-          const skippedDeals: Array<{ deal_id: string; reason: string }> = [];
-          for (const dealId of selected) {
-            const [deal] = await transaction
-              .select()
-              .from(crmDeals)
-              .where(eq(crmDeals.id, dealId))
-              .for('update')
-              .limit(1);
-            if (!deal) {
-              skippedDeals.push({
-                deal_id: dealId,
-                reason: 'Deal não está mais elegível para limpeza.',
-              });
-              continue;
-            }
-            const reason = await pruneEligibility(transaction, deal, nowAt);
-            if (reason) {
-              skippedDeals.push({ deal_id: dealId, reason });
-              continue;
-            }
-            const updatedAt = strictlyAfter(nowAt, deal.updatedAt);
-            await transaction
-              .update(crmDeals)
-              .set({
-                status: CRM_PRUNE_LOST_STATUS,
-                lostReason: CRM_PRUNE_LOST_REASON,
-                nextStep: CRM_PRUNE_NEXT_STEP,
-                updatedAt,
-              })
-              .where(eq(crmDeals.id, dealId));
-            await cancelQuotationFollowUpForFact(
-              transaction,
-              deal.quotationId,
-              'crm_not_eligible',
-              updatedAt
-            );
-            updated += 1;
-          }
-          return {
-            success: true,
-            updated,
-            skipped: skippedDeals.length,
-            skipped_deals: skippedDeals,
-          };
-        });
-      } catch (error) {
-        return safeRepositoryError(error);
-      }
-    },
   };
 
   return repository;
