@@ -39,6 +39,35 @@ test('dashboard view model keeps nullable deltas and omits untrusted rows', () =
   assert.equal(view.topCustomers, null);
 });
 
+test('dashboard view model keeps the summary when the conversion ratio is unexpected', () => {
+  // The metric now shares one cohort, so a ratio above 100% should not happen;
+  // if it ever does, the screen keeps every other number instead of hiding the
+  // whole summary.
+  const view = projectDashboardView({
+    success: true,
+    summary: {
+      total_revenue: 500,
+      orders_count: 4,
+      avg_ticket: 125,
+      open_orders: 1,
+      conversion_rate: 2.5,
+      revenue_delta: 10,
+      orders_delta: 1,
+      avg_ticket_delta: 2,
+      conversion_delta: 3,
+    },
+    top_products: [],
+    top_customers: [],
+    sales_by_day: [],
+  });
+
+  assert.ok(view);
+  assert.equal(view.summary?.conversion_rate, 2.5);
+  assert.equal(view.summary?.total_revenue, 500);
+  assert.equal(view.summary?.orders_count, 4);
+  assert.equal(view.summary?.avg_ticket, 125);
+});
+
 test('dashboard view model keeps available lists when the summary is partial', () => {
   const view = projectDashboardView({
     success: true,

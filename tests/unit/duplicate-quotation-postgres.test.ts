@@ -265,7 +265,7 @@ test(
         .where(eq(crmDeals.quotationId, duplicateQuotation.id));
       assert.equal(duplicateDeals.length, 1);
       assert.equal(duplicateDeals[0].clientId, fixtureClientId);
-      assert.equal(duplicateDeals[0].status, 'Orcamento Enviado');
+      assert.equal(duplicateDeals[0].status, 'Novo Lead');
 
 
       const [sourceQuotationAfter] = await db

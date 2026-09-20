@@ -14,7 +14,7 @@ import {
   type DeliveryListFilters,
   type DeliveryListResult,
 } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
-import type { DeliveryState } from './quotation-delivery-state.js';
+import { isRevisionUnavailableFailure, type DeliveryState } from './quotation-delivery-state.js';
 
 const DELIVERY_STATES: readonly DeliveryState[] = [
   'queued',
@@ -142,6 +142,14 @@ export function toPublicDeliveryView(
 ): PublicDeliveryView {
   const steps = Array.isArray(delivery.steps) ? delivery.steps : [];
   const delivered = steps.filter((step) => step.state === 'delivered' || step.state === 'read').length;
+  // Acceptance and delivery are different facts and the screen must never
+  // conflate them: `accepted` counts the durable acceptance clock the provider
+  // wrote (`accepted_at`), so a later ERROR receipt that moves a step to
+  // `needs_review` cannot erase it, and a step the operator confirmed manually
+  // never counts as accepted by the provider. `delivered` keeps counting only
+  // device receipts. Derived from `quotation_delivery_steps` on read; no durable
+  // counter exists or is introduced.
+  const accepted = steps.filter((step) => Boolean(step.acceptedAt)).length;
   const actionDeadline =
     delivery.state === 'provider_accepted'
       ? delivery.actionDeadline instanceof Date && !Number.isNaN(delivery.actionDeadline.getTime())
@@ -160,7 +168,7 @@ export function toPublicDeliveryView(
     state: delivery.state,
     completion_source: delivery.completionSource || null,
     public_error: delivery.publicError || null,
-    progress: { delivered, total: steps.length },
+    progress: { accepted, delivered, total: steps.length },
     steps: steps.map((step) => ({
       id: text(step.id),
       position: step.position,
@@ -168,6 +176,11 @@ export function toPublicDeliveryView(
       state: step.state,
       attempt_count: step.attemptCount,
       public_error: step.publicError || null,
+      failure_kind: step.failureKind || null,
+      // Server-side decision of the retry rule: the same predicate the
+      // transactional re-send gate applies, so the screen can never offer a
+      // re-send the gate would refuse.
+      retry_blocked: isRevisionUnavailableFailure(step),
       next_attempt_at: iso(step.nextAttemptAt),
       accepted_at: iso(step.acceptedAt),
       delivered_at: iso(step.deliveredAt),
@@ -271,11 +284,15 @@ function ensureResolutionBody(body: Record<string, unknown>): void {
 }
 
 function resolutionBody(body: Record<string, unknown>): {
-  decision: 'confirmed_received' | 'confirmed_not_received';
+  decision: 'confirmed_received' | 'confirmed_not_received' | 'retry_same_revision';
   note: string;
 } {
   const decision = body.decision;
-  if (decision !== 'confirmed_received' && decision !== 'confirmed_not_received') {
+  if (
+    decision !== 'confirmed_received' &&
+    decision !== 'confirmed_not_received' &&
+    decision !== 'retry_same_revision'
+  ) {
     throw new HandlerInputError('Decisão de resolução inválida.');
   }
   if (typeof body.note !== 'string') throw new HandlerInputError('Justificativa inválida.');

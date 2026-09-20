@@ -1,9 +1,14 @@
 // ChannelsTab — Evolution API configuration display.
 // The channel is read-only here; transport configuration remains in the environment.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, Info, KeyRound, MessageCircle, Server, ShieldCheck } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/badge';
+import {
+  fetchDeliveryDiagnostics,
+  type DeliveryDiagnostics,
+} from '@/lib/api/whatsappDeliveryDiagnosticsApi';
+import { formatDateTime } from '@/lib/formatting/formatters';
 
 const CONFIGURATION_ITEMS = [
   { name: 'EVOLUTION_BASE_URL', description: 'URL base da Evolution API', icon: Server },
@@ -18,6 +23,22 @@ const CONFIGURATION_ITEMS = [
 
 export default function ChannelsTab() {
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<DeliveryDiagnostics | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchDeliveryDiagnostics()
+      .then((result) => {
+        if (active) setDiagnostics(result);
+      })
+      .catch(() => {
+        if (active) setDiagnosticsError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <section
@@ -44,6 +65,40 @@ export default function ChannelsTab() {
         <p className="mt-1 text-sm text-fg-muted">
           O painel não consulta a conexão nem altera a configuração do canal.
         </p>
+      </div>
+
+      <div className="mt-4 border-t border-line pt-4" aria-label="Entregas do WhatsApp">
+        <p className="text-sm font-medium text-fg">Entregas do WhatsApp</p>
+        {diagnosticsError ? (
+          <p className="mt-1 text-sm text-fg-muted">
+            Não foi possível ler o diagnóstico das entregas.
+          </p>
+        ) : !diagnostics ? (
+          <p className="mt-1 text-sm text-fg-muted">Consultando…</p>
+        ) : (
+          <dl className="mt-2 space-y-1 text-sm text-fg-muted">
+            <div className="flex flex-wrap gap-x-2">
+              <dt>Última execução do worker:</dt>
+              <dd>
+                {diagnostics.worker?.lastRunAt
+                  ? diagnostics.worker.result === 'failure'
+                    ? `${formatDateTime(diagnostics.worker.lastRunAt)} (falha)`
+                    : `${formatDateTime(diagnostics.worker.lastRunAt)} (${diagnostics.worker.processed} etapa(s) processada(s)${
+                        diagnostics.worker.remaining ? ', fila restante' : ''
+                      })`
+                  : 'nenhuma execução registrada'}
+              </dd>
+            </div>
+            <div className="flex flex-wrap gap-x-2">
+              <dt>Etapas em reconciliação:</dt>
+              <dd>{diagnostics.reconcilingSteps}</dd>
+            </div>
+            <div className="flex flex-wrap gap-x-2">
+              <dt>Recibos sem correlação:</dt>
+              <dd>{diagnostics.pendingReceipts}</dd>
+            </div>
+          </dl>
+        )}
       </div>
 
       <div className="mt-4 border-t border-line pt-3">

@@ -147,8 +147,7 @@ function projectDashboardSummary(value: unknown): DashboardSummary | null {
     avgTicket === null ||
     openOrders === null ||
     conversionRate === null ||
-    conversionRate < 0 ||
-    conversionRate > 1
+    conversionRate < 0
   )
     return null;
   return {

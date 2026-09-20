@@ -6,6 +6,7 @@ import {
   crmDeals,
   crmPipelineStages,
   quoteLeads,
+  quoteRevisions,
   quotations,
 } from '../schema.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
@@ -123,6 +124,13 @@ type QuoteLeadRow = typeof quoteLeads.$inferSelect;
 export interface UpsertCrmDealForQuotationOptions {
   now?: Date;
   idFactory?: () => string;
+  /**
+   * Which fact is allowed to advance the commercial stage. The document alone
+   * (`document`, the default) never sets `Orcamento Enviado`: issuing a quotation
+   * proves the PDF exists, not that the customer received it. Only the provider
+   * acceptance of a real dispatch (`provider_acceptance`) authorizes the stage.
+   */
+  promoteStage?: 'document' | 'provider_acceptance';
 }
 
 function parseTimestamp(value: unknown): Date | null {
@@ -273,10 +281,14 @@ const ISSUED_STAGE_INDEX = CRM_PIPELINE.indexOf(CRM_ISSUED_STATUS);
 
 function nextIssuanceStatus(
   existingStatus: string,
-  statusValue: CrmDealStatus | undefined
+  statusValue: CrmDealStatus | undefined,
+  promoteStage: 'document' | 'provider_acceptance'
 ): CrmDealStatus | undefined {
   if (existingStatus === CRM_LOST_STATUS) return undefined;
   if (statusValue !== undefined) return statusValue;
+  // The document was created, nothing was dispatched: the stage is left exactly
+  // where the operator put it.
+  if (promoteStage !== 'provider_acceptance') return undefined;
   const currentIndex = CRM_PIPELINE.indexOf(existingStatus as CrmDealStatus);
   if (currentIndex >= 0 && currentIndex < ISSUED_STAGE_INDEX) return CRM_ISSUED_STATUS;
   return undefined;
@@ -411,6 +423,7 @@ export async function upsertCrmDealForQuotation(
       : normalizedId(opportunityValue, 'opportunity_id');
   const timestamp = asValidDate(options.now);
   const makeId = options.idFactory || randomUUID;
+  const promoteStage = options.promoteStage || 'document';
 
   const lead = await selectLeadForQuotation(database, quotationId);
   const viaOpportunity = normalizedOpportunityId !== null;
@@ -429,8 +442,14 @@ export async function upsertCrmDealForQuotation(
           ? { quoteLeadId: lead.id }
           : {};
 
+  // Follow-up eligibility follows the stage the deal actually ends with, but
+  // only a call that asserted the commercial stage may revoke it: the
+  // document-only upsert leaves the stage untouched and has no eligibility to
+  // re-evaluate.
+  const stageAsserted = statusValue !== undefined || promoteStage === 'provider_acceptance';
+
   if (existing) {
-    const nextStatus = nextIssuanceStatus(existing.status, statusValue);
+    const nextStatus = nextIssuanceStatus(existing.status, statusValue, promoteStage);
     const status =
       existing.status === CRM_LOST_STATUS ? existing.status : (nextStatus ?? existing.status);
     const updatedAt = strictlyAfter(timestamp, existing.updatedAt);
@@ -460,7 +479,7 @@ export async function upsertCrmDealForQuotation(
         })
         .where(eq(crmDeals.id, existing.id));
     }
-    if (status !== CRM_ISSUED_STATUS) {
+    if (stageAsserted && status !== CRM_ISSUED_STATUS) {
       await cancelQuotationFollowUpForFact(database, quotationId, 'crm_not_eligible', updatedAt);
     }
     await syncLeadDealLink(database, lead, existing.id, timestamp);
@@ -470,7 +489,11 @@ export async function upsertCrmDealForQuotation(
   }
 
   const nome = requiredName(nameValue);
-  const status = statusValue || CRM_ISSUED_STATUS;
+  // No stage is invented for a brand-new deal: without an asserted stage the
+  // pipeline default applies and the deal waits there until the provider
+  // accepts a real dispatch.
+  const status =
+    statusValue || (promoteStage === 'provider_acceptance' ? CRM_ISSUED_STATUS : undefined);
   const id = normalizedId(input?.id === undefined ? makeId() : input.id, 'id');
   const insertQuoteLeadId = quoteLeadId !== undefined ? normalizedQuoteLeadId : lead?.id || null;
   const [created] = await database
@@ -483,7 +506,7 @@ export async function upsertCrmDealForQuotation(
       nome,
       email: emailValue === undefined ? null : emailValue,
       telefone: phoneValue === undefined ? null : phoneValue,
-      status,
+      ...(status === undefined ? {} : { status }),
       followUpStage: followUpStage ?? 0,
       lostReason: lostReason ?? null,
       createdAt: timestamp,
@@ -503,13 +526,57 @@ export async function upsertCrmDealForQuotation(
         .limit(1)
     )[0];
   if (!winner) throw new CrmDealRepositoryError();
-  if (winner.status !== CRM_ISSUED_STATUS) {
+  if (stageAsserted && winner.status !== CRM_ISSUED_STATUS) {
     await cancelQuotationFollowUpForFact(database, quotationId, 'crm_not_eligible', timestamp);
   }
   await syncLeadDealLink(database, lead, winner.id, timestamp);
   const saved = await dealWithQuotation(database, winner.id);
   if (!saved) throw new CrmDealRepositoryError();
   return saved;
+}
+
+/**
+ * Advances the commercial stage of the deal behind a revision once WhatsApp
+ * accepted the complete dispatch of that revision. Issuing the document no
+ * longer calls this: the stage means the provider accepted the quotation, not
+ * that a PDF was generated.
+ *
+ * Idempotent by construction: `upsertCrmDealForQuotation` only advances deals
+ * that are still before `Orcamento Enviado` and never revives `Perdido`, so a
+ * repeated receipt, a resolution or a replayed callback changes nothing.
+ */
+export async function promoteDealOnProviderAcceptance(
+  database: CrmDatabase,
+  input: { revisionId: string },
+  options: { now?: Date; idFactory?: () => string } = {}
+): Promise<void> {
+  const revisionId = normalizedId(input?.revisionId, 'revision_id');
+  const [row] = await database
+    .select({
+      quotationId: quoteRevisions.quotationId,
+      nome: quoteRevisions.clienteNome,
+      email: quoteRevisions.clienteEmail,
+      telefone: quoteRevisions.clienteTelefone,
+      clientId: quotations.clientId,
+      opportunityId: quotations.opportunityId,
+    })
+    .from(quoteRevisions)
+    .innerJoin(quotations, eq(quotations.id, quoteRevisions.quotationId))
+    .where(eq(quoteRevisions.id, revisionId))
+    .limit(1);
+  if (!row) throw new CrmDealRepositoryError();
+  await upsertCrmDealForQuotation(
+    database,
+    {
+      quotationId: row.quotationId,
+      clientId: row.clientId,
+      opportunityId: row.opportunityId,
+      nome: row.nome,
+      email: row.email,
+      telefone: row.telefone,
+    },
+    { ...options, promoteStage: 'provider_acceptance' }
+  );
 }
 
 export function createPostgresCrmDealRepository(

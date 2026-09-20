@@ -27,7 +27,7 @@ function fixture(overrides: Partial<DeliveryView> = {}): Record<string, unknown>
     state: 'queued',
     publicError: null,
     completionSource: null,
-    progress: { delivered: 0, total: 1 },
+    progress: { accepted: 0, delivered: 0, total: 1 },
     steps: [
       {
         id: 'step-1',

@@ -25,10 +25,12 @@ import {
   quotationDeliveries,
   quotationDeliverySteps,
 } from '../schema.js';
+import { promoteDealOnProviderAcceptance } from './crm-deals-repository.js';
 import {
   aggregateDeliveryState,
   applyReceipt as applyDeliveryReceipt,
   failureTargetState,
+  isRevisionUnavailableFailure,
   retryDelayMs,
   type DeliveryState,
   type DeliveryStepState,
@@ -171,6 +173,12 @@ export interface DeliveryStepView {
   state: DeliveryStepState;
   attemptCount: number;
   publicError: string | null;
+  /**
+   * Failure class of the last attempt; both pre-transport classes are re-sendable
+   * unless the failure was caused by the revision itself (see
+   * `isRevisionUnavailableFailure`).
+   */
+  failureKind: TransportFailureKind | null;
   nextAttemptAt: Date | null;
   acceptedAt: Date | null;
   deliveredAt: Date | null;
@@ -279,6 +287,12 @@ export type ResolveDeliveryInput =
   | {
       deliveryId: string;
       decision: 'confirmed_not_received';
+      note: string;
+      resolvedBy: 'authenticated-operator';
+    }
+  | {
+      deliveryId: string;
+      decision: 'retry_same_revision';
       note: string;
       resolvedBy: 'authenticated-operator';
     };
@@ -604,6 +618,12 @@ function safeCompletionSource(value: unknown): CompletionSource | null {
     : null;
 }
 
+function safeFailureKind(value: unknown): TransportFailureKind | null {
+  return FAILURE_KINDS.includes(value as TransportFailureKind)
+    ? (value as TransportFailureKind)
+    : null;
+}
+
 function countValue(value: unknown): number {
   const result = Number(value);
   return Number.isSafeInteger(result) && result >= 0 ? result : 0;
@@ -640,6 +660,7 @@ function buildStepView(row: DeliveryStepRow, now: Date): DeliveryStepView {
     state: row.state as DeliveryStepState,
     attemptCount: row.attemptCount,
     publicError: safeStoredError(row.publicError),
+    failureKind: safeFailureKind(row.failureKind),
     nextAttemptAt: asDate(row.nextAttemptAt),
     acceptedAt: asDate(row.acceptedAt),
     deliveredAt: asDate(row.deliveredAt),
@@ -815,6 +836,29 @@ async function syncDeliveryState(
       updatedAt: now,
     })
     .where(eq(quotationDeliveries.id, deliveryId));
+  // The commercial stage is decided by the terminal step of the sequence, not
+  // by every step: an earlier step the operator confirmed manually never
+  // invalidates the real acceptance that closed the dispatch. The origin stays
+  // distinguishable — provider acceptance (provider id plus acceptance clock)
+  // or the operator decision registered on the delivery.
+  let terminalStep: (typeof steps)[number] | null = null;
+  for (const step of steps) {
+    if (terminalStep === null || step.position > terminalStep.position) terminalStep = step;
+  }
+  const terminalDecidesSequence =
+    terminalStep === null
+      ? state === 'delivered' && completionSource === 'operator'
+      : (terminalStep.providerMessageId !== null && asDate(terminalStep.acceptedAt) !== null) ||
+        (terminalStep.state === 'delivered' &&
+          asDate(terminalStep.acceptedAt) === null &&
+          completionSource === 'operator');
+  const acceptedNow =
+    terminalDecidesSequence &&
+    state !== delivery.state &&
+    (state === 'provider_accepted' || state === 'delivered');
+  if (acceptedNow) {
+    await promoteDealOnProviderAcceptance(db, { revisionId: delivery.revisionId }, { now });
+  }
 }
 
 /**
@@ -1582,6 +1626,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               next_attempt_at = NULL,
               reconciliation_deadline = NULL,
               public_error = NULL,
+              failure_kind = NULL,
               updated_at = ${nowIso}
           WHERE ${stepUpdateCondition(deliveryId, stepId, token)}
           RETURNING s.id
@@ -1672,6 +1717,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               next_attempt_at = ${nextAttemptAt?.toISOString() || null},
               reconciliation_deadline = ${reconciliationDeadline?.toISOString() || null},
               public_error = ${publicError},
+              failure_kind = ${kind},
               updated_at = ${nowIso}
           WHERE ${stepUpdateCondition(deliveryId, stepId, token)}
           RETURNING s.id
@@ -1870,10 +1916,13 @@ export function createPostgresQuotationDeliveryOutboxRepository(
   async function resolve(input: ResolveDeliveryInput): Promise<DeliveryAggregate> {
     if (
       !isRecord(input) ||
-      (input.decision !== 'confirmed_received' && input.decision !== 'confirmed_not_received')
+      (input.decision !== 'confirmed_received' &&
+        input.decision !== 'confirmed_not_received' &&
+        input.decision !== 'retry_same_revision')
     ) {
       throw new QuotationDeliveryOutboxInputError('Decisão de resolução inválida.');
     }
+    const decision = input.decision;
     const deliveryId = uuid(input.deliveryId, 'Identificador da entrega');
     const note = text(input.note, 'Justificativa', MAX_NOTE, { min: 3 });
     if (input.resolvedBy !== 'authenticated-operator') {
@@ -1918,12 +1967,27 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           );
         }
         const updatedAt = asDate(delivery.updatedAt);
-        if (delivery.state !== 'needs_review' && delivery.state !== 'provider_accepted') {
+        const retrySameRevision = decision === 'retry_same_revision';
+        if (retrySameRevision) {
+          // Re-sending is authorized only for a delivery whose whole sequence
+          // failed *before* transport. An operator cancellation is deliberate and
+          // terminal, and an accepted/reconciled step would mean something
+          // reached the provider, so neither is retryable here.
+          if (
+            delivery.state !== 'failed' ||
+            safeCompletionSource(delivery.completionSource) === 'operator'
+          ) {
+            throw new QuotationDeliveryOutboxConflictError(
+              'A entrega não está disponível para reenvio.'
+            );
+          }
+        } else if (delivery.state !== 'needs_review' && delivery.state !== 'provider_accepted') {
           throw new QuotationDeliveryOutboxConflictError(
             'A entrega não está disponível para resolução.'
           );
         }
         if (
+          !retrySameRevision &&
           delivery.state === 'provider_accepted' &&
           (!updatedAt || now.getTime() - updatedAt.getTime() < PROVIDER_DELAY_MS)
         ) {
@@ -1932,12 +1996,48 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           );
         }
         const existingSteps = await tx
-          .select({ id: quotationDeliverySteps.id })
+          .select({
+            id: quotationDeliverySteps.id,
+            state: quotationDeliverySteps.state,
+            failureKind: quotationDeliverySteps.failureKind,
+            publicError: quotationDeliverySteps.publicError,
+            providerMessageId: quotationDeliverySteps.providerMessageId,
+            acceptedAt: quotationDeliverySteps.acceptedAt,
+          })
           .from(quotationDeliverySteps)
           .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
-        if (existingSteps.length === 0 && input.decision === 'confirmed_not_received') {
+        if (existingSteps.length === 0 && decision === 'confirmed_not_received') {
           throw new QuotationDeliveryOutboxConflictError(
             'A entrega legada não possui etapas para reenvio.'
+          );
+        }
+        // The only proof that a dispatch never left the machine: the step is
+        // `failed` (never accepted), its last attempt was classified
+        // pre-transport — `permanent_pre_transport` (4xx, invalid configuration,
+        // invalid recipient, local block) or an exhausted
+        // `transient_pre_transport` (429/render budget) — and it carries no
+        // provider identifier nor acceptance clock. `ambiguous` never reaches
+        // `failed`, so timeout, 5xx and lost responses keep the block untouched.
+        const preTransportSteps = existingSteps.filter(
+          (step) =>
+            step.state === 'failed' &&
+            (step.failureKind === 'permanent_pre_transport' ||
+              step.failureKind === 'transient_pre_transport') &&
+            step.providerMessageId === null &&
+            step.acceptedAt === null
+        );
+        // Pre-transport is not enough: a failure caused by the revision itself
+        // (expired, invalid, inconsistent with the frozen step) is never repaired
+        // by re-sending it, so the same-revision path stays closed and the
+        // operator keeps the existing path of emitting a new revision.
+        const retryableStepIds = preTransportSteps
+          .filter((step) => !isRevisionUnavailableFailure(step))
+          .map((step) => step.id);
+        if (retrySameRevision && retryableStepIds.length === 0) {
+          throw new QuotationDeliveryOutboxConflictError(
+            preTransportSteps.length > 0
+              ? 'A revisão não está disponível para reenvio. Emita uma nova revisão.'
+              : 'Não há falha anterior ao transporte para reenviar.'
           );
         }
         const resolutionConditions = [
@@ -1947,7 +2047,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           // which must never be revived.
           notInArray(quotationDeliverySteps.state, ['delivered', 'read', 'sending', 'failed']),
         ];
-        if (input.decision === 'confirmed_received') {
+        if (decision === 'confirmed_received') {
           // `confirmed_received` is evidence that the messages already handed to
           // the provider arrived — never a licence to retire steps that were
           // never attempted (`queued`/`retry_scheduled`) or explicitly
@@ -1957,10 +2057,19 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             inArray(quotationDeliverySteps.state, ['server_ack', 'reconciling', 'needs_review']),
           );
         }
+        if (retrySameRevision) {
+          // Only the proven pre-transport failures are revived; already
+          // delivered steps and every other state stay exactly as they are.
+          resolutionConditions.length = 0;
+          resolutionConditions.push(
+            eq(quotationDeliverySteps.deliveryId, deliveryId),
+            inArray(quotationDeliverySteps.id, retryableStepIds),
+          );
+        }
         await tx
           .update(quotationDeliverySteps)
           .set(
-            input.decision === 'confirmed_received'
+            decision === 'confirmed_received'
               ? {
                   state: 'delivered',
                   deliveredAt: sql`COALESCE(${quotationDeliverySteps.deliveredAt}, ${now.toISOString()})`,
@@ -1976,6 +2085,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
                   nextAttemptAt: null,
                   reconciliationDeadline: null,
                   publicError: null,
+                  failureKind: null,
                   updatedAt: now,
                 }
           )
@@ -2006,7 +2116,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             resolvedBy: input.resolvedBy,
             resolvedAt: now,
             resolutionNote: note,
-            completionSource: input.decision === 'confirmed_received' ? 'operator' : null,
+            completionSource: decision === 'confirmed_received' ? 'operator' : null,
             publicError: null,
             leaseToken: null,
             leaseUntil: null,
@@ -2018,7 +2128,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           deliveryId,
           now,
           undefined,
-          existingSteps.length === 0 && input.decision === 'confirmed_received'
+          existingSteps.length === 0 && decision === 'confirmed_received'
             ? 'delivered'
             : undefined
         );

@@ -38,6 +38,7 @@ import { handler as evolutionWebhook } from '../_modules/evolution-webhook.js';
 import { handler as quotationFollowUpWorker } from '../_modules/quotation-follow-up-worker.js';
 import { handler as followUps } from '../_modules/follow-ups.js';
 import { handler as quotationDeliveryWorker } from '../_modules/quotation-delivery-worker.js';
+import { handler as whatsappDeliveryDiagnostics } from '../_modules/whatsapp-delivery-diagnostics.js';
 import { handler as sendWhatsappFlow } from '../_modules/send-whatsapp-flow.js';
 import { handler as settings } from '../_modules/settings.js';
 import { handler as whatsappConversations } from '../_modules/whatsapp-conversations.js';
@@ -92,6 +93,7 @@ export const routes: Record<string, LegacyHandler> = {
   'quotation-follow-up-worker': quotationFollowUpWorker,
   'follow-ups': followUps,
   'quotation-delivery-worker': quotationDeliveryWorker,
+  'whatsapp-delivery-diagnostics': whatsappDeliveryDiagnostics,
   'send-whatsapp-flow': sendWhatsappFlow,
   settings,
   'whatsapp-conversations': whatsappConversations,

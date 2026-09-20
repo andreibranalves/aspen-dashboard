@@ -31,7 +31,7 @@ import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
 import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import { useQuotationDeliveries, deliveryIdentityKey } from '@/hooks/useQuotationDeliveries';
-import type { DeliveryResolution } from '@/lib/api/quotationDeliveryApi';
+import { projectDelivery, type DeliveryResolution } from '@/lib/api/quotationDeliveryApi';
 import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -1272,9 +1272,7 @@ function CoreQuotationDetail({
   const whatsappDisabledReason = deliveryPending
     ? 'Envio em andamento.'
     : delivery
-      ? delivery.state === 'failed'
-        ? 'A entrega falhou e esta revisão não pode ser reenviada.'
-        : 'Este orçamento já foi enviado pelo WhatsApp.'
+      ? projectDelivery(delivery).sendBlockedReason
       : enqueueError
         ? 'O envio anterior ficou sem resposta. Aguarde a confirmação antes de reenviar.'
         : deliveryError

@@ -54,7 +54,11 @@ export default function WhatsAppSendPanel({
     && renderableFlowStepCount(selectedFlow) > 0;
   const deliveryProjection = delivery ? projectDelivery(delivery) : null;
   const isPending = pending || status?.state === 'sending';
-  const deliveryBlocksSend = Boolean(delivery);
+  // A durable delivery always blocks a blind re-send: the request would reuse the
+  // same revision/flow and could re-dispatch steps whose outcome is unknown. What
+  // each state changes is the reason shown and which explicit action the status
+  // component offers (resolution, or the same-revision retry).
+  const deliveryBlocksSend = deliveryProjection !== null;
   const legacyStatusMessage =
     status?.state === 'error'
       ? 'Não foi possível enviar pelo WhatsApp. Tente novamente.'
@@ -101,9 +105,11 @@ export default function WhatsAppSendPanel({
                 title={
                   isPending
                     ? 'Envio em andamento'
-                    : deliveryBlocksSend || status?.state === 'accepted'
-                      ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status abaixo.'
-                      : undefined
+                    : deliveryProjection
+                      ? deliveryProjection.sendBlockedReason
+                      : status?.state === 'accepted'
+                        ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status abaixo.'
+                        : undefined
                 }
                 disabled={
                   isPending ||
@@ -134,7 +140,9 @@ export default function WhatsAppSendPanel({
               </Button>
               {delivery && !isPending && (
                 <p className="text-xs leading-5 text-center text-fg-muted">
-                  Já enviado. Acompanhe o status{' '}
+                  {deliveryProjection?.sendConfirmed
+                    ? 'Já enviado. Acompanhe o status'
+                    : 'Nenhuma mensagem foi confirmada ainda. Acompanhe o status'}{' '}
                   <a href="#/whatsapp-deliveries" className="text-primary hover:underline">
                     em Envios WhatsApp
                   </a>

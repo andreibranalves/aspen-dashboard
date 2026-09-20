@@ -32,6 +32,21 @@ export type TransportFailureKind =
   | 'permanent_pre_transport'
   | 'ambiguous';
 
+// Public error that classifies a failure as caused by the revision itself being
+// undeliverable — expired, invalid, or inconsistent with the frozen step — and
+// not by the dispatch. Re-sending the same revision can never repair it, so the
+// transactional re-send gate and the screen both refuse the retry and keep the
+// existing path: emit a new revision. It is the only durable signal that
+// separates this cause from the re-sendable pre-transport rejections (4xx,
+// invalid configuration/recipient, local block), which share the same
+// `permanent_pre_transport` class.
+export const REVISION_UNAVAILABLE_PUBLIC_ERROR =
+  'A revisão do orçamento não está disponível para envio.';
+
+export function isRevisionUnavailableFailure(step: { publicError?: string | null }): boolean {
+  return (step.publicError ?? '') === REVISION_UNAVAILABLE_PUBLIC_ERROR;
+}
+
 const RECEIPT_RANK: Record<DeliveryStepState, number> = {
   queued: 0,
   retry_scheduled: 0,
