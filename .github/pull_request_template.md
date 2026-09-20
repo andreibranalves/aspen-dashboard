@@ -1,28 +1,23 @@
-## Risk level
+## Summary
 
-SHIP / SAFE / CRITICAL — justificativa em uma linha:
+<!-- Objetivo e issue de origem. Use a menor visão que explique a mudança: diagrama, diff ou árvore. -->
 
-<!-- Fonte normativa: docs/release-lanes.md -->
+## Evidence
 
-## Objetivo
+- **Before:**
+- **After:**
 
-<!-- 1 objetivo; inclua issue/ref quando houver -->
+<!-- Informe checks executados, resultados reais e limites da validação. -->
 
-## Escopo
+## Merge Danger
 
--
+**Door:** one-way / two-way
 
-## Fora de escopo
+**Blast Radius:**
 
--
+<!-- Classificação e gates do Aspen, conforme docs/release-lanes.md. -->
 
-## Validação realizada
-
-<!-- Escolha pelo risco; informe resultados reais e omissões intencionais. -->
-
--
-
-## Riscos relevantes
-
+- Lane: SHIP / SAFE / CRITICAL. Justificativa:
 - Dados/migration:
 - Escrita externa:
+- Autorizações e gates pendentes:

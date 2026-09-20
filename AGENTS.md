@@ -33,10 +33,10 @@
 ## Fluxo de git
 
 - Mudanças triviais e reversíveis (CSS, copy, navegação, ajuste pequeno de UI) podem ser implementadas localmente sem issue ou worktree.
-- Publicação autorizada segue branch curta + PR + CI, inclusive para mudanças triviais. `SHIP` não autoriza push/deploy nem pular check existente.
+- Publicação segue branch curta + PR + CI, inclusive para mudanças triviais. Ao solicitar um fluxo de skill, o usuário autoriza as operações Git e de tracker previstas nele, incluindo commit, integração de branches de subagentes na branch de trabalho, push dessa branch e PR draft. Isso não autoriza push direto em `master`, merge do PR em `master`, alteração de env operacional, envio externo nem operações em produção.
 - Não há gate por contagem de arquivos. Pergunte somente quando a autorização ou o risco mudar.
 - Sincronize `git pull --ff-only origin <base>` após checar o status e antes das mudanças, preservando trabalho alheio.
-- Após o merge do PR, `sh scripts/post-merge-cleanup.sh` remove somente branches com upstream apagado e ancestralidade comprovada em `origin/master`; worktrees sujos e squash merges sem essa prova ficam para confirmação e limpeza manual.
+- Após o merge do PR, use `sh scripts/post-merge-cleanup.sh` para limpar branches com upstream apagado e ancestralidade comprovada em `origin/master`. Worktrees criados pela tarefa podem ser removidos depois de comprovar que estão limpos e que seus commits foram integrados na branch de destino. Preserve trabalho alheio e worktrees sujos; nunca force a remoção para cumprir uma skill.
 - Não edite arquivos gerados pelo Vite em `public/`.
 
 ## Segurança e dados
@@ -62,28 +62,24 @@
 
 O Aspen Orçamento é uma ferramenta interna de operador único, em produção, com dados reais. O objetivo de engenharia é aprender e entregar rápido, preservando rigor somente onde um erro causa dano real (dados, dinheiro, comunicação externa, segurança, inconsistência permanente). Prioridade: velocidade de entrega, baixo custo/tokens, simplicidade, segurança proporcional e qualidade suficiente.
 
-Dados reais e contratos em uso precisam ser preservados; não implemente compatibilidade com consumidores hipotéticos nem crie adapters, dual-read, dual-write, fallbacks legado, backfills complexos ou camadas de compatibilidade.
+Preserve dados reais e contratos em uso. Não crie compatibilidade para consumidores hipotéticos. Refactors largos podem manter formas antiga e nova temporariamente, conforme a seção Complexidade de `docs/release-lanes.md`.
 
 Antes de adicionar abstração ou infraestrutura para requisito futuro, siga a seção Complexidade de `docs/release-lanes.md`.
 
 ## Ritmo de entrega
 
-`docs/release-lanes.md` é a fonte normativa: leia-a antes de classificar,
-revisar, escolher checks ou fazer handoff. Skills e orquestradores devem seguir
-seus critérios, sem acrescentar suíte completa ou reviewer por padrão.
-Antes de editar um diretório, leia os `AGENTS.md` aplicáveis no caminho; o Pi
-iniciado na raiz não carrega automaticamente instruções de subdiretórios. SHIP é o padrão para CRUD recuperável; PostgreSQL
-não implica CRITICAL. Valide conforme o dano concreto do diff.
+Siga o procedimento da skill acionada, sem copiá-lo ou reescrevê-lo neste arquivo.
+`docs/release-lanes.md` define a classificação de risco, os comandos de validação
+e os gates operacionais. A lane não substitui o procedimento da skill.
+Antes de editar um diretório, leia os `AGENTS.md` aplicáveis no caminho.
+SHIP é o padrão para CRUD recuperável; PostgreSQL não implica CRITICAL.
+Não repita testes sem alteração, dúvida concreta ou reprodução.
 
-SHIP não exige reviewer; SAFE usa um reviewer; CRITICAL usa um reviewer
-aprofundado e aprovações operacionais separadas quando cabíveis. Não repita
-testes sem alteração, dúvida concreta ou reprodução. `verify:full` é periódico,
-não o inner loop.
-
-Preview é a única homologação e Production é o `master`. Migration, deploy,
-env operacional e efeitos externos têm aprovações separadas. Preserve os
-consumidores técnicos existentes do pipeline de migrations até decisão
-explícita; não crie aliases ou compatibilidade hipotética.
+Preview é a única homologação e Production é o `master`. Deploy manual,
+migrations remotas, env operacional e efeitos sobre dados ou comunicação reais
+exigem autorização separada. O Preview automático de um push autorizado segue
+o isolamento de `docs/release-lanes.md`. Preserve os consumidores técnicos
+existentes do pipeline de migrations até decisão explícita.
 
 ## Comandos
 
@@ -92,11 +88,11 @@ npm run dev
 npm run verify:fast          # lint + typecheck + checks estruturais baratos
 npm run test:unit:focused -- tests/unit/<arquivo>.test.ts   # testes focados
 npm run test:unit            # corpus unitário completo
-npm run verify:full          # RELEASE: verify:fast + corpus + build + E2E
+npm run verify:full          # verify:fast + corpus + build + E2E local descartável
 ```
 
 - Durante a edição, rode o checker barato relevante; antes de entregar código, rode `npm run verify:fast`, conforme a política de risco.
-- `verify:full` fica para gates RELEASE, mudanças transversais grandes ou solicitação explícita — não é obrigatório em toda issue.
+- Quando a skill pedir suíte completa, use `verify:full`, com os pré-requisitos de `docs/release-lanes.md`. A instalação de uma skill não executa nem impõe seu fluxo a toda tarefa.
 
 E2E integrado (HTTP -> PostgreSQL descartável -> UI) usa o ponto de entrada seguro
 `npm run test:e2e:safe`; ver `docs/safe-e2e.md`.
@@ -114,6 +110,18 @@ Usamos os cinco labels canônicos de triagem. See `docs/agents/triage-labels.md`
 ### Domain docs
 
 Usamos layout single-context. See `docs/agents/domain.md`.
+
+A configuração do kit já existe em `docs/agents/`; não é necessário repetir o setup para instalar skills. `CLAUDE.md` importa este arquivo. Preserve essa fonte única ao alterar a configuração.
+
+## Skills do kit upstream
+
+Use [`mattpocock/skills`](https://github.com/mattpocock/skills) sem modificações locais. As quatro adaptações antigas foram removidas; a instalação é uma etapa separada, feita pelo operador.
+
+- Instale as skills desejadas com `npx skills add mattpocock/skills` e versione os arquivos instalados e `skills-lock.json`. Revise o diff nas atualizações.
+- As skills definem os procedimentos; este projeto define arquitetura, segurança, comandos e autorizações operacionais.
+- O glossário `CONTEXT.md` e a base `.out-of-scope/` são criados quando houver conteúdo. O tracker ativo é GitHub, conforme `docs/agents/issue-tracker.md`; `.scratch/` contém material histórico.
+- Use o mecanismo de skills do agente em execução. No OMP, `Call the Skill tool with "x"` corresponde a ler `skill://x`.
+- Instalar uma skill não autoriza instalar suas dependências ou alterar hooks, credenciais e recursos externos. Solicite as aprovações específicas quando forem necessárias.
 
 ## Maintaining this file
 
