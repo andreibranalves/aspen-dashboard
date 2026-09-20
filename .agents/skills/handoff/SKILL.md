@@ -7,12 +7,7 @@ disable-model-invocation: true
 
 Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save to the temporary directory of the user's OS - not the current workspace.
 
-Follow the handoff contract in `docs/release-lanes.md`, including code identity,
-authorizations, reusable validation evidence, remaining gates and the global
-correction count. Record unavailable capabilities instead of assuming them.
-
-Include suggested skills only when relevant and available in the next harness;
-load them through that harness's supported mechanism, not an assumed Skill tool.
+Include a "suggested skills" section in the document, naming which skills the next agent should call the Skill tool for.
 
 Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
 

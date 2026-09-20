@@ -11,6 +11,13 @@ test('classifica somente documentação conhecida como docs-only', () => {
   });
 });
 
+test('glossário de domínio é docs-only sem dispensar CI para código misturado', () => {
+  assert.equal(classifyChangedPaths(['CONTEXT.md']).docsOnly, true);
+  const mixed = classifyChangedPaths(['CONTEXT.md', 'src/app/App.tsx']);
+  assert.equal(mixed.code, true);
+  assert.equal(mixed.docsOnly, false);
+});
+
 test('arquivo desconhecido, configuração e markdown executável são código', () => {
   for (const paths of [
     ['notes.md'],

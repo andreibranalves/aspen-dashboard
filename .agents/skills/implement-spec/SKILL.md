@@ -4,23 +4,32 @@ description: "Implement a specification in code."
 disable-model-invocation: true
 ---
 
-Read the spec, its existing tickets, `AGENTS.md` and `docs/release-lanes.md`.
-Implement the current requirements on a short branch, preserving existing work.
-Do not require a ticket graph, multiple agents or worktrees for a sequential task.
+You have been provided a spec. This spec should have tickets associated with it, describing how to implement the spec.
 
-Use independent implementers only when tasks are actually separable and the
-harness supports them. Pass context pointers, exact scope, applicable nested
-instructions and authorization limits; use separate worktrees for concurrent
-writers. The main agent remains responsible for the integrated diff.
+The goal is a PR which implements the entire spec on a single branch.
 
-Select checks and review by the lane. Reuse evidence for unchanged code and
-preserve the global correction count across agents and CI. Missing reviewer
-capability is a pending gate, not permission to claim independent review.
+The tickets are not a list of steps. They are a **task graph** with blocking relationships between them. This means there is always a **frontier** of tickets which are ready to be grabbed.
 
-Commit, PR creation, publication and operational effects need their applicable
-authorization; this skill grants none. Never clean another agent's worktree
-without preserving its work and proving integration; follow the repository's
-conservative cleanup procedure.
+Communication to and from subagents should be sparse. Communicate primarily through **context pointers**: to the spec, tickets, research notes, and previous commits. Don't duplicate information already available via pointers.
 
-Report completed requirements, evidence and remaining gates using the handoff
-contract in `docs/release-lanes.md`.
+**Implementer subagents** should be run in the background where possible for **maximum concurrency**.
+
+## Steps
+
+1. Read the spec and tickets. Read enough to understand the task graph.
+
+2. (optional) Use an **exploration subagent** to conduct any exploration required by the tickets - relevant codebase files or external documentation. Ensure the exploration subagent can save files - it should save its markdown notes in a directory outside the repo, accessible by all future subagents. This lets **implementer subagents** focus on implementation rather than exploration.
+
+3. Create a branch, and a draft PR. The PR should be marked as 'closing' the spec issue and tickets.
+
+4. Use **implementer subagents** to implement each ticket. Each implementer subagent should work in its own worktree, on its own branch.
+
+5. Once an **implementer subagent** completes, merge its work to the PR branch with a **merger subagent**.
+
+6. If this changes the **frontier** of available tickets, kick off more **implementer subagents** to work on the new tickets. This allows for maximum concurrency.
+
+7. Once all tickets are complete, run /code-review on the PR branch. Fix all issues raised by the code review in a single **implementer subagent**.
+
+8. Mark the PR as ready for review.
+
+9. Clean up all **implementer subagent** worktrees.

@@ -2,3 +2,6 @@ node_modules/
 public/assets/
 dist/
 package-lock.json
+
+# Skills do kit upstream: mantidas exatamente como instaladas
+.agents/skills/
