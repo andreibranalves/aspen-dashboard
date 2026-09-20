@@ -1,0 +1,26 @@
+# Contrato de runbook da etapa Test do gate no-mistakes.
+#
+# Lido somente da cópia confiável do branch padrão, mesmo com allow_repo_commands.
+# Deliberadamente NÃO define commands.test: varredura determinística de suíte não é
+# o contrato desta etapa. O escopo por risco é de docs/release-lanes.md.
+test:
+  instructions: |
+    Runbook de validação viva deste repositório. Use apenas banco local descartável
+    e o ponto de entrada seguro; nunca aponte para staging, produção ou dados reais.
+
+    1. Dependências: `npm ci`.
+    2. Banco descartável: `npm run db:test:up` (Postgres 16 em tmpfs na porta 55432,
+       conforme docker-compose.test.yml). Encerre com `npm run db:test:down`.
+    3. Linha de base focada, no arquivo de teste que cobre a área alterada:
+       `npm run test:unit:focused -- tests/unit/<arquivo>.test.ts`.
+    4. Cenário de navegador alterado:
+       `TEST_DATABASE_URL=postgresql://aspen_test:aspen_test@127.0.0.1:55432/aspen_test npm run test:e2e:safe`
+       O runner `scripts/run-safe-e2e.mjs` exige, antes de qualquer spawn, um
+       `TEST_DATABASE_URL` descartável em loopback (localhost, 127.0.0.1 ou [::1]);
+       alvo remoto ou malformado é recusado. Exige também o Chromium do Playwright
+       instalado (`npx playwright install chromium`). O alvo HTTP é forçado para
+       `http://localhost:${PLAYWRIGHT_PORT:-5173}` e a suíte integrada só carrega
+       com a capability efêmera criada pelo próprio runner.
+    5. Lint, tipos e build: `npm run check`.
+    6. Evidência: registre a saída real dos comandos executados e o desfecho do
+       cenário de navegador. Teste pulado não é validação da área alterada.
