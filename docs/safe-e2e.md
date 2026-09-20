@@ -27,7 +27,7 @@ contrato operacional: não use túnel para banco real nessa porta.
 ## Invocação
 
 ```bash
-TEST_DATABASE_URL=postgresql://review:review@127.0.0.1:55432/aspen_safe_e2e \
+TEST_DATABASE_URL=postgresql://aspen_test:aspen_test@127.0.0.1:55432/aspen_test \
   npm run test:e2e:safe
 ```
 
