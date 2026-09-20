@@ -19,6 +19,7 @@ function step(overrides: Record<string, unknown> = {}) {
     attemptCount: 0,
     publicError: null,
     failureKind: null,
+    retryBlocked: false,
     nextAttemptAt: null,
     acceptedAt: null,
     deliveredAt: null,
@@ -168,6 +169,32 @@ test('only a provably pre-transport failure unlocks re-sending the same revision
   assert.equal(cancelled.canRetrySameRevision, false);
   assert.equal(cancelled.label, 'Cancelada pelo operador');
   assert.equal(cancelled.sendBlockedReason, 'A entrega foi cancelada pelo operador.');
+});
+
+test('an undeliverable revision never offers the same-revision re-send', () => {
+  // The revision expired (or its frozen step no longer matches it). Nothing left
+  // the machine, but re-sending the same revision fails again with the same
+  // cause, so the screen keeps the existing path: emit a new revision.
+  const projection = projectDelivery(
+    delivery({
+      state: 'failed',
+      publicError: 'A revisão do orçamento não está disponível para envio.',
+      steps: [
+        step({
+          state: 'failed',
+          failureKind: 'permanent_pre_transport',
+          publicError: 'A revisão do orçamento não está disponível para envio.',
+          retryBlocked: true,
+        }),
+      ],
+    })
+  );
+  assert.equal(projection.canRetrySameRevision, false);
+  assert.equal(
+    projection.sendBlockedReason,
+    'A revisão não está disponível para envio. Emita uma nova revisão.'
+  );
+  assert.doesNotMatch(projection.sendBlockedReason, /Reenvie a mesma revisão/);
 });
 
 test('acceptance evidence, not the step state, decides the sent wording', () => {
@@ -355,6 +382,46 @@ test('the public view exposes the failure class the retry decision depends on', 
   } as never);
   const steps = view.steps as Array<Record<string, unknown>>;
   assert.equal(steps[0]?.failure_kind, 'permanent_pre_transport');
+  // A provider rejection keeps the same-revision re-send open; the revision
+  // itself being undeliverable closes it, and the wire payload is where the
+  // screen learns that.
+  assert.equal(steps[0]?.retry_blocked, false);
+
+  const revisionUnavailable = toPublicDeliveryView({
+    id: 'delivery-2',
+    revisionId: 'revision-2',
+    businessNumber: 'ORC-20260002',
+    clientName: 'Cliente',
+    phone: '5511900000002',
+    flowId: 'flow-2',
+    flowName: 'Fluxo',
+    state: 'failed',
+    completionSource: null,
+    publicError: 'A revisão do orçamento não está disponível para envio.',
+    nextAttemptAt: null,
+    actionDeadline: null,
+    reconciliationDeadline: null,
+    deliveredAt: null,
+    createdAt: new Date(updatedAt),
+    updatedAt: new Date(updatedAt),
+    steps: [
+      {
+        id: 'step-2',
+        position: 0,
+        type: 'quotation_pdf',
+        state: 'failed',
+        attemptCount: 1,
+        publicError: 'A revisão do orçamento não está disponível para envio.',
+        failureKind: 'permanent_pre_transport',
+        nextAttemptAt: null,
+        acceptedAt: null,
+        deliveredAt: null,
+        readAt: null,
+        updatedAt: new Date(updatedAt),
+      },
+    ],
+  } as never);
+  assert.equal((revisionUnavailable.steps[0] as Record<string, unknown>)?.retry_blocked, true);
 });
 
 test('resolveDelivery sends the same-revision retry as an explicit operator decision', async () => {

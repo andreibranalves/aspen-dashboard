@@ -14,7 +14,7 @@ import {
   type DeliveryListFilters,
   type DeliveryListResult,
 } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
-import type { DeliveryState } from './quotation-delivery-state.js';
+import { isRevisionUnavailableFailure, type DeliveryState } from './quotation-delivery-state.js';
 
 const DELIVERY_STATES: readonly DeliveryState[] = [
   'queued',
@@ -177,6 +177,10 @@ export function toPublicDeliveryView(
       attempt_count: step.attemptCount,
       public_error: step.publicError || null,
       failure_kind: step.failureKind || null,
+      // Server-side decision of the retry rule: the same predicate the
+      // transactional re-send gate applies, so the screen can never offer a
+      // re-send the gate would refuse.
+      retry_blocked: isRevisionUnavailableFailure(step),
       next_attempt_at: iso(step.nextAttemptAt),
       accepted_at: iso(step.acceptedAt),
       delivered_at: iso(step.deliveredAt),

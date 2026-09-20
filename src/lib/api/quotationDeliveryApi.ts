@@ -44,6 +44,8 @@ export interface DeliveryStepView {
   publicError: string | null;
   /** Transport failure class of the last attempt; only `permanent_pre_transport` is re-sendable. */
   failureKind: 'transient_pre_transport' | 'permanent_pre_transport' | 'ambiguous' | null;
+  /** Server decision: the failure is caused by the revision being undeliverable, so a new revision is required. */
+  retryBlocked: boolean;
   nextAttemptAt?: string | null;
   acceptedAt?: string | null;
   deliveredAt?: string | null;
@@ -264,6 +266,7 @@ function parseStep(value: unknown): DeliveryStepView {
       value.failure_kind === null || value.failure_kind === undefined
         ? null
         : oneOf(value.failure_kind, FAILURE_KINDS),
+    retryBlocked: value.retry_blocked === true,
     nextAttemptAt: nullableTimestamp(value.next_attempt_at),
     acceptedAt: nullableTimestamp(value.accepted_at),
     deliveredAt: nullableTimestamp(value.delivered_at),
@@ -400,6 +403,13 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
       ? steps.some(acceptedStep)
       : delivery.state === 'provider_accepted' || delivery.state === 'delivered';
   const operatorCancelled = delivery.state === 'failed' && delivery.completionSource === 'operator';
+  // The revision itself is undeliverable (expired, invalid, inconsistent with the
+  // frozen step). Re-sending it would fail again with the same cause, so the
+  // only honest path is emitting a new revision. The server classifies this
+  // durably; the screen must not offer a re-send the gate would refuse.
+  const revisionUnavailable =
+    delivery.state === 'failed' &&
+    steps.some((step) => step.state === 'failed' && step.retryBlocked);
   // The same revision may be re-sent only when the last attempt of a step was
   // classified before transport — 4xx, invalid configuration/recipient, local
   // block, or an exhausted rate-limit/render budget — and nothing was ever
@@ -413,6 +423,7 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
         step.state === 'failed' &&
         (step.failureKind === 'permanent_pre_transport' ||
           step.failureKind === 'transient_pre_transport') &&
+        !step.retryBlocked &&
         !step.acceptedAt
     );
   const sendBlockedReason = operatorCancelled
@@ -433,7 +444,9 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
                   ? 'Envio em andamento.'
                   : canRetrySameRevision
                     ? 'A entrega falhou antes do envio. Reenvie a mesma revisão no status abaixo.'
-                    : 'A entrega falhou e esta revisão não pode ser reenviada.';
+                    : revisionUnavailable
+                      ? 'A revisão não está disponível para envio. Emita uma nova revisão.'
+                      : 'A entrega falhou e esta revisão não pode ser reenviada.';
   return {
     label: operatorCancelled
       ? 'Cancelada pelo operador'

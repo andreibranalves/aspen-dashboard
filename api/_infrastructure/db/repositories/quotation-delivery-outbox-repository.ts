@@ -30,6 +30,7 @@ import {
   aggregateDeliveryState,
   applyReceipt as applyDeliveryReceipt,
   failureTargetState,
+  isRevisionUnavailableFailure,
   retryDelayMs,
   type DeliveryState,
   type DeliveryStepState,
@@ -1995,6 +1996,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             id: quotationDeliverySteps.id,
             state: quotationDeliverySteps.state,
             failureKind: quotationDeliverySteps.failureKind,
+            publicError: quotationDeliverySteps.publicError,
             providerMessageId: quotationDeliverySteps.providerMessageId,
             acceptedAt: quotationDeliverySteps.acceptedAt,
           })
@@ -2012,19 +2014,26 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         // `transient_pre_transport` (429/render budget) — and it carries no
         // provider identifier nor acceptance clock. `ambiguous` never reaches
         // `failed`, so timeout, 5xx and lost responses keep the block untouched.
-        const retryableStepIds = existingSteps
-          .filter(
-            (step) =>
-              step.state === 'failed' &&
-              (step.failureKind === 'permanent_pre_transport' ||
-                step.failureKind === 'transient_pre_transport') &&
-              step.providerMessageId === null &&
-              step.acceptedAt === null
-          )
+        const preTransportSteps = existingSteps.filter(
+          (step) =>
+            step.state === 'failed' &&
+            (step.failureKind === 'permanent_pre_transport' ||
+              step.failureKind === 'transient_pre_transport') &&
+            step.providerMessageId === null &&
+            step.acceptedAt === null
+        );
+        // Pre-transport is not enough: a failure caused by the revision itself
+        // (expired, invalid, inconsistent with the frozen step) is never repaired
+        // by re-sending it, so the same-revision path stays closed and the
+        // operator keeps the existing path of emitting a new revision.
+        const retryableStepIds = preTransportSteps
+          .filter((step) => !isRevisionUnavailableFailure(step))
           .map((step) => step.id);
         if (retrySameRevision && retryableStepIds.length === 0) {
           throw new QuotationDeliveryOutboxConflictError(
-            'Não há falha anterior ao transporte para reenviar.'
+            preTransportSteps.length > 0
+              ? 'A revisão não está disponível para reenvio. Emita uma nova revisão.'
+              : 'Não há falha anterior ao transporte para reenviar.'
           );
         }
         const resolutionConditions = [

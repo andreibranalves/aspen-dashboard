@@ -37,6 +37,7 @@ import {
 } from './evolution-transport.js';
 import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
 import {
+  REVISION_UNAVAILABLE_PUBLIC_ERROR,
   retryDelayMs,
   type EvolutionReceiptStatus,
   type TransportFailureKind,
@@ -94,11 +95,11 @@ const EXHAUSTED_PRE_TRANSPORT_PUBLIC_ERROR =
 
 const PDF_PUBLIC_ERRORS: Record<'transient' | 'permanent', string> = {
   transient: 'PDF indisponível. Tentar novamente.',
-  permanent: 'A revisão do orçamento não está disponível para envio.',
+  permanent: REVISION_UNAVAILABLE_PUBLIC_ERROR,
 };
 const WEBP_PUBLIC_ERRORS: Record<'transient' | 'permanent', string> = {
   transient: 'Imagem do orçamento indisponível. Tentar novamente.',
-  permanent: 'A revisão do orçamento não está disponível para envio.',
+  permanent: REVISION_UNAVAILABLE_PUBLIC_ERROR,
 };
 
 type DeliveryEnqueueInput = DeliveryIdentity & {

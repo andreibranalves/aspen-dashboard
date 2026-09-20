@@ -26,11 +26,13 @@ import {
   createPostgresQuotationDeliveryOutboxRepository,
   QuotationDeliveryOutboxConflictError,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
+import { QuotationDeliveryConflictError } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { createPostgresWhatsappContactActivityRepository } from '../../api/_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
 import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
 import { toPublicDeliveryView } from '../../api/_modules/quotation-deliveries.js';
+import { REVISION_UNAVAILABLE_PUBLIC_ERROR } from '../../api/_modules/quotation-delivery-state.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { fetchDelivery, projectDelivery } from '../../src/lib/api/quotationDeliveryApi.ts';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
@@ -121,6 +123,15 @@ async function seedQuotation(options: { dealStatus?: string; dealId?: string | n
   return { clientId, quotationId, revisionId, dealId, createdAt };
 }
 
+type FixtureStep =
+  | { position: number; type: 'text'; payload: { text: string }; delayMs: number }
+  | {
+      position: number;
+      type: 'quotation_pdf';
+      payload: { revisionId: string; fileName: string; caption: string };
+      delayMs: number;
+    };
+
 function moduleFixture(options: {
   transport: (input: {
     step: { type: string };
@@ -128,7 +139,8 @@ function moduleFixture(options: {
   clockRef: { value: Date };
   revisionId: string;
   flowId: string;
-  steps: Array<{ position: number; type: 'text'; payload: { text: string }; delayMs: number }>;
+  steps: FixtureStep[];
+  prepareDocument?: () => Promise<never>;
 }) {
   const repository = createPostgresQuotationDeliveryOutboxRepository(() => db, {
     now: () => new Date(options.clockRef.value),
@@ -148,6 +160,7 @@ function moduleFixture(options: {
       steps: options.steps,
     }),
     transport: options.transport as never,
+    prepareDeliveryDocument: options.prepareDocument as never,
     followUpRepository: createPostgresQuotationFollowUpRepository(() => db as never),
     activityRepository: createPostgresWhatsappContactActivityRepository(() => db as never),
   });
@@ -158,6 +171,13 @@ const textStep = (position: number) => ({
   position,
   type: 'text' as const,
   payload: { text: `Mensagem ${position}` },
+  delayMs: 0,
+});
+
+const pdfStep = (position: number, revisionId: string) => ({
+  position,
+  type: 'quotation_pdf' as const,
+  payload: { revisionId, fileName: 'ORC.pdf', caption: '' },
   delayMs: 0,
 });
 
@@ -379,6 +399,74 @@ databaseTest('an operator-cancelled delivery never offers the same-revision re-s
     .from(quotationDeliverySteps)
     .where(eq(quotationDeliverySteps.deliveryId, delivery.id));
   assert.equal(afterCancel[0]?.state, 'failed');
+});
+
+databaseTest('an undeliverable revision is never offered as a same-revision re-send', async () => {
+  const { quotationId, revisionId, dealId } = await seedQuotation();
+  const clockRef = { value: new Date('2026-09-18T14:00:00.000Z') };
+  let transportCalls = 0;
+  const { module } = moduleFixture({
+    clockRef,
+    revisionId,
+    flowId: `flow-${revisionId}`,
+    steps: [pdfStep(0, revisionId)],
+    // The revision expires while the worker is stopped (INC-W02): preparing the
+    // document is what fails, never the transport.
+    prepareDocument: async () => {
+      throw new QuotationDeliveryConflictError(
+        'A revisão do orçamento está vencida. Emita uma nova revisão.'
+      );
+    },
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: `fake-${randomUUID()}` };
+    },
+  });
+
+  const delivery = await module.enqueue({
+    revisionId,
+    flowId: `flow-${revisionId}`,
+    quotationId,
+    phone: '5511900000001',
+    flowName: 'Fluxo recuperação',
+  });
+
+  // The failure is provably pre-transport, but its cause is the revision itself:
+  // re-sending the same revision can only fail again the same way.
+  assert.equal(delivery.state, 'failed');
+  assert.equal(delivery.steps[0]?.state, 'failed');
+  assert.equal(delivery.steps[0]?.failureKind, 'permanent_pre_transport');
+  assert.equal(delivery.steps[0]?.publicError, REVISION_UNAVAILABLE_PUBLIC_ERROR);
+  assert.equal(transportCalls, 0);
+
+  const { parsed, projection } = await projectPublicDelivery(delivery);
+  assert.equal(parsed.steps[0]?.retryBlocked, true);
+  assert.equal(projection.canRetrySameRevision, false);
+  assert.equal(
+    projection.sendBlockedReason,
+    'A revisão não está disponível para envio. Emita uma nova revisão.'
+  );
+
+  await assert.rejects(
+    () =>
+      module.resolve({
+        deliveryId: delivery.id,
+        decision: 'retry_same_revision',
+        note: 'Reenvio da mesma revisão vencida.',
+        resolvedBy: 'authenticated-operator',
+      }),
+    (error: unknown) =>
+      error instanceof QuotationDeliveryOutboxConflictError &&
+      /Emita uma nova revisão/.test((error as Error).message)
+  );
+
+  // The refused decision changed nothing: the step stays failed, never requeued.
+  const after = await db
+    .select()
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.deliveryId, delivery.id));
+  assert.equal(after[0]?.state, 'failed');
+  assert.ok(dealId);
 });
 
 databaseTest(
