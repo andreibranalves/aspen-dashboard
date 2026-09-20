@@ -173,7 +173,11 @@ export interface DeliveryStepView {
   state: DeliveryStepState;
   attemptCount: number;
   publicError: string | null;
-  /** Failure class of the last attempt; both pre-transport classes are re-sendable. */
+  /**
+   * Failure class of the last attempt; both pre-transport classes are re-sendable
+   * unless the failure was caused by the revision itself (see
+   * `isRevisionUnavailableFailure`).
+   */
   failureKind: TransportFailureKind | null;
   nextAttemptAt: Date | null;
   acceptedAt: Date | null;

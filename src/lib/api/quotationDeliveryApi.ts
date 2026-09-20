@@ -42,7 +42,10 @@ export interface DeliveryStepView {
     | 'failed';
   attemptCount: number;
   publicError: string | null;
-  /** Transport failure class of the last attempt; only `permanent_pre_transport` is re-sendable. */
+  /**
+   * Transport failure class of the last attempt. A same-revision re-send needs a
+   * pre-transport class, `retryBlocked` false and no acceptance evidence.
+   */
   failureKind: 'transient_pre_transport' | 'permanent_pre_transport' | 'ambiguous' | null;
   /** Server decision: the failure is caused by the revision being undeliverable, so a new revision is required. */
   retryBlocked: boolean;
@@ -96,7 +99,10 @@ export interface DeliveryProjection {
   sendConfirmed: boolean;
   /** Honest reason for the blocked send button, derived from the state. */
   sendBlockedReason: string;
-  /** The same revision may be re-sent after a provably pre-transport failure. */
+  /**
+   * The same revision may be re-sent after a provably pre-transport failure,
+   * unless the revision itself is undeliverable (a new revision is required).
+   */
   canRetrySameRevision: boolean;
 }
 
