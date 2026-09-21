@@ -222,6 +222,17 @@ function ClientResolutionArea({
               </li>
             ))}
           </ul>
+          {view.allowNewClient && (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={disabled || !onConfirmNewClient}
+              onClick={() => onConfirmNewClient?.(draftIdx)}
+            >
+              É outro cliente: cadastrar novo
+            </Button>
+          )}
         </div>
       )}
       {view.state === 'new_client' && (

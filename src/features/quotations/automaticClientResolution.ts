@@ -39,6 +39,10 @@ export type ClientResolutionView =
       state: 'choice';
       reason: 'multiple_matches' | 'identifier_conflict' | 'archived_match' | 'weak_matches_only';
       candidates: ClientResolutionCandidate[];
+      /** Only weak name/company suggestions may be declined in favour of an
+       * explicit new client: a strong match, a conflict or an archived record
+       * must be resolved by choosing the register. */
+      allowNewClient: boolean;
     }
   | { state: 'archived'; clientId: string | null; nome: string | null }
   | { state: 'new_client'; needsConfirmation: boolean; confirmed: boolean }
@@ -219,10 +223,12 @@ export function viewFromResponse(
         ? { state: 'archived', clientId: archived[0].id, nome: archived[0].nome }
         : { state: 'archived', clientId: null, nome: null };
     }
+    const reason = response.reason ?? 'multiple_matches';
     return {
       state: 'choice',
-      reason: response.reason ?? 'multiple_matches',
+      reason,
       candidates,
+      allowNewClient: reason === 'weak_matches_only',
     };
   }
 
@@ -424,12 +430,20 @@ export class AutomaticClientResolutionController {
     const draft = this.drafts.get(draftIdx);
     const record = this.records.get(draftIdx);
     if (!draft || !record || !this.isActive(draftIdx)) return;
-    if (record.view.state !== 'new_client') return;
+    const view = record.view;
+    // Weak name/company suggestions are the one review state the operator may
+    // decline: refusing every suggestion is the same decision as naming a new
+    // client, and the server accepts the confirmation in exactly that case.
+    const declinesSuggestions = view.state === 'choice' && view.allowNewClient;
+    if (view.state !== 'new_client' && !declinesSuggestions) return;
     if (record.signature !== clientResolutionSignature(draft.edited)) return;
     if (draft.edited.confirm_new_client === true) return;
     this.drafts.set(draftIdx, { ...draft, edited: { ...draft.edited, confirm_new_client: true } });
     this.sources.applyEdits(draftIdx, { edited: { confirm_new_client: true }, system: {} });
-    record.view = { ...record.view, confirmed: true };
+    record.view =
+      view.state === 'new_client'
+        ? { ...view, confirmed: true }
+        : { state: 'new_client', needsConfirmation: true, confirmed: true };
     this.sources.notify();
   }
 

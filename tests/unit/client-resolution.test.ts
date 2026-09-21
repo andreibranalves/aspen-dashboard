@@ -295,7 +295,7 @@ test('every state maps to its blocking message', () => {
   );
   assert.equal(clientResolutionBlockMessage({ state: 'linked', clientId: CLIENT_A, nome: 'Maria' }), null);
   assert.equal(
-    clientResolutionBlockMessage({ state: 'choice', reason: 'multiple_matches', candidates: [] }),
+    clientResolutionBlockMessage({ state: 'choice', reason: 'multiple_matches', candidates: [], allowNewClient: false }),
     'Escolha o cliente para continuar.'
   );
   assert.equal(
@@ -328,7 +328,7 @@ test('each response status maps onto the card view', () => {
   );
   assert.deepEqual(
     viewFromResponse(envelope({ status: 'review', reason: 'weak_matches_only', candidates: [matched] }), {}),
-    { state: 'choice', reason: 'weak_matches_only', candidates: [candidate()] }
+    { state: 'choice', reason: 'weak_matches_only', candidates: [candidate()], allowNewClient: true }
   );
   assert.deepEqual(
     viewFromResponse(
@@ -352,6 +352,7 @@ test('each response status maps onto the card view', () => {
       state: 'choice',
       reason: 'archived_match',
       candidates: [candidate({ arquivado: true }), candidate({ id: CLIENT_B })],
+      allowNewClient: false,
     }
   );
   assert.deepEqual(
@@ -738,4 +739,59 @@ test('an explicit new-client confirmation unblocks only that identity', async ()
   harness.sync();
   assert.equal(harness.state.drafts[0].edited.confirm_new_client, undefined);
   assert.equal(clientResolutionBlockMessage(harness.controller.views()[0]), 'Aguardando a verificação do cliente.');
+});
+
+test('weak suggestions allow refusing them in favour of an explicit new client', async () => {
+  const harness = createHarness([makeDraft()]);
+  harness.sync();
+  await harness.scheduler.advance(300);
+  const matched = IDENTITY_RESPONSE.candidates[0];
+  harness.settles[0].resolve(
+    envelope({ status: 'review', reason: 'weak_matches_only', candidates: [matched] })
+  );
+  await flush();
+
+  const suggesting = harness.controller.views()[0];
+  assert.deepEqual(suggesting, {
+    state: 'choice',
+    reason: 'weak_matches_only',
+    candidates: [candidate()],
+    allowNewClient: true,
+  });
+  assert.equal(clientResolutionBlockMessage(suggesting), 'Escolha o cliente para continuar.');
+
+  harness.controller.confirmNewClient(0);
+  assert.equal(harness.state.drafts[0].edited.confirm_new_client, true);
+  assert.deepEqual(harness.controller.views()[0], {
+    state: 'new_client',
+    needsConfirmation: true,
+    confirmed: true,
+  });
+  assert.equal(clientResolutionBlockMessage(harness.controller.views()[0]), null);
+});
+
+test('a strong-match choice cannot be declined as a new client', async () => {
+  const harness = createHarness([makeDraft({ telefone: '11999990000' })]);
+  harness.sync();
+  await harness.scheduler.advance(300);
+  const matched = IDENTITY_RESPONSE.candidates[0];
+  harness.settles[0].resolve(
+    envelope({
+      status: 'review',
+      reason: 'multiple_matches',
+      candidates: [matched, { ...matched, id: CLIENT_B }],
+    })
+  );
+  await flush();
+
+  assert.deepEqual(harness.controller.views()[0], {
+    state: 'choice',
+    reason: 'multiple_matches',
+    candidates: [candidate(), candidate({ id: CLIENT_B })],
+    allowNewClient: false,
+  });
+
+  harness.controller.confirmNewClient(0);
+  assert.equal(harness.state.drafts[0].edited.confirm_new_client, undefined);
+  assert.equal(harness.controller.views()[0].state, 'choice');
 });
