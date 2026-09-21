@@ -37,6 +37,11 @@ import type {
 import type { QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
 import type { DeliveryResolution, DeliveryView } from '@/lib/api/quotationDeliveryApi';
+import type {
+  ClientResolutionCandidate,
+  ClientResolutionMatchedBy,
+  ClientResolutionView,
+} from '@/features/quotations/automaticClientResolution';
 
 export interface SplitResultCardProps {
   draft: Draft;
@@ -82,6 +87,197 @@ export interface SplitResultCardProps {
   opportunitySelector?: ReactNode;
   /** Portuguese, user-facing reason the automatic result cannot be issued yet. */
   opportunityBlockMessage?: string | null;
+  /** Client identity resolution of this card, when the automatic flow provides one. */
+  clientResolution?: ClientResolutionView;
+  onSelectClient?: (draftIdx: number, candidate: ClientResolutionCandidate) => void;
+  onConfirmNewClient?: (draftIdx: number) => void;
+  onRetryClientResolution?: (draftIdx: number) => void;
+  onClearClientSelection?: (draftIdx: number) => void;
+  /** Portuguese, user-facing reason the client identity blocks persistence. */
+  clientBlockMessage?: string | null;
+}
+
+const CLIENT_MATCH_FIELD_LABELS: Record<ClientResolutionMatchedBy, string> = {
+  documento: 'documento',
+  email: 'e-mail',
+  telefone: 'telefone',
+  nome: 'nome',
+  empresa: 'empresa',
+};
+
+function matchedByLabel(fields: ClientResolutionMatchedBy[]): string {
+  const labels = fields.map((field) => CLIENT_MATCH_FIELD_LABELS[field]);
+  if (labels.length === 0) return 'sem campo informado';
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
+}
+
+function clientResolutionAnnouncement(view: ClientResolutionView): string {
+  switch (view.state) {
+    case 'checking':
+      return 'Verificando cliente…';
+    case 'linked':
+      return `Cliente já cadastrado: ${view.nome}`;
+    case 'choice':
+      return `${view.candidates.length} clientes encontrados. Escolha o cliente para continuar.`;
+    case 'archived':
+      return 'Cliente arquivado.';
+    case 'new_client':
+      return view.confirmed ? 'Novo cliente confirmado.' : 'Novo cliente.';
+    case 'error':
+      return 'Não foi possível verificar o cliente.';
+    default:
+      return '';
+  }
+}
+
+interface ClientResolutionAreaProps {
+  view: ClientResolutionView;
+  draftIdx: number;
+  disabled: boolean;
+  onSelectClient?: (draftIdx: number, candidate: ClientResolutionCandidate) => void;
+  onConfirmNewClient?: (draftIdx: number) => void;
+  onRetryClientResolution?: (draftIdx: number) => void;
+  onClearClientSelection?: (draftIdx: number) => void;
+}
+
+/** Compact identity state of the card, next to the identity fields it decides.
+ * Every action is a button, so the whole area works by keyboard, and the state
+ * is announced without moving focus. */
+function ClientResolutionArea({
+  view,
+  draftIdx,
+  disabled,
+  onSelectClient,
+  onConfirmNewClient,
+  onRetryClientResolution,
+  onClearClientSelection,
+}: ClientResolutionAreaProps) {
+  if (view.state === 'idle') return null;
+  return (
+    <div className="mt-2 rounded-sm border border-line bg-surface/40 px-2 py-1.5">
+      <p className="sr-only" aria-live="polite">
+        {clientResolutionAnnouncement(view)}
+      </p>
+      {view.state === 'checking' && (
+        <p className="flex items-center gap-2 text-[11px] text-fg-muted">
+          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+          Verificando cliente…
+        </p>
+      )}
+      {view.state === 'linked' && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+          <span className="inline-flex items-center gap-1 font-medium text-fg">
+            <Check size={12} aria-hidden="true" />
+            Cliente já cadastrado
+          </span>
+          <span className="truncate text-fg-muted">{view.nome}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={disabled || !onClearClientSelection}
+            onClick={() => onClearClientSelection?.(draftIdx)}
+          >
+            Trocar
+          </Button>
+        </div>
+      )}
+      {view.state === 'choice' && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium text-fg-muted">Escolha o cliente</p>
+          <ul className="space-y-1">
+            {view.candidates.map((candidate) => (
+              <li key={candidate.id}>
+                <button
+                  type="button"
+                  disabled={candidate.arquivado || disabled || !onSelectClient}
+                  onClick={() => onSelectClient?.(draftIdx, candidate)}
+                  className="w-full rounded-sm border border-line bg-surface px-2 py-1 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-surface"
+                >
+                  <span className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-fg">
+                    <span className="truncate">{candidate.nome}</span>
+                    {candidate.empresa && (
+                      <span className="truncate text-[10px] font-normal text-fg-muted">
+                        {candidate.empresa}
+                      </span>
+                    )}
+                  </span>
+                  {(candidate.documento || candidate.email || candidate.telefone) && (
+                    <span className="block truncate text-[10px] text-fg-muted">
+                      {[candidate.documento, candidate.email, candidate.telefone]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  )}
+                  <span className="block text-[10px] text-fg-muted">
+                    Corresponde por {matchedByLabel(candidate.matchedBy)}
+                  </span>
+                  {candidate.arquivado && (
+                    <span className="block text-[10px] font-medium text-destructive">
+                      Cliente arquivado — indisponível para seleção
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {view.state === 'new_client' && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="inline-flex items-center gap-1 font-medium text-fg">
+            {view.confirmed && <Check size={12} aria-hidden="true" />}
+            Novo cliente
+          </span>
+          {!view.confirmed && view.needsConfirmation && (
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={disabled || !onConfirmNewClient}
+              onClick={() => onConfirmNewClient?.(draftIdx)}
+            >
+              É outro cliente: cadastrar novo
+            </Button>
+          )}
+        </div>
+      )}
+      {view.state === 'archived' && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="inline-flex items-center gap-1 font-medium text-destructive">
+            <AlertTriangle size={12} aria-hidden="true" />
+            Cliente arquivado
+          </span>
+          {view.nome && <span className="truncate text-fg-muted">{view.nome}</span>}
+          <Button type="button" variant="outline" size="xs" asChild>
+            <a
+              href={view.clientId ? `#/leads/cliente/${encodeURIComponent(view.clientId)}` : '#/leads'}
+            >
+              Abrir cadastro
+            </a>
+          </Button>
+        </div>
+      )}
+      {view.state === 'error' && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="inline-flex items-center gap-1 font-medium text-destructive">
+            <AlertTriangle size={12} aria-hidden="true" />
+            Não foi possível verificar o cliente
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={disabled || !onRetryClientResolution}
+            onClick={() => onRetryClientResolution?.(draftIdx)}
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function SplitResultCard({
@@ -126,6 +322,12 @@ export default function SplitResultCard({
   onResolveDelivery,
   opportunitySelector,
   opportunityBlockMessage = null,
+  clientResolution,
+  onSelectClient,
+  onConfirmNewClient,
+  onRetryClientResolution,
+  onClearClientSelection,
+  clientBlockMessage = null,
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(reviewOnly);
   const [templateExpanded, setTemplateExpanded] = useState(false);
@@ -309,9 +511,11 @@ export default function SplitResultCard({
           ? 'Selecione a origem para continuar.'
           : !isValidLeadSource(draft.edited.origem)
             ? 'Selecione uma origem válida para continuar.'
-            : opportunityBlockMessage
-              ? opportunityBlockMessage
-              : null;
+            : clientBlockMessage
+              ? clientBlockMessage
+              : opportunityBlockMessage
+                ? opportunityBlockMessage
+                : null;
   const canCreate = actionBlockMessage === null;
   const canApply = canCreate && items.every((item) => Number.isFinite(Number(item.rate)) && Number(item.rate) > 0);
   const actionStatusId = `quotation-action-status-${draft.index}`;
@@ -462,6 +666,17 @@ export default function SplitResultCard({
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
               </div>
             </>
+          )}
+          {!isDone && !hasSavedSnapshot && clientResolution && (
+            <ClientResolutionArea
+              view={clientResolution}
+              draftIdx={draft.index}
+              disabled={editingBlocked}
+              onSelectClient={onSelectClient}
+              onConfirmNewClient={onConfirmNewClient}
+              onRetryClientResolution={onRetryClientResolution}
+              onClearClientSelection={onClearClientSelection}
+            />
           )}
         </div>
         <div className="text-right shrink-0">

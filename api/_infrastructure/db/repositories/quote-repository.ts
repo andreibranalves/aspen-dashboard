@@ -22,6 +22,7 @@ import {
 } from '../schema.js';
 import {
   ClientInputError,
+  documentCheckDigitsAreValid,
   normalizeClientAddress,
   normalizeClientCompany,
   normalizeClientDocument,
@@ -55,6 +56,13 @@ import {
   HISTORICAL_QUOTATION_TEMPLATES,
 } from '../../../_modules/quotation-template-catalog.js';
 import { quotationConcurrencyToken } from './quote-draft-management-repository.js';
+import {
+  classifyClientMatch,
+  normalizeClientMatchInput,
+  ClientMatchInputError,
+  type ClientMatchResponse,
+} from '../../../_modules/client-matching.js';
+import { searchClientMatchCandidates } from './client-matching-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -75,23 +83,37 @@ export class QuoteDraftInputError extends Error {
   }
 }
 
+/**
+ * Safe, additive error codes for identity conflicts. They travel beside
+ * `error` in the HTTP body so consumers can react without parsing messages.
+ */
+export type QuoteDraftErrorCode =
+  | 'CLIENT_SELECTION_REQUIRED'
+  | 'CLIENT_IDENTITY_CONFLICT'
+  | 'CLIENT_ARCHIVED'
+  | 'CLIENT_NOT_FOUND';
+
 export class QuoteDraftNotFoundError extends Error {
   readonly statusCode = 404;
   readonly expose = true;
+  readonly code?: QuoteDraftErrorCode;
 
-  constructor(message = 'Cliente não encontrado ou inativo.') {
+  constructor(message = 'Cliente não encontrado ou inativo.', code?: QuoteDraftErrorCode) {
     super(message);
     this.name = 'QuoteDraftNotFoundError';
+    this.code = code;
   }
 }
 
 export class QuoteDraftConflictError extends Error {
   readonly statusCode = 409;
   readonly expose = true;
+  readonly code?: QuoteDraftErrorCode;
 
-  constructor(message = 'Não foi possível reservar o número do orçamento.') {
+  constructor(message = 'Não foi possível reservar o número do orçamento.', code?: QuoteDraftErrorCode) {
     super(message);
     this.name = 'QuoteDraftConflictError';
+    this.code = code;
   }
 }
 
@@ -352,6 +374,41 @@ function normalizeAddressInput(value: unknown): ClientAddress | null {
   });
 }
 
+/**
+ * Canonical document supplied by the caller, read through every accepted alias
+ * and validated for check digits: an invalid document is a 400 and is never
+ * stored, never silently blanked and never reported as "not found".
+ */
+function readClientDocument(source: Record<string, unknown>): string | null {
+  const values = ['documento', 'cnpj', 'tax_id']
+    .filter((key) => hasOwn(source, key) && source[key] !== undefined)
+    .map((key) => normalizeClientDocument(source[key]));
+  const document = values[0] ?? null;
+  if (values.some((value) => value !== document)) {
+    throw new QuoteDraftInputError('Os documentos informados entram em conflito.');
+  }
+  if (document && !documentCheckDigitsAreValid(document)) {
+    throw new QuoteDraftInputError('O CNPJ/CPF informado é inválido.');
+  }
+  return document;
+}
+
+/** Document sent alongside a linked client; only the document takes part in the
+ * coherence check, so the inline client data is not required. */
+function normalizeLinkedDocument(input: QuoteDraftCreateInput): string | null {
+  const nested = isRecord(input.client)
+    ? input.client
+    : isRecord(input.cliente)
+      ? input.cliente
+      : {};
+  try {
+    return readClientDocument({ ...input, ...nested });
+  } catch (error) {
+    if (error instanceof ClientInputError) throw new QuoteDraftInputError(error.message);
+    throw error;
+  }
+}
+
 function normalizeInlineClient(input: QuoteDraftCreateInput): Omit<QuoteDraftClientSnapshot, 'id'> {
   const nested = isRecord(input.client)
     ? input.client
@@ -366,19 +423,11 @@ function normalizeInlineClient(input: QuoteDraftCreateInput): Omit<QuoteDraftCli
   const nestedNotes = firstDefined(nested, ['notes', 'client_notes', 'observacoes', 'observação']);
   const clientNotes =
     nestedNotes === undefined ? firstDefined(topLevel, ['notes', 'client_notes']) : nestedNotes;
-  let document: string | null;
   try {
-    const documentAliases = ['documento', 'cnpj', 'tax_id']
-      .filter((key) => hasOwn(source, key) && source[key] !== undefined)
-      .map((key) => normalizeClientDocument(source[key]));
-    document = documentAliases[0] ?? null;
-    if (documentAliases.some((value) => value !== document)) {
-      throw new QuoteDraftInputError('Os documentos informados entram em conflito.');
-    }
     return {
       nome: normalizeClientName(firstDefined(source, ['nome', 'name'])),
       empresa: normalizeClientCompany(firstDefined(source, ['empresa', 'company'])),
-      documento: document,
+      documento: readClientDocument(source),
       email: normalizeClientEmail(firstDefined(source, ['email', 'email_id'])),
       telefone: normalizeClientPhone(
         firstDefined(source, ['telefone', 'phone', 'mobile_no', 'celular'])
@@ -548,9 +597,40 @@ function normalizeCreationRequestId(input: QuoteDraftCreateInput): string | null
   return id;
 }
 
+/**
+ * Explicit operator decision that the identity is a new client. It never
+ * proves that no client exists: the server still classifies the current state
+ * and refuses a strong match, a conflict or an archived record. Normalized to
+ * a boolean, where absence means `false`.
+ */
+function normalizeConfirmNewClient(input: QuoteDraftCreateInput): boolean {
+  const value = firstDefined(input as unknown as Record<string, unknown>, [
+    'confirm_new_client',
+    'confirmNewClient',
+  ]);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+  return false;
+}
+
+const CLIENT_ARCHIVED_MESSAGE =
+  'Existe um cadastro arquivado com estes dados. Regularize o cadastro na tela Clientes e tente novamente.';
+
+/** Fixed, safe messages by review reason; never driver text or constraint names. */
+const CLIENT_REVIEW_MESSAGES: Record<NonNullable<ClientMatchResponse['reason']>, string> = {
+  multiple_matches:
+    'Há mais de um cadastro com estes dados. Escolha o cliente antes de salvar o orçamento.',
+  identifier_conflict:
+    'Os identificadores informados apontam para cadastros diferentes. Revise os dados do cliente.',
+  archived_match: CLIENT_ARCHIVED_MESSAGE,
+  weak_matches_only:
+    'Já existe um cadastro parecido com estes dados. Escolha o cliente ou confirme que é um novo cliente.',
+};
+
 interface CreationFingerprintParts {
   clientId: string | null;
   inlineClient: Omit<QuoteDraftClientSnapshot, 'id'> | null;
+  confirmNewClient: boolean;
   origin: QuoteOriginInput | null;
   link: OpportunityLinkInput;
   items: NormalizedItem[];
@@ -606,6 +686,12 @@ function quotationCreationFingerprint(parts: CreationFingerprintParts): string {
             address: inline.address,
           }
         : null,
+      // The explicit new-client confirmation belongs to the creation content.
+      // It is materialized only when true so an absent flag and an explicit
+      // false stay equivalent — including for fingerprints already persisted
+      // by earlier releases, which keeps a replay of the same key and content
+      // a recovery instead of a conflict.
+      ...(parts.confirmNewClient ? { confirm_new_client: true } : {}),
       origin: parts.origin,
       opportunity_id: parts.link.existingOpportunityId,
       new_demand: parts.link.startNewDemand,
@@ -687,6 +773,114 @@ async function loadReplayedDraft(
     concurrency_token: quotationConcurrencyToken(quotation.updatedAt),
     created_at: new Date(quotation.createdAt).toISOString(),
   };
+}
+
+/**
+ * Loads the client a quotation was explicitly linked to. A document sent
+ * alongside the link must agree with the stored one; e-mail and phone diverge
+ * without blocking, because the stored record is the canonical snapshot.
+ */
+async function resolveLinkedClient(
+  tx: QuoteTransaction,
+  clientId: string,
+  sentDocument: string | null,
+): Promise<QuoteDraftClientSnapshot> {
+  const [row] = await tx.select().from(clients).where(eq(clients.id, clientId)).limit(1);
+  if (!row) throw new QuoteDraftNotFoundError('Cliente não encontrado.', 'CLIENT_NOT_FOUND');
+  if (row.arquivado) {
+    throw new QuoteDraftConflictError(
+      'Este cliente está arquivado. Regularize o cadastro na tela Clientes.',
+      'CLIENT_ARCHIVED'
+    );
+  }
+  const client = mapClient(row);
+  if (sentDocument && client.documento && sentDocument !== client.documento) {
+    throw new QuoteDraftConflictError(
+      'O documento informado não corresponde ao cadastro vinculado. Revise os dados do cliente.',
+      'CLIENT_IDENTITY_CONFLICT'
+    );
+  }
+  return client;
+}
+
+/**
+ * Resolves the client for a quotation that arrived without `client_id`, inside
+ * the caller's transaction and after the write lock, so a client created by a
+ * concurrent card is observed and reused instead of duplicated. A new record is
+ * written only when the classification and the explicit confirmation allow it.
+ */
+async function resolveOrCreateClient(
+  tx: QuoteTransaction,
+  options: {
+    inline: Omit<QuoteDraftClientSnapshot, 'id'>;
+    confirmNewClient: boolean;
+    idFactory: () => string;
+    createdAt: Date;
+  },
+): Promise<QuoteDraftClientSnapshot> {
+  let matchInput;
+  try {
+    matchInput = normalizeClientMatchInput({
+      nome: options.inline.nome,
+      empresa: options.inline.empresa,
+      email: options.inline.email,
+      telefone: options.inline.telefone,
+      cnpj: options.inline.documento,
+    });
+  } catch (error) {
+    if (error instanceof ClientMatchInputError) throw new QuoteDraftInputError(error.message);
+    throw error;
+  }
+
+  const response = classifyClientMatch(matchInput, await searchClientMatchCandidates(tx, matchInput));
+
+  if (response.status === 'matched' && response.matched_client_id) {
+    const [row] = await tx
+      .select()
+      .from(clients)
+      .where(eq(clients.id, response.matched_client_id))
+      .limit(1);
+    if (!row) throw new QuoteDraftRepositoryError();
+    // A concurrent archive is not serialized by the quotation lock, so the
+    // state is re-checked instead of assuming the read is still current.
+    if (row.arquivado) {
+      throw new QuoteDraftConflictError(CLIENT_ARCHIVED_MESSAGE, 'CLIENT_ARCHIVED');
+    }
+    return mapClient(row);
+  }
+
+  if (response.status === 'review') {
+    const reason = response.reason ?? 'multiple_matches';
+    if (reason === 'archived_match') {
+      throw new QuoteDraftConflictError(CLIENT_REVIEW_MESSAGES[reason], 'CLIENT_ARCHIVED');
+    }
+    // Weak name/company suggestions are the one review state an explicit
+    // "this is a new client" decision may resolve; every other review state
+    // demands the operator pick the record.
+    if (reason !== 'weak_matches_only') {
+      throw new QuoteDraftConflictError(CLIENT_REVIEW_MESSAGES[reason], 'CLIENT_SELECTION_REQUIRED');
+    }
+  }
+
+  const hasStrongIdentifier = Boolean(matchInput.documento || matchInput.email || matchInput.telefone);
+  if (!hasStrongIdentifier && !options.confirmNewClient) {
+    throw new QuoteDraftConflictError(
+      CLIENT_REVIEW_MESSAGES.weak_matches_only,
+      'CLIENT_SELECTION_REQUIRED'
+    );
+  }
+
+  const id = options.idFactory();
+  if (!isUuid(id)) {
+    throw new QuoteDraftRepositoryError('Não foi possível gerar o identificador do cliente.');
+  }
+  const snapshot: QuoteDraftClientSnapshot = { id, ...options.inline };
+  const [created] = await tx
+    .insert(clients)
+    .values(toClientRow(snapshot, options.createdAt))
+    .returning();
+  if (!created) throw new QuoteDraftRepositoryError();
+  return mapClient(created);
 }
 
 /**
@@ -1275,11 +1469,14 @@ export function createPostgresQuoteDraftRepository(
     ]);
     let inlineClient: Omit<QuoteDraftClientSnapshot, 'id'> | null = null;
     if (!clientId) inlineClient = normalizeInlineClient(input);
+    const confirmNewClient = normalizeConfirmNewClient(input);
+    const sentDocument = clientId ? normalizeLinkedDocument(input) : inlineClient?.documento ?? null;
     const creationRequestId = normalizeCreationRequestId(input);
     const creationFingerprint = creationRequestId
       ? quotationCreationFingerprint({
           clientId,
           inlineClient,
+          confirmNewClient,
           origin: originInput,
           link: linkInput,
           items,
@@ -1324,32 +1521,17 @@ export function createPostgresQuoteDraftRepository(
           }
         }
         const origin = originInput ? await validateQuoteOrigin(tx, originInput) : null;
-        let client: QuoteDraftClientSnapshot;
-        if (clientId) {
-          const [existing] = await tx
-            .select()
-            .from(clients)
-            .where(and(eq(clients.id, clientId), eq(clients.arquivado, false)))
-            .limit(1);
-          if (!existing) throw new QuoteDraftNotFoundError();
-          client = mapClient(existing);
-        } else {
-          const id = idFactory();
-          if (!isUuid(id))
-            throw new QuoteDraftRepositoryError(
-              'Não foi possível gerar o identificador do cliente.'
-            );
-          const snapshot: QuoteDraftClientSnapshot = {
-            id,
-            ...(inlineClient as Omit<QuoteDraftClientSnapshot, 'id'>),
-          };
-          const [created] = await tx
-            .insert(clients)
-            .values(toClientRow(snapshot, createdAt))
-            .returning();
-          if (!created) throw new QuoteDraftRepositoryError();
-          client = mapClient(created);
-        }
+        // The client is resolved after the write lock and after the replay
+        // check, so a concurrent creation of the same identity is observed and
+        // reused instead of producing a second client record.
+        const client = clientId
+          ? await resolveLinkedClient(tx, clientId, sentDocument)
+          : await resolveOrCreateClient(tx, {
+              inline: inlineClient as Omit<QuoteDraftClientSnapshot, 'id'>,
+              confirmNewClient,
+              idFactory,
+              createdAt,
+            });
 
         const linkedOpportunityId = await resolveProposalOpportunity(tx, {
           link: linkInput,

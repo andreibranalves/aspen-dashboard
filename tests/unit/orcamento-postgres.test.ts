@@ -63,7 +63,7 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
     // aggregate can be removed narrowly when the same dedicated database is
     // reused. Deleting quotations first lets the revision/item cascades run;
     // no unrelated clients, products, or schemas are touched.
-    const fixtureDocuments = [existingDocument, rollbackDocument, '24681357000190'];
+    const fixtureDocuments = [existingDocument, rollbackDocument, '11222333000181'];
     const fixtureClientRows = await db
       .select({ id: clients.id })
       .from(clients)
@@ -207,14 +207,14 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
     const quoteObservations = 'Observação exclusiva da cotação';
     const inlineWithQuoteObservations = await repository.createDraft({
       nome: 'Cliente sem observação própria',
-      documento: '24681357000190',
+      documento: '11222333000181',
       items: [{ item_code: sku, qty: '1.000' }],
       observacoes: quoteObservations,
     });
     const [inlineClient] = await db
       .select()
       .from(clients)
-      .where(eq(clients.documento, '24681357000190'));
+      .where(eq(clients.documento, '11222333000181'));
     const [inlineRevision] = await db
       .select()
       .from(quoteRevisions)

@@ -9,6 +9,9 @@ export function buildQuotePayload(draft: Draft) {
       email: draft.edited.email || null,
       telefone: draft.edited.telefone || null,
       ...(draft.edited.client_id ? { client_id: draft.edited.client_id } : {}),
+      // The explicit "new client" decision travels only when it was made; the
+      // absence of the flag is equivalent to `false`.
+      ...(draft.edited.confirm_new_client === true ? { confirm_new_client: true } : {}),
       ...(draft.edited.quote_lead_id ? { quote_lead_id: draft.edited.quote_lead_id } : {}),
       ...(draft.edited.crm_deal_id ? { crm_deal_id: draft.edited.crm_deal_id } : {}),
       ...(draft.edited.opportunity_id ? { opportunity_id: draft.edited.opportunity_id } : {}),

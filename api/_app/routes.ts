@@ -11,6 +11,7 @@ import { handler as commercialExport } from '../_modules/commercial-export.js';
 import { handler as commercialQueue } from '../_modules/commercial-queue.js';
 import { handler as proposalOpportunities } from '../_modules/proposal-opportunities.js';
 import { handler as clientDetail } from '../_modules/client-detail.js';
+import { handler as clientMatches } from '../_modules/client-matches.js';
 import { handler as leadsClients } from '../_modules/leads-clients.js';
 import { handler as login } from '../_modules/login.js';
 import { handler as logout } from '../_modules/logout.js';
@@ -57,6 +58,7 @@ import { handler as siteQuoteLeads } from '../_modules/site-quote-leads.js';
 export const routes: Record<string, LegacyHandler> = {
   'operational-status': operationalStatus,
   'client-detail': clientDetail,
+  'client-matches': clientMatches,
   'crm-deals': crmDeals,
   'crm-pipeline-stages': crmPipelineStages,
   'crm-update-deal': crmUpdateDeal,

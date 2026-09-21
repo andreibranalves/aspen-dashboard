@@ -152,7 +152,9 @@ function normalizeError(error: unknown): never {
   throw new ClientRepositoryError();
 }
 
-function escapeLike(value: string): string {
+/** Escapes the LIKE metacharacters used by every client text search, so a
+ * literal `%`, `_` or `\` never widens a pattern. */
+export function escapeLikeSearchPattern(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
@@ -172,7 +174,7 @@ function clientListWhere(options: ClientListOptions): SQL | undefined {
   if (options.status === 'archived') filters.push(eq(clients.arquivado, true));
   const search = typeof options.search === 'string' ? options.search.trim() : '';
   if (search) {
-    const pattern = `%${escapeLike(search)}%`;
+    const pattern = `%${escapeLikeSearchPattern(search)}%`;
     const digits = normalizedDigitsSearchTerm(search);
     filters.push(
       or(
@@ -189,8 +191,8 @@ function clientListWhere(options: ClientListOptions): SQL | undefined {
         ilike(clients.municipio, pattern),
         ilike(clients.uf, pattern),
         ilike(clients.cep, pattern),
-        ...(digits ? [ilike(clients.documento, `%${escapeLike(digits)}%`)] : []),
-        ...(digits ? [ilike(clients.telefone, `%${escapeLike(digits)}%`)] : [])
+        ...(digits ? [ilike(clients.documento, `%${escapeLikeSearchPattern(digits)}%`)] : []),
+        ...(digits ? [ilike(clients.telefone, `%${escapeLikeSearchPattern(digits)}%`)] : [])
       )!
     );
   }

@@ -325,6 +325,9 @@ test(
         quoteLeadId: lead.id,
         crmDealId: lead.crmDealId,
         nome: 'Segundo cliente editável',
+        // Nome sozinho não é identificador forte: criar um cliente novo exige
+        // a decisão explícita do operador.
+        confirm_new_client: true,
         items: [{ item_code: sku, qty: '2.000' }],
       });
       createdIds.push(secondForSameSubmission.quotation_uuid);
@@ -410,6 +413,7 @@ test(
           quoteLeadId: lead.id,
           crmDealId: lead.crmDealId,
           nome: 'Rollback sintético',
+          confirm_new_client: true,
           items: [{ item_code: sku, qty: '1.000' }],
         }));
       } finally {
@@ -478,6 +482,7 @@ test(
             quoteLeadId: lead.id,
             crmDealId: secondLead.crmDealId,
             nome: 'Tentativa adulterada',
+            confirm_new_client: true,
             items: [{ item_code: sku, qty: '1.000' }],
           }),
         (error: unknown) => error instanceof QuoteDraftConflictError,
@@ -487,6 +492,7 @@ test(
         quoteLeadId: secondLead.id,
         crmDealId: secondLead.crmDealId,
         nome: 'Mesmo contato, outra submissão',
+        confirm_new_client: true,
         items: [{ item_code: sku, qty: '3.000' }],
       });
       createdIds.push(secondSubmissionQuotation.quotation_uuid);

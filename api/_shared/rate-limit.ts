@@ -27,6 +27,8 @@ const ROUTE_LIMITS: Record<string, number> = {
   login: 10,
   'public-quotation': 20,
   'site-quote-leads': 30,
+  // Automatic client identity checks run per draft with a 300 ms debounce.
+  'client-matches': 60,
 };
 
 interface BucketEntry {

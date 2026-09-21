@@ -38,7 +38,8 @@ function errorResponse(error: unknown): FunctionResult {
     error instanceof QuoteDraftNotFoundError ||
     error instanceof QuoteDraftConflictError
   ) {
-    return json(error.statusCode, { error: error.message });
+    const code = error instanceof QuoteDraftInputError ? undefined : error.code;
+    return json(error.statusCode, code ? { error: error.message, code } : { error: error.message });
   }
   if (error instanceof QuoteDraftRepositoryError) {
     return json(error.statusCode, { error: error.message });
