@@ -101,6 +101,10 @@ export interface DraftEdited {
   template_key?: string;
   _showAddr?: boolean;
   client_id?: string;
+  /** Operator decision that the current identity is a new client. It is never
+   * proof that no client exists, never restored after a reload and never sent
+   * together with an existing link. */
+  confirm_new_client?: boolean;
   quote_lead_id?: string;
   crm_deal_id?: string;
   opportunity_id?: string;

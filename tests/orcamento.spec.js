@@ -178,6 +178,22 @@ async function setupApiMocks(page, orderTemplates = []) {
     });
   });
 
+  // Identidade do cliente resolvida no card antes de salvar/emitir.
+  await page.route('**/api/client-matches**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: 'not_found',
+        matched_client_id: null,
+        candidates: [],
+        total_candidates: 0,
+        page: 1,
+        has_more: false,
+      }),
+    });
+  });
+
   await page.route('**/api/extract', async (route) => {
     await route.fulfill({
       status: 200,

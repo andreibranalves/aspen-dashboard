@@ -1,3 +1,5 @@
+import { documentCheckDigitsAreValid } from './client-schema.js';
+
 export const QUOTATION_COMPANY_SCHEMA_VERSION = 1 as const;
 
 export interface QuotationCompanyConfiguration {
@@ -96,19 +98,9 @@ function document(value: unknown, fallback: string): string {
   if (digits.length !== 14) {
     throw new QuotationCompanyConfigurationError('O CNPJ deve ter 14 dígitos.');
   }
-  if (/^(\d)\1{13}$/.test(digits)) {
-    throw new QuotationCompanyConfigurationError('O CNPJ informado é inválido.');
-  }
-  const firstWeights = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-  const secondWeights = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-  const checkDigit = (weights: number[]) => {
-    const sum = weights.reduce((total, weight, index) => total + Number(digits[index]) * weight, 0);
-    return (11 - (sum % 11)) % 10;
-  };
-  if (
-    Number(digits[12]) !== checkDigit(firstWeights) ||
-    Number(digits[13]) !== checkDigit(secondWeights)
-  ) {
+  // Shared check-digit rule: the card, the client matching query and the
+  // quotation save path must never disagree about a document.
+  if (!documentCheckDigitsAreValid(digits)) {
     throw new QuotationCompanyConfigurationError('O CNPJ informado é inválido.');
   }
   return normalized;

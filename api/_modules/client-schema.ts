@@ -174,6 +174,41 @@ export function normalizeClientCompany(value: unknown): string | null {
 }
 
 /**
+ * Check-digit validation for a CPF (11) or CNPJ (14) digit string.
+ *
+ * The unified model above only promises shape/uniqueness; this is the business
+ * rule shared by every entry point that accepts a document (quotation company
+ * configuration, quotation saving and client matching), so the card and the
+ * save path cannot diverge.
+ */
+export function documentCheckDigitsAreValid(digits: string): boolean {
+  if (typeof digits !== 'string') return false;
+  if (!/^[0-9]+$/.test(digits)) return false;
+  if (digits.length === 14 && /^(\d)\1{13}$/.test(digits)) return false;
+  if (digits.length === 11 && /^(\d)\1{10}$/.test(digits)) return false;
+
+  const checkDigit = (slice: string, weights: readonly number[]): number => {
+    const sum = weights.reduce((total, weight, index) => total + Number(slice[index]) * weight, 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+
+  if (digits.length === 14) {
+    const first = checkDigit(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const second = checkDigit(digits.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return first === Number(digits[12]) && second === Number(digits[13]);
+  }
+
+  if (digits.length === 11) {
+    const first = checkDigit(digits.slice(0, 9), [10, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const second = checkDigit(digits.slice(0, 10), [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return first === Number(digits[9]) && second === Number(digits[10]);
+  }
+
+  return false;
+}
+
+/**
  * Canonical document value: punctuation and spaces are removed and only CPF
  * (11) or CNPJ (14) lengths are accepted. Checksum validation is intentionally
  * left to the business layer; the unified model only promises shape/uniqueness.

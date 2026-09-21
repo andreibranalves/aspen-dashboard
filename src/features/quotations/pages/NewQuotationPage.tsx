@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
+import { isApiError } from '@/types/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
 import { fetchFlows, isQuotationDeliveryFlow, type CommunicationFlow } from '@/lib/api/communicationApi';
@@ -55,6 +56,12 @@ import {
   shouldStartDraftOpportunityRequest,
   type DraftOpportunityRequest,
 } from '@/features/quotations/draftOpportunityRequest';
+import {
+  clientResolutionBlockMessage,
+  type ClientResolutionView,
+} from '@/features/quotations/automaticClientResolution';
+import { useAutomaticClientResolution } from '@/features/quotations/useAutomaticClientResolution';
+import { draftHasDurableQuotationState } from '@/features/quotations/durableQuotationState';
 import { isSendableQuotationStatus, type SendContext } from '@/lib/api/communicationSend';
 import type {
   Draft,
@@ -217,21 +224,6 @@ function draftHasOrigin(draft: Draft): boolean {
   return Boolean(draft.edited.quote_lead_id && draft.edited.crm_deal_id);
 }
 
-function draftHasDurableQuotationState(draft: Draft): boolean {
-  const stored = draft as StoredAutoQuoteDraft;
-  return Boolean(
-    stored.saved ||
-      stored.issueIdempotencyKey ||
-      stored.issueDispatchStarted ||
-      stored.issue ||
-      stored.issueRecoveryRequired ||
-      stored.sourceQuotationId ||
-      stored.sourceRevisionId ||
-      stored.status ||
-      stored.result,
-  );
-}
-
 function conversationOpportunityBlockMessage(
   draft: Draft,
   choices: OpportunityChoice[],
@@ -242,6 +234,20 @@ function conversationOpportunityBlockMessage(
   return isOpportunitySelectionValid(opportunitySelectionFromDraft(draft), choices)
     ? null
     : 'Escolha a oportunidade ou inicie uma nova demanda.';
+}
+
+/**
+ * Client identity is a persistence precondition: an identity still being
+ * checked, awaiting a choice, archived or unconfirmed blocks saving and issuing.
+ * A draft with durable state is never blocked here — after saving, the
+ * identifier and snapshot returned by the server are the effective reference.
+ */
+function conversationClientBlockMessage(
+  draft: Draft,
+  view: ClientResolutionView | undefined,
+): string | null {
+  if (draftHasDurableQuotationState(draft)) return null;
+  return clientResolutionBlockMessage(view ?? { state: 'idle' });
 }
 
 function manualHasWork(form: ManualForm): boolean {
@@ -352,14 +358,28 @@ function sameEditableDraft(left: DraftEdited, right: DraftEdited): boolean {
     opportunity_id: edited.opportunity_id || '',
     new_demand: edited.new_demand === true,
     demand_summary: edited.demand_summary || '',
+    confirm_new_client: edited.confirm_new_client === true,
   });
   return JSON.stringify(comparable(left)) === JSON.stringify(comparable(right));
 }
 
 const ISSUE_PERSISTENCE_ERROR = 'Não foi possível preparar a emissão com segurança. Verifique o armazenamento do navegador e tente novamente.';
+const SAVE_FAILURE_ERROR = 'Não foi possível salvar o rascunho. Tente novamente.';
 const PRE_SAVE_RECOVERY_ERROR = 'Não foi possível confirmar o salvamento do rascunho. Verifique Orçamentos antes de tentar novamente.';
 const PRE_SAVE_RECOVERY_ACTION = 'Confirmar ausência e liberar nova tentativa';
 const CONVERSATION_EXTRACTION_PRICING = 'extraction';
+
+/**
+ * Message the operator sees when a save fails. Identity conflicts (400/404/409)
+ * state the next step the server demands — choose the client, fix the document,
+ * regularize an archived record. Every other failure keeps the retry wording so
+ * no driver text, constraint name or stack trace reaches the operator.
+ */
+function saveFailureMessage(error: unknown): string {
+  if (!isApiError(error)) return SAVE_FAILURE_ERROR;
+  if (error.status !== 400 && error.status !== 404 && error.status !== 409) return SAVE_FAILURE_ERROR;
+  return error.message.trim() || SAVE_FAILURE_ERROR;
+}
 
 function savedSnapshotFromResponse(response: OrcamentoResponse): QuotationSavedSnapshot | undefined {
   if (!Array.isArray(response.items) || response.items.length === 0) return undefined;
@@ -408,6 +428,9 @@ function manualToEdited(form: ManualForm): DraftEdited {
     endereco: { ...form.address },
     _showAddr: form.showAddress,
     client_id: form.clientType === CLIENT_TYPE.EXISTING ? form.selectedClient?.id : undefined,
+    // Choosing the new-client path in the manual form IS the explicit
+    // confirmation; it is never sent together with an existing link.
+    confirm_new_client: form.clientType === CLIENT_TYPE.NEW ? true : undefined,
     quote_lead_id: form.originPrefill?.quoteLeadId,
     crm_deal_id: form.originPrefill?.crmDealId,
     ...(form.originPrefill ? {} : opportunitySelectionPayload(form.opportunity)),
@@ -593,6 +616,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
   const activeDrafts = useMemo(() => drafts.filter((draft) => !draft.discarded), [drafts]);
   const activeDraft = activeDrafts.find((draft) => draft.index === activeDraftIndex) || null;
+  // Identity resolution for every unsaved automatic card. Frozen while a save
+  // or issue is in flight so a pending response cannot change the payload that
+  // was already dispatched.
+  const clientResolution = useAutomaticClientResolution({
+    drafts,
+    updateDraftSystemField,
+    updateDraftField,
+    enabled: !liveDraftOperation,
+  });
+  const activeClientResolution = activeDraft
+    ? clientResolution.views[activeDraft.index]
+    : undefined;
   const draftCountLabel = activeDrafts.length === 1 ? '1 rascunho' : `${activeDrafts.length} rascunhos`;
   const issuedRevisionIds = useMemo(() => activeDrafts.flatMap((draft) => {
     const stored = draft as StoredAutoQuoteDraft;
@@ -1395,9 +1430,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           : [...current, next];
         if (!persistDrafts(nextDrafts)) throw new Error('Não foi possível salvar o rascunho.');
         return next;
-      } catch {
+      } catch (error) {
         if (!mountedRef.current || unloadingRef.current) return null;
-        setIssueErrorByDraft((current) => ({ ...current, [index]: 'Não foi possível salvar o rascunho. Tente novamente.' }));
+        setIssueErrorByDraft((current) => ({ ...current, [index]: saveFailureMessage(error) }));
         return null;
       } finally {
         setSavingDraft((current) => {
@@ -1581,13 +1616,13 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       draft,
       draftOpportunityChoices[draftIndex] || [],
       Boolean(draftOpportunityLoading[draftIndex]),
-    );
+    ) ?? conversationClientBlockMessage(draft, clientResolution.views[draftIndex]);
     if (block) {
       toast(block, 'error');
       return;
     }
     void issueDraft(draft);
-  }, [draftOpportunityChoices, draftOpportunityLoading, drafts, issueDraft, liveDraftOperation, toast]);
+  }, [clientResolution.views, draftOpportunityChoices, draftOpportunityLoading, drafts, issueDraft, liveDraftOperation, toast]);
 
   const handleAutoReview = useCallback((draftIndex: number) => {
     if (liveDraftOperation) return;
@@ -2176,6 +2211,12 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   draftOpportunityChoices[activeDraft.index] || [],
                   Boolean(draftOpportunityLoading[activeDraft.index])
                 )}
+                clientResolution={activeClientResolution}
+                onSelectClient={clientResolution.selectClient}
+                onConfirmNewClient={clientResolution.confirmNewClient}
+                onRetryClientResolution={clientResolution.retry}
+                onClearClientSelection={clientResolution.clearSelection}
+                clientBlockMessage={conversationClientBlockMessage(activeDraft, activeClientResolution)}
               />
             )}
             {pendingExtraction.map((pending, index) => (

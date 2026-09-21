@@ -75,10 +75,14 @@ test.beforeAll(async () => {
     quoteLeadId: mainLead.id,
     crmDealId: mainLead.crmDealId,
     nome: `${leadName} anterior`,
+    // Nome sozinho não é identificador forte: a fixture cria um cliente novo
+    // de propósito e envia a confirmação explícita.
+    confirm_new_client: true,
     items: [{ item_code: sku, qty: '1.000' }],
   });
   const missing = await quoteRepository.createDraft({
     nome: `Origem ausente UI ${suffix}`,
+    confirm_new_client: true,
     items: [{ item_code: sku, qty: '1.000' }],
   });
   missingQuotation = missing.quotation_id;
@@ -97,6 +101,7 @@ test.beforeAll(async () => {
     quoteLeadId: conflictingLead.id,
     crmDealId: conflictingLead.crmDealId,
     nome: `Origem conflitante UI ${suffix}`,
+    confirm_new_client: true,
     items: [{ item_code: sku, qty: '1.000' }],
   });
   conflictQuotation = conflict.quotation_id;

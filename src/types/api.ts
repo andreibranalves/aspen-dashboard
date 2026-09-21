@@ -14,3 +14,9 @@ export function createApiError(error: unknown): ApiError {
   apiErr.status = 500;
   return apiErr;
 }
+
+/** Runtime guard for the API error shape, so callers outside the transport do
+ * not duck-type `status` on their own. */
+export function isApiError(value: unknown): value is ApiError {
+  return value instanceof Error && 'status' in value && typeof value.status === 'number';
+}

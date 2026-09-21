@@ -179,6 +179,9 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     ...(isFiniteNumber(edited.validade_dias) ? { validade_dias: edited.validade_dias } : {}),
     ...(optionalString(edited.template_key) ? { template_key: edited.template_key as string } : {}),
     ...(edited._showAddr === true ? { _showAddr: true } : {}),
+    // The existing link is preserved, but the operator's "new client"
+    // confirmation is deliberately NOT restored: it is a decision for the
+    // session that made it, never restored authority after a reload.
     ...(optionalString(edited.client_id) ? { client_id: edited.client_id as string } : {}),
     ...(optionalString(edited.quote_lead_id) ? { quote_lead_id: edited.quote_lead_id as string } : {}),
     ...(optionalString(edited.crm_deal_id) ? { crm_deal_id: edited.crm_deal_id as string } : {}),
