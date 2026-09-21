@@ -29,9 +29,6 @@ export interface AutomaticClientResolution {
   retry: (draftIdx: number) => void;
   /** "Trocar": drops the link and queries the identity again. */
   clearSelection: (draftIdx: number) => void;
-  /** The hook applies the canonical fill itself when a client is selected, in
-   * the same atomic update as the link. */
-  applyCanonical: boolean;
 }
 
 export function useAutomaticClientResolution({
@@ -89,7 +86,7 @@ export function useAutomaticClientResolution({
   }, []);
 
   return useMemo(
-    () => ({ views, selectClient, confirmNewClient, retry, clearSelection, applyCanonical: true }),
+    () => ({ views, selectClient, confirmNewClient, retry, clearSelection }),
     [views, selectClient, confirmNewClient, retry, clearSelection]
   );
 }

@@ -8,7 +8,6 @@
  * supply candidate rows.
  */
 import {
-  CLIENT_COMPANY_MAX_LENGTH,
   CLIENT_NAME_MAX_LENGTH,
   ClientInputError,
   documentCheckDigitsAreValid,

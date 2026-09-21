@@ -175,8 +175,14 @@ export function parseClientMatchResponse(value: unknown): ClientMatchResponse {
 
 /** Only a `400` carries a validation message written in pt-BR for the
  * operator; every other status keeps a fixed message so no response body,
- * driver text or stack trace reaches the interface. */
+ * driver text or stack trace reaches the interface. An expired session keeps
+ * the same destination the shared transport uses, instead of looking like a
+ * failed identity check. */
 function responseError(status: number, body: unknown): ClientMatchApiError {
+  if (status === 401) {
+    window.location.hash = '#/login';
+    return new ClientMatchApiError('Sessão expirada. Faça login novamente.', status);
+  }
   if (status !== 400) return new ClientMatchApiError(QUERY_FAILURE, status);
   const reported = (body as { error?: unknown } | null)?.error;
   const message = typeof reported === 'string' ? reported.trim() : '';

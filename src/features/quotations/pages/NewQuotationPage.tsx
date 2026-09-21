@@ -21,7 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
-import type { ApiError } from '@/types/api';
+import { isApiError } from '@/types/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
 import { fetchFlows, isQuotationDeliveryFlow, type CommunicationFlow } from '@/lib/api/communicationApi';
@@ -61,6 +61,7 @@ import {
   type ClientResolutionView,
 } from '@/features/quotations/automaticClientResolution';
 import { useAutomaticClientResolution } from '@/features/quotations/useAutomaticClientResolution';
+import { draftHasDurableQuotationState } from '@/features/quotations/durableQuotationState';
 import { isSendableQuotationStatus, type SendContext } from '@/lib/api/communicationSend';
 import type {
   Draft,
@@ -223,21 +224,6 @@ function draftHasOrigin(draft: Draft): boolean {
   return Boolean(draft.edited.quote_lead_id && draft.edited.crm_deal_id);
 }
 
-function draftHasDurableQuotationState(draft: Draft): boolean {
-  const stored = draft as StoredAutoQuoteDraft;
-  return Boolean(
-    stored.saved ||
-      stored.issueIdempotencyKey ||
-      stored.issueDispatchStarted ||
-      stored.issue ||
-      stored.issueRecoveryRequired ||
-      stored.sourceQuotationId ||
-      stored.sourceRevisionId ||
-      stored.status ||
-      stored.result,
-  );
-}
-
 function conversationOpportunityBlockMessage(
   draft: Draft,
   choices: OpportunityChoice[],
@@ -382,10 +368,6 @@ const SAVE_FAILURE_ERROR = 'Não foi possível salvar o rascunho. Tente novament
 const PRE_SAVE_RECOVERY_ERROR = 'Não foi possível confirmar o salvamento do rascunho. Verifique Orçamentos antes de tentar novamente.';
 const PRE_SAVE_RECOVERY_ACTION = 'Confirmar ausência e liberar nova tentativa';
 const CONVERSATION_EXTRACTION_PRICING = 'extraction';
-
-function isApiError(value: unknown): value is ApiError {
-  return value instanceof Error && 'status' in value && typeof value.status === 'number';
-}
 
 /**
  * Message the operator sees when a save fails. Identity conflicts (400/404/409)

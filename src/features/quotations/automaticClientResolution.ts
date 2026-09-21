@@ -7,7 +7,8 @@
 // adapter around `AutomaticClientResolutionController`.
 
 import type { ClientMatchRequest, ClientMatchResponse, LinkedClient } from '../../lib/api/clientMatchApi.ts';
-import type { Draft, DraftEdited, StoredAutoQuoteDraft } from '../../types/domain.ts';
+import type { Draft, DraftEdited } from '../../types/domain.ts';
+import { draftHasDurableQuotationState } from './durableQuotationState.ts';
 
 export type ClientResolutionMatchedBy = 'documento' | 'email' | 'telefone' | 'nome' | 'empresa';
 
@@ -311,18 +312,7 @@ export function planClientSelection(
  * durable-state predicate used by the automatic page. */
 export function isClientResolutionActive(draft: Draft): boolean {
   if (draft.discarded) return false;
-  const stored = draft as StoredAutoQuoteDraft;
-  return !(
-    stored.saved
-    || stored.issue
-    || stored.issueIdempotencyKey
-    || stored.issueDispatchStarted
-    || stored.issueRecoveryRequired
-    || stored.sourceQuotationId
-    || stored.sourceRevisionId
-    || stored.status
-    || stored.result
-  );
+  return !draftHasDurableQuotationState(draft);
 }
 
 function linkedClientId(draft: Draft): string | null {
