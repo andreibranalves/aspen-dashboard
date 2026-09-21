@@ -30,6 +30,11 @@
 - PostgreSQL é a fonte de verdade para produtos, clientes, orçamentos, CRM, pedidos e atividades.
 - Evolution API é o único transporte de WhatsApp.
 
+## Identidade de cliente
+
+- A consulta de identidade é `POST /api/client-matches` (somente leitura) e a regra autoritativa de normalização e classificação fica em `api/_modules/client-matching.ts`. A decisão de vínculo acontece no salvamento, dentro da transação de `/api/orcamento`, depois do lock de escrita e da recuperação por `creation_request_id`; o card apenas antecipa o resultado.
+- `POST /api/orcamento` sem `client_id` e sem identificador forte válido (documento, e-mail ou telefone) só cria cliente com `extracted.confirm_new_client: true`; sem isso responde `409 CLIENT_SELECTION_REQUIRED`. Conflitos de identidade usam `409` com `code` opcional (`CLIENT_SELECTION_REQUIRED`, `CLIENT_IDENTITY_CONFLICT`, `CLIENT_ARCHIVED`) e cliente inexistente responde `404` com `code: CLIENT_NOT_FOUND`.
+
 ## Fluxo de git
 
 - Mudanças triviais e reversíveis (CSS, copy, navegação, ajuste pequeno de UI) podem ser implementadas localmente sem issue ou worktree.
