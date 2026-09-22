@@ -38,6 +38,8 @@ type ButtonSize = keyof typeof sizes;
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Exibe o spinner e desabilita a ação enquanto a mutação está em andamento. */
+  loading?: boolean;
   /** Marca semântica preservada no elemento renderizado. */
   'data-variant'?: string;
   /** Renderiza as classes no elemento filho usando o Slot acessível do Radix. */
@@ -50,9 +52,11 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className,
       variant = 'default',
       size = 'default',
+      loading = false,
       asChild = false,
       children,
       'data-variant': dataVariant,
+      disabled,
       ...props
     },
     ref
@@ -81,7 +85,15 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     }
 
     return (
-      <button ref={ref} data-variant={dataVariant ?? variant} className={classes} {...props}>
+      <button
+        ref={ref}
+        data-variant={dataVariant ?? variant}
+        className={classes}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
+        {...props}
+      >
+        {loading && <span className="spinner shrink-0" aria-hidden="true" />}
         {children}
       </button>
     );

@@ -24,6 +24,8 @@ import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import Pagination from '@/components/shared/Pagination';
+import { Field } from '@/components/ui/field';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -244,6 +246,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailSaving, setDetailSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [editSubmitted, setEditSubmitted] = useState(false);
   const [editFields, setEditFields] = useState<EditFields>(EMPTY_FIELDS);
   const [confirmDrawerDiscard, setConfirmDrawerDiscard] = useState(false);
   const [drawerDiscardAction, setDrawerDiscardAction] = useState<(() => void) | null>(null);
@@ -379,6 +382,16 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     JSON.stringify(editFields) !== JSON.stringify(fieldsFromDetail(detail))
   );
 
+  // Validação inline: campos só mostram erro depois da primeira tentativa de salvar.
+  const editFieldErrors = useMemo(() => {
+    if (!editMode || !editSubmitted) return {} as Partial<Record<'nome' | 'email' | 'telefone', string>>;
+    const errors: Partial<Record<'nome' | 'email' | 'telefone', string>> = {};
+    if (!editFields.nome.trim()) errors.nome = 'Informe o nome.';
+    if (!isValidEmail(editFields.email)) errors.email = 'E-mail inválido.';
+    if (!isValidPhone(editFields.telefone)) errors.telefone = 'Telefone inválido.';
+    return errors;
+  }, [editFields, editMode, editSubmitted]);
+
   const requestDrawerClose = useCallback(
     (afterClose?: () => void) => {
       if (drawerHasUnsavedChanges) {
@@ -396,16 +409,13 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     if (!selectedId || !detail) return;
     const requestId = drawerRequestRef.current;
     const fields = editFields;
-    if (!fields.nome.trim()) {
-      setDetailError('Nome é obrigatório.');
-      return;
-    }
-    if (!isValidEmail(fields.email)) {
-      setDetailError('E-mail inválido.');
-      return;
-    }
-    if (!isValidPhone(fields.telefone)) {
-      setDetailError('Telefone inválido.');
+    if (
+      !fields.nome.trim() ||
+      !isValidEmail(fields.email) ||
+      !isValidPhone(fields.telefone)
+    ) {
+      // Erros de validação aparecem inline nos campos (editFieldErrors).
+      setEditSubmitted(true);
       return;
     }
     setDetailSaving(true);
@@ -576,11 +586,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     if (pending.kind === 'row') void runToggleArchive(pending.row);
     else void runBulkArchive(pending.rows, pending.restoring);
   }, [pendingArchive, runBulkArchive, runToggleArchive]);
-
-  const pageNumbers = Array.from(
-    { length: Math.max(0, totalPages) },
-    (_, index) => index + 1
-  ).slice(Math.max(0, page - 3), page + 4);
 
   const clearFilters = () => {
     setSearch('');
@@ -941,56 +946,16 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         </>
       )}
 
-      {totalPages > 1 && (
-        <nav
-          className="flex flex-wrap items-center justify-between gap-3 text-sm"
-          aria-label="Paginação de clientes"
-        >
-          <span className="text-fg-muted">
-            Página {page} de {totalPages} · {totalRecords} registro{totalRecords === 1 ? '' : 's'}
-          </span>
-          <div className="flex flex-wrap gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => {
-                const nextPage = page - 1;
-                setPage(nextPage);
-                void fetchData(search, nextPage, status, limit);
-              }}
-            >
-              ‹ Anterior
-            </Button>
-            {pageNumbers.map((number) => (
-              <Button
-                key={number}
-                variant={number === page ? 'default' : 'outline'}
-                size="sm"
-                aria-current={number === page ? 'page' : undefined}
-                onClick={() => {
-                  setPage(number);
-                  void fetchData(search, number, status, limit);
-                }}
-              >
-                {number}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => {
-                const nextPage = page + 1;
-                setPage(nextPage);
-                void fetchData(search, nextPage, status, limit);
-              }}
-            >
-              Próximo ›
-            </Button>
-          </div>
-        </nav>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        totalRecords={totalRecords}
+        label="Paginação de clientes"
+        onPageChange={(nextPage) => {
+          setPage(nextPage);
+          void fetchData(search, nextPage, status, limit);
+        }}
+      />
 
       {selectedIds.length > 0 && (
         <BulkActionBar visible>
@@ -1028,6 +993,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                     size="sm"
                     onClick={() => {
                       setEditFields(fieldsFromDetail(detail));
+                      setEditSubmitted(false);
                       setEditMode(true);
                     }}
                   >
@@ -1144,26 +1110,23 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         )}
         {detail && !detailLoading && editMode && (
           <div className="space-y-3">
-            <label className="block text-xs text-fg-muted">
-              Nome
+            <Field label="Nome" required error={editFieldErrors.nome}>
               <Input
                 value={editFields.nome}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, nome: event.target.value }))
                 }
               />
-            </label>
-            <label className="block text-xs text-fg-muted">
-              Empresa
+            </Field>
+            <Field label="Empresa">
               <Input
                 value={editFields.empresa}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, empresa: event.target.value }))
                 }
               />
-            </label>
-            <label className="block text-xs text-fg-muted">
-              E-mail
+            </Field>
+            <Field label="E-mail" error={editFieldErrors.email}>
               <Input
                 type="email"
                 value={editFields.email}
@@ -1171,35 +1134,31 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   setEditFields((current) => ({ ...current, email: event.target.value }))
                 }
               />
-            </label>
-            <label className="block text-xs text-fg-muted">
-              Telefone
+            </Field>
+            <Field label="Telefone" error={editFieldErrors.telefone}>
               <Input
                 value={editFields.telefone}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, telefone: event.target.value }))
                 }
               />
-            </label>
-            <label className="block text-xs text-fg-muted">
-              Documento
+            </Field>
+            <Field label="Documento">
               <Input
                 value={editFields.documento}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, documento: event.target.value }))
                 }
               />
-            </label>
-            <label className="block text-xs text-fg-muted">
-              Observações
+            </Field>
+            <Field label="Observações">
               <Textarea
-                aria-label="Observações"
                 value={editFields.observacoes}
                 onChange={(event) =>
                   setEditFields((current) => ({ ...current, observacoes: event.target.value }))
                 }
               />
-            </label>
+            </Field>
             <p className="break-words text-xs text-fg-muted">
               Endereço: {addressText(editFields.endereco)}
             </p>

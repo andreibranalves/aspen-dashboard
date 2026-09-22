@@ -22,6 +22,12 @@ const badgeVariants: Record<string, string> = {
   // Clientes
   Active: 'tone-success-soft',
   Archived: 'tone-neutral-soft',
+  // CRM — status de negócio (ganho / perdido / em progresso)
+  Won: 'tone-won-soft',
+  Ganho: 'tone-won-soft',
+  'Pedido Fechado': 'tone-won-soft',
+  Perdido: 'tone-lost-soft',
+  'In Progress': 'tone-progress-soft',
 };
 
 export interface StatusBadgeProps {

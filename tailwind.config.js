@@ -51,6 +51,12 @@ export default {
         },
         link: 'rgb(var(--link))',
         'primary-text': 'rgb(var(--primary-text))',
+        // Deal status: ganho, perdido, em progresso.
+        status: {
+          won: 'rgb(var(--status-won))',
+          lost: 'rgb(var(--status-lost))',
+          progress: 'rgb(var(--status-progress))',
+        },
 
         // Compatibility aliases retained while consumers migrate.
         line: 'rgb(var(--line))',
@@ -100,6 +106,27 @@ export default {
           hover: 'rgb(var(--surface-hover))',
           active: 'rgb(var(--surface-selected))',
         },
+      },
+      // Escala tipográfica do design system (grid de 4px nas line-heights).
+      fontSize: {
+        xs: ['0.75rem', { lineHeight: '1rem' }],
+        sm: ['0.875rem', { lineHeight: '1.25rem' }],
+        base: ['1rem', { lineHeight: '1.5rem' }],
+        lg: ['1.125rem', { lineHeight: '1.625rem' }],
+        xl: ['1.25rem', { lineHeight: '1.75rem', letterSpacing: '-0.015em' }],
+        '2xl': ['1.5rem', { lineHeight: '2rem', letterSpacing: '-0.02em' }],
+        '3xl': ['1.875rem', { lineHeight: '2.25rem', letterSpacing: '-0.024em' }],
+        '4xl': ['2.25rem', { lineHeight: '2.5rem', letterSpacing: '-0.028em' }],
+      },
+      // Escala de sombras semânticas (níveis de elevação 1-5).
+      // Grid de espaçamento segue o padrão Tailwind (base 4px); prefira
+      // múltiplos de 2 unidades (8pt) em composições de tela.
+      boxShadow: {
+        'level-1': '0 1px 2px 0 rgb(16 24 40 / 0.05)',
+        'level-2': '0 1px 3px 0 rgb(16 24 40 / 0.10), 0 1px 2px -1px rgb(16 24 40 / 0.06)',
+        'level-3': '0 4px 8px -2px rgb(16 24 40 / 0.10), 0 2px 4px -2px rgb(16 24 40 / 0.06)',
+        'level-4': '0 12px 20px -6px rgb(16 24 40 / 0.14), 0 4px 8px -4px rgb(16 24 40 / 0.05)',
+        'level-5': '0 24px 40px -8px rgb(16 24 40 / 0.20), 0 8px 16px -8px rgb(16 24 40 / 0.08)',
       },
       borderRadius: {
         xs: '4px',

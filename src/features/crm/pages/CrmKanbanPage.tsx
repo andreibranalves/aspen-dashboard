@@ -12,12 +12,11 @@ import {
   Search,
   AlertTriangle,
   Columns3,
-  Clipboard,
-  Send,
   PlusCircle,
   Rows3,
   Settings2,
 } from 'lucide-react';
+import KanbanDealCard, { daysAgo } from '@/features/crm/components/KanbanDealCard';
 import { apiGet, apiPut } from '@/lib/api/api';
 import { useToast } from '@/components/shared/toast';
 import { cn } from '@/lib/utils';
@@ -73,17 +72,6 @@ interface CrmDealsResponse {
 
 interface UpdateDealResult {
   success: boolean;
-}
-
-function daysAgo(dateStr?: string | null): string {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '—';
-  const now = new Date();
-  const diff = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-  if (diff === 0) return 'hoje';
-  if (diff === 1) return '1 dia';
-  return `${diff} dias`;
 }
 
 type CrmView = 'list' | 'board';
@@ -777,111 +765,27 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             : deal.quote_lead_id
                               ? `#/leads/lead/${deal.quote_lead_id}`
                               : null;
-                          const leadClickable = Boolean(
-                            leadHref && leadName && leadName !== 'Sem nome'
-                          );
                           const moving = movingDealIds.has(deal.id);
                           const lastUpdate = deal.modificado_em || deal.criado_em;
                           return (
-                            <article
+                            <KanbanDealCard
                               key={deal.id}
-                              draggable={!moving}
-                              onDragStart={(e: DragEvent<HTMLElement>) => {
+                              deal={deal}
+                              leadName={displayLeadName}
+                              href={leadHref}
+                              stageName={col.name}
+                              lastUpdate={lastUpdate}
+                              moving={moving}
+                              dragging={draggingId === deal.id}
+                              onNavigate={navigateFromLink}
+                              onStartQuotation={deal.quote_lead_id ? startQuotation : undefined}
+                              onDragStart={(event) => {
                                 setDraggingId(deal.id);
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', deal.id);
+                                event.dataTransfer.effectAllowed = 'move';
+                                event.dataTransfer.setData('text/plain', deal.id);
                               }}
                               onDragEnd={() => setDraggingId(null)}
-                              aria-label={`Negócio ${displayLeadName}. Etapa: ${col.name}.`}
-                              className={cn(
-                                'rounded-lg border border-line bg-surface p-3 transition-all',
-                                'hover:border-fg-muted/30',
-                                draggingId === deal.id && 'cursor-grabbing opacity-50'
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                {leadClickable ? (
-                                  <a
-                                    href={leadHref || '#'}
-                                    onClick={(event) =>
-                                      leadHref && navigateFromLink(event, leadHref)
-                                    }
-                                    className="min-w-0 text-left text-sm font-medium text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
-                                    aria-label={`Abrir lead ${displayLeadName}`}
-                                  >
-                                    <span className="block truncate">{displayLeadName}</span>
-                                  </a>
-                                ) : (
-                                  <h3 className="min-w-0 truncate text-sm font-medium">
-                                    {displayLeadName}
-                                  </h3>
-                                )}
-                                {moving && (
-                                  <span className="shrink-0 text-xs text-fg-muted">Movendo…</span>
-                                )}
-                              </div>
-                              {deal.email && (
-                                <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {deal.email}
-                                </p>
-                              )}
-                              {deal.telefone && (
-                                <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {fmtPhone(deal.telefone) || deal.telefone}
-                                </p>
-                              )}
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                {deal.quotation &&
-                                  (deal.quotation_id ? (
-                                    <a
-                                      href={`#/quotations/${deal.quotation_id}`}
-                                      onClick={(event) =>
-                                        navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
-                                      }
-                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
-                                      aria-label={`Abrir orçamento ${deal.quotation}`}
-                                    >
-                                      <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                      {deal.quotation}
-                                    </a>
-                                  ) : (
-                                    <span
-                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary"
-                                      aria-label={`Orçamento ${deal.quotation}`}
-                                    >
-                                      <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                      {deal.quotation}
-                                    </span>
-                                  ))}
-                                {Number(deal.follow_up_stage) > 0 && (
-                                  <span className="inline-flex items-center rounded bg-surface-muted px-1.5 py-0.5 text-xs text-fg">
-                                    <Send size={12} className="mr-1" aria-hidden="true" />
-                                    Follow-up {deal.follow_up_stage}
-                                  </span>
-                                )}
-                                {lastUpdate && (
-                                  <time
-                                    dateTime={lastUpdate}
-                                    className="text-xs text-fg-muted"
-                                    title="Última atualização"
-                                  >
-                                    Atualizado {daysAgo(lastUpdate)}
-                                  </time>
-                                )}
-                              </div>
-                              <DealProposals opportunityId={deal.id} />
-                              {deal.quote_lead_id && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="mt-2 w-full"
-                                  onClick={() => startQuotation(deal, leadName)}
-                                >
-                                  <PlusCircle />
-                                  Novo orçamento
-                                </Button>
-                              )}
-                            </article>
+                            />
                           );
                         })}
                       </div>

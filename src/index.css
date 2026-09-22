@@ -1,7 +1,8 @@
 /*
- * Aspen UI v2 foundation.
- * Canonical semantic tokens live here; compatibility aliases remain until all
- * repository consumers migrate to the canonical names.
+ * Aspen UI v3 foundation — Design System Aspen.
+ * Tokens semânticos canônicos; aliases de compatibilidade permanecem até
+ * todos os consumidores migrarem para os nomes canônicos.
+ * Identidade: índigo sobre neutros frios, status por semântica de negócio.
  */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
@@ -12,28 +13,34 @@
 
 @layer base {
   :root {
-    /* Canonical Aspen light tokens. */
-    --page: 247 248 250;
+    /* Canonical Aspen light tokens (v3). */
+    --page: 246 247 251;
     --surface: 255 255 255;
-    --surface-subtle: 250 250 250;
-    --surface-hover: 247 247 248;
-    --surface-selected: 231 240 255;
-    --border-subtle: 237 237 237;
-    --border-default: 226 226 229;
-    --border-strong: 209 209 214;
-    --text-primary: 24 24 27;
-    --text-secondary: 82 82 91;
-    --text-tertiary: 102 102 111;
-    --text-disabled: 161 161 170;
-    --primary: 22 92 216;
+    --surface-subtle: 241 242 247;
+    --surface-hover: 236 237 243;
+    --surface-selected: 231 233 249;
+    --border-subtle: 233 234 240;
+    --border-default: 224 226 234;
+    --border-strong: 205 208 220;
+    --border-control: 143 146 160;
+    --text-primary: 17 20 28;
+    --text-secondary: 68 73 86;
+    --text-tertiary: 100 105 120;
+    --text-disabled: 161 165 178;
+    --primary: 79 70 229;
     --on-primary: 255 255 255;
-    --success: 26 122 76;
-    --warning: 154 91 19;
-    --destructive: 184 58 57;
-    --info: 22 92 216;
-    --link: 22 92 216;
-    --primary-text: 22 92 216;
-    --border-control: 138 138 146;
+    --success: 5 150 105;
+    --warning: 217 119 6;
+    --destructive: 220 38 38;
+    --info: 2 132 199;
+    --link: 79 70 229;
+    --primary-text: 67 56 202;
+    --border-control: 143 146 160;
+
+    /* Deal status: ganho, perdido, em progresso. */
+    --status-won: var(--success);
+    --status-lost: var(--destructive);
+    --status-progress: var(--primary);
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -41,13 +48,13 @@
     --fg: var(--text-primary);
     --fg-muted: var(--text-secondary);
     --on-solid: var(--on-primary);
-    --shell: 15 20 32;
-    --shell-border: 35 45 61;
-    --shell-text: 242 245 250;
-    --shell-muted: 181 191 206;
-    --shell-hover: 29 39 54;
-    --shell-active: 37 48 64;
-    --shell-primary: 138 180 255;
+    --shell: 13 15 24;
+    --shell-border: 34 38 56;
+    --shell-text: 240 241 246;
+    --shell-muted: 167 173 190;
+    --shell-hover: 24 28 44;
+    --shell-active: 36 41 64;
+    --shell-primary: 165 180 252;
 
     /* Standard primitive aliases. */
     --background: var(--page);
@@ -71,28 +78,38 @@
   }
 
   .dark {
-    /* Canonical Aspen dark tokens. */
-    --page: 15 20 32;
-    --surface: 20 26 38;
-    --surface-subtle: 26 34 48;
-    --surface-hover: 32 42 58;
-    --surface-selected: 29 45 74;
-    --border-subtle: 37 47 64;
-    --border-default: 51 64 86;
-    --border-strong: 70 84 108;
-    --text-primary: 255 255 255;
-    --text-secondary: 181 191 206;
-    --text-tertiary: 146 158 176;
-    --text-disabled: 102 116 138;
-    --primary: 47 111 219;
+    /* Canonical Aspen dark tokens (v3). */
+    --page: 12 13 21;
+    --surface: 17 19 29;
+    --surface-subtle: 24 26 39;
+    --surface-hover: 31 34 50;
+    --surface-selected: 43 45 73;
+    --border-subtle: 34 37 52;
+    --border-default: 48 52 70;
+    --border-strong: 68 73 96;
+    --border-control: 105 111 134;
+    --text-primary: 244 245 250;
+    --text-secondary: 176 181 197;
+    --text-tertiary: 140 146 165;
+    --text-disabled: 96 102 122;
+    --primary: 129 140 248;
     --on-primary: 255 255 255;
-    --success: 52 199 126;
-    --warning: 240 168 87;
-    --destructive: 226 105 106;
-    --info: 111 156 236;
-    --link: 138 180 255;
-    --primary-text: 138 180 255;
-    --border-control: 104 121 145;
+    --success: 52 211 153;
+    --warning: 251 191 36;
+    --destructive: 248 113 113;
+    --info: 56 189 248;
+    --link: 165 180 252;
+    --primary-text: 165 180 252;
+    --border-control: 105 111 134;
+
+    /* Shell acompanha o fundo escuro sem perder contraste. */
+    --shell: 12 13 21;
+    --shell-border: 30 33 47;
+    --shell-text: 240 241 246;
+    --shell-muted: 160 166 184;
+    --shell-hover: 24 26 39;
+    --shell-active: 36 38 57;
+    --shell-primary: 165 180 252;
   }
 
   * {
@@ -105,7 +122,7 @@
       'Inter',
       'Inter Variable',
       system-ui,
-      -apple-system,
+      '-apple-system',
       sans-serif;
     font-feature-settings:
       'cv01' 1,
@@ -133,8 +150,8 @@
     display: inline-block;
     width: 16px;
     height: 16px;
-    border: 2px solid rgb(var(--text-secondary) / 0.3);
-    border-top-color: rgb(var(--text-primary));
+    border: 2px solid currentColor;
+    border-top-color: transparent;
     border-radius: 9999px;
     animation: spin 0.6s linear infinite;
   }
@@ -225,7 +242,7 @@
   }
 
   .tone-info-soft {
-    @apply rounded-full border border-transparent bg-info/10 text-primary-text;
+    @apply rounded-full border border-transparent bg-info/10 text-info;
   }
 
   .tone-neutral-soft {
@@ -234,6 +251,19 @@
 
   .tone-neutral-muted {
     @apply bg-surface-muted text-fg-muted;
+  }
+
+  /* Deal status: ganho / perdido / em progresso. */
+  .tone-won-soft {
+    @apply rounded-full border border-transparent bg-status-won/10 text-success;
+  }
+
+  .tone-lost-soft {
+    @apply rounded-full border border-transparent bg-status-lost/10 text-destructive;
+  }
+
+  .tone-progress-soft {
+    @apply rounded-full border border-transparent bg-status-progress/10 text-primary-text;
   }
 }
 
