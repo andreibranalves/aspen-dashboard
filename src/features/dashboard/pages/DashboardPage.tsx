@@ -289,7 +289,7 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
 function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
   const rows = data.ordersBySource?.items || [];
   const total = rows.reduce((sum, row) => sum + row.orders, 0);
-  const colors = ['#55765e', '#d18c56', '#aa9183', '#283d32', '#f3eee5'];
+  const colors = ['rgb(var(--shell-primary))', 'rgb(var(--orange))', 'rgb(var(--taupe))', 'rgb(var(--surface-selected))', 'rgb(var(--cream))'];
   const labels: Record<string, string> = { site_form: 'Site', whatsapp: 'WhatsApp', typebot: 'Typebot', sem_origem: 'Sem origem' };
   let start = 0;
   const stops = rows.map((row, index) => {
@@ -299,9 +299,9 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
     return stop;
   });
   return (
-    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-[#1c2b22]" aria-label="Origem dos pedidos">
+    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-on-solid" aria-label="Origem dos pedidos">
       <h2 className="text-sm font-semibold">Origem dos pedidos</h2>
-      <div className="mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full" style={{ background: total > 0 ? `conic-gradient(${stops.join(', ')})` : '#a5b9a7' }} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
+      <div className="mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full" style={{ background: total > 0 ? `conic-gradient(${stops.join(', ')})` : 'rgb(var(--light-sage))' }} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
         <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
       </div>
       <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-[11px]"><span className="mt-1 size-2 shrink-0 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>

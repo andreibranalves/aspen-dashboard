@@ -57,7 +57,7 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
                   aria-controls="commercial-panel"
                   aria-selected={tab === item.key}
                   tabIndex={tab === item.key ? 0 : -1}
-                  className={tab === item.key ? 'rounded-control bg-white px-3 py-2 text-xs font-semibold text-[#222]' : 'rounded-control px-3 py-2 text-xs text-fg-muted hover:text-fg'}
+                  className={tab === item.key ? 'rounded-control bg-shell px-3 py-2 text-xs font-semibold text-shell-text' : 'rounded-control px-3 py-2 text-xs text-fg-muted hover:text-fg'}
                   onClick={() => changeTab(item.key)}
                   onKeyDown={(event) => handleTabKeyDown(event, index)}
                 >{item.label}</button>

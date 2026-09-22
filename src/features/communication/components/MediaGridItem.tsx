@@ -24,7 +24,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
 
   return (
     <article className="group min-w-0 rounded-card bg-surface p-5">
-      <div className="grid h-32 place-items-center overflow-hidden rounded-control bg-[#273129] text-light-sage">
+      <div className="grid h-32 place-items-center overflow-hidden rounded-control bg-surface-selected text-light-sage">
         {isImage && !previewError && item.blob_url ? (
           <img src={item.blob_url} alt="" loading="lazy" onError={() => setPreviewError(true)} className="h-full w-full object-cover" />
         ) : <Icon size={34} strokeWidth={1.4} aria-hidden="true" />}

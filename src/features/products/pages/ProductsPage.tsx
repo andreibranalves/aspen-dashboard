@@ -550,7 +550,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                   data-state={isSelected ? 'selected' : undefined}
                   className="group rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
                 >
-                  <div className={`relative flex h-[110px] items-end justify-between rounded-[17px] p-4 text-[#302822] ${visualTone}`}>
+                  <div className={`relative flex h-[110px] items-end justify-between rounded-[17px] p-4 text-on-solid ${visualTone}`}>
                     <strong className="text-[23px] font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
                     <PackageOpen size={48} strokeWidth={1.25} className="opacity-35" aria-hidden="true" />
                     {selectionMode && <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">

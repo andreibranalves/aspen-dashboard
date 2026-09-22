@@ -198,7 +198,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                     className="flex min-h-72 flex-col rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
                   >
                     <h3 className="truncate text-sm font-semibold text-fg" title={template.name}>{template.name}</h3>
-                    <div className={["mt-5 flex h-24 items-end justify-between rounded-control p-5 text-[#302822]", ['bg-[#819c89]', 'bg-[#c88c58]', 'bg-[#af9f95]'][index % 3]].join(' ')}>
+                    <div className={["mt-5 flex h-24 items-end justify-between rounded-control p-5 text-on-solid", ['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]].join(' ')}>
                       <Boxes size={34} strokeWidth={1.4} aria-hidden="true" />
                       <span className="text-lg font-semibold">{template.items.length} {template.items.length === 1 ? 'item' : 'itens'}</span>
                     </div>

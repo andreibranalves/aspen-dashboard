@@ -485,14 +485,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
             editing && !isNewClient
               ? title
               : isNewClient
-                ? undefined
+                ? 'Comece um novo relacionamento'
                 : 'Cliente · histórico e contexto comercial'
           }
-          actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
+          actions={confirmDiscardEdits || pendingRoute !== null || isNewClient ? undefined : headerActions}
         />
 
         {!isNewClient && !editing && (
-          <div className="flex flex-wrap items-center gap-2 py-1">
+          <div className="!-mt-4 flex flex-wrap items-center gap-2 py-1">
             <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
             {qualityBadges(current as ClientDetail).length > 0 && (
               <QualityBadges badges={qualityBadges(current as ClientDetail)} />
@@ -502,17 +502,18 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         )}
 
         {editing ? (
-          <div className="grid items-start gap-5 lg:grid-cols-2">
-            <SectionCard title="Dados do cliente" icon={UserRound}>
+          <div className={isNewClient ? 'grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]' : 'grid items-start gap-5'}>
+            <div className="min-w-0 space-y-5">
+            <SectionCard title={isNewClient ? 'Identificação' : 'Dados do cliente'} icon={isNewClient ? undefined : UserRound}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="text-xs text-fg-muted">
-                  Nome
+                  Nome do cliente *
                   <Input
                     value={fields.nome}
                     onChange={(event) =>
                       setFields((value) => ({ ...value, nome: event.target.value }))
                     }
-                    placeholder="Nome do cliente"
+                    placeholder="Nome ou razão social"
                   />
                 </label>
                 <label className="text-xs text-fg-muted">
@@ -522,10 +523,10 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     onChange={(event) =>
                       setFields((value) => ({ ...value, empresa: event.target.value }))
                     }
-                    placeholder="Empresa"
+                    placeholder="Empresa, se aplicável"
                   />
                 </label>
-                <label className="text-xs text-fg-muted">
+                <label className="order-4 text-xs text-fg-muted">
                   E-mail
                   <Input
                     type="email"
@@ -536,7 +537,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     placeholder="email@exemplo.com"
                   />
                 </label>
-                <label className="text-xs text-fg-muted">
+                <label className="order-5 text-xs text-fg-muted">
                   Telefone
                   <Input
                     value={fields.telefone}
@@ -546,7 +547,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     placeholder="(99) 99999-9999"
                   />
                 </label>
-                <label className="text-xs text-fg-muted">
+                <label className="order-3 text-xs text-fg-muted">
                   Documento
                   <Input
                     value={fields.documento}
@@ -556,7 +557,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     placeholder="CPF ou CNPJ"
                   />
                 </label>
-                <label className="text-xs text-fg-muted md:col-span-2">
+                <label className="order-6 text-xs text-fg-muted md:col-span-2">
                   Observações
                   <Textarea
                     aria-label="Observações"
@@ -568,8 +569,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 </label>
               </div>
             </SectionCard>
-            <SectionCard title="Endereço" icon={MapPin}>
+            <SectionCard title="Endereço" icon={isNewClient ? undefined : MapPin}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {addressField('CEP', fields.endereco.cep || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, cep: value },
+                  }))
+                )}
                 {addressField(
                   'Endereço',
                   fields.endereco.endereco || '',
@@ -578,7 +585,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                       ...currentValue,
                       endereco: { ...currentValue.endereco, endereco: value },
                     })),
-                  'md:col-span-2'
+                  isNewClient ? undefined : 'md:col-span-2'
                 )}
                 {addressField('Número', fields.endereco.numero || '', (value) =>
                   setFields((currentValue) => ({
@@ -610,14 +617,10 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     endereco: { ...currentValue.endereco, uf: value },
                   }))
                 )}
-                {addressField('CEP', fields.endereco.cep || '', (value) =>
-                  setFields((currentValue) => ({
-                    ...currentValue,
-                    endereco: { ...currentValue.endereco, cep: value },
-                  }))
-                )}
               </div>
             </SectionCard>
+            </div>
+            {isNewClient && <aside className="rounded-card border border-line bg-surface p-5"><h2 className="text-base font-semibold">Novo relacionamento</h2><p className="mt-5 text-sm text-fg-muted">Preencha os dados essenciais e complete o cadastro durante o atendimento.</p><div className="mt-6 space-y-2"><Button type="button" className="w-full" onClick={() => void save()} disabled={saving}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar cliente'}</Button><Button type="button" variant="outline" className="w-full" onClick={cancelEditing} disabled={saving}>Cancelar</Button></div></aside>}
           </div>
         ) : (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">

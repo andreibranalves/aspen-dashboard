@@ -93,7 +93,7 @@ const CRM_VIEW_TABS = [
   ['board', 'Quadro', Columns3],
 ] as const;
 type StageFilter = string;
-const BOARD_STAGE_SWATCHES = ['#b4c6b5', '#c68752', '#a49389', '#f1e3d4'] as const;
+const BOARD_STAGE_SWATCHES = ['rgb(var(--light-sage))', 'rgb(var(--orange))', 'rgb(var(--taupe))', 'rgb(var(--cream))'] as const;
 const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
   raw?.trim() || fallback;
 
@@ -374,7 +374,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                 className={cn(
                   'inline-flex h-8 items-center gap-2 rounded-control px-3 text-xs transition-colors',
                   view === nextView
-                    ? 'bg-light-sage font-medium text-[#252a25]'
+                    ? 'bg-light-sage font-medium text-on-solid'
                     : 'text-fg-muted hover:bg-surface hover:text-fg'
                 )}
                 onClick={() => setView(nextView)}
@@ -716,7 +716,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               onDragEnd={() => setDraggingId(null)}
                               aria-label={`Negócio ${displayLeadName}. Etapa: ${col.name}.`}
                               className={cn(
-                                'rounded-card bg-[#242423] p-4 transition-colors hover:bg-[#2b2b29]',
+                                'rounded-card bg-surface-subtle p-4 transition-colors hover:bg-surface-hover',
                                 draggingId === deal.id && 'cursor-grabbing opacity-50'
                               )}
                             >
@@ -745,7 +745,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               <p className="mt-2 truncate text-[11px] text-fg-muted">{deal.lead_source || 'Origem não informada'}</p>
                               <div className="mt-5 flex items-center justify-between text-[11px] text-fg-muted">
                                 <time dateTime={lastUpdate}>{lastUpdate ? daysAgo(lastUpdate) : '—'}</time>
-                                <span className="grid size-7 place-items-center rounded-full bg-light-sage text-[10px] font-bold text-[#252a25]">AS</span>
+                                <span className="grid size-7 place-items-center rounded-full bg-light-sage text-[10px] font-bold text-on-solid">AS</span>
                               </div>
                               {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={13} aria-hidden="true" />Ver negócio</a>}
                               <details className="mt-2 text-[11px] text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full text-xs" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
