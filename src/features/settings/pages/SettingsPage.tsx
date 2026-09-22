@@ -278,7 +278,7 @@ export default function SettingsPage() {
   return (
     <PageShell className="space-y-6 pb-24">
       <PageHeader title="Configurações" description="Padrões que acompanham o jeito Aspen de trabalhar." />
-      <div role="tablist" aria-label="Seções de configurações" className="overflow-x-auto px-1">
+      <div role="tablist" aria-label="Seções de configurações" className="!mt-2 overflow-x-auto px-1">
         <div className="flex min-w-max gap-1">
           {TABS.map((tab, index) => {
             const selected = activeTab === tab.id;
@@ -311,7 +311,7 @@ export default function SettingsPage() {
         role="tabpanel"
         aria-labelledby={`settings-tab-${activeTab}`}
         tabIndex={-1}
-        className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
+        className="!mt-4 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
       >
         {loading && (activeTab === 'patterns' || activeTab === 'company') && (
           <div className="space-y-3" aria-label="Carregando configurações">
@@ -370,7 +370,7 @@ export default function SettingsPage() {
             <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
               <div className="min-w-0 space-y-5">
                 <section
-                  className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                  className="space-y-2 rounded-card bg-surface p-5 sm:p-[22px]"
                   aria-labelledby="patterns-title"
                 >
                   <h2 id="patterns-title" className="text-base font-semibold text-fg">

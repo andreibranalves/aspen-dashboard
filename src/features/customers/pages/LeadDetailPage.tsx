@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
-  Columns3,
   Edit3,
-  FileText,
   Mail,
   MapPin,
   Phone,
@@ -479,8 +477,8 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   );
 
   return (
-    <PageShell className="space-y-5">
-      <fieldset disabled={saving} className="space-y-5">
+    <PageShell className="space-y-2">
+      <fieldset disabled={saving} className="space-y-2">
         <PageHeader
           title={editing && !isNewClient ? 'Editar cliente' : title}
           description={
@@ -488,17 +486,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
               ? title
               : isNewClient
                 ? undefined
-                : current.modified
-                  ? `Atualizado ${formatDate(current.modified)}`
-                  : undefined
+                : 'Cliente · histórico e contexto comercial'
           }
           actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
         />
 
         {!isNewClient && !editing && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface-subtle p-3">
+          <div className="flex flex-wrap items-center gap-2 py-1">
             <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
-            <span className="text-xs text-fg-muted">Cliente</span>
             {qualityBadges(current as ClientDetail).length > 0 && (
               <QualityBadges badges={qualityBadges(current as ClientDetail)} />
             )}
@@ -625,10 +620,17 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
             </SectionCard>
           </div>
         ) : (
-          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-5 lg:order-2">
+              <SectionCard title="Resumo comercial">
+                <dl className="space-y-3 text-sm">
+                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Pedidos</dt><dd>{current.orders?.length ?? 0}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Orçamento recente</dt><dd className="max-w-[110px] truncate text-right">{current.latest_quotation?.name || '—'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Valor da proposta</dt><dd className="text-right tabular-nums">{current.latest_quotation?.grand_total != null ? formatBRL(current.latest_quotation.grand_total) : '—'}</dd></div>
+                </dl>
+              </SectionCard>
               {current.latest_quotation && (
-                <SectionCard title="Atividade recente" icon={FileText}>
+                <SectionCard title="Atividade recente">
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
                       Orçamento recente
@@ -658,7 +660,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 </SectionCard>
               )}
               {current.deal && (
-                <SectionCard title="Negócio ativo" icon={Columns3}>
+                <SectionCard title="Próxima ação">
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <p className="break-words font-medium">{current.deal.name}</p>
@@ -711,26 +713,27 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 </SectionCard>
               )}
             </div>
-            <SectionCard title="Cadastro" icon={UserRound} className="lg:order-1">
+            <SectionCard title="Dados do relacionamento" className="lg:order-1">
+              <div className="flex items-center gap-3 pb-2">
+                <div className="grid size-14 shrink-0 place-items-center rounded-full bg-light-sage text-sm font-semibold text-page" aria-hidden="true">{title.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div>
+                <div className="min-w-0"><p className="truncate text-sm font-semibold text-fg">{title}</p><p className="truncate text-xs text-fg-muted">{current.empresa && current.empresa !== title ? current.empresa : 'Cliente'}</p></div>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <InfoField label="Empresa" value={current.empresa || 'Empresa não informada'} />
+                <InfoField label="Contato principal" value={current.empresa && current.empresa !== title ? current.nome : title} />
+                <InfoField label="E-mail" value={current.email || 'E-mail não informado'} />
                 <InfoField
                   label="Telefone"
                   value={fmtPhone(current.telefone) || 'Telefone não informado'}
                 />
                 <InfoField
-                  label="E-mail"
-                  value={current.email || 'E-mail não informado'}
-                />
-                <InfoField
                   label="Documento"
                   value={formatDocument(current.tax_id || current.documento)}
                 />
+                <InfoField label="Cidade / UF" value={current.address ? [current.address.municipio, current.address.uf].filter(Boolean).join(', ') || '—' : '—'} />
                 {current.address && (
                   <InfoField
                     label="Endereço"
                     value={addressText(current.address)}
-                    className="md:col-span-2"
                   />
                 )}
                 {(current.notes || current.observacoes) && (

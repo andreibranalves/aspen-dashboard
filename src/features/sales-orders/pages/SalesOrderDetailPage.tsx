@@ -75,14 +75,13 @@ function ProgressMetric({
 
 function ItemTable({ items }: { items: SalesOrderItemView[] }) {
   return (
-    <Table className="min-w-[600px] xl:min-w-0">
+    <Table className="min-w-[480px] xl:min-w-0">
       <TableHeader>
         <TableRow>
-          <TableHead>SKU</TableHead>
           <TableHead>Produto</TableHead>
-          <TableHead className="text-center">Quantidade</TableHead>
-          <TableHead className="text-center">Valor unitário</TableHead>
-          <TableHead className="text-right">Total</TableHead>
+          <TableHead className="text-center">Qtd.</TableHead>
+          <TableHead className="text-right">Unitário</TableHead>
+          <TableHead className="text-right">Subtotal</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -90,10 +89,9 @@ function ItemTable({ items }: { items: SalesOrderItemView[] }) {
           const amount = item.amount ?? item.qty * item.rate;
           return (
             <TableRow key={`${item.item_code}-${index}`}>
-              <TableCell className="font-mono text-xs">{item.item_code}</TableCell>
-              <TableCell>{item.item_name || item.item_code}</TableCell>
+              <TableCell><span className="block text-sm font-medium">{item.item_name || item.item_code}</span><span className="mt-1 block font-mono text-xs text-fg-muted">{item.item_code}</span></TableCell>
               <TableCell className="text-center">{item.qty}</TableCell>
-              <TableCell className="text-center font-sans tabular-nums">
+              <TableCell className="text-right font-sans tabular-nums">
                 {formatBRL(item.rate)}
               </TableCell>
               <TableCell className="text-right font-sans tabular-nums">
@@ -197,53 +195,23 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       : undefined;
 
   return (
-    <PageShell>
-      <PageHeader title={data.id} />
-
-      <div className="space-y-3">
-        <section
-          className="rounded-lg border border-border-subtle bg-surface p-5"
-          aria-labelledby="sales-order-customer-title"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="sales-order-customer-title" className="text-base font-semibold">
-              Cliente
-            </h2>
-            <StatusBadge status={data.status} label={statusLabel} />
-          </div>
-          <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div>
-              <p className="text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-fg-muted">Data do pedido</p>
-              <p className="mt-1 text-sm font-medium">
-                {orderDate ? formatSalesOrderDate(orderDate) : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-fg-muted">Prazo de entrega</p>
-              <p className="mt-1 text-sm font-medium">
-                {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-fg-muted">Origem</p>
-              <p
-                className={`mt-1 text-sm font-medium ${data.quotation_origin?.status === 'conflict' ? 'text-destructive' : ''}`}
-              >
-                {data.quotation_origin?.sourceLabel || data.source_quotation || 'Não informada'}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <PageShell className="space-y-4">
+      <PageHeader title={data.id} description="Pedido de venda · acompanhamento operacional" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3"><StatusBadge status={data.status} label={statusLabel} />{orderDate && <span className="text-xs text-fg-muted">{formatSalesOrderDate(orderDate)}</span>}</div>
+        {data.source_quotation && <Button variant="outline" size="sm" onClick={() => navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)}><FileText size={14} aria-hidden="true" /> Ver orçamento de origem</Button>}
+      </div>
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 space-y-4">
+          <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">
+            <h2 id="sales-order-customer-title" className="text-base font-semibold">Cliente</h2>
+            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-light-sage text-xs font-semibold text-page" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.delivery_date && <p className="text-xs text-fg-muted">Entrega prevista: {formatSalesOrderDate(data.delivery_date)}</p>}</div></div>
+          </section>
           <section
-            className="min-w-0 rounded-lg border border-border-subtle bg-surface"
+            className="min-w-0 rounded-card border border-line bg-surface p-5"
             aria-labelledby="sales-order-items-title"
           >
-            <div className="px-5 py-4">
+            <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="sales-order-items-title" className="text-base font-semibold">
                   Itens do pedido
@@ -267,7 +235,9 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               )}
             </div>
 
-            <div className="border-t border-border-subtle px-5 py-4">
+          </section>
+          <section className="rounded-card border border-line bg-surface p-5">
+            <div>
               <h2 className="text-base font-semibold">Andamento operacional</h2>
               <div
                 role="region"
@@ -318,39 +288,24 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               )}
             </div>
           </section>
-
+        </div>
+        <div className="space-y-4">
           <aside
-            className="rounded-lg border border-border-subtle bg-sage p-5 text-page"
+            className="rounded-card border border-line bg-surface p-5"
             aria-labelledby="sales-order-values-title"
           >
             <h2 id="sales-order-values-title" className="text-base font-semibold">
               Valores do pedido
             </h2>
-            <div className="mt-4 border-t border-page/15 pt-4">
-              <span className="text-xs opacity-75">Total</span>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">
-                {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
-              </p>
-            </div>
-            {data.source_quotation && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4 w-full border-page/25 text-page hover:bg-page/10"
-                onClick={() =>
-                  navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
-                }
-              >
-                <FileText size={14} aria-hidden="true" /> Abrir orçamento {data.source_quotation}
-              </Button>
-            )}
+            <dl className="mt-5 space-y-3 text-sm tabular-nums"><div className="flex justify-between gap-2"><dt className="text-fg-muted">Produtos</dt><dd>{itemTotal === undefined ? '—' : formatBRL(itemTotal)}</dd></div><div className="flex justify-between gap-2 border-t border-line pt-4 text-lg font-semibold"><dt>Total</dt><dd>{grandTotal === undefined ? '—' : formatBRL(grandTotal)}</dd></div></dl>
             {data.status === 'Completed' && (
-              <div className="mt-4 flex items-center gap-1.5 text-xs font-medium">
+              <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-success">
                 <Check size={14} aria-hidden="true" />
                 <span>Concluído</span>
               </div>
             )}
           </aside>
+          <aside className="rounded-card border border-line bg-surface p-5" aria-label="Rastreabilidade do pedido"><h2 className="text-base font-semibold">Rastreabilidade</h2><div className="mt-5 border-l border-line pl-4 text-sm"><p className="font-medium">Pedido criado</p><p className="mt-1 text-xs text-fg-muted">{orderDate ? formatSalesOrderDate(orderDate) : 'Data não informada'}</p>{data.source_quotation && <p className="mt-5 font-medium">Origem: {data.source_quotation}</p>}{data.quotation_origin?.status === 'conflict' && <p className="mt-2 text-xs text-destructive">Origem do orçamento divergente.</p>}</div></aside>
         </div>
       </div>
     </PageShell>
