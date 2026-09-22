@@ -596,7 +596,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const selectRow = (row: DataRow) => {
     const label = rowLabel(row);
     return (
-      <EntityIdentity name={label} secondary={row.id} primary={
+      <EntityIdentity name={label} secondary={row.empresa && row.nome && row.empresa !== row.nome ? row.nome : undefined} primary={
         <a
           href={`#/leads/cliente/${encodeURIComponent(row.id)}`}
           onClick={(event) => {
@@ -790,7 +790,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         {[row.municipio, row.uf].filter(Boolean).join(', ') || '—'}
                       </TableCell>
                       <TableCell>
-                        <button type="button" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} className="text-xs text-fg hover:text-light-sage hover:underline">Ver orçamentos</button>
+                        <button type="button" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} className="text-xs text-fg hover:text-light-sage hover:underline" aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</button>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />

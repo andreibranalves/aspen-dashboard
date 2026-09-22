@@ -19,7 +19,7 @@ export interface PageHeaderProps {
 export default function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
     <div className={cn('page-header flex items-start justify-between gap-4 flex-wrap', className)}>
-      <div className="min-w-0 space-y-1 xl:absolute xl:left-workspace xl:top-0 xl:max-w-[calc(100%-430px)]">
+      <div className="min-w-0 space-y-1 xl:absolute xl:left-0 xl:top-0 xl:max-w-[calc(100%-430px)]">
         <h1 className="text-[28px] font-bold leading-[1.22] tracking-[-0.035em] text-fg max-[767px]:text-[22px]">
           {title}
         </h1>

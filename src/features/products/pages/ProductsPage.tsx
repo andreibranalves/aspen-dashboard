@@ -407,7 +407,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
       )}
 
       <PageToolbar className="w-full items-center gap-3">
-        <div className="min-w-0 flex-1 basis-full lg:basis-auto">
+        <div className="min-w-0 flex-1 basis-full lg:w-52 lg:flex-none lg:basis-auto">
           <div className="relative">
             <Search
               size={16}
@@ -428,7 +428,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         <Select value={status} onChange={(event) => setStatusFilter(event.target.value as ProductStatus)} aria-label="Filtrar produtos por status" className="lg:w-36">
           <option value="all">Todos os status</option><option value="active">Ativos</option><option value="archived">Arquivados</option>
         </Select>
-        <button type="button" className="rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode} onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
+        <button type="button" className="ml-auto rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode} onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
       <details className="relative text-xs text-fg-muted">
         <summary className="w-fit cursor-pointer rounded-control px-2 py-1 hover:bg-raised">Ordenar</summary>
       <div className="absolute right-0 top-full z-20 min-w-[280px] rounded-card bg-raised p-3 shadow-xl">

@@ -485,13 +485,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           { label: 'Aprovados', value: statusSummary.Aprovado ?? 0, note: 'Prontos para avançar', Icon: BadgeCheck },
           { label: 'Volume das propostas', value: formatBRL(visibleVolume), note: 'Soma dos itens desta página', Icon: Wallet },
         ].map(({ label, value, note, Icon }) => (
-          <div key={label} className="flex min-h-[145px] items-start justify-between gap-3 rounded-card bg-surface p-[22px]">
+          <div key={label} className="relative min-h-[145px] rounded-card bg-surface p-[22px]">
             <div className="min-w-0">
               <p className="text-xs font-medium text-fg-muted">{label}</p>
-              <p className="mt-4 truncate text-[28px] font-bold tracking-tight text-fg [font-variant-numeric:tabular-nums]">{value}</p>
+              <p className="mt-4 break-words text-[24px] font-bold tracking-tight text-fg [font-variant-numeric:tabular-nums]">{value}</p>
               <p className="mt-4 text-[11px] text-fg-muted">{note}</p>
             </div>
-            <Icon size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
+            <Icon size={18} className="absolute right-[22px] top-[22px] text-fg-muted" aria-hidden="true" />
           </div>
         ))}
       </section>
@@ -612,7 +612,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     <span className="block text-[11px] text-fg-muted">Revisão {row.revision}</span>
                   </TableCell>
                   <TableCell className="max-w-[300px] py-2" title={row.cliente}>
-                    <EntityIdentity name={row.cliente || 'Cliente não informado'} secondary={row.name} />
+                    <EntityIdentity name={row.cliente || 'Cliente não informado'} secondary={row.name && row.name !== row.cliente ? row.name : undefined} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-fg-muted">
                     <span className="block">

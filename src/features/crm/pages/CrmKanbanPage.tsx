@@ -328,7 +328,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const hasSearchResults = hasAnyDeals || !hasSearch;
 
   return (
-    <PageShell className="space-y-5">
+    <PageShell className="space-y-9">
       {!embedded && (
         <PageHeader
           title="CRM"

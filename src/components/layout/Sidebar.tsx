@@ -54,20 +54,20 @@ export default function Sidebar({
           collapsed && 'justify-center gap-0 px-0',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sage',
           action
-            ? 'bg-primary font-semibold text-on-solid hover:bg-sage/90'
+            ? isActive ? 'bg-shell-active font-semibold text-white' : 'bg-primary font-semibold text-on-solid hover:bg-sage/90'
             : isActive
               ? 'bg-shell-active text-white'
               : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
         title={collapsed ? (action ? `+ ${item.label}` : item.label) : undefined}
         aria-label={action ? item.label : undefined}
-        aria-current={!action && isActive ? 'page' : undefined}
+        aria-current={isActive ? 'page' : undefined}
       >
         <Icon
           size={20}
           className={cn(
             'shrink-0',
-            action ? 'text-on-solid' : isActive ? 'text-white' : 'text-shell-muted'
+            action ? isActive ? 'text-white' : 'text-on-solid' : isActive ? 'text-white' : 'text-shell-muted'
           )}
           aria-hidden="true"
         />

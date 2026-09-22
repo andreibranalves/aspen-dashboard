@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronRight, Menu, Search } from 'lucide-react';
+import { Bell, ChevronDown, ChevronRight, Menu, Search } from 'lucide-react';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER } from '@/app/navigation';
 import type { BreadcrumbItem } from './Layout';
 
@@ -77,7 +77,7 @@ export default function TopBar({
           </button>
         )}
         <nav
-          className={`flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-muted ${breadcrumbItems.length > 2 ? 'xl:absolute xl:left-workspace xl:top-[96px]' : 'xl:sr-only'}`}
+          className={`flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-muted ${breadcrumbItems.length > 2 ? 'xl:absolute xl:left-0 xl:top-[96px]' : 'xl:sr-only'}`}
           aria-label="Trilha de navegação"
         >
           {breadcrumbItems.map((item, index) => (
@@ -149,12 +149,15 @@ export default function TopBar({
           )}
         </div>
         <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
-        <div className="flex items-center gap-2 text-xs font-semibold text-fg" aria-label="Aspen">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sage text-on-solid">
-            AS
-          </span>
-          <span className="hidden xl:inline">Aspen</span>
-        </div>
+        <button type="button" onClick={() => onNavigate('/crm?tab=queue')} className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg" aria-label="Abrir fila comercial"><Bell size={17} aria-hidden="true" /></button>
+        <details className="group relative text-xs font-semibold text-fg">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-control [&::-webkit-details-marker]:hidden">
+            <span className="grid size-9 place-items-center rounded-full bg-light-sage text-[10px] text-on-solid">AS</span>
+            <span className="hidden xl:inline">Equipe Aspen</span>
+            <ChevronDown size={12} className="hidden xl:block" aria-hidden="true" />
+          </summary>
+          <div className="absolute right-0 top-11 z-40 min-w-40 rounded-control border border-line bg-surface p-1 shadow-lg"><button type="button" onClick={() => onNavigate('/settings')} className="w-full rounded-control px-3 py-2 text-left text-xs hover:bg-raised">Configurações</button></div>
+        </details>
       </div>
     </header>
   );

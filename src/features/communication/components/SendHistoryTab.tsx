@@ -16,6 +16,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 
 type SendStatus = 'sent' | 'failed' | 'skipped' | 'pending';
 
@@ -277,48 +278,34 @@ export default function SendHistoryTab({
         visibleEvents.length > 0 &&
         (embedded ? (
           <>
-          <div className="overflow-x-auto rounded-card bg-surface">
+          <div className="overflow-x-auto rounded-b-card bg-surface px-5">
             <table
-              className="w-full min-w-[860px] table-fixed text-left"
+              className="w-full min-w-[720px] table-fixed text-left text-xs"
               aria-label="Tabela de histórico de envios"
             >
-              <thead className="border-b border-line bg-surface-muted text-xs uppercase tracking-wide text-fg-muted">
+              <thead className="border-b border-line text-[10px] text-fg-muted">
                 <tr>
-                  <th className="w-[13%] px-4 py-3 font-semibold">Envio</th>
-                  <th className="w-[15%] px-4 py-3 font-semibold">Fluxo</th>
-                  <th className="w-[11%] px-4 py-3 font-semibold">Destino</th>
-                  <th className="w-[10%] px-4 py-3 font-semibold">Documento</th>
-                  <th className="w-[12%] px-4 py-3 font-semibold">Estado</th>
-                  <th className="w-[10%] px-4 py-3 font-semibold">Etapas</th>
-                  <th className="w-[15%] whitespace-nowrap px-4 py-3 font-semibold">Atualização</th>
-                  <th className="w-[14%] whitespace-nowrap px-4 py-3 font-semibold">Ação</th>
+                  <th className="w-[25%] px-3 py-3 font-medium">Orçamento / fluxo</th>
+                  <th className="w-[20%] px-3 py-3 font-medium">Etapa / progresso</th>
+                  <th className="w-[18%] px-3 py-3 font-medium">Situação</th>
+                  <th className="w-[20%] px-3 py-3 font-medium">Último evento</th>
+                  <th className="w-[17%] px-3 py-3 font-medium"><span className="sr-only">Inspecionar</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {visibleEvents.map((event) => {
                   const meta = statusMeta(event.status);
                   return (
-                    <tr key={event.id} className="align-top hover:bg-surface-hover">
-                      <td className="px-4 py-3 font-mono text-xs text-fg">{event.id}</td>
-                      <td className="truncate px-4 py-3 text-sm text-fg" title={event.flow_name || undefined}>
-                        {event.flow_name || 'Fluxo sem nome'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-fg-muted">
-                        {fmtPhone(event.phone) || '—'}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-fg-muted">
-                        {event.quotation_id || '—'}
-                      </td>
-                      <td className="px-4 py-3">
+                    <tr key={event.id} className="border-b border-line align-middle hover:bg-surface-hover">
+                      <td className="px-3 py-4"><EntityIdentity name={event.flow_name || 'Fluxo sem nome'} secondary={event.quotation_id || undefined} /></td>
+                      <td className="px-3 py-4"><span className="block font-medium">WhatsApp</span><span className="mt-1 block text-fg-muted">{stepsLabel(event) || '—'}</span></td>
+                      <td className="px-3 py-4">
                         <StatusBadge status={meta.badgeStatus} label={meta.label} />
                       </td>
-                      <td className="px-4 py-3 text-xs text-fg-muted">
-                        {stepsLabel(event) || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-fg-muted">
+                      <td className="px-3 py-4 text-fg-muted">
                         {formatDateTime(event.sent_at || event.created_at) || '—'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-4 text-right">
                         {onOpenDelivery && (
                           <Button
                             type="button"
@@ -327,7 +314,7 @@ export default function SendHistoryTab({
                             aria-label={`Detalhes do envio ${event.id}`}
                             onClick={() => onOpenDelivery(event)}
                           >
-                            Detalhes
+                            Inspecionar
                           </Button>
                         )}
                       </td>

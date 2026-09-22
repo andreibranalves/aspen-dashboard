@@ -24,7 +24,7 @@ import {
   ShoppingCart,
   ArrowUpRight,
   ChevronDown,
-  LockKeyhole,
+  Send,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
 import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
@@ -1284,61 +1284,36 @@ function CoreQuotationDetail({
               : '';
 
   const issuedDetail = issuedView ? (
-    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_336px]">
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
       <div id="quotation-panel" className="min-w-0 space-y-5">
         <section
           aria-labelledby="issued-client-title"
-          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6"
+          className="rounded-card bg-surface px-5 py-5 md:px-6"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 id="issued-client-title" className="text-base font-semibold text-fg">
-                Cliente
-              </h2>
-              <p className="mt-2 text-lg font-semibold text-fg">
-                {data.cliente || 'Cliente não informado'}
-              </p>
-              {(data.email || data.telefone) && (
-                <p className="mt-1 break-words text-sm text-fg-muted">
-                  {[data.email, fmtPhone(data.telefone) || data.telefone]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              )}
+              <h2 id="issued-client-title" className="text-base font-semibold text-fg">Cliente e oportunidade</h2>
+              <div className="mt-5 flex items-center gap-2.5">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-light-sage text-[10px] font-bold text-on-solid" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
+                <div className="min-w-0"><p className="truncate text-sm font-medium text-fg">{data.cliente || 'Cliente não informado'}</p>{(data.email || data.telefone) && <p className="truncate text-xs text-fg-muted">{[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}</p>}</div>
+              </div>
             </div>
             {data.clienteId && (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex items-center gap-1 rounded-control border border-line px-3 py-2 text-xs font-medium hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
               >
-                Ver cliente <ArrowUpRight size={14} aria-hidden="true" />
+                <ArrowUpRight size={14} aria-hidden="true" /> Abrir cliente
               </button>
             )}
           </div>
-          {data.clienteId && (
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() => navigate('/crm')}
-              >
-                Abrir no CRM
-              </button>
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() => navigate('/quotations')}
-              >
-                Ver orçamentos anteriores
-              </button>
-            </div>
-          )}
+          {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && <div className="mt-5 flex items-center justify-between border-t border-line pt-4 text-xs"><span className="text-fg-muted">Origem</span><span>{data.quotationOrigin.sourceLabel}</span></div>}
         </section>
 
         <section
           aria-labelledby="issued-items-title"
-          className="overflow-hidden rounded-lg border border-line bg-surface"
+          className="overflow-hidden rounded-card bg-surface"
         >
           <div className="px-5 pb-3 pt-5 md:px-6">
             <h2 id="issued-items-title" className="text-base font-semibold text-fg">
@@ -1353,12 +1328,9 @@ function CoreQuotationDetail({
               >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9 w-[12%] px-0">SKU</TableHead>
-                    <TableHead className="h-9 w-[36%] px-2">Produto</TableHead>
-                    <TableHead className="h-9 whitespace-nowrap text-center">Quantidade</TableHead>
-                    <TableHead className="h-9 whitespace-nowrap text-center">
-                      Valor unitário
-                    </TableHead>
+                    <TableHead className="h-9 w-[48%] px-0">Produto</TableHead>
+                    <TableHead className="h-9 whitespace-nowrap text-center">Qtd.</TableHead>
+                    <TableHead className="h-9 whitespace-nowrap text-center">Unitário</TableHead>
                     <TableHead className="h-9 whitespace-nowrap pr-0 text-right">
                       Subtotal
                     </TableHead>
@@ -1367,13 +1339,11 @@ function CoreQuotationDetail({
                 <TableBody>
                   {displayItems.map((item) => (
                     <TableRow key={item._key}>
-                      <TableCell className="px-0 py-3 font-mono text-xs text-fg-muted">
-                        {item.sku || '—'}
-                      </TableCell>
-                      <TableCell className="px-2 py-3">
+                      <TableCell className="px-0 py-3">
                         <span className="block break-words font-medium text-fg">
                           {item.nome || item.item_name || item.sku || 'Produto não informado'}
                         </span>
+                        <span className="mt-1 block font-mono text-[10px] text-fg-muted">{item.sku || '—'}</span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
                         {Number(item.qty)}
@@ -1400,23 +1370,11 @@ function CoreQuotationDetail({
               />
             </div>
           )}
-          <div className="mx-5 flex flex-wrap items-end justify-between gap-5 border-t border-line py-5 md:mx-6">
-            <dl className="text-sm tabular-nums">
-              <dt className="text-xs text-fg-muted">Frete</dt>
-              <dd className="mt-0.5">{formatBRL(data.frete)}</dd>
-            </dl>
-            <dl className="text-right tabular-nums">
-              <dt className="text-sm text-fg-muted">Total do orçamento</dt>
-              <dd className="mt-1 text-xl font-semibold tracking-tight text-fg">
-                {formatBRL(data.total)}
-              </dd>
-            </dl>
-          </div>
         </section>
 
         <section
           aria-labelledby="issued-conditions-title"
-          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6 [&>section:first-of-type]:border-t-0"
+          className="rounded-card bg-surface px-5 py-5 md:px-6 [&>section:first-of-type]:border-t-0"
         >
           <h2 id="issued-conditions-title" className="text-base font-semibold text-fg">
             Condições comerciais
@@ -1566,12 +1524,23 @@ function CoreQuotationDetail({
         </section>
       </div>
 
-      <aside
-        className="min-w-0 self-start rounded-lg border border-line bg-surface px-5 py-5 xl:sticky xl:top-4"
+      <div className="min-w-0 space-y-5 self-start">
+      <aside className="rounded-card bg-surface p-5" aria-label="Resumo do orçamento">
+        <h2 className="text-base font-semibold">Resumo</h2>
+        <dl className="mt-4 space-y-3 text-xs tabular-nums">
+          <div className="flex justify-between gap-3"><dt className="text-fg-muted">Subtotal</dt><dd>{formatBRL(Number(data.total) - Number(data.frete))}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-fg-muted">Frete</dt><dd>{formatBRL(data.frete)}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-fg-muted">Itens</dt><dd>{displayItems.length}</dd></div>
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm"><dt>Total</dt><dd className="text-xl font-bold">{formatBRL(data.total)}</dd></div>
+        </dl>
+        <p className="mt-5 rounded-control border border-line p-3 text-[11px] leading-4 text-fg-muted">Emitir o documento não confirma a entrega por WhatsApp ou e-mail.</p>
+      </aside>
+      <aside id="issued-communication"
+        className="rounded-card bg-surface px-5 py-5"
         aria-labelledby="commercial-followup-title"
       >
         <h2 id="commercial-followup-title" className="text-base font-semibold text-fg">
-          Acompanhamento comercial
+          Comunicação
         </h2>
         <div className="mt-5 space-y-3">
           <label className="block text-xs font-medium text-fg-muted">
@@ -1679,21 +1648,23 @@ function CoreQuotationDetail({
           )}
         </div>
       </aside>
+      </div>
     </div>
   ) : null;
 
   return (
     <div ref={detailTopRef} className="space-y-5">
       <fieldset disabled={saving} className="contents">
-        <header className="flex flex-col gap-4 rounded-3xl border border-line bg-surface p-5 md:flex-row md:items-start md:justify-between md:p-6">
-          <div className="min-w-0">
+        <header className={issuedView ? 'flex flex-wrap items-center justify-between gap-3 bg-page pt-5' : 'flex flex-col gap-4 rounded-3xl border border-line bg-surface p-5 md:flex-row md:items-start md:justify-between md:p-6'}>
+          <div className={issuedView ? 'min-w-0 xl:absolute xl:left-0 xl:top-0' : 'min-w-0'}>
             {draftEditable && !editing && (
               <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
             )}
-            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg">
-              {data.businessNumber || displayTitle}
+            <h1 className={issuedView ? 'text-[28px] font-bold leading-9 tracking-tight text-fg' : 'text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg'}>
+              {issuedView ? displayTitle : data.businessNumber || displayTitle}
             </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
+            {issuedView && <p className="mt-1 text-[13px] text-fg-muted">Detalhe do orçamento · da demanda à decisão.</p>}
+            {!issuedView && <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
               <span className="font-medium text-fg">{data.cliente || 'Cliente não informado'}</span>
               <span aria-hidden="true">·</span>
               <span>Revisão {data.revision}</span>
@@ -1708,7 +1679,7 @@ function CoreQuotationDetail({
                   <span>{formatDate(currentRevision.createdAt) || '—'}</span>
                 </>
               ) : null}
-            </div>
+            </div>}
             {!issuedView && (
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
                 <StatusBadge {...statusBadgeProps(data.status)} />
@@ -1767,6 +1738,7 @@ function CoreQuotationDetail({
             )}
           </div>
 
+          {issuedView && <div className="mr-auto flex flex-wrap items-center gap-2 text-xs text-fg-muted"><StatusBadge {...statusBadgeProps(data.status)} /><span>Revisão {data.revision}</span><span>{formatDate(currentRevision?.createdAt || '') || '—'}</span></div>}
           <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
             {editing ? (
               <>
@@ -1802,9 +1774,12 @@ function CoreQuotationDetail({
                   </>
                 ) : (
                   <Button variant="outline" size="lg" onClick={openIssuedDocument}>
-                    <FileText size={14} /> Visualizar PDF
+                    <FileText size={14} /> Prévia do documento
                   </Button>
                 )}
+
+                {issuedView && data.revisionId && <Button variant="outline" size="lg" disabled={lifecycleAction !== null} onClick={() => createRevision(data.revisionId!)}><Pencil size={14} />{lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Nova revisão'}</Button>}
+                {issuedView && <Button size="lg" onClick={() => document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Send size={14} />Preparar envio</Button>}
 
                 <div className="relative">
                   <button
@@ -1871,26 +1846,6 @@ function CoreQuotationDetail({
             {message || emailSuccess}
           </p>
         )}
-        {issuedView && (
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface-subtle px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2 text-sm text-fg-muted">
-              <LockKeyhole size={16} aria-hidden="true" />
-              <span className="font-semibold text-fg">Emitido</span>
-              <span>Somente leitura. Alterações criam uma nova revisão.</span>
-            </div>
-            {data.revisionId && (
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                disabled={lifecycleAction !== null}
-                onClick={() => createRevision(data.revisionId!)}
-              >
-                {lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Criar revisão'}
-              </button>
-            )}
-          </div>
-        )}
-
         {conflict && (
           <div
             role="alert"

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock3, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
 import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
 import PageHeader from '@/components/shared/PageHeader';
@@ -11,6 +11,8 @@ import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import {
   cancelPendingDeliveries,
   deliveryPollDelay,
@@ -599,38 +601,9 @@ export default function WhatsAppDeliveriesPage() {
 
   return (
     <PageShell className="space-y-5 pb-10">
-      <PageHeader
-        title="Envios"
-        actions={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setReloadVersion((value) => value + 1)}
-              disabled={loading || clearing}
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-              Atualizar
-            </Button>
-            {activeTab === 'pending' && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setClearConfirmOpen(true)}
-                disabled={loading || clearing}
-                className="text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 size={14} />
-                {clearing ? 'Limpando…' : 'Limpar fila'}
-              </Button>
-            )}
-          </>
-        }
-      />
+      <PageHeader title="Envios" description="Visibilidade sobre cada envio de WhatsApp." />
 
-      <div role="tablist" aria-label="Seções de envios" className="border-b border-line">
+      <div role="tablist" aria-label="Seções de envios">
         <div className="flex gap-2">
           {(
             [
@@ -652,11 +625,11 @@ export default function WhatsAppDeliveriesPage() {
               onClick={() => setActiveTab(tab)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
               className={cn(
-                'min-h-10 border-b-2 px-4 py-2 text-sm font-medium transition-colors',
+                'min-h-9 rounded-control px-4 py-2 text-xs font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 activeTab === tab
-                  ? 'border-primary bg-surface text-primary'
-                  : 'border-transparent text-fg-muted hover:text-fg'
+                  ? 'bg-cream text-page'
+                  : 'text-fg-muted hover:text-fg'
               )}
             >
               {label}
@@ -665,9 +638,31 @@ export default function WhatsAppDeliveriesPage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-fg-muted">{activeTab === 'pending' ? 'Acompanhe exceções e confirme o resultado de cada etapa.' : 'Consulte o resultado dos envios anteriores.'}</p>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading || clearing}><RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />Atualizar</Button>
+          {activeTab === 'pending' && <details className="relative text-xs"><summary className="cursor-pointer rounded-control px-2 py-2 text-fg-muted hover:bg-raised">Mais</summary><div className="absolute right-0 top-full z-20 min-w-32 rounded-control border border-line bg-surface p-2 shadow-lg"><Button type="button" variant="ghost" size="sm" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing} className="w-full text-destructive hover:bg-destructive/10"><Trash2 size={14} />{clearing ? 'Limpando…' : 'Limpar fila'}</Button></div></details>}
+        </div>
+      </div>
+
+      {activeTab === 'pending' && <section aria-label="Resumo dos envios" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Requer ação', value: result?.summary.requiresAction, note: 'Revisão operacional', Icon: AlertTriangle },
+          { label: 'Em andamento', value: result?.summary.active, note: 'Ainda não entregue', Icon: Clock3 },
+          { label: 'Reagendados', value: result?.summary.retryScheduled, note: 'Próxima tentativa', Icon: RefreshCw },
+          { label: 'Entregues', value: result?.summary.deliveredLast24Hours, note: 'Últimas 24 horas', Icon: Check },
+        ].map(({ label, value, note, Icon }) => <div key={label} className="relative min-h-[145px] rounded-card bg-surface p-[22px]"><p className="text-xs text-fg-muted">{label}</p><Icon size={16} className="absolute right-[22px] top-[22px] text-fg-muted" aria-hidden="true" /><p className="mt-4 text-[28px] font-bold tabular-nums">{value ?? '—'}</p><p className="mt-3 text-[11px] text-fg-muted">{note}</p></div>)}
+      </section>}
+
       <div id="delivery-panel" role="tabpanel" aria-labelledby={`delivery-tab-${activeTab}`}>
         {activeTab === 'history' && (
-          <section className="space-y-4 rounded-3xl border border-line bg-surface p-5 md:p-6" aria-label="Filtros do histórico">
+          <div className="rounded-t-card bg-surface p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-52 max-w-full"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Buscar cliente ou orçamento" aria-label="Buscar histórico" className="h-10 pl-9 text-xs" /></div>
+            <Select aria-label="Filtrar histórico por situação" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value as HistoryStatus)} className="h-10 w-auto min-w-36 text-xs"><option value="all">Todos os status</option><option value="sent">Entregues</option><option value="pending">Pendentes</option><option value="failed">Falhas</option></Select>
+            <details className="relative ml-auto text-xs text-fg-muted"><summary className="cursor-pointer rounded-control px-3 py-2 hover:bg-raised">Período</summary>
+          <section className="absolute right-0 z-20 mt-2 w-[min(800px,80vw)] space-y-4 rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros do histórico">
             <div className="flex flex-wrap gap-2">
               {(
                 [
@@ -731,11 +726,18 @@ export default function WhatsAppDeliveriesPage() {
             <p className="text-xs text-fg-muted">
               Busca e período consideram os 200 envios mais recentes.
             </p>
-          </section>
+          </section></details>
+          </div>
+          </div>
         )}
 
         {activeTab === 'pending' && (
-          <section className="space-y-4 rounded-3xl border border-line bg-surface p-5 md:p-6" aria-label="Filtros de entregas">
+          <div className="rounded-card bg-surface p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-52 max-w-full"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" className="h-10 pl-9 text-xs" /></div>
+            <Select aria-label="Filtrar envios por situação" className="h-10 w-auto min-w-36 text-xs" value={filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all'} onChange={(event) => { const value = event.target.value; updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false })); }}><option value="all">Todos os status</option><option value="review">Requer ação</option><option value="active">Em andamento</option><option value="retry">Reagendados</option><option value="delivered">Entregues</option></Select>
+            <details className="relative ml-auto text-xs text-fg-muted"><summary className="cursor-pointer rounded-control px-3 py-2 hover:bg-raised">Filtros avançados</summary>
+            <section className="absolute right-10 z-20 mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">
               <label className={filterInputClass(filters.requiresAction)}>
                 <input
@@ -857,7 +859,9 @@ export default function WhatsAppDeliveriesPage() {
                 </label>
               </fieldset>
             </div>
-          </section>
+            </section></details>
+          </div>
+          </div>
         )}
 
         {activeTab === 'pending' && error && (
@@ -913,32 +917,16 @@ export default function WhatsAppDeliveriesPage() {
             <Table
               aria-label="Tabela de entregas WhatsApp"
               aria-busy={loading}
-              className="table-fixed min-w-[860px]"
-              containerClassName="rounded-3xl border-line bg-surface [&_th]:h-12 [&_td]:py-4"
+              className="table-fixed min-w-[720px]"
+              containerClassName="rounded-b-card bg-surface px-5 [&_th]:h-12 [&_td]:py-4"
             >
               <TableHeader>
                 <TableRow>
-                  <TableHead scope="col" className="w-[22%]">
-                    Envio
-                  </TableHead>
-                  <TableHead scope="col" className="w-[18%]">
-                    Cliente
-                  </TableHead>
-                  <TableHead scope="col" className="w-[14%]">
-                    Documento
-                  </TableHead>
-                  <TableHead scope="col" className="w-[16%]">
-                    Estado
-                  </TableHead>
-                  <TableHead scope="col" className="w-[12%]">
-                    Etapas
-                  </TableHead>
-                  <TableHead scope="col" className="w-[12%] whitespace-nowrap">
-                    Atualização
-                  </TableHead>
-                  <TableHead scope="col" className="w-[10%]">
-                    Ação
-                  </TableHead>
+                  <TableHead scope="col" className="w-[25%]">Orçamento / cliente</TableHead>
+                  <TableHead scope="col" className="w-[20%]">Etapa / progresso</TableHead>
+                  <TableHead scope="col" className="w-[18%]">Situação</TableHead>
+                  <TableHead scope="col" className="w-[20%]">Último evento</TableHead>
+                  <TableHead scope="col" className="w-[17%]"><span className="sr-only">Inspecionar</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -947,27 +935,9 @@ export default function WhatsAppDeliveriesPage() {
                   return (
                     <TableRow key={delivery.id}>
                       <TableCell className="min-w-0">
-                        <span className="block truncate font-medium text-fg" title={delivery.id}>
-                          {delivery.id}
-                        </span>
+                        <EntityIdentity name={delivery.clientName || 'Cliente não identificado'} secondary={delivery.businessNumber} />
                       </TableCell>
-                      <TableCell className="min-w-0">
-                        <span
-                          className="block truncate text-sm text-fg"
-                          title={delivery.clientName}
-                        >
-                          {delivery.clientName || 'Cliente não identificado'}
-                        </span>
-                        <span
-                          className="mt-1 block truncate text-xs text-fg-muted"
-                          title={fmtPhone(delivery.phone)}
-                        >
-                          {fmtPhone(delivery.phone) || 'Telefone não informado'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-fg-muted">
-                        {delivery.businessNumber}
-                      </TableCell>
+                      <TableCell className="text-xs"><span className="block font-medium">WhatsApp</span><span className="mt-1 block text-fg-muted">{formatDeliveryProgress(delivery)}</span></TableCell>
                       <TableCell className="min-w-0">
                         <span
                           className="block min-w-0"
@@ -983,12 +953,9 @@ export default function WhatsAppDeliveriesPage() {
                         </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-fg-muted">
-                        {formatDeliveryProgress(delivery)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-fg-muted">
                         {formatDateTime(delivery.updatedAt) || '—'}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         <Button
                           type="button"
                           variant="outline"
@@ -996,7 +963,7 @@ export default function WhatsAppDeliveriesPage() {
                           aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
                           onClick={() => selectDelivery(delivery)}
                         >
-                          Detalhes
+                          Inspecionar
                         </Button>
                       </TableCell>
                     </TableRow>

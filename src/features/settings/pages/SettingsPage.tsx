@@ -277,11 +277,10 @@ export default function SettingsPage() {
 
   return (
     <PageShell className="space-y-6 pb-24">
-      <PageHeader title="Configurações" description={TAB_DESCRIPTIONS[activeTab]} />
+      <PageHeader title="Configurações" description="Padrões que acompanham o jeito Aspen de trabalhar." />
       <div role="tablist" aria-label="Seções de configurações" className="overflow-x-auto px-1">
         <div className="flex min-w-max gap-1">
           {TABS.map((tab, index) => {
-            const Icon = tab.icon;
             const selected = activeTab === tab.id;
             return (
               <button
@@ -300,7 +299,7 @@ export default function SettingsPage() {
                   selected ? 'bg-cream text-page' : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
-                <Icon size={15} aria-hidden="true" /> {tab.label}
+                {tab.label}
               </button>
             );
           })}
@@ -357,7 +356,8 @@ export default function SettingsPage() {
             }}
             className="space-y-5"
           >
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-fg-muted">{TAB_DESCRIPTIONS.patterns}.</p>
               <Button type="submit" disabled={saving} aria-busy={saving}>
                 {saving ? (
                   <Loader2 className="animate-spin" aria-hidden="true" />
@@ -378,9 +378,9 @@ export default function SettingsPage() {
                   </h2>
                   <fieldset className="space-y-4">
                     <legend className="sr-only">Prazos e valores</legend>
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                       <label className="space-y-1.5 text-sm text-fg">
-                        <span className="font-medium">Validade padrão (dias)</span>
+                        <span className="text-xs font-medium text-fg-muted">Validade (dias)</span>
                         <Input
                           type="number"
                           min="1"
@@ -393,7 +393,11 @@ export default function SettingsPage() {
                         />
                       </label>
                       <label className="space-y-1.5 text-sm text-fg">
-                        <span className="font-medium">Frete padrão (R$)</span>
+                        <span className="text-xs font-medium text-fg-muted">Prazo de produção</span>
+                        <Input value={form.entrega} onChange={(event) => updateField('entrega', event.target.value)} disabled={saving} aria-label="Prazo de produção padrão" />
+                      </label>
+                      <label className="space-y-1.5 text-sm text-fg">
+                        <span className="text-xs font-medium text-fg-muted">Frete padrão (R$)</span>
                         <Input
                           inputMode="decimal"
                           placeholder="0.00"
@@ -404,7 +408,7 @@ export default function SettingsPage() {
                         />
                       </label>
                       <label className="space-y-1.5 text-sm text-fg">
-                        <span className="font-medium">Alíquota de imposto (%)</span>
+                        <span className="text-xs font-medium text-fg-muted">Alíquota (%)</span>
                         <Input
                           inputMode="decimal"
                           placeholder="4.00"

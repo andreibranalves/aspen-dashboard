@@ -343,8 +343,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           );
           if (!isCurrentRequest()) return;
           setProduct(result);
-          setEditing(false);
-          setEdited({});
+          setEditing(true);
+          setEdited(buildEditedState(result.produto, result.precos, result.preco_base ?? result.produto.preco_base));
         } catch (err) {
           if (!isCurrentRequest()) return;
           const apiErr = err as { status?: number };
@@ -745,36 +745,24 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <Edit3 size={14} /> Editar
         </Button>
       )}
-      {!isNewProduct && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={requestArchive}
-          disabled={saving || deleting}
-          aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
-          className="border-destructive/20 text-destructive hover:bg-destructive/10"
-        >
-          {produto.ativo === false ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-          {deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}
-        </Button>
-      )}
+      {!isNewProduct && <details className="relative text-xs"><summary className="cursor-pointer rounded-control px-2 py-2 text-fg-muted hover:bg-raised">Mais</summary><div className="absolute right-0 top-full z-20 rounded-control border border-line bg-surface p-2 shadow-lg"><Button variant="outline" size="sm" onClick={requestArchive} disabled={saving || deleting} aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'} className="border-destructive/20 text-destructive hover:bg-destructive/10">{produto.ativo === false ? <ArchiveRestore size={14} /> : <Archive size={14} />}{deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}</Button></div></details>}
     </div>
   );
 
   return (
     <PageShell className="space-y-6">
       <fieldset disabled={saving} className="space-y-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between xl:pt-5">
         <div className="flex min-w-0 items-start gap-4">
           {hasImage ? (
             <img
               src={produto.imagem ?? undefined}
               alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-card object-cover"
+              className="h-14 w-14 shrink-0 rounded-card object-cover xl:hidden"
             />
           ) : (
             <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-card bg-sage text-page"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-card bg-sage text-page xl:hidden"
               aria-label="Imagem não cadastrada"
             >
               <Package size={20} aria-hidden="true" />
@@ -783,7 +771,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <div className="min-w-0">
             <p className="font-mono text-xs text-fg-muted">{produto.sku || 'SKU não informado'}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="max-w-full break-words text-[28px] font-bold leading-tight tracking-[-0.035em] text-fg max-[767px]:text-[22px]">
+              <h1 className="max-w-full break-words text-[28px] font-bold leading-tight tracking-[-0.035em] text-fg max-[767px]:text-[22px] xl:absolute xl:left-0 xl:top-0 xl:max-w-[430px] xl:truncate">
                 {isNewProduct ? 'Novo produto' : displayName}
               </h1>
               <StatusBadge
@@ -792,9 +780,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 className={status.className}
               />
             </div>
-            <p className="mt-1 max-w-2xl break-words text-sm text-fg-muted">
-              {produto.descricao?.trim() || 'Sem descrição cadastrada.'}
-            </p>
+            <p className="mt-1 max-w-2xl break-words text-sm text-fg-muted xl:absolute xl:left-0 xl:top-[42px]">Produto · ficha e faixas de preço.</p>
           </div>
         </div>
         {pageActions}
@@ -810,11 +796,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <SectionCard title="Dados gerais" icon={Package}>
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
+        <SectionCard title="Informações do produto" icon={Package}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {editing && (
-              <div className="md:col-span-2">
+              <div className="order-2">
                 <label htmlFor="product-name" className="text-[11px] font-medium text-fg-muted">Nome</label>
                 <Input
                   id="product-name"
@@ -827,7 +814,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div className="md:col-span-2">
+              <div className="order-7 md:col-span-2">
                 <label htmlFor="product-description" className="text-[11px] font-medium text-fg-muted">
                   Descrição
                 </label>
@@ -847,7 +834,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
+              <div className="order-1">
                 <label htmlFor="product-sku" className="text-[11px] font-medium text-fg-muted">SKU</label>
                 <Input
                   id="product-sku"
@@ -864,7 +851,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div className="flex min-w-0 flex-col">
+              <div className="order-6 flex min-w-0 flex-col">
                 <label htmlFor="product-status" className="block text-[11px] font-medium text-fg-muted">Status</label>
                 <Select
                   id="product-status"
@@ -886,7 +873,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
+              <div className="order-3">
                 <label htmlFor="product-category" className="text-[11px] font-medium text-fg-muted">
                   Categoria
                 </label>
@@ -904,7 +891,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
+              <div className="order-5">
                 <label htmlFor="product-brand" className="text-[11px] font-medium text-fg-muted">Marca</label>
                 <Input
                   id="product-brand"
@@ -920,7 +907,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
+              <div className="order-8">
                 <label htmlFor="product-unit-cost" className="text-[11px] font-medium text-fg-muted">
                   Custo unitário (R$)
                 </label>
@@ -944,7 +931,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
+              <div className="order-4">
                 <label htmlFor="product-unit" className="text-[11px] font-medium text-fg-muted">Unidade</label>
                 <Input
                   id="product-unit"
@@ -959,15 +946,16 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               <InfoField label="Unidade" value={produto.unidade || '—'} />
             )}
 
-            <InfoField
+            <div className="order-9"><InfoField
               label="Criado / modificado"
               value={produto.modificado_em ? formatDate(produto.modificado_em) : '—'}
-            />
+            /></div>
           </div>
         </SectionCard>
-
+        </div>
+        <div className="min-w-0 xl:col-start-1 xl:row-start-2">
         <SectionCard
-          title="Preços do catálogo"
+          title="Faixas de preço"
           icon={Tag}
         >
           {editing ? (
@@ -1147,6 +1135,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             </div>
           )}
         </SectionCard>
+        </div>
+        <aside className="rounded-card bg-surface p-5 xl:col-start-2 xl:row-start-1" aria-label="Prévia do cadastro">
+          <h2 className="text-base font-semibold">Prévia do cadastro</h2>
+          <div className="mt-5 flex h-44 items-end justify-between rounded-control bg-sage p-5 text-on-solid"><Package size={32} strokeWidth={1.5} aria-hidden="true" /><span className="text-xl font-semibold">{hasBasePrice ? formatBRL(basePrice) : '—'}</span></div>
+          <p className="mt-4 text-xs leading-5 text-fg-muted">{produto.categoria || 'Sem categoria'} · {produto.unidade || 'Unidade não informada'}</p>
+        </aside>
       </div>
 
       {!isNewProduct && (

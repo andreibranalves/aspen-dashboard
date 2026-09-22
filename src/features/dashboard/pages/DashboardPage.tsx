@@ -129,7 +129,7 @@ function MetricCard({ label, value, detail }: { label: string; value: string; de
   return (
     <div className="flex min-h-[145px] min-w-0 flex-col rounded-card bg-surface p-[22px]">
       <p className="truncate text-xs font-medium text-fg-muted">{label}</p>
-      <p className="mt-4 truncate text-[28px] font-bold leading-8 tabular-nums text-fg">{value}</p>
+      <p className="mt-4 line-clamp-2 break-words text-[24px] font-bold leading-7 tabular-nums text-fg" title={value}>{value}</p>
       <p className="mt-auto truncate pt-4 text-[11px] text-fg-muted">{detail}</p>
     </div>
   );
