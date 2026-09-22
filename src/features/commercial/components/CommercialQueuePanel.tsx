@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseE
 import {
   AlertTriangle,
   Ban,
+  CalendarClock,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -15,6 +17,7 @@ import SkeletonTable from '@/components/shared/SkeletonTable';
 import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
 import {
   Table,
   TableBody,
@@ -254,6 +257,10 @@ function proposalLabel(proposal: CommercialQueueProposal): string {
   return `${proposal.businessNumber} · ${proposal.status} · ${value}`;
 }
 
+function countLabel(value: number | undefined): string {
+  return typeof value === 'number' ? String(value) : '—';
+}
+
 function dueStatusLabel(status: CommercialQueueItem['dueStatus']): string {
   if (status === 'overdue') return 'Atrasada';
   if (status === 'today') return 'Hoje';
@@ -318,6 +325,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [submitting, setSubmitting] = useState(false);
   const [urgencySubmitting, setUrgencySubmitting] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<CommercialQueueFilter>('active');
+  const [counts, setCounts] = useState<Partial<Record<CommercialQueueFilter, number>>>({});
   const [manualSuggestion, setManualSuggestion] = useState<ManualContactSuggestion | null>(null);
   const [followUpReview, setFollowUpReview] = useState<FollowUpView | null>(null);
   const [followUpReviewLoading, setFollowUpReviewLoading] = useState(false);
@@ -383,6 +391,20 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     manualContactContinuation,
   ]);
 
+  const loadCounts = useCallback(async () => {
+    try {
+      const slices = await Promise.all(
+        (['active', 'overdue', 'today', 'scheduled'] as const).map(async (slice) => {
+          const sliceResult = await listCommercialQueue({ page: 1, pageSize: 1, filter: slice });
+          return [slice, sliceResult.total] as const;
+        })
+      );
+      setCounts(Object.fromEntries(slices));
+    } catch {
+      // KPIs são opcionais; falha na leitura não bloqueia a fila.
+    }
+  }, []);
+
   const load = useCallback(
     async (requestedPage: number, requestedFilter: CommercialQueueFilter) => {
       const requestGeneration = ++requestGenerationRef.current;
@@ -400,6 +422,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         // Adopt it so navigation continues from real remaining work instead of
         // an empty page the operator can no longer leave.
         if (next.page !== requestedPage) setPage(next.page);
+        void loadCounts();
       } catch (reason) {
         if (requestGeneration !== requestGenerationRef.current) return;
         setResult(null);
@@ -410,7 +433,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         if (requestGeneration === requestGenerationRef.current) setLoading(false);
       }
     },
-    []
+    [loadCounts]
   );
 
   useEffect(() => {
@@ -1224,9 +1247,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   return (
     <div className="space-y-4">
+      {/* Panorama da fila antes dos filtros (padrão Elera). */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <StatCard icon={ListChecks} label="Ações ativas" value={countLabel(counts.active)} />
+        <StatCard icon={AlertTriangle} label="Atrasadas" value={countLabel(counts.overdue)} />
+        <StatCard icon={CalendarClock} label="Para hoje" value={countLabel(counts.today)} />
+        <StatCard icon={CalendarDays} label="Agendadas" value={countLabel(counts.scheduled)} />
+      </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
         <div
-          className="mr-auto flex flex-wrap gap-1 rounded-sm border border-line bg-surface p-1"
+          className="mr-auto flex flex-wrap gap-1 rounded-full border border-line bg-surface p-1"
           role="tablist"
           aria-label="Cortes da fila comercial"
         >
@@ -1238,8 +1268,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
               aria-selected={filter === value}
               className={
                 filter === value
-                  ? 'rounded-sm bg-surface-muted px-3 py-1.5 text-sm font-medium text-fg'
-                  : 'rounded-sm px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg'
+                  ? 'rounded-full bg-surface-muted px-3 py-1.5 text-sm font-medium text-fg'
+                  : 'rounded-full px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg'
               }
               onClick={() => {
                 if (value === filter) return;
@@ -1248,6 +1278,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
               }}
             >
               {label}
+              {typeof counts[value] === 'number' && ` (${counts[value]})`}
             </button>
           ))}
         </div>

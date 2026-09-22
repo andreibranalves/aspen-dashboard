@@ -10,7 +10,7 @@ export interface PageShellProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const PageShell = forwardRef<HTMLDivElement, PageShellProps>(({ children, className, ...props }, ref) => (
-  <div ref={ref} className={cn('mx-auto w-full max-w-[1060px] space-y-4 animate-fade-in', className)} {...props}>
+  <div ref={ref} className={cn('mx-auto w-full max-w-[1600px] space-y-5 animate-fade-in', className)} {...props}>
     {children}
   </div>
 ));

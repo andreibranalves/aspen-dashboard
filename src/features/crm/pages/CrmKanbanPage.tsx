@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   type ChangeEvent,
   type DragEvent,
@@ -15,6 +16,8 @@ import {
   PlusCircle,
   Rows3,
   Settings2,
+  Clock,
+  TrendingUp,
 } from 'lucide-react';
 import KanbanDealCard, { daysAgo } from '@/features/crm/components/KanbanDealCard';
 import { apiGet, apiPut } from '@/lib/api/api';
@@ -26,6 +29,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
+import { FilterChip } from '@/components/ui/filter-chip';
 import {
   Table,
   TableBody,
@@ -305,7 +310,28 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
     );
   const displayColumns =
     stage === 'all' ? orderedColumns : orderedColumns.filter((column) => column.status === stage);
-  const allDeals = orderedColumns.flatMap((column) => column.deals);
+  const allDeals = useMemo(
+    () => orderedColumns.flatMap((column) => column.deals),
+    [orderedColumns]
+  );
+  // Métricas do pipeline derivam dos negócios já carregados (barra de KPIs).
+  const pipelineKpis = useMemo(() => {
+    const DAY_MS = 86_400_000;
+    const now = Date.now();
+    let createdThisWeek = 0;
+    let updatedToday = 0;
+    let stale = 0;
+    for (const deal of allDeals) {
+      const created = deal.criado_em ? new Date(deal.criado_em).getTime() : NaN;
+      if (!Number.isNaN(created) && now - created <= 7 * DAY_MS) createdThisWeek += 1;
+      const updatedRaw = deal.modificado_em || deal.criado_em;
+      const updated = updatedRaw ? new Date(updatedRaw).getTime() : NaN;
+      if (Number.isNaN(updated)) continue;
+      if (new Date(updated).toDateString() === new Date(now).toDateString()) updatedToday += 1;
+      else if (now - updated > 7 * DAY_MS) stale += 1;
+    }
+    return { total: allDeals.length, createdThisWeek, updatedToday, stale };
+  }, [allDeals]);
   const visibleDeals = displayColumns.flatMap((column) =>
     column.deals.map((deal) => ({ deal, currentStatus: deal.status || column.status }))
   );
@@ -331,9 +357,30 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           }
         />
       )}
+      {/* Panorama do pipeline antes dos filtros (padrão Elera). */}
+      {!loading && !error && allDeals.length > 0 && (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatCard icon={Columns3} label="No pipeline" value={String(pipelineKpis.total)} />
+          <StatCard
+            icon={TrendingUp}
+            label="Novos · 7 dias"
+            value={String(pipelineKpis.createdThisWeek)}
+          />
+          <StatCard
+            icon={Clock}
+            label="Atualizados hoje"
+            value={String(pipelineKpis.updatedToday)}
+          />
+          <StatCard
+            icon={AlertTriangle}
+            label="Parados · 7+ dias"
+            value={String(pipelineKpis.stale)}
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
-          className="flex rounded-sm border border-line bg-surface p-0.5"
+          className="flex rounded-full border border-line bg-surface p-1"
           role="tablist"
           aria-label="Visualização dos negócios"
         >
@@ -350,7 +397,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
               aria-selected={view === nextView}
               tabIndex={view === nextView ? 0 : -1}
               className={cn(
-                'inline-flex h-8 items-center gap-2 rounded-sm px-3 text-sm transition-colors',
+                'inline-flex h-8 items-center gap-2 rounded-full px-3.5 text-sm transition-colors',
                 view === nextView
                   ? 'bg-surface-muted font-medium text-fg'
                   : 'text-fg-muted hover:text-fg'
@@ -363,39 +410,47 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <Select
-            aria-label="Filtrar por etapa"
-            value={stage}
-            onChange={(event) => setStage(event.target.value)}
-          >
-            <option value="all">Todas as etapas ({allDeals.length})</option>
-            {orderedColumns.map((column) => (
-              <option key={column.status} value={column.status}>
-                {column.name} ({column.deals.length})
-              </option>
-            ))}
-          </Select>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search stays available for an active query so a zero-result filter can be cleared. */}
+          {!loading && !error && (hasDeals || hasSearch) && (
+            <div className="relative w-full sm:w-56">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+                aria-hidden="true"
+              />
+              <Input
+                placeholder="Buscar por nome do negócio…"
+                value={search}
+                onChange={onSearchChange}
+                className="w-full pl-9"
+                aria-label="Buscar negócios"
+              />
+            </div>
+          )}
           <Button variant="outline" onClick={() => setPipelineDialogOpen(true)}>
             <Settings2 aria-hidden="true" /> Editar etapas
           </Button>
         </div>
       </div>
-      {/* Search stays available for an active query so a zero-result filter can be cleared. */}
-      {!loading && !error && (hasDeals || hasSearch) && (
-        <div className="relative max-w-md">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-            aria-hidden="true"
-          />
-          <Input
-            placeholder="Buscar por nome do negócio…"
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label="Buscar negócios"
-          />
+      {!loading && !error && orderedColumns.length > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          role="group"
+          aria-label="Filtrar por etapa"
+        >
+          <FilterChip selected={stage === 'all'} onClick={() => setStage('all')}>
+            Todas ({allDeals.length})
+          </FilterChip>
+          {orderedColumns.map((column) => (
+            <FilterChip
+              key={column.status}
+              selected={stage === column.status}
+              onClick={() => setStage(column.status)}
+            >
+              {column.name} ({column.deals.length})
+            </FilterChip>
+          ))}
         </div>
       )}
 
@@ -706,19 +761,19 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           aria-label="Pipeline CRM"
           id="crm-view-panel"
           tabIndex={0}
-          className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-lg border border-line bg-page [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
+          className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-lg [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
         >
           <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
             {displayColumns.map((col) => (
               <div
                 key={col.status}
-                className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg border border-line bg-surface"
+                className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg bg-surface-subtle"
               >
                 <div className="flex items-center justify-between px-4 py-3 text-sm font-medium">
                   <h2>{col.name}</h2>
                   <span
                     aria-label={`${col.count} ${col.count === 1 ? 'negócio' : 'negócios'}`}
-                    className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-fg-muted"
+                    className="rounded-full bg-surface px-2 py-0.5 text-xs text-fg-muted"
                   >
                     {col.count}
                   </span>
@@ -806,6 +861,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     </>
                   );
                 })()}
+                <a
+                  href="#/manual"
+                  onClick={(event) => navigateFromLink(event, '#/manual')}
+                  className="mx-2 mb-3 flex min-h-9 items-center justify-center rounded-md border border-dashed border-border-strong/60 text-xs font-medium text-fg-muted transition-colors hover:border-primary/40 hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  + Novo negócio
+                </a>
               </div>
             ))}
           </div>
