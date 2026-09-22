@@ -11,6 +11,11 @@ import {
   Copy,
   MailCheck,
   MoreHorizontal,
+  FilePlus2,
+  Send,
+  BadgeCheck,
+  Wallet,
+  ArrowUpRight,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -18,7 +23,6 @@ import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
-import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
@@ -323,10 +327,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     for (let i = start; i <= end; i++) nums.push(i);
     return nums;
   };
-  const summaryTotal = ['Rascunho', 'Enviado', 'Aprovado', 'Perdido'].reduce(
-    (sum, key) => sum + (statusSummary[key] || 0),
-    0
-  );
+  const visibleVolume = data.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
 
   const actionButtons = (row: QuotationRow, placement: 'desktop' | 'mobile') => {
     const label = row.businessNumber;
@@ -464,9 +465,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     <PageShell className={selectedCount > 0 ? 'space-y-6 pb-48 sm:pb-28' : 'space-y-6 pb-4'}>
       <PageHeader
         title="Orçamentos"
-        description={
-          totalRecords > 0 ? `${totalRecords} orçamento${totalRecords !== 1 ? 's' : ''}` : undefined
-        }
+        description="Da primeira conversa à proposta aprovada."
         actions={
           <>
             <Button onClick={() => navigate('/auto')} variant="outline">
@@ -481,50 +480,46 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         }
       />
 
-      <div className="flex flex-wrap items-end justify-between gap-4 rounded-3xl border border-line bg-surface p-4 md:p-5">
-        <div className="flex flex-wrap gap-2" aria-label="Filtrar por status">
-          {STATUS_OPTIONS.map((option) => {
-            const count = option.summaryKey
-              ? (statusSummary[option.summaryKey] ?? 0)
-              : summaryTotal;
-            return (
-              <FilterChip
-                key={option.value}
-                selected={status === option.value}
-                onClick={() => onStatusClick(option.value)}
-                className={
-                  status === option.value
-                    ? 'border border-primary bg-transparent text-link'
-                    : 'border border-line bg-surface-subtle text-fg-muted hover:bg-surface-hover hover:text-fg'
-                }
-              >
-                {option.label} <span className="font-normal">· {count}</span>
-              </FilterChip>
-            );
-          })}
-        </div>
-        <PageToolbar className="w-full sm:w-auto">
-          <div className="relative w-full sm:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-            <Input
-              placeholder="Número ou cliente"
-              value={search}
-              onChange={onSearchChange}
-              className="h-9 pl-9"
-              aria-label="Buscar orçamentos"
-            />
+      <section aria-label="Resumo dos orçamentos" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Rascunhos', value: statusSummary.Rascunho ?? 0, note: 'Ainda não emitidos', Icon: FilePlus2 },
+          { label: 'Emitidos', value: statusSummary.Enviado ?? 0, note: 'Aguardando decisão', Icon: Send },
+          { label: 'Aprovados', value: statusSummary.Aprovado ?? 0, note: 'Prontos para avançar', Icon: BadgeCheck },
+          { label: 'Volume das propostas', value: formatBRL(visibleVolume), note: 'Soma dos itens desta página', Icon: Wallet },
+        ].map(({ label, value, note, Icon }) => (
+          <div key={label} className="flex min-h-28 items-start justify-between gap-3 rounded-2xl border border-line bg-surface p-4 md:p-5">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-fg-muted">{label}</p>
+              <p className="mt-2 truncate text-2xl font-semibold tracking-tight text-fg [font-variant-numeric:tabular-nums]">{value}</p>
+              <p className="mt-1 text-xs text-fg-muted">{note}</p>
+            </div>
+            <Icon size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
           </div>
-        </PageToolbar>
-      </div>
+        ))}
+      </section>
+
+      <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4 md:px-5">
+          <PageToolbar className="w-full sm:w-auto">
+            <div className="relative w-full sm:w-72">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
+              <Input placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} className="h-9 pl-9" aria-label="Buscar orçamentos" />
+            </div>
+            <Select value={status} onChange={(event) => onStatusClick(event.target.value)} aria-label="Filtrar por status">
+              {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          </PageToolbar>
+          {status && <span className="text-xs text-fg-muted">{totalRecords} resultados neste status</span>}
+        </div>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={7} rows={8} />}
+      {loading && <div className="p-4"><SkeletonTable cols={7} rows={8} /></div>}
 
       {/* Error */}
       {!loading && error && (
         <div
           role="alert"
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
+          className="m-4 flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
         >
           <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
           <p className="font-medium">Não foi possível carregar os orçamentos.</p>
@@ -568,7 +563,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <div className="hidden md:block">
           <Table
             className="[&_td]:py-4 [&_th]:h-12"
-            containerClassName="overflow-hidden rounded-3xl border-line bg-surface"
+            containerClassName="overflow-hidden"
           >
             <TableHeader>
               <TableRow>
@@ -582,12 +577,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
                 </TableHead>
-                <TableHead className="w-[180px]">Número</TableHead>
-                <TableHead className="min-w-[220px]">Cliente</TableHead>
-                <TableHead className="whitespace-nowrap">Atualizado</TableHead>
+                <TableHead className="w-[190px]">Orçamento · revisão</TableHead>
+                <TableHead className="min-w-[220px]">Cliente · demanda</TableHead>
+                <TableHead className="whitespace-nowrap">Data</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="w-16 text-right">Ações</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+                <TableHead className="w-24 text-right">Abrir</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -616,15 +611,17 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     >
                       {row.businessNumber}
                     </Button>
+                    <span className="ml-1 text-xs text-fg-muted">· Rev. {row.revision}</span>
                   </TableCell>
                   <TableCell className="max-w-[300px] py-2" title={row.cliente}>
                     <span className="block truncate font-medium">
                       {row.cliente || 'Cliente não informado'}
                     </span>
+                    <span className="mt-0.5 block truncate text-xs text-fg-muted" title={row.name}>{row.name}</span>
                   </TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-fg-muted">
                     <span className="block">
-                      {formatDate(row.updatedAt) || formatDate(row.data) || '—'}
+                      {formatDate(row.data) || '—'}
                     </span>
                     <span className="mt-0.5 block text-xs">
                       <EmailMarker row={row} />
@@ -634,7 +631,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
                     {formatBRL(row.total)}
                   </TableCell>
-                  <TableCell className="py-2 text-right">{actionButtons(row, 'desktop')}</TableCell>
+                  <TableCell className="py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); navigate(`/quotations/${encodeURIComponent(row.id)}`); }}>Abrir <ArrowUpRight size={14} /></Button>
+                      {actionButtons(row, 'desktop')}
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -674,21 +676,23 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   >
                     {row.businessNumber}
                   </Button>
+                  <span className="shrink-0 text-xs text-fg-muted">· Rev. {row.revision}</span>
                 </div>
                 {statusBadge(row)}
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-fg-muted">Cliente</p>
                 <p className="break-words font-medium">{row.cliente || 'Cliente não informado'}</p>
+                <p className="mt-0.5 break-words text-xs text-fg-muted">{row.name}</p>
               </div>
               <div className="text-xs text-fg-muted">
                 <EmailMarker row={row} />
               </div>
               <div className="flex items-end justify-between gap-3 border-t border-line pt-3">
                 <div>
-                  <p className="text-xs text-fg-muted">Atualizado · Total</p>
+                  <p className="text-xs text-fg-muted">Data · Valor</p>
                   <p className="text-sm text-fg-muted">
-                    {formatDate(row.updatedAt) || formatDate(row.data) || '—'}
+                    {formatDate(row.data) || '—'}
                   </p>
                   <p className="font-mono font-semibold [font-variant-numeric:tabular-nums]">
                     {formatBRL(row.total)}
@@ -750,6 +754,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           )}
         </footer>
       )}
+      </section>
 
       <BulkActionBar visible={selectedCount > 0}>
         <div className="flex flex-wrap items-center gap-6">

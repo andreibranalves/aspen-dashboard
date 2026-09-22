@@ -93,6 +93,7 @@ const CRM_VIEW_TABS = [
   ['board', 'Quadro', Columns3],
 ] as const;
 type StageFilter = string;
+const BOARD_STAGE_SWATCHES = ['#b4c6b5', '#c68752', '#a49389', '#f1e3d4'] as const;
 const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
   raw?.trim() || fallback;
 
@@ -722,17 +723,24 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           tabIndex={0}
           className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-card border border-line bg-surface-subtle [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
         >
-          <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
-            {displayColumns.map((col) => (
+          <div className="flex min-h-[55vh] w-max min-w-full gap-4 p-4">
+            {displayColumns.map((col, columnIndex) => (
               <div
                 key={col.status}
-                className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-card border border-line bg-surface"
+                className="flex w-[15.5rem] flex-shrink-0 flex-col rounded-card bg-surface-subtle"
               >
-                <div className="flex items-center justify-between px-4 py-3 text-sm font-medium">
-                  <h2>{col.name}</h2>
+                <div className="flex items-center justify-between gap-3 px-3.5 py-3.5 text-sm font-medium">
+                  <h2 className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: BOARD_STAGE_SWATCHES[columnIndex % BOARD_STAGE_SWATCHES.length] }}
+                    />
+                    <span className="truncate">{col.name}</span>
+                  </h2>
                   <span
                     aria-label={`${col.count} ${col.count === 1 ? 'negócio' : 'negócios'}`}
-                    className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-fg-muted"
+                    className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-fg-muted"
                   >
                     {col.count}
                   </span>
@@ -746,7 +754,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     <>
                       <div
                         className={cn(
-                          'min-h-[120px] flex-1 space-y-2 rounded-b-lg px-2 pb-2',
+                          'min-h-[120px] flex-1 space-y-3 rounded-b-card px-2.5 pb-3',
                           draggingId && 'bg-primary/5'
                         )}
                         onDragOver={(e: DragEvent<HTMLDivElement>) => {
@@ -796,11 +804,16 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               onDragEnd={() => setDraggingId(null)}
                               aria-label={`Negócio ${displayLeadName}. Etapa: ${col.name}.`}
                               className={cn(
-                                'rounded-xl border border-line bg-surface-subtle p-4 transition-all',
-                                'hover:border-fg-muted/30',
+                                'rounded-card border border-line/70 bg-surface p-3.5 shadow-sm transition-all',
+                                'hover:border-fg-muted/30 hover:shadow-md',
                                 draggingId === deal.id && 'cursor-grabbing opacity-50'
                               )}
                             >
+                              {deal.quotation && (
+                                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">
+                                  {deal.quotation}
+                                </div>
+                              )}
                               <div className="flex items-start justify-between gap-2">
                                 {leadClickable ? (
                                   <a
@@ -808,13 +821,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                     onClick={(event) =>
                                       leadHref && navigateFromLink(event, leadHref)
                                     }
-                                    className="min-w-0 text-left text-sm font-medium text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+                                    className="min-w-0 text-left text-[15px] font-semibold leading-5 text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
                                     aria-label={`Abrir lead ${displayLeadName}`}
                                   >
                                     <span className="block truncate">{displayLeadName}</span>
                                   </a>
                                 ) : (
-                                  <h3 className="min-w-0 truncate text-sm font-medium">
+                                  <h3 className="min-w-0 truncate text-[15px] font-semibold leading-5">
                                     {displayLeadName}
                                   </h3>
                                 )}
@@ -823,13 +836,18 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 )}
                               </div>
                               {deal.email && (
-                                <p className="mt-0.5 truncate text-xs text-fg-muted">
+                                <p className="mt-1 truncate text-xs text-fg-muted">
                                   {deal.email}
                                 </p>
                               )}
                               {deal.telefone && (
                                 <p className="mt-0.5 truncate text-xs text-fg-muted">
                                   {fmtPhone(deal.telefone) || deal.telefone}
+                                </p>
+                              )}
+                              {deal.lead_source && (
+                                <p className="mt-2 truncate text-xs text-fg-muted" title="Origem do negócio">
+                                  Origem · {deal.lead_source}
                                 </p>
                               )}
                               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -844,7 +862,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                       aria-label={`Abrir orçamento ${deal.quotation}`}
                                     >
                                       <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                      {deal.quotation}
+                                      Abrir orçamento
                                     </a>
                                   ) : (
                                     <span
@@ -852,7 +870,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                       aria-label={`Orçamento ${deal.quotation}`}
                                     >
                                       <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                      {deal.quotation}
+                                      Orçamento
                                     </span>
                                   ))}
                                 {Number(deal.follow_up_stage) > 0 && (
@@ -867,7 +885,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                     className="text-xs text-fg-muted"
                                     title="Última atualização"
                                   >
-                                    Atualizado {daysAgo(lastUpdate)}
+                                    {daysAgo(lastUpdate) === 'hoje'
+                                      ? 'Atualizado hoje'
+                                      : `Atualizado há ${daysAgo(lastUpdate)}`}
                                   </time>
                                 )}
                               </div>

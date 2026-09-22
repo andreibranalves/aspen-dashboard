@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { ArrowUpRight, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AspenBrand from '@/components/shared/AspenBrand';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
-
-const logoUrl = new URL('../../../public/logo_marinho.svg', import.meta.url).href;
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -135,7 +134,7 @@ export default function Sidebar({
       >
         <div className="flex h-[78px] shrink-0 items-center justify-between px-6 pt-3">
           {!collapsed && (
-            <img src={logoUrl} alt="Aspen Estamparia" className="h-9 max-w-[142px] object-contain" />
+            <AspenBrand />
           )}
           {(!mobile || sidebarOpen) && (
             <button

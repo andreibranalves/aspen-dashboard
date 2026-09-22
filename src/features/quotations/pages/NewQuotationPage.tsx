@@ -10,7 +10,6 @@ import {
 } from 'react';
 import {
   AlertTriangle,
-  FileText,
   Image as ImageIcon,
   Loader2,
   MapPin,
@@ -564,7 +563,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [addingSku, setAddingSku] = useState<string | null>(null);
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { imageData, imagePreview, clearImage, handleImageFile } = useImageInput();
+  const { imageData, imagePreview, imageInputRef, clearImage, handleImageFile, handleDragOver, handleDragLeave, handleDrop } = useImageInput();
 
   const beginOfficialIssue = useCallback((key: string) => {
     officialIssueKeys.current.add(key);
@@ -1986,7 +1985,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       : undefined);
 
   const headlineDescription = mode === 'conversation'
-    ? activeDraft ? `Da conversa · ${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}` : 'Da conversa · revise antes de salvar ou emitir'
+    ? activeDraft ? `Da conversa · ${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}` : 'Transforme a demanda em uma proposta.'
     : 'Manual · rascunho em edição';
 
   return (
@@ -2010,29 +2009,30 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 </Select>
               </label>
             )}
-            <div role="tablist" aria-label="Modo de criação" className="flex max-w-full shrink-0 rounded-xl border border-line bg-surface p-1">
-              {(['conversation', 'manual'] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="tab"
-                  id={`quotation-mode-tab-${option}`}
-                  data-mode={option}
-                  aria-selected={mode === option}
-                  aria-controls={`quotation-mode-panel-${option}`}
-                  tabIndex={mode === option ? 0 : -1}
-                  onClick={() => switchMode(option)}
-                  onKeyDown={(event) => onModeKeyDown(event, option)}
-                  disabled={pricingPending}
-                  className={cn('h-9 rounded-lg px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', mode === option ? 'bg-primary/15 text-primary' : 'text-fg-muted hover:bg-surface-hover hover:text-fg')}
-                >
-                  {option === 'conversation' ? 'Automático' : 'Manual'}
-                </button>
-              ))}
-            </div>
           </div>
         }
       />
+
+      <div role="tablist" aria-label="Modo de criação" className="flex w-full gap-6 border-b border-line">
+        {(['conversation', 'manual'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            role="tab"
+            id={`quotation-mode-tab-${option}`}
+            data-mode={option}
+            aria-selected={mode === option}
+            aria-controls={`quotation-mode-panel-${option}`}
+            tabIndex={mode === option ? 0 : -1}
+            onClick={() => switchMode(option)}
+            onKeyDown={(event) => onModeKeyDown(event, option)}
+            disabled={pricingPending}
+            className={cn('min-h-11 border-b-2 px-0 pb-3 pt-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', mode === option ? 'border-light-sage font-semibold text-fg' : 'border-transparent text-fg-muted hover:text-fg')}
+          >
+            {option === 'conversation' ? 'A partir de uma conversa' : 'Preencher manualmente'}
+          </button>
+        ))}
+      </div>
 
       {manual.originPrefill && (
         <p className="text-sm text-fg-muted" role="status">
@@ -2075,24 +2075,20 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 gap-5 xl:grid-cols-2">
-          <section aria-label="Conversa" className="min-w-0 rounded-3xl border border-line bg-surface p-5 md:p-6">
+        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
+          <section aria-label="Conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold text-fg">Conversa</h2>
-                <p className="mt-1 text-sm text-fg-muted">Texto ou imagem da solicitação</p>
+                <h2 className="text-base font-semibold text-fg">Comece com o pedido do cliente</h2>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
                 <Settings size={14} /> Gerenciar modelos
               </Button>
             </div>
-            {imageData && (
-              <div className="mt-3 flex items-center gap-3 rounded-md bg-surface-subtle p-3">
-                {imagePreview ? <img src={imagePreview} alt="Prévia da solicitação" className="h-16 w-16 rounded object-cover" /> : <ImageIcon size={18} />}
-                <span className="min-w-0 flex-1 text-sm text-fg-muted">Imagem carregada</span>
-                <Button type="button" variant="ghost" size="sm" onClick={clearImage} disabled={liveDraftOperation}>Remover</Button>
-              </div>
-            )}
+            <div className="mt-6 flex items-center gap-3 text-sm font-medium text-fg">
+              <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
+              <span>Cole a conversa ou adicione uma imagem</span>
+            </div>
             <Textarea
               ref={textareaRef}
               aria-label="Mensagem do cliente para extração"
@@ -2105,9 +2101,19 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 }
               }}
               placeholder="Cole aqui a mensagem do cliente..."
-              className="mt-4 min-h-[220px] rounded-xl bg-surface-subtle py-4 leading-6"
+              className="mt-4 min-h-[190px] rounded-control bg-raised py-4 leading-6"
             />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-4 rounded-control border border-dashed border-border-control p-3" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+              <input id="new-quotation-image" ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Imagem de referência" onChange={(event) => handleImageFile(event.target.files?.[0] ?? null)} />
+              <div className="flex min-h-14 flex-wrap items-center gap-3">
+                {imagePreview ? <img src={imagePreview} alt="Prévia da solicitação" className="size-12 rounded-control object-cover" /> : <ImageIcon size={20} className="text-fg-muted" aria-hidden="true" />}
+                <button type="button" disabled={liveDraftOperation} onClick={() => imageInputRef.current?.click()} className="min-h-9 flex-1 text-left text-sm text-fg-muted hover:text-fg disabled:opacity-50">
+                  {imageData ? 'Trocar imagem de referência' : 'Selecionar imagem de referência · opcional'}
+                </button>
+                {imageData && <Button type="button" variant="ghost" size="sm" onClick={clearImage} disabled={liveDraftOperation}>Remover</Button>}
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <Button type="button" onClick={() => void handleExtract()} disabled={extracting || liveDraftOperation || (!text.trim() && !imageData)}>
                 {extracting ? <><Loader2 size={14} className="animate-spin" /> Extraindo…</> : <><PackagePlus size={14} /> Extrair dados</>}
               </Button>
@@ -2115,7 +2121,16 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </div>
           </section>
 
-          <section aria-label="Resultado da conversa" className="min-w-0 rounded-3xl border border-line bg-surface-subtle p-5 md:p-6">
+          <aside aria-labelledby="before-issue-title" className="rounded-card bg-surface p-5 md:p-6 xl:col-start-2 xl:row-start-1">
+            <h2 id="before-issue-title" className="text-base font-semibold text-fg">Antes de emitir</h2>
+            <ol className="mt-5 space-y-5 border-l border-line pl-5 text-sm">
+              <li><strong className="block font-semibold text-fg">Identifique o cliente</strong><span className="mt-1 block text-fg-muted">Evite cadastros duplicados.</span></li>
+              <li><strong className="block font-semibold text-fg">Vincule a oportunidade</strong><span className="mt-1 block text-fg-muted">Selecione a demanda correspondente.</span></li>
+              <li><strong className="block font-semibold text-fg">Confira a proposta</strong><span className="mt-1 block text-fg-muted">Revise itens, preços e condições.</span></li>
+            </ol>
+          </aside>
+
+          {(activeDrafts.length > 0 || pendingExtraction.length > 0) && <section aria-label="Resultado da conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6 xl:col-start-1">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-fg">Resultado</h2>
@@ -2134,12 +2149,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 </Button>
               )}
             </div>
-            {!activeDraft && pendingExtraction.length === 0 && (
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-surface px-5 text-center text-fg-muted">
-                <FileText size={28} />
-                <p className="mt-3 text-sm">Nenhum pedido extraído</p>
-              </div>
-            )}
             {activeDraft && (
               <SplitResultCard
                 draft={activeDraft}
@@ -2243,7 +2252,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 />
               </div>
             ))}
-          </section>
+          </section>}
         </div>
       ) : (
         <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">

@@ -744,16 +744,18 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             >
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">
-                    <input
-                      ref={selectAllRef}
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={(event) => toggleAll(event.target.checked)}
-                      aria-label="Selecionar todos os clientes"
-                    />
+                  <TableHead className="min-w-[220px]">
+                    <div className="flex items-center gap-3">
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(event) => toggleAll(event.target.checked)}
+                        aria-label="Selecionar todos os clientes"
+                      />
+                      <span>Cliente</span>
+                    </div>
                   </TableHead>
-                  <TableHead>Cliente</TableHead>
                   <TableHead>Contato</TableHead>
                   <TableHead className="hidden xl:table-cell">Documento</TableHead>
                   <TableHead>Status</TableHead>
@@ -777,15 +779,18 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         navigateToDetail(row.id);
                       }}
                     >
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(row.id)}
-                          onChange={() => toggleSelected(row.id)}
-                          aria-label={`Selecionar ${label}`}
-                        />
+                      <TableCell className="min-w-[220px]">
+                        <div className="flex items-start gap-3">
+                          <input
+                            className="mt-1 shrink-0"
+                            type="checkbox"
+                            checked={selectedIds.includes(row.id)}
+                            onChange={() => toggleSelected(row.id)}
+                            aria-label={`Selecionar ${label}`}
+                          />
+                          <div className="min-w-0 flex-1">{selectRow(row)}</div>
+                        </div>
                       </TableCell>
-                      <TableCell>{selectRow(row)}</TableCell>
                       <TableCell className="max-w-[280px]">
                         <div className="space-y-0.5 text-sm">
                           {row.email ? (
@@ -828,6 +833,14 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Abrir cliente ${label}`}
+                            onClick={() => navigateToDetail(row.id)}
+                          >
+                            <ChevronRight />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"

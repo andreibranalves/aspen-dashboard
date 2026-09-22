@@ -2,8 +2,7 @@ import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowRight, LockKeyhole } from 'lucide-react';
-
-const logoUrl = new URL('../../public/logo_branca.svg', import.meta.url).href;
+import AspenBrand from '@/components/shared/AspenBrand';
 
 interface LoginPageProps {
   navigate: (hash: string) => void;
@@ -75,7 +74,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
     <div className="min-h-dvh bg-canvas md:p-frame">
       <main className="grid min-h-dvh items-center gap-10 bg-page p-6 text-fg md:min-h-[calc(100dvh-36px)] md:grid-cols-2 md:rounded-shell md:px-[6%]" aria-labelledby="login-title">
         <div className="max-w-lg py-8 md:p-10">
-          <img src={logoUrl} alt="Aspen Estamparia" className="h-11 max-w-[180px] object-contain" />
+          <AspenBrand />
           <h1 id="login-title" className="mt-10 max-w-[430px] text-[32px] font-bold leading-[1.18] tracking-[-0.04em] md:text-5xl">
             Da conversa ao próximo bom negócio.
           </h1>

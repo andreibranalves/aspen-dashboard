@@ -76,7 +76,10 @@ export default function TopBar({
             <Menu size={20} aria-hidden="true" />
           </button>
         )}
-        <nav className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-muted" aria-label="Trilha de navegação">
+        <nav
+          className={`flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-muted ${breadcrumbItems.length > 2 ? 'xl:absolute xl:left-workspace xl:top-[96px]' : 'xl:sr-only'}`}
+          aria-label="Trilha de navegação"
+        >
           {breadcrumbItems.map((item, index) => (
             <Fragment key={`${item.label}-${index}`}>
               {index > 0 && <ChevronRight size={14} className="shrink-0" aria-hidden="true" />}
@@ -122,7 +125,9 @@ export default function TopBar({
               aria-label="Buscar uma tela"
               className="w-full min-w-0 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
             />
-            <kbd className="whitespace-nowrap rounded border border-line px-1 text-[10px]">Ctrl K</kbd>
+            <kbd className="whitespace-nowrap rounded border border-line px-1 text-[10px]">
+              Ctrl K
+            </kbd>
           </label>
           {searchOpen && query.trim() && (
             <div className="absolute right-0 top-[52px] z-40 w-[244px] overflow-hidden rounded-control border border-line bg-surface p-1 shadow-lg">
@@ -145,7 +150,9 @@ export default function TopBar({
         </div>
         <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
         <div className="flex items-center gap-2 text-xs font-semibold text-fg" aria-label="Aspen">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sage text-on-solid">AS</span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sage text-on-solid">
+            AS
+          </span>
           <span className="hidden xl:inline">Aspen</span>
         </div>
       </div>

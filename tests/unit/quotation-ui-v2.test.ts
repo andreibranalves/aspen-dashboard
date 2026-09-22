@@ -11,7 +11,7 @@ describe('quotation Aspen v2 surfaces', () => {
     const page = read('src/features/quotations/pages/NewQuotationPage.tsx');
     const card = read('src/features/quotations/components/SplitResultCard.tsx');
 
-    assert.match(page, />Conversa</);
+    assert.match(page, /Comece com o pedido do cliente/);
     assert.match(page, />Resultado</);
     assert.match(page, /aria-label="Mensagem do cliente para extração"/);
     assert.match(page, /Cole aqui a mensagem do cliente/);

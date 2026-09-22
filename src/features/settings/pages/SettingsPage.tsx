@@ -32,7 +32,6 @@ interface TabItem {
   label: string;
   icon: LucideIcon;
 }
-
 const TABS: TabItem[] = [
   { id: 'patterns', label: 'Padrões', icon: SlidersHorizontal },
   { id: 'templates', label: 'Modelos de documento', icon: FileCode2 },
@@ -279,11 +278,7 @@ export default function SettingsPage() {
   return (
     <PageShell className="space-y-6 pb-24">
       <PageHeader title="Configurações" description={TAB_DESCRIPTIONS[activeTab]} />
-      <div
-        role="tablist"
-        aria-label="Seções de configurações"
-        className="overflow-x-auto px-1"
-      >
+      <div role="tablist" aria-label="Seções de configurações" className="overflow-x-auto px-1">
         <div className="flex min-w-max gap-1">
           {TABS.map((tab, index) => {
             const Icon = tab.icon;
@@ -302,9 +297,7 @@ export default function SettingsPage() {
                 className={[
                   'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
-                  selected
-                    ? 'bg-cream text-page'
-                    : 'text-fg-muted hover:bg-raised hover:text-fg',
+                  selected ? 'bg-cream text-page' : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
                 <Icon size={15} aria-hidden="true" /> {tab.label}
@@ -362,84 +355,120 @@ export default function SettingsPage() {
               event.preventDefault();
               void handleSave();
             }}
-            className="space-y-6"
+            className="space-y-5"
           >
-            <section
-              className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
-              aria-labelledby="patterns-title"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
-                  <SlidersHorizontal size={18} className="text-light-sage" aria-hidden="true" />
-                </div>
-                <h2 id="patterns-title" className="text-base font-semibold text-fg">
-                  Padrões de orçamento
-                </h2>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={saving} aria-busy={saving}>
+                {saving ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save aria-hidden="true" />
+                )}
+                {saving ? 'Salvando...' : 'Salvar configurações'}
+              </Button>
+            </div>
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
+              <div className="min-w-0 space-y-5">
+                <section
+                  className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                  aria-labelledby="patterns-title"
+                >
+                  <h2 id="patterns-title" className="text-base font-semibold text-fg">
+                    Condições padrão
+                  </h2>
+                  <fieldset className="space-y-4">
+                    <legend className="sr-only">Prazos e valores</legend>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <label className="space-y-1.5 text-sm text-fg">
+                        <span className="font-medium">Validade padrão (dias)</span>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="365"
+                          step="1"
+                          value={form.validade_dias}
+                          onChange={(event) => updateField('validade_dias', event.target.value)}
+                          disabled={saving}
+                          required
+                        />
+                      </label>
+                      <label className="space-y-1.5 text-sm text-fg">
+                        <span className="font-medium">Frete padrão (R$)</span>
+                        <Input
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={form.frete_padrao}
+                          onChange={(event) => updateField('frete_padrao', event.target.value)}
+                          disabled={saving}
+                          required
+                        />
+                      </label>
+                      <label className="space-y-1.5 text-sm text-fg">
+                        <span className="font-medium">Alíquota de imposto (%)</span>
+                        <Input
+                          inputMode="decimal"
+                          placeholder="4.00"
+                          value={form.aliquota}
+                          onChange={(event) => updateField('aliquota', event.target.value)}
+                          disabled={saving}
+                          required
+                        />
+                      </label>
+                    </div>
+                  </fieldset>
+                </section>
+                <section
+                  className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                  aria-labelledby="document-sections-title"
+                >
+                  <h2 id="document-sections-title" className="text-base font-semibold text-fg">
+                    Seções do documento
+                  </h2>
+                  <fieldset className="space-y-5">
+                    <legend className="sr-only">Conteúdo do documento</legend>
+                    <QuotationSectionsEditor
+                      mode="settings"
+                      sections={form.secoes}
+                      editable={!saving}
+                      onChange={updateSections}
+                    />
+                    <label className="flex min-h-9 items-center gap-3 text-sm text-fg">
+                      <input
+                        type="checkbox"
+                        aria-label="Exibir resumo financeiro"
+                        checked={form.secoes.show_summary}
+                        onChange={(event) =>
+                          updateSections({ ...form.secoes, show_summary: event.target.checked })
+                        }
+                        disabled={saving}
+                      />
+                      <span className="font-medium">Exibir resumo financeiro</span>
+                    </label>
+                  </fieldset>
+                </section>
               </div>
-              <fieldset className="space-y-4">
-                <legend className="text-sm font-semibold text-fg">Prazos e valores</legend>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <label className="space-y-1.5 text-sm text-fg">
-                    <span className="font-medium">Validade padrão (dias)</span>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="365"
-                      step="1"
-                      value={form.validade_dias}
-                      onChange={(event) => updateField('validade_dias', event.target.value)}
-                      disabled={saving}
-                      required
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-sm text-fg">
-                    <span className="font-medium">Frete padrão (R$)</span>
-                    <Input
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={form.frete_padrao}
-                      onChange={(event) => updateField('frete_padrao', event.target.value)}
-                      disabled={saving}
-                      required
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-sm text-fg">
-                    <span className="font-medium">Alíquota de imposto (%)</span>
-                    <Input
-                      inputMode="decimal"
-                      placeholder="4.00"
-                      value={form.aliquota}
-                      onChange={(event) => updateField('aliquota', event.target.value)}
-                      disabled={saving}
-                      required
-                    />
-                  </label>
-                </div>
-              </fieldset>
-              <fieldset className="space-y-5 border-t border-line pt-5">
-                <legend className="text-sm font-semibold text-fg">Conteúdo do documento</legend>
-                <QuotationSectionsEditor
-                  mode="settings"
-                  sections={form.secoes}
-                  editable={!saving}
-                  onChange={updateSections}
-                />
-                <label className="flex min-h-9 items-center gap-3 text-sm text-fg">
-                  <input
-                    type="checkbox"
-                    aria-label="Exibir resumo financeiro"
-                    checked={form.secoes.show_summary}
-                    onChange={(event) =>
-                      updateSections({ ...form.secoes, show_summary: event.target.checked })
-                    }
-                    disabled={saving}
-                  />
-                  <span className="font-medium">Exibir resumo financeiro</span>
-                </label>
-              </fieldset>
-            </section>
+              <aside
+                className="rounded-card bg-surface p-5 sm:p-[22px]"
+                aria-labelledby="patterns-usage-title"
+              >
+                <h2 id="patterns-usage-title" className="text-base font-semibold text-fg">
+                  Aplicação dos padrões
+                </h2>
+                <p className="mt-5 text-sm leading-6 text-fg-muted">
+                  Os valores são aplicados a novos orçamentos e podem ser revisados antes da
+                  emissão.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-5 w-full"
+                  onClick={() => handleTabChange('templates')}
+                >
+                  Ver modelos de documento
+                </Button>
+              </aside>
+            </div>
             <SettingsFeedback error={saveError} success={savedMessage} />
-            <SaveBar saving={saving} label="Salvar configurações" />
           </form>
         )}
 
@@ -462,94 +491,205 @@ export default function SettingsPage() {
               event.preventDefault();
               void handleSave();
             }}
-            className="space-y-6"
+            className="space-y-5"
           >
-            <section
-              className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
-              aria-labelledby="company-title"
-            >
-              <div className="flex items-start gap-3">
-                <Building2 size={20} className="mt-0.5 shrink-0 text-light-sage" aria-hidden="true" />
-                <h2 id="company-title" className="text-base font-semibold text-fg">
-                  Empresa
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-fg-muted">Dados apresentados nos documentos comerciais.</p>
+              <Button type="submit" disabled={saving} aria-busy={saving}>
+                {saving ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save aria-hidden="true" />
+                )}
+                {saving ? 'Salvando...' : 'Salvar empresa'}
+              </Button>
+            </div>
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
+              <div className="min-w-0 space-y-5">
+                <section
+                  className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                  aria-labelledby="company-title"
+                >
+                  <h2 id="company-title" className="text-base font-semibold text-fg">
+                    Identificação da empresa
+                  </h2>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Razão social</span>
+                      <Input
+                        value={form.empresa.identity.legal_name}
+                        onChange={(event) =>
+                          updateCompanyField('identity', 'legal_name', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={255}
+                        required
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">CNPJ</span>
+                      <Input
+                        value={form.empresa.identity.document}
+                        onChange={(event) =>
+                          updateCompanyField('identity', 'document', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={18}
+                        required
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Site</span>
+                      <Input
+                        type="url"
+                        value={form.empresa.contacts.website}
+                        onChange={(event) =>
+                          updateCompanyField('contacts', 'website', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={500}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Instagram</span>
+                      <Input
+                        type="url"
+                        value={form.empresa.contacts.instagram}
+                        onChange={(event) =>
+                          updateCompanyField('contacts', 'instagram', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={500}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">E-mail</span>
+                      <Input
+                        type="email"
+                        value={form.empresa.contacts.email}
+                        onChange={(event) =>
+                          updateCompanyField('contacts', 'email', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={500}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Telefone</span>
+                      <Input
+                        value={form.empresa.contacts.phone}
+                        onChange={(event) =>
+                          updateCompanyField('contacts', 'phone', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={500}
+                      />
+                    </label>
+                  </div>
+                </section>
+                <section
+                  className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                  aria-labelledby="company-banking-title"
+                >
+                  <h2 id="company-banking-title" className="text-base font-semibold text-fg">
+                    Dados bancários
+                  </h2>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Banco</span>
+                      <Input
+                        value={form.empresa.banking.bank_name}
+                        onChange={(event) =>
+                          updateCompanyField('banking', 'bank_name', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={255}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Código do banco</span>
+                      <Input
+                        value={form.empresa.banking.bank_code}
+                        onChange={(event) =>
+                          updateCompanyField('banking', 'bank_code', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={20}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Agência</span>
+                      <Input
+                        value={form.empresa.banking.branch}
+                        onChange={(event) =>
+                          updateCompanyField('banking', 'branch', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={100}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg">
+                      <span className="font-medium">Conta</span>
+                      <Input
+                        value={form.empresa.banking.account}
+                        onChange={(event) =>
+                          updateCompanyField('banking', 'account', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={100}
+                      />
+                    </label>
+                    <label className="space-y-1.5 text-sm text-fg md:col-span-2">
+                      <span className="font-medium">Chave Pix</span>
+                      <Input
+                        value={form.empresa.banking.pix_key}
+                        onChange={(event) =>
+                          updateCompanyField('banking', 'pix_key', event.target.value)
+                        }
+                        disabled={saving}
+                        maxLength={255}
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
+              <aside
+                className="rounded-card bg-surface p-5 sm:p-[22px]"
+                aria-labelledby="company-usage-title"
+              >
+                <h2 id="company-usage-title" className="text-base font-semibold text-fg">
+                  Onde esses dados aparecem
                 </h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Razão social</span>
-                  <Input
-                    value={form.empresa.identity.legal_name}
-                    onChange={(event) =>
-                      updateCompanyField('identity', 'legal_name', event.target.value)
-                    }
-                    disabled={saving}
-                    maxLength={255}
-                    required
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">CNPJ</span>
-                  <Input
-                    value={form.empresa.identity.document}
-                    onChange={(event) =>
-                      updateCompanyField('identity', 'document', event.target.value)
-                    }
-                    disabled={saving}
-                    maxLength={18}
-                    required
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Telefone</span>
-                  <Input
-                    value={form.empresa.contacts.phone}
-                    onChange={(event) =>
-                      updateCompanyField('contacts', 'phone', event.target.value)
-                    }
-                    disabled={saving}
-                    maxLength={500}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Site</span>
-                  <Input
-                    type="url"
-                    value={form.empresa.contacts.website}
-                    onChange={(event) =>
-                      updateCompanyField('contacts', 'website', event.target.value)
-                    }
-                    disabled={saving}
-                    maxLength={500}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">E-mail</span>
-                  <Input
-                    type="email"
-                    value={form.empresa.contacts.email}
-                    onChange={(event) =>
-                      updateCompanyField('contacts', 'email', event.target.value)
-                    }
-                    disabled={saving}
-                    maxLength={500}
-                  />
-                </label>
-                <label className="space-y-1.5 text-sm text-fg">
-                  <span className="font-medium">Instagram</span>
-                  <Input
-                    type="url"
-                    value={form.empresa.contacts.instagram}
-                    onChange={(event) =>
-                      updateCompanyField('contacts', 'instagram', event.target.value)
-                    }
-                    disabled={saving}
-                    maxLength={500}
-                  />
-                </label>
-              </div>
-            </section>
+                <ul className="mt-5 divide-y divide-line text-sm text-fg">
+                  {[
+                    'Identificação do documento',
+                    'Condições de pagamento',
+                    'Contatos comerciais',
+                  ].map((label) => (
+                    <li
+                      key={label}
+                      className="flex items-center justify-between gap-3 py-3 first:pt-0"
+                    >
+                      <span>{label}</span>
+                      <CheckCircle2
+                        size={16}
+                        className="shrink-0 text-light-sage"
+                        aria-hidden="true"
+                      />
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-5 w-full"
+                  onClick={() => handleTabChange('templates')}
+                >
+                  Ver modelos de documento
+                </Button>
+              </aside>
+            </div>
             <SettingsFeedback error={saveError} success={savedMessage} />
-            <SaveBar saving={saving} label="Salvar empresa" />
           </form>
         )}
         {activeTab === 'channels' && <ChannelsTab />}
@@ -617,20 +757,5 @@ function SettingsFeedback({ error, success }: { error: string | null; success: s
         </div>
       )}
     </>
-  );
-}
-
-function SaveBar({ saving, label }: { saving: boolean; label: string }) {
-  return (
-    <div className="sticky bottom-4 z-10 flex justify-end rounded-control border border-line bg-surface p-3">
-      <Button type="submit" disabled={saving} aria-busy={saving}>
-        {saving ? (
-          <Loader2 className="animate-spin" aria-hidden="true" />
-        ) : (
-          <Save aria-hidden="true" />
-        )}
-        {saving ? 'Salvando...' : label}
-      </Button>
-    </div>
   );
 }

@@ -211,11 +211,14 @@ function RevenueChart({
 
   return (
     <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
-      <div className="relative flex h-56 min-w-[520px] items-end justify-around gap-3 border-b border-line px-5 pb-5 pl-14 pt-7">
-        <span className="pointer-events-none absolute left-5 top-3 text-xs text-fg-muted">
+      <div
+        className="relative flex h-56 items-end justify-around gap-2 border-b border-page/20 px-3 pb-5 pl-9 pt-7"
+        style={{ minWidth: `${Math.max(180, series.items.length * 42 + 40)}px` }}
+      >
+        <span className="pointer-events-none absolute left-1 top-3 text-xs text-page/70">
           {formatCompactBRL(maxRevenue)}
         </span>
-        <span className="pointer-events-none absolute bottom-5 left-5 text-xs text-fg-muted">
+        <span className="pointer-events-none absolute bottom-5 left-1 text-xs text-page/70">
           R$ 0
         </span>
         {series.items.map((day) => {
@@ -223,19 +226,19 @@ function RevenueChart({
           return (
             <div
               key={day.date}
-              className="flex min-w-12 max-w-16 flex-1 flex-col items-center justify-end gap-1"
+              className="flex min-w-6 max-w-16 flex-1 flex-col items-center justify-end gap-1"
             >
-              <span className="text-xs tabular-nums text-fg-muted">
+              <span className="text-xs tabular-nums text-page/75">
                 {formatCompactBRL(day.revenue)}
               </span>
               <div className="flex h-36 w-full items-end">
                 <div
-                  className="w-full rounded-t-sm bg-primary"
+                  className="w-full rounded-t-sm bg-page/55"
                   style={{ height: `${height}%` } as CSSProperties}
                   aria-hidden="true"
                 />
               </div>
-              <span className="whitespace-nowrap text-xs text-fg-muted">
+              <span className="whitespace-nowrap text-xs text-page/75">
                 {formatChartDate(day.date)}
               </span>
             </div>
@@ -283,13 +286,7 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
   );
 }
 
-function AcquisitionPanel({
-  data,
-  onFinance,
-}: {
-  data: DashboardViewData;
-  onFinance: () => void;
-}) {
+function AcquisitionPanel({ data, onFinance }: { data: DashboardViewData; onFinance: () => void }) {
   const summary = data.summary;
   if (!summary) return <Unavailable>Dados de aquisição não disponíveis.</Unavailable>;
 
@@ -350,12 +347,13 @@ function OverviewPanel({
       aria-labelledby="results-tab-overview"
       className="space-y-4"
     >
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.8fr)_repeat(3,minmax(0,1fr))]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.97fr)_repeat(3,minmax(0,1fr))]">
         <div className="xl:row-span-2">
           <SummaryMetrics summary={summary} />
         </div>
+        <AcquisitionPanel data={data} onFinance={onFinance} />
         <section
-          className="min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page xl:col-span-2"
+          className="min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page"
           aria-labelledby="revenue-chart-title"
         >
           <h2 id="revenue-chart-title" className="text-base font-semibold">
@@ -365,12 +363,11 @@ function OverviewPanel({
             <RevenueChart series={data.salesByDay} />
           </div>
         </section>
-        <div className="xl:col-span-1">
-          <AcquisitionPanel data={data} onFinance={onFinance} />
-        </div>
         <FeaturedCustomersPanel data={data} onCustomers={onCustomers} />
+        <div className="min-w-0 xl:col-span-3 xl:col-start-2">
+          <RecentQuotationsPanel data={recentQuotations} onNavigate={onNavigate} />
+        </div>
       </div>
-      <RecentQuotationsPanel data={recentQuotations} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -383,17 +380,26 @@ function RecentQuotationsPanel({
   onNavigate: (path: string) => void;
 }) {
   return (
-    <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="recent-quotations-title">
+    <section
+      className="rounded-card border border-line bg-surface p-5"
+      aria-labelledby="recent-quotations-title"
+    >
       <div className="flex items-center justify-between gap-4">
-        <h2 id="recent-quotations-title" className="text-base font-semibold">Últimos orçamentos</h2>
+        <h2 id="recent-quotations-title" className="text-base font-semibold">
+          Últimos orçamentos
+        </h2>
         <Button type="button" variant="outline" size="sm" onClick={() => onNavigate('/quotations')}>
           Ver todos
         </Button>
       </div>
       {data.status === 'loading' ? (
-        <p className="py-6 text-sm text-fg-muted" role="status">Carregando orçamentos…</p>
+        <p className="py-6 text-sm text-fg-muted" role="status">
+          Carregando orçamentos…
+        </p>
       ) : data.status === 'error' ? (
-        <p className="py-6 text-sm text-fg-muted">Não foi possível carregar os últimos orçamentos.</p>
+        <p className="py-6 text-sm text-fg-muted">
+          Não foi possível carregar os últimos orçamentos.
+        </p>
       ) : data.items.length === 0 ? (
         <p className="py-6 text-sm text-fg-muted">Nenhum orçamento cadastrado.</p>
       ) : (
@@ -420,11 +426,18 @@ function RecentQuotationsPanel({
                   </button>
                 </TableCell>
                 <TableCell className="max-w-[260px] truncate">{quotation.cliente}</TableCell>
-                <TableCell className="whitespace-nowrap text-fg-muted">{formatDashboardDate(quotation.data)}</TableCell>
-                <TableCell>
-                  <StatusBadge status={quotationStatusBadgeKey(quotation.status)} label={quotationStatusLabel(quotation.status)} />
+                <TableCell className="whitespace-nowrap text-fg-muted">
+                  {formatDashboardDate(quotation.data)}
                 </TableCell>
-                <TableCell className="text-right font-medium tabular-nums">{formatBRL(quotation.total)}</TableCell>
+                <TableCell>
+                  <StatusBadge
+                    status={quotationStatusBadgeKey(quotation.status)}
+                    label={quotationStatusLabel(quotation.status)}
+                  />
+                </TableCell>
+                <TableCell className="text-right font-medium tabular-nums">
+                  {formatBRL(quotation.total)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -444,7 +457,7 @@ function FeaturedCustomersPanel({
   const customers = data.topCustomers;
   return (
     <section
-      className="rounded-lg border border-border-subtle bg-taupe p-5 text-page xl:col-start-2 xl:col-span-3 [&_p]:text-page/75"
+      className="rounded-lg border border-border-subtle bg-taupe p-5 text-page [&_p]:text-page/75"
       aria-labelledby="featured-customers-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -472,7 +485,10 @@ function FeaturedCustomersPanel({
       ) : (
         <div className="mt-3 divide-y divide-page/10">
           {customers.items.slice(0, 5).map((customer, index) => (
-            <div key={`${customer.name}-${index}`} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+            <div
+              key={`${customer.name}-${index}`}
+              className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+            >
               <span
                 className="grid size-9 shrink-0 place-items-center rounded-full bg-page/10 text-xs font-semibold"
                 aria-hidden="true"
@@ -485,7 +501,9 @@ function FeaturedCustomersPanel({
                   {customer.orders} {customer.orders === 1 ? 'pedido' : 'pedidos'}
                 </p>
               </div>
-              <strong className="shrink-0 text-sm tabular-nums">{formatBRL(customer.revenue)}</strong>
+              <strong className="shrink-0 text-sm tabular-nums">
+                {formatBRL(customer.revenue)}
+              </strong>
             </div>
           ))}
         </div>
@@ -894,7 +912,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   const [metaDraft, setMetaDraft] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
-  const [recentQuotations, setRecentQuotations] = useState<RecentQuotations>({ status: 'loading', items: [] });
+  const [recentQuotations, setRecentQuotations] = useState<RecentQuotations>({
+    status: 'loading',
+    items: [],
+  });
   const requestGenerationRef = useRef(0);
 
   const fetchDashboard = useCallback(async () => {
@@ -935,7 +956,9 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       .catch(() => {
         if (active) setRecentQuotations({ status: 'error', items: [] });
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [tab]);
 
   useEffect(() => {
@@ -998,17 +1021,19 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
         title={selectedTitle}
         description={periodLabel}
         actions={
-          <Select
-            aria-label="Período dos resultados"
-            value={period}
-            onChange={(event) => setPeriod(event.target.value)}
-          >
-            {PERIODS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
+          <div className="xl:absolute xl:right-workspace xl:top-[96px]">
+            <Select
+              aria-label="Período dos resultados"
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
+            >
+              {PERIODS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         }
       />
       <DashboardTabs tab={tab} onChange={setTab} />

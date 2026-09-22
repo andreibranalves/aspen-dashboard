@@ -80,7 +80,7 @@ test('overview mostra orçamentos reais e gráfico legível com um dia', async (
   await page.goto('/#/dashboard');
   await expect(page.getByRole('heading', { name: 'Últimos orçamentos' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ORC-2026-001' })).toBeVisible();
-  const bar = page.getByRole('img', { name: 'Receita por dia' }).locator('.bg-primary');
+  const bar = page.getByRole('img', { name: 'Receita por dia' }).locator('[style*="height"]');
   await expect(bar).toBeVisible();
   expect((await bar.boundingBox())?.width).toBeLessThanOrEqual(64);
   await page.getByRole('button', { name: 'ORC-2026-001' }).click();

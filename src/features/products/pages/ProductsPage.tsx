@@ -8,6 +8,7 @@ import {
   Archive,
   ArchiveRestore,
   X,
+  PackageOpen,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import {
@@ -34,17 +35,9 @@ import PageToolbar from '@/components/shared/PageToolbar';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import { useToast } from '@/components/shared/toast';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
 import { projectProductListResponse, type ProjectedProductListRow } from '@/lib/localProjections';
 
-type Product = ProjectedProductListRow;
+type Product = ProjectedProductListRow & { categoria?: string };
 type ProductsApiResponse = unknown;
 
 const PAGE_SIZES = [10, 25, 50];
@@ -185,7 +178,20 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
         if (requestGeneration !== listRequestGenerationRef.current) return;
         const projected = projectProductListResponse(result);
         if (!projected) throw new Error('Resposta inválida ao carregar produtos.');
-        setData(projected.data);
+        const responseRows =
+          result && typeof result === 'object' && Array.isArray((result as { data?: unknown }).data)
+            ? (result as { data: unknown[] }).data
+            : [];
+        const categories = new Map<string, string>();
+        for (const row of responseRows) {
+          if (!row || typeof row !== 'object') continue;
+          const raw = row as Record<string, unknown>;
+          const sku = typeof raw.sku === 'string' ? raw.sku : raw.item_code;
+          if (typeof sku === 'string' && typeof raw.categoria === 'string' && raw.categoria.trim()) {
+            categories.set(sku, raw.categoria.trim());
+          }
+        }
+        setData(projected.data.map((product) => ({ ...product, categoria: categories.get(product.sku) })));
         setTotalPages(projected.pagination.total_pages);
         setTotalRecords(projected.pagination.total);
       } catch {
@@ -550,162 +556,41 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
       )}
 
       {!loading && !error && data.length > 0 && (
-        <>
-          <div className="hidden md:block">
-            <Table
-              containerClassName="overflow-hidden rounded-card bg-surface"
-              className="min-w-[720px] table-fixed"
-            >
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12 px-3">
-                    <input
-                      ref={selectAllRef}
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={(event) => toggleSelectAll(event.target.checked)}
-                      aria-label="Selecionar todos os produtos desta página"
-                      className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
-                    />
-                  </TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead className="w-[160px] whitespace-nowrap">SKU</TableHead>
-                  <TableHead className="hidden w-[90px] xl:table-cell">Unidade</TableHead>
-                  <TableHead className="w-[150px] text-right">Preço mínimo</TableHead>
-                  <TableHead className="w-[100px] text-center">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((product) => {
-                  const sku = product.sku || product.item_code || '';
-                  const isSelected = selectedIds.includes(sku);
-                  const archived = isArchivedProduct(product);
-                  const state = productStatus(product);
-                  const name = product.nome || product.item_name || 'Produto sem nome';
-                  const description = product.descricao?.trim();
-                  return (
-                    <TableRow
-                      key={sku}
-                      tabIndex={0}
-                      aria-label={`Abrir produto ${sku}: ${name}`}
-                      data-state={isSelected ? 'selected' : undefined}
-                      className="group cursor-pointer"
-                      onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                      onKeyDown={(event) => {
-                        if (event.target !== event.currentTarget || event.key !== 'Enter') return;
-                        event.preventDefault();
-                        navigate(`/products/${encodeURIComponent(sku)}`);
-                      }}
-                    >
-                      <TableCell className="w-12 px-3" onClick={(event) => event.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelected(sku)}
-                          aria-label={`Selecionar produto ${sku}`}
-                          className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <button
-                          type="button"
-                          className="w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            navigate(`/products/${encodeURIComponent(sku)}`);
-                          }}
-                          aria-label={`Abrir produto ${sku}: ${name}`}
-                        >
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span
-                              className="min-w-0 flex-1 truncate text-sm font-semibold text-fg hover:underline"
-                              title={name}
-                            >
-                              {name}
-                            </span>
-                            <StatusBadge status={state.status} label={state.label} />
-                          </span>
-                          <span
-                            className="mt-1 block truncate text-xs text-fg-muted"
-                            title={description || undefined}
-                          >
-                            {description || 'Sem descrição cadastrada'}
-                          </span>
-                        </button>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[150px] truncate whitespace-nowrap font-mono text-xs text-fg-muted"
-                        title={sku}
-                      >
-                        {sku || '—'}
-                      </TableCell>
-                      <TableCell className="hidden whitespace-nowrap text-sm text-fg-muted xl:table-cell">
-                        {normalizeUom(product.unidade || product.stock_uom)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right font-mono text-sm font-medium">
-                        {product.pricing_available && product.preco_minimo != null ? (
-                          formatBRL(product.preco_minimo)
-                        ) : (
-                          <span
-                            className="text-xs font-normal text-fg-muted"
-                            title="Preço indisponível"
-                            aria-label="Preço indisponível"
-                          >
-                            —
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell
-                        className="text-center"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Ver detalhes do produto ${sku}`}
-                            title={`Ver detalhes ${sku}`}
-                            onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                          >
-                            <Eye />
-                          </Button>
-                          <span className="inline-flex items-center border-l border-line pl-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-fg-muted hover:bg-destructive/10 hover:text-destructive"
-                              aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                              title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
-                              onClick={() => requestArchive(sku, archived)}
-                            >
-                              {archived ? <ArchiveRestore /> : <Archive />}
-                            </Button>
-                          </span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="space-y-2 md:hidden">
-            {data.map((product) => {
+        <section aria-label="Produtos do catálogo" className="space-y-3">
+          <label className="flex w-fit items-center gap-2 text-xs font-medium text-fg-muted">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={(event) => toggleSelectAll(event.target.checked)}
+              aria-label="Selecionar todos os produtos desta página"
+              className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
+            />
+            Selecionar página
+          </label>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {data.map((product, index) => {
               const sku = product.sku || product.item_code || '';
               const isSelected = selectedIds.includes(sku);
               const archived = isArchivedProduct(product);
               const state = productStatus(product);
               const name = product.nome || product.item_name || 'Produto sem nome';
-              const description = product.descricao?.trim();
+              const category = product.categoria?.trim();
+              const visualTone = ['bg-sage/25', 'bg-light-sage/20', 'bg-cream/80'][index % 3];
               return (
                 <article
                   key={sku}
                   data-state={isSelected ? 'selected' : undefined}
-                  className="rounded-card bg-surface p-4 transition-colors data-[state=selected]:bg-surface-selected"
+                  className="overflow-hidden rounded-card bg-surface transition-colors data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="pt-1" onClick={(event) => event.stopPropagation()}>
+                  <div className={`relative flex h-40 items-center justify-center ${visualTone}`}>
+                    <PackageOpen
+                      size={52}
+                      strokeWidth={1.25}
+                      className="text-fg-muted/70"
+                      aria-hidden="true"
+                    />
+                    <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -713,50 +598,66 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                         aria-label={`Selecionar produto ${sku}`}
                         className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
                       />
+                    </label>
+                    <div className="absolute bottom-3 left-3 rounded-control bg-page/85 px-3 py-2 font-mono text-lg font-semibold text-fg">
+                      {product.pricing_available && product.preco_minimo != null
+                        ? formatBRL(product.preco_minimo)
+                        : <span className="text-sm font-normal text-fg-muted">Preço indisponível</span>}
                     </div>
+                    <StatusBadge
+                      status={state.status}
+                      label={state.label}
+                      className="absolute right-3 top-3"
+                    />
+                  </div>
+                  <div className="space-y-3 p-4">
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                      className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
+                      className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                       aria-label={`Abrir produto ${sku}: ${name}`}
                     >
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="line-clamp-2 text-sm font-semibold text-fg">{name}</span>
-                        <StatusBadge status={state.status} label={state.label} />
+                      <span className="block truncate text-sm font-semibold text-fg" title={name}>
+                        {name}
                       </span>
-                      <span className="mt-1 block line-clamp-1 text-xs text-fg-muted">
-                        {description || 'Sem descrição cadastrada'}
-                      </span>
-                      <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
-                        <span className="font-mono text-fg">
-                          {sku || 'SKU não informado'}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span>{normalizeUom(product.unidade || product.stock_uom)}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-medium text-fg">
-                          {product.pricing_available && product.preco_minimo != null
-                            ? formatBRL(product.preco_minimo)
-                            : 'Preço indisponível'}
-                        </span>
+                      <span className="mt-1 block truncate text-xs text-fg-muted">
+                        <span className="font-mono">{sku || 'SKU não informado'}</span>
+                        <span aria-hidden="true"> · </span>
+                        {category || 'Sem categoria'}
                       </span>
                     </button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 text-fg-muted hover:bg-destructive/10 hover:text-destructive"
-                      aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                      title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
-                      onClick={() => requestArchive(sku, archived)}
-                    >
-                      {archived ? <ArchiveRestore /> : <Archive />}
-                    </Button>
+                    <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+                      <span className="truncate text-xs text-fg-muted">
+                        {normalizeUom(product.unidade || product.stock_uom)}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Ver detalhes do produto ${sku}`}
+                          title={`Ver detalhes ${sku}`}
+                          onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
+                        >
+                          <Eye />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-fg-muted hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
+                          title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
+                          onClick={() => requestArchive(sku, archived)}
+                        >
+                          {archived ? <ArchiveRestore /> : <Archive />}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </article>
               );
             })}
           </div>
-        </>
+        </section>
       )}
 
       {!loading && !error && totalPages > 1 && (

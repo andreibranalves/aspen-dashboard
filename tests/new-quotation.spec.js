@@ -56,6 +56,11 @@ async function mockSharedApis(page, extractHandler, {
     contentType: 'application/json',
     body: JSON.stringify({ flows: [] }),
   }));
+  await page.route('**/api/client-matches**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ status: 'not_found', matched_client_id: null, candidates: [], total_candidates: 0, page: 1, has_more: false }),
+  }));
   await page.route('**/api/products**', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
@@ -84,11 +89,11 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
 
     await page.goto('/#/auto');
-    await expect(page.getByRole('tab', { name: 'Automático' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'A partir de uma conversa' })).toHaveAttribute('aria-selected', 'true');
     await page.goto('/#/manual');
-    await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
     await page.goto('/#/novo-orcamento');
-    await expect(page.getByRole('tab', { name: 'Automático' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'A partir de uma conversa' })).toHaveAttribute('aria-selected', 'true');
   });
 
   test('preserva os campos e o preço manual ao alternar entre Manual e Automático', async ({ page }) => {
@@ -99,7 +104,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
 
     await page.goto('/#/novo-orcamento');
-    await page.getByRole('tab', { name: 'Manual' }).click();
+    await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
     await expect(page.getByLabel('Origem *')).toHaveValue('Google Ads');
     await page.getByLabel('Nome do cliente').fill('Cliente alternância');
     await page.getByLabel('Origem *').selectOption('Google Ads');
@@ -111,11 +116,11 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Prazo de produção').fill('10 dias');
     await page.getByLabel('Observações do orçamento').fill('Condição negociada');
 
-    await page.getByRole('tab', { name: 'Automático' }).click();
+    await page.getByRole('tab', { name: 'A partir de uma conversa' }).click();
     await expect(page.getByText(/Resultados \(1\)/)).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Cliente Alternância' })).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Manual' }).click();
+    await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
     await expect(page.getByLabel('Nome do cliente')).toHaveValue('Cliente alternância');
     await expect(page.getByLabel(`Quantidade de ${PRODUCT.sku}`)).toHaveValue('7');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('19.75');
@@ -197,7 +202,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     const clearResults = page.getByRole('button', { name: 'Limpar lista' });
     await expect(clearResults).toBeVisible();
     await clearResults.click();
-    await expect(page.getByText('Nenhum pedido extraído', { exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Resultado da conversa' })).toHaveCount(0);
     await expect(page.getByLabel('Rascunho ativo')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => {
       const stored = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts') || 'null');
@@ -392,9 +397,9 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Mensagem do cliente para extração').fill('pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect.poll(() => pricingRequests.length).toBe(1);
-    const manualTab = page.getByRole('tab', { name: 'Manual' });
+    const manualTab = page.getByRole('tab', { name: 'Preencher manualmente' });
     await expect(manualTab).toBeDisabled();
-    await expect(page.getByRole('tab', { name: 'Automático' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'A partir de uma conversa' })).toHaveAttribute('aria-selected', 'true');
     releasePricing();
     await expect(page.getByRole('heading', { name: 'Cliente conversa' })).toBeVisible();
     await manualTab.click();
@@ -422,9 +427,9 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await expect.poll(() => pricingRequests.length).toBe(1);
-    const conversationTab = page.getByRole('tab', { name: 'Automático' });
+    const conversationTab = page.getByRole('tab', { name: 'A partir de uma conversa' });
     await expect(conversationTab).toBeDisabled();
-    await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
     releasePricing();
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('12.5');
     await conversationTab.click();
@@ -736,9 +741,9 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.addInitScript((draft) => globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [draft] })), savedDraft);
     const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders: [] }) }));
     await page.goto('/#/novo-orcamento');
-    await page.getByRole('tab', { name: 'Manual' }).click();
-    await page.getByRole('tab', { name: 'Automático' }).click();
-    await expect(page.getByText('Rascunho salvo. Continue a revisão ou emita o orçamento.')).toBeVisible();
+    await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
+    await page.getByRole('tab', { name: 'A partir de uma conversa' }).click();
+    await expect(page.getByRole('heading', { name: 'Cliente salvo' })).toBeVisible();
     expect(unexpectedApiRequests).toEqual([]);
   });
 
@@ -758,7 +763,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.addInitScript((draft) => globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [draft] })), issuedDraft);
     await mockSharedApis(page, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders: [] }) }));
     await page.goto('/#/novo-orcamento');
-    await page.getByRole('tab', { name: 'Manual' }).click();
+    await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
     await expect.poll(() => page.url()).toContain('#/quotations/quotation-issued');
   });
 
@@ -773,12 +778,12 @@ test.describe('Novo orçamento unificado @quotations', () => {
     });
     await mockSharedApis(page, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders: [] }) }));
     await page.goto('/#/novo-orcamento');
-    await page.getByRole('tab', { name: 'Manual' }).click();
+    await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
     await expect(page.getByLabel('Nome do cliente')).toHaveValue('Cliente rota comum');
 
     await page.evaluate(() => globalThis.localStorage.setItem('aspen_manual_draft', '{broken'));
     await page.reload();
-    await page.getByRole('tab', { name: 'Manual' }).click();
+    await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
     await expect(page.getByLabel('Nome do cliente')).toHaveValue('');
   });
 
@@ -840,11 +845,11 @@ test.describe('Novo orçamento unificado @quotations', () => {
     }));
 
     await page.goto('/#/novo-orcamento');
-    const conversationTab = page.getByRole('tab', { name: 'Automático' });
+    const conversationTab = page.getByRole('tab', { name: 'A partir de uma conversa' });
     await conversationTab.focus();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: 'Manual' })).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toBeFocused();
 
     const newClientTrigger = page.getByRole('button', { name: 'Novo cliente' });
     await newClientTrigger.click();

@@ -74,11 +74,10 @@ test.describe('Configurações de orçamento @quotations', () => {
     });
 
     await page.goto('/#/settings');
-    await expect(page.getByRole('heading', { name: 'Padrões de orçamento' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Condições padrão' })).toBeVisible();
 
     await page.getByLabel('Validade padrão (dias)').fill('30');
     await page.getByLabel('Frete padrão (R$)').fill('12.5');
-    await page.getByText('Conteúdo do documento', { exact: true }).first().click();
     await expect(page.getByText('Dados para pagamento', { exact: true })).toHaveCount(0);
     await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
     await page.getByLabel('Exibir resumo financeiro').uncheck();

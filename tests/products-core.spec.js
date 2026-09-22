@@ -418,15 +418,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByText(/10,00/).first()).toBeVisible();
     await expect.poll(() => activityRequests).toBe(1);
 
-    const initiallyDark = await page
-      .locator('html')
-      .evaluate((element) => element.classList.contains('dark'));
-    await page.getByRole('button', { name: /Ativar modo (claro|escuro)/ }).click();
-    await expect
-      .poll(() => page.locator('html').evaluate((element) => element.classList.contains('dark')))
-      .toBe(!initiallyDark);
-    await expect(productHeader).toBeVisible();
-
     await productHeader.getByRole('button', { name: 'Editar produto' }).click();
     await expect(page.getByPlaceholder('Nome do produto')).toHaveValue(
       'Produto com atividade local'
@@ -867,7 +858,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(requests.filter((request) => request.method === 'GET')).toHaveLength(0);
   });
 
-  test('separa seleção, arquivamento e abertura da linha ao operar a tabela por teclado', async ({
+  test('separa seleção, arquivamento e abertura do card ao operar por teclado', async ({
     page,
   }) => {
     const longName = 'Camiseta algodão premium coleção primavera azul-marinho';
@@ -878,13 +869,13 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/#/products');
 
-    const productRow = page.getByRole('row', { name: new RegExp('Abrir produto A11Y-SKU') });
+    const productCard = page.getByRole('article').filter({ has: page.getByRole('button', { name: /Abrir produto A11Y-SKU/ }) });
+    const openButton = productCard.getByRole('button', { name: /Abrir produto A11Y-SKU/ });
     const checkbox = page.getByRole('checkbox', { name: 'Selecionar produto A11Y-SKU' });
     const archiveButton = page.getByRole('button', { name: 'Arquivar produto A11Y-SKU' });
     const displayedName = page.getByText(longName, { exact: true }).first();
 
-    await expect(productRow).toBeVisible();
-    await expect(productRow).toHaveAttribute('tabindex', '0');
+    await expect(productCard).toBeVisible();
     await checkbox.focus();
     await checkbox.press('Space');
     await expect(checkbox).toBeChecked();
@@ -898,22 +889,19 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click();
 
     await expect(displayedName).toBeVisible();
-    expect(await displayedName.evaluate((element) => element.clientWidth > 250)).toBe(true);
-    expect(
-      await displayedName.evaluate((element) => element.scrollWidth <= element.clientWidth)
-    ).toBe(true);
-    await expect(productRow.getByText('A11Y-SKU', { exact: true })).toBeVisible();
-    await expect(productRow.getByText('R$ 19,90', { exact: true })).toBeVisible();
+    await expect(displayedName).toHaveAttribute('title', longName);
+    await expect(productCard.getByText('A11Y-SKU', { exact: true })).toBeVisible();
+    await expect(productCard.getByText('R$ 19,90', { exact: true })).toBeVisible();
     await expect(archiveButton).toBeVisible();
 
     await page.setViewportSize({ width: 768, height: 900 });
-    await expect(productRow).toBeVisible();
-    await expect(productRow.getByText('A11Y-SKU', { exact: true })).toBeVisible();
+    await expect(productCard).toBeVisible();
+    await expect(productCard.getByText('A11Y-SKU', { exact: true })).toBeVisible();
     await expect(archiveButton).toBeVisible();
 
-    await productRow.focus();
-    await expect(productRow).toBeFocused();
-    await productRow.press('Enter');
+    await openButton.focus();
+    await expect(openButton).toBeFocused();
+    await openButton.press('Enter');
     await expect(page).toHaveURL(/#\/products\/A11Y-SKU$/);
   });
 

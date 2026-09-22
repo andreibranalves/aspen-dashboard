@@ -178,6 +178,42 @@ test('exclusão manual permite excluir enviado e exibe bloqueio de pedido', asyn
   expect(attempts).toBe(2);
 });
 
+test('lista de orçamentos apresenta resumo, revisão, demanda e abre o item selecionado', async ({ page }) => {
+  const quotationUuid = '11111111-1111-4111-8111-111111111111';
+  const listRow = withCanonicalListRow({
+    id: 'ORC-20260007',
+    cliente: 'Cliente da lista',
+    status_canonical: 'rascunho',
+    data: '2026-09-20',
+    total: '1250.00',
+    revision_number: 3,
+    revision_id: '22222222-2222-4222-8222-222222222222',
+  }, quotationUuid);
+  listRow.canonical.name = 'Demanda personalizada';
+
+  await page.route('**/api/quotations?*', async (route) => {
+    await route.fulfill({
+      json: {
+        data: [listRow],
+        pagination: { total: 1, total_pages: 1 },
+        status_summary: { Rascunho: 1, Enviado: 0, Aprovado: 0, Perdido: 0 },
+      },
+    });
+  });
+
+  await page.goto('/#/quotations');
+  await expect(page.getByRole('heading', { name: 'Orçamentos' })).toBeVisible();
+  await expect(page.getByText('Volume das propostas')).toBeVisible();
+  await expect(page.getByText('Soma dos itens desta página')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Orçamento · revisão' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ORC-20260007', exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Rev. 3').first()).toBeVisible();
+  await expect(page.getByText('Demanda personalizada').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Abrir', exact: true }).click();
+  await expect(page).toHaveURL(/#\/quotations\/11111111-1111-4111-8111-111111111111$/);
+});
+
 test('email markers render on desktop and mobile', async ({ page }) => {
   const rows = [
     withCanonicalListRow(
@@ -282,7 +318,7 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
   await expect(page.getByText('Não foi possível carregar os orçamentos.')).toBeVisible();
   await expect(page.getByText('internal database details')).toHaveCount(0);
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.getByRole('cell', { name: 'ORC-RETRY-1', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ORC-RETRY-1', exact: true })).toBeVisible();
   expect(attempts).toBeGreaterThanOrEqual(3);
 });
 
@@ -320,7 +356,7 @@ test('lista distingue filtro sem resultado, preserva paginação e destaca o or�
   await page.goto('/#/quotations?search=sem-resultado&status=aprovado&page=2&limit=25');
   await expect(page.getByText('Nenhum orçamento encontrado')).toBeVisible();
   await page.getByRole('button', { name: 'Limpar filtros' }).click();
-  await expect(page.getByRole('cell', { name: row.id, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: row.id, exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Aprovado', exact: true })).toBeVisible();
 
   const hash = new globalThis.URL(page.url().replace(/^.*#/, 'http://local/'));
@@ -859,7 +895,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await expect(page.getByText(id).first()).toBeVisible();
   await page.getByLabel('Buscar orçamentos').fill('Cliente');
   await expect(page.getByText(id).first()).toBeVisible();
-  await page.getByRole('cell', { name: id, exact: true }).click();
+  await page.getByRole('button', { name: id, exact: true }).click();
   await expect(page.getByText('Produto local')).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByLabel('Condição de pagamento').fill('Não persistir');

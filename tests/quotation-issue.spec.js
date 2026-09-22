@@ -389,7 +389,7 @@ test('persiste recovery manual concluído antes de navegar e não repete GET ao 
   await page.goto('/#/quotations');
   await expect(page.getByRole('heading', { name: 'Orçamentos' })).toBeVisible();
   await page.goto('/#/manual');
-  await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
   expect(requests.filter((request) => request.method() === 'GET')).toHaveLength(1);
   expect(page.getByText('Recuperando a emissão pendente…', { exact: true })).toHaveCount(0);
 });
@@ -406,7 +406,7 @@ test('mantém a recuperação manual acionável após quatro respostas processin
   await expect(page.getByRole('button', { name: 'Consultar novamente' })).toBeVisible();
   await expect(page.getByLabel('Nome do cliente')).toBeDisabled();
   await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
   const beforeRetry = requests.filter((request) => request.method() === 'GET').length;
   await page.getByRole('button', { name: 'Consultar novamente' }).click();
   await expect.poll(() => requests.filter((request) => request.method() === 'GET').length).toBe(beforeRetry + 1);
@@ -644,7 +644,7 @@ test('bloqueia edição, modo, navegação e beforeunload durante save manual @q
   await expect(page.getByRole('button', { name: 'Remover SKU-1' })).toBeDisabled();
   await expect(page.getByRole('tab', { name: 'Da conversa' })).toBeEnabled();
   await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Orçamentos' }).click();
   await expect(page).toHaveURL(/#\/manual$/);
   await expect.poll(() => page.evaluate(() => {
@@ -662,8 +662,8 @@ test('bloqueia edição, modo, navegação e beforeunload durante save da conver
   await page.getByRole('button', { name: 'Salvar rascunho', exact: true }).click();
   await expect.poll(() => saveRequests.length).toBe(1);
   await expect(page.getByRole('button', { name: 'Editar' })).toBeDisabled();
-  await expect(page.getByRole('tab', { name: 'Manual' })).toBeEnabled();
-  await page.getByRole('tab', { name: 'Manual' }).click();
+  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toBeEnabled();
+  await page.getByRole('tab', { name: 'Preencher manualmente' }).click();
   await expect(page.getByRole('tab', { name: 'Da conversa' })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Orçamentos' }).click();
   await expect(page).toHaveURL(/#\/auto$/);
@@ -719,7 +719,7 @@ test('mantém os campos manuais bloqueados enquanto o POST oficial aguarda respo
   await expect(page.getByLabel('Quantidade de SKU-1')).toBeDisabled();
   await expect(page.getByRole('tab', { name: 'Da conversa' })).toBeEnabled();
   await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => page.evaluate(() => {
     const event = new globalThis.Event('beforeunload', { cancelable: true });
     globalThis.dispatchEvent(event);
@@ -905,7 +905,7 @@ test('bloqueia o modo manual enquanto o GET de recovery está pendente @quotatio
   await expect.poll(() => requests.filter((request) => request.method() === 'GET').length).toBe(1);
   await expect(page.getByLabel('Nome do cliente')).toBeDisabled();
   await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Manual' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
   releaseGet();
   await expect(page).toHaveURL(/#\/quotations\/q-1$/);
 });

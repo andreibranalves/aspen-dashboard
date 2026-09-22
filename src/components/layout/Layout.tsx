@@ -145,6 +145,8 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
     [route]
   );
   const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
+  const breadcrumbItems = getBreadcrumb(route, detailLabel);
+  const isDetailRoute = breadcrumbItems.length > 2;
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
@@ -176,18 +178,18 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         currentRoute={route}
         onNavigate={onNavigate}
       />
-      <div className="aspen-workspace flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-page p-4 text-fg md:rounded-shell md:p-workspace">
+      <div className="aspen-workspace relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-page p-4 text-fg md:rounded-shell md:p-workspace">
         <TopBar
           route={route}
           onMenuClick={toggleSidebar}
           sidebarOpen={!sidebarCollapsed}
           isMobile={isMobile}
-          breadcrumbItems={getBreadcrumb(route, detailLabel)}
+          breadcrumbItems={breadcrumbItems}
           onNavigate={onNavigate}
         />
         <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
           <main
-            className="min-h-0 flex-1 overflow-auto"
+            className={`min-h-0 flex-1 overflow-auto ${isDetailRoute ? 'xl:pt-5' : ''}`}
             inert={isMobile && !sidebarCollapsed ? true : undefined}
           >
             {children}

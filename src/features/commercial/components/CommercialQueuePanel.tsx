@@ -7,6 +7,7 @@ import {
   ExternalLink,
   ListChecks,
   MessageCircle,
+  Search,
   RefreshCw,
   Star,
 } from 'lucide-react';
@@ -15,14 +16,6 @@ import SkeletonTable from '@/components/shared/SkeletonTable';
 import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formatting/formatters';
 import {
   associateCommercialInbound,
@@ -258,7 +251,14 @@ function dueStatusLabel(status: CommercialQueueItem['dueStatus']): string {
   if (status === 'overdue') return 'Atrasada';
   if (status === 'today') return 'Hoje';
   if (status === 'closed') return 'Encerrada';
-  return 'Próxima';
+  return 'Agendada';
+}
+
+function dueStatusTone(status: CommercialQueueItem['dueStatus']): string {
+  if (status === 'overdue') return 'tone-destructive-soft';
+  if (status === 'today') return 'tone-warning-soft';
+  if (status === 'closed') return 'tone-neutral-muted';
+  return 'tone-primary-soft';
 }
 
 function dueLabel(item: CommercialQueueItem): string {
@@ -318,6 +318,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [submitting, setSubmitting] = useState(false);
   const [urgencySubmitting, setUrgencySubmitting] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<CommercialQueueFilter>('active');
+  const [search, setSearch] = useState('');
   const [manualSuggestion, setManualSuggestion] = useState<ManualContactSuggestion | null>(null);
   const [followUpReview, setFollowUpReview] = useState<FollowUpView | null>(null);
   const [followUpReviewLoading, setFollowUpReviewLoading] = useState(false);
@@ -418,6 +419,14 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }, [filter, load, page]);
 
   const rows = result?.data || [];
+  const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
+  const visibleRows = normalizedSearch
+    ? rows.filter((item) =>
+        [contactLabel(item), item.reasonLabel, item.reason, item.demandSummary, item.kindLabel]
+          .filter(Boolean)
+          .some((value) => value!.toLocaleLowerCase('pt-BR').includes(normalizedSearch))
+      )
+    : rows;
   const total = result?.total ?? 0;
   // The rendered page is always the one the server actually served.
   const currentPage = result?.page ?? page;
@@ -1188,7 +1197,6 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   function contextDetails(item: CommercialQueueItem) {
     return (
       <div className="space-y-1 rounded-xl border border-line bg-surface-subtle p-3 text-xs text-fg-muted">
-        <p>Motivo: {item.reason || item.reasonLabel}</p>
         <p>Prazo: {dueLabel(item)}</p>
         <p>{contactContextLabel(item)}</p>
         {item.contactContext.blockers.length > 0 ? (
@@ -1224,9 +1232,39 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      {!loading && !error && (
+        <section aria-label="Resumo da fila nesta página" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {([
+            ['Atrasadas', 'overdue'],
+            ['Hoje', 'today'],
+            ['Agendadas', 'upcoming'],
+            ['Encerradas', 'closed'],
+          ] as const).map(([label, status]) => (
+            <article key={status} className="rounded-card border border-line bg-surface p-4">
+              <p className="text-sm text-fg-muted">{label}</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums">
+                {rows.filter((item) => item.dueStatus === status).length}
+              </p>
+              <p className="mt-1 text-xs text-fg-muted">Nesta página</p>
+            </article>
+          ))}
+        </section>
+      )}
+
+      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-3 sm:flex-row sm:items-center">
+        <label className="relative min-w-0 flex-1">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
+          <input
+            type="search"
+            aria-label="Buscar nesta página da fila"
+            placeholder="Buscar cliente ou ação"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-10 w-full rounded-control border border-input bg-background pl-9 pr-3 text-sm"
+          />
+        </label>
         <div
-          className="mr-auto flex flex-wrap gap-1 rounded-control border border-line bg-surface-subtle p-1"
+          className="flex flex-wrap gap-1 rounded-control bg-surface-subtle p-1"
           role="tablist"
           aria-label="Cortes da fila comercial"
         >
@@ -1251,36 +1289,6 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             </button>
           ))}
         </div>
-        {showPagination && (
-          <nav
-            aria-label="Paginação da fila"
-            className="mr-auto flex items-center gap-2 text-sm text-fg-muted"
-          >
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={loading || currentPage <= 1}
-            >
-              <ChevronLeft aria-hidden="true" />
-              Anterior
-            </Button>
-            <span aria-live="polite">
-              Página {Math.min(currentPage, lastPage)} de {lastPage}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
-              disabled={loading || currentPage >= lastPage}
-            >
-              Próxima
-              <ChevronRight aria-hidden="true" />
-            </Button>
-          </nav>
-        )}
         <Button
           type="button"
           variant="outline"
@@ -1293,22 +1301,23 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         </Button>
       </div>
 
+      {showPagination && (
+        <nav aria-label="Paginação da fila" className="flex items-center justify-end gap-2 text-sm text-fg-muted">
+          <Button type="button" variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || currentPage <= 1}>
+            <ChevronLeft aria-hidden="true" /> Anterior
+          </Button>
+          <span aria-live="polite">Página {Math.min(currentPage, lastPage)} de {lastPage}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setPage((current) => Math.min(lastPage, current + 1))} disabled={loading || currentPage >= lastPage}>
+            Próxima <ChevronRight aria-hidden="true" />
+          </Button>
+        </nav>
+      )}
+
       {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-        >
+        <div role="alert" className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
           <span>{error}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto"
-            onClick={() => void load(page, filter)}
-          >
-            Tentar novamente
-          </Button>
+          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => void load(page, filter)}>Tentar novamente</Button>
         </div>
       )}
 
@@ -1320,103 +1329,43 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           title="Nenhuma próxima ação"
           description="Leads novos entram aqui com o primeiro atendimento pendente."
         />
+      ) : visibleRows.length === 0 ? (
+        <EmptyState
+          icon={ListChecks}
+          title="Nenhuma ação nesta visualização"
+          description="Altere a busca ou o status."
+        />
       ) : (
-        <>
-          <div className="hidden lg:block">
-            <Table
-              className="min-w-[720px] [&_td]:py-4 [&_th]:h-12"
-              containerClassName="overflow-x-auto rounded-card border-line bg-surface"
-            >
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Contato</TableHead>
-                  <TableHead>Demanda</TableHead>
-                  <TableHead>Propostas</TableHead>
-                  <TableHead>Contexto</TableHead>
-                  <TableHead>Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((item) => (
-                  <TableRow key={item.actionId}>
-                    <TableCell>
-                      {clientName(item)}
-                      {item.clientName && item.contactName !== item.clientName && (
-                        <p className="text-xs text-fg-muted">Contato: {item.contactName}</p>
-                      )}
-                      {contactDetail(item) && (
-                        <p className="text-xs text-fg-muted">{contactDetail(item)}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-96 truncate text-fg-muted">
-                      {item.demandSummary || 'Demanda não informada'}
-                    </TableCell>
-                    <TableCell className="text-fg-muted">
-                      {item.proposals.length === 0 ? (
-                        <span className="text-xs">Sem propostas</span>
-                      ) : (
-                        <ul className="space-y-1 text-xs">
-                          {item.proposals.map((proposal) => (
-                            <li key={proposal.quotationId} className="whitespace-nowrap">
-                              {proposalLabel(proposal)}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </TableCell>
-                    <TableCell>{contextDetails(item)}</TableCell>
-                    <TableCell>
-                      <div className="space-y-2">
-                        {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
-                        {urgencyButton(item)}
-                        {whatsappLink(item)}
-                        {actionButtons(item)}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="grid gap-3 lg:hidden">
-            {rows.map((item) => (
-              <article key={item.actionId} className="rounded-card border border-line bg-surface p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate">{clientName(item)}</p>
-                    {item.clientName && item.contactName !== item.clientName && (
-                      <p className="mt-1 truncate text-xs text-fg-muted">
-                        Contato: {item.contactName}
-                      </p>
-                    )}
-                    {contactDetail(item) && (
-                      <p className="mt-1 text-xs text-fg-muted">{contactDetail(item)}</p>
-                    )}
-                  </div>
-                  {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
-                </div>
-                <p className="mt-3 text-sm text-fg-muted">
-                  {item.demandSummary || 'Demanda não informada'}
-                </p>
-                <p className="mt-1 text-xs text-fg-muted">Oportunidade: {item.opportunityId}</p>
-                {item.proposals.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs text-fg-muted">
-                    {item.proposals.map((proposal) => (
-                      <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-3">{contextDetails(item)}</div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {urgencyButton(item)}
-                  {whatsappLink(item)}
-                </div>
-                <div className="mt-3">{actionButtons(item)}</div>
-              </article>
-            ))}
-          </div>
-        </>
+        <div role="table" aria-label="Agenda comercial" className="space-y-3">
+          {visibleRows.map((item) => (
+            <article key={item.actionId} role="row" className="grid gap-4 rounded-card border border-line bg-surface p-4 xl:grid-cols-[110px_minmax(180px,1.2fr)_minmax(160px,1fr)_minmax(180px,1.2fr)_minmax(150px,1fr)] xl:items-center xl:p-5">
+              <div role="cell" className="flex items-center gap-2 xl:block">
+                <time dateTime={item.dueAt} className="font-semibold tabular-nums">{formatDate(item.dueDate || item.dueAt)}</time>
+                <span className="text-sm text-fg-muted">{item.scheduleType === 'date_only' ? 'Dia inteiro' : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</span>
+              </div>
+              <div role="cell" className="min-w-0">
+                <p className="font-medium">{item.reason || item.reasonLabel}</p>
+                <p className="mt-1 text-sm text-fg-muted">{item.kindLabel}</p>
+              </div>
+              <div role="cell" className="min-w-0">
+                <div className="truncate">{clientName(item)}</div>
+                {contactDetail(item) && <p className="mt-1 truncate text-xs text-fg-muted">{contactDetail(item)}</p>}
+              </div>
+              <div role="cell" className="space-y-2">
+                <StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} className={dueStatusTone(item.dueStatus)} />
+                {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
+                <p className="text-xs text-fg-muted">{item.demandSummary || 'Demanda não informada'}</p>
+                {item.proposals.length > 0 && <ul className="space-y-1 text-xs text-fg-muted">{item.proposals.map((proposal) => <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>)}</ul>}
+                <div className="text-xs text-fg-muted">{contextDetails(item)}</div>
+              </div>
+              <div role="cell" className="flex flex-wrap items-center gap-2 xl:justify-end">
+                {urgencyButton(item)}
+                {whatsappLink(item)}
+                {actionButtons(item)}
+              </div>
+            </article>
+          ))}
+        </div>
       )}
 
       {dialog && (

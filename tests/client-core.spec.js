@@ -141,6 +141,49 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByText(CLIENT.nome, { exact: true }).last()).toBeVisible();
   });
 
+  test('lista clientes preserva dados reais, seleção e ação para abrir o detalhe', async ({ page }) => {
+    const detailRequests = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/api/client-detail')) detailRequests.push(request.url());
+    });
+    await page.route('**/api/leads-clients**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [CLIENT],
+          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        }),
+      });
+    });
+
+    await page.goto('/#/leads');
+
+    const table = page.getByRole('table');
+    await expect(table.getByRole('columnheader')).toHaveText([
+      'Cliente',
+      'Contato',
+      'Documento',
+      'Status',
+      'Ações',
+    ]);
+    const row = table.getByRole('row').nth(1);
+    await expect(row.getByRole('link', { name: CLIENT.nome })).toHaveAttribute(
+      'href',
+      `#/leads/cliente/${CLIENT.id}`
+    );
+    await expect(row.getByRole('cell').nth(2)).toHaveText('123.456.789-01');
+    await expect(row.getByRole('button', { name: `Abrir cliente ${CLIENT.nome}` })).toBeVisible();
+    await expect(row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` })).toBeVisible();
+    await expect(page.getByText('1 cliente selecionado')).toHaveCount(0);
+    expect(detailRequests).toHaveLength(0);
+    await row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` }).check();
+    await expect(page.getByText('1 cliente selecionado')).toBeVisible();
+    await page.route('**/api/client-detail**', (route) => route.fulfill({ json: DETAIL }));
+    await row.getByRole('button', { name: `Abrir cliente ${CLIENT.nome}` }).click();
+    await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${CLIENT.id}$`));
+  });
+
   test('consulta identidade, contato e histórico sem expor UUID e preserva os destinos comerciais', async ({
     page,
   }) => {

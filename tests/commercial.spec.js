@@ -26,13 +26,13 @@ const deal = {
 
 const crm = {
   columns: [
-    { status: 'Novo Lead', count: 0, deals: [] },
-    { status: 'Contato Feito', count: 0, deals: [] },
-    { status: 'Orcamento Enviado', count: 1, deals: [deal] },
-    { status: 'Em Negociacao', count: 0, deals: [] },
-    { status: 'Arte Aprovada', count: 0, deals: [] },
-    { status: 'Pedido Fechado', count: 0, deals: [] },
-    { status: 'Perdido', count: 0, deals: [] },
+    { status: 'Novo Lead', name: 'Novo Lead', count: 0, deals: [] },
+    { status: 'Contato Feito', name: 'Contato Feito', count: 0, deals: [] },
+    { status: 'Orcamento Enviado', name: 'Orçamento Enviado', count: 1, deals: [deal] },
+    { status: 'Em Negociacao', name: 'Em Negociação', count: 0, deals: [] },
+    { status: 'Arte Aprovada', name: 'Arte Aprovada', count: 0, deals: [] },
+    { status: 'Pedido Fechado', name: 'Pedido Fechado', count: 0, deals: [] },
+    { status: 'Perdido', name: 'Perdido', count: 0, deals: [] },
   ],
 };
 
@@ -53,6 +53,10 @@ test('comercial alterna negócios entre Lista e Quadro', async ({ page }) => {
   await page.keyboard.press('ArrowRight');
   await expect(page).toHaveURL(/#\/crm\?tab=deals&view=board$/);
   await expect(page.getByRole('region', { name: 'Pipeline CRM' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Orçamento Enviado' })).toBeVisible();
+  await expect(page.getByText('ORC-COMERCIAL', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Origem · site', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Atualizado há \d+ dias$/)).toBeVisible();
   await page.keyboard.press('ArrowLeft');
   await expect(page.getByRole('tab', { name: 'Lista' })).toHaveAttribute('aria-selected', 'true');
 
