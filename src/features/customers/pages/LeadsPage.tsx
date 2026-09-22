@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -219,7 +220,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [search, setSearch] = useHashQueryState('search', '', parseHashString);
   const [status, setStatus] = useHashQueryState<'active' | 'archived' | 'all'>(
     'status',
-    'active',
+    'all',
     parseLeadStatus
   );
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
@@ -227,6 +228,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRequestGenerationRef = useRef(0);
   const listRequestKeyRef = useRef<string | null>(null);
@@ -438,6 +440,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 empresa: projected.empresa,
                 email: projected.email,
                 telefone: projected.telefone,
+                municipio: projected.address?.municipio,
+                uf: projected.address?.uf,
                 documento: projected.tax_id || projected.documento,
               }
             : row
@@ -584,15 +588,15 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
   const clearFilters = () => {
     setSearch('');
-    setStatus('active');
+    setStatus('all');
     setPage(1);
-    void fetchData('', 1, 'active', limit);
+    void fetchData('', 1, 'all', limit);
   };
 
   const selectRow = (row: DataRow) => {
     const label = rowLabel(row);
     return (
-      <div>
+      <EntityIdentity name={label} secondary={row.id} primary={
         <a
           href={`#/leads/cliente/${encodeURIComponent(row.id)}`}
           onClick={(event) => {
@@ -601,12 +605,11 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             navigateToDetail(row.id);
           }}
           title={label}
-          className="block max-w-[240px] break-words font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          className="block max-w-[240px] break-words font-medium text-fg underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
         >
           {label}
         </a>
-        {row.empresa && <p className="mt-0.5 text-xs text-fg-muted">{row.empresa}</p>}
-      </div>
+      } />
     );
   };
 
@@ -614,23 +617,23 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     <PageShell className="space-y-5 pb-28">
       <PageHeader
         title="Clientes"
-        description={
-          !loading && !error ? `${totalRecords} cliente${totalRecords === 1 ? '' : 's'}` : undefined
-        }
+        description="Relacionamentos que fazem o negócio crescer."
         actions={
           <>
+            <span className="mr-auto hidden text-xs text-fg-muted xl:inline">O contexto do relacionamento, em um só lugar.</span>
             <ExportCsvButton resource="clients" filters={{ search, status }}>
               Exportar CSV
             </ExportCsvButton>
-            <Button onClick={() => navigate?.('/leads/cliente/new')}>
+            <Button onClick={() => navigate?.('/leads/new')}>
               <UserPlus />
-              Novo contato
+              Novo cliente
             </Button>
           </>
         }
       />
 
-      <PageToolbar className="items-end rounded-card border border-line bg-surface p-4 md:p-5">
+      <section className="rounded-card bg-surface p-5" aria-label="Lista de clientes">
+      <PageToolbar className="mb-5 items-center">
         <div className="relative w-full max-w-[286px] flex-1">
           <Search
             size={16}
@@ -638,54 +641,18 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             aria-hidden="true"
           />
           <Input
-            placeholder="Buscar clientes"
+            placeholder="Buscar nome, empresa ou e-mail"
             value={search}
             onChange={onSearchChange}
             className="pl-9"
             aria-label="Buscar clientes"
           />
         </div>
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-fg-muted">
-          Itens por página
-          <Select
-            value={limit}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              setLimit(value);
-              setPage(1);
-              void fetchData(search, 1, status, value);
-            }}
-            aria-label="Itens por página"
-          >
-            {PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <div
-          className="flex items-center gap-1 rounded-control border border-line bg-surface-subtle p-1"
-          role="group"
-          aria-label="Filtrar clientes por status"
-        >
-          {(['active', 'archived', 'all'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={status === value}
-              onClick={() => {
-                setStatus(value);
-                setPage(1);
-                void fetchData(search, 1, value, limit);
-              }}
-              className={`rounded-control px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${status === value ? 'bg-primary text-on-solid' : 'text-fg-muted hover:bg-surface hover:text-fg'}`}
-            >
-              {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
-            </button>
-          ))}
-        </div>
-        {data.length > 0 && (
+        <Select value={status} onChange={(event) => { const value = event.target.value as 'active' | 'archived' | 'all'; setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} aria-label="Filtrar clientes por status">
+          <option value="all">Todos os status</option><option value="active">Ativos</option><option value="archived">Arquivados</option>
+        </Select>
+        <button type="button" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} className="ml-auto rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
+        {selectionMode && data.length > 0 && (
           <label className="flex min-h-9 items-center gap-2 text-sm text-fg md:hidden">
             <input
               type="checkbox"
@@ -713,23 +680,23 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         <EmptyState
           icon={Users}
           title={
-            search || status !== 'active'
+            search || status !== 'all'
               ? 'Nenhum cliente corresponde aos filtros'
               : 'Nenhum cliente encontrado'
           }
           description={
-            search || status !== 'active'
+            search || status !== 'all'
               ? 'Tente ajustar a busca ou o filtro de status.'
               : 'Cadastre um cliente para começar.'
           }
           actions={
-            search || status !== 'active' ? (
+            search || status !== 'all' ? (
               <Button variant="outline" onClick={clearFilters}>
                 Limpar filtros
               </Button>
             ) : (
-              <Button onClick={() => navigate?.('/leads/cliente/new')}>
-                <UserPlus /> Novo contato
+              <Button onClick={() => navigate?.('/leads/new')}>
+                <UserPlus /> Novo cliente
               </Button>
             )
           }
@@ -738,28 +705,26 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
-            <Table
-              className="[&_td]:py-4 [&_th]:h-12"
-              containerClassName="rounded-card border-line bg-surface"
-            >
+            <Table className="min-w-[760px] [&_td]:py-4 [&_th]:h-12" containerClassName="rounded-none">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[220px]">
                     <div className="flex items-center gap-3">
-                      <input
+                      {selectionMode && <input
                         ref={selectAllRef}
                         type="checkbox"
                         checked={allSelected}
                         onChange={(event) => toggleAll(event.target.checked)}
                         aria-label="Selecionar todos os clientes"
-                      />
+                      />}
                       <span>Cliente</span>
                     </div>
                   </TableHead>
                   <TableHead>Contato</TableHead>
-                  <TableHead className="hidden xl:table-cell">Documento</TableHead>
+                  <TableHead>Localização</TableHead>
+                  <TableHead>Orçamentos</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -771,7 +736,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       key={row.id}
                       interactive
                       data-state={selectedIds.includes(row.id) ? 'selected' : undefined}
-                      className="cursor-pointer"
+                      className="group cursor-pointer"
                       onClick={(event) => {
                         const target = event.target as HTMLElement;
                         if (target.closest('a,button,input,select,textarea,summary,details'))
@@ -781,13 +746,13 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                     >
                       <TableCell className="min-w-[220px]">
                         <div className="flex items-start gap-3">
-                          <input
+                          {selectionMode && <input
                             className="mt-1 shrink-0"
                             type="checkbox"
                             checked={selectedIds.includes(row.id)}
                             onChange={() => toggleSelected(row.id)}
                             aria-label={`Selecionar ${label}`}
-                          />
+                          />}
                           <div className="min-w-0 flex-1">{selectRow(row)}</div>
                         </div>
                       </TableCell>
@@ -821,27 +786,26 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden max-w-[180px] xl:table-cell text-xs text-fg-muted">
-                        <span title={row.documento || undefined}>
-                          {row.documento
-                            ? formatDocument(row.documento)
-                            : 'Documento não informado'}
-                        </span>
+                      <TableCell className="text-xs text-fg-muted">
+                        {[row.municipio, row.uf].filter(Boolean).join(', ') || '—'}
+                      </TableCell>
+                      <TableCell>
+                        <button type="button" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} className="text-xs text-fg hover:text-light-sage hover:underline">Ver orçamentos</button>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button
+                          <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><Button
                             variant="ghost"
                             size="icon"
                             aria-label={`Abrir cliente ${label}`}
                             onClick={() => navigateToDetail(row.id)}
                           >
                             <ChevronRight />
-                          </Button>
-                          <Button
+                          </Button></span>
+                          <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><Button
                             variant="ghost"
                             size="icon"
                             title={`Novo orçamento para ${label}`}
@@ -858,12 +822,12 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                             aria-label={`Visualização rápida ${label}`}
                           >
                             <Eye />
-                          </Button>
-                          <CustomerActionMenu
+                          </Button></span>
+                          <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><CustomerActionMenu
                             archived={isArchivedRow(row)}
                             customerName={label}
                             onArchiveToggle={() => toggleArchive(row)}
-                          />
+                          /></span>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -880,13 +844,13 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
               return (
                 <article key={row.id} className="rounded-card border border-line bg-surface p-5">
                   <div className="flex items-start gap-3">
-                    <input
+                    {selectionMode && <input
                       className="mt-1 shrink-0"
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Marcar cartão mobile de ${label}`}
-                    />
+                    />}
                     <div className="min-w-0 flex-1">
                       {selectRow(row)}
                       <StatusBadge
@@ -956,15 +920,21 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           </div>
         </>
       )}
+      </section>
 
-      {totalPages > 1 && (
+      {!loading && !error && data.length > 0 && (
         <nav
           className="flex flex-wrap items-center justify-between gap-3 text-sm"
           aria-label="Paginação de clientes"
         >
-          <span className="text-fg-muted">
-            Página {page} de {totalPages} · {totalRecords} registro{totalRecords === 1 ? '' : 's'}
-          </span>
+          <div className="flex flex-wrap items-center gap-3 text-fg-muted">
+            <span>{totalRecords} registro{totalRecords === 1 ? '' : 's'} · Página {page} de {totalPages || 1}</span>
+            <label className="flex items-center gap-2 text-xs">Itens por página
+              <Select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página">
+                {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+              </Select>
+            </label>
+          </div>
           <div className="flex flex-wrap gap-1">
             <Button
               variant="outline"

@@ -97,7 +97,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
     ];
   }
   if (path.startsWith('/leads/')) {
-    const id = path.split('/').slice(3).join('/');
+    const id = path === '/leads/new' ? 'new' : path.split('/').slice(3).join('/');
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Clientes', hash: getParentRoute('/leads') },
@@ -124,11 +124,9 @@ export interface LayoutProps {
 }
 
 const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
-const COMPACT_MEDIA_QUERY = '(max-width: 1023px)';
-
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') return window.innerWidth < 1024;
+    if (typeof window !== 'undefined') return window.innerWidth < 768;
     return false;
   });
   const [isMobile, setIsMobile] = useState(
@@ -151,19 +149,17 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   useEffect(() => {
     if (!window.matchMedia) return undefined;
     const mobileMedia = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const compactMedia = window.matchMedia(COMPACT_MEDIA_QUERY);
     const updateMobile = () => setIsMobile(mobileMedia.matches);
-    const collapseAtCompactWidth = () => {
-      if (compactMedia.matches) setSidebarCollapsed(true);
-    };
     updateMobile();
     mobileMedia.addEventListener?.('change', updateMobile);
-    compactMedia.addEventListener?.('change', collapseAtCompactWidth);
     return () => {
       mobileMedia.removeEventListener?.('change', updateMobile);
-      compactMedia.removeEventListener?.('change', collapseAtCompactWidth);
     };
   }, []);
+
+  useEffect(() => {
+    setSidebarCollapsed(isMobile);
+  }, [isMobile]);
 
   useEffect(() => {
     if (isMobile) setSidebarCollapsed(true);
@@ -178,23 +174,25 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         currentRoute={route}
         onNavigate={onNavigate}
       />
-      <div className="aspen-workspace relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-page p-4 text-fg md:rounded-shell md:p-workspace">
-        <TopBar
-          route={route}
-          onMenuClick={toggleSidebar}
-          sidebarOpen={!sidebarCollapsed}
-          isMobile={isMobile}
-          breadcrumbItems={breadcrumbItems}
-          onNavigate={onNavigate}
-        />
-        <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
-          <main
-            className={`min-h-0 flex-1 overflow-auto ${isDetailRoute ? 'xl:pt-5' : ''}`}
-            inert={isMobile && !sidebarCollapsed ? true : undefined}
-          >
-            {children}
-          </main>
-        </BreadcrumbLabelProvider>
+      <div className="aspen-workspace min-h-0 min-w-0 flex-1 overflow-y-auto bg-page p-4 text-fg md:rounded-shell md:p-workspace">
+        <div className="relative min-h-full">
+          <TopBar
+            route={route}
+            onMenuClick={toggleSidebar}
+            sidebarOpen={!sidebarCollapsed}
+            isMobile={isMobile}
+            breadcrumbItems={breadcrumbItems}
+            onNavigate={onNavigate}
+          />
+          <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
+            <main
+              className={isDetailRoute ? 'xl:pt-5' : undefined}
+              inert={isMobile && !sidebarCollapsed ? true : undefined}
+            >
+              {children}
+            </main>
+          </BreadcrumbLabelProvider>
+        </div>
       </div>
     </div>
   );

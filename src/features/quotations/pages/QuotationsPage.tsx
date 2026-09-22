@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import {
   Search,
-  Sparkles,
   Pencil,
   FileText,
   Trash2,
@@ -15,7 +14,7 @@ import {
   Send,
   BadgeCheck,
   Wallet,
-  ArrowUpRight,
+  ChevronRight,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -28,6 +27,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
@@ -96,6 +96,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [duplicateTarget, setDuplicateTarget] = useState<string | null>(null);
   const [openActionRow, setOpenActionRow] = useState<string | null>(null);
@@ -465,14 +466,11 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     <PageShell className={selectedCount > 0 ? 'space-y-6 pb-48 sm:pb-28' : 'space-y-6 pb-4'}>
       <PageHeader
         title="Orçamentos"
-        description="Da primeira conversa à proposta aprovada."
+        description="Propostas organizadas, do começo ao fim."
         actions={
           <>
-            <Button onClick={() => navigate('/auto')} variant="outline">
-              <Sparkles />
-              Auto
-            </Button>
-            <Button onClick={() => navigate('/manual')} variant="default">
+            <span className="mr-auto hidden text-xs text-fg-muted xl:inline">Da primeira conversa à proposta aprovada.</span>
+            <Button onClick={() => navigate('/novo-orcamento')} variant="default">
               <PlusCircle />
               Novo orçamento
             </Button>
@@ -487,19 +485,19 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           { label: 'Aprovados', value: statusSummary.Aprovado ?? 0, note: 'Prontos para avançar', Icon: BadgeCheck },
           { label: 'Volume das propostas', value: formatBRL(visibleVolume), note: 'Soma dos itens desta página', Icon: Wallet },
         ].map(({ label, value, note, Icon }) => (
-          <div key={label} className="flex min-h-28 items-start justify-between gap-3 rounded-2xl border border-line bg-surface p-4 md:p-5">
+          <div key={label} className="flex min-h-[145px] items-start justify-between gap-3 rounded-card bg-surface p-[22px]">
             <div className="min-w-0">
               <p className="text-xs font-medium text-fg-muted">{label}</p>
-              <p className="mt-2 truncate text-2xl font-semibold tracking-tight text-fg [font-variant-numeric:tabular-nums]">{value}</p>
-              <p className="mt-1 text-xs text-fg-muted">{note}</p>
+              <p className="mt-4 truncate text-[28px] font-bold tracking-tight text-fg [font-variant-numeric:tabular-nums]">{value}</p>
+              <p className="mt-4 text-[11px] text-fg-muted">{note}</p>
             </div>
             <Icon size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
           </div>
         ))}
       </section>
 
-      <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4 md:px-5">
+      <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-card bg-surface p-5">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <PageToolbar className="w-full sm:w-auto">
             <div className="relative w-full sm:w-72">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
@@ -509,7 +507,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
           </PageToolbar>
-          {status && <span className="text-xs text-fg-muted">{totalRecords} resultados neste status</span>}
+          <button type="button" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} className="rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
         </div>
 
       {/* Loading */}
@@ -567,7 +565,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           >
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12 px-3">
+                {selectionMode && <TableHead className="w-12 px-3">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -576,23 +574,23 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     aria-label="Selecionar todos os orçamentos desta página"
                     className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
-                </TableHead>
-                <TableHead className="w-[190px]">Orçamento · revisão</TableHead>
-                <TableHead className="min-w-[220px]">Cliente · demanda</TableHead>
+                </TableHead>}
+                <TableHead className="w-[190px]">Orçamento</TableHead>
+                <TableHead className="min-w-[220px]">Cliente / demanda</TableHead>
                 <TableHead className="whitespace-nowrap">Data</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="w-24 text-right">Abrir</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={`cursor-pointer bg-surface ${selectedIds.includes(row.id) ? 'bg-surface-selected' : ''}`}
+                  className={`group cursor-pointer ${selectedIds.includes(row.id) ? 'bg-surface-selected' : ''}`}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="w-12 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  {selectionMode && <TableCell className="w-12 px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
@@ -600,7 +598,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       aria-label={`Selecionar orçamento ${row.businessNumber}`}
                       className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
-                  </TableCell>
+                  </TableCell>}
                   <TableCell className="whitespace-nowrap py-2 text-sm [font-variant-numeric:tabular-nums]">
                     <Button
                       variant="link"
@@ -611,31 +609,22 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     >
                       {row.businessNumber}
                     </Button>
-                    <span className="ml-1 text-xs text-fg-muted">· Rev. {row.revision}</span>
+                    <span className="block text-[11px] text-fg-muted">Revisão {row.revision}</span>
                   </TableCell>
                   <TableCell className="max-w-[300px] py-2" title={row.cliente}>
-                    <span className="block truncate font-medium">
-                      {row.cliente || 'Cliente não informado'}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-fg-muted" title={row.name}>{row.name}</span>
+                    <EntityIdentity name={row.cliente || 'Cliente não informado'} secondary={row.name} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-fg-muted">
                     <span className="block">
                       {formatDate(row.data) || '—'}
-                    </span>
-                    <span className="mt-0.5 block text-xs">
-                      <EmailMarker row={row} />
                     </span>
                   </TableCell>
                   <TableCell className="py-2">{statusBadge(row)}</TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
                     {formatBRL(row.total)}
                   </TableCell>
-                  <TableCell className="py-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); navigate(`/quotations/${encodeURIComponent(row.id)}`); }}>Abrir <ArrowUpRight size={14} /></Button>
-                      {actionButtons(row, 'desktop')}
-                    </div>
+                  <TableCell className="py-2 text-right text-fg-muted">
+                    <div className="flex items-center justify-end gap-1"><span className="hidden group-hover:block group-focus-within:block">{actionButtons(row, 'desktop')}</span><ChevronRight size={16} aria-hidden="true" /></div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -717,6 +706,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               ))}
             </Select>
           </label>
+          <span className="text-xs text-fg-muted">{totalRecords} orçamento{totalRecords === 1 ? '' : 's'}</span>
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-end gap-2">
               <span className="text-xs text-fg-muted">

@@ -127,10 +127,10 @@ function formatExpense(value: number): string {
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-border-subtle bg-surface p-4">
+    <div className="flex min-h-[145px] min-w-0 flex-col rounded-card bg-surface p-[22px]">
       <p className="truncate text-xs font-medium text-fg-muted">{label}</p>
-      <p className="mt-2 truncate text-2xl font-semibold leading-8 tabular-nums text-fg">{value}</p>
-      <p className="mt-2 truncate text-xs text-fg-muted">{detail}</p>
+      <p className="mt-4 truncate text-[28px] font-bold leading-8 tabular-nums text-fg">{value}</p>
+      <p className="mt-auto truncate pt-4 text-[11px] text-fg-muted">{detail}</p>
     </div>
   );
 }
@@ -165,7 +165,7 @@ function DashboardTabs({
   };
 
   return (
-    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Seções de resultados">
+    <div className="flex flex-wrap gap-1" role="tablist" aria-label="Seções de resultados">
       {TABS.map((option, index) => (
         <button
           key={option.key}
@@ -177,10 +177,10 @@ function DashboardTabs({
           tabIndex={tab === option.key ? 0 : -1}
           onClick={() => onChange(option.key)}
           onKeyDown={(event) => handleKeyDown(event, index)}
-          className={`inline-flex min-h-8 items-center rounded-sm border px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${
+          className={`inline-flex min-h-9 items-center rounded-control px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${
             tab === option.key
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-border-control bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg'
+              ? 'bg-cream font-semibold text-page'
+              : 'text-fg-muted hover:bg-raised hover:text-fg'
           }`}
         >
           {option.label}
@@ -286,69 +286,37 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
   );
 }
 
-function AcquisitionPanel({ data, onFinance }: { data: DashboardViewData; onFinance: () => void }) {
-  const summary = data.summary;
-  if (!summary) return <Unavailable>Dados de aquisição não disponíveis.</Unavailable>;
-  const totalSpend = summary.ads_meta + (summary.ads_google_unavailable ? 0 : summary.ads_google);
-  const metaShare = totalSpend > 0 ? (summary.ads_meta / totalSpend) * 100 : 0;
-
+function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
+  const rows = data.ordersBySource?.items || [];
+  const total = rows.reduce((sum, row) => sum + row.orders, 0);
+  const colors = ['#55765e', '#d18c56', '#aa9183', '#283d32', '#f3eee5'];
+  const labels: Record<string, string> = { site_form: 'Site', whatsapp: 'WhatsApp', typebot: 'Typebot', sem_origem: 'Sem origem' };
+  let start = 0;
+  const stops = rows.map((row, index) => {
+    const end = start + (total > 0 ? row.orders / total * 100 : 0);
+    const stop = `${colors[index % colors.length]} ${start}% ${end}%`;
+    start = end;
+    return stop;
+  });
   return (
-    <section
-      className="flex min-h-[340px] flex-col rounded-lg border border-border-subtle bg-sage p-5 text-page [&_dd]:text-page [&_dt]:text-page/75 [&_h2]:text-page"
-      aria-labelledby="acquisition-title"
-    >
-      <h2 id="acquisition-title" className="text-base font-semibold">
-        Aquisição
-      </h2>
-      <div
-        className="relative mx-auto mt-5 grid size-32 shrink-0 place-items-center rounded-full"
-        style={totalSpend > 0 && !summary.ads_google_unavailable ? {
-          background: `conic-gradient(rgb(var(--rust)) 0 ${metaShare}%, rgb(var(--page) / 0.55) ${metaShare}% 100%)`,
-        } : { background: 'rgb(var(--page) / 0.18)' }}
-        role="img"
-        aria-label={summary.ads_google_unavailable ? 'Distribuição do gasto indisponível' : `Distribuição do gasto: Meta ${formatBRL(summary.ads_meta)}, Google Ads ${formatBRL(summary.ads_google)}`}
-      >
-        <div className="grid size-24 place-content-center rounded-full bg-sage text-center">
-          <strong className="text-lg tabular-nums">{formatCompactBRL(totalSpend)}</strong>
-          <span className="text-[11px]">gasto registrado</span>
-        </div>
+    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-[#1c2b22]" aria-label="Origem dos pedidos">
+      <h2 className="text-sm font-semibold">Origem dos pedidos</h2>
+      <div className="mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full" style={{ background: total > 0 ? `conic-gradient(${stops.join(', ')})` : '#a5b9a7' }} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
+        <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
       </div>
-      <dl className="mt-auto grid grid-cols-2 gap-3 pt-5">
-        <div>
-          <dt className="text-xs font-medium text-fg-muted">Gasto Meta</dt>
-          <dd className="mt-1 text-sm font-semibold tabular-nums text-fg">
-            {formatBRL(summary.ads_meta)}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium text-fg-muted">Google Ads</dt>
-          <dd className="mt-1 text-sm font-semibold text-fg">
-            {summary.ads_google_unavailable ? 'Indisponível' : formatBRL(summary.ads_google)}
-          </dd>
-        </div>
-      </dl>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="mt-4 border-page/25 text-page hover:bg-page/10"
-        onClick={onFinance}
-      >
-        Ver gasto mensal
-      </Button>
+      <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-[11px]"><span className="mt-1 size-2 shrink-0 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
+      {data.ordersBySource === null && <p className="mt-auto text-xs">Origem indisponível.</p>}
     </section>
   );
 }
 
 function OverviewPanel({
   data,
-  onFinance,
   onCustomers,
   recentQuotations,
   onNavigate,
 }: {
   data: DashboardViewData;
-  onFinance: () => void;
   onCustomers: () => void;
   recentQuotations: RecentQuotations;
   onNavigate: (path: string) => void;
@@ -366,7 +334,7 @@ function OverviewPanel({
         <div className="xl:row-span-2">
           <SummaryMetrics summary={summary} />
         </div>
-        <AcquisitionPanel data={data} onFinance={onFinance} />
+        <OrderSourcesPanel data={data} />
         <section
           className="min-h-[340px] min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page"
           aria-labelledby="revenue-chart-title"
@@ -528,106 +496,62 @@ function FeaturedCustomersPanel({
   );
 }
 
-function ProductsPanel({ data }: { data: DashboardViewData }) {
+interface RankingRow { key: string; name: string; revenue: number; orders: number }
+
+function RankingPanel({ kind, rows, omitted, summary }: {
+  kind: 'products' | 'customers';
+  rows: RankingRow[] | null;
+  omitted: number;
+  summary: DashboardSummaryView | null;
+}) {
+  const product = kind === 'products';
+  const title = product ? 'produto' : 'cliente';
+  const maxRevenue = Math.max(0, ...(rows || []).map((row) => row.revenue));
+  const revenue = summary?.total_revenue || 0;
+  const orders = summary?.orders_count || 0;
   return (
-    <section
-      id="results-panel-products"
-      role="tabpanel"
-      aria-labelledby="results-tab-products"
-      className="rounded-lg border border-line bg-surface p-5"
-    >
-      {data.topProducts === null ? (
-        <Unavailable>Produtos por receita não estão disponíveis.</Unavailable>
-      ) : data.topProducts.items.length === 0 ? (
-        <>
-          <Unavailable>
-            {data.topProducts.omitted
-              ? 'Nenhum produto com dados confirmados no período.'
-              : 'Nenhum produto vendido no período.'}
-          </Unavailable>
-          <OmittedRowsNote omitted={data.topProducts.omitted} />
-        </>
-      ) : (
-        <div className="mt-4">
-          <Table className="min-w-[560px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead className="text-right">Quantidade</TableHead>
-                <TableHead className="text-right">Pedidos</TableHead>
-                <TableHead className="text-right">Receita</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.topProducts.items.map((product) => (
-                <TableRow key={product.sku}>
-                  <TableCell className="max-w-[320px] truncate font-medium">
-                    {product.product}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{product.quantity}</TableCell>
-                  <TableCell className="text-right tabular-nums">{product.orders}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {formatBRL(product.revenue)}
-                  </TableCell>
-                </TableRow>
+    <div id={`results-panel-${kind}`} role="tabpanel" aria-labelledby={`results-tab-${kind}`} className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Receita total" value={formatBRL(revenue)} detail="Pedidos confirmados" />
+        <MetricCard label={product ? 'Produtos no ranking' : 'Clientes no ranking'} value={rows ? String(rows.length) : '—'} detail="Com vendas no período" />
+        <MetricCard label={product ? 'Produto líder' : 'Maior participação'} value={rows?.[0]?.name || '—'} detail={rows?.[0] ? `${formatBRL(rows[0].revenue)} em receita` : 'Sem dados no período'} />
+        <MetricCard label="Pedidos" value={String(orders)} detail="No período selecionado" />
+      </div>
+      {rows === null ? <Unavailable>Receita por {title} não está disponível.</Unavailable> : rows.length === 0 ? <Unavailable>Nenhum {title} com venda no período.</Unavailable> : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="min-w-0 rounded-card bg-surface p-5" aria-label={`Receita por ${title}`}>
+            <h2 className="text-base font-semibold">Receita por {title}</h2>
+            <p className="mt-1 text-xs text-fg-muted">Distribuição da receita dos pedidos</p>
+            <div className="mt-8 space-y-6">
+              {rows.slice(0, 6).map((row, index) => (
+                <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-[11px]">
+                  <span className="truncate text-fg-muted" title={row.name}>{row.name}</span>
+                  <div className="h-5 overflow-hidden rounded-sm bg-raised"><div className={['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]} style={{ width: `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%`, height: '100%' }} /></div>
+                  <span className="tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
+                </div>
               ))}
-            </TableBody>
-          </Table>
-          <OmittedRowsNote omitted={data.topProducts.omitted} />
+            </div>
+          </section>
+          <section className="min-w-0 rounded-card bg-surface p-5" aria-label={`Participação por ${title}`}>
+            <h2 className="text-base font-semibold">{product ? 'Participação no catálogo' : 'Clientes por receita'}</h2>
+            <Table className="mt-6 min-w-[390px]">
+              <TableHeader><TableRow><TableHead>{product ? 'Produto' : 'Cliente'}</TableHead><TableHead className="text-right">Receita</TableHead><TableHead className="text-right">Participação</TableHead></TableRow></TableHeader>
+              <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? `${(row.revenue / revenue * 100).toFixed(1).replace('.', ',')}%` : '—'}</TableCell></TableRow>)}</TableBody>
+            </Table>
+            <OmittedRowsNote omitted={omitted} />
+          </section>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
+function ProductsPanel({ data }: { data: DashboardViewData }) {
+  return <RankingPanel kind="products" rows={data.topProducts?.items.map((item) => ({ key: item.sku, name: item.product, revenue: item.revenue, orders: item.orders })) ?? null} omitted={data.topProducts?.omitted ?? 0} summary={data.summary} />;
+}
+
 function CustomersPanel({ data }: { data: DashboardViewData }) {
-  return (
-    <section
-      id="results-panel-customers"
-      role="tabpanel"
-      aria-labelledby="results-tab-customers"
-      className="rounded-lg border border-line bg-surface p-5"
-    >
-      {data.topCustomers === null ? (
-        <Unavailable>Clientes por receita não estão disponíveis.</Unavailable>
-      ) : data.topCustomers.items.length === 0 ? (
-        <>
-          <Unavailable>
-            {data.topCustomers.omitted
-              ? 'Nenhum cliente com dados confirmados no período.'
-              : 'Nenhum cliente no período.'}
-          </Unavailable>
-          <OmittedRowsNote omitted={data.topCustomers.omitted} />
-        </>
-      ) : (
-        <div className="mt-4">
-          <Table className="min-w-[480px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead className="text-right">Pedidos</TableHead>
-                <TableHead className="text-right">Receita</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.topCustomers.items.map((customer) => (
-                <TableRow key={customer.name}>
-                  <TableCell className="max-w-[360px] truncate font-medium">
-                    {capitalize(customer.name)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{customer.orders}</TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {formatBRL(customer.revenue)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <OmittedRowsNote omitted={data.topCustomers.omitted} />
-        </div>
-      )}
-    </section>
-  );
+  return <RankingPanel kind="customers" rows={data.topCustomers?.items.map((item) => ({ key: item.name, name: capitalize(item.name), revenue: item.revenue, orders: item.orders })) ?? null} omitted={data.topCustomers?.omitted ?? 0} summary={data.summary} />;
 }
 
 function MetaSpendForm({
@@ -732,20 +656,36 @@ function FinancePanel({
     ['Impostos', formatExpense(summary.imposto), true],
     ['Lucro calculado', formatBRL(summary.lucro), false],
   ] as const;
+  const segments = [
+    { label: 'Custo dos produtos', value: summary.custo, color: 'bg-sage' },
+    { label: 'Anúncios', value: summary.ads, color: 'bg-orange' },
+    { label: 'Impostos', value: summary.imposto, color: 'bg-taupe' },
+    { label: 'Lucro calculado', value: Math.max(0, summary.lucro), color: 'bg-cream' },
+  ];
   return (
     <div
       id="results-panel-finance"
       role="tabpanel"
       aria-labelledby="results-tab-finance"
-      className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)]"
+      className="space-y-4"
     >
-      <section
-        className="rounded-lg border border-line bg-surface p-5"
-        aria-labelledby="finance-summary-title"
-      >
-        <h2 id="finance-summary-title" className="text-base font-semibold text-fg">
-          Resultado do período
-        </h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Receita" value={formatBRL(summary.total_revenue)} detail="Pedidos do período" />
+        <MetricCard label="Custo dos produtos" value={formatBRL(summary.custo)} detail="Custos registrados" />
+        <MetricCard label="Anúncios + impostos" value={formatBRL(summary.ads + summary.imposto)} detail="Gastos considerados" />
+        <MetricCard label="Lucro calculado" value={formatBRL(summary.lucro)} detail="Receita menos custos e gastos" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+      <section className="min-w-0 rounded-card bg-surface p-5" aria-label="Composição financeira">
+        <h2 className="text-base font-semibold text-fg">Composição financeira</h2>
+        <p className="mt-1 text-xs text-fg-muted">Valores registrados no período</p>
+        <div className="mt-8 flex h-12 w-full overflow-hidden rounded-control bg-raised" role="img" aria-label={segments.map((item) => `${item.label}: ${formatBRL(item.value)}`).join('; ')}>
+          {segments.map((item) => <div key={item.label} className={item.color} style={{ width: `${summary.total_revenue > 0 ? Math.max(0, item.value / summary.total_revenue * 100) : 0}%` }} />)}
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2">{segments.map((item) => <div key={item.label} className="flex items-start gap-2 text-xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${item.color}`} /><div><span className="text-fg-muted">{item.label}</span><strong className="mt-1 block tabular-nums">{formatBRL(item.value)}</strong></div></div>)}</div>
+      </section>
+      <section className="min-w-0 rounded-card bg-surface p-5" aria-labelledby="finance-summary-title">
+        <h2 id="finance-summary-title" className="text-base font-semibold text-fg">Memória do cálculo</h2>
         <div className="mt-4">
           <Table>
             <TableHeader>
@@ -778,7 +718,8 @@ function FinancePanel({
           </p>
         ) : null}
       </section>
-      <section className="rounded-lg border border-line bg-surface p-5" aria-label="Gasto Meta">
+      </div>
+      <details className="rounded-card bg-surface p-5" aria-label="Editar gasto Meta"><summary className="cursor-pointer text-xs font-semibold text-fg">Editar gasto Meta</summary><div className="mt-4">
         <MetaSpendForm
           summary={summary}
           period={period}
@@ -789,7 +730,7 @@ function FinancePanel({
           onSave={onSaveMeta}
           onCancel={onCancelMeta}
         />
-      </section>
+      </div></details>
     </div>
   );
 }
@@ -797,7 +738,7 @@ function FinancePanel({
 function LoadingResults() {
   return (
     <PageShell>
-      <PageHeader title="Resultados" description="Carregando dados do período…" />
+      <PageHeader title="Resultados" description="Uma visão clara do seu comercial." />
       <div className="flex gap-2" aria-hidden="true">
         {TABS.map((tab) => (
           <div key={tab.key} className="h-8 w-24 animate-pulse rounded-sm bg-surface-muted" />
@@ -839,8 +780,8 @@ function UnavailableResults({
   return (
     <PageShell>
       <PageHeader
-        title={TABS.find((option) => option.key === tab)?.title ?? 'Resultados'}
-        description="Dados indisponíveis"
+        title="Resultados"
+        description="Uma visão clara do seu comercial."
         actions={
           <Select
             aria-label="Período dos resultados"
@@ -1012,12 +953,6 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     [metaDraft, period]
   );
 
-  const selectedTitle = TABS.find((option) => option.key === tab)?.title ?? 'Resultados';
-  const periodLabel =
-    data?.periodLabel ||
-    PERIODS.find((option) => option.key === period)?.label ||
-    'Período selecionado';
-
   if (loading) return <LoadingResults />;
   if (error || !data)
     return (
@@ -1033,10 +968,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   return (
     <PageShell>
       <PageHeader
-        title={selectedTitle}
-        description={periodLabel}
+        title="Resultados"
+        description="Uma visão clara do seu comercial."
         actions={
-          <div className="xl:absolute xl:right-workspace xl:top-[96px]">
+          <div className="flex items-center gap-2 xl:absolute xl:right-workspace xl:top-[80px]"><span className="text-xs text-fg-muted">Período</span>
             <Select
               aria-label="Período dos resultados"
               value={period}
@@ -1055,7 +990,6 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       {tab === 'overview' ? (
         <OverviewPanel
           data={data}
-          onFinance={() => setTab('finance')}
           onCustomers={() => setTab('customers')}
           recentQuotations={recentQuotations}
           onNavigate={navigate}

@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } f
 import {
   Search,
   AlertTriangle,
-  Eye,
   Tag,
   PlusCircle,
   Archive,
@@ -107,9 +106,10 @@ function productStatus(product: Product): { status: string; label: string } {
 
 interface ProductsPageProps {
   showHeader?: boolean;
+  onCountChange?: (count: number) => void;
 }
 
-export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
+export default function ProductsPage({ showHeader = true, onCountChange }: ProductsPageProps) {
   const [data, setData] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,11 +119,13 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
   const [limit, setLimit] = useHashQueryState('limit', 10, parseProductLimit);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [totalRecords, setTotalRecords] = useState<number>(0);
+  useEffect(() => { onCountChange?.(totalRecords); }, [onCountChange, totalRecords]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [sort, setSort] = useHashQueryState('sort', DEFAULT_SORT, parseProductSort);
   const [status, setStatus] = useHashQueryState<ProductStatus>(
     'status',
-    'active',
+    'all',
     parseProductStatus
   );
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -259,7 +261,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
     clearPendingSearch();
     setSearchInput('');
     setSearch('');
-    setStatus('active');
+    setStatus('all');
     setSort(DEFAULT_SORT);
     setPage(1);
   }, [clearPendingSearch, setPage, setSearch, setSort, setStatus]);
@@ -376,7 +378,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
   );
 
   const selectedCount = selectedIds.length;
-  const hasFilters = Boolean(search.trim()) || status !== 'active';
+  const hasFilters = Boolean(search.trim()) || status !== 'all';
 
   return (
     <PageShell className="pb-28">
@@ -404,14 +406,8 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
         />
       )}
 
-      <PageToolbar className="w-full items-end gap-3">
+      <PageToolbar className="w-full items-center gap-3">
         <div className="min-w-0 flex-1 basis-full lg:basis-auto">
-          <label
-            htmlFor="product-search"
-            className="mb-1.5 block text-xs font-medium text-fg-muted"
-          >
-            Buscar no catálogo
-          </label>
           <div className="relative">
             <Search
               size={16}
@@ -420,7 +416,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
             />
             <Input
               id="product-search"
-              placeholder="Buscar por SKU ou nome…"
+              placeholder="Buscar produto ou SKU"
               value={searchInput}
               onChange={onSearchChange}
               className="pl-9"
@@ -429,45 +425,13 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
           </div>
         </div>
 
-        <div className="flex w-full flex-wrap items-end gap-3 lg:w-auto">
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="product-limit"
-              className="text-xs font-medium text-fg-muted whitespace-nowrap"
-            >
-              Itens por página
-            </label>
-            <Select
-              id="product-limit"
-              value={limit}
-              onChange={onLimitChange}
-              aria-label="Itens por página"
-            >
-              {PAGE_SIZES.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div
-            className="flex flex-wrap items-center gap-1.5"
-            role="group"
-            aria-label="Filtrar produtos por status"
-          >
-            {(['active', 'archived', 'all'] as const).map((value) => (
-              <FilterChip
-                key={value}
-                selected={status === value}
-                onClick={() => setStatusFilter(value)}
-              >
-                {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
-              </FilterChip>
-            ))}
-          </div>
-        </div>
-      </PageToolbar>
-
+        <Select value={status} onChange={(event) => setStatusFilter(event.target.value as ProductStatus)} aria-label="Filtrar produtos por status" className="lg:w-36">
+          <option value="all">Todos os status</option><option value="active">Ativos</option><option value="archived">Arquivados</option>
+        </Select>
+        <button type="button" className="rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode} onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
+      <details className="relative text-xs text-fg-muted">
+        <summary className="w-fit cursor-pointer rounded-control px-2 py-1 hover:bg-raised">Ordenar</summary>
+      <div className="absolute right-0 top-full z-20 min-w-[280px] rounded-card bg-raised p-3 shadow-xl">
       <PageToolbar className="justify-between gap-2">
         <div
           className="flex flex-wrap items-center gap-2"
@@ -492,8 +456,11 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
           </Button>
         )}
       </PageToolbar>
+      </div>
+      </details>
+      </PageToolbar>
 
-      <div
+      {showHeader && <div
         className="flex min-h-5 items-center justify-between gap-3 text-xs text-fg-muted"
         aria-live="polite"
       >
@@ -505,7 +472,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
         {search && !loading && (
           <span className="max-w-[50%] truncate">Busca: &quot;{search}&quot;</span>
         )}
-      </div>
+      </div>}
 
       {loading && <SkeletonTable cols={5} rows={6} size="sm" />}
 
@@ -557,7 +524,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
 
       {!loading && !error && data.length > 0 && (
         <section aria-label="Produtos do catálogo" className="space-y-3">
-          <label className="flex w-fit items-center gap-2 text-xs font-medium text-fg-muted">
+          {selectionMode && <label className="flex w-fit items-center gap-2 text-xs font-medium text-fg-muted">
             <input
               ref={selectAllRef}
               type="checkbox"
@@ -567,7 +534,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
               className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
             />
             Selecionar página
-          </label>
+          </label>}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.map((product, index) => {
               const sku = product.sku || product.item_code || '';
@@ -576,21 +543,17 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
               const state = productStatus(product);
               const name = product.nome || product.item_name || 'Produto sem nome';
               const category = product.categoria?.trim();
-              const visualTone = ['bg-sage/25', 'bg-light-sage/20', 'bg-cream/80'][index % 3];
+              const visualTone = ['bg-sage', 'bg-orange', 'bg-taupe'][index % 3];
               return (
                 <article
                   key={sku}
                   data-state={isSelected ? 'selected' : undefined}
-                  className="overflow-hidden rounded-card bg-surface transition-colors data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
+                  className="group rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
                 >
-                  <div className={`relative flex h-40 items-center justify-center ${visualTone}`}>
-                    <PackageOpen
-                      size={52}
-                      strokeWidth={1.25}
-                      className="text-fg-muted/70"
-                      aria-hidden="true"
-                    />
-                    <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
+                  <div className={`relative flex h-[110px] items-end justify-between rounded-[17px] p-4 text-[#302822] ${visualTone}`}>
+                    <strong className="text-[23px] font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
+                    <PackageOpen size={48} strokeWidth={1.25} className="opacity-35" aria-hidden="true" />
+                    {selectionMode && <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -598,19 +561,9 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                         aria-label={`Selecionar produto ${sku}`}
                         className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
                       />
-                    </label>
-                    <div className="absolute bottom-3 left-3 rounded-control bg-page/85 px-3 py-2 font-mono text-lg font-semibold text-fg">
-                      {product.pricing_available && product.preco_minimo != null
-                        ? formatBRL(product.preco_minimo)
-                        : <span className="text-sm font-normal text-fg-muted">Preço indisponível</span>}
-                    </div>
-                    <StatusBadge
-                      status={state.status}
-                      label={state.label}
-                      className="absolute right-3 top-3"
-                    />
+                    </label>}
                   </div>
-                  <div className="space-y-3 p-4">
+                  <div className="space-y-3 px-1 pt-4">
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
@@ -626,21 +579,13 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                         {category || 'Sem categoria'}
                       </span>
                     </button>
-                    <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+                    <div className="flex items-center justify-between gap-3 pt-2">
                       <span className="truncate text-xs text-fg-muted">
-                        {normalizeUom(product.unidade || product.stock_uom)}
+                        Preço-base / {normalizeUom(product.unidade || product.stock_uom)}
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Ver detalhes do produto ${sku}`}
-                          title={`Ver detalhes ${sku}`}
-                          onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                        >
-                          <Eye />
-                        </Button>
-                        <Button
+                        <StatusBadge status={state.status} label={state.label} />
+                        <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><Button
                           variant="ghost"
                           size="icon"
                           className="text-fg-muted hover:bg-destructive/10 hover:text-destructive"
@@ -649,7 +594,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                           onClick={() => requestArchive(sku, archived)}
                         >
                           {archived ? <ArchiveRestore /> : <Archive />}
-                        </Button>
+                        </Button></span>
                       </div>
                     </div>
                   </div>
@@ -660,11 +605,9 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
         </section>
       )}
 
-      {!loading && !error && totalPages > 1 && (
+      {!loading && !error && data.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-          <span className="text-fg-muted">
-            Página {page} de {totalPages} · {totalRecords} produto{totalRecords !== 1 ? 's' : ''}
-          </span>
+          <div className="flex flex-wrap items-center gap-3 text-fg-muted"><span>Página {page} de {totalPages || 1} · {totalRecords} produto{totalRecords !== 1 ? 's' : ''}</span><label className="flex items-center gap-2 text-xs">Itens por página <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</Select></label></div>
           <div className="flex items-center gap-1">
             <Button
               variant="outline"

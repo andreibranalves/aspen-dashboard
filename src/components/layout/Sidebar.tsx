@@ -127,16 +127,16 @@ export default function Sidebar({
         className={cn(
           'z-30 flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width,transform] duration-200',
           mobile ? 'fixed inset-y-0 left-0 w-[248px] rounded-none' : 'relative rounded-shell',
-          !mobile && (collapsed ? 'w-[74px]' : 'w-[212px] xl:w-[248px]'),
+          !mobile && 'w-[248px]',
           mobile && collapsed && 'hidden',
           mobile && sidebarOpen && 'shadow-2xl'
         )}
       >
-        <div className="flex h-[78px] shrink-0 items-center justify-between px-6 pt-3">
+        <div className="flex h-[62px] shrink-0 items-center justify-between px-6 pt-2">
           {!collapsed && (
             <AspenBrand />
           )}
-          {(!mobile || sidebarOpen) && (
+          {mobile && sidebarOpen && (
             <button
               type="button"
               onClick={onToggle}
@@ -154,17 +154,17 @@ export default function Sidebar({
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto pt-3" aria-label="Operação">
-          {NAV_ACTION && <div className="mb-5">{renderItem(NAV_ACTION, true)}</div>}
+        <nav className="flex-1 pt-2" aria-label="Operação">
+          {NAV_ACTION && <div className="mb-4">{renderItem(NAV_ACTION, true)}</div>}
           <div className="space-y-1">{NAV_DESTINATIONS.map((item) => renderItem(item))}</div>
         </nav>
-        <div className="shrink-0 pb-4 pt-3">
+        <div className="shrink-0 pb-3 pt-2">
           {NAV_FOOTER.map((item) => renderItem(item))}
           {!collapsed && (
             <button
               type="button"
               onClick={() => onNavigate('/crm?tab=queue')}
-              className="mx-4 mt-4 flex w-[calc(100%-2rem)] flex-col items-start gap-3 rounded-card bg-sage p-4 text-left text-on-solid transition-colors hover:bg-sage/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
+              className="mx-4 mt-3 flex w-[calc(100%-2rem)] flex-col items-start gap-2 rounded-card bg-sage p-3.5 text-left text-on-solid transition-colors hover:bg-sage/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
             >
               <span className="text-xs font-semibold uppercase tracking-wide">Próximos passos</span>
               <span className="text-lg font-bold leading-tight">Seu dia, organizado.</span>

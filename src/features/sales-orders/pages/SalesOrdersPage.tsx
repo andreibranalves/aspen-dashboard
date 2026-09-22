@@ -7,12 +7,13 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle, Search, ChevronRight } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
@@ -409,7 +410,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
-        actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
+        description="Da aprovação à entrega."
+        actions={<><span className="mr-auto hidden text-xs text-fg-muted xl:inline">Acompanhe o que foi aprovado e o que precisa ser entregue.</span><SalesOrderExportMenu period={period} status={status} search={search} /></>}
       />
 
       {summaryData && (
@@ -435,13 +437,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 summaryData.revenue_delta,
                 summaryData.total_revenue
               )}
-              className="border-border-subtle bg-sage text-page [&_div]:text-page [&_span]:text-page"
+              className="border-border-subtle bg-surface"
             />
             <StatCard
               icon={Package}
               label="Em aberto"
               value={String(summaryData.open_orders)}
-              className="border-border-subtle bg-orange text-page [&_div]:text-page [&_span]:text-page"
+              className="border-border-subtle bg-surface"
             />
             <StatCard
               icon={TrendingUp}
@@ -451,7 +453,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 summaryData.avg_ticket_delta,
                 summaryData.avg_ticket
               )}
-              className="border-border-subtle bg-taupe text-page [&_div]:text-page [&_span]:text-page"
+              className="border-border-subtle bg-surface"
             />
           </div>
         </section>
@@ -470,28 +472,28 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </div>
       )}
 
-      {/* Filter row */}
-      <PageToolbar className="items-end gap-2">
+      <section className="rounded-card bg-surface p-5" aria-label="Lista de pedidos">
+      <PageToolbar className="mb-5 items-center gap-2">
         {/* Search */}
-        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
-          <span className="text-xs font-medium text-fg-muted">Buscar</span>
+        <label className="relative flex w-full min-w-0 sm:flex-1 sm:max-w-[286px]">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
           <Input
-            placeholder="Buscar por Nº ou Cliente…"
+            placeholder="Buscar pedido ou cliente"
             value={searchDraft}
             onChange={onSearchChange}
             aria-label="Buscar pedidos"
+            className="pl-9"
           />
         </label>
 
         {/* Status select */}
-        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
-          <span className="text-xs font-medium text-fg-muted">Status</span>
+        <label className="flex w-full min-w-0 sm:w-auto">
           <Select
             aria-label="Filtrar por status"
             value={status}
             onChange={onStatusChange}
             title="Status do pedido"
-            className="w-full"
+            className="w-full sm:min-w-40"
           >
             {STATUSES.map((s, i) => (
               <option key={s} value={s}>
@@ -502,13 +504,12 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </label>
 
         {/* Period select */}
-        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
-          <span className="text-xs font-medium text-fg-muted">Período</span>
+        <label className="flex w-full min-w-0 sm:ml-auto sm:w-auto">
           <Select
             aria-label="Filtrar por período"
             value={period}
             onChange={(event) => onPeriodChange(event.target.value)}
-            className="w-full"
+            className="w-full sm:min-w-28"
           >
             {PERIODS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -569,51 +570,43 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* ── Desktop Table (hidden on small screens) ── */}
       {!loading && !error && items.length > 0 && (
         <div className="hidden md:block">
-          <Table>
+          <Table className="min-w-[730px]" containerClassName="rounded-none">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[160px]">Pedido</TableHead>
                 <TableHead>Cliente</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Entrega</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer bg-surface"
+                  className="cursor-pointer"
                   aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="py-1 font-mono text-sm">
+                  <TableCell className="py-4 text-xs font-semibold">
                     <div>{row.id}</div>
-                    <div className="mt-1 font-sans text-xs font-normal text-fg-muted">
-                      {row.date ? formatSalesOrderDate(row.date) : 'Data não informada'}
-                    </div>
+                    <div className="mt-1 text-[11px] font-normal text-fg-muted">{row.source_quotation ? formatQuotation(row) : 'Sem orçamento de origem'}</div>
                   </TableCell>
-                  <TableCell className="py-1">
-                    <div>{row.customer_name || 'Cliente não identificado'}</div>
-                    <div className="mt-1 text-xs text-fg-muted">
-                      <span>Origem: </span>
-                      {row.source_quotation ? (
-                        <span>{formatQuotation(row)}</span>
-                      ) : (
-                        <span>não informada</span>
-                      )}
-                    </div>
+                  <TableCell className="py-4">
+                    <EntityIdentity name={row.customer_name || 'Cliente não identificado'} />
                   </TableCell>
-                  <TableCell className="py-1">
+                  <TableCell className="py-4 text-fg-muted">{row.date ? formatSalesOrderDate(row.date) : '—'}</TableCell>
+                  <TableCell className="py-4">
                     <StatusBadge
                       status={row.status || ''}
                       label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                     />
                   </TableCell>
-                  <TableCell className="py-1 text-sm text-fg-muted">{formatDelivery(row)}</TableCell>
-                  <TableCell className="py-1 text-right font-sans tabular-nums">
+                  <TableCell className="py-4 text-right font-sans tabular-nums">
                     {formatBRL(row.grand_total)}
                   </TableCell>
+                  <TableCell className="py-4 text-right text-fg-muted"><ChevronRight size={16} aria-hidden="true" /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -717,6 +710,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           </div>
         </div>
       )}
+
+      </section>
 
     </PageShell>
   );

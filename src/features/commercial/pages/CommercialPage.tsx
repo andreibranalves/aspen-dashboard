@@ -43,45 +43,32 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
     <PageShell className="space-y-5">
       <PageHeader
         title="Comercial"
+        description="Cada oportunidade com um próximo passo."
         actions={
-          <Button type="button" onClick={() => navigate('/manual')}>
-            <PlusCircle aria-hidden="true" />
-            Novo orçamento
-          </Button>
+          <>
+            <div className="mr-auto inline-flex max-w-full gap-1" role="tablist" aria-label="Área comercial">
+              {TABS.map((item, index) => (
+                <button
+                  key={item.key}
+                  ref={(element) => { tabRefs.current[index] = element; }}
+                  type="button"
+                  role="tab"
+                  id={`commercial-tab-${item.key}`}
+                  aria-controls="commercial-panel"
+                  aria-selected={tab === item.key}
+                  tabIndex={tab === item.key ? 0 : -1}
+                  className={tab === item.key ? 'rounded-control bg-white px-3 py-2 text-xs font-semibold text-[#222]' : 'rounded-control px-3 py-2 text-xs text-fg-muted hover:text-fg'}
+                  onClick={() => changeTab(item.key)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                >{item.label}</button>
+              ))}
+            </div>
+            <Button type="button" onClick={() => navigate('/manual')}>
+              <PlusCircle aria-hidden="true" />Novo orçamento
+            </Button>
+          </>
         }
       />
-
-      <div className="inline-flex w-fit max-w-full rounded-xl border border-line bg-surface p-1" role="tablist" aria-label="Área comercial">
-        <div className="flex gap-1">
-          {TABS.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                ref={(element) => {
-                  tabRefs.current[index] = element;
-                }}
-                type="button"
-                role="tab"
-                id={`commercial-tab-${item.key}`}
-                aria-controls="commercial-panel"
-                aria-selected={tab === item.key}
-                tabIndex={tab === item.key ? 0 : -1}
-                className={
-                  tab === item.key
-                    ? 'inline-flex items-center gap-2 rounded-lg bg-surface-subtle px-4 py-2.5 text-sm font-semibold text-primary'
-                    : 'inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-fg-muted hover:bg-surface-subtle hover:text-fg'
-                }
-                onClick={() => changeTab(item.key)}
-                onKeyDown={(event) => handleTabKeyDown(event, index)}
-              >
-                <Icon aria-hidden="true" />
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       <div
         id="commercial-panel"

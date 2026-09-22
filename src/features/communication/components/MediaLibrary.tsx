@@ -2,7 +2,7 @@
 // Delete confirmation and the existing media API calls are preserved.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AlertCircle, Filter, Image as ImageIcon, PlusCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, Image as ImageIcon, PlusCircle, RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
@@ -11,6 +11,8 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import EmptyState from '@/components/shared/EmptyState';
 import { useToast } from '@/components/shared/toast';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 
 export interface MediaLibraryProps {
   refreshKey?: number | string;
@@ -28,6 +30,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
   const [error, setError] = useState('');
   const [mutationError, setMutationError] = useState('');
   const [filterGroup, setFilterGroup] = useState<ProductGroup | ''>('');
+  const [query, setQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
   const deleteInFlightRef = useRef(false);
 
@@ -66,74 +69,25 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
     }
   };
 
-  const filtered = filterGroup ? items.filter((item) => item.product_group === filterGroup) : items;
+  const filtered = items.filter((item) =>
+    (!filterGroup || item.product_group === filterGroup) &&
+    (!query.trim() || `${item.title} ${item.caption || ''}`.toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR')))
+  );
   const groups = [...new Set(items.map((item) => item.product_group).filter(Boolean))].sort(
     (a, b) => a.localeCompare(b, 'pt-BR')
   );
 
   return (
     <section className="space-y-4" aria-labelledby="media-library-title">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 id="media-library-title" className="text-base font-semibold text-fg">
-            Biblioteca de mídias
-          </h2>
-          <p className="mt-1 text-sm text-fg-muted">
-            Arquivos disponíveis para etapas de mídia dos fluxos.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-fg-muted">
-            {filtered.length} {filtered.length === 1 ? 'mídia' : 'mídias'}
-          </span>
-          {onAdd && (
-            <Button size="sm" onClick={onAdd}>
-              <PlusCircle size={15} /> Adicionar mídia
-            </Button>
-          )}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p id="media-library-title" className="text-xs text-fg-muted">Materiais reutilizáveis nas comunicações e propostas.</p>
+        {onAdd && <Button onClick={onAdd}><PlusCircle size={15} /> Adicionar mídia</Button>}
       </div>
 
-      <fieldset className="flex flex-wrap items-center gap-2" disabled={loading}>
-        <legend className="sr-only">Filtrar biblioteca por grupo de produto</legend>
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted">
-          <Filter size={14} aria-hidden="true" /> Grupo de produto
-        </span>
-        <button
-          type="button"
-          aria-pressed={filterGroup === ''}
-          onClick={() => setFilterGroup('')}
-          className={[
-            'min-h-9 rounded-control px-3 text-xs font-semibold transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
-            filterGroup === ''
-              ? 'bg-cream text-page'
-              : 'text-fg-muted hover:bg-raised hover:text-fg',
-          ].join(' ')}
-        >
-          Todos ({items.length})
-        </button>
-        {groups.map((group) => {
-          const count = items.filter((item) => item.product_group === group).length;
-          return (
-            <button
-              key={group}
-              type="button"
-              aria-pressed={filterGroup === group}
-              onClick={() => setFilterGroup(group)}
-              className={[
-                'min-h-9 rounded-control px-3 text-xs font-semibold transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
-                filterGroup === group
-                  ? 'bg-cream text-page'
-                  : 'text-fg-muted hover:bg-raised hover:text-fg',
-              ].join(' ')}
-            >
-              {formatProductGroup(group)} ({count})
-            </button>
-          );
-        })}
-      </fieldset>
+      <div className="flex flex-wrap gap-2">
+        <div className="relative w-52 max-w-full"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar mídia ou descrição" aria-label="Buscar mídia ou descrição" className="h-10 pl-9 text-xs" /></div>
+        {groups.length > 0 && <Select aria-label="Filtrar por grupo de produto" value={filterGroup} onChange={(event) => setFilterGroup(event.target.value as ProductGroup | '')} className="h-10 w-auto text-xs"><option value="">Todos os grupos</option>{groups.map((group) => <option key={group} value={group}>{formatProductGroup(group)}</option>)}</Select>}
+      </div>
 
       {loading && <SkeletonComunicacao />}
 
@@ -174,6 +128,8 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
           description={
             filterGroup
               ? 'Limpe o filtro para consultar os demais grupos.'
+              : query.trim()
+                ? 'Ajuste a busca para encontrar outros arquivos.'
               : onAdd
                 ? 'Use Adicionar mídia para enviar imagens ou vídeos.'
                 : 'Use o formulário acima para enviar imagens ou vídeos.'
@@ -191,7 +147,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
 
       {!loading && !error && filtered.length > 0 && (
         <div
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
           aria-label="Mídias cadastradas"
         >
           {filtered.map((item) => (

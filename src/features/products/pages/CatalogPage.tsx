@@ -32,7 +32,8 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'products', parseCatalogTab);
   const [productSearch] = useHashQueryState('search', '', parseHashString);
   const [productSort] = useHashQueryState('sort', 'modified desc', parseCatalogSort);
-  const [productStatus] = useHashQueryState('status', 'active', parseCatalogStatus);
+  const [productStatus] = useHashQueryState('status', 'all', parseCatalogStatus);
+  const [productCount, setProductCount] = useState(0);
   const [, navigate] = useHashRoute();
   const [templates, setTemplates] = useState<OrderTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -74,37 +75,10 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   };
 
   return (
-    <PageShell className="space-y-6 pb-28">
+    <PageShell className="space-y-4 pb-28">
       <PageHeader
         title={legacy ? 'Produtos' : 'Catálogo'}
-        actions={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {activeTab === 'products' && (
-              <>
-                <ExportCsvButton
-                  resource="products"
-                  filters={{ search: productSearch, status: productStatus, order_by: productSort }}
-                >
-                  Exportar produtos
-                </ExportCsvButton>
-                <ExportCsvButton
-                  resource="product-pricing"
-                  filters={{ search: productSearch, status: productStatus, order_by: productSort }}
-                >
-                  Exportar preços
-                </ExportCsvButton>
-                <Button size="md" onClick={() => navigate('/products/new')}>
-                  <PlusCircle /> Novo produto
-                </Button>
-              </>
-            )}
-            {activeTab === 'sets' && (
-              <Button size="md" onClick={() => openTemplateManager(null)}>
-                <PlusCircle /> Novo conjunto
-              </Button>
-            )}
-          </div>
-        }
+        description="Produtos, conjuntos e materiais da Aspen."
       />
 
       <div
@@ -161,6 +135,16 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {activeTab === 'products' && <span className="mr-auto text-xs text-fg-muted">{productCount} produto{productCount === 1 ? '' : 's'} no catálogo</span>}
+        {activeTab === 'products' && <>
+          <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar produtos</ExportCsvButton>
+          <details className="relative"><summary className="cursor-pointer rounded-control px-2 py-2 text-xs text-fg-muted hover:bg-raised">Mais</summary><div className="absolute right-0 z-10 rounded-control bg-raised p-2 shadow-lg"><ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar preços</ExportCsvButton></div></details>
+          <Button size="md" onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
+        </>}
+        {activeTab === 'sets' && <><span className="mr-auto text-xs text-fg-muted">Seleções reutilizáveis para montar orçamentos.</span><Button size="md" onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button></>}
+      </div>
+
       <div
         id={`catalog-panel-${activeTab}`}
         role="tabpanel"
@@ -168,25 +152,11 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
         tabIndex={0}
         className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
       >
-        {activeTab === 'products' && <ProductsPage showHeader={false} />}
+        {activeTab === 'products' && <ProductsPage showHeader={false} onCountChange={setProductCount} />}
 
         {activeTab === 'sets' && (
           <section className="space-y-4" aria-labelledby="catalog-sets-title">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 id="catalog-sets-title" className="text-base font-semibold text-fg">
-                  Conjuntos de produtos
-                </h2>
-                <p className="mt-1 text-sm text-fg-muted">
-                  Seleções reutilizáveis para montar orçamentos.
-                </p>
-              </div>
-              <span className="text-xs text-fg-muted" aria-live="polite">
-                {templatesLoading
-                  ? 'Carregando…'
-                  : `${templates.length} conjunto${templates.length === 1 ? '' : 's'}`}
-              </span>
-            </div>
+            <h2 id="catalog-sets-title" className="sr-only">Conjuntos de produtos</h2>
 
             {templatesLoading && (
               <p
@@ -221,31 +191,21 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               />
             )}
             {!templatesLoading && !templatesError && templates.length > 0 && (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {templates.map((template) => (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {templates.map((template, index) => (
                   <article
                     key={template.id}
-                    className="flex min-h-32 flex-col justify-between rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
+                    className="flex min-h-72 flex-col rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
                   >
-                    <div>
-                      <h3 className="truncate font-medium text-fg" title={template.name}>
-                        {template.name}
-                      </h3>
-                      <p className="mt-2 text-sm text-fg-muted">
-                        {template.items.length} produto{template.items.length === 1 ? '' : 's'}
-                      </p>
-                      <p className="mt-1 break-words font-mono text-xs text-fg-muted">
-                        {template.items.map((item) => item.sku).join(' · ')}
-                      </p>
+                    <h3 className="truncate text-sm font-semibold text-fg" title={template.name}>{template.name}</h3>
+                    <div className={["mt-5 flex h-24 items-end justify-between rounded-control p-5 text-[#302822]", ['bg-[#819c89]', 'bg-[#c88c58]', 'bg-[#af9f95]'][index % 3]].join(' ')}>
+                      <Boxes size={34} strokeWidth={1.4} aria-hidden="true" />
+                      <span className="text-lg font-semibold">{template.items.length} {template.items.length === 1 ? 'item' : 'itens'}</span>
                     </div>
-                    <Button
-                      className="mt-4 self-start"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openTemplateManager(template)}
-                    >
-                      Editar conjunto
-                    </Button>
+                    <div className="mt-4 flex-1">
+                      {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-[10px] text-fg-muted">{item.sku}</span></div>)}
+                    </div>
+                    <Button className="mt-4 self-start" variant="outline" size="sm" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
                   </article>
                 ))}
               </div>

@@ -10,12 +10,18 @@ import {
   Search,
   RefreshCw,
   Star,
+  Clock3,
+  CalendarDays,
+  CircleCheck,
 } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
+import { Select } from '@/components/ui/select';
 import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formatting/formatters';
 import {
   associateCommercialInbound,
@@ -1235,24 +1241,18 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       {!loading && !error && (
         <section aria-label="Resumo da fila nesta página" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {([
-            ['Atrasadas', 'overdue'],
-            ['Hoje', 'today'],
-            ['Agendadas', 'upcoming'],
-            ['Encerradas', 'closed'],
-          ] as const).map(([label, status]) => (
-            <article key={status} className="rounded-card border border-line bg-surface p-4">
-              <p className="text-sm text-fg-muted">{label}</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums">
-                {rows.filter((item) => item.dueStatus === status).length}
-              </p>
-              <p className="mt-1 text-xs text-fg-muted">Nesta página</p>
-            </article>
+            ['Atrasadas', 'overdue', 'Precisam de atenção', Clock3],
+            ['Hoje', 'today', 'Ações programadas', ListChecks],
+            ['Agendadas', 'upcoming', 'Próximos dias', CalendarDays],
+            ['Encerradas', 'closed', 'Nesta página', CircleCheck],
+          ] as const).map(([label, status, note, Icon]) => (
+            <StatCard key={status} icon={Icon} label={label} value={String(rows.filter((item) => item.dueStatus === status).length)} metadata={note} />
           ))}
         </section>
       )}
 
-      <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-3 sm:flex-row sm:items-center">
-        <label className="relative min-w-0 flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <label className="relative min-w-0 sm:w-[210px]">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
           <input
             type="search"
@@ -1260,44 +1260,22 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             placeholder="Buscar cliente ou ação"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-10 w-full rounded-control border border-input bg-background pl-9 pr-3 text-sm"
+            className="h-10 w-full rounded-control border-0 bg-surface pl-9 pr-3 text-xs"
           />
         </label>
-        <div
-          className="flex flex-wrap gap-1 rounded-control bg-surface-subtle p-1"
-          role="tablist"
-          aria-label="Cortes da fila comercial"
-        >
-          {QUEUE_FILTERS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={filter === value}
-              className={
-                filter === value
-                  ? 'rounded-control bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary'
-                  : 'rounded-control px-3 py-1.5 text-sm text-fg-muted hover:bg-surface hover:text-fg'
-              }
-              onClick={() => {
-                if (value === filter) return;
-                setPage(1);
-                setFilter(value);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <Select value={filter} onChange={(event) => { setPage(1); setFilter(event.target.value as CommercialQueueFilter); }} aria-label="Filtrar fila por status" className="sm:w-[150px]">
+          {QUEUE_FILTERS.map(([value, label]) => <option key={value} value={value}>{value === 'active' ? 'Todos os status' : label}</option>)}
+        </Select>
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="icon"
+          className="sm:ml-auto"
+          aria-label="Atualizar fila"
           onClick={() => void load(page, filter)}
           disabled={loading}
         >
           <RefreshCw aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
-          Atualizar
         </Button>
       </div>
 
@@ -1336,34 +1314,20 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           description="Altere a busca ou o status."
         />
       ) : (
-        <div role="table" aria-label="Agenda comercial" className="space-y-3">
+        <div aria-label="Agenda comercial" className="space-y-3">
           {visibleRows.map((item) => (
-            <article key={item.actionId} role="row" className="grid gap-4 rounded-card border border-line bg-surface p-4 xl:grid-cols-[110px_minmax(180px,1.2fr)_minmax(160px,1fr)_minmax(180px,1.2fr)_minmax(150px,1fr)] xl:items-center xl:p-5">
-              <div role="cell" className="flex items-center gap-2 xl:flex-col xl:items-start xl:gap-1">
-                <time dateTime={item.dueAt} className="font-semibold tabular-nums">{formatDate(item.dueDate || item.dueAt)}</time>
-                <span className="text-sm text-fg-muted">{item.scheduleType === 'date_only' ? 'Dia inteiro' : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</span>
+            <details key={item.actionId} className="group rounded-card bg-surface">
+              <summary className="grid cursor-pointer list-none items-center gap-3 rounded-card p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary xl:grid-cols-[82px_minmax(0,1fr)_auto_auto] xl:px-5 xl:py-4 [&::-webkit-details-marker]:hidden">
+                <span className="flex flex-col gap-1 text-xs"><time dateTime={item.dueAt} className="font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time><span className="text-[11px] text-fg-muted">{dueStatusLabel(item.dueStatus)}</span></span>
+                <EntityIdentity name={contactLabel(item)} primary={item.reason || item.reasonLabel} secondary={`${contactLabel(item)} · ${item.kindLabel}`} />
+                <span className="flex items-center gap-2"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} className={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
+                <span className="inline-flex items-center justify-center gap-2 rounded-control border border-line px-3 py-2 text-xs font-semibold"> <ChevronRight size={14} aria-hidden="true" className="transition-transform group-open:rotate-90" /> Abrir ação</span>
+              </summary>
+              <div className="grid gap-4 border-t border-line px-5 py-4 text-xs text-fg-muted lg:grid-cols-2">
+                <div className="space-y-2"><div>{clientName(item)}</div><p>{item.demandSummary || 'Demanda não informada'}</p>{contactDetail(item) && <p>{contactDetail(item)}</p>}{item.proposals.length > 0 && <ul className="space-y-1">{item.proposals.map((proposal) => <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>)}</ul>}{contextDetails(item)}</div>
+                <div className="flex flex-wrap items-start justify-start gap-2 lg:justify-end">{urgencyButton(item)}{whatsappLink(item)}{actionButtons(item)}</div>
               </div>
-              <div role="cell" className="min-w-0">
-                <p className="font-medium">{item.reason || item.reasonLabel}</p>
-                <p className="mt-1 text-sm text-fg-muted">{item.kindLabel}</p>
-              </div>
-              <div role="cell" className="min-w-0">
-                <div className="truncate">{clientName(item)}</div>
-                {contactDetail(item) && <p className="mt-1 truncate text-xs text-fg-muted">{contactDetail(item)}</p>}
-              </div>
-              <div role="cell" className="space-y-2">
-                <StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} className={dueStatusTone(item.dueStatus)} />
-                {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
-                <p className="text-xs text-fg-muted">{item.demandSummary || 'Demanda não informada'}</p>
-                {item.proposals.length > 0 && <ul className="space-y-1 text-xs text-fg-muted">{item.proposals.map((proposal) => <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>)}</ul>}
-                <div className="text-xs text-fg-muted">{contextDetails(item)}</div>
-              </div>
-              <div role="cell" className="flex flex-wrap items-center gap-2 xl:justify-end">
-                {urgencyButton(item)}
-                {whatsappLink(item)}
-                {actionButtons(item)}
-              </div>
-            </article>
+            </details>
           ))}
         </div>
       )}

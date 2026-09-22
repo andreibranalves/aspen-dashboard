@@ -1,10 +1,5 @@
-// MediaGridItem — dense card for a single media asset.
-// The delete action remains available without relying on hover.
-
 import { useState } from 'react';
-import { CalendarDays, Image, Trash2, Video } from 'lucide-react';
-import { StatusBadge } from '@/components/ui/badge';
-import { formatProductGroup } from '@/lib/api/communicationApi';
+import { ArrowUpRight, FileText, Image, Trash2, Video } from 'lucide-react';
 import type { MediaItem } from '@/lib/api/communicationApi';
 
 function formatBytes(bytes: number): string {
@@ -14,102 +9,35 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDate(value: string | undefined): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date);
-}
-
 export interface MediaGridItemProps {
   item: MediaItem;
   onDelete?: (item: MediaItem) => void;
 }
 
 export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
-  const [imgError, setImgError] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const isVideo = item.kind === 'video';
-  const createdDate = formatDate(item.created_at);
+  const isImage = item.content_type?.startsWith('image/') || (!isVideo && item.kind === 'image');
+  const Icon = isVideo ? Video : isImage ? Image : FileText;
+  const type = isVideo ? 'Vídeo' : isImage ? 'Imagem' : 'Documento';
   const size = formatBytes(item.size_bytes);
 
   return (
-    <article className="group relative min-w-0 overflow-hidden rounded-card bg-surface transition-colors hover:bg-surface-hover">
-      <div className="aspect-square overflow-hidden rounded-t-card bg-raised">
-        {isVideo ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center text-fg-muted">
-            <Video size={30} aria-hidden="true" />
-            <span className="text-xs">{item.title || 'Vídeo sem título'}</span>
-          </div>
-        ) : imgError ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 text-fg-muted">
-            <Image size={30} aria-hidden="true" />
-            <span className="text-xs">Prévia indisponível</span>
-          </div>
-        ) : (
-          <img
-            src={item.blob_url}
-            alt={item.title ? `Prévia de ${item.title}` : 'Prévia da mídia'}
-            className="h-full w-full object-cover"
-            onError={() => setImgError(true)}
-            loading="lazy"
-          />
-        )}
+    <article className="group min-w-0 rounded-card bg-surface p-5">
+      <div className="grid h-32 place-items-center overflow-hidden rounded-control bg-[#273129] text-light-sage">
+        {isImage && !previewError && item.blob_url ? (
+          <img src={item.blob_url} alt="" loading="lazy" onError={() => setPreviewError(true)} className="h-full w-full object-cover" />
+        ) : <Icon size={34} strokeWidth={1.4} aria-hidden="true" />}
       </div>
-
-      <div className="space-y-2 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <p
-            className="min-w-0 truncate text-sm font-medium text-fg"
-            title={item.title || undefined}
-          >
-            {item.title || 'Sem título'}
-          </p>
-          {onDelete && (
-            <button
-              type="button"
-              onClick={() => onDelete(item)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
-              aria-label={`Remover ${item.title || 'mídia'}`}
-              title="Remover mídia"
-            >
-              <Trash2 size={15} aria-hidden="true" />
-            </button>
-          )}
+      <h3 className="mt-4 truncate text-sm font-semibold" title={item.title || undefined}>{item.title || 'Sem título'}</h3>
+      <p className="mt-3 truncate text-xs text-fg-muted">{type}{size ? ` · ${size}` : ''}</p>
+      {item.caption && <p className="mt-1 truncate text-[11px] text-fg-muted" title={item.caption}>{item.caption}</p>}
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {item.active === false && <span className="rounded-control bg-raised px-2 py-1 text-[10px] text-fg-muted">Inativa</span>}
+          {onDelete && <button type="button" onClick={() => onDelete(item)} className="inline-flex size-8 items-center justify-center rounded-control text-fg-muted opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100" aria-label={`Remover ${item.title || 'mídia'}`}><Trash2 size={14} aria-hidden="true" /></button>}
         </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span
-            className="max-w-full truncate rounded-[6px] bg-sage/20 px-2 py-1 text-[10px] font-semibold text-light-sage"
-            title={formatProductGroup(item.product_group)}
-          >
-            {formatProductGroup(item.product_group)}
-          </span>
-          {item.caption && (
-            <span className="max-w-full truncate text-[10px] text-fg-muted" title={item.caption}>
-              {item.caption}
-            </span>
-          )}
-        </div>
-
-        {(size || item.content_type || createdDate) && (
-          <div className="space-y-1 text-[10px] text-fg-muted">
-            {(size || item.content_type) && (
-              <p>
-                {size}
-                {size && item.content_type ? ' · ' : ''}
-                {item.content_type ? item.content_type.split('/')[1]?.toUpperCase() : ''}
-              </p>
-            )}
-            {createdDate && (
-              <p className="inline-flex items-center gap-1">
-                <CalendarDays size={12} aria-hidden="true" />
-                <time dateTime={item.created_at}>Adicionado em {createdDate}</time>
-              </p>
-            )}
-          </div>
-        )}
-
-        {item.active === false && <StatusBadge status="Archived" label="Inativo" />}
+        {item.blob_url && <a href={item.blob_url} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line px-2 text-xs hover:bg-raised"><ArrowUpRight size={14} aria-hidden="true" />Ver mídia</a>}
       </div>
     </article>
   );

@@ -88,6 +88,13 @@ export const routes: AppRoute[] = [
     ),
   },
   {
+    path: '/leads/new',
+    suspense: true,
+    render: ({ navigate }) => (
+      <LeadDetailPage key="cliente:new" tipo="cliente" id="new" navigate={navigate} />
+    ),
+  },
+  {
     path: '/leads/:tipo/:id',
     match: (route) => {
       const params = matchSegments('/leads/:tipo/:id*', route);
