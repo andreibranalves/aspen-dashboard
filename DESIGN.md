@@ -14,6 +14,7 @@ colors:
   text-secondary: "rgb(147 147 143)"
   sage: "rgb(127 150 133)"
   light-sage: "rgb(180 198 181)"
+  chat-background: "rgb(233 240 233)"
   orange: "rgb(198 135 82)"
   taupe: "rgb(164 147 137)"
   cream: "rgb(241 227 212)"

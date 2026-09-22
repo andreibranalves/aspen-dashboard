@@ -412,18 +412,11 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         </div>
       )}
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
-        <section aria-labelledby="flows-list-title" className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 id="flows-list-title" className="text-base font-semibold text-fg">
-                Fluxos cadastrados
-              </h2>
-            </div>
-            <span className="text-xs text-fg-muted">
-              {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}
-            </span>
-          </div>
+      {selectedFlow && <div><h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2><p className="mt-1 text-xs text-fg-muted">Sequência e prévia do fluxo selecionado.</p></div>}
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <details className="min-w-0 rounded-control border border-line bg-surface px-4 py-3 xl:col-span-2">
+          <summary className="cursor-pointer text-sm font-medium text-fg">Fluxos cadastrados · {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}</summary>
+          <section aria-label="Fluxos cadastrados" className="mt-4 min-w-0 space-y-3">
 
           {flows.length === 0 ? (
             <EmptyState
@@ -438,7 +431,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
               className="rounded-md border border-dashed border-line bg-surface py-12"
             />
           ) : (
-            <div className="grid gap-2">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {flows.map((flow) => {
                 const isSelected = flow.id === selectedFlow?.id;
                 const date = formatDate(flow.updated_at || flow.created_at);
@@ -511,7 +504,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
               })}
             </div>
           )}
-        </section>
+          </section>
+        </details>
 
         {selectedFlow && (
           <section
@@ -1025,11 +1019,13 @@ function FlowPreview({ step }: { step?: FlowStep }) {
       className="min-w-0 rounded-card bg-surface p-4"
       aria-labelledby="flow-preview-title"
     >
-      <h3 id="flow-preview-title" className="text-base font-semibold text-fg">
-        {title}
-      </h3>
-      <div className="mt-3 min-h-48 whitespace-pre-line rounded-control bg-raised p-4 text-sm leading-5 text-fg">
-        {content}
+      <h3 id="flow-preview-title" className="text-base font-semibold text-fg">Prévia no WhatsApp</h3>
+      <p className="mt-1 text-xs text-fg-muted">{title}</p>
+      <div className="mt-5 overflow-hidden rounded-card border-[7px] border-surface-subtle bg-light-sage">
+        <div className="px-4 py-3 text-xs font-semibold text-on-solid">Aspen · prévia</div>
+        <div className="min-h-48 bg-chat-background p-3">
+          <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-sm">{content}</div>
+        </div>
       </div>
       <p className="mt-3 text-xs text-fg-muted">{note}</p>
     </aside>

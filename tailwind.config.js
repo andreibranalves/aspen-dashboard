@@ -12,6 +12,7 @@ export default {
         canvas: 'rgb(var(--canvas))',
         sage: 'rgb(var(--sage))',
         'light-sage': 'rgb(var(--light-sage))',
+        'chat-background': 'rgb(var(--chat-background))',
         orange: 'rgb(var(--orange))',
         taupe: 'rgb(var(--taupe))',
         cream: 'rgb(var(--cream))',

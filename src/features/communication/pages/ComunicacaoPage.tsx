@@ -3,8 +3,6 @@
 // Route: #/comunicacao
 
 import { useCallback, useEffect, useState } from 'react';
-import type { LucideIcon } from 'lucide-react';
-import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import FlowEditorTab from '@/features/communication/components/FlowEditorTab';
@@ -19,14 +17,13 @@ import { useRouteGuardContext } from '@/hooks/useHashRoute';
 interface TabItem {
   id: string;
   label: string;
-  icon: LucideIcon;
 }
 
 const TABS: TabItem[] = [
-  { id: 'flows', label: 'Fluxos WhatsApp', icon: MessageSquare },
-  { id: 'media', label: 'Biblioteca de mídias', icon: Image },
-  { id: 'history', label: 'Histórico de envios', icon: Clock },
-  { id: 'channels', label: 'Canais', icon: Settings2 },
+  { id: 'flows', label: 'Fluxos WhatsApp' },
+  { id: 'media', label: 'Biblioteca de mídias' },
+  { id: 'history', label: 'Histórico de envios' },
+  { id: 'channels', label: 'Canais' },
 ];
 const parseCommunicationTab = parseHashOption<string>(TABS.map((tab) => tab.id));
 
@@ -75,16 +72,15 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
 
   return (
     <PageShell className="space-y-6">
-      <PageHeader title="Comunicação" />
+      <PageHeader title="Comunicação" description="Fluxos, materiais e canais em um único contexto." />
 
       <div
         role="tablist"
         aria-label="Seções de comunicação"
-        className="overflow-x-auto px-1"
+        className="!mt-2 overflow-x-auto px-1"
       >
         <div className="flex min-w-max gap-1 pb-2">
           {TABS.map((tab) => {
-            const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
@@ -104,7 +100,6 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
                     : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
-                <Icon size={16} aria-hidden="true" />
                 {tab.label}
               </button>
             );
