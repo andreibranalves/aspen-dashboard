@@ -289,25 +289,40 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
 function AcquisitionPanel({ data, onFinance }: { data: DashboardViewData; onFinance: () => void }) {
   const summary = data.summary;
   if (!summary) return <Unavailable>Dados de aquisição não disponíveis.</Unavailable>;
+  const totalSpend = summary.ads_meta + (summary.ads_google_unavailable ? 0 : summary.ads_google);
+  const metaShare = totalSpend > 0 ? (summary.ads_meta / totalSpend) * 100 : 0;
 
   return (
     <section
-      className="rounded-lg border border-border-subtle bg-sage p-5 text-page [&_dd]:text-page [&_dt]:text-page/75 [&_h2]:text-page"
+      className="flex min-h-[340px] flex-col rounded-lg border border-border-subtle bg-sage p-5 text-page [&_dd]:text-page [&_dt]:text-page/75 [&_h2]:text-page"
       aria-labelledby="acquisition-title"
     >
       <h2 id="acquisition-title" className="text-base font-semibold">
         Aquisição
       </h2>
-      <dl className="mt-4 space-y-4">
+      <div
+        className="relative mx-auto mt-5 grid size-32 shrink-0 place-items-center rounded-full"
+        style={totalSpend > 0 && !summary.ads_google_unavailable ? {
+          background: `conic-gradient(rgb(var(--rust)) 0 ${metaShare}%, rgb(var(--page) / 0.55) ${metaShare}% 100%)`,
+        } : { background: 'rgb(var(--page) / 0.18)' }}
+        role="img"
+        aria-label={summary.ads_google_unavailable ? 'Distribuição do gasto indisponível' : `Distribuição do gasto: Meta ${formatBRL(summary.ads_meta)}, Google Ads ${formatBRL(summary.ads_google)}`}
+      >
+        <div className="grid size-24 place-content-center rounded-full bg-sage text-center">
+          <strong className="text-lg tabular-nums">{formatCompactBRL(totalSpend)}</strong>
+          <span className="text-[11px]">gasto registrado</span>
+        </div>
+      </div>
+      <dl className="mt-auto grid grid-cols-2 gap-3 pt-5">
         <div>
           <dt className="text-xs font-medium text-fg-muted">Gasto Meta</dt>
-          <dd className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+          <dd className="mt-1 text-sm font-semibold tabular-nums text-fg">
             {formatBRL(summary.ads_meta)}
           </dd>
         </div>
         <div>
           <dt className="text-xs font-medium text-fg-muted">Google Ads</dt>
-          <dd className="mt-1 text-base font-semibold text-fg">
+          <dd className="mt-1 text-sm font-semibold text-fg">
             {summary.ads_google_unavailable ? 'Indisponível' : formatBRL(summary.ads_google)}
           </dd>
         </div>
@@ -353,7 +368,7 @@ function OverviewPanel({
         </div>
         <AcquisitionPanel data={data} onFinance={onFinance} />
         <section
-          className="min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page"
+          className="min-h-[340px] min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page"
           aria-labelledby="revenue-chart-title"
         >
           <h2 id="revenue-chart-title" className="text-base font-semibold">
@@ -457,7 +472,7 @@ function FeaturedCustomersPanel({
   const customers = data.topCustomers;
   return (
     <section
-      className="rounded-lg border border-border-subtle bg-taupe p-5 text-page [&_p]:text-page/75"
+      className="min-h-[340px] rounded-lg border border-border-subtle bg-taupe p-5 text-page [&_p]:text-page/75"
       aria-labelledby="featured-customers-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">

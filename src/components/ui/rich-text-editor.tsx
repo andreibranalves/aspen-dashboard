@@ -114,12 +114,15 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
         <ListPlugin />
         <SynchronizePlugin value={value} lastEditorValue={lastEditorValue} editorVersion={editorVersion} container={container} />
         <EditablePlugin editable={!disabled} />
-        <OnChangePlugin ignoreSelectionChange onChange={(_, editor) => editor.read(() => {
+        <OnChangePlugin ignoreSelectionChange onChange={(_, editor, tags) => {
+          if (tags.has(SKIP_DOM_SELECTION_TAG)) return;
+          editor.read(() => {
           const html = $getRoot().getTextContent().trim() ? $generateHtmlFromNodes(editor) : '';
           editorVersion.current += 1;
           lastEditorValue.current = html;
           onChange(html);
-        })} />
+          });
+        }} />
       </div>
     </LexicalComposer>
   );

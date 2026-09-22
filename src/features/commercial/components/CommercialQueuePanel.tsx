@@ -1339,7 +1339,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         <div role="table" aria-label="Agenda comercial" className="space-y-3">
           {visibleRows.map((item) => (
             <article key={item.actionId} role="row" className="grid gap-4 rounded-card border border-line bg-surface p-4 xl:grid-cols-[110px_minmax(180px,1.2fr)_minmax(160px,1fr)_minmax(180px,1.2fr)_minmax(150px,1fr)] xl:items-center xl:p-5">
-              <div role="cell" className="flex items-center gap-2 xl:block">
+              <div role="cell" className="flex items-center gap-2 xl:flex-col xl:items-start xl:gap-1">
                 <time dateTime={item.dueAt} className="font-semibold tabular-nums">{formatDate(item.dueDate || item.dueAt)}</time>
                 <span className="text-sm text-fg-muted">{item.scheduleType === 'date_only' ? 'Dia inteiro' : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</span>
               </div>

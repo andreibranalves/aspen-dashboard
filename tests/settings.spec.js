@@ -41,6 +41,26 @@ const INITIAL_SETTINGS = {
 };
 
 test.describe('Configurações de orçamento @quotations', () => {
+  test('abrir padrões com texto existente não sinaliza alterações inexistentes', async ({ page }) => {
+    await page.route('/api/settings**', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...INITIAL_SETTINGS,
+        secoes: {
+          ...INITIAL_SETTINGS.secoes,
+          prazo_producao: { ...INITIAL_SETTINGS.secoes.prazo_producao, value: '<p>15 dias úteis</p>' },
+          pagamento: { ...INITIAL_SETTINGS.secoes.pagamento, body: '<p>Pagamento em duas parcelas</p>' },
+        },
+      }),
+    }));
+    await page.goto('/#/settings');
+    await expect(page.getByRole('textbox', { name: 'Condição de pagamento' })).toContainText('Pagamento em duas parcelas');
+    await page.getByRole('button', { name: 'Orçamentos', exact: true }).click();
+    await expect(page).toHaveURL(/#\/quotations$/);
+    await expect(page.getByRole('dialog', { name: 'Sair sem salvar?' })).toHaveCount(0);
+  });
+
   test('carrega, edita e salva todos os valores padrão', async ({ page }) => {
     let settings = { ...INITIAL_SETTINGS };
     let receivedPayload;
