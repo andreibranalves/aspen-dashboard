@@ -502,8 +502,8 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         )}
 
         {editing ? (
-          <div className={isNewClient ? 'grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]' : 'grid items-start gap-5'}>
-            <div className="min-w-0 space-y-5">
+          <div className={isNewClient ? '!mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]' : 'grid items-start gap-5'}>
+            <div className="min-w-0 space-y-8">
             <SectionCard title={isNewClient ? 'Identificação' : 'Dados do cliente'} icon={isNewClient ? undefined : UserRound}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="text-xs text-fg-muted">
@@ -555,16 +555,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                       setFields((value) => ({ ...value, documento: event.target.value }))
                     }
                     placeholder="CPF ou CNPJ"
-                  />
-                </label>
-                <label className="order-6 text-xs text-fg-muted md:col-span-2">
-                  Observações
-                  <Textarea
-                    aria-label="Observações"
-                    value={fields.observacoes}
-                    onChange={(event) =>
-                      setFields((value) => ({ ...value, observacoes: event.target.value }))
-                    }
                   />
                 </label>
               </div>
@@ -619,6 +609,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 )}
               </div>
             </SectionCard>
+            <details className="rounded-card border border-line bg-surface p-5"><summary className="cursor-pointer text-sm font-semibold">Observações</summary><Textarea className="mt-4" aria-label="Observações" value={fields.observacoes} onChange={(event) => setFields((value) => ({ ...value, observacoes: event.target.value }))} /></details>
             </div>
             {isNewClient && <aside className="rounded-card border border-line bg-surface p-5"><h2 className="text-base font-semibold">Novo relacionamento</h2><p className="mt-5 text-sm text-fg-muted">Preencha os dados essenciais e complete o cadastro durante o atendimento.</p><div className="mt-6 space-y-2"><Button type="button" className="w-full" onClick={() => void save()} disabled={saving}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar cliente'}</Button><Button type="button" variant="outline" className="w-full" onClick={cancelEditing} disabled={saving}>Cancelar</Button></div></aside>}
           </div>
