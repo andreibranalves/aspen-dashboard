@@ -80,9 +80,9 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
       <div
         role="tablist"
         aria-label="Seções de comunicação"
-        className="-mx-1 overflow-x-auto border-b border-line px-1"
+        className="overflow-x-auto px-1"
       >
-        <div className="flex min-w-max gap-1">
+        <div className="flex min-w-max gap-1 pb-2">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -97,11 +97,11 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
                 tabIndex={0}
                 onClick={() => handleTabChange(tab.id)}
                 className={[
-                  'flex min-h-9 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                  'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                   isActive
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-fg-muted hover:bg-surface-hover hover:text-fg',
+                    ? 'bg-cream text-page'
+                    : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
                 <Icon size={16} aria-hidden="true" />
@@ -117,7 +117,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
         role="tabpanel"
         aria-labelledby={`communication-tab-${activeTab}`}
         tabIndex={0}
-        className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+        className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
       >
         {(activeTab === 'flows' || flowsDirty) && (
           <div className={activeTab === 'flows' ? undefined : 'hidden'}>

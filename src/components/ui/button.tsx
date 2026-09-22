@@ -10,17 +10,17 @@ import { cn } from '@/lib/utils';
  */
 const variants = {
   default:
-    'bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] disabled:bg-primary/10 disabled:text-primary disabled:hover:bg-primary/10',
+    'bg-primary text-on-solid hover:brightness-105 active:scale-[0.98] disabled:bg-primary/10 disabled:text-primary disabled:hover:bg-primary/10',
   destructive:
-    'bg-destructive text-on-solid dark:text-page hover:bg-destructive/90 active:scale-[0.97] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
+    'bg-destructive-fill text-destructive-foreground hover:brightness-110 active:scale-[0.98] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
   outline:
-    'border border-border-control bg-transparent text-fg hover:bg-surface-hover active:scale-[0.97]',
+    'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.98]',
   secondary:
-    'border border-border-control bg-surface text-fg hover:bg-surface-hover active:scale-[0.97]',
+    'bg-raised text-fg hover:brightness-110 active:scale-[0.98]',
   ghost: 'text-fg hover:bg-surface-hover',
   link: 'text-link underline-offset-4 hover:underline',
   success:
-    'bg-success text-on-solid dark:text-page hover:bg-success/90 active:scale-[0.97] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
+    'bg-success-fill text-success-foreground hover:brightness-105 active:scale-[0.98] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
 } as const;
 
 const sizes = {
@@ -58,8 +58,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const classes = cn(
-      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm font-medium transition-colors duration-150',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-semibold transition-colors duration-150',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
       'disabled:pointer-events-none disabled:opacity-50',
       '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
       variants[variant],

@@ -25,11 +25,11 @@ export function EmptyState({
     <section
       role="status"
       aria-label={title}
-      className={cn('flex flex-col items-center gap-3 py-16 text-center text-fg-muted', className)}
+      className={cn('flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center text-fg-muted', className)}
     >
-      <Icon size={36} className="text-fg-muted/40" aria-hidden="true" />
-      <h2 className="text-sm font-medium text-fg">{title}</h2>
-      {description && <p className="max-w-md text-sm">{description}</p>}
+      <Icon size={30} className="text-fg-muted/60" aria-hidden="true" />
+      <h2 className="text-base font-bold text-fg">{title}</h2>
+      {description && <p className="max-w-md text-xs">{description}</p>}
       {actions && <div className="flex flex-wrap items-center justify-center gap-2">{actions}</div>}
     </section>
   );

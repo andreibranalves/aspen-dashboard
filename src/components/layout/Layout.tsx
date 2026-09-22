@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
-import { cn } from '@/lib/utils';
-import { useDarkMode } from '@/hooks/useDarkMode';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
@@ -126,12 +124,11 @@ export interface LayoutProps {
 }
 
 const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
-const COMPACT_MEDIA_QUERY = '(max-width: 1024px)';
+const COMPACT_MEDIA_QUERY = '(max-width: 1023px)';
 
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
-  const { darkMode, toggleDarkMode } = useDarkMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') return window.innerWidth <= 1024;
+    if (typeof window !== 'undefined') return window.innerWidth < 1024;
     return false;
   });
   const [isMobile, setIsMobile] = useState(
@@ -171,7 +168,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   }, [isMobile, route]);
 
   return (
-    <div className="flex h-dvh min-h-0 overflow-hidden bg-page">
+    <div className="flex h-dvh min-h-0 gap-frame overflow-hidden bg-canvas md:p-frame">
       <Sidebar
         collapsed={sidebarCollapsed}
         mobile={isMobile}
@@ -179,13 +176,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         currentRoute={route}
         onNavigate={onNavigate}
       />
-      <div
-        className={cn(
-          'flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-200',
-          'md:ml-16',
-          !sidebarCollapsed && 'md:ml-[216px]'
-        )}
-      >
+      <div className="aspen-workspace flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-page p-4 text-fg md:rounded-shell md:p-workspace">
         <TopBar
           route={route}
           onMenuClick={toggleSidebar}
@@ -193,12 +184,10 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           isMobile={isMobile}
           breadcrumbItems={getBreadcrumb(route, detailLabel)}
           onNavigate={onNavigate}
-          darkMode={darkMode}
-          toggleDarkMode={toggleDarkMode}
         />
         <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
           <main
-            className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
+            className="min-h-0 flex-1 overflow-auto"
             inert={isMobile && !sidebarCollapsed ? true : undefined}
           >
             {children}

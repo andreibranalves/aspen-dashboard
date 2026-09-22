@@ -114,7 +114,6 @@ test.describe('Aspen v2 settings and recovery screens', () => {
   });
 
   test('keeps login loading, focus and safe authentication feedback', async ({ page }) => {
-    await page.addInitScript(() => globalThis.localStorage.setItem('aspen_theme', 'dark'));
     await page.route('**/api/quotations**', async (route) => {
       await route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
     });
@@ -160,11 +159,11 @@ test.describe('Aspen v2 settings and recovery screens', () => {
   test('offers keyboard-accessible recovery from an unknown route', async ({ page }) => {
     await page.goto('/#/rota-inexistente');
 
-    await expect(page.getByRole('heading', { name: 'Página não encontrada' })).toBeVisible();
-    await expect(page.getByText('Erro 404')).toBeVisible();
-    await page.getByRole('button', { name: 'Ir para o Início' }).focus();
-    await expect(page.getByRole('button', { name: 'Ir para o Início' })).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'Esta página não foi encontrada.' })).toBeVisible();
+    await expect(page.getByText('Volte aos orçamentos ou escolha outra tela no menu.')).toBeVisible();
+    await page.getByRole('button', { name: 'Voltar aos orçamentos' }).focus();
+    await expect(page.getByRole('button', { name: 'Voltar aos orçamentos' })).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(/#\/dashboard$/);
+    await expect(page).toHaveURL(/#\/quotations$/);
   });
 });

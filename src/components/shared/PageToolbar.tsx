@@ -12,7 +12,7 @@ export interface PageToolbarProps {
 
 export default function PageToolbar({ children, className }: PageToolbarProps) {
   return (
-    <div className={cn('flex flex-wrap items-center gap-3', className)}>
+    <div className={cn('flex flex-wrap items-center gap-2.5', className)}>
       {children}
     </div>
   );

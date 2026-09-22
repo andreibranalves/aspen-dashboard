@@ -73,7 +73,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
 
   return (
     <section className="space-y-4" aria-labelledby="media-library-title">
-      <div className="flex flex-wrap items-end justify-between gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="media-library-title" className="text-base font-semibold text-fg">
             Biblioteca de mídias
@@ -104,11 +104,11 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
           aria-pressed={filterGroup === ''}
           onClick={() => setFilterGroup('')}
           className={[
-            'min-h-9 rounded-sm border px-3 text-xs font-medium transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+            'min-h-9 rounded-control px-3 text-xs font-semibold transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
             filterGroup === ''
-              ? 'border-primary bg-primary text-on-solid'
-              : 'border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg',
+              ? 'bg-cream text-page'
+              : 'text-fg-muted hover:bg-raised hover:text-fg',
           ].join(' ')}
         >
           Todos ({items.length})
@@ -122,11 +122,11 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
               aria-pressed={filterGroup === group}
               onClick={() => setFilterGroup(group)}
               className={[
-                'min-h-9 rounded-sm border px-3 text-xs font-medium transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                'min-h-9 rounded-control px-3 text-xs font-semibold transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                 filterGroup === group
-                  ? 'border-primary bg-primary text-on-solid'
-                  : 'border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg',
+                  ? 'bg-cream text-page'
+                  : 'text-fg-muted hover:bg-raised hover:text-fg',
               ].join(' ')}
             >
               {formatProductGroup(group)} ({count})
@@ -139,7 +139,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
 
       {!loading && error && (
         <div
-          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -155,7 +155,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
 
       {!loading && mutationError && (
         <div
-          className="flex items-center gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-center gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={18} className="shrink-0 text-destructive" aria-hidden="true" />
@@ -185,7 +185,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
               </Button>
             ) : undefined
           }
-          className="rounded-md border border-dashed border-line bg-surface py-12"
+          className="rounded-card border border-dashed border-line bg-raised py-12"
         />
       )}
 

@@ -102,7 +102,7 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
   const container = useRef<HTMLDivElement | null>(null);
   return (
     <LexicalComposer initialConfig={{ namespace: ariaLabel, nodes: [ListNode, ListItemNode], editable: !disabled, onError: (error) => { throw error; }, theme: { paragraph: 'mb-2 last:mb-0', list: { ul: 'ml-5 list-disc', ol: 'ml-5 list-decimal', listitem: 'my-1' }, text: { bold: 'font-semibold', italic: 'italic' } } }}>
-      <div ref={container} className={cn('overflow-hidden rounded-md border border-line bg-surface focus-within:ring-2 focus-within:ring-primary', disabled && 'opacity-50')}>
+      <div ref={container} className={cn('overflow-hidden rounded-control border border-line bg-surface focus-within:ring-2 focus-within:ring-light-sage', disabled && 'opacity-50')}>
         <Toolbar disabled={disabled} />
         <div className="relative">
           <RichTextPlugin

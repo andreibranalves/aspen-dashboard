@@ -611,7 +611,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   };
 
   return (
-    <PageShell className="pb-28">
+    <PageShell className="space-y-5 pb-28">
       <PageHeader
         title="Clientes"
         description={
@@ -630,7 +630,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         }
       />
 
-      <PageToolbar className="items-end">
+      <PageToolbar className="items-end rounded-card border border-line bg-surface p-4 md:p-5">
         <div className="relative w-full max-w-[286px] flex-1">
           <Search
             size={16}
@@ -665,7 +665,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           </Select>
         </label>
         <div
-          className="flex items-center gap-1 rounded-full border border-line bg-surface p-1"
+          className="flex items-center gap-1 rounded-control border border-line bg-surface-subtle p-1"
           role="group"
           aria-label="Filtrar clientes por status"
         >
@@ -679,7 +679,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 setPage(1);
                 void fetchData(search, 1, value, limit);
               }}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${status === value ? 'bg-primary text-on-solid' : 'text-fg-muted hover:text-fg'}`}
+              className={`rounded-control px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${status === value ? 'bg-primary text-on-solid' : 'text-fg-muted hover:bg-surface hover:text-fg'}`}
             >
               {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
             </button>
@@ -738,7 +738,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
-            <Table>
+            <Table
+              className="[&_td]:py-4 [&_th]:h-12"
+              containerClassName="rounded-card border-line bg-surface"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">
@@ -862,7 +865,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
               const label = rowLabel(row);
               const phone = fmtPhone(row.telefone);
               return (
-                <article key={row.id} className="rounded-md border border-line bg-surface p-4">
+                <article key={row.id} className="rounded-card border border-line bg-surface p-5">
                   <div className="flex items-start gap-3">
                     <input
                       className="mt-1 shrink-0"

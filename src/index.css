@@ -1,10 +1,10 @@
 /*
- * Aspen UI v2 foundation.
+ * Aspen sketch V01 foundation.
  * Canonical semantic tokens live here; compatibility aliases remain until all
  * repository consumers migrate to the canonical names.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;450;500;550;600;650;700;750;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,28 +12,41 @@
 
 @layer base {
   :root {
-    /* Canonical Aspen light tokens. */
-    --page: 247 248 250;
-    --surface: 255 255 255;
-    --surface-subtle: 250 250 250;
-    --surface-hover: 247 247 248;
-    --surface-selected: 231 240 255;
-    --border-subtle: 237 237 237;
-    --border-default: 226 226 229;
-    --border-strong: 209 209 214;
-    --text-primary: 24 24 27;
-    --text-secondary: 82 82 91;
-    --text-tertiary: 102 102 111;
-    --text-disabled: 161 161 170;
-    --primary: 22 92 216;
-    --on-primary: 255 255 255;
-    --success: 26 122 76;
-    --warning: 154 91 19;
-    --destructive: 184 58 57;
-    --info: 22 92 216;
-    --link: 22 92 216;
-    --primary-text: 22 92 216;
-    --border-control: 138 138 146;
+    /* Aspen sketch V01: dark workspace, white navigation shell, sage actions. */
+    --canvas: 221 221 221;
+    --page: 13 13 13;
+    --surface: 20 20 20;
+    --surface-subtle: 32 32 32;
+    --surface-hover: 39 39 37;
+    --surface-selected: 52 65 54;
+    --border-subtle: 41 41 41;
+    --border-default: 41 41 41;
+    --border-strong: 65 71 61;
+    --text-primary: 244 244 242;
+    --text-secondary: 147 147 143;
+    --text-tertiary: 169 169 163;
+    --text-disabled: 111 111 107;
+    --primary: 180 198 181;
+    --on-primary: 27 43 32;
+    --success: 173 214 177;
+    --success-fill: 120 167 123;
+    --on-success: 16 39 22;
+    --warning: 231 179 141;
+    --warning-fill: 198 135 82;
+    --on-warning: 48 34 21;
+    --destructive: 226 156 140;
+    --destructive-fill: 184 105 87;
+    --on-destructive: 255 255 255;
+    --info: 197 215 197;
+    --link: 197 215 197;
+    --primary-text: 197 215 197;
+    --border-control: 71 71 67;
+    --sage: 127 150 133;
+    --orange: 198 135 82;
+    --taupe: 164 147 137;
+    --cream: 241 227 212;
+    --light-sage: 180 198 181;
+    --rust: 184 105 87;
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -41,13 +54,13 @@
     --fg: var(--text-primary);
     --fg-muted: var(--text-secondary);
     --on-solid: var(--on-primary);
-    --shell: 15 20 32;
-    --shell-border: 35 45 61;
-    --shell-text: 242 245 250;
-    --shell-muted: 181 191 206;
-    --shell-hover: 29 39 54;
-    --shell-active: 37 48 64;
-    --shell-primary: 138 180 255;
+    --shell: 255 255 255;
+    --shell-border: 231 233 229;
+    --shell-text: 25 25 25;
+    --shell-muted: 116 119 115;
+    --shell-hover: 242 243 241;
+    --shell-active: 17 17 17;
+    --shell-primary: 96 126 101;
 
     /* Standard primitive aliases. */
     --background: var(--page);
@@ -63,36 +76,42 @@
     --muted-foreground: var(--text-secondary);
     --accent: var(--surface-hover);
     --accent-foreground: var(--text-primary);
-    --destructive-foreground: var(--on-primary);
+    --destructive-foreground: var(--on-destructive);
     --border: var(--border-default);
     --input: var(--border-default);
     --ring: var(--primary);
-    --radius: 0.5rem;
+    --radius: 0.6875rem;
   }
 
   .dark {
-    /* Canonical Aspen dark tokens. */
-    --page: 15 20 32;
-    --surface: 20 26 38;
-    --surface-subtle: 26 34 48;
-    --surface-hover: 32 42 58;
-    --surface-selected: 29 45 74;
-    --border-subtle: 37 47 64;
-    --border-default: 51 64 86;
-    --border-strong: 70 84 108;
-    --text-primary: 255 255 255;
-    --text-secondary: 181 191 206;
-    --text-tertiary: 146 158 176;
-    --text-disabled: 102 116 138;
-    --primary: 47 111 219;
-    --on-primary: 255 255 255;
-    --success: 52 199 126;
-    --warning: 240 168 87;
-    --destructive: 226 105 106;
-    --info: 111 156 236;
-    --link: 138 180 255;
-    --primary-text: 138 180 255;
-    --border-control: 104 121 145;
+    /* Sketch V01 keeps the same workspace palette regardless of preference. */
+    --page: 13 13 13;
+    --surface: 20 20 20;
+    --surface-subtle: 32 32 32;
+    --surface-hover: 39 39 37;
+    --surface-selected: 52 65 54;
+    --border-subtle: 41 41 41;
+    --border-default: 41 41 41;
+    --border-strong: 65 71 61;
+    --text-primary: 244 244 242;
+    --text-secondary: 147 147 143;
+    --text-tertiary: 169 169 163;
+    --text-disabled: 111 111 107;
+    --primary: 180 198 181;
+    --on-primary: 27 43 32;
+    --success: 173 214 177;
+    --success-fill: 120 167 123;
+    --on-success: 16 39 22;
+    --warning: 231 179 141;
+    --warning-fill: 198 135 82;
+    --on-warning: 48 34 21;
+    --destructive: 226 156 140;
+    --destructive-fill: 184 105 87;
+    --on-destructive: 255 255 255;
+    --info: 197 215 197;
+    --link: 197 215 197;
+    --primary-text: 197 215 197;
+    --border-control: 71 71 67;
   }
 
   * {
@@ -101,29 +120,16 @@
 
   body {
     @apply bg-page text-fg;
-    font-family:
-      'Inter',
-      'Inter Variable',
-      system-ui,
-      -apple-system,
-      sans-serif;
-    font-feature-settings:
-      'cv01' 1,
-      'cv05' 1,
-      'cv09' 1,
-      'cv11' 1,
-      'ss03' 1,
-      'ss07' 1,
-      'dlig' 1,
-      'rlig' 1,
-      'calt' 1;
+    background-color: rgb(var(--canvas));
+    font-family: 'Manrope', 'Segoe UI', Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   *:focus-visible {
-    outline: 2px solid rgb(var(--primary));
-    outline-offset: 2px;
+    outline: 2px solid rgb(var(--light-sage));
+    outline-offset: 4px;
     border-radius: inherit;
   }
 }
@@ -213,23 +219,23 @@
   }
 
   .tone-success-soft {
-    @apply rounded-full border border-transparent bg-success/10 text-success;
+    @apply rounded-[6px] border border-transparent bg-success/10 text-success;
   }
 
   .tone-warning-soft {
-    @apply rounded-full border border-transparent bg-warning/10 text-warning;
+    @apply rounded-[6px] border border-transparent bg-warning/10 text-warning;
   }
 
   .tone-destructive-soft {
-    @apply rounded-full border border-transparent bg-destructive/10 text-destructive;
+    @apply rounded-[6px] border border-transparent bg-destructive/10 text-destructive;
   }
 
   .tone-info-soft {
-    @apply rounded-full border border-transparent bg-info/10 text-primary-text;
+    @apply rounded-[6px] border border-transparent bg-info/10 text-primary-text;
   }
 
   .tone-neutral-soft {
-    @apply rounded-full border border-transparent bg-surface-muted text-fg-muted;
+    @apply rounded-[6px] border border-transparent bg-surface-muted text-fg-muted;
   }
 
   .tone-neutral-muted {
@@ -238,6 +244,20 @@
 }
 
 ::selection {
-  background: rgb(var(--primary) / 0.25);
+  background: rgb(var(--sage) / 0.45);
   color: rgb(var(--text-primary));
+}
+
+input,
+textarea,
+select {
+  caret-color: rgb(var(--light-sage));
+}
+
+::-webkit-scrollbar-thumb {
+  background: #343434;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4a47;
 }

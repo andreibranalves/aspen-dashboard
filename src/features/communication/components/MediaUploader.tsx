@@ -158,7 +158,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
   return (
     <section
-      className="space-y-4 rounded-md border border-line bg-surface p-4"
+      className="space-y-4 rounded-card bg-surface p-5 sm:p-[22px]"
       aria-labelledby="media-upload-title"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -196,7 +196,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
       {categoryError && (
         <div
-          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -220,11 +220,11 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         onKeyDown={onDropZoneKeyDown}
         onClick={() => !uploading && groups.length > 0 && fileInputRef.current?.click()}
         className={[
-          'relative flex min-h-36 items-center justify-center rounded-md border-2 border-dashed p-6 text-center transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+          'relative flex min-h-36 items-center justify-center rounded-control border border-dashed p-6 text-center transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
           dragging
-            ? 'border-primary bg-primary/5'
-            : 'border-line hover:border-primary/50 hover:bg-surface-hover',
+            ? 'border-light-sage bg-sage/20'
+            : 'border-line bg-raised hover:border-light-sage hover:bg-surface-hover',
           uploading || groups.length === 0 ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
         ].join(' ')}
       >
@@ -258,7 +258,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
       {error && (
         <div
-          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -268,7 +268,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
       {successMessage && (
         <div
-          className="flex items-start gap-2 rounded-md border border-success/25 bg-success/10 p-3 text-sm text-fg"
+          className="flex items-start gap-2 rounded-control border border-success/25 bg-success/10 p-3 text-sm text-fg"
           role="status"
           aria-live="polite"
         >

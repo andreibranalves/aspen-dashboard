@@ -190,8 +190,8 @@ test.describe('Clientes locais @crm @smoke', () => {
     );
 
     await page.setViewportSize({ width: 768, height: 900 });
-    await page.getByRole('button', { name: 'Ativar modo escuro' }).click();
     await expect(page.locator('html')).toHaveClass(/dark/);
+    await expect(page.locator('.aspen-workspace')).toHaveCSS('background-color', 'rgb(13, 13, 13)');
     await expect(page.getByRole('heading', { name: 'Negócio ativo' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Editar cadastro' }).click();

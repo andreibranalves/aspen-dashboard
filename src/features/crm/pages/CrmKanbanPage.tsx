@@ -327,7 +327,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const hasSearchResults = hasAnyDeals || !hasSearch;
 
   return (
-    <PageShell>
+    <PageShell className="space-y-5">
       {!embedded && (
         <PageHeader
           title="CRM"
@@ -343,73 +343,75 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           }
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          className="flex rounded-sm border border-line bg-surface p-0.5"
-          role="tablist"
-          aria-label="Visualização dos negócios"
-        >
-          {CRM_VIEW_TABS.map(([nextView, label, Icon], index) => (
-            <button
-              key={nextView}
-              ref={(element) => {
-                viewTabRefs.current[index] = element;
-              }}
-              type="button"
-              role="tab"
-              id={`crm-view-tab-${nextView}`}
-              aria-controls="crm-view-panel"
-              aria-selected={view === nextView}
-              tabIndex={view === nextView ? 0 : -1}
-              className={cn(
-                'inline-flex h-8 items-center gap-2 rounded-sm px-3 text-sm transition-colors',
-                view === nextView
-                  ? 'bg-surface-muted font-medium text-fg'
-                  : 'text-fg-muted hover:text-fg'
-              )}
-              onClick={() => setView(nextView)}
-              onKeyDown={(event) => handleViewTabKeyDown(event, index)}
-            >
-              <Icon aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <Select
-            aria-label="Filtrar por etapa"
-            value={stage}
-            onChange={(event) => setStage(event.target.value)}
+      <div className="space-y-4 rounded-card border border-line bg-surface p-4 md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div
+            className="flex rounded-control border border-line bg-surface-subtle p-1"
+            role="tablist"
+            aria-label="Visualização dos negócios"
           >
-            <option value="all">Todas as etapas ({allDeals.length})</option>
-            {orderedColumns.map((column) => (
-              <option key={column.status} value={column.status}>
-                {column.name} ({column.deals.length})
-              </option>
+            {CRM_VIEW_TABS.map(([nextView, label, Icon], index) => (
+              <button
+                key={nextView}
+                ref={(element) => {
+                  viewTabRefs.current[index] = element;
+                }}
+                type="button"
+                role="tab"
+                id={`crm-view-tab-${nextView}`}
+                aria-controls="crm-view-panel"
+                aria-selected={view === nextView}
+                tabIndex={view === nextView ? 0 : -1}
+                className={cn(
+                  'inline-flex h-9 items-center gap-2 rounded-control px-3 text-sm transition-colors',
+                  view === nextView
+                    ? 'bg-primary/15 font-medium text-primary'
+                    : 'text-fg-muted hover:bg-surface hover:text-fg'
+                )}
+                onClick={() => setView(nextView)}
+                onKeyDown={(event) => handleViewTabKeyDown(event, index)}
+              >
+                <Icon aria-hidden="true" />
+                {label}
+              </button>
             ))}
-          </Select>
-          <Button variant="outline" onClick={() => setPipelineDialogOpen(true)}>
-            <Settings2 aria-hidden="true" /> Editar etapas
-          </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              aria-label="Filtrar por etapa"
+              value={stage}
+              onChange={(event) => setStage(event.target.value)}
+            >
+              <option value="all">Todas as etapas ({allDeals.length})</option>
+              {orderedColumns.map((column) => (
+                <option key={column.status} value={column.status}>
+                  {column.name} ({column.deals.length})
+                </option>
+              ))}
+            </Select>
+            <Button variant="outline" onClick={() => setPipelineDialogOpen(true)}>
+              <Settings2 aria-hidden="true" /> Editar etapas
+            </Button>
+          </div>
         </div>
+        {/* Search stays available for an active query so a zero-result filter can be cleared. */}
+        {!loading && !error && (hasDeals || hasSearch) && (
+          <div className="relative max-w-md">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
+              aria-hidden="true"
+            />
+            <Input
+              placeholder="Buscar por nome do negócio…"
+              value={search}
+              onChange={onSearchChange}
+              className="pl-9"
+              aria-label="Buscar negócios"
+            />
+          </div>
+        )}
       </div>
-      {/* Search stays available for an active query so a zero-result filter can be cleared. */}
-      {!loading && !error && (hasDeals || hasSearch) && (
-        <div className="relative max-w-md">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-            aria-hidden="true"
-          />
-          <Input
-            placeholder="Buscar por nome do negócio…"
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label="Buscar negócios"
-          />
-        </div>
-      )}
 
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}
@@ -718,13 +720,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           aria-label="Pipeline CRM"
           id="crm-view-panel"
           tabIndex={0}
-          className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-lg border border-line bg-page [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
+          className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-card border border-line bg-surface-subtle [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
         >
           <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
             {displayColumns.map((col) => (
               <div
                 key={col.status}
-                className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg border border-line bg-surface"
+                className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-card border border-line bg-surface"
               >
                 <div className="flex items-center justify-between px-4 py-3 text-sm font-medium">
                   <h2>{col.name}</h2>
@@ -794,7 +796,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               onDragEnd={() => setDraggingId(null)}
                               aria-label={`Negócio ${displayLeadName}. Etapa: ${col.name}.`}
                               className={cn(
-                                'rounded-lg border border-line bg-surface p-3 transition-all',
+                                'rounded-xl border border-line bg-surface-subtle p-4 transition-all',
                                 'hover:border-fg-muted/30',
                                 draggingId === deal.id && 'cursor-grabbing opacity-50'
                               )}

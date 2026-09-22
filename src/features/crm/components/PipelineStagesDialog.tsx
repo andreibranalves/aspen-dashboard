@@ -70,9 +70,9 @@ export default function PipelineStagesDialog({
         if (!saving) onClose();
       }}
       onClose={onClose}
-      className="m-auto max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm"
+      className="m-auto max-h-[calc(100vh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-hidden rounded-card border border-line bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm"
     >
-      <div className="flex items-center justify-between border-b border-line px-5 py-4">
+      <div className="flex items-center justify-between border-b border-line bg-surface-subtle px-5 py-4">
         <div className="flex items-center gap-3">
           <Settings2 className="text-fg-muted" aria-hidden="true" />
           <h2 id="pipeline-stages-title" className="font-semibold">
@@ -113,7 +113,7 @@ export default function PipelineStagesDialog({
             Carregando etapas…
           </p>
         ) : (
-          <ol className="mt-5 divide-y divide-line rounded-lg border border-line">
+          <ol className="mt-5 divide-y divide-line overflow-hidden rounded-card border border-line bg-surface-subtle">
             {stages.map((stage, index) => {
               const removalReason = stage.role
                 ? 'Etapa obrigatória'
@@ -121,7 +121,7 @@ export default function PipelineStagesDialog({
                   ? `Mova ${stage.dealCount} ${stage.dealCount === 1 ? 'negócio' : 'negócios'} antes de remover`
                   : null;
               return (
-                <li key={stage.key} className="flex min-h-14 items-center gap-2 px-3 py-2">
+                <li key={stage.key} className="flex min-h-14 items-center gap-2 px-3 py-2 transition-colors hover:bg-surface-hover">
                   <div className="flex shrink-0">
                     <Button
                       variant="ghost"
@@ -216,7 +216,7 @@ export default function PipelineStagesDialog({
           <div
             role="alertdialog"
             aria-labelledby="remove-stage-title"
-            className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4"
+            className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-4"
           >
             <p id="remove-stage-title" className="text-sm font-medium">
               Remover “{pendingDelete.name}”?

@@ -1,8 +1,9 @@
 import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useDarkMode } from '@/hooks/useDarkMode';
-import { LogIn, ShieldAlert } from 'lucide-react';
+import { ArrowRight, LockKeyhole } from 'lucide-react';
+
+const logoUrl = new URL('../../public/logo_branca.svg', import.meta.url).href;
 
 interface LoginPageProps {
   navigate: (hash: string) => void;
@@ -27,8 +28,6 @@ function formatLoginError(data: Record<string, unknown> | null): string {
  * Mostrada quando a API retorna 401 ou quando o usuário acessa #/login.
  */
 export default function LoginPage({ navigate }: LoginPageProps) {
-  useDarkMode();
-
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,20 +72,27 @@ export default function LoginPage({ navigate }: LoginPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-page px-4 py-8 sm:py-12">
-      <main className="w-full max-w-md" aria-labelledby="login-title">
-        <section className="rounded-lg border border-line bg-surface p-6 sm:p-8">
-          <div className="text-center">
-            <div className="mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-md bg-primary">
-              <ShieldAlert className="h-6 w-6 text-primary-foreground" aria-hidden="true" />
+    <div className="min-h-dvh bg-canvas md:p-frame">
+      <main className="grid min-h-dvh items-center gap-10 bg-page p-6 text-fg md:min-h-[calc(100dvh-36px)] md:grid-cols-2 md:rounded-shell md:px-[6%]" aria-labelledby="login-title">
+        <div className="max-w-lg py-8 md:p-10">
+          <img src={logoUrl} alt="Aspen Estamparia" className="h-11 max-w-[180px] object-contain" />
+          <h1 id="login-title" className="mt-10 max-w-[430px] text-[32px] font-bold leading-[1.18] tracking-[-0.04em] md:text-5xl">
+            Da conversa ao próximo bom negócio.
+          </h1>
+          <p className="mt-5 max-w-[330px] text-sm text-fg-muted">
+            Acompanhe clientes, propostas e pedidos em um único lugar.
+          </p>
+        </div>
+        <section className="w-full max-w-[390px] rounded-card bg-surface p-6 md:p-9">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-[23px] font-bold leading-tight">Bem-vindo à Aspen</h2>
+              <p className="mt-2 text-xs text-fg-muted">Entre com a senha para continuar.</p>
             </div>
-            <h1 id="login-title" className="text-xl font-semibold tracking-tight text-fg">
-              Aspen Orçamento
-            </h1>
-            <p className="mt-1 text-sm text-fg-muted">Entre com a senha para continuar.</p>
+            <LockKeyhole size={20} className="text-sage" aria-hidden="true" />
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-7 space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="login-password" className="text-sm font-medium text-fg">
                 Senha de acesso
@@ -107,7 +113,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
                 required
                 aria-invalid={Boolean(error)}
                 aria-describedby={error ? 'login-error' : undefined}
-                className="text-lg tracking-widest"
+                className="tracking-widest"
               />
             </div>
 
@@ -115,7 +121,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
               <p
                 id="login-error"
                 role="alert"
-                className="text-sm text-destructive animate-in fade-in"
+                className="text-sm text-destructive"
               >
                 {error}
               </p>
@@ -125,16 +131,16 @@ export default function LoginPage({ navigate }: LoginPageProps) {
               type="submit"
               disabled={loading || !password.trim()}
               aria-busy={loading}
-              className="w-full"
+              className="mt-2 w-full"
               size="lg"
             >
               {loading ? (
                 <span
-                  className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground"
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-on-solid/30 border-t-on-solid"
                   aria-hidden="true"
                 />
               ) : (
-                <LogIn className="h-4 w-4" aria-hidden="true" />
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
               )}
               {loading ? 'Entrando...' : 'Entrar'}
             </Button>

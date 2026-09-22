@@ -5,10 +5,18 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'Inter Variable', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Manrope', 'Segoe UI', 'Arial', 'sans-serif'],
       },
       colors: {
-        // Canonical Aspen semantic tokens.
+        // Aspen sketch V01 visual tokens.
+        canvas: 'rgb(var(--canvas))',
+        sage: 'rgb(var(--sage))',
+        'light-sage': 'rgb(var(--light-sage))',
+        orange: 'rgb(var(--orange))',
+        taupe: 'rgb(var(--taupe))',
+        cream: 'rgb(var(--cream))',
+        rust: 'rgb(var(--rust))',
+        raised: 'rgb(var(--surface-subtle))',
         page: 'rgb(var(--page))',
         surface: {
           DEFAULT: 'rgb(var(--surface))',
@@ -35,15 +43,18 @@ export default {
         },
         success: {
           DEFAULT: 'rgb(var(--success))',
-          foreground: 'rgb(var(--on-primary))',
+          fill: 'rgb(var(--success-fill))',
+          foreground: 'rgb(var(--on-success))',
         },
         warning: {
           DEFAULT: 'rgb(var(--warning))',
-          foreground: 'rgb(var(--on-primary))',
+          fill: 'rgb(var(--warning-fill))',
+          foreground: 'rgb(var(--on-warning))',
         },
         destructive: {
           DEFAULT: 'rgb(var(--destructive))',
-          foreground: 'rgb(var(--on-primary))',
+          fill: 'rgb(var(--destructive-fill))',
+          foreground: 'rgb(var(--on-destructive))',
         },
         info: {
           DEFAULT: 'rgb(var(--info))',
@@ -103,10 +114,18 @@ export default {
       },
       borderRadius: {
         xs: '4px',
-        sm: '6px',
-        md: '8px',
-        lg: '12px',
+        sm: '11px',
+        md: '14px',
+        lg: '16px',
+        card: '25px',
+        shell: '31px',
+        control: '11px',
+        nav: '14px',
         full: '9999px',
+      },
+      spacing: {
+        frame: '18px',
+        workspace: '24px',
       },
       keyframes: {
         'accordion-down': {

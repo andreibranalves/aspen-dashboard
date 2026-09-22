@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { Menu, X } from 'lucide-react';
+import { ArrowUpRight, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
 
-const logoUrl = new URL('../../../public/logo_branca.svg', import.meta.url).href;
+const logoUrl = new URL('../../../public/logo_marinho.svg', import.meta.url).href;
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -51,14 +51,14 @@ export default function Sidebar({
         type="button"
         onClick={() => onNavigate(item.hash)}
         className={cn(
-          'mx-4 flex min-h-10 w-[calc(100%-2rem)] items-center gap-3 rounded-sm px-3 py-2 text-sm transition-colors',
+          'mx-3 flex min-h-[45px] w-[calc(100%-1.5rem)] items-center gap-3 rounded-nav px-4 py-2 text-sm font-medium transition-colors',
           collapsed && 'justify-center gap-0 px-0',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-shell-primary',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sage',
           action
-            ? 'bg-primary font-medium text-on-solid hover:bg-primary/90'
+            ? 'bg-primary font-semibold text-on-solid hover:bg-sage/90'
             : isActive
-              ? 'bg-shell-active font-medium text-shell-text'
-              : 'text-shell-muted hover:bg-shell-hover'
+              ? 'bg-shell-active text-white'
+              : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
         title={collapsed ? (action ? `+ ${item.label}` : item.label) : undefined}
         aria-label={action ? item.label : undefined}
@@ -68,7 +68,7 @@ export default function Sidebar({
           size={20}
           className={cn(
             'shrink-0',
-            action ? 'text-on-solid' : isActive ? 'text-shell-primary' : 'text-shell-muted'
+            action ? 'text-on-solid' : isActive ? 'text-white' : 'text-shell-muted'
           )}
           aria-hidden="true"
         />
@@ -113,7 +113,7 @@ export default function Sidebar({
       {mobile && sidebarOpen && (
         <div
           data-sidebar-backdrop="true"
-          className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-20 bg-black/65"
           onClick={onToggle}
           aria-hidden="true"
         />
@@ -126,22 +126,22 @@ export default function Sidebar({
         aria-hidden={mobile && collapsed ? true : undefined}
         aria-modal={mobile && sidebarOpen ? true : undefined}
         className={cn(
-          'fixed left-0 top-0 z-30 flex h-full flex-col overflow-hidden bg-shell text-shell-text',
-          'border-r border-shell-border transition-[width,transform] duration-200',
-          collapsed ? 'w-0 md:w-16' : 'w-[216px]',
+          'z-30 flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width,transform] duration-200',
+          mobile ? 'fixed inset-y-0 left-0 w-[248px] rounded-none' : 'relative rounded-shell',
+          !mobile && (collapsed ? 'w-[74px]' : 'w-[212px] xl:w-[248px]'),
           mobile && collapsed && 'hidden',
           mobile && sidebarOpen && 'shadow-2xl'
         )}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-shell-border px-4">
+        <div className="flex h-[78px] shrink-0 items-center justify-between px-6 pt-3">
           {!collapsed && (
-            <img src={logoUrl} alt="Aspen Estamparia" className="h-8 w-auto" />
+            <img src={logoUrl} alt="Aspen Estamparia" className="h-9 max-w-[142px] object-contain" />
           )}
           {(!mobile || sidebarOpen) && (
             <button
               type="button"
               onClick={onToggle}
-              className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-shell-primary"
+              className="min-h-9 min-w-9 shrink-0 rounded-control p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
               aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
               aria-expanded={sidebarOpen}
               aria-controls="aspen-sidebar"
@@ -155,20 +155,26 @@ export default function Sidebar({
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-2" aria-label="Operação">
-          {!collapsed && (
-            <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-shell-primary">
-              Operação
-            </div>
-          )}
-          {collapsed && (
-            <div className="mx-3 my-2 border-t border-shell-border" aria-hidden="true" />
-          )}
-          {NAV_ACTION && <div className="mb-2">{renderItem(NAV_ACTION, true)}</div>}
-          <div className="space-y-0.5">{NAV_DESTINATIONS.map((item) => renderItem(item))}</div>
+        <nav className="flex-1 overflow-y-auto pt-3" aria-label="Operação">
+          {NAV_ACTION && <div className="mb-5">{renderItem(NAV_ACTION, true)}</div>}
+          <div className="space-y-1">{NAV_DESTINATIONS.map((item) => renderItem(item))}</div>
         </nav>
-        <div className="shrink-0 border-t border-shell-border py-2">
+        <div className="shrink-0 pb-4 pt-3">
           {NAV_FOOTER.map((item) => renderItem(item))}
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={() => onNavigate('/crm?tab=queue')}
+              className="mx-4 mt-4 flex w-[calc(100%-2rem)] flex-col items-start gap-3 rounded-card bg-sage p-4 text-left text-on-solid transition-colors hover:bg-sage/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
+            >
+              <span className="text-xs font-semibold uppercase tracking-wide">Próximos passos</span>
+              <span className="text-lg font-bold leading-tight">Seu dia, organizado.</span>
+              <span className="text-xs leading-5">Ações pendentes na fila comercial.</span>
+              <span className="flex items-center gap-1 text-xs font-bold">
+                Abrir minha fila <ArrowUpRight size={15} aria-hidden="true" />
+              </span>
+            </button>
+          )}
         </div>
       </aside>
     </>

@@ -1,4 +1,4 @@
-import { Compass } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PageShell from '@/components/shared/PageShell';
 
@@ -10,31 +10,22 @@ interface NotFoundPageProps {
 export default function NotFoundPage({ navigate }: NotFoundPageProps) {
   return (
     <PageShell
-      className="flex min-h-[50vh] flex-col items-center justify-center px-4 py-16 text-center space-y-0 sm:py-24"
+      className="flex min-h-[65vh] flex-col items-center justify-center px-4 py-16 text-center space-y-0"
       aria-labelledby="not-found-title"
     >
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-md bg-surface-muted">
-        <Compass size={28} className="text-fg-muted" aria-hidden="true" />
-      </div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Erro 404</p>
-      <h1 id="not-found-title" className="mt-2 text-xl font-semibold text-fg">
-        Página não encontrada
+      <span className="text-[90px] font-bold leading-none tracking-[-0.06em] text-sage" aria-hidden="true">404</span>
+      <h1 id="not-found-title" className="mt-4 text-2xl font-bold text-fg">
+        Esta página não foi encontrada.
       </h1>
       <p className="mt-2 max-w-md text-sm leading-5 text-fg-muted">
-        Não encontramos este endereço. Volte para uma área válida ou abra o fluxo de orçamento para
-        continuar.
+        Volte aos orçamentos ou escolha outra tela no menu.
       </p>
-      <div className="mt-6 flex w-full max-w-sm flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
+      <div className="mt-6">
         <Button
-          variant="outline"
-          size="sm"
-          className="w-full sm:w-auto"
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/quotations')}
         >
-          Ir para o Início
-        </Button>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => navigate('/auto')}>
-          Abrir Auto
+          <ArrowLeft size={16} aria-hidden="true" />
+          Voltar aos orçamentos
         </Button>
       </div>
     </PageShell>

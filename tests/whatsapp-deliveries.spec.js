@@ -38,7 +38,11 @@ function delivery(state, options = {}) {
     state,
     public_error: state === 'failed' ? 'Falha antes do transporte.' : null,
     completion_source: options.completionSource ?? (isDelivered ? 'provider_receipt' : null),
-    progress: { delivered: isDelivered ? 1 : 0, total: 1 },
+    progress: {
+      accepted: isDelivered || state === 'provider_accepted' ? 1 : 0,
+      delivered: isDelivered ? 1 : 0,
+      total: 1,
+    },
     steps: [
       {
         id: `${id}-step-1`,
@@ -327,7 +331,7 @@ test('filters expose Portuguese controls and query state, search, and period', a
   ]) {
     await expect(page.getByLabel(label)).toBeVisible();
   }
-  await expect(page.getByLabel('Busca')).toBeVisible();
+  await expect(page.getByLabel('Busca', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Data inicial')).toBeVisible();
   await expect(page.getByLabel('Data final')).toBeVisible();
 
@@ -339,7 +343,7 @@ test('filters expose Portuguese controls and query state, search, and period', a
   expect(deliveredQuery.get('requires_action')).toBe('false');
   expect(deliveredQuery.get('include_active')).toBe('false');
 
-  await page.getByLabel('Busca').fill('Maria');
+  await page.getByLabel('Busca', { exact: true }).fill('Maria');
   await expect(page.getByText(deliveredDelivery.client_name, { exact: true })).toBeVisible();
   const searchQuery = queries.find((query) => query.get('search') === 'Maria');
   expect(searchQuery).toBeTruthy();

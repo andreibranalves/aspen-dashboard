@@ -376,7 +376,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
     <PageShell className="pb-28">
       {showHeader && (
         <PageHeader
-          className="[&_h1]:text-xl [&_h1]:tracking-[-0.2px]"
+          className="[&_h1]:text-[28px] [&_h1]:tracking-[-0.035em]"
           title="Produtos"
           actions={
             <>
@@ -398,7 +398,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
         />
       )}
 
-      <PageToolbar className="w-full items-end gap-3 rounded-md border border-line bg-surface p-3">
+      <PageToolbar className="w-full items-end gap-3">
         <div className="min-w-0 flex-1 basis-full lg:basis-auto">
           <label
             htmlFor="product-search"
@@ -505,7 +505,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
 
       {!loading && error && (
         <div
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-12 text-center text-fg-muted"
+          className="flex flex-col items-center gap-3 rounded-card border border-destructive/30 bg-destructive/5 px-5 py-12 text-center text-fg-muted"
           role="alert"
         >
           <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
@@ -552,7 +552,10 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
-            <Table className="min-w-[720px] table-fixed">
+            <Table
+              containerClassName="overflow-hidden rounded-card bg-surface"
+              className="min-w-[720px] table-fixed"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12 px-3">
@@ -562,7 +565,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                       checked={allSelected}
                       onChange={(event) => toggleSelectAll(event.target.checked)}
                       aria-label="Selecionar todos os produtos desta página"
-                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
                     />
                   </TableHead>
                   <TableHead>Produto</TableHead>
@@ -600,13 +603,13 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                           checked={isSelected}
                           onChange={() => toggleSelected(sku)}
                           aria-label={`Selecionar produto ${sku}`}
-                          className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                          className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
                         />
                       </TableCell>
                       <TableCell>
                         <button
                           type="button"
-                          className="w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                          className="w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
                           onClick={(event) => {
                             event.stopPropagation();
                             navigate(`/products/${encodeURIComponent(sku)}`);
@@ -615,7 +618,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                         >
                           <span className="flex min-w-0 items-center gap-2">
                             <span
-                              className="min-w-0 flex-1 truncate text-sm font-medium text-primary-text hover:underline"
+                              className="min-w-0 flex-1 truncate text-sm font-semibold text-fg hover:underline"
                               title={name}
                             >
                               {name}
@@ -699,7 +702,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                 <article
                   key={sku}
                   data-state={isSelected ? 'selected' : undefined}
-                  className="rounded-md border border-line bg-surface p-3 transition-colors data-[state=selected]:border-primary/40 data-[state=selected]:bg-surface-selected"
+                  className="rounded-card bg-surface p-4 transition-colors data-[state=selected]:bg-surface-selected"
                 >
                   <div className="flex items-start gap-3">
                     <div className="pt-1" onClick={(event) => event.stopPropagation()}>
@@ -708,13 +711,13 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                         checked={isSelected}
                         onChange={() => toggleSelected(sku)}
                         aria-label={`Selecionar produto ${sku}`}
-                        className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                        className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                      className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                      className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
                       aria-label={`Abrir produto ${sku}: ${name}`}
                     >
                       <span className="flex flex-wrap items-center gap-2">
@@ -725,7 +728,7 @@ export default function ProductsPage({ showHeader = true }: ProductsPageProps) {
                         {description || 'Sem descrição cadastrada'}
                       </span>
                       <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-muted">
-                        <span className="font-mono text-primary-text">
+                        <span className="font-mono text-fg">
                           {sku || 'SKU não informado'}
                         </span>
                         <span aria-hidden="true">·</span>

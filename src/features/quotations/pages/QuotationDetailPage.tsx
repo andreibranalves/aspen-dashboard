@@ -1683,9 +1683,9 @@ function CoreQuotationDetail({
   ) : null;
 
   return (
-    <div ref={detailTopRef} className="space-y-0">
+    <div ref={detailTopRef} className="space-y-5">
       <fieldset disabled={saving} className="contents">
-        <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
+        <header className="flex flex-col gap-4 rounded-3xl border border-line bg-surface p-5 md:flex-row md:items-start md:justify-between md:p-6">
           <div className="min-w-0">
             {draftEditable && !editing && (
               <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
@@ -1872,7 +1872,7 @@ function CoreQuotationDetail({
           </p>
         )}
         {issuedView && (
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface-subtle px-4 py-3">
             <div className="flex min-w-0 items-center gap-2 text-sm text-fg-muted">
               <LockKeyhole size={16} aria-hidden="true" />
               <span className="font-semibold text-fg">Emitido</span>
@@ -1913,7 +1913,7 @@ function CoreQuotationDetail({
                 : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
             }
           >
-            <div className="min-w-0 rounded-lg border border-line bg-surface p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-5">
+            <div className="min-w-0 rounded-3xl border border-line bg-surface p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-6">
               {draftEditable && !editing && (
                 <h2 className="mb-3 text-base font-semibold text-fg">Conferência</h2>
               )}
@@ -2469,7 +2469,7 @@ function CoreQuotationDetail({
 
             {draftEditable && (
               <aside
-                className="min-w-0 rounded-lg border border-line bg-surface p-4 md:p-5"
+                className="min-w-0 rounded-3xl border border-line bg-surface p-5 md:p-6"
                 aria-labelledby="quotation-summary-title"
               >
                 <h2 id="quotation-summary-title" className="text-base font-semibold text-fg">

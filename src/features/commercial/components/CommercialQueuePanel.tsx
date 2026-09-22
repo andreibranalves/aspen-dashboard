@@ -1187,7 +1187,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   function contextDetails(item: CommercialQueueItem) {
     return (
-      <div className="space-y-1 text-xs text-fg-muted">
+      <div className="space-y-1 rounded-xl border border-line bg-surface-subtle p-3 text-xs text-fg-muted">
         <p>Motivo: {item.reason || item.reasonLabel}</p>
         <p>Prazo: {dueLabel(item)}</p>
         <p>{contactContextLabel(item)}</p>
@@ -1223,10 +1223,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-end gap-2">
         <div
-          className="mr-auto flex flex-wrap gap-1 rounded-sm border border-line bg-surface p-1"
+          className="mr-auto flex flex-wrap gap-1 rounded-control border border-line bg-surface-subtle p-1"
           role="tablist"
           aria-label="Cortes da fila comercial"
         >
@@ -1238,8 +1238,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
               aria-selected={filter === value}
               className={
                 filter === value
-                  ? 'rounded-sm bg-surface-muted px-3 py-1.5 text-sm font-medium text-fg'
-                  : 'rounded-sm px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg'
+                  ? 'rounded-control bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary'
+                  : 'rounded-control px-3 py-1.5 text-sm text-fg-muted hover:bg-surface hover:text-fg'
               }
               onClick={() => {
                 if (value === filter) return;
@@ -1322,8 +1322,11 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         />
       ) : (
         <>
-          <div className="hidden overflow-x-auto rounded-lg border border-line bg-surface lg:block">
-            <Table className="min-w-[720px]">
+          <div className="hidden lg:block">
+            <Table
+              className="min-w-[720px] [&_td]:py-4 [&_th]:h-12"
+              containerClassName="overflow-x-auto rounded-card border-line bg-surface"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead>Contato</TableHead>
@@ -1378,7 +1381,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
           <div className="grid gap-3 lg:hidden">
             {rows.map((item) => (
-              <article key={item.actionId} className="rounded-md border border-line bg-surface p-4">
+              <article key={item.actionId} className="rounded-card border border-line bg-surface p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate">{clientName(item)}</p>
@@ -1423,7 +1426,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           aria-labelledby="commercial-action-dialog-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
         >
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border border-line bg-surface p-5 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-card border border-line bg-surface p-5 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <h2 id="commercial-action-dialog-title" className="text-lg font-semibold">
                 {dialog.type === 'create'
@@ -1464,7 +1467,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 ) : (
                   <ol className="space-y-3">
                     {history.map((entry) => (
-                      <li key={entry.eventId} className="rounded-md border border-line p-3 text-sm">
+                      <li key={entry.eventId} className="rounded-xl border border-line bg-surface-subtle p-4 text-sm">
                         <div className="flex justify-between gap-3">
                           <span className="font-medium">{historyLabel(entry.type)}</span>
                           <time dateTime={entry.timestamp}>{formatDateTime(entry.timestamp)}</time>

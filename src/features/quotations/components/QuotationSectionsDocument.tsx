@@ -1,4 +1,5 @@
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
+import { Input } from '@/components/ui/input';
 import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import { quotationContentHasText } from '@/lib/quotationDisplay';
 
@@ -78,7 +79,7 @@ export function QuotationSectionsDocument({
             <section
               key={key}
               aria-labelledby={`quote-section-${key}-title`}
-              className="border-t border-line py-5"
+              className="border-t border-border-subtle py-5"
             >
               <h2
                 id={`quote-section-${key}-title`}
@@ -108,7 +109,7 @@ export function QuotationSectionsDocument({
           <section
             key={key}
             aria-labelledby={`quote-section-edit-${key}-title`}
-            className="border-t border-line pt-5"
+            className="border-t border-border-subtle pt-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 id={`quote-section-edit-${key}-title`} className="flex items-center gap-2 text-sm font-semibold text-fg">
@@ -132,12 +133,12 @@ export function QuotationSectionsDocument({
                 <span>Visível<span className="sr-only">: {label}</span></span>
               </label>
             </div>
-            <input
+            <Input
               aria-label={`Título da seção ${label}`}
               value={section.title}
               onChange={(event) => update(key, 'title', event.target.value)}
               placeholder="Título"
-              className="mt-3 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="mt-3 font-medium"
             />
             {bodyKey === 'value' ? (
               <RichTextEditor

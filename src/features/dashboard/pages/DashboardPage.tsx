@@ -14,6 +14,7 @@ import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { StatusBadge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -29,6 +30,8 @@ import {
   type DashboardViewData,
 } from '@/features/dashboard/dashboardViewModel';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
+import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
+import { quotationStatusBadgeKey, quotationStatusLabel } from '@/lib/statusLabels';
 
 interface PeriodOption {
   key: string;
@@ -59,6 +62,10 @@ const parseDashboardTab = parseHashOption<DashboardTab>(TABS.map((tab) => tab.ke
 interface DashboardPageProps {
   navigate: (path: string) => void;
 }
+
+type RecentQuotations =
+  | { status: 'loading' | 'error'; items: [] }
+  | { status: 'ready'; items: ProjectedQuotationListRow[] };
 
 function Unavailable({ children = 'Dados não disponíveis no momento.' }: { children?: ReactNode }) {
   return <p className="py-6 text-sm text-fg-muted">{children}</p>;
@@ -120,7 +127,7 @@ function formatExpense(value: number): string {
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-line bg-surface p-4">
+    <div className="min-w-0 rounded-lg border border-border-subtle bg-surface p-4">
       <p className="truncate text-xs font-medium text-fg-muted">{label}</p>
       <p className="mt-2 truncate text-2xl font-semibold leading-8 tabular-nums text-fg">{value}</p>
       <p className="mt-2 truncate text-xs text-fg-muted">{detail}</p>
@@ -204,7 +211,7 @@ function RevenueChart({
 
   return (
     <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
-      <div className="relative flex h-56 min-w-[520px] items-end gap-3 border-b border-line px-5 pb-5 pl-14 pt-7">
+      <div className="relative flex h-56 min-w-[520px] items-end justify-around gap-3 border-b border-line px-5 pb-5 pl-14 pt-7">
         <span className="pointer-events-none absolute left-5 top-3 text-xs text-fg-muted">
           {formatCompactBRL(maxRevenue)}
         </span>
@@ -216,7 +223,7 @@ function RevenueChart({
           return (
             <div
               key={day.date}
-              className="flex min-w-12 flex-1 flex-col items-center justify-end gap-1"
+              className="flex min-w-12 max-w-16 flex-1 flex-col items-center justify-end gap-1"
             >
               <span className="text-xs tabular-nums text-fg-muted">
                 {formatCompactBRL(day.revenue)}
@@ -251,7 +258,12 @@ function RevenueChart({
 function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
   const noOrders = summary.orders_count === 0;
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
+      <MetricCard
+        label="Receita"
+        value={formatCompactBRL(summary.total_revenue)}
+        detail={formatComparison(summary.revenue_delta)}
+      />
       <MetricCard
         label="Pedidos"
         value={String(summary.orders_count)}
@@ -261,11 +273,6 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
         label="Conversão"
         value={noOrders ? '—' : formatRate(summary.conversion_rate)}
         detail={formatComparison(summary.conversion_delta, noOrders)}
-      />
-      <MetricCard
-        label="Receita"
-        value={formatCompactBRL(summary.total_revenue)}
-        detail={formatComparison(summary.revenue_delta)}
       />
       <MetricCard
         label="Ticket médio"
@@ -288,10 +295,10 @@ function AcquisitionPanel({
 
   return (
     <section
-      className="rounded-lg border border-line bg-surface p-5"
+      className="rounded-lg border border-border-subtle bg-sage p-5 text-page [&_dd]:text-page [&_dt]:text-page/75 [&_h2]:text-page"
       aria-labelledby="acquisition-title"
     >
-      <h2 id="acquisition-title" className="text-base font-semibold text-fg">
+      <h2 id="acquisition-title" className="text-base font-semibold">
         Aquisição
       </h2>
       <dl className="mt-4 space-y-4">
@@ -308,7 +315,13 @@ function AcquisitionPanel({
           </dd>
         </div>
       </dl>
-      <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onFinance}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-4 border-page/25 text-page hover:bg-page/10"
+        onClick={onFinance}
+      >
         Ver gasto mensal
       </Button>
     </section>
@@ -318,9 +331,15 @@ function AcquisitionPanel({
 function OverviewPanel({
   data,
   onFinance,
+  onCustomers,
+  recentQuotations,
+  onNavigate,
 }: {
   data: DashboardViewData;
   onFinance: () => void;
+  onCustomers: () => void;
+  recentQuotations: RecentQuotations;
+  onNavigate: (path: string) => void;
 }) {
   const summary = data.summary;
   if (!summary) return null;
@@ -331,22 +350,148 @@ function OverviewPanel({
       aria-labelledby="results-tab-overview"
       className="space-y-4"
     >
-      <SummaryMetrics summary={summary} />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.8fr)_repeat(3,minmax(0,1fr))]">
+        <div className="xl:row-span-2">
+          <SummaryMetrics summary={summary} />
+        </div>
         <section
-          className="min-w-0 rounded-lg border border-line bg-surface p-5"
+          className="min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page xl:col-span-2"
           aria-labelledby="revenue-chart-title"
         >
-          <h2 id="revenue-chart-title" className="text-base font-semibold text-fg">
+          <h2 id="revenue-chart-title" className="text-base font-semibold">
             Receita por dia · R$ mil
           </h2>
           <div className="mt-4">
             <RevenueChart series={data.salesByDay} />
           </div>
         </section>
-        <AcquisitionPanel data={data} onFinance={onFinance} />
+        <div className="xl:col-span-1">
+          <AcquisitionPanel data={data} onFinance={onFinance} />
+        </div>
+        <FeaturedCustomersPanel data={data} onCustomers={onCustomers} />
       </div>
+      <RecentQuotationsPanel data={recentQuotations} onNavigate={onNavigate} />
     </div>
+  );
+}
+
+function RecentQuotationsPanel({
+  data,
+  onNavigate,
+}: {
+  data: RecentQuotations;
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="recent-quotations-title">
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="recent-quotations-title" className="text-base font-semibold">Últimos orçamentos</h2>
+        <Button type="button" variant="outline" size="sm" onClick={() => onNavigate('/quotations')}>
+          Ver todos
+        </Button>
+      </div>
+      {data.status === 'loading' ? (
+        <p className="py-6 text-sm text-fg-muted" role="status">Carregando orçamentos…</p>
+      ) : data.status === 'error' ? (
+        <p className="py-6 text-sm text-fg-muted">Não foi possível carregar os últimos orçamentos.</p>
+      ) : data.items.length === 0 ? (
+        <p className="py-6 text-sm text-fg-muted">Nenhum orçamento cadastrado.</p>
+      ) : (
+        <Table className="min-w-[620px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Orçamento</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Data</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Valor</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.items.map((quotation) => (
+              <TableRow key={quotation.id}>
+                <TableCell>
+                  <button
+                    type="button"
+                    className="font-semibold text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    onClick={() => onNavigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
+                  >
+                    {quotation.businessNumber}
+                  </button>
+                </TableCell>
+                <TableCell className="max-w-[260px] truncate">{quotation.cliente}</TableCell>
+                <TableCell className="whitespace-nowrap text-fg-muted">{formatDashboardDate(quotation.data)}</TableCell>
+                <TableCell>
+                  <StatusBadge status={quotationStatusBadgeKey(quotation.status)} label={quotationStatusLabel(quotation.status)} />
+                </TableCell>
+                <TableCell className="text-right font-medium tabular-nums">{formatBRL(quotation.total)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
+  );
+}
+
+function FeaturedCustomersPanel({
+  data,
+  onCustomers,
+}: {
+  data: DashboardViewData;
+  onCustomers: () => void;
+}) {
+  const customers = data.topCustomers;
+  return (
+    <section
+      className="rounded-lg border border-border-subtle bg-taupe p-5 text-page xl:col-start-2 xl:col-span-3 [&_p]:text-page/75"
+      aria-labelledby="featured-customers-title"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="featured-customers-title" className="text-base font-semibold">
+          Clientes em destaque
+        </h2>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="border-page/25 text-page hover:bg-page/10"
+          onClick={onCustomers}
+        >
+          Ver clientes
+        </Button>
+      </div>
+      {customers === null ? (
+        <Unavailable>Clientes por receita não estão disponíveis.</Unavailable>
+      ) : customers.items.length === 0 ? (
+        <Unavailable>
+          {customers.omitted
+            ? 'Nenhum cliente com dados confirmados no período.'
+            : 'Nenhum cliente no período.'}
+        </Unavailable>
+      ) : (
+        <div className="mt-3 divide-y divide-page/10">
+          {customers.items.slice(0, 5).map((customer, index) => (
+            <div key={`${customer.name}-${index}`} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+              <span
+                className="grid size-9 shrink-0 place-items-center rounded-full bg-page/10 text-xs font-semibold"
+                aria-hidden="true"
+              >
+                {customer.name.trim().slice(0, 2).toLocaleUpperCase('pt-BR')}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{capitalize(customer.name)}</p>
+                <p className="text-xs opacity-75">
+                  {customer.orders} {customer.orders === 1 ? 'pedido' : 'pedidos'}
+                </p>
+              </div>
+              <strong className="shrink-0 text-sm tabular-nums">{formatBRL(customer.revenue)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+      {customers ? <OmittedRowsNote omitted={customers.omitted} /> : null}
+    </section>
   );
 }
 
@@ -740,7 +885,7 @@ function UnavailableResults({
   );
 }
 
-export default function DashboardPage(_props: DashboardPageProps) {
+export default function DashboardPage({ navigate }: DashboardPageProps) {
   const [period, setPeriod] = useHashQueryState('period', 'month', parseDashboardPeriod);
   const [tab, setTab] = useHashQueryState<DashboardTab>('tab', 'overview', parseDashboardTab);
   const [data, setData] = useState<DashboardViewData | null>(null);
@@ -749,6 +894,7 @@ export default function DashboardPage(_props: DashboardPageProps) {
   const [metaDraft, setMetaDraft] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
+  const [recentQuotations, setRecentQuotations] = useState<RecentQuotations>({ status: 'loading', items: [] });
   const requestGenerationRef = useRef(0);
 
   const fetchDashboard = useCallback(async () => {
@@ -773,6 +919,24 @@ export default function DashboardPage(_props: DashboardPageProps) {
   useEffect(() => {
     void fetchDashboard();
   }, [fetchDashboard]);
+
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    let active = true;
+    setRecentQuotations({ status: 'loading', items: [] });
+    void apiGet<{ data?: unknown }>('/quotations?page=1&limit=5')
+      .then((response) => {
+        if (!active) return;
+        if (!Array.isArray(response.data)) throw new Error('invalid');
+        const items = response.data.map(projectQuotationListRow);
+        if (items.some((item) => item === null)) throw new Error('invalid');
+        setRecentQuotations({ status: 'ready', items: items as ProjectedQuotationListRow[] });
+      })
+      .catch(() => {
+        if (active) setRecentQuotations({ status: 'error', items: [] });
+      });
+    return () => { active = false; };
+  }, [tab]);
 
   useEffect(() => {
     if (!data?.summary?.meta_editable) {
@@ -849,7 +1013,13 @@ export default function DashboardPage(_props: DashboardPageProps) {
       />
       <DashboardTabs tab={tab} onChange={setTab} />
       {tab === 'overview' ? (
-        <OverviewPanel data={data} onFinance={() => setTab('finance')} />
+        <OverviewPanel
+          data={data}
+          onFinance={() => setTab('finance')}
+          onCustomers={() => setTab('customers')}
+          recentQuotations={recentQuotations}
+          onNavigate={navigate}
+        />
       ) : tab === 'products' ? (
         <ProductsPanel data={data} />
       ) : tab === 'customers' ? (

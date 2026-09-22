@@ -155,7 +155,7 @@ function ClientResolutionArea({
 }: ClientResolutionAreaProps) {
   if (view.state === 'idle') return null;
   return (
-    <div className="mt-2 rounded-sm border border-line bg-surface/40 px-2 py-1.5">
+    <div className="mt-2 rounded-md border border-border-subtle bg-raised px-3 py-2">
       <p className="sr-only" aria-live="polite">
         {clientResolutionAnnouncement(view)}
       </p>
@@ -193,7 +193,7 @@ function ClientResolutionArea({
                   type="button"
                   disabled={candidate.arquivado || disabled || !onSelectClient}
                   onClick={() => onSelectClient?.(draftIdx, candidate)}
-                  className="w-full rounded-sm border border-line bg-surface px-2 py-1 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-surface"
+                  className="w-full rounded-md border border-border-subtle bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-surface"
                 >
                   <span className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-fg">
                     <span className="truncate">{candidate.nome}</span>
@@ -560,15 +560,15 @@ export default function SplitResultCard({
       ref={cardRef}
       aria-busy={isProcessing || issueBlocked || parentEditingBlocked || pricingPending}
       className={cn(
-        'rounded-lg border border-line bg-surface',
+        'rounded-lg border border-border-subtle bg-surface',
         isProcessing && !immutableIssue && 'opacity-60'
       )}
     >
       {/* ── Header ── */}
       <div
         className={cn(
-          'flex items-start justify-between gap-3 p-4 bg-surface/50',
-          !isDone && 'border-b border-line'
+          'flex items-start justify-between gap-3 rounded-t-lg bg-raised p-4',
+          !isDone && 'border-b border-border-subtle'
         )}
       >
         <div className="min-w-0 flex-1">
@@ -578,7 +578,7 @@ export default function SplitResultCard({
             </span>
 
             {draft.edited.urgente && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+              <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
                 <AlertTriangle size={10} /> Urgente
               </span>
             )}
@@ -588,7 +588,7 @@ export default function SplitResultCard({
               </span>
             )}
             {!isDone && hasSavedSnapshot && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-fg-muted">
+              <span className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-fg-muted">
                 <Check size={10} /> Rascunho salvo
               </span>
             )}
@@ -649,7 +649,7 @@ export default function SplitResultCard({
                     value={draft.edited.origem || ''}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
                     disabled={editingBlocked}
-                    className="h-7 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                    className="h-7 w-full rounded-control border border-border-control bg-raised px-2 text-xs text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                   >
                     <option value="">Selecione a origem…</option>
                     {LEAD_SOURCES.map((source) => (
@@ -666,7 +666,7 @@ export default function SplitResultCard({
               <h3 className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
-                  <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                  <span className="shrink-0 rounded-full bg-taupe/15 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}
@@ -702,14 +702,14 @@ export default function SplitResultCard({
 
       {/* ── Demand selector (automatic flow) ── */}
       {!isDone && opportunitySelector && (
-        <div className="border-b border-line bg-surface/20 px-4 py-3">
+        <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
           {opportunitySelector}
         </div>
       )}
 
       {/* ── Template selector ── */}
       {!isDone && (
-        <div className="border-b border-line bg-surface/20 px-4 py-3">
+        <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
@@ -737,7 +737,7 @@ export default function SplitResultCard({
                   value={draft.edited.template_key || ''}
                   onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                   disabled={editingBlocked || templateLoading || templates.length === 0}
-                  className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                  className="h-8 w-full rounded-control border border-border-control bg-raised px-2 text-xs text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                   containerClassName="w-full"
                 >
                   {!draft.edited.template_key && <option value="">Modelo padrão</option>}
@@ -787,8 +787,8 @@ export default function SplitResultCard({
                   <TableRow
                     key={ii}
                     className={cn(
-                      'border-b border-line last:border-b-0 hover:bg-surface/30',
-                      pricingConflictItems.includes(item.item_code) && 'bg-amber-50 dark:bg-amber-500/10',
+                      'border-b border-line last:border-b-0 hover:bg-surface-hover',
+                      pricingConflictItems.includes(item.item_code) && 'bg-warning/10',
                     )}
                   >
                     <TableCell className="py-2 pl-4 pr-2">
@@ -809,7 +809,7 @@ export default function SplitResultCard({
                             />
                           )}
                           {showDropdown && (
-                            <div className="absolute z-50 left-0 right-0 top-8 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            <div className="absolute left-0 right-0 top-8 z-50 max-h-48 overflow-y-auto rounded-md border border-border-subtle bg-surface shadow-lg">
                               {results.map((p) => (
                                 <button
                                   key={p.sku || p.item_code}
@@ -824,7 +824,7 @@ export default function SplitResultCard({
                                     'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
                                     isUnpricedProduct(p)
                                       ? 'cursor-not-allowed opacity-50'
-                                      : 'hover:bg-surface-muted'
+                                      : 'hover:bg-surface-hover'
                                   )}
                                   onMouseDown={(e) => e.preventDefault()}
                           onClick={() => void handleSelectProduct(ii, p)}
@@ -947,7 +947,7 @@ export default function SplitResultCard({
       )}
 
       {isDone && (
-        <div className="px-4 pb-2 border-t border-line bg-surface/20">
+        <div className="rounded-b-lg border-t border-border-subtle bg-raised/60 px-4 pb-3">
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
@@ -969,9 +969,12 @@ export default function SplitResultCard({
       )}
 
       {/* ── Stage 3 + actions ── */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface/30 p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-b-lg border-t border-border-subtle bg-raised p-3">
         {!isDone && actionBlockMessage && (
-          <p id={actionStatusId} className="w-full border-b border-line pb-3 text-xs leading-5 text-fg-muted">
+          <p
+            id={actionStatusId}
+            className="w-full border-b border-border-subtle pb-3 text-xs leading-5 text-fg-muted"
+          >
             {actionBlockMessage}
           </p>
         )}
@@ -1078,7 +1081,9 @@ export default function SplitResultCard({
       </div>
 
       {issueError && !isDone && (
-        <p role="alert" className="border-t border-line px-4 py-3 text-xs text-destructive">{issueError}</p>
+        <p role="alert" className="border-t border-border-subtle px-4 py-3 text-xs text-destructive">
+          {issueError}
+        </p>
       )}
 
     </div>

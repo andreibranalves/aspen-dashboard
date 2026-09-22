@@ -277,7 +277,7 @@ export default function SendHistoryTab({
         visibleEvents.length > 0 &&
         (embedded ? (
           <>
-          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+          <div className="overflow-x-auto rounded-card bg-surface">
             <table
               className="w-full min-w-[860px] table-fixed text-left"
               aria-label="Tabela de histórico de envios"
@@ -354,7 +354,7 @@ export default function SendHistoryTab({
               return (
                 <article
                   key={event.id}
-                  className="rounded-md border border-line bg-surface p-3 transition-colors hover:border-primary/30"
+                  className="rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover"
                 >
                   <div className="flex items-start gap-3">
                     <Icon

@@ -461,7 +461,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   );
 
   return (
-    <PageShell className={selectedCount > 0 ? 'pb-48 sm:pb-28' : 'pb-4'}>
+    <PageShell className={selectedCount > 0 ? 'space-y-6 pb-48 sm:pb-28' : 'space-y-6 pb-4'}>
       <PageHeader
         title="Orçamentos"
         description={
@@ -481,7 +481,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         }
       />
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4 rounded-3xl border border-line bg-surface p-4 md:p-5">
         <div className="flex flex-wrap gap-2" aria-label="Filtrar por status">
           {STATUS_OPTIONS.map((option) => {
             const count = option.summaryKey
@@ -495,7 +495,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 className={
                   status === option.value
                     ? 'border border-primary bg-transparent text-link'
-                    : 'border border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg'
+                    : 'border border-line bg-surface-subtle text-fg-muted hover:bg-surface-hover hover:text-fg'
                 }
               >
                 {option.label} <span className="font-normal">· {count}</span>
@@ -566,7 +566,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
       {!loading && !error && data.length > 0 && (
         <div className="hidden md:block">
-          <Table>
+          <Table
+            className="[&_td]:py-4 [&_th]:h-12"
+            containerClassName="overflow-hidden rounded-3xl border-line bg-surface"
+          >
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12 px-3">
@@ -644,7 +647,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           {data.map((row) => (
             <div
               key={row.id}
-              className={`cursor-pointer space-y-3 rounded-md border border-line bg-surface p-4 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              className={`cursor-pointer space-y-3 rounded-3xl border border-line bg-surface p-5 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
               <div className="flex items-start justify-between gap-3">

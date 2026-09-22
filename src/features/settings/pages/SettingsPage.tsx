@@ -282,9 +282,9 @@ export default function SettingsPage() {
       <div
         role="tablist"
         aria-label="Seções de configurações"
-        className="-mx-1 overflow-x-auto px-1"
+        className="overflow-x-auto px-1"
       >
-        <div className="flex min-w-max gap-2 border-b border-line pb-2">
+        <div className="flex min-w-max gap-1">
           {TABS.map((tab, index) => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
@@ -300,11 +300,11 @@ export default function SettingsPage() {
                 onClick={() => handleTabChange(tab.id)}
                 onKeyDown={(event) => tabKeyDown(event, index)}
                 className={[
-                  'flex min-h-9 items-center gap-2 whitespace-nowrap rounded-sm border px-3 py-2 text-sm font-medium transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                  'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                   selected
-                    ? 'border-primary bg-primary/5 text-primary'
-                    : 'border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg',
+                    ? 'bg-cream text-page'
+                    : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
                 <Icon size={15} aria-hidden="true" /> {tab.label}
@@ -319,7 +319,7 @@ export default function SettingsPage() {
         role="tabpanel"
         aria-labelledby={`settings-tab-${activeTab}`}
         tabIndex={-1}
-        className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+        className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
       >
         {loading && (activeTab === 'patterns' || activeTab === 'company') && (
           <div className="space-y-3" aria-label="Carregando configurações">
@@ -331,7 +331,7 @@ export default function SettingsPage() {
 
         {!loading && loadError && (activeTab === 'patterns' || activeTab === 'company') && (
           <div
-            className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-fg"
+            className="rounded-card border border-destructive/25 bg-destructive/5 p-4 text-sm text-fg"
             role="alert"
           >
             <div className="flex items-start gap-2">
@@ -365,12 +365,12 @@ export default function SettingsPage() {
             className="space-y-6"
           >
             <section
-              className="space-y-5 rounded-lg border border-line bg-surface p-4 sm:p-6"
+              className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
               aria-labelledby="patterns-title"
             >
               <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                  <SlidersHorizontal size={18} className="text-primary" aria-hidden="true" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
+                  <SlidersHorizontal size={18} className="text-light-sage" aria-hidden="true" />
                 </div>
                 <h2 id="patterns-title" className="text-base font-semibold text-fg">
                   Padrões de orçamento
@@ -445,7 +445,7 @@ export default function SettingsPage() {
 
         {activeTab === 'templates' && (
           <section
-            className="rounded-lg border border-line bg-surface p-4 sm:p-6"
+            className="rounded-card bg-surface p-5 sm:p-[22px]"
             aria-labelledby="document-templates-title"
           >
             <h2 id="document-templates-title" className="sr-only">
@@ -465,11 +465,11 @@ export default function SettingsPage() {
             className="space-y-6"
           >
             <section
-              className="space-y-5 rounded-lg border border-line bg-surface p-4 sm:p-6"
+              className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
               aria-labelledby="company-title"
             >
               <div className="flex items-start gap-3">
-                <Building2 size={20} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                <Building2 size={20} className="mt-0.5 shrink-0 text-light-sage" aria-hidden="true" />
                 <h2 id="company-title" className="text-base font-semibold text-fg">
                   Empresa
                 </h2>
@@ -599,7 +599,7 @@ function SettingsFeedback({ error, success }: { error: string | null; success: s
     <>
       {error && (
         <div
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -608,7 +608,7 @@ function SettingsFeedback({ error, success }: { error: string | null; success: s
       )}
       {success && (
         <div
-          className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-fg"
+          className="flex items-center gap-2 rounded-control border border-success/25 bg-success/10 p-3 text-sm text-fg"
           role="status"
           aria-live="polite"
         >
@@ -622,7 +622,7 @@ function SettingsFeedback({ error, success }: { error: string | null; success: s
 
 function SaveBar({ saving, label }: { saving: boolean; label: string }) {
   return (
-    <div className="sticky bottom-4 z-10 flex justify-end rounded-lg border border-line bg-surface/95 p-3 shadow-sm backdrop-blur">
+    <div className="sticky bottom-4 z-10 flex justify-end rounded-control border border-line bg-surface p-3">
       <Button type="submit" disabled={saving} aria-busy={saving}>
         {saving ? (
           <Loader2 className="animate-spin" aria-hidden="true" />

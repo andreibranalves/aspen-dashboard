@@ -90,12 +90,12 @@ export function DetailDrawer({
         aria-modal="true"
         aria-label={title || 'Detalhes'}
         className={cn(
-          'relative z-10 flex h-full flex-col bg-white shadow-2xl dark:bg-surface',
-          'w-full lg:max-w-xl',
+          'relative z-10 m-3 flex h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] flex-col rounded-card border border-line bg-surface shadow-2xl',
+          'lg:max-w-xl',
           className
         )}
       >
-        <div className="flex shrink-0 items-start justify-between border-b border-line px-5 py-4 dark:border-line">
+        <div className="flex shrink-0 items-start justify-between border-b border-line px-5 py-4">
           <div className="min-w-0 flex-1 pr-4">
             <h2 className="break-words text-lg font-semibold text-fg">{title || 'Detalhes'}</h2>
             {description && (
@@ -107,13 +107,13 @@ export function DetailDrawer({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+            className="flex min-h-9 min-w-9 shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-surface-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
         </div>
         {actions && (
-          <div className="shrink-0 border-b border-line px-5 py-3 dark:border-line">{actions}</div>
+          <div className="shrink-0 border-b border-line px-5 py-3">{actions}</div>
         )}
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </div>

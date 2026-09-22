@@ -619,6 +619,9 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
     page.evaluate(() => {
       const main = globalThis.document.querySelector('main');
       const topBar = main?.previousElementSibling;
+      const workspace = globalThis.document.querySelector('.aspen-workspace');
+      const workspaceBounds = workspace?.getBoundingClientRect();
+      const workspaceStyle = workspace ? globalThis.getComputedStyle(workspace) : null;
       return {
         windowY: globalThis.scrollY,
         documentHeight: globalThis.document.documentElement.scrollHeight,
@@ -628,6 +631,10 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
         mainScrollHeight: main?.scrollHeight,
         mainClientHeight: main?.clientHeight,
         topBarTop: topBar?.getBoundingClientRect().top,
+        workspaceTop: workspaceBounds?.top,
+        workspaceBottom: workspaceBounds?.bottom,
+        workspacePaddingTop: workspaceStyle ? Number.parseFloat(workspaceStyle.paddingTop) : 0,
+        workspacePaddingBottom: workspaceStyle ? Number.parseFloat(workspaceStyle.paddingBottom) : 0,
       };
     });
 
@@ -640,8 +647,8 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
   const scrolled = await readScrollState();
   expect(scrolled.windowY).toBe(0);
   expect(scrolled.documentHeight).toBeLessThanOrEqual(scrolled.viewportHeight);
-  expect(scrolled.mainBottom).toBe(scrolled.viewportHeight);
-  expect(scrolled.topBarTop).toBe(0);
+  expect(scrolled.mainBottom).toBe(scrolled.workspaceBottom - scrolled.workspacePaddingBottom);
+  expect(scrolled.topBarTop).toBe(scrolled.workspaceTop + scrolled.workspacePaddingTop);
   expect(scrolled.mainScrollHeight).toBeGreaterThan(scrolled.mainClientHeight);
 });
 

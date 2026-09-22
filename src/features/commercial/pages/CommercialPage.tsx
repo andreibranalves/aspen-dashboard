@@ -51,7 +51,7 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
         }
       />
 
-      <div className="border-b border-line" role="tablist" aria-label="Área comercial">
+      <div className="inline-flex w-fit max-w-full rounded-xl border border-line bg-surface p-1" role="tablist" aria-label="Área comercial">
         <div className="flex gap-1">
           {TABS.map((item, index) => {
             const Icon = item.icon;
@@ -69,8 +69,8 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
                 tabIndex={tab === item.key ? 0 : -1}
                 className={
                   tab === item.key
-                    ? 'inline-flex items-center gap-2 border-b-2 border-primary px-3 py-3 text-sm font-semibold text-primary'
-                    : 'inline-flex items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm text-fg-muted hover:text-fg'
+                    ? 'inline-flex items-center gap-2 rounded-lg bg-surface-subtle px-4 py-2.5 text-sm font-semibold text-primary'
+                    : 'inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm text-fg-muted hover:bg-surface-subtle hover:text-fg'
                 }
                 onClick={() => changeTab(item.key)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}

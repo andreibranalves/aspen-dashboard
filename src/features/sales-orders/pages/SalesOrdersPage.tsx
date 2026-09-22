@@ -85,6 +85,13 @@ const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => op
 const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
 const parseSalesOrderLimit = parseHashAllowedInteger([10, 25, 50, 100]);
 
+function formatSummaryDelta(value: number | null, amount: number): string | undefined {
+  if (value === null) return undefined;
+  if (value === 0 && amount === 0) return undefined;
+  if (value === 0) return 'sem variação vs. período anterior';
+  return `${value > 0 ? '+' : ''}${value}% vs. período anterior`;
+}
+
 function formatSalesOrderDate(value: string): string {
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
@@ -405,6 +412,64 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
       />
 
+      {summaryData && (
+        <section aria-label="Resumo comercial dos últimos 30 dias" className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">
+            Últimos 30 dias
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              icon={ShoppingCart}
+              label="Pedidos"
+              value={String(summaryData.orders_count)}
+              metadata={
+                summaryData.orders_count === 0 ? undefined : `${summaryData.orders_count} no período`
+              }
+              className="border-border-subtle bg-surface"
+            />
+            <StatCard
+              icon={DollarSign}
+              label="Receita"
+              value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+              metadata={formatSummaryDelta(
+                summaryData.revenue_delta,
+                summaryData.total_revenue
+              )}
+              className="border-border-subtle bg-sage text-page [&_div]:text-page [&_span]:text-page"
+            />
+            <StatCard
+              icon={Package}
+              label="Em aberto"
+              value={String(summaryData.open_orders)}
+              className="border-border-subtle bg-orange text-page [&_div]:text-page [&_span]:text-page"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Ticket médio"
+              value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+              metadata={formatSummaryDelta(
+                summaryData.avg_ticket_delta,
+                summaryData.avg_ticket
+              )}
+              className="border-border-subtle bg-taupe text-page [&_div]:text-page [&_span]:text-page"
+            />
+          </div>
+        </section>
+      )}
+      {!summaryData && summaryError && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-3"
+          role="alert"
+        >
+          <p className="text-sm text-destructive">
+            Não foi possível carregar o resumo comercial.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+
       {/* Filter row */}
       <PageToolbar className="items-end gap-2">
         {/* Search */}
@@ -653,74 +718,6 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </div>
       )}
 
-      {/* Secondary summary: available on demand after the list journey. */}
-      <details className="group rounded-lg border border-line bg-surface">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
-          <span>Resumo comercial · últimos 30 dias</span>
-          <span className="text-xs font-normal text-fg-muted" aria-live="polite">
-            {summaryError ? 'indisponível' : summaryData ? 'disponível' : 'carregando'}
-          </span>
-        </summary>
-        <div className="border-t border-line p-4">
-          {summaryError && (
-            <div
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-surface-subtle px-3 py-3"
-              role="alert"
-            >
-              <p className="text-sm text-destructive">
-                Não foi possível carregar as métricas de vendas.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
-                Tentar novamente
-              </Button>
-            </div>
-          )}
-          {summaryData && (
-            <div className="flex flex-wrap gap-3">
-              <StatCard
-                icon={DollarSign}
-                label="Receita"
-                className="flex-1"
-                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-                metadata={
-                  summaryData.revenue_delta === null ||
-                  (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
-                    ? undefined
-                    : summaryData.revenue_delta === 0
-                      ? 'sem variação vs período anterior'
-                      : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
-                }
-              />
-              <StatCard
-                icon={ShoppingCart}
-                label="Pedidos"
-                className="flex-1"
-                value={String(summaryData.orders_count)}
-              />
-              <StatCard
-                icon={TrendingUp}
-                label="Ticket Médio"
-                className="flex-1"
-                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-                metadata={
-                  summaryData.avg_ticket_delta === null ||
-                  (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
-                    ? undefined
-                    : summaryData.avg_ticket_delta === 0
-                      ? 'sem variação vs período anterior'
-                      : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
-                }
-              />
-              <StatCard
-                icon={Package}
-                label="Pedidos em aberto"
-                className="flex-1"
-                value={String(summaryData.open_orders)}
-              />
-            </div>
-          )}
-        </div>
-      </details>
     </PageShell>
   );
 }

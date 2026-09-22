@@ -598,7 +598,7 @@ export default function WhatsAppDeliveriesPage() {
   };
 
   return (
-    <PageShell className="space-y-4 pb-10">
+    <PageShell className="space-y-5 pb-10">
       <PageHeader
         title="Envios"
         actions={
@@ -631,7 +631,7 @@ export default function WhatsAppDeliveriesPage() {
       />
 
       <div role="tablist" aria-label="Seções de envios" className="border-b border-line">
-        <div className="flex gap-1">
+        <div className="flex gap-2">
           {(
             [
               ['pending', 'Pendências'],
@@ -652,10 +652,10 @@ export default function WhatsAppDeliveriesPage() {
               onClick={() => setActiveTab(tab)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
               className={cn(
-                'min-h-10 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                'min-h-10 border-b-2 px-4 py-2 text-sm font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 activeTab === tab
-                  ? 'border-primary text-primary'
+                  ? 'border-primary bg-surface text-primary'
                   : 'border-transparent text-fg-muted hover:text-fg'
               )}
             >
@@ -667,7 +667,7 @@ export default function WhatsAppDeliveriesPage() {
 
       <div id="delivery-panel" role="tabpanel" aria-labelledby={`delivery-tab-${activeTab}`}>
         {activeTab === 'history' && (
-          <section className="space-y-3" aria-label="Filtros do histórico">
+          <section className="space-y-4 rounded-3xl border border-line bg-surface p-5 md:p-6" aria-label="Filtros do histórico">
             <div className="flex flex-wrap gap-2">
               {(
                 [
@@ -735,7 +735,7 @@ export default function WhatsAppDeliveriesPage() {
         )}
 
         {activeTab === 'pending' && (
-          <section className="space-y-4" aria-label="Filtros de entregas">
+          <section className="space-y-4 rounded-3xl border border-line bg-surface p-5 md:p-6" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">
               <label className={filterInputClass(filters.requiresAction)}>
                 <input
@@ -914,6 +914,7 @@ export default function WhatsAppDeliveriesPage() {
               aria-label="Tabela de entregas WhatsApp"
               aria-busy={loading}
               className="table-fixed min-w-[860px]"
+              containerClassName="rounded-3xl border-line bg-surface [&_th]:h-12 [&_td]:py-4"
             >
               <TableHeader>
                 <TableRow>

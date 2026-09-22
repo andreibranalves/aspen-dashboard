@@ -33,8 +33,8 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
   const size = formatBytes(item.size_bytes);
 
   return (
-    <article className="group relative min-w-0 overflow-hidden rounded-md border border-line bg-surface transition-colors hover:border-primary/30">
-      <div className="aspect-square overflow-hidden bg-surface-muted">
+    <article className="group relative min-w-0 overflow-hidden rounded-card bg-surface transition-colors hover:bg-surface-hover">
+      <div className="aspect-square overflow-hidden rounded-t-card bg-raised">
         {isVideo ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center text-fg-muted">
             <Video size={30} aria-hidden="true" />
@@ -68,7 +68,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
             <button
               type="button"
               onClick={() => onDelete(item)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
               aria-label={`Remover ${item.title || 'mídia'}`}
               title="Remover mídia"
             >
@@ -79,7 +79,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
 
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span
-            className="max-w-full truncate rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+            className="max-w-full truncate rounded-[6px] bg-sage/20 px-2 py-1 text-[10px] font-semibold text-light-sage"
             title={formatProductGroup(item.product_group)}
           >
             {formatProductGroup(item.product_group)}

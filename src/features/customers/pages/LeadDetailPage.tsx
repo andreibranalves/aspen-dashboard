@@ -146,12 +146,12 @@ interface SectionCardProps {
 function SectionCard({ title, description, icon: Icon, children, className }: SectionCardProps) {
   return (
     <section
-      className={`space-y-4 rounded-md border border-line bg-surface p-4 md:p-5 ${className || ''}`}
+      className={`space-y-4 rounded-card border border-line bg-surface p-5 md:p-6 ${className || ''}`}
       aria-labelledby={`section-${title}`}
     >
       <div className="flex items-start gap-3">
         {Icon && (
-          <div className="mt-0.5 rounded-sm bg-surface-muted p-2 text-fg-muted">
+          <div className="mt-0.5 rounded-control bg-surface-subtle p-2 text-fg-muted">
             <Icon size={16} aria-hidden="true" />
           </div>
         )}
@@ -496,7 +496,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         />
 
         {!isNewClient && !editing && (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface-subtle p-3">
             <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
             <span className="text-xs text-fg-muted">Cliente</span>
             {qualityBadges(current as ClientDetail).length > 0 && (
@@ -684,7 +684,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     {current.orders.map((order) => (
                       <div
                         key={order.name}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-line p-3"
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-subtle p-4"
                       >
                         <div className="min-w-0">
                           <p className="break-words font-medium">{order.name}</p>

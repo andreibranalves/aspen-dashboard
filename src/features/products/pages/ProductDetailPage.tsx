@@ -194,10 +194,10 @@ interface SectionCardProps {
 
 function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
   return (
-    <section className="space-y-4 rounded-md border border-line bg-surface p-5">
+    <section className="space-y-4 rounded-card bg-surface p-5 sm:p-[22px]">
       <div className="flex items-start gap-3">
         {Icon && (
-          <div className="mt-0.5 rounded-md bg-surface-muted p-2 text-fg-muted" aria-hidden="true">
+          <div className="mt-0.5 rounded-control bg-raised p-2 text-light-sage" aria-hidden="true">
             <Icon size={16} />
           </div>
         )}
@@ -643,7 +643,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     return (
       <PageShell>
         <div
-          className="flex flex-col items-center gap-3 py-16 text-center text-fg-muted"
+          className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center text-fg-muted"
           role="status"
         >
           <Search size={40} className="text-fg-muted/40" aria-hidden="true" />
@@ -663,7 +663,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     return (
       <PageShell>
         <div
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-16 text-center text-fg-muted"
+          className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-card border border-destructive/30 bg-destructive/5 px-5 py-12 text-center text-fg-muted"
           role="alert"
         >
           <AlertTriangle size={40} className="text-destructive" aria-hidden="true" />
@@ -683,7 +683,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (!produto) {
     return (
       <PageShell>
-        <div className="flex flex-col items-center gap-3 py-16 text-center text-fg-muted">
+        <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center text-fg-muted">
           <Package size={40} className="text-fg-muted/40" aria-hidden="true" />
           <h1 className="text-lg font-semibold text-fg">Dados do produto indisponíveis</h1>
           <p className="max-w-md text-sm">Não há conteúdo suficiente para exibir este cadastro.</p>
@@ -764,17 +764,17 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   return (
     <PageShell className="space-y-6">
       <fieldset disabled={saving} className="space-y-6">
-      <header className="flex flex-col gap-4 rounded-md border border-line bg-surface p-5 lg:flex-row lg:items-start lg:justify-between">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-4">
           {hasImage ? (
             <img
               src={produto.imagem ?? undefined}
               alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-md border border-line object-cover"
+              className="h-14 w-14 shrink-0 rounded-card object-cover"
             />
           ) : (
             <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-card bg-sage text-page"
               aria-label="Imagem não cadastrada"
             >
               <Package size={20} aria-hidden="true" />
@@ -783,7 +783,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <div className="min-w-0">
             <p className="font-mono text-xs text-fg-muted">{produto.sku || 'SKU não informado'}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="max-w-full break-words text-xl font-semibold tracking-[-0.2px] text-fg">
+              <h1 className="max-w-full break-words text-[28px] font-bold leading-tight tracking-[-0.035em] text-fg max-[767px]:text-[22px]">
                 {isNewProduct ? 'Novo produto' : displayName}
               </h1>
               <StatusBadge
@@ -802,7 +802,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
       {isDuplicateDraft && (
         <div
-          className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
+          className="rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
           role="note"
         >
           <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o
@@ -815,7 +815,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {editing && (
               <div className="md:col-span-2">
-                <label htmlFor="product-name" className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
+                <label htmlFor="product-name" className="text-[11px] font-medium text-fg-muted">Nome</label>
                 <Input
                   id="product-name"
                   value={edited.nome || ''}
@@ -828,7 +828,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="md:col-span-2">
-                <label htmlFor="product-description" className="text-fg-muted text-[11px] uppercase tracking-wide">
+                <label htmlFor="product-description" className="text-[11px] font-medium text-fg-muted">
                   Descrição
                 </label>
                 <textarea
@@ -837,7 +837,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   onChange={(event) =>
                     setEdited((previous) => ({ ...previous, descricao: event.target.value }))
                   }
-                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-control border border-border-control bg-raised px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
                   placeholder="Descrição do produto"
                   maxLength={4000}
                 />
@@ -848,7 +848,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label htmlFor="product-sku" className="text-fg-muted text-[11px] uppercase tracking-wide">SKU</label>
+                <label htmlFor="product-sku" className="text-[11px] font-medium text-fg-muted">SKU</label>
                 <Input
                   id="product-sku"
                   value={isNewProduct ? edited.sku || '' : produto.sku || ''}
@@ -865,7 +865,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="flex min-w-0 flex-col">
-                <label htmlFor="product-status" className="block text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
+                <label htmlFor="product-status" className="block text-[11px] font-medium text-fg-muted">Status</label>
                 <Select
                   id="product-status"
                   value={edited.ativo ? 'ativo' : 'inativo'}
@@ -887,7 +887,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label htmlFor="product-category" className="text-fg-muted text-[11px] uppercase tracking-wide">
+                <label htmlFor="product-category" className="text-[11px] font-medium text-fg-muted">
                   Categoria
                 </label>
                 <Input
@@ -905,7 +905,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label htmlFor="product-brand" className="text-fg-muted text-[11px] uppercase tracking-wide">Marca</label>
+                <label htmlFor="product-brand" className="text-[11px] font-medium text-fg-muted">Marca</label>
                 <Input
                   id="product-brand"
                   value={edited.marca || ''}
@@ -921,7 +921,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label htmlFor="product-unit-cost" className="text-fg-muted text-[11px] uppercase tracking-wide">
+                <label htmlFor="product-unit-cost" className="text-[11px] font-medium text-fg-muted">
                   Custo unitário (R$)
                 </label>
                 <Input
@@ -945,7 +945,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div>
-                <label htmlFor="product-unit" className="text-fg-muted text-[11px] uppercase tracking-wide">Unidade</label>
+                <label htmlFor="product-unit" className="text-[11px] font-medium text-fg-muted">Unidade</label>
                 <Input
                   id="product-unit"
                   value={edited.unidade || ''}
@@ -974,7 +974,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             <div className="space-y-4">
               {!edited.precoBase?.trim() && (edited.tiers || []).length === 0 && (
                 <p
-                  className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
+                  className="rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
                   role="note"
                 >
                   Preço indisponível para este produto.
@@ -1023,7 +1023,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   </Button>
                 </div>
                 {(edited.tiers || []).length === 0 && (
-                  <p className="rounded-lg border border-dashed border-line px-3 py-3 text-sm text-fg-muted">
+                  <p className="rounded-control border border-dashed border-line bg-raised px-3 py-3 text-xs text-fg-muted">
                     Nenhuma faixa configurada. O preço base será usado quando preenchido.
                   </p>
                 )}
@@ -1031,7 +1031,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   {(edited.tiers || []).map((tier, index) => (
                     <div
                       key={`tier-${index}`}
-                      className="grid grid-cols-1 items-end gap-3 rounded-md border border-line p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                      className="grid grid-cols-1 items-end gap-3 rounded-control bg-raised p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
                     >
                       <label className="text-xs text-fg-muted">
                         Quantidade mínima
@@ -1100,7 +1100,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           ) : (
             <div className="space-y-4">
               {hasBasePrice ? (
-                <div className="rounded-lg border border-line bg-surface/50 p-3 max-w-xs">
+                <div className="max-w-xs rounded-control bg-raised p-4">
                   <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
                     Preço base
                   </p>
@@ -1110,7 +1110,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 </div>
               ) : null}
               {hasTiers ? (
-                <div className="overflow-x-auto rounded-md border border-line">
+                <div className="overflow-x-auto rounded-control bg-surface">
                   <Table className="min-w-[360px]">
                     <TableHeader>
                       <TableRow>
@@ -1138,7 +1138,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 </div>
               ) : !hasBasePrice ? (
                 <p
-                  className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
+                  className="rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
                   role="note"
                 >
                   Preço indisponível para este produto.
@@ -1175,7 +1175,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               {atividades.map((atividade, index) => (
                 <div
                   key={atividade.id || `${atividade.tipo}-${atividade.data}-${index}`}
-                  className="rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm"
+                  className="rounded-control bg-raised px-4 py-3 text-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-fg break-words">{atividade.texto}</span>

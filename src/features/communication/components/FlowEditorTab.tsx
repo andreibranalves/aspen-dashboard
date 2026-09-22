@@ -453,7 +453,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       setActiveStepId(flow.steps?.at(-1)?.id || '');
                     }}
                     className={[
-                      'min-w-0 rounded-md border p-3 text-left transition-colors',
+                      'min-w-0 rounded-control border p-3 text-left transition-colors',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                       isSelected
                         ? 'border-primary bg-primary/5'
@@ -515,10 +515,10 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
         {selectedFlow && (
           <section
-            className="rounded-md border border-line bg-surface"
+            className="overflow-hidden rounded-card bg-surface"
             aria-labelledby="selected-flow-title"
           >
-            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-md border-b border-line bg-surface/95 p-4 shadow-sm backdrop-blur">
+            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface p-4">
               <button
                 type="button"
                 onClick={() =>
@@ -527,8 +527,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 aria-expanded={expandedFlow === selectedFlow.id}
                 className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                  <MessageSquare size={18} className="text-primary" aria-hidden="true" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
+                  <MessageSquare size={18} className="text-sage" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
@@ -1022,13 +1022,13 @@ function FlowPreview({ step }: { step?: FlowStep }) {
 
   return (
     <aside
-      className="min-w-0 rounded-md border border-line bg-surface p-4"
+      className="min-w-0 rounded-card bg-surface p-4"
       aria-labelledby="flow-preview-title"
     >
       <h3 id="flow-preview-title" className="text-base font-semibold text-fg">
         {title}
       </h3>
-      <div className="mt-3 min-h-48 whitespace-pre-line rounded-md border border-line bg-surface-muted p-4 text-sm leading-5 text-fg">
+      <div className="mt-3 min-h-48 whitespace-pre-line rounded-control bg-raised p-4 text-sm leading-5 text-fg">
         {content}
       </div>
       <p className="mt-3 text-xs text-fg-muted">{note}</p>

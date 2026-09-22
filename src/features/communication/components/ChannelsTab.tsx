@@ -42,19 +42,18 @@ export default function ChannelsTab() {
 
   return (
     <section
-      className="rounded-lg border border-line bg-surface p-4 sm:p-6"
+      className="rounded-card bg-surface p-4 sm:p-6"
       aria-labelledby="channels-title"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10">
-            <MessageCircle size={20} className="text-primary" aria-hidden="true" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised">
+            <MessageCircle size={20} className="text-sage" aria-hidden="true" />
           </div>
           <div className="min-w-0">
             <h2 id="channels-title" className="text-base font-semibold text-fg">
               WhatsApp
             </h2>
-            <p className="mt-1 text-sm text-fg-muted">Somente leitura</p>
           </div>
         </div>
         <StatusBadge status="Draft" label="Somente leitura" />
@@ -125,7 +124,7 @@ export default function ChannelsTab() {
               {CONFIGURATION_ITEMS.map(({ name, description, icon: Icon }) => (
                 <div
                   key={name}
-                  className="flex min-w-0 items-start gap-3 rounded-sm border border-line bg-surface-muted/40 px-3 py-2.5"
+                  className="flex min-w-0 items-start gap-3 rounded-control bg-raised px-3 py-2.5"
                 >
                   <Icon size={15} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
                   <div className="min-w-0">

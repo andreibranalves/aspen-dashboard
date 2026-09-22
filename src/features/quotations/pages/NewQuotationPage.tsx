@@ -1990,7 +1990,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     : 'Manual · rascunho em edição';
 
   return (
-    <PageShell className="min-w-0 space-y-4 overflow-x-hidden">
+    <PageShell className="min-w-0 space-y-6 overflow-x-hidden pb-10">
       <PageHeader
         title="Novo orçamento"
         description={headlineDescription}
@@ -2010,7 +2010,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 </Select>
               </label>
             )}
-            <div role="tablist" aria-label="Modo de criação" className="flex max-w-full shrink-0 rounded-md border border-line bg-surface p-0.5">
+            <div role="tablist" aria-label="Modo de criação" className="flex max-w-full shrink-0 rounded-xl border border-line bg-surface p-1">
               {(['conversation', 'manual'] as const).map((option) => (
                 <button
                   key={option}
@@ -2024,7 +2024,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   onClick={() => switchMode(option)}
                   onKeyDown={(event) => onModeKeyDown(event, option)}
                   disabled={pricingPending}
-                  className={cn('h-8 rounded-sm px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', mode === option ? 'bg-primary/10 text-link' : 'text-fg-muted hover:bg-surface-hover hover:text-fg')}
+                  className={cn('h-9 rounded-lg px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', mode === option ? 'bg-primary/15 text-primary' : 'text-fg-muted hover:bg-surface-hover hover:text-fg')}
                 >
                   {option === 'conversation' ? 'Automático' : 'Manual'}
                 </button>
@@ -2075,8 +2075,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 gap-4 xl:grid-cols-2">
-          <section aria-label="Conversa" className="min-w-0 rounded-lg border border-line bg-surface p-4 md:p-5">
+        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 gap-5 xl:grid-cols-2">
+          <section aria-label="Conversa" className="min-w-0 rounded-3xl border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-fg">Conversa</h2>
@@ -2105,7 +2105,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 }
               }}
               placeholder="Cole aqui a mensagem do cliente..."
-              className="mt-3 min-h-[180px] py-3 leading-6"
+              className="mt-4 min-h-[220px] rounded-xl bg-surface-subtle py-4 leading-6"
             />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button type="button" onClick={() => void handleExtract()} disabled={extracting || liveDraftOperation || (!text.trim() && !imageData)}>
@@ -2115,7 +2115,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </div>
           </section>
 
-          <section aria-label="Resultado da conversa" className="min-w-0 rounded-lg border border-line bg-page p-4 md:p-5">
+          <section aria-label="Resultado da conversa" className="min-w-0 rounded-3xl border border-line bg-surface-subtle p-5 md:p-6">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-fg">Resultado</h2>
@@ -2135,7 +2135,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               )}
             </div>
             {!activeDraft && pendingExtraction.length === 0 && (
-              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-md border border-dashed border-line px-5 text-center text-fg-muted">
+              <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-line bg-surface px-5 text-center text-fg-muted">
                 <FileText size={28} />
                 <p className="mt-3 text-sm">Nenhum pedido extraído</p>
               </div>
@@ -2247,8 +2247,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         </div>
       ) : (
         <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 space-y-4">
-            <section aria-label="Seleção de cliente" className="rounded-lg border border-line bg-surface p-4 md:p-5">
+          <div className="min-w-0 space-y-5">
+            <section aria-label="Seleção de cliente" className="rounded-3xl border border-line bg-surface p-5 md:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div><h2 className="text-base font-semibold text-fg">Dados do orçamento</h2></div>
                 <div className="flex gap-2">
@@ -2272,7 +2272,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               {!manual.showAddress && hasAnyAddressField(manual.address) && <p className="mt-2 text-xs text-fg-muted">{formatAddressSummary(manual.address)}</p>}
             </section>
 
-            <section aria-label="Oportunidade da proposta" className="rounded-lg border border-line bg-surface p-4 md:p-5">
+            <section aria-label="Oportunidade da proposta" className="rounded-3xl border border-line bg-surface p-5 md:p-6">
               {manual.originPrefill ? (
                 <p className="text-sm text-fg-muted">
                   Demanda vinculada à origem comercial{manual.originPrefill.leadName ? ` · ${manual.originPrefill.leadName}` : ''}.
@@ -2288,14 +2288,14 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               )}
             </section>
 
-            <section aria-label="Itens do orçamento" className="rounded-lg border border-line bg-surface p-4 md:p-5">
+            <section aria-label="Itens do orçamento" className="rounded-3xl border border-line bg-surface p-5 md:p-6">
               <div className="flex items-start justify-between gap-3"><div><h2 className="text-base font-semibold text-fg">Itens do orçamento</h2></div><span className="text-sm text-fg-muted">{manual.items.length} {manual.items.length === 1 ? 'item' : 'itens'}</span></div>
               <div className="relative mt-4"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" /><Input aria-label="Buscar produto para adicionar ao orçamento" className="pl-9" value={productSearch} disabled={manualActionsBlocked} onChange={onProductSearch} placeholder="Buscar SKU ou nome…" />{productSearching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />}</div>
               {productResults.length > 0 && <div className="mt-2 divide-y divide-border overflow-hidden rounded-md border border-line">{productResults.map((product) => <div key={product.sku} className="flex items-center justify-between gap-3 p-3"><span className="min-w-0 truncate text-sm"><span className="font-mono text-primary">{product.sku}</span> · {product.nome}</span><div className="flex shrink-0 items-center gap-2">{isUnpricedProduct(product) && <span className="text-xs text-fg-muted">Preço indisponível</span>}<Button type="button" size="sm" aria-label={`Adicionar ${product.sku} ao orçamento`} onClick={() => void addProduct(product)} disabled={manualActionsBlocked || Boolean(addingSku) || isUnpricedProduct(product)}>{addingSku === product.sku ? 'Adicionando…' : 'Adicionar'}</Button></div></div>)}</div>}
               {manual.items.length === 0 ? <div className="mt-4 rounded-md border border-dashed border-line px-4 py-10 text-center text-sm text-fg-muted">Nenhum produto na tabela</div> : <div className="mt-4"><Table className="min-w-[620px] text-sm"><TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-28 text-right">Quantidade</TableHead><TableHead className="w-40 text-right">Unitário</TableHead><TableHead className="w-32 text-right">Total</TableHead><TableHead className="w-10" /></TableRow></TableHeader><TableBody>{manual.items.map((item) => <TableRow key={item._key}><TableCell><span className="font-mono text-xs text-primary">{item.sku}</span><p className="text-sm font-medium text-fg">{item.nome}</p>{item._rateManual && <span className="text-[11px] text-warning">preço manual</span>}</TableCell><TableCell className="text-right"><Input type="number" min="0.001" step="0.001" className="ml-auto w-24 text-right" aria-label={`Quantidade de ${item.sku}`} value={item.qty} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'qty', event.target.value)} /></TableCell><TableCell className="text-right"><div className="flex items-center justify-end gap-1"><Input type="number" min="0" step="0.01" className="w-32 text-right" aria-label={`Preço unitário de ${item.sku}`} value={item.rate} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'rate', event.target.value)} />{item._rateManual && <button type="button" className="min-h-9 min-w-9 rounded-sm text-fg-muted hover:bg-surface-hover" aria-label={`Recalcular preço de ${item.sku}`} onClick={() => void resetManualRate(item._key)} disabled={manualActionsBlocked}><RotateCcw size={14} /></button>}</div></TableCell><TableCell className="text-right font-medium tabular-nums">{formatBRL(item.qty * item.rate)}</TableCell><TableCell className="text-right"><button type="button" className="min-h-9 min-w-9 rounded-sm text-fg-muted hover:bg-destructive/10 hover:text-destructive" aria-label={`Remover ${item.sku}`} disabled={manualActionsBlocked} onClick={() => { if (!manualActionsBlocked) setManual((current) => ({ ...current, items: current.items.filter((candidate) => candidate._key !== item._key) })); }}><Trash2 size={14} /></button></TableCell></TableRow>)}</TableBody></Table></div>}
             </section>
 
-            <section aria-label="Condições do orçamento" className="rounded-lg border border-line bg-surface p-4 md:p-5">
+            <section aria-label="Condições do orçamento" className="rounded-3xl border border-line bg-surface p-5 md:p-6">
               <h2 className="text-base font-semibold text-fg">Condições e fechamento</h2>
               {templateError && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-destructive"><p role="alert">{templateError}</p><Button type="button" variant="outline" size="sm" onClick={() => void loadTemplates()}>Tentar novamente</Button></div>}
               <div className="mt-4 grid gap-3 md:grid-cols-2"><label className="space-y-1 text-xs font-medium text-fg-muted">Prazo de produção<Input aria-label="Prazo de produção" value={manual.prazo} disabled={manualActionsBlocked} onChange={(event) => setManualValue('prazo', event.target.value)} /></label><label className="space-y-1 text-xs font-medium text-fg-muted">Modelo de orçamento<Select aria-label="Modelo de orçamento" value={manual.templateKey} disabled={manualActionsBlocked || templateLoading || !templates.length} onChange={(event) => { setTemplateKey(event.target.value); setManualValue('templateKey', event.target.value); }} className="w-full">{templates.map((template) => <option key={template.key} value={template.key}>{template.name}</option>)}</Select></label></div>
@@ -2304,7 +2304,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               {manualBlockMessage && <p id="manual-quotation-action-status" className="mt-3 rounded-md border border-line bg-surface-subtle p-3 text-xs text-fg-muted">{manualBlockMessage}</p>}
             </section>
           </div>
-          <aside aria-label="Resumo e ações do orçamento" className="min-w-0 rounded-lg border border-line bg-surface p-4 md:p-5 xl:sticky xl:top-4">
+          <aside aria-label="Resumo e ações do orçamento" className="min-w-0 rounded-3xl border border-line bg-surface p-5 md:p-6 xl:sticky xl:top-4">
             <h2 className="text-base font-semibold text-fg">Resumo</h2>
             <dl className="mt-4 space-y-3 text-sm tabular-nums"><div className="flex justify-between gap-3"><dt className="text-fg-muted">Cliente</dt><dd className="max-w-[180px] truncate">{manualToEdited(manual).nome || 'Não informado'}</dd></div><div className="flex justify-between gap-3"><dt className="text-fg-muted">Itens</dt><dd>{manual.items.length}</dd></div><div className="flex justify-between gap-3"><dt className="text-fg-muted">Subtotal</dt><dd>{formatBRL(subtotal)}</dd></div><div className="flex justify-between gap-3 border-t border-line pt-3 text-xl font-semibold"><dt>Total</dt><dd>{formatBRL(subtotal)}</dd></div></dl>
             {issueErrorByDraft[manualActionDraftIndex] && <p role="alert" className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">{issueErrorByDraft[manualActionDraftIndex]}</p>}

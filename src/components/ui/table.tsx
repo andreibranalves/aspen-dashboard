@@ -18,8 +18,8 @@ interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
 
 const Table = forwardRef<HTMLTableElement, TableProps>(
   ({ className, containerClassName, ...props }, ref) => (
-    <div className={cn('relative w-full overflow-auto rounded-md border border-line bg-surface', containerClassName)}>
-      <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
+    <div className={cn('relative w-full overflow-auto', containerClassName)}>
+      <table ref={ref} className={cn('w-full caption-bottom text-xs', className)} {...props} />
     </div>
   )
 );
@@ -80,7 +80,7 @@ const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCel
     <th
       ref={ref}
       className={cn(
-        'h-10 px-4 py-2 text-left align-middle text-xs font-medium text-fg-muted',
+        'h-10 px-3 py-2 text-left align-middle text-[10px] font-medium text-fg-muted',
         '[&:has([role=checkbox])]:pr-0',
         className
       )}
@@ -94,7 +94,7 @@ const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCel
   ({ className, ...props }, ref) => (
     <td
       ref={ref}
-      className={cn('px-4 py-3 align-middle text-fg', '[&:has([role=checkbox])]:pr-0', className)}
+      className={cn('px-3 py-4 align-middle text-fg', '[&:has([role=checkbox])]:pr-0', className)}
       {...props}
     />
   )

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import {
   projectDelivery,
   type DeliveryResolution,
@@ -183,7 +184,7 @@ export function QuotationDeliveryStatus({
             closeDialog();
           }}
           onClose={resetDialog}
-          className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
+          className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-lg border border-border-subtle bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
         >
           <form onSubmit={submitResolution} className="space-y-4 p-5">
             <div>
@@ -200,7 +201,7 @@ export function QuotationDeliveryStatus({
             </div>
             <label className="block space-y-1" htmlFor={noteId}>
               <span className="font-medium">Justificativa</span>
-              <textarea
+              <Textarea
                 ref={noteRef}
                 id={noteId}
                 aria-label="Justificativa"
@@ -211,7 +212,6 @@ export function QuotationDeliveryStatus({
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 disabled={submitting}
-                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               />
             </label>
             {dialogError && (

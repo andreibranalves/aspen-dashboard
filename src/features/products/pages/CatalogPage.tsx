@@ -110,9 +110,9 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
       <div
         role="tablist"
         aria-label="Seções do catálogo"
-        className="-mx-1 overflow-x-auto border-b border-line px-1"
+        className="overflow-x-auto px-1"
       >
-        <div className="flex min-w-max gap-1">
+        <div className="flex min-w-max gap-1 pb-2">
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = 'icon' in tab ? tab.icon : null;
@@ -146,11 +146,11 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                   });
                 }}
                 className={[
-                  'flex min-h-10 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                  'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                   isActive
-                    ? 'border-primary text-primary-text'
-                    : 'border-transparent text-fg-muted hover:bg-surface-hover hover:text-fg',
+                    ? 'bg-cream text-page'
+                    : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
                 {Icon && <Icon size={16} aria-hidden="true" />}
@@ -166,7 +166,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
         role="tabpanel"
         aria-labelledby={`catalog-tab-${activeTab}`}
         tabIndex={0}
-        className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+        className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
       >
         {activeTab === 'products' && <ProductsPage showHeader={false} />}
 
@@ -190,7 +190,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
 
             {templatesLoading && (
               <p
-                className="rounded-md border border-line bg-surface px-4 py-10 text-center text-sm text-fg-muted"
+                className="rounded-card bg-surface px-5 py-10 text-center text-xs text-fg-muted"
                 role="status"
               >
                 Carregando conjuntos…
@@ -198,7 +198,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             )}
             {!templatesLoading && templatesError && (
               <div
-                className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-12 text-center"
+                className="flex flex-col items-center gap-3 rounded-card border border-destructive/30 bg-destructive/5 px-5 py-12 text-center"
                 role="alert"
               >
                 <AlertTriangle size={28} className="text-destructive" aria-hidden="true" />
@@ -225,7 +225,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                 {templates.map((template) => (
                   <article
                     key={template.id}
-                    className="flex min-h-32 flex-col justify-between rounded-md border border-line bg-surface p-4"
+                    className="flex min-h-32 flex-col justify-between rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
                   >
                     <div>
                       <h3 className="truncate font-medium text-fg" title={template.name}>

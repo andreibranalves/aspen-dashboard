@@ -32,7 +32,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 - Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Auto, WhatsApp, Envios WhatsApp, Dashboard, Pedidos, CRM, Orçamentos, Produtos, Clientes, Comunicação, Configurações, telas de detalhe e orçamento manual.
 - Evolution API é o único transporte de WhatsApp; sem fallbacks de provedor/transporte/persistência novos.
 - Sem biblioteca de estado global; preferência por estado local/contexto.
-- Dark mode com toggle na sidebar.
+- Interface do sketch V01: workspace escuro, navegação lateral clara e uma única aparência.
 - Prioridade declarada pelo dono: criação de orçamento é o trabalho central; a parte comercial (CRM, pedidos, follow-up) é a frente de evolução.
 - Telas pouco usadas podem ser removidas em prol de integrações e contexto comercial (decisão registrada pelo dono).
 
@@ -40,7 +40,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 
 - Nome: Aspen Orçamento (Aspen Estamparia).
 - Logos: `public/logo_marinho.svg` (claro) e `public/logo_branca.svg` (escuro); variantes de e-mail em `docs/` e `public/`.
-- Design system "Alpine": neutros com viés azul + semânticos, tokens `page/surface/shell/line/fg` em `src/index.css`, fonte Inter, UI em pt-BR.
+- Identidade visual do sketch V01: canvas cinza, sidebar branca, workspace quase preto, acentos sage/terracota/taupe e fonte Manrope. Tokens em `src/index.css`, UI em pt-BR.
 
 ## Evidence on Hand
 

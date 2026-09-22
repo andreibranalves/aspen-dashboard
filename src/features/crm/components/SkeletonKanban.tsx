@@ -8,7 +8,7 @@ export default function SkeletonKanban() {
   return (
     <div
       role="status"
-      className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-hidden rounded-lg border border-line bg-page md:max-h-[calc(100vh-10rem)]"
+      className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-hidden rounded-card border border-line bg-surface-subtle md:max-h-[calc(100vh-10rem)]"
       aria-busy="true"
       aria-label="Carregando pipeline CRM"
     >
@@ -16,7 +16,7 @@ export default function SkeletonKanban() {
         {PIPELINE.map((status, columnIndex) => (
           <div
             key={status}
-            className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg border border-line bg-surface"
+            className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-card border border-line bg-surface"
           >
             <div className="flex items-center justify-between px-4 py-3">
               <Skeleton className="h-5 w-28" />
@@ -26,7 +26,7 @@ export default function SkeletonKanban() {
               {Array.from({ length: cardsPerColumn[columnIndex] }, (_, cardIndex) => (
                 <div
                   key={cardIndex}
-                  className="space-y-2 rounded-lg border border-line bg-surface p-3"
+                  className="space-y-2 rounded-xl border border-line bg-surface-subtle p-4"
                 >
                   <Skeleton className={`h-4 ${cardIndex % 2 === 0 ? 'w-28' : 'w-36'}`} />
                   <Skeleton className="h-3 w-44 opacity-60" />

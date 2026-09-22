@@ -101,7 +101,7 @@ export default function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/65"
         onClick={(event) => {
           if (event.target === event.currentTarget) onCancelRef.current?.();
         }}
@@ -115,7 +115,7 @@ export default function ConfirmDialog({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
-        className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
+        className="relative w-full max-w-md rounded-card border border-line bg-surface p-6 shadow-[0_16px_48px_#0008]"
       >
         <div className="flex items-start gap-4">
           <div
@@ -141,7 +141,7 @@ export default function ConfirmDialog({
             type="button"
             onClick={() => onCancelRef.current?.()}
             aria-label="Fechar"
-            className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="min-h-9 min-w-9 shrink-0 rounded-control p-1.5 text-fg-muted hover:bg-raised hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage"
           >
             <X size={18} aria-hidden="true" />
           </button>

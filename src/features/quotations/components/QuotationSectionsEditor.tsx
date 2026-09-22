@@ -1,5 +1,6 @@
 import type { QuotationSectionsSettings } from '@/lib/api/settingsApi';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 
 type ProductionDeadlineSection = QuotationSectionsSettings['prazo_producao'] & { value: string };
@@ -73,7 +74,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
       {cards.map(({ key, label, body }) => {
         const section = currentSections[key];
         return (
-          <article key={key} className="space-y-3 rounded-lg border border-line bg-surface-muted p-4">
+          <article key={key} className="space-y-3 rounded-lg border border-border-subtle bg-surface p-4">
             <h3 className="text-sm font-semibold text-fg">{label}</h3>
             <label className="flex items-center gap-2 text-sm font-medium text-fg">
               <input
@@ -87,12 +88,12 @@ export function QuotationSectionsEditor<T extends EditorSections>({
             </label>
             <label className="block space-y-1.5 text-sm text-fg">
               <span className="font-medium">Título</span>
-              <input
+              <Input
                 aria-label={`Título - ${label}`}
                 value={section.title}
                 onChange={(event) => update(key, 'title', event.target.value)}
                 disabled={!editable}
-        className="w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
+                className="text-[15px]"
               />
             </label>
             {body && (

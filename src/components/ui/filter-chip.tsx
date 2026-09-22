@@ -19,9 +19,9 @@ export function FilterChip({ selected, onClick, children, className }: FilterChi
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        'inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
-        selected ? 'bg-primary text-on-solid' : 'bg-surface-muted text-fg-muted hover:text-fg',
+        'inline-flex min-h-9 items-center gap-1.5 rounded-control px-3 py-1 text-xs font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
+        selected ? 'bg-cream text-page' : 'text-fg-muted hover:bg-raised hover:text-fg',
         className
       )}
     >
