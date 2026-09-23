@@ -3,10 +3,16 @@
 // Separates: provider conversation id, canonical business phone, display label.
 
 import {
-  cleanText,
   normalizeWhatsappPhone,
   normalizeWhatsappPhoneFromRemoteJid,
-} from './whatsapp-conversations-store.js';
+} from '../_shared/whatsapp-phone.js';
+
+// Identifiers and display names only; never applied to a message body.
+function cleanText(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export type IdentityStatus = 'verified' | 'derived' | 'unresolved' | 'conflict';
 export type IdentityConfidence = 'high' | 'medium' | 'low';
