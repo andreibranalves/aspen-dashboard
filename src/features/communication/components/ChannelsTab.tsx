@@ -6,6 +6,14 @@ import {
 } from '@/lib/api/whatsappDeliveryDiagnosticsApi';
 import { formatDateTime } from '@/lib/formatting/formatters';
 
+
+function messageSweepSummary(sweep: DeliveryDiagnostics['messageSweep']): string {
+  if (!sweep?.lastRunAt) return 'Varredura de respostas: nenhuma registrada.';
+  const when = formatDateTime(sweep.lastRunAt);
+  if (sweep.result === 'failure') return `Varredura de respostas em ${when}: falhou.`;
+  return `Varredura de respostas em ${when}: ${sweep.dispatched} despachadas, ${sweep.requeued} reenfileiradas, ${sweep.toReview} para revisão.`;
+}
+
 export default function ChannelsTab() {
   const [diagnostics, setDiagnostics] = useState<DeliveryDiagnostics | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState(false);
@@ -45,6 +53,7 @@ export default function ChannelsTab() {
             <div className="mt-3 space-y-2 leading-relaxed">
               <p>A configuração da Evolution API é mantida fora deste painel. O estado da conexão não é verificado aqui.</p>
               <p>{diagnosticsError ? 'Não foi possível ler o diagnóstico das entregas.' : !diagnostics ? 'Consultando entregas…' : `Última execução: ${diagnostics.worker?.lastRunAt ? formatDateTime(diagnostics.worker.lastRunAt) : 'nenhuma registrada'}. Etapas em reconciliação: ${diagnostics.reconcilingSteps}. Recibos sem correlação: ${diagnostics.pendingReceipts}.`}</p>
+              {diagnostics && !diagnosticsError && <p>{messageSweepSummary(diagnostics.messageSweep)}</p>}
             </div>
           </details>
         </article>

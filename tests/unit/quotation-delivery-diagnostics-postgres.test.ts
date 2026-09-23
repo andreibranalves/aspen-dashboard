@@ -25,6 +25,7 @@ import {
 import {
   QUOTATION_DELIVERY_WORKER_NAME,
   readQuotationDeliveryDiagnostics,
+  recordMessageSweepRun,
   recordQuotationDeliveryWorkerRun,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-diagnostics-repository.js';
 import { handler as diagnosticsHandler } from '../../api/_modules/whatsapp-delivery-diagnostics.js';
@@ -216,6 +217,14 @@ test(
       },
       () => db as never
     );
+    await recordMessageSweepRun(
+      { result: 'failure', now: new Date('2026-09-19T12:03:01.000Z') },
+      () => db as never
+    );
+    await recordMessageSweepRun(
+      { result: 'success', requeued: 1, toReview: 0, dispatched: 2, now: new Date('2026-09-19T12:05:01.000Z') },
+      () => db as never
+    );
     const response = await diagnosticsHandler(
       { httpMethod: 'GET', headers: {}, queryStringParameters: {}, body: '' } as never,
       { readDiagnostics: () => readQuotationDeliveryDiagnostics(() => db as never) }
@@ -227,6 +236,13 @@ test(
     assert.equal(body.worker.name, QUOTATION_DELIVERY_WORKER_NAME);
     assert.equal(body.worker.last_run_at, '2026-09-19T12:05:00.000Z');
     assert.equal(body.worker.result, 'success');
+    assert.deepEqual(body.message_sweep, {
+      last_run_at: '2026-09-19T12:05:01.000Z',
+      result: 'success',
+      requeued: 1,
+      to_review: 0,
+      dispatched: 2,
+    });
     assert.equal(body.overdue_reconciling_steps, undefined);
     assert.equal(body.oldest_reconciliation_deadline, undefined);
     assert.equal(body.oldest_pending_receipt_at, undefined);

@@ -10,7 +10,9 @@ import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/co
 import { createWebhookEffectRunners, drainWebhookEffects } from './whatsapp-webhook-effects.js';
 import { sweepOperatorMessages, type SweepResult } from './whatsapp-message-dispatch.js';
 import {
+  recordMessageSweepRun,
   recordQuotationDeliveryWorkerRun,
+  type MessageSweepRunResult,
   type QuotationDeliveryWorkerRunResult,
 } from '../_infrastructure/db/repositories/quotation-delivery-diagnostics-repository.js';
 
@@ -29,6 +31,7 @@ export interface QuotationDeliveryWorkerDependencies {
   recordRun?: (result: QuotationDeliveryWorkerRunResult) => Promise<void>;
   drainEffects?: (deadlineAt: number) => Promise<{ applied: number; failed: number }>;
   sweepMessages?: (deadlineAt: number) => Promise<SweepResult>;
+  recordSweep?: (result: MessageSweepRunResult) => Promise<void>;
   clock?: () => number;
   environment?: {
     CRON_SECRET?: string;
@@ -77,15 +80,21 @@ async function liveDrainEffects(deadlineAt: number) {
 
 async function sweepAfterBatch(
   sweep: (deadlineAt: number) => Promise<SweepResult>,
+  recordSweep: (result: MessageSweepRunResult) => Promise<void>,
   startedAt: number,
 ): Promise<void> {
+  let outcome: MessageSweepRunResult;
   try {
     const result = await sweep(startedAt + FUNCTION_BUDGET_MS);
-    if (result.requeued || result.toReview || result.dispatched) {
-      console.info('[quotation-delivery-worker] operator messages', result.requeued, result.toReview, result.dispatched);
-    }
+    outcome = { result: 'success', ...result };
   } catch (error) {
     console.error('[quotation-delivery-worker] operator messages', error instanceof Error ? error.name : typeof error);
+    outcome = { result: 'failure' };
+  }
+  try {
+    await recordSweep(outcome);
+  } catch {
+    return;
   }
 }
 
@@ -131,13 +140,14 @@ export async function handler(
   const drainEffects = dependencies.drainEffects || liveDrainEffects;
   const sweepMessages =
     dependencies.sweepMessages || ((deadlineAt: number) => sweepOperatorMessages({ deadlineAt, clock }));
+  const recordSweep = dependencies.recordSweep || recordMessageSweepRun;
   try {
     const result = await processDue(QUOTATION_DELIVERY_WORKER_BATCH_SIZE);
     // The quotation batch always runs first and unchanged. The DB-only
     // webhook-effects drain keeps its time before the message sweep, which
     // only transports while a full timeout still fits in what remains.
     await drainAfterBatch(drainEffects, startedAt, clock);
-    await sweepAfterBatch(sweepMessages, startedAt);
+    await sweepAfterBatch(sweepMessages, recordSweep, startedAt);
     if (!validResult(result)) {
       await recordResult(recordRun, { result: 'failure' });
       return json(503, { error: 'Não foi possível processar a fila de entregas. Tente novamente.' });

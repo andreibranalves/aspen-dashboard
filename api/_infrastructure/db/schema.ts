@@ -567,6 +567,25 @@ export const quotationDeliveryWorkerRuns = pgTable('quotation_delivery_worker_ru
 });
 
 /**
+ * Durable result of the latest operator-message sweep, recorded apart from the
+ * quotation batch in the same tick (RNF-04). Dispatch never reads it.
+ */
+export const whatsappMessageSweepRuns = pgTable(
+  'whatsapp_message_sweep_runs',
+  {
+    worker: text('worker').primaryKey(),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }).notNull(),
+    result: varchar('result', { length: 16 }).notNull(),
+    requeued: integer('requeued').notNull().default(0),
+    toReview: integer('to_review').notNull().default(0),
+    dispatched: integer('dispatched').notNull().default(0),
+  },
+  (table) => [
+    check('whatsapp_message_sweep_runs_result_check', sql`${table.result} IN ('success', 'failure')`),
+  ]
+);
+
+/**
  * Durable inbox for Evolution delivery receipts (MESSAGES_UPDATE). A receipt
  * can reach the webhook before `markAccepted` persisted the provider message id
  * on the step; without this inbox the receipt would be dropped. Rows are

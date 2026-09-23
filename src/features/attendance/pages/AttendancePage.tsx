@@ -387,10 +387,12 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
       setConfirmResend(messageId);
       return;
     }
+    const target = threadRef.current?.messages.find((message) => message.id === messageId);
+    if (!target) return;
     setActionPending(messageId);
     setStatusNotice(null);
     try {
-      await runMessageAction(messageId, action);
+      await runMessageAction(messageId, action, target.revision);
     } catch (error) {
       setStatusNotice(errorMessage(error, 'Não foi possível atualizar o envio.'));
     } finally {

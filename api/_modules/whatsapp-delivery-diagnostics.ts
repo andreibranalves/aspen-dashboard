@@ -42,6 +42,15 @@ export async function handler(
             remaining: diagnostics.worker.remaining,
           }
         : null,
+      message_sweep: diagnostics.messageSweep
+        ? {
+            last_run_at: diagnostics.messageSweep.lastRunAt.toISOString(),
+            result: diagnostics.messageSweep.result,
+            requeued: diagnostics.messageSweep.requeued,
+            to_review: diagnostics.messageSweep.toReview,
+            dispatched: diagnostics.messageSweep.dispatched,
+          }
+        : null,
       reconciling_steps: diagnostics.reconcilingSteps,
       pending_receipts: diagnostics.pendingReceipts,
     });

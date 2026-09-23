@@ -61,7 +61,10 @@ export class OutboxIntentRefused extends Error {
 }
 
 export class OutboxActionRefused extends Error {
-  constructor(readonly current: OutboxRecord | null) {
+  constructor(
+    readonly current: OutboxRecord | null,
+    readonly reason: 'state' | 'stale' = 'state',
+  ) {
     super('outbox action refused');
     this.name = 'OutboxActionRefused';
   }
@@ -97,10 +100,12 @@ export interface WhatsappMessageOutboxRepository {
   recoverExpiredLeases(now?: Date): Promise<{ requeued: number; toReview: number }>;
   /** Oldest dispatchable intent id, skipping fresh ones the request may still dispatch. */
   nextDue(input: { now?: Date; minAgeMs: number }): Promise<string | null>;
-  cancel(messageId: string, now?: Date): Promise<OutboxRecord>;
+  /** `expectedRevision` is the message revision the operator acted on. */
+  cancel(messageId: string, expectedRevision: number, now?: Date): Promise<OutboxRecord>;
   resolveReview(
     messageId: string,
     resolution: 'confirmed_sent' | 'confirmed_not_sent',
+    expectedRevision: number,
     now?: Date,
   ): Promise<OutboxRecord>;
   /** Folds durable Evolution receipts into outbound messages with this provider id. */
@@ -278,11 +283,16 @@ export function createPostgresWhatsappMessageOutboxRepository(
     messageId: string,
     allowed: OutboxState[],
     next: Partial<typeof outbox.$inferInsert>,
+    expectedRevision: number,
     now: Date,
   ): Promise<OutboxRecord> {
     return getDb().transaction(async (tx) => {
       const [row] = await tx.select().from(outbox).where(eq(outbox.messageId, messageId)).for('update');
       if (!row) throw new OutboxActionRefused(null);
+      // Every outbox transition bumps the message revision, so a stale view is
+      // refused even when the state happens to match again.
+      const [message] = await tx.select({ revision: messages.revision }).from(messages).where(eq(messages.id, messageId));
+      if (Number(message?.revision) !== expectedRevision) throw new OutboxActionRefused(toRecord(row), 'stale');
       if (!allowed.includes(row.state as OutboxState)) throw new OutboxActionRefused(toRecord(row));
       const [updated] = await tx
         .update(outbox)
@@ -513,11 +523,11 @@ export function createPostgresWhatsappMessageOutboxRepository(
       return row?.id || null;
     },
 
-    async cancel(messageId, now = new Date()) {
-      return transitionByMessage(messageId, ['queued', 'retry_scheduled'], { state: 'cancelled' }, now);
+    async cancel(messageId, expectedRevision, now = new Date()) {
+      return transitionByMessage(messageId, ['queued', 'retry_scheduled'], { state: 'cancelled' }, expectedRevision, now);
     },
 
-    async resolveReview(messageId, resolution, now = new Date()) {
+    async resolveReview(messageId, resolution, expectedRevision, now = new Date()) {
       return transitionByMessage(
         messageId,
         ['needs_review'],
@@ -526,6 +536,7 @@ export function createPostgresWhatsappMessageOutboxRepository(
           resolution,
           ...(resolution === 'confirmed_not_sent' ? { failureCode: 'CONFIRMED_NOT_SENT' } : {}),
         },
+        expectedRevision,
         now,
       );
     },

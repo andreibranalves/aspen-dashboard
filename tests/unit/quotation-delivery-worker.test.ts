@@ -7,6 +7,7 @@ import {
   type QuotationDeliveryWorkerDependencies,
 } from '../../api/_modules/quotation-delivery-worker.js';
 import type {
+  MessageSweepRunResult,
   QuotationDeliveryWorkerRunResult,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-diagnostics-repository.js';
 
@@ -20,6 +21,7 @@ function worker(
   return rawWorker(input, {
     drainEffects: async () => ({ applied: 0, failed: 0 }),
     sweepMessages: async () => ({ requeued: 0, toReview: 0, dispatched: 0 }),
+    recordSweep: async () => {},
     ...dependencies,
   });
 }
@@ -163,6 +165,7 @@ test('worker drains pending webhook effects only after the quotation batch and w
       order.push(`sweep:${deadlineAt - 1_000_000}`);
       return { requeued: 0, toReview: 0, dispatched: 0 };
     },
+    recordSweep: async () => {},
     clock: () => now,
     environment: { CRON_SECRET: cronSecret },
   };
@@ -188,6 +191,7 @@ test('worker drains pending webhook effects only after the quotation batch and w
 
 test('a failing webhook-effects drain never changes the batch result', async () => {
   const heartbeats: QuotationDeliveryWorkerRunResult[] = [];
+  const sweeps: MessageSweepRunResult[] = [];
   const result = await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), {
     processDue: async () => ({ processed: 2, remaining: false }),
     recordRun: async (value) => {
@@ -199,8 +203,28 @@ test('a failing webhook-effects drain never changes the batch result', async () 
     sweepMessages: async () => {
       throw new Error('database unavailable');
     },
+    recordSweep: async (value) => {
+      sweeps.push(value);
+    },
     environment: { CRON_SECRET: cronSecret },
   });
   assert.equal(result.statusCode, 200);
   assert.deepEqual(heartbeats, [{ result: 'success', processed: 2, remaining: false }]);
+  assert.deepEqual(sweeps, [{ result: 'failure' }], 'a failed sweep is recorded apart from the batch');
+});
+
+test('the message sweep result is recorded apart from the quotation batch', async () => {
+  const sweeps: MessageSweepRunResult[] = [];
+  const result = await worker(event({ authorization: `Bearer ${cronSecret}` }), {
+    processDue: async () => ({ processed: 0, remaining: false }),
+    recordRun: async () => {},
+    sweepMessages: async () => ({ requeued: 1, toReview: 2, dispatched: 3 }),
+    recordSweep: async (value) => {
+      sweeps.push(value);
+      throw new Error('database unavailable');
+    },
+    environment: { CRON_SECRET: cronSecret },
+  });
+  assert.equal(result.statusCode, 200, 'a failing sweep record never changes the batch result');
+  assert.deepEqual(sweeps, [{ result: 'success', requeued: 1, toReview: 2, dispatched: 3 }]);
 });
