@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   check,
   date,
@@ -1757,6 +1758,225 @@ export const quotationFollowUpAttemptHistory = pgTable(
     check(
       'quotation_follow_up_attempt_history_provider_message_check',
       sql`(${table.confirmationSource} = 'worker' AND char_length(btrim(${table.providerMessageId})) > 0) OR (${table.confirmationSource} = 'manual' AND ${table.providerMessageId} IS NULL)`,
+    ),
+  ],
+);
+
+
+/**
+ * Attendance history (M1a). PostgreSQL is the source of truth for WhatsApp
+ * conversations; `revision` is a per-conversation monotonic counter bumped
+ * under the conversation row lock, so incremental reads never skip a commit.
+ */
+export const whatsappConversations = pgTable(
+  'whatsapp_conversations',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }),
+    identityStatus: varchar('identity_status', { length: 16 }).notNull(),
+    identitySource: varchar('identity_source', { length: 40 }),
+    identityConfidence: varchar('identity_confidence', { length: 8 }),
+    identityVersion: integer('identity_version').notNull().default(1),
+    displayName: varchar('display_name', { length: 255 }),
+    status: varchar('status', { length: 24 }).notNull().default('open'),
+    revision: bigint('revision', { mode: 'number' }).notNull().default(0),
+    readRevision: bigint('read_revision', { mode: 'number' }).notNull().default(0),
+    unreadCount: integer('unread_count').notNull().default(0),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    lastMessagePreview: varchar('last_message_preview', { length: 280 }),
+    lastMessageDirection: varchar('last_message_direction', { length: 8 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_conversations_provider_unique').on(
+      table.instance,
+      table.providerConversationId,
+    ),
+    index('whatsapp_conversations_activity_idx').on(
+      sql`${table.lastMessageAt} DESC NULLS LAST`,
+      sql`${table.id} DESC`,
+    ),
+    check(
+      'whatsapp_conversations_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`,
+    ),
+    check(
+      'whatsapp_conversations_provider_not_blank_check',
+      sql`char_length(btrim(${table.providerConversationId})) > 0`,
+    ),
+    check(
+      'whatsapp_conversations_phone_check',
+      sql`${table.canonicalPhone} IS NULL OR ${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check(
+      'whatsapp_conversations_identity_status_check',
+      sql`${table.identityStatus} IN ('verified', 'derived', 'unresolved', 'conflict')`,
+    ),
+    check(
+      'whatsapp_conversations_identity_confidence_check',
+      sql`${table.identityConfidence} IS NULL OR ${table.identityConfidence} IN ('high', 'medium', 'low')`,
+    ),
+    check('whatsapp_conversations_identity_version_check', sql`${table.identityVersion} > 0`),
+    check(
+      'whatsapp_conversations_status_check',
+      sql`${table.status} IN ('open', 'waiting_customer', 'closed', 'ignored')`,
+    ),
+    check(
+      'whatsapp_conversations_revision_check',
+      sql`${table.revision} >= 0 AND ${table.readRevision} >= 0 AND ${table.readRevision} <= ${table.revision}`,
+    ),
+    check('whatsapp_conversations_unread_check', sql`${table.unreadCount} >= 0`),
+    check(
+      'whatsapp_conversations_direction_check',
+      sql`${table.lastMessageDirection} IS NULL OR ${table.lastMessageDirection} IN ('inbound', 'outbound')`,
+    ),
+  ],
+);
+
+export const whatsappMessages = pgTable(
+  'whatsapp_messages',
+  {
+    id: uuid('id').primaryKey(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => whatsappConversations.id, { onDelete: 'restrict' }),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    direction: varchar('direction', { length: 8 }).notNull(),
+    messageType: varchar('message_type', { length: 16 }).notNull(),
+    body: text('body'),
+    origin: varchar('origin', { length: 16 }).notNull(),
+    providerTimestamp: timestamp('provider_timestamp', { withTimezone: true }).notNull(),
+    ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
+    createdRevision: bigint('created_revision', { mode: 'number' }).notNull(),
+    revision: bigint('revision', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_messages_provider_unique').on(
+      table.conversationId,
+      table.providerMessageId,
+    ),
+    index('whatsapp_messages_timeline_idx').on(
+      table.conversationId,
+      sql`${table.providerTimestamp} DESC`,
+      sql`${table.id} DESC`,
+    ),
+    index('whatsapp_messages_revision_idx').on(table.conversationId, table.revision),
+    check(
+      'whatsapp_messages_provider_not_blank_check',
+      sql`${table.providerMessageId} IS NULL OR char_length(btrim(${table.providerMessageId})) > 0`,
+    ),
+    check('whatsapp_messages_direction_check', sql`${table.direction} IN ('inbound', 'outbound')`),
+    check(
+      'whatsapp_messages_type_check',
+      sql`${table.messageType} IN ('text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'unsupported')`,
+    ),
+    check(
+      'whatsapp_messages_origin_check',
+      sql`${table.origin} IN ('live', 'backfill', 'operator', 'quotation')`,
+    ),
+    check(
+      'whatsapp_messages_body_length_check',
+      sql`${table.body} IS NULL OR char_length(${table.body}) <= 65536`,
+    ),
+    check(
+      'whatsapp_messages_revision_check',
+      sql`${table.createdRevision} > 0 AND ${table.revision} >= ${table.createdRevision}`,
+    ),
+  ],
+);
+
+
+/**
+ * Durable pending effects of one received message (contact activity and
+ * follow-up projection). A row stays pending until both effects are applied,
+ * so a failed webhook or a later worker tick can resume without repeating the
+ * message itself.
+ */
+export const whatsappWebhookEffects = pgTable(
+  'whatsapp_webhook_effects',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    providerMessageId: varchar('provider_message_id', { length: 255 }).notNull(),
+    fromMe: boolean('from_me').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    identityStatus: varchar('identity_status', { length: 16 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }),
+    activityDoneAt: timestamp('activity_done_at', { withTimezone: true }),
+    followUpDoneAt: timestamp('follow_up_done_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    lastFailure: varchar('last_failure', { length: 32 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_webhook_effects_message_unique').on(
+      table.instance,
+      table.providerConversationId,
+      table.providerMessageId,
+    ),
+    index('whatsapp_webhook_effects_pending_idx')
+      .on(table.nextAttemptAt, table.occurredAt)
+      .where(sql`${table.activityDoneAt} IS NULL OR ${table.followUpDoneAt} IS NULL`),
+    check(
+      'whatsapp_webhook_effects_identity_status_check',
+      sql`${table.identityStatus} IN ('verified', 'derived', 'unresolved', 'conflict')`,
+    ),
+    check(
+      'whatsapp_webhook_effects_phone_check',
+      sql`${table.canonicalPhone} IS NULL OR ${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check('whatsapp_webhook_effects_attempts_check', sql`${table.attempts} >= 0`),
+    check(
+      'whatsapp_webhook_effects_failure_check',
+      sql`${table.lastFailure} IS NULL OR ${table.lastFailure} IN ('activity_failed', 'follow_up_failed')`,
+    ),
+  ],
+);
+
+
+/**
+ * Resumable backfill of the attendance history from the Evolution instance,
+ * one row per provider conversation. `gap` declares that the provider did not
+ * return the complete history; nothing is fabricated to fill it.
+ */
+export const whatsappBackfillProgress = pgTable(
+  'whatsapp_backfill_progress',
+  {
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    state: varchar('state', { length: 16 }).notNull().default('pending'),
+    nextPage: integer('next_page').notNull().default(1),
+    pagesTotal: integer('pages_total'),
+    messagesSeen: integer('messages_seen').notNull().default(0),
+    messagesInserted: integer('messages_inserted').notNull().default(0),
+    gapReason: varchar('gap_reason', { length: 32 }),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'whatsapp_backfill_progress_pkey',
+      columns: [table.instance, table.providerConversationId],
+    }),
+    index('whatsapp_backfill_progress_state_idx').on(table.instance, table.state),
+    check(
+      'whatsapp_backfill_progress_state_check',
+      sql`${table.state} IN ('pending', 'done', 'gap')`,
+    ),
+    check(
+      'whatsapp_backfill_progress_counts_check',
+      sql`${table.nextPage} > 0 AND ${table.messagesSeen} >= 0 AND ${table.messagesInserted} >= 0 AND (${table.pagesTotal} IS NULL OR ${table.pagesTotal} > 0)`,
+    ),
+    check(
+      'whatsapp_backfill_progress_gap_check',
+      sql`(${table.state} = 'gap') = (${table.gapReason} IS NOT NULL)`,
     ),
   ],
 );

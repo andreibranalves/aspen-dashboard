@@ -11,6 +11,7 @@ export interface BreadcrumbItem {
 }
 
 const PAGE_LABELS: Record<string, string> = {
+  '/atendimento': 'Atendimento',
   '/dashboard': 'Resultados',
   '/quotations': 'Orçamentos',
   '/novo-orcamento': 'Novo orçamento',

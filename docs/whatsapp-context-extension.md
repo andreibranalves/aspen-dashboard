@@ -1,6 +1,6 @@
 # Contexto comercial no WhatsApp Web
 
-O Aspen não oferece uma Inbox de atendimento. A superfície operacional de conversas é o próprio WhatsApp Web; a extensão `extensions/whatsapp-context/` adiciona contexto comercial somente leitura.
+A superfície de conversa do Aspen é a tela de Atendimento (`#/atendimento`), conforme a decisão D1 de [`atendimento-comercial-assistido.md`](./atendimento-comercial-assistido.md). A extensão `extensions/whatsapp-context/` continua funcionando sem mudança e adiciona contexto comercial somente leitura no WhatsApp Web; aposentá-la é decisão posterior.
 
 A extensão monta o painel independentemente de identidade resolvida. Telefone confirmado consulta `/api/whatsapp-context`; `@lid`, grupos, falhas e matches ambíguos permanecem estados visíveis e não exibem histórico escolhido por heurística fraca.
 

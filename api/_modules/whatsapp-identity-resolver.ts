@@ -3,10 +3,16 @@
 // Separates: provider conversation id, canonical business phone, display label.
 
 import {
-  cleanText,
   normalizeWhatsappPhone,
   normalizeWhatsappPhoneFromRemoteJid,
-} from './whatsapp-conversations-store.js';
+} from '../_shared/whatsapp-phone.js';
+
+// Identifiers and display names only; never applied to a message body.
+function cleanText(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export type IdentityStatus = 'verified' | 'derived' | 'unresolved' | 'conflict';
 export type IdentityConfidence = 'high' | 'medium' | 'low';
@@ -14,6 +20,7 @@ export type IdentitySource =
   | 'chat.phone'
   | 'chat.senderPn'
   | 'message.key.participant'
+  | 'message.key.remoteJidAlt'
   | 'message.from'
   | 'message.sender'
   | 'providerConversationId'
@@ -41,10 +48,17 @@ function readRemoteJid(chat: Record<string, unknown>): string {
   return cleanText(chat.remoteJid || chat.id || chat.jid || chat.key);
 }
 
+// A message counts as outgoing when either the envelope or its key says so.
+function isFromMe(message: Record<string, unknown>): boolean {
+  const key = (message.key || {}) as Record<string, unknown>;
+  return message.fromMe === true || key.fromMe === true;
+}
+
 function readHighConfidenceSources(
   chat: Record<string, unknown>,
   messages: Array<Record<string, unknown>>,
-  allowChatFields: boolean
+  allowChatFields: boolean,
+  acceptLidAlternative: boolean
 ): SourceResult[] {
   const results: SourceResult[] = [];
 
@@ -55,38 +69,42 @@ function readHighConfidenceSources(
     const senderPn = normalizeWhatsappPhone(chat.senderPn);
     if (senderPn) results.push({ phone: senderPn, source: 'chat.senderPn', confidence: 'high' });
 
-    const participant = normalizeWhatsappPhone(chat.participant);
-    if (participant)
-      results.push({ phone: participant, source: 'chat.participant', confidence: 'high' });
+    // Sender fields of an outgoing message describe the operator, not the contact.
+    if (!isFromMe(chat)) {
+      const participant = normalizeWhatsappPhone(chat.participant);
+      if (participant)
+        results.push({ phone: participant, source: 'chat.participant', confidence: 'high' });
 
-    const chatFrom = normalizeWhatsappPhone(chat.from);
-    if (chatFrom) results.push({ phone: chatFrom, source: 'chat.from', confidence: 'high' });
+      const chatFrom = normalizeWhatsappPhone(chat.from);
+      if (chatFrom) results.push({ phone: chatFrom, source: 'chat.from', confidence: 'high' });
 
-    const chatSender = normalizeWhatsappPhone(chat.sender);
-    if (chatSender) results.push({ phone: chatSender, source: 'chat.sender', confidence: 'high' });
+      const chatSender = normalizeWhatsappPhone(chat.sender);
+      if (chatSender) results.push({ phone: chatSender, source: 'chat.sender', confidence: 'high' });
+    }
   }
 
-  // message.key.participant (inbound only)
-  for (const msg of messages) {
+  // Evolution 2.3 addresses most chats by LID and carries the phone JID of the
+  // same chat in key.remoteJidAlt. It describes the chat, not the sender, so it
+  // counts in both directions; it never merges a LID and a PN conversation.
+  for (const msg of acceptLidAlternative ? messages : []) {
     const key = (msg.key || {}) as Record<string, unknown>;
-    if (key.fromMe === true) continue;
+    if (!/@lid$/i.test(String(key.remoteJid || ''))) continue;
+    const alternative = normalizeWhatsappPhoneFromRemoteJid(key.remoteJidAlt);
+    if (alternative) {
+      results.push({ phone: alternative, source: 'message.key.remoteJidAlt', confidence: 'high' });
+    }
+  }
+
+  for (const msg of messages) {
+    if (isFromMe(msg)) continue;
+    const key = (msg.key || {}) as Record<string, unknown>;
     const participant = normalizeWhatsappPhone(key.participant);
     if (participant) {
       results.push({ phone: participant, source: 'message.key.participant', confidence: 'high' });
     }
-  }
-
-  // message.from (inbound only)
-  for (const msg of messages) {
-    if ((msg as Record<string, unknown>).fromMe === true) continue;
-    const from = normalizeWhatsappPhone((msg as Record<string, unknown>).from);
+    const from = normalizeWhatsappPhone(msg.from);
     if (from) results.push({ phone: from, source: 'message.from', confidence: 'high' });
-  }
-
-  // message.sender (inbound only)
-  for (const msg of messages) {
-    if ((msg as Record<string, unknown>).fromMe === true) continue;
-    const sender = normalizeWhatsappPhone((msg as Record<string, unknown>).sender);
+    const sender = normalizeWhatsappPhone(msg.sender);
     if (sender) results.push({ phone: sender, source: 'message.sender', confidence: 'high' });
   }
 
@@ -163,27 +181,33 @@ function resolveDisplayLabel(chat: Record<string, unknown>, canonicalPhone: stri
   return 'Contato sem nome';
 }
 
-function shouldKeepStored(
-  freshStatus: IdentityStatus,
-  freshConfidence: IdentityConfidence | null,
+const CONFLICT = {
+  canonicalPhone: '',
+  identityStatus: 'conflict' as const,
+  identitySource: null,
+  identityConfidence: null,
+};
+
+type StoredDecision = 'fresh' | 'stored' | 'conflict';
+
+// Stored identity is kept only while fresh evidence is absent or agrees with it;
+// contradiction always surfaces as a conflict instead of being masked.
+function decideAgainstStored(
+  fresh: ReturnType<typeof bestSource>,
   stored: Record<string, unknown> | null
-): boolean {
-  // NOTE: This limitation means that if a conversation was backfilled with identity
-  // data before this fix, it will persist that data until a fresh provider-sourced
-  // sync re-resolves the identity. /sync-messages will not overwrite this data.
-  if (!stored) return false;
-  const storedPhone = cleanText(stored.canonicalPhone);
-  const storedConfidence = cleanText(stored.identityConfidence) as IdentityConfidence | '';
+): StoredDecision {
+  if (fresh.identityStatus === 'conflict') return 'conflict';
+  // A recorded conflict only clears through an explicit operator review.
+  if (stored && cleanText(stored.identityStatus) === 'conflict') return 'conflict';
+  const storedPhone = stored ? cleanText(stored.canonicalPhone) : '';
+  if (!storedPhone) return 'fresh';
+  if (!fresh.canonicalPhone) return 'stored';
 
-  if (!storedPhone) return false;
-
-  // Stored is high, fresh is medium or worse → keep stored
-  if (storedConfidence === 'high' && freshConfidence !== 'high') return true;
-
-  // Fresh is unresolved but we have a stored phone → keep stored
-  if (freshStatus === 'unresolved' && storedPhone) return true;
-
-  return false;
+  const storedConfidence = cleanText(stored!.identityConfidence);
+  if (fresh.canonicalPhone !== storedPhone) {
+    return storedConfidence === 'high' ? 'conflict' : 'fresh';
+  }
+  return storedConfidence === 'high' && fresh.identityConfidence !== 'high' ? 'stored' : 'fresh';
 }
 
 export function resolveWhatsappIdentity(input: {
@@ -191,18 +215,33 @@ export function resolveWhatsappIdentity(input: {
   chat: Record<string, unknown>;
   messages?: Array<Record<string, unknown>>;
   storedConversation?: Record<string, unknown> | null;
+  /**
+   * Opt-in: accept key.remoteJidAlt as the phone of a LID chat. Off by default
+   * so follow-up gating keeps its existing unresolved-LID behaviour.
+   */
+  acceptLidAlternative?: boolean;
 }): ResolvedWhatsappIdentity {
   const { chat, messages = [], storedConversation = null } = input;
   const source = input.source || 'provider';
 
   const providerConversationId = readRemoteJid(chat);
 
-  const highSources = readHighConfidenceSources(chat, messages, source === 'provider');
+  const highSources = readHighConfidenceSources(
+    chat,
+    messages,
+    source === 'provider',
+    input.acceptLidAlternative === true
+  );
   const mediumSource = readMediumConfidenceSource(chat);
 
   const fresh = bestSource(highSources, mediumSource);
+  const decision = decideAgainstStored(fresh, storedConversation);
 
-  if (shouldKeepStored(fresh.identityStatus, fresh.identityConfidence, storedConversation)) {
+  if (decision === 'conflict') {
+    return { providerConversationId, ...CONFLICT, displayLabel: resolveDisplayLabel(chat, '') };
+  }
+
+  if (decision === 'stored') {
     const stored = storedConversation!;
     return {
       providerConversationId,
@@ -211,20 +250,6 @@ export function resolveWhatsappIdentity(input: {
       identityStatus: (cleanText(stored.identityStatus) as IdentityStatus) || 'derived',
       identitySource: (cleanText(stored.identitySource) as IdentitySource) || null,
       identityConfidence: (cleanText(stored.identityConfidence) as IdentityConfidence) || null,
-    };
-  }
-
-  // Upgrade: stored was derived/medium, fresh is verified/high for the same phone
-  if (
-    storedConversation &&
-    cleanText(storedConversation.canonicalPhone) === fresh.canonicalPhone &&
-    fresh.identityConfidence === 'high' &&
-    cleanText(storedConversation.identityConfidence) === 'medium'
-  ) {
-    return {
-      providerConversationId,
-      ...fresh,
-      displayLabel: resolveDisplayLabel(chat, fresh.canonicalPhone),
     };
   }
 

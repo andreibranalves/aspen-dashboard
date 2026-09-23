@@ -1,5 +1,7 @@
 # Inventário após remoção da WhatsApp Inbox
 
+> **Superado por [`atendimento-comercial-assistido.md`](./atendimento-comercial-assistido.md) (decisão D1): o Atendimento voltou a ser a superfície de conversa e o KV de conversas foi retirado.**
+>
 > **Documento histórico (não-normativo).** Registro de execução/análise concluída, mantido como evidência; nenhum comando aqui é política executável atual. Fontes normativas: [`AGENTS.md`](../AGENTS.md) e [`docs/release-lanes.md`](./release-lanes.md).
 
 A Inbox operacional foi retirada do frontend. Este inventário evita remover dependências comerciais compartilhadas.

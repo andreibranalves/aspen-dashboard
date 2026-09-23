@@ -7,6 +7,39 @@ import {
   handler as webhook,
   MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
 } from '../../api/_modules/evolution-webhook.js';
+import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
+import type {
+  WebhookEffect,
+  WebhookEffectInput,
+  WebhookEffectRecord,
+} from '../../api/_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
+
+function memoryEffects() {
+  const rows = new Map<string, WebhookEffectRecord>();
+  const failures: Array<[string, WebhookEffect]> = [];
+  return {
+    rows,
+    failures,
+    register: async (inputs: WebhookEffectInput[]) =>
+      inputs.map((input) => {
+        const key = `${input.providerConversationId}|${input.providerMessageId}`;
+        const existing = rows.get(key);
+        if (existing) return { ...existing };
+        const record: WebhookEffectRecord = { ...input, id: key, activityDone: false, followUpDone: false, attempts: 0 };
+        rows.set(key, record);
+        return { ...record };
+      }),
+    markDone: async (id: string, effect: WebhookEffect) => {
+      const row = rows.get(id)!;
+      if (effect === 'activity') row.activityDone = true;
+      else row.followUpDone = true;
+    },
+    markFailed: async (id: string, effect: WebhookEffect) => {
+      rows.get(id)!.attempts += 1;
+      failures.push([id, effect]);
+    },
+  };
+}
 
 const webhookSecret = 'w'.repeat(32);
 const instance = 'instance-test';
@@ -39,7 +72,7 @@ function upsertItem(overrides: Record<string, unknown> = {}): Record<string, unk
       fromMe: false,
     },
     messageTimestamp: 1_700_000_000,
-    message: { conversation: 'não deve ser persistida' },
+    message: { conversation: 'Olá' },
     ...overrides,
   };
 }
@@ -63,7 +96,9 @@ function dependencies() {
   const followUpCalls: unknown[] = [];
   const operationOrder: string[] = [];
   const healthCalls: unknown[] = [];
+  const historyCalls: IngestWhatsappConversationInput[] = [];
   return {
+    historyCalls,
     calls,
     activityCalls,
     followUpCalls,
@@ -98,6 +133,14 @@ function dependencies() {
         followUpCalls.push(value);
       },
     },
+    effectsRepository: memoryEffects(),
+    attendanceRepository: {
+      ingestConversation: async (value: IngestWhatsappConversationInput) => {
+        operationOrder.push('history');
+        historyCalls.push(value);
+        return { conversationId: 'conversation-test', inserted: value.messages.length, duplicates: 0 };
+      },
+    },
     environment: {
       EVOLUTION_WEBHOOK_SECRET: webhookSecret,
       EVOLUTION_INSTANCE: instance,
@@ -129,7 +172,7 @@ test('webhook projects UPSERT activity after recording it', async () => {
   const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(deps.operationOrder, ['activity', 'follow-up']);
+  assert.deepEqual(deps.operationOrder, ['history', 'activity', 'follow-up']);
   assert.deepEqual(deps.followUpCalls, [
     {
       instance,
@@ -449,4 +492,154 @@ test('webhook ignores groups and MESSAGES_SET', async () => {
   assert.equal(group.statusCode, 200);
   assert.equal(set.statusCode, 200);
   assert.deepEqual(deps.activityCalls, []);
+});
+
+test('webhook stores the message body verbatim as live history before other effects', async () => {
+  const deps = dependencies();
+  const body = 'Olá!\n\nPreciso de 200 canecas\n  - azul';
+  const result = await webhook(
+    event(authorization, upsertPayload(upsertItem({ pushName: 'Maria  Souza', message: { conversation: body } }))),
+    deps,
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(deps.historyCalls.length, 1);
+  const [call] = deps.historyCalls;
+  assert.equal(call.origin, 'live');
+  assert.equal(call.providerConversationId, '5511999990000@s.whatsapp.net');
+  assert.equal(call.contactName, 'Maria Souza');
+  assert.deepEqual(
+    call.messages.map(({ providerMessageId, direction, messageType, body: text }) => ({
+      providerMessageId,
+      direction,
+      messageType,
+      body: text,
+    })),
+    [{ providerMessageId: 'inbound-message-1', direction: 'inbound', messageType: 'text', body }],
+  );
+  assert.equal(call.resolveIdentity(null).canonicalPhone, '5511999990000');
+});
+
+test('webhook stores an outgoing message from another device without a contact name', async () => {
+  const deps = dependencies();
+  await webhook(
+    event(
+      authorization,
+      upsertPayload(
+        upsertItem({
+          key: { id: 'outbound-1', remoteJid: '5511999990000@s.whatsapp.net', fromMe: true },
+          pushName: 'Operador',
+          message: { extendedTextMessage: { text: 'Bom dia' } },
+        }),
+      ),
+    ),
+    deps,
+  );
+
+  const [call] = deps.historyCalls;
+  assert.equal(call.contactName, null);
+  assert.equal(call.messages[0].direction, 'outbound');
+  assert.equal(call.origin, 'live');
+});
+
+test('webhook keeps protocol events out of the history but still records activity', async () => {
+  const deps = dependencies();
+  const result = await webhook(
+    event(authorization, upsertPayload(upsertItem({ message: { reactionMessage: { text: '👍' } } }))),
+    deps,
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(deps.historyCalls.length, 0);
+  assert.equal(deps.activityCalls.length, 1);
+});
+
+test('webhook runs existing effects but withholds the acknowledgement when history fails', async () => {
+  const deps = dependencies();
+  deps.attendanceRepository.ingestConversation = async () => {
+    throw new Error('database unavailable');
+  };
+  const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+
+  assert.equal(result.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.equal(deps.followUpCalls.length, 1);
+});
+
+test('webhook keeps a failed follow-up pending and resumes it without repeating the activity', async () => {
+  const deps = dependencies();
+  let failFollowUp = true;
+  deps.followUpRepository.applyConversationToOpenFollowUps = async (value: unknown) => {
+    if (failFollowUp) throw new Error('follow-up unavailable');
+    deps.followUpCalls.push(value);
+  };
+
+  const first = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+  assert.equal(first.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.deepEqual(deps.effectsRepository.failures, [['5511999990000@s.whatsapp.net|inbound-message-1', 'follow_up']]);
+  assert.equal(deps.healthCalls.filter(([kind]) => kind === 'mark').length, 0, 'no ingestion watermark on failure');
+
+  failFollowUp = false;
+  const retry = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(deps.activityCalls.length, 1, 'the finished activity is not repeated');
+  assert.equal(deps.followUpCalls.length, 1);
+  const [row] = deps.effectsRepository.rows.values();
+  assert.equal(row.activityDone && row.followUpDone, true);
+});
+
+test('webhook stops at the first failed effect and leaves later events pending in order', async () => {
+  const deps = dependencies();
+  deps.activityRepository.recordActivity = async (value: unknown) => {
+    if ((value as { providerMessageId: string }).providerMessageId === 'first') throw new Error('activity down');
+    deps.activityCalls.push(value);
+  };
+  const result = await webhook(
+    event(
+      authorization,
+      upsertPayload([
+        upsertItem({ key: { id: 'first', remoteJid: '5511999990000@s.whatsapp.net', fromMe: false } }),
+        upsertItem({ key: { id: 'second', remoteJid: '5511999990000@s.whatsapp.net', fromMe: false } }),
+      ]),
+    ),
+    deps,
+  );
+  assert.equal(result.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 0);
+  assert.equal(deps.followUpCalls.length, 0);
+  assert.equal([...deps.effectsRepository.rows.values()].every((row) => !row.activityDone), true);
+});
+
+test('webhook still applies effects directly when they cannot be registered, but withholds the acknowledgement', async () => {
+  const deps = dependencies();
+  deps.effectsRepository.register = async () => {
+    throw new Error('database unavailable');
+  };
+  const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+  assert.equal(result.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.equal(deps.followUpCalls.length, 1);
+});
+
+test('webhook history resolves a LID chat phone from remoteJidAlt while follow-ups keep the unresolved LID', async () => {
+  const deps = dependencies();
+  await webhook(
+    event(
+      authorization,
+      upsertPayload(
+        upsertItem({
+          key: {
+            id: 'lid-1',
+            remoteJid: '183792384719283741@lid',
+            remoteJidAlt: '5511999990000@s.whatsapp.net',
+            fromMe: false,
+          },
+        }),
+      ),
+    ),
+    deps,
+  );
+  assert.equal(deps.historyCalls[0].resolveIdentity(null).canonicalPhone, '5511999990000');
+  assert.equal((deps.followUpCalls[0] as { identityStatus: string }).identityStatus, 'unresolved');
 });

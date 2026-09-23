@@ -21,7 +21,7 @@ import {
   quotationPdfChecksum,
   quotationWebpChecksum,
 } from '../../../_modules/quotation-document-storage.js';
-import { normalizeWhatsappPhone } from '../../../_modules/whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from '../../../_shared/whatsapp-phone.js';
 import type { TransportFailureKind } from '../../../_modules/quotation-delivery-state.js';
 
 type DatabaseProvider = () => AppDatabase;

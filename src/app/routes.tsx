@@ -4,6 +4,7 @@ import {
   BarChart3,
   Columns3,
   FileText,
+  MessagesSquare,
   Package,
   Plus,
   Settings,
@@ -34,6 +35,7 @@ const WhatsAppDeliveriesPage = lazy(
   () => import('@/features/quotations/pages/WhatsAppDeliveriesPage')
 );
 const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
+const AttendancePage = lazy(() => import('@/features/attendance/pages/AttendancePage'));
 
 function communicationRedirect(hash: string): string {
   const params = new URLSearchParams(hash.split('?')[1] || '');
@@ -135,6 +137,12 @@ export const routes: AppRoute[] = [
     path: '/auto',
     suspense: true,
     render: () => <NewQuotationPage initialMode="conversation" />,
+  },
+  {
+    path: '/atendimento',
+    suspense: true,
+    render: ({ navigate }) => <AttendancePage navigate={navigate} />,
+    nav: { label: 'Atendimento', icon: MessagesSquare, placement: 'destination', order: 0 },
   },
   {
     path: '/whatsapp-deliveries',

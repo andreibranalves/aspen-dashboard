@@ -35,7 +35,7 @@ import {
   type EvolutionAccepted,
   type EvolutionTransportDependencies,
 } from './evolution-transport.js';
-import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from '../_shared/whatsapp-phone.js';
 import {
   REVISION_UNAVAILABLE_PUBLIC_ERROR,
   retryDelayMs,

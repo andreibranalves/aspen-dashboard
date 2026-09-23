@@ -11,7 +11,7 @@ import type {
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import type { TransportFailureKind } from './quotation-delivery-state.js';
 import { hasDisallowedWhatsappControls } from './quotation-follow-up-state.js';
-import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from '../_shared/whatsapp-phone.js';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 

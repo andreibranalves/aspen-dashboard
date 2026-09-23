@@ -20,7 +20,7 @@ import {
   type BlobHead,
   type PostgresMediaRecord,
 } from './postgres-media.js';
-import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from '../_shared/whatsapp-phone.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import {
   detectProductCategories,
