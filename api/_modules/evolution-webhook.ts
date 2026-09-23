@@ -14,6 +14,12 @@ import {
   type WhatsappUpsertIngestionItem,
 } from './whatsapp-attendance-ingestion.js';
 import type { WhatsappAttendanceRepository } from '../_infrastructure/db/repositories/whatsapp-attendance-repository.js';
+import {
+  createPostgresWhatsappWebhookEffectsRepository,
+  type WebhookEffectRecord,
+  type WhatsappWebhookEffectsRepository,
+} from '../_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
+import { applyWebhookEffects, type WebhookEffectRunners } from './whatsapp-webhook-effects.js';
 import type { EvolutionReceiptStatus } from './quotation-delivery-state.js';
 export const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
@@ -48,6 +54,7 @@ export interface EvolutionWebhookDependencies {
   >;
   followUpRepository?: FollowUpConversationRepository;
   attendanceRepository?: Pick<WhatsappAttendanceRepository, 'ingestConversation'>;
+  effectsRepository?: Pick<WhatsappWebhookEffectsRepository, 'register' | 'markDone' | 'markFailed'>;
   environment?: {
     EVOLUTION_WEBHOOK_SECRET?: string;
     EVOLUTION_INSTANCE?: string;
@@ -296,20 +303,52 @@ export async function handler(
       }
     }
 
-    for (const item of upsert.parsed) {
-      const conversation: FollowUpConversationInput = {
-        instance: configuredInstance,
-        providerConversationId: item.remoteJid,
-        providerMessageId: item.providerMessageId,
-        fromMe: item.fromMe,
-        occurredAt: item.occurredAt,
-        identityStatus: item.identityStatus,
-        canonicalPhone: item.canonicalPhone || null,
-      };
-      await activityRepository.recordActivity(conversation);
-      await followUpRepository.applyConversationToOpenFollowUps(conversation);
+    const effectInputs: FollowUpConversationInput[] = upsert.parsed.map((item) => ({
+      instance: configuredInstance,
+      providerConversationId: item.remoteJid,
+      providerMessageId: item.providerMessageId,
+      fromMe: item.fromMe,
+      occurredAt: item.occurredAt,
+      identityStatus: item.identityStatus,
+      canonicalPhone: item.canonicalPhone || null,
+    }));
+    const runners: WebhookEffectRunners = {
+      recordActivity: (input) => activityRepository.recordActivity(input),
+      applyFollowUp: (input) => followUpRepository.applyConversationToOpenFollowUps(input),
+    };
+    const effectsRepository = dependencies.effectsRepository || createPostgresWhatsappWebhookEffectsRepository();
+    let effectRecords: WebhookEffectRecord[] | null = null;
+    if (effectInputs.length > 0) {
+      try {
+        effectRecords = await effectsRepository.register(effectInputs);
+      } catch (error) {
+        console.error('[evolution-webhook] effects', error instanceof Error ? error.name : typeof error);
+      }
     }
-    if (upsert.parsed.length > 0) {
+    let effectsApplied = true;
+    if (effectRecords) {
+      // Stop at the first failure: the remaining events stay pending in order
+      // and resume on a provider retry or the next worker tick.
+      for (const record of effectRecords) {
+        try {
+          await applyWebhookEffects(record, runners, effectsRepository, now);
+        } catch (error) {
+          effectsApplied = false;
+          console.error('[evolution-webhook] effect', error instanceof Error ? error.name : typeof error);
+          break;
+        }
+      }
+    } else {
+      // Without a durable record the effects still run as before, but the
+      // acknowledgement is withheld below so the event can be retried.
+      for (const input of effectInputs) {
+        await runners.recordActivity(input);
+        await runners.applyFollowUp(input);
+      }
+    }
+    const effectsDurable = effectInputs.length === 0 || effectRecords !== null;
+
+    if (upsert.parsed.length > 0 && effectsApplied) {
       const latest = upsert.parsed.reduce((current, candidate) => {
         const currentTime = current.occurredAt.getTime();
         const candidateTime = candidate.occurredAt.getTime();
@@ -331,7 +370,7 @@ export async function handler(
         });
       }
     }
-    if (!historyStored) {
+    if (!historyStored || !effectsDurable || !effectsApplied) {
       return json(503, {
         error: 'Não foi possível registrar a mensagem recebida da Evolution. Tente novamente.',
       });

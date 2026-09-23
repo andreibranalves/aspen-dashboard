@@ -77,3 +77,33 @@ ALTER TABLE "whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_origin_check" 
 ALTER TABLE "whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_body_length_check" CHECK ("whatsapp_messages"."body" IS NULL OR char_length("whatsapp_messages"."body") <= 65536);
 --> statement-breakpoint
 ALTER TABLE "whatsapp_messages" ADD CONSTRAINT "whatsapp_messages_revision_check" CHECK ("whatsapp_messages"."created_revision" > 0 AND "whatsapp_messages"."revision" >= "whatsapp_messages"."created_revision");
+--> statement-breakpoint
+CREATE TABLE "whatsapp_webhook_effects" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"instance" varchar(120) NOT NULL,
+	"provider_conversation_id" varchar(255) NOT NULL,
+	"provider_message_id" varchar(255) NOT NULL,
+	"from_me" boolean NOT NULL,
+	"occurred_at" timestamp with time zone NOT NULL,
+	"identity_status" varchar(16) NOT NULL,
+	"canonical_phone" varchar(15),
+	"activity_done_at" timestamp with time zone,
+	"follow_up_done_at" timestamp with time zone,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"next_attempt_at" timestamp with time zone,
+	"last_failure" varchar(32),
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "whatsapp_webhook_effects_message_unique" ON "whatsapp_webhook_effects" USING btree ("instance","provider_conversation_id","provider_message_id");
+--> statement-breakpoint
+CREATE INDEX "whatsapp_webhook_effects_pending_idx" ON "whatsapp_webhook_effects" USING btree ("next_attempt_at","occurred_at") WHERE "whatsapp_webhook_effects"."activity_done_at" IS NULL OR "whatsapp_webhook_effects"."follow_up_done_at" IS NULL;
+--> statement-breakpoint
+ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_identity_status_check" CHECK ("whatsapp_webhook_effects"."identity_status" IN ('verified', 'derived', 'unresolved', 'conflict'));
+--> statement-breakpoint
+ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_phone_check" CHECK ("whatsapp_webhook_effects"."canonical_phone" IS NULL OR "whatsapp_webhook_effects"."canonical_phone" ~ '^[0-9]{10,15}$');
+--> statement-breakpoint
+ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_attempts_check" CHECK ("whatsapp_webhook_effects"."attempts" >= 0);
+--> statement-breakpoint
+ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_failure_check" CHECK ("whatsapp_webhook_effects"."last_failure" IS NULL OR "whatsapp_webhook_effects"."last_failure" IN ('activity_failed', 'follow_up_failed'));

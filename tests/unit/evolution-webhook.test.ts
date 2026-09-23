@@ -8,6 +8,38 @@ import {
   MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
 } from '../../api/_modules/evolution-webhook.js';
 import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
+import type {
+  WebhookEffect,
+  WebhookEffectInput,
+  WebhookEffectRecord,
+} from '../../api/_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
+
+function memoryEffects() {
+  const rows = new Map<string, WebhookEffectRecord>();
+  const failures: Array<[string, WebhookEffect]> = [];
+  return {
+    rows,
+    failures,
+    register: async (inputs: WebhookEffectInput[]) =>
+      inputs.map((input) => {
+        const key = `${input.providerConversationId}|${input.providerMessageId}`;
+        const existing = rows.get(key);
+        if (existing) return { ...existing };
+        const record: WebhookEffectRecord = { ...input, id: key, activityDone: false, followUpDone: false, attempts: 0 };
+        rows.set(key, record);
+        return { ...record };
+      }),
+    markDone: async (id: string, effect: WebhookEffect) => {
+      const row = rows.get(id)!;
+      if (effect === 'activity') row.activityDone = true;
+      else row.followUpDone = true;
+    },
+    markFailed: async (id: string, effect: WebhookEffect) => {
+      rows.get(id)!.attempts += 1;
+      failures.push([id, effect]);
+    },
+  };
+}
 
 const webhookSecret = 'w'.repeat(32);
 const instance = 'instance-test';
@@ -101,6 +133,7 @@ function dependencies() {
         followUpCalls.push(value);
       },
     },
+    effectsRepository: memoryEffects(),
     attendanceRepository: {
       ingestConversation: async (value: IngestWhatsappConversationInput) => {
         operationOrder.push('history');
@@ -528,6 +561,62 @@ test('webhook runs existing effects but withholds the acknowledgement when histo
   };
   const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
 
+  assert.equal(result.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.equal(deps.followUpCalls.length, 1);
+});
+
+test('webhook keeps a failed follow-up pending and resumes it without repeating the activity', async () => {
+  const deps = dependencies();
+  let failFollowUp = true;
+  deps.followUpRepository.applyConversationToOpenFollowUps = async (value: unknown) => {
+    if (failFollowUp) throw new Error('follow-up unavailable');
+    deps.followUpCalls.push(value);
+  };
+
+  const first = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+  assert.equal(first.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.deepEqual(deps.effectsRepository.failures, [['5511999990000@s.whatsapp.net|inbound-message-1', 'follow_up']]);
+  assert.equal(deps.healthCalls.filter(([kind]) => kind === 'mark').length, 0, 'no ingestion watermark on failure');
+
+  failFollowUp = false;
+  const retry = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(deps.activityCalls.length, 1, 'the finished activity is not repeated');
+  assert.equal(deps.followUpCalls.length, 1);
+  const [row] = deps.effectsRepository.rows.values();
+  assert.equal(row.activityDone && row.followUpDone, true);
+});
+
+test('webhook stops at the first failed effect and leaves later events pending in order', async () => {
+  const deps = dependencies();
+  deps.activityRepository.recordActivity = async (value: unknown) => {
+    if ((value as { providerMessageId: string }).providerMessageId === 'first') throw new Error('activity down');
+    deps.activityCalls.push(value);
+  };
+  const result = await webhook(
+    event(
+      authorization,
+      upsertPayload([
+        upsertItem({ key: { id: 'first', remoteJid: '5511999990000@s.whatsapp.net', fromMe: false } }),
+        upsertItem({ key: { id: 'second', remoteJid: '5511999990000@s.whatsapp.net', fromMe: false } }),
+      ]),
+    ),
+    deps,
+  );
+  assert.equal(result.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 0);
+  assert.equal(deps.followUpCalls.length, 0);
+  assert.equal([...deps.effectsRepository.rows.values()].every((row) => !row.activityDone), true);
+});
+
+test('webhook still applies effects directly when they cannot be registered, but withholds the acknowledgement', async () => {
+  const deps = dependencies();
+  deps.effectsRepository.register = async () => {
+    throw new Error('database unavailable');
+  };
+  const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
   assert.equal(result.statusCode, 503);
   assert.equal(deps.activityCalls.length, 1);
   assert.equal(deps.followUpCalls.length, 1);

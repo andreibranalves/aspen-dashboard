@@ -2,14 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  handler as worker,
+  handler as rawWorker,
   QUOTATION_DELIVERY_WORKER_BATCH_SIZE,
+  type QuotationDeliveryWorkerDependencies,
 } from '../../api/_modules/quotation-delivery-worker.js';
 import type {
   QuotationDeliveryWorkerRunResult,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-diagnostics-repository.js';
 
 const cronSecret = 'c'.repeat(32);
+
+// The webhook-effects drain is DB work; tests that do not exercise it stub it.
+function worker(
+  input: Parameters<typeof rawWorker>[0],
+  dependencies: QuotationDeliveryWorkerDependencies = {},
+) {
+  return rawWorker(input, { drainEffects: async () => ({ applied: 0, failed: 0 }), ...dependencies });
+}
 
 function event(
   headers: Record<string, string> = {},
@@ -131,4 +140,52 @@ test('worker returns safe service error for invalid module counts', async () => 
   assert.equal(result.statusCode, 503);
   assert.equal(JSON.parse(result.body || '{}').processed, undefined);
   assert.deepEqual(heartbeats, [{ result: 'failure' }]);
+});
+
+test('worker drains pending webhook effects only after the quotation batch and within budget', async () => {
+  const order: string[] = [];
+  let now = 1_000_000;
+  const deps: QuotationDeliveryWorkerDependencies = {
+    processDue: async (limit: number) => {
+      order.push(`batch:${limit}`);
+      return { processed: 1, remaining: false };
+    },
+    recordRun: async () => {},
+    drainEffects: async (deadlineAt: number) => {
+      order.push(`drain:${deadlineAt - 1_000_000}`);
+      return { applied: 2, failed: 0 };
+    },
+    clock: () => now,
+    environment: { CRON_SECRET: cronSecret },
+  };
+
+  const result = await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), deps);
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 1, remaining: false });
+  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`, 'drain:50000']);
+
+  order.length = 0;
+  deps.processDue = async (limit: number) => {
+    order.push(`batch:${limit}`);
+    now += 46_000;
+    return { processed: 3, remaining: true };
+  };
+  await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), deps);
+  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`], 'no drain without room left');
+});
+
+test('a failing webhook-effects drain never changes the batch result', async () => {
+  const heartbeats: QuotationDeliveryWorkerRunResult[] = [];
+  const result = await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), {
+    processDue: async () => ({ processed: 2, remaining: false }),
+    recordRun: async (value) => {
+      heartbeats.push(value);
+    },
+    drainEffects: async () => {
+      throw new Error('database unavailable');
+    },
+    environment: { CRON_SECRET: cronSecret },
+  });
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(heartbeats, [{ result: 'success', processed: 2, remaining: false }]);
 });

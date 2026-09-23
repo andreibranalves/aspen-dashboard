@@ -1889,6 +1889,57 @@ export const whatsappMessages = pgTable(
 );
 
 
+/**
+ * Durable pending effects of one received message (contact activity and
+ * follow-up projection). A row stays pending until both effects are applied,
+ * so a failed webhook or a later worker tick can resume without repeating the
+ * message itself.
+ */
+export const whatsappWebhookEffects = pgTable(
+  'whatsapp_webhook_effects',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    providerMessageId: varchar('provider_message_id', { length: 255 }).notNull(),
+    fromMe: boolean('from_me').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    identityStatus: varchar('identity_status', { length: 16 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }),
+    activityDoneAt: timestamp('activity_done_at', { withTimezone: true }),
+    followUpDoneAt: timestamp('follow_up_done_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    lastFailure: varchar('last_failure', { length: 32 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_webhook_effects_message_unique').on(
+      table.instance,
+      table.providerConversationId,
+      table.providerMessageId,
+    ),
+    index('whatsapp_webhook_effects_pending_idx')
+      .on(table.nextAttemptAt, table.occurredAt)
+      .where(sql`${table.activityDoneAt} IS NULL OR ${table.followUpDoneAt} IS NULL`),
+    check(
+      'whatsapp_webhook_effects_identity_status_check',
+      sql`${table.identityStatus} IN ('verified', 'derived', 'unresolved', 'conflict')`,
+    ),
+    check(
+      'whatsapp_webhook_effects_phone_check',
+      sql`${table.canonicalPhone} IS NULL OR ${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check('whatsapp_webhook_effects_attempts_check', sql`${table.attempts} >= 0`),
+    check(
+      'whatsapp_webhook_effects_failure_check',
+      sql`${table.lastFailure} IS NULL OR ${table.lastFailure} IN ('activity_failed', 'follow_up_failed')`,
+    ),
+  ],
+);
+
+
 // Singular aliases make repository/tests that speak in domain terms concise
 // without changing the SQL table names used by migrations.
 export const quoteSequence = quoteSequences;
