@@ -270,15 +270,22 @@ test('operador registra contato manual com continuidade e histórico separado', 
   await dialog.getByRole('combobox', { name: 'Continuidade' }).selectOption('successor');
   await dialog.getByLabel('Data da próxima ação').fill('2026-09-15');
   await dialog.getByLabel('Motivo da continuidade').fill('Confirmar pedido');
-  const submitRequest = page.waitForRequest(
-    (browserRequest) =>
-      browserRequest.url().includes('/api/commercial-queue') && browserRequest.method() === 'POST'
+  // Wait for the completed command, not just the outgoing request, so the
+  // queue is inspected only after the successor action exists.
+  const submitResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/commercial-queue') &&
+      response.request().method() === 'POST' &&
+      response.ok()
   );
   await dialog.getByRole('button', { name: 'Registrar contato' }).click();
-  const manualRequest = await submitRequest;
-  expect(JSON.parse(manualRequest.postData() || '{}').command).toBe('manual_contact');
+  const manualResponse = await submitResponse;
+  expect(JSON.parse(manualResponse.request().postData() || '{}').command).toBe('manual_contact');
+  await expect(dialog).toBeHidden();
 
+  await page.reload();
   const refreshedRow = await openQueueItem(page, payload.nome);
+  await expect(refreshedRow.getByRole('button', { name: 'Histórico' })).toBeVisible();
   await refreshedRow.getByRole('button', { name: 'Histórico' }).click();
   await expect(page.getByRole('heading', { name: 'Histórico da próxima ação' })).toBeVisible();
   await expect(page.getByText('Declaração manual')).toBeVisible();
