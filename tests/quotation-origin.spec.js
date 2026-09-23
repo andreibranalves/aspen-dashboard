@@ -120,7 +120,7 @@ test('opportunity creates quotation whose origin remains visible through approva
 
   await expect(page.getByRole('heading', { name: 'Novo orçamento' })).toBeVisible();
   await expect(page.getByText('Origem: Formulário do site')).toBeVisible();
-  await expect(page.getByLabel('Nome do cliente')).toHaveValue(leadName);
+  await expect(page.getByRole('button', { name: 'Selecionar cliente' })).toContainText(leadName);
   await page.getByLabel('Origem *').selectOption('Google Ads');
   await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(sku);
   await page.getByRole('button', { name: `Adicionar ${sku} ao orçamento` }).click();
@@ -138,7 +138,7 @@ test('opportunity creates quotation whose origin remains visible through approva
 
   await expect(page.getByRole('heading', { name: /^PED-\d{4}-\d{4}$/ })).toBeVisible();
   await expect(page.getByText('Formulário do site')).toBeVisible();
-  await page.getByRole('button', { name: /^Abrir orçamento ORC-\d{8}$/ }).click();
+  await page.getByRole('button', { name: 'Ver orçamento de origem' }).click();
   await expect(page.getByLabel('Origem do orçamento')).toContainText('Formulário do site');
 });
 

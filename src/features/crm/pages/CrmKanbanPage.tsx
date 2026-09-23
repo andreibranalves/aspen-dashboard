@@ -434,7 +434,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     return (
                       <TableRow key={deal.id} className="group">
                         <TableCell className="max-w-56">
-                          <EntityIdentity name={leadName} secondary={deal.id.slice(0, 8)} primary={href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="hover:underline">{leadName}</a> : leadName} />
+                          <EntityIdentity name={leadName} secondary={deal.id.slice(0, 8)} primary={href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} aria-label={`Abrir lead ${leadName}`} className="hover:underline">{leadName}</a> : leadName} />
                         </TableCell>
                         <TableCell className="text-xs">{deal.lead_source || '—'}</TableCell>
                         <TableCell>
@@ -454,6 +454,11 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             <Select ref={(element) => setMoveMenuRef(deal.id, element)} value={currentStatus} disabled={moving} aria-label={`Mover ${leadName} para outra etapa`} className="h-8 w-9 max-w-9 cursor-pointer overflow-hidden border-0 bg-surface-subtle px-0 text-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onChange={(event) => moveDeal(deal.id, event.target.value)}>
                               {moveColumns(currentStatus).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}
                             </Select>
+                            {deal.quote_lead_id && (
+                              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => startQuotation(deal, leadName)}>
+                                <PlusCircle aria-hidden="true" /> Novo orçamento
+                              </Button>
+                            )}
                             {href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="inline-flex h-8 items-center gap-1 rounded-control bg-surface-subtle px-2 text-xs font-medium hover:bg-surface-hover"><ArrowUpRight size={13} aria-hidden="true" />Abrir</a> : <span className="text-fg-muted">—</span>}
                           </div>
                         </TableCell>
