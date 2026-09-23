@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type UIEvent } from 'react';
-import { ArrowDown, ArrowLeft, MessagesSquare } from 'lucide-react';
+import { ArrowDown, ArrowLeft, MessagesSquare, PanelRight } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import EmptyState from '@/components/shared/EmptyState';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ErrorState from '@/components/shared/ErrorState';
@@ -26,6 +27,7 @@ import {
   type AttendanceStatusFilter,
 } from '@/lib/api/attendanceApi';
 import type { ApiError } from '@/lib/api/api';
+import ContextPanel from '@/features/attendance/components/ContextPanel';
 import ConversationList, { conversationName } from '@/features/attendance/components/ConversationList';
 import MessageComposer from '@/features/attendance/components/MessageComposer';
 import MessageTimeline, { type MessageActionName } from '@/features/attendance/components/MessageTimeline';
@@ -36,6 +38,7 @@ const CONVERSATION_POLL_MS = 5_000;
 const LIST_POLL_MS = 10_000;
 const NEAR_BOTTOM_PX = 80;
 const MAX_INCREMENTAL_PAGES = 5;
+const WIDE_MEDIA_QUERY = '(min-width: 1280px)';
 
 interface Thread {
   conversationId: string;
@@ -51,6 +54,21 @@ interface Thread {
 function selectedFromHash(): string | null {
   const query = window.location.hash.split('?')[1] || '';
   return new URLSearchParams(query).get('conversationId');
+}
+
+// The context panel is a column on wide screens and a drawer otherwise; only
+// one of them is mounted, so the context is read once.
+function useWideLayout(): boolean {
+  const [wide, setWide] = useState(() => Boolean(window.matchMedia?.(WIDE_MEDIA_QUERY).matches));
+  useEffect(() => {
+    if (!window.matchMedia) return undefined;
+    const media = window.matchMedia(WIDE_MEDIA_QUERY);
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
+  return wide;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -125,6 +143,8 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const scrollAnchorRef = useRef<{ height: number; top: number } | null>(null);
   const stickToBottomRef = useRef(false);
   const readRequestRef = useRef(0);
+  const wide = useWideLayout();
+  const [contextOpen, setContextOpen] = useState(false);
 
   useEffect(() => {
     const onHash = () => setSelectedId(selectedFromHash());
@@ -413,7 +433,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   return (
     <PageShell>
       <PageHeader title="Atendimento" />
-      <div className="grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-12rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]">
+      <div className="grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-12rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
         <section
           aria-label="Lista de conversas"
           className={cn('flex min-h-0 flex-col border-border-subtle lg:border-r', selectedId && 'max-lg:hidden')}
@@ -504,6 +524,11 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                     </option>
                   ))}
                 </Select>
+                {!wide && (
+                  <Button variant="ghost" size="icon" onClick={() => setContextOpen(true)} aria-label="Contexto comercial">
+                    <PanelRight aria-hidden="true" />
+                  </Button>
+                )}
               </header>
               {conversation.identityStatus === 'conflict' && (
                 <InlineAlert tone="warning" className="m-2" title="Telefone em conflito">
@@ -550,9 +575,29 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 }}
                 onCancel={() => setConfirmResend(null)}
               />
+              {!wide && (
+                <DetailDrawer open={contextOpen} onClose={() => setContextOpen(false)} title="Contexto comercial">
+                  <ContextPanel
+                    key={conversation.id}
+                    conversationId={conversation.id}
+                    identityVersion={conversation.identityVersion}
+                  />
+                </DetailDrawer>
+              )}
             </>
           )}
         </section>
+        {wide && (
+          <aside aria-label="Contexto comercial" className="flex min-h-0 flex-col border-l border-border-subtle">
+            {conversation && !thread?.error ? (
+              <ContextPanel
+                key={conversation.id}
+                conversationId={conversation.id}
+                identityVersion={conversation.identityVersion}
+              />
+            ) : null}
+          </aside>
+        )}
       </div>
     </PageShell>
   );

@@ -88,6 +88,15 @@ export interface WhatsappMessageRecord {
   supersededBy: string | null;
 }
 
+/** Technical scope of a conversation. Backend only; never projected to clients. */
+export interface WhatsappConversationScope {
+  instance: string;
+  providerConversationId: string;
+  canonicalPhone: string | null;
+  identityStatus: WhatsappIdentityStatus;
+  identityVersion: number;
+}
+
 export interface TimelineCursor {
   at: Date;
   id: string;
@@ -128,6 +137,7 @@ export interface WhatsappAttendanceRepository {
   ingestConversation(input: IngestWhatsappConversationInput): Promise<IngestWhatsappConversationResult>;
   listConversations(input: ListConversationsInput): Promise<{ items: WhatsappConversationRecord[]; hasMore: boolean }>;
   getConversation(id: string): Promise<WhatsappConversationRecord | null>;
+  getConversationScope(id: string): Promise<WhatsappConversationScope | null>;
   /** Newest page first in the query, returned in chronological order. */
   listMessagesBefore(input: {
     conversationId: string;
@@ -450,6 +460,29 @@ export function createPostgresWhatsappAttendanceRepository(
         .where(eq(conversations.id, id))
         .limit(1);
       return row ? toConversation(row) : null;
+    },
+
+    async getConversationScope(id) {
+      const [row] = await getDb()
+        .select({
+          instance: conversations.instance,
+          providerConversationId: conversations.providerConversationId,
+          canonicalPhone: conversations.canonicalPhone,
+          identityStatus: conversations.identityStatus,
+          identityVersion: conversations.identityVersion,
+        })
+        .from(conversations)
+        .where(eq(conversations.id, id))
+        .limit(1);
+      return row
+        ? {
+            instance: row.instance,
+            providerConversationId: row.providerConversationId,
+            canonicalPhone: row.canonicalPhone || null,
+            identityStatus: row.identityStatus as WhatsappIdentityStatus,
+            identityVersion: Number(row.identityVersion),
+          }
+        : null;
     },
 
     async listMessagesBefore(input) {
