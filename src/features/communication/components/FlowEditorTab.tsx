@@ -527,7 +527,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 </div>
                 <div className="min-w-0">
                   <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
-                    {displayName(selectedFlow)}
+                    Sequência do fluxo
                   </h2>
                 </div>
                 {expandedFlow === selectedFlow.id ? (
@@ -606,75 +606,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
             {expandedFlow === selectedFlow.id && (
               <div className="space-y-5 p-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label
-                    htmlFor={`flow-name-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Nome do fluxo</span>
-                    <Input
-                      id={`flow-name-${selectedFlow.id}`}
-                      type="text"
-                      value={selectedFlow.name || ''}
-                      onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
-                    />
-                  </label>
-                  <label
-                    htmlFor={`flow-vendor-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Vendedora</span>
-                    <Input
-                      id={`flow-vendor-${selectedFlow.id}`}
-                      type="text"
-                      value={selectedFlow.vendor_name || ''}
-                      onChange={(event) =>
-                        updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
-                      }
-                    />
-                  </label>
-                  <label
-                    htmlFor={`flow-delay-min-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Delay mínimo (segundos)</span>
-                    <Input
-                      id={`flow-delay-min-${selectedFlow.id}`}
-                      type="number"
-                      min="0"
-                      max="30"
-                      value={selectedFlow.delay_min_seconds ?? ''}
-                      onChange={(event) =>
-                        updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
-                      }
-                    />
-                  </label>
-                  <label
-                    htmlFor={`flow-delay-max-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Delay máximo (segundos)</span>
-                    <Input
-                      id={`flow-delay-max-${selectedFlow.id}`}
-                      type="number"
-                      min="0"
-                      max="45"
-                      value={selectedFlow.delay_max_seconds ?? ''}
-                      aria-invalid={delayRangeInvalid}
-                      onChange={(event) =>
-                        updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
-                      }
-                    />
-                    {delayRangeInvalid && (
-                      <span className="text-xs text-destructive" role="alert">
-                        O máximo deve ser maior ou igual ao mínimo.
-                      </span>
-                    )}
-                  </label>
-                </div>
-
                 <section
-                  className="space-y-3 border-t border-line pt-4"
+                  className="space-y-3"
                   aria-labelledby="flow-steps-title"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -911,6 +844,76 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                     );
                   })}
                 </section>
+
+                <details className="rounded-control border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-fg">Configurações do fluxo</summary>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label
+                    htmlFor={`flow-name-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Nome do fluxo</span>
+                    <Input
+                      id={`flow-name-${selectedFlow.id}`}
+                      type="text"
+                      value={selectedFlow.name || ''}
+                      onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-vendor-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Vendedora</span>
+                    <Input
+                      id={`flow-vendor-${selectedFlow.id}`}
+                      type="text"
+                      value={selectedFlow.vendor_name || ''}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
+                      }
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-delay-min-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Delay mínimo (segundos)</span>
+                    <Input
+                      id={`flow-delay-min-${selectedFlow.id}`}
+                      type="number"
+                      min="0"
+                      max="30"
+                      value={selectedFlow.delay_min_seconds ?? ''}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-delay-max-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Delay máximo (segundos)</span>
+                    <Input
+                      id={`flow-delay-max-${selectedFlow.id}`}
+                      type="number"
+                      min="0"
+                      max="45"
+                      value={selectedFlow.delay_max_seconds ?? ''}
+                      aria-invalid={delayRangeInvalid}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
+                      }
+                    />
+                    {delayRangeInvalid && (
+                      <span className="text-xs text-destructive" role="alert">
+                        O máximo deve ser maior ou igual ao mínimo.
+                      </span>
+                    )}
+                  </label>
+                </div>
+                </details>
 
                 <section
                   className="space-y-2 border-t border-line pt-4"
