@@ -73,7 +73,7 @@ export function TabList<T extends string>({ label, items, variant = 'page', idPr
             triggerVariants[variant]
           )}
         >
-          {Icon && <Icon size={16} aria-hidden="true" />}
+          {Icon && <Icon size={14} aria-hidden="true" />}
           {itemLabel}
           {badge != null && <span className="tabular-nums opacity-70">{badge}</span>}
         </RadixTabs.Trigger>
