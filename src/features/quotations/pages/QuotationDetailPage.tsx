@@ -1895,9 +1895,9 @@ function CoreQuotationDetail({
                     <div className="min-w-0">
                       <span className="text-xs font-medium text-fg-muted">Modelo</span>
                       {editing && draftEditable && templates.length > 0 ? (
-                        <select
+                        <Select
                           aria-label="Modelo do orçamento"
-                          className="mt-1 h-9 w-full rounded-control border border-line bg-surface px-2 text-sm"
+                          containerClassName="w-full mt-1" className="w-full"
                           value={selectedTemplate}
                           onChange={(event) => {
                             const key = event.target.value;
@@ -1912,7 +1912,7 @@ function CoreQuotationDetail({
                               {template.archived ? ' (arquivado)' : ''}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       ) : (
                         <p className="mt-1 break-words">
                           {selectedTemplateMetadata?.name || selectedTemplate || '—'}

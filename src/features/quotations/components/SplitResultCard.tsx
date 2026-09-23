@@ -578,17 +578,17 @@ export default function SplitResultCard({
             </span>
 
             {draft.edited.urgente && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">
                 <AlertTriangle size={10} /> Urgente
               </span>
             )}
             {isDone && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                 <Check size={10} /> Emitido
               </span>
             )}
             {!isDone && hasSavedSnapshot && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-fg-muted">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-surface px-2 py-0.5 text-[11px] font-semibold text-fg-muted">
                 <Check size={10} /> Rascunho salvo
               </span>
             )}
@@ -666,7 +666,7 @@ export default function SplitResultCard({
               <h3 className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
-                  <span className="shrink-0 rounded-full bg-taupe/15 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-primary">
+                  <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-[11px] font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}

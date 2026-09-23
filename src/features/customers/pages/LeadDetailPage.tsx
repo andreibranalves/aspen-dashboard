@@ -155,7 +155,7 @@ function SectionCard({ title, description, icon: Icon, children, className }: Se
           </div>
         )}
         <div>
-          <h2 id={`section-${title}`} className="text-sm font-semibold text-fg">
+          <h2 id={`section-${title}`} className="text-base font-semibold text-fg">
             {title}
           </h2>
           {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}

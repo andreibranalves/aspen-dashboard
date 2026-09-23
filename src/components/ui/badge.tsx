@@ -39,7 +39,7 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
       title={label || status}
       data-status={status}
       className={cn(
-        'inline-flex max-w-[180px] items-center whitespace-nowrap overflow-hidden text-ellipsis rounded-badge px-2 py-1 text-[10px] font-semibold transition-colors',
+        'inline-flex max-w-[180px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-badge px-2 py-0.5 text-[11px] font-semibold leading-4 transition-colors',
         variant,
         className
       )}

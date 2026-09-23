@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
 import {
@@ -227,19 +228,19 @@ export default function FollowUpReviewDrawer({
               <label htmlFor="follow-up-dismiss-reason" className="text-sm font-medium text-fg">
                 Motivo da dispensa
               </label>
-              <select
+              <Select
                 id="follow-up-dismiss-reason"
                 value={reason}
                 onChange={(event) => setReason(event.target.value as DismissReason)}
                 disabled={pending !== null}
-                className="flex h-9 w-full rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm text-fg disabled:cursor-not-allowed disabled:opacity-50"
+                containerClassName="w-full" className="w-full"
               >
                 {DISMISS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
         </div>
