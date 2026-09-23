@@ -625,6 +625,8 @@ const CLIENT_REVIEW_MESSAGES: Record<NonNullable<ClientMatchResponse['reason']>,
   archived_match: CLIENT_ARCHIVED_MESSAGE,
   weak_matches_only:
     'Já existe um cadastro parecido com estes dados. Escolha o cliente ou confirme que é um novo cliente.',
+  identifier_in_use:
+    'O e-mail ou telefone informado já pertence a outro cadastro. Escolha o cliente ou confirme que é um novo cliente.',
 };
 
 interface CreationFingerprintParts {
@@ -854,10 +856,11 @@ async function resolveOrCreateClient(
     if (reason === 'archived_match') {
       throw new QuoteDraftConflictError(CLIENT_REVIEW_MESSAGES[reason], 'CLIENT_ARCHIVED');
     }
-    // Weak name/company suggestions are the one review state an explicit
-    // "this is a new client" decision may resolve; every other review state
-    // demands the operator pick the record.
-    if (reason !== 'weak_matches_only') {
+    // Name/company suggestions and an identifier shared with another client
+    // are the review states an explicit "this is a new client" decision may
+    // resolve; a strong match or a conflict demands the operator pick the record.
+    const declinable = reason === 'weak_matches_only' || reason === 'identifier_in_use';
+    if (!declinable || !options.confirmNewClient) {
       throw new QuoteDraftConflictError(CLIENT_REVIEW_MESSAGES[reason], 'CLIENT_SELECTION_REQUIRED');
     }
   }

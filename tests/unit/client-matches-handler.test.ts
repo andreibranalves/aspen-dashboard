@@ -157,11 +157,11 @@ test('client-matches: cadastro único sem conflito é vinculado', async () => {
     },
   ]);
   const handler = createCoreHandler({ repository });
-  const body = parse(await handler(event({ telefone: '(11) 98765-4321' })));
+  const body = parse(await handler(event({ nome: 'Ana', telefone: '(11) 98765-4321' })));
   assert.equal(body.status, 'matched');
   assert.equal(body.matched_client_id, 'a');
   const candidates = body.candidates as Array<Record<string, unknown>>;
   assert.equal(candidates[0].nome, 'Ana Souza');
-  assert.deepEqual(candidates[0].matched_by, ['telefone']);
+  assert.deepEqual(candidates[0].matched_by, ['telefone', 'nome']);
   assert.equal(candidates[0].documento, '**.***.***/****-81');
 });

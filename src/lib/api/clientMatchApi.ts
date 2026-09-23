@@ -9,7 +9,8 @@ export type ClientMatchReason =
   | 'multiple_matches'
   | 'identifier_conflict'
   | 'archived_match'
-  | 'weak_matches_only';
+  | 'weak_matches_only'
+  | 'identifier_in_use';
 export type ClientMatchField = 'documento' | 'email' | 'telefone' | 'nome' | 'empresa';
 
 export interface ClientMatchCandidate {
@@ -65,6 +66,7 @@ const REASONS: readonly ClientMatchReason[] = [
   'identifier_conflict',
   'archived_match',
   'weak_matches_only',
+  'identifier_in_use',
 ];
 const FIELDS: readonly ClientMatchField[] = ['documento', 'email', 'telefone', 'nome', 'empresa'];
 

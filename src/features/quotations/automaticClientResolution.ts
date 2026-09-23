@@ -37,11 +37,16 @@ export type ClientResolutionView =
   | { state: 'linked'; clientId: string; nome: string }
   | {
       state: 'choice';
-      reason: 'multiple_matches' | 'identifier_conflict' | 'archived_match' | 'weak_matches_only';
+      reason:
+        | 'multiple_matches'
+        | 'identifier_conflict'
+        | 'archived_match'
+        | 'weak_matches_only'
+        | 'identifier_in_use';
       candidates: ClientResolutionCandidate[];
-      /** Only weak name/company suggestions may be declined in favour of an
-       * explicit new client: a strong match, a conflict or an archived record
-       * must be resolved by choosing the register. */
+      /** Name suggestions and an e-mail/phone shared with another client may be
+       * declined in favour of an explicit new client: a strong match, a
+       * conflict or an archived record must be resolved by choosing the register. */
       allowNewClient: boolean;
     }
   | { state: 'archived'; clientId: string | null; nome: string | null }
@@ -228,7 +233,7 @@ export function viewFromResponse(
       state: 'choice',
       reason,
       candidates,
-      allowNewClient: reason === 'weak_matches_only',
+      allowNewClient: reason === 'weak_matches_only' || reason === 'identifier_in_use',
     };
   }
 
@@ -251,7 +256,9 @@ export function clientResolutionBlockMessage(view: ClientResolutionView): string
     case 'checking':
       return 'Aguardando a verificação do cliente.';
     case 'choice':
-      return 'Escolha o cliente para continuar.';
+      return view.allowNewClient
+        ? 'Escolha o cliente ou confirme que é um novo cadastro.'
+        : 'Escolha o cliente para continuar.';
     case 'archived':
       return 'Cliente arquivado. Regularize o cadastro na tela Clientes para continuar.';
     case 'error':
@@ -431,9 +438,9 @@ export class AutomaticClientResolutionController {
     const record = this.records.get(draftIdx);
     if (!draft || !record || !this.isActive(draftIdx)) return;
     const view = record.view;
-    // Weak name/company suggestions are the one review state the operator may
-    // decline: refusing every suggestion is the same decision as naming a new
-    // client, and the server accepts the confirmation in exactly that case.
+    // Name suggestions and a shared e-mail/phone are the review states the
+    // operator may decline: refusing them is the same decision as naming a new
+    // client, and the server accepts the confirmation in exactly those cases.
     const declinesSuggestions = view.state === 'choice' && view.allowNewClient;
     if (view.state !== 'new_client' && !declinesSuggestions) return;
     if (record.signature !== clientResolutionSignature(draft.edited)) return;

@@ -48,6 +48,7 @@ const CANONICAL_EMAIL = 'canonica@example.com';
 const CANONICAL_PHONE = '11955550002';
 const ARCHIVED_PHONE = '11955550003';
 const MULTIPLE_PHONE = '11955550004';
+const SHARED_PHONE = '11955550005';
 const UNKNOWN_SKU = 'QUOTE-RESOLUTION-MISSING';
 const YEAR = 2027;
 const SUFFIX = 'resolution';
@@ -433,5 +434,30 @@ test(
       (error: unknown) =>
         error instanceof QuoteDraftConflictError && error.code === 'CLIENT_SELECTION_REQUIRED'
     );
+  }
+);
+
+test(
+  'telefone de outro nome só cria novo cadastro com confirmação explícita',
+  { skip: !TEST_DATABASE_URL, concurrency: false },
+  async () => {
+    const repo = repository();
+    const existing = await addClient(6, { nome: 'Carla Souza', telefone: SHARED_PHONE });
+    const payload = { nome: 'Carla Lima', telefone: SHARED_PHONE, items: items() };
+
+    await assert.rejects(
+      () =>
+        repo.createDraft({ ...payload, creation_request_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }),
+      (error: unknown) =>
+        error instanceof QuoteDraftConflictError && error.code === 'CLIENT_SELECTION_REQUIRED'
+    );
+
+    const created = await repo.createDraft({
+      ...payload,
+      confirm_new_client: true,
+      creation_request_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    });
+    fixtureClientIds.push(created.cliente_id);
+    assert.notEqual(created.cliente_id, existing);
   }
 );
