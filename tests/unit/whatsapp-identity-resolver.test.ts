@@ -194,6 +194,15 @@ describe('whatsapp-identity-resolver', () => {
       assert.equal(result.identityStatus, 'conflict');
     });
 
+    it('keeps a stored conflict until it is explicitly reviewed', () => {
+      const result = resolveWhatsappIdentity({
+        chat: { remoteJid: '183792384719283741@lid', senderPn: '5521911112222' },
+        storedConversation: { canonicalPhone: '', identityStatus: 'conflict' },
+      });
+      assert.equal(result.identityStatus, 'conflict');
+      assert.equal(result.canonicalPhone, '');
+    });
+
     it('keeps the trusted stored phone when weaker fresh evidence agrees', () => {
       const result = resolveWhatsappIdentity({
         chat: { remoteJid: '5521981858541@s.whatsapp.net' },

@@ -35,7 +35,7 @@ export interface WhatsappWebhookEffectsRepository {
    * Leases due pending rows (skipping ones a live webhook may still be
    * handling) so concurrent ticks never pick the same row.
    */
-  claimDue(input: { limit: number; now: Date; leaseMs: number; minAgeMs: number }): Promise<WebhookEffectRecord[]>;
+  claimDue(input: { instance: string; limit: number; now: Date; leaseMs: number; minAgeMs: number }): Promise<WebhookEffectRecord[]>;
 }
 
 const effects = whatsappWebhookEffects;
@@ -132,13 +132,14 @@ export function createPostgresWhatsappWebhookEffectsRepository(
         .where(eq(effects.id, id));
     },
 
-    async claimDue({ limit, now, leaseMs, minAgeMs }) {
+    async claimDue({ instance, limit, now, leaseMs, minAgeMs }) {
       return getDb().transaction(async (tx) => {
         const due = await tx
           .select({ id: effects.id })
           .from(effects)
           .where(
             and(
+              eq(effects.instance, instance),
               pending,
               or(isNull(effects.nextAttemptAt), lte(effects.nextAttemptAt, now)),
               lte(effects.createdAt, new Date(now.getTime() - minAgeMs)),

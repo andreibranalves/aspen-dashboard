@@ -16,6 +16,19 @@ export interface WebhookEffectRunners {
   applyFollowUp(input: WebhookEffectInput): Promise<void>;
 }
 
+/** The existing effect implementations, in the order the webhook always applied them. */
+export function createWebhookEffectRunners(
+  activity: { recordActivity(input: WebhookEffectInput): Promise<void> },
+  followUps: { applyConversationToOpenFollowUps?(input: WebhookEffectInput): Promise<void> },
+): WebhookEffectRunners {
+  return {
+    recordActivity: (input) => activity.recordActivity(input),
+    applyFollowUp: async (input) => {
+      await followUps.applyConversationToOpenFollowUps?.(input);
+    },
+  };
+}
+
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
 const DRAIN_LEASE_MS = 2 * 60_000;
 // A live webhook may still be applying a fresh row; the drain leaves it alone.
@@ -63,6 +76,7 @@ export async function applyWebhookEffects(
 }
 
 export interface DrainWebhookEffectsInput {
+  instance: string;
   runners: WebhookEffectRunners;
   limit: number;
   /** Absolute time after which no new row is started. */
@@ -75,6 +89,7 @@ export async function drainWebhookEffects(input: DrainWebhookEffectsInput): Prom
   const repository = input.repository || createPostgresWhatsappWebhookEffectsRepository();
   const now = input.now || (() => new Date());
   const due = await repository.claimDue({
+    instance: input.instance,
     limit: input.limit,
     now: now(),
     leaseMs: DRAIN_LEASE_MS,
@@ -84,7 +99,7 @@ export async function drainWebhookEffects(input: DrainWebhookEffectsInput): Prom
   let failed = 0;
   const failedConversations = new Set<string>();
   for (const record of due) {
-    if (Date.now() >= input.deadlineAt) break;
+    if (now().getTime() >= input.deadlineAt) break;
     // Keep per-conversation order: after one failure, later events of the same
     // conversation wait for the next tick.
     if (failedConversations.has(record.providerConversationId)) continue;

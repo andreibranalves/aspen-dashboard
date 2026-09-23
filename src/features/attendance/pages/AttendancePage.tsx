@@ -58,6 +58,11 @@ function byTimeline(a: AttendanceMessage, b: AttendanceMessage): number {
   return a.timestamp === b.timestamp ? a.id.localeCompare(b.id) : a.timestamp.localeCompare(b.timestamp);
 }
 
+function byActivity(a: AttendanceConversation, b: AttendanceConversation): number {
+  const at = (b.lastMessageAt || '').localeCompare(a.lastMessageAt || '');
+  return at !== 0 ? at : b.id.localeCompare(a.id);
+}
+
 function mergeMessages(current: AttendanceMessage[], incoming: AttendanceMessage[]): AttendanceMessage[] {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) {
@@ -132,8 +137,11 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
         setListError(null);
         setConversations((current) => {
           if (mode === 'replace') return page.items;
+          // Keep every loaded conversation: one pushed out of the first page by
+          // newer activity must stay visible, since the "load more" cursor
+          // already points past it.
           const fresh = new Set(page.items.map((item) => item.id));
-          return [...page.items, ...current.slice(page.items.length).filter((item) => !fresh.has(item.id))];
+          return [...page.items, ...current.filter((item) => !fresh.has(item.id))].sort(byActivity);
         });
         if (mode === 'replace') {
           setListCursor(page.nextCursor);

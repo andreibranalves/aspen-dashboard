@@ -19,7 +19,7 @@ import {
   type WebhookEffectRecord,
   type WhatsappWebhookEffectsRepository,
 } from '../_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
-import { applyWebhookEffects, type WebhookEffectRunners } from './whatsapp-webhook-effects.js';
+import { applyWebhookEffects, createWebhookEffectRunners } from './whatsapp-webhook-effects.js';
 import type { EvolutionReceiptStatus } from './quotation-delivery-state.js';
 export const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
@@ -312,10 +312,7 @@ export async function handler(
       identityStatus: item.identityStatus,
       canonicalPhone: item.canonicalPhone || null,
     }));
-    const runners: WebhookEffectRunners = {
-      recordActivity: (input) => activityRepository.recordActivity(input),
-      applyFollowUp: (input) => followUpRepository.applyConversationToOpenFollowUps(input),
-    };
+    const runners = createWebhookEffectRunners(activityRepository, followUpRepository);
     const effectsRepository = dependencies.effectsRepository || createPostgresWhatsappWebhookEffectsRepository();
     let effectRecords: WebhookEffectRecord[] | null = null;
     if (effectInputs.length > 0) {

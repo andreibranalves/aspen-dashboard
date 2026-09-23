@@ -6,7 +6,8 @@ import {
 } from './quotation-delivery-outbox.js';
 import { createPostgresQuotationFollowUpRepository } from '../_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { createPostgresWhatsappContactActivityRepository } from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
-import { drainWebhookEffects, type WebhookEffectRunners } from './whatsapp-webhook-effects.js';
+import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
+import { createWebhookEffectRunners, drainWebhookEffects } from './whatsapp-webhook-effects.js';
 import {
   recordQuotationDeliveryWorkerRun,
   type QuotationDeliveryWorkerRunResult,
@@ -62,16 +63,14 @@ async function recordResult(
   }
 }
 
-function liveDrainEffects(deadlineAt: number) {
-  const activity = createPostgresWhatsappContactActivityRepository();
-  const followUps = createPostgresQuotationFollowUpRepository();
-  const runners: WebhookEffectRunners = {
-    recordActivity: (input) => activity.recordActivity(input),
-    applyFollowUp: async (input) => {
-      await followUps.applyConversationToOpenFollowUps?.(input);
-    },
-  };
-  return drainWebhookEffects({ runners, limit: WEBHOOK_EFFECTS_DRAIN_LIMIT, deadlineAt });
+async function liveDrainEffects(deadlineAt: number) {
+  const instance = getEvolutionConfig().instance;
+  if (!instance) return { applied: 0, failed: 0 };
+  const runners = createWebhookEffectRunners(
+    createPostgresWhatsappContactActivityRepository(),
+    createPostgresQuotationFollowUpRepository(),
+  );
+  return drainWebhookEffects({ instance, runners, limit: WEBHOOK_EFFECTS_DRAIN_LIMIT, deadlineAt });
 }
 
 async function drainAfterBatch(

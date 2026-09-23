@@ -90,12 +90,12 @@ test('a failed follow-up is resumed by the drain without repeating the activity'
 
   // Not yet due: the failure scheduled a retry in the future.
   await age(instance, 120_000);
-  let drained = await drainWebhookEffects({ runners, limit: 10, deadlineAt: Date.now() + 10_000, repository });
+  let drained = await drainWebhookEffects({ instance, runners, limit: 10, deadlineAt: Date.now() + 10_000, repository });
   assert.deepEqual(drained, { applied: 0, failed: 0 });
 
   followUpDown = false;
   await sql`UPDATE whatsapp_webhook_effects SET next_attempt_at = now() - interval '1 second' WHERE instance = ${instance}`;
-  drained = await drainWebhookEffects({ runners, limit: 10, deadlineAt: Date.now() + 10_000, repository });
+  drained = await drainWebhookEffects({ instance, runners, limit: 10, deadlineAt: Date.now() + 10_000, repository });
   assert.deepEqual(drained, { applied: 1, failed: 0 });
   assert.deepEqual(calls, ['activity:e1', 'follow-up:e1']);
 
@@ -109,18 +109,15 @@ test('the drain leaves fresh rows to the live webhook and leases each row once',
   const instance = `test-${randomUUID()}`;
   await repository.register([effect(instance, 'fresh')]);
   const now = new Date();
-  assert.equal(
-    (await repository.claimDue({ limit: 50, now, leaseMs: 60_000, minAgeMs: 60_000 })).filter((row) => row.instance === instance).length,
-    0,
-  );
+  assert.equal((await repository.claimDue({ instance, limit: 50, now, leaseMs: 60_000, minAgeMs: 60_000 })).length, 0);
 
   await repository.register(
     Array.from({ length: 6 }, (_, index) => effect(instance, `old-${index}`, `2026-09-01T10:00:0${index}Z`)),
   );
   await age(instance, 120_000);
   const [left, right] = await Promise.all([
-    repository.claimDue({ limit: 50, now: new Date(), leaseMs: 60_000, minAgeMs: 60_000 }),
-    repository.claimDue({ limit: 50, now: new Date(), leaseMs: 60_000, minAgeMs: 60_000 }),
+    repository.claimDue({ instance, limit: 50, now: new Date(), leaseMs: 60_000, minAgeMs: 60_000 }),
+    repository.claimDue({ instance, limit: 50, now: new Date(), leaseMs: 60_000, minAgeMs: 60_000 }),
   ]);
   const mine = [...left, ...right].filter((row) => row.instance === instance).map((row) => row.providerMessageId);
   assert.equal(mine.length, 7);

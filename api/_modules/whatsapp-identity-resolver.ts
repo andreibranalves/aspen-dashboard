@@ -183,6 +183,8 @@ function decideAgainstStored(
   stored: Record<string, unknown> | null
 ): StoredDecision {
   if (fresh.identityStatus === 'conflict') return 'conflict';
+  // A recorded conflict only clears through an explicit operator review.
+  if (stored && cleanText(stored.identityStatus) === 'conflict') return 'conflict';
   const storedPhone = stored ? cleanText(stored.canonicalPhone) : '';
   if (!storedPhone) return 'fresh';
   if (!fresh.canonicalPhone) return 'stored';
