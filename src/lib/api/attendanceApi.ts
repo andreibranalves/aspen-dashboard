@@ -1,4 +1,4 @@
-import { apiGet, apiPatch } from '@/lib/api/api';
+import { apiGet, apiPatch, apiPost } from '@/lib/api/api';
 
 export type AttendanceStatus = 'open' | 'waiting_customer' | 'closed' | 'ignored';
 export type AttendanceStatusFilter = AttendanceStatus | 'active';
@@ -37,6 +37,29 @@ export interface AttendanceMessage {
   timestamp: string;
   createdRevision: number;
   revision: number;
+  deliveryStatus: 'server_ack' | 'delivered' | 'read' | 'error' | null;
+  outboxState: OutboxState | null;
+  failureCode: string | null;
+  resolution: 'confirmed_sent' | 'confirmed_not_sent' | null;
+  supersededBy: string | null;
+}
+
+export type OutboxState =
+  | 'queued'
+  | 'dispatching'
+  | 'provider_accepted'
+  | 'retry_scheduled'
+  | 'failed'
+  | 'needs_review'
+  | 'cancelled';
+
+export interface SendResult {
+  messageId: string;
+  conversationId: string;
+  clientRequestId: string;
+  state: OutboxState;
+  failureCode: string | null;
+  resolution: 'confirmed_sent' | 'confirmed_not_sent' | null;
 }
 
 export interface ConversationPage {
@@ -102,4 +125,29 @@ export async function markConversationRead(id: string, readRevision: number): Pr
     readRevision,
   });
   return body.conversation;
+}
+
+export async function sendOperatorMessage(input: {
+  clientRequestId: string;
+  conversationId: string;
+  expectedIdentityVersion: number;
+  body: string;
+}): Promise<SendResult> {
+  const body = await apiPost<{ message: SendResult }>('/whatsapp-messages', { ...input, attachmentIds: [] });
+  return body.message;
+}
+
+export async function fetchSendByRequest(conversationId: string, clientRequestId: string): Promise<SendResult> {
+  const body = await apiGet<{ message: SendResult }>(
+    `/whatsapp-messages${queryString({ conversationId, clientRequestId })}`
+  );
+  return body.message;
+}
+
+export async function runMessageAction(
+  messageId: string,
+  action: 'cancel' | 'confirm_sent' | 'confirm_not_sent'
+): Promise<SendResult> {
+  const body = await apiPost<{ message: SendResult }>('/whatsapp-message-actions', { messageId, action });
+  return body.message;
 }

@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, asc, desc, eq, gt, ilike, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import { whatsappConversations, whatsappMessages } from '../schema.js';
+import { whatsappConversations, whatsappMessageOutbox, whatsappMessages } from '../schema.js';
 import type { WhatsappMessageType } from '../../../_modules/whatsapp-message-content.js';
 
 type DatabaseProvider = () => AppDatabase;
@@ -77,6 +77,15 @@ export interface WhatsappMessageRecord {
   providerTimestamp: Date;
   createdRevision: number;
   revision: number;
+  /** Provider receipts for outbound messages. */
+  deliveryStatus: 'server_ack' | 'delivered' | 'read' | 'error' | null;
+  /** Operator reply lifecycle; null for messages that did not come from the outbox. */
+  outboxState: string | null;
+  failureCode: string | null;
+  /** Operator finding on an uncertain send; not a provider fact. */
+  resolution: string | null;
+  /** Set on an echo merged into an operator reply; clients drop it. */
+  supersededBy: string | null;
 }
 
 export interface TimelineCursor {
@@ -161,6 +170,11 @@ const messageColumns = {
   providerTimestamp: messages.providerTimestamp,
   createdRevision: messages.createdRevision,
   revision: messages.revision,
+  deliveryStatus: messages.deliveryStatus,
+  supersededBy: messages.supersededBy,
+  outboxState: whatsappMessageOutbox.state,
+  failureCode: whatsappMessageOutbox.failureCode,
+  resolution: whatsappMessageOutbox.resolution,
 };
 
 function toConversation(row: Record<string, unknown>): WhatsappConversationRecord {
@@ -191,6 +205,11 @@ function toMessage(row: Record<string, unknown>): WhatsappMessageRecord {
     providerTimestamp: row.providerTimestamp as Date,
     createdRevision: Number(row.createdRevision),
     revision: Number(row.revision),
+    deliveryStatus: (row.deliveryStatus as WhatsappMessageRecord['deliveryStatus']) ?? null,
+    outboxState: (row.outboxState as string | null) ?? null,
+    failureCode: (row.failureCode as string | null) ?? null,
+    resolution: (row.resolution as string | null) ?? null,
+    supersededBy: (row.supersededBy as string | null) ?? null,
   };
 }
 
@@ -434,7 +453,7 @@ export function createPostgresWhatsappAttendanceRepository(
     },
 
     async listMessagesBefore(input) {
-      const filters: SQL[] = [eq(messages.conversationId, input.conversationId)];
+      const filters: SQL[] = [eq(messages.conversationId, input.conversationId), isNull(messages.supersededBy)];
       if (input.before) {
         filters.push(
           or(
@@ -446,6 +465,7 @@ export function createPostgresWhatsappAttendanceRepository(
       const rows = await getDb()
         .select(messageColumns)
         .from(messages)
+        .leftJoin(whatsappMessageOutbox, eq(whatsappMessageOutbox.messageId, messages.id))
         .where(and(...filters))
         .orderBy(desc(messages.providerTimestamp), desc(messages.id))
         .limit(input.limit + 1);
@@ -459,6 +479,7 @@ export function createPostgresWhatsappAttendanceRepository(
       const rows = await getDb()
         .select(messageColumns)
         .from(messages)
+        .leftJoin(whatsappMessageOutbox, eq(whatsappMessageOutbox.messageId, messages.id))
         .where(
           and(eq(messages.conversationId, input.conversationId), gt(messages.revision, input.afterRevision)),
         )

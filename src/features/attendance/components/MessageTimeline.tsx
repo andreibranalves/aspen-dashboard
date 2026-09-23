@@ -2,10 +2,14 @@ import { forwardRef, Fragment, type UIEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { AttendanceMessage } from '@/lib/api/attendanceApi';
-import { MESSAGE_TYPE_LABELS } from '@/features/attendance/attendanceLabels';
+import { deliveryLabel, MESSAGE_TYPE_LABELS } from '@/features/attendance/attendanceLabels';
+
+export type MessageActionName = 'cancel' | 'confirm_sent' | 'confirm_not_sent' | 'resend' | 'resend_uncertain';
 
 interface MessageTimelineProps {
   messages: AttendanceMessage[];
+  actionPending: string | null;
+  onAction: (messageId: string, action: MessageActionName) => void;
   hasOlder: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
@@ -15,30 +19,71 @@ interface MessageTimelineProps {
 const timeFormat = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 const dayFormat = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: 'America/Sao_Paulo' });
 
-function MessageBubble({ message }: { message: AttendanceMessage }) {
+function MessageBubble({
+  message,
+  actionPending,
+  onAction,
+}: {
+  message: AttendanceMessage;
+  actionPending: boolean;
+  onAction: (messageId: string, action: MessageActionName) => void;
+}) {
   const outbound = message.direction === 'outbound';
   const typeLabel = message.type === 'text' ? null : MESSAGE_TYPE_LABELS[message.type];
+  const delivery = deliveryLabel(message);
+  const cancellable = message.outboxState === 'queued' || message.outboxState === 'retry_scheduled';
+  const reviewable = message.outboxState === 'needs_review';
+  const resendable = message.outboxState === 'failed' || message.outboxState === 'cancelled';
   return (
-    <div className={cn('flex', outbound ? 'justify-end' : 'justify-start')}>
+    <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
       <div
         className={cn(
           'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-sm',
-          outbound ? 'bg-primary-soft text-primary-soft-ink' : 'bg-surface text-fg'
+          outbound ? 'bg-primary-soft text-primary-soft-ink' : 'bg-surface text-fg',
+          (message.outboxState === 'failed' || message.outboxState === 'cancelled') && 'opacity-70'
         )}
       >
         {typeLabel && <p className="text-xs font-semibold italic opacity-80">{typeLabel}</p>}
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-        <p className="mt-1 text-right text-[10px] opacity-70">
+        <p className="mt-1 text-right text-xs opacity-70">
           <span className="sr-only">{outbound ? 'Enviada às ' : 'Recebida às '}</span>
           {timeFormat.format(new Date(message.timestamp))}
+          {delivery && <span> · {delivery}</span>}
         </p>
       </div>
+      {(cancellable || reviewable || resendable) && (
+        <div className="mt-1 flex flex-wrap justify-end gap-1">
+          {cancellable && (
+            <Button variant="ghost" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'cancel')}>
+              Cancelar envio
+            </Button>
+          )}
+          {reviewable && (
+            <>
+              <Button variant="outline" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'confirm_sent')}>
+                Foi enviada
+              </Button>
+              <Button variant="outline" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'confirm_not_sent')}>
+                Não foi enviada
+              </Button>
+              <Button variant="ghost" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'resend_uncertain')}>
+                Enviar de novo
+              </Button>
+            </>
+          )}
+          {resendable && (
+            <Button variant="ghost" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'resend')}>
+              Reenviar
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
-  ({ messages, hasOlder, loadingOlder, onLoadOlder, onScroll }, ref) => {
+  ({ messages, actionPending, onAction, hasOlder, loadingOlder, onLoadOlder, onScroll }, ref) => {
     let previousDay = '';
     return (
       <div
@@ -64,7 +109,7 @@ const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
               {separator && (
                 <p className="py-1 text-center text-[11px] font-medium text-fg-muted">{day}</p>
               )}
-              <MessageBubble message={message} />
+              <MessageBubble message={message} actionPending={actionPending === message.id} onAction={onAction} />
             </Fragment>
           );
         })}

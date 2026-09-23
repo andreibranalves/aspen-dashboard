@@ -1852,6 +1852,9 @@ export const whatsappMessages = pgTable(
     ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
     createdRevision: bigint('created_revision', { mode: 'number' }).notNull(),
     revision: bigint('revision', { mode: 'number' }).notNull(),
+    deliveryStatus: varchar('delivery_status', { length: 16 }),
+    /** Set on an echo row merged into the operator message it duplicated. */
+    supersededBy: uuid('superseded_by'),
   },
   (table) => [
     uniqueIndex('whatsapp_messages_provider_unique').on(
@@ -1864,6 +1867,13 @@ export const whatsappMessages = pgTable(
       sql`${table.id} DESC`,
     ),
     index('whatsapp_messages_revision_idx').on(table.conversationId, table.revision),
+    index('whatsapp_messages_provider_lookup_idx')
+      .on(table.providerMessageId)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+    check(
+      'whatsapp_messages_delivery_status_check',
+      sql`${table.deliveryStatus} IS NULL OR ${table.deliveryStatus} IN ('server_ack', 'delivered', 'read', 'error')`,
+    ),
     check(
       'whatsapp_messages_provider_not_blank_check',
       sql`${table.providerMessageId} IS NULL OR char_length(btrim(${table.providerMessageId})) > 0`,
@@ -1977,6 +1987,64 @@ export const whatsappBackfillProgress = pgTable(
     check(
       'whatsapp_backfill_progress_gap_check',
       sql`(${table.state} = 'gap') = (${table.gapReason} IS NOT NULL)`,
+    ),
+  ],
+);
+
+
+/**
+ * Operator replies (M1b). The intent is committed before any transport; the
+ * lease plus `transport_started_at` decide whether a stuck send may be retried
+ * (never started) or must go to review (possibly sent).
+ */
+export const whatsappMessageOutbox = pgTable(
+  'whatsapp_message_outbox',
+  {
+    id: uuid('id').primaryKey(),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => whatsappMessages.id, { onDelete: 'restrict' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => whatsappConversations.id, { onDelete: 'restrict' }),
+    clientRequestId: uuid('client_request_id').notNull(),
+    fingerprint: varchar('fingerprint', { length: 64 }).notNull(),
+    destinationPhone: varchar('destination_phone', { length: 15 }).notNull(),
+    identityVersion: integer('identity_version').notNull(),
+    body: text('body').notNull(),
+    state: varchar('state', { length: 24 }).notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: uuid('lease_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    transportStartedAt: timestamp('transport_started_at', { withTimezone: true }),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    failureCode: varchar('failure_code', { length: 64 }),
+    resolution: varchar('resolution', { length: 16 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_message_outbox_request_unique').on(table.clientRequestId),
+    uniqueIndex('whatsapp_message_outbox_message_unique').on(table.messageId),
+    index('whatsapp_message_outbox_due_idx').on(table.state, table.nextAttemptAt),
+    check(
+      'whatsapp_message_outbox_state_check',
+      sql`${table.state} IN ('queued', 'dispatching', 'provider_accepted', 'retry_scheduled', 'failed', 'needs_review', 'cancelled')`,
+    ),
+    check('whatsapp_message_outbox_phone_check', sql`${table.destinationPhone} ~ '^[0-9]{10,15}$'`),
+    check(
+      'whatsapp_message_outbox_body_check',
+      sql`char_length(btrim(${table.body})) > 0 AND char_length(${table.body}) <= 4000`,
+    ),
+    check('whatsapp_message_outbox_attempts_check', sql`${table.attempts} >= 0`),
+    check(
+      'whatsapp_message_outbox_lease_check',
+      sql`(${table.state} = 'dispatching') = (${table.leaseToken} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL)`,
+    ),
+    check(
+      'whatsapp_message_outbox_resolution_check',
+      sql`${table.resolution} IS NULL OR ${table.resolution} IN ('confirmed_sent', 'confirmed_not_sent')`,
     ),
   ],
 );

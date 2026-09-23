@@ -4,6 +4,11 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import {
+  getOperatorMessageByRequest,
+  postOperatorMessage,
+  type MessageSendDependencies,
+} from './whatsapp-message-send.js';
+import {
   createPostgresWhatsappAttendanceRepository,
   WHATSAPP_CONVERSATION_STATUSES,
   WhatsappConversationChangedError,
@@ -21,6 +26,7 @@ const MAX_SEARCH_CHARS = 80;
 
 export interface WhatsappAttendanceDependencies {
   repository?: WhatsappAttendanceRepository;
+  send?: MessageSendDependencies;
   instance?: () => string;
 }
 
@@ -94,6 +100,11 @@ function projectMessage(record: WhatsappMessageRecord) {
     timestamp: record.providerTimestamp.toISOString(),
     createdRevision: record.createdRevision,
     revision: record.revision,
+    deliveryStatus: record.deliveryStatus,
+    outboxState: record.outboxState,
+    failureCode: record.failureCode,
+    resolution: record.resolution,
+    supersededBy: record.supersededBy,
   };
 }
 
@@ -216,10 +227,13 @@ export function createWhatsappMessagesHandler(dependencies: WhatsappAttendanceDe
   return async function whatsappMessagesHandler(event: FunctionEvent): Promise<FunctionResult> {
     const repository = dependencies.repository || createPostgresWhatsappAttendanceRepository();
     const method = String(event.httpMethod || '').toUpperCase();
+    if (method === 'POST') return postOperatorMessage(event, dependencies.send);
     if (method !== 'GET') return json(405, { error: 'Método não permitido.' });
 
     return handleErrors(async () => {
       const conversationId = parseId(query(event, 'conversationId'), 'Conversa');
+      const clientRequestId = query(event, 'clientRequestId');
+      if (clientRequestId) return getOperatorMessageByRequest(conversationId, clientRequestId, dependencies.send);
       const limit = parseLimit(query(event, 'limit'));
       const afterRaw = query(event, 'afterRevision');
       const beforeRaw = query(event, 'before');

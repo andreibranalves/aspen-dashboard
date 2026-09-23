@@ -17,7 +17,11 @@ function worker(
   input: Parameters<typeof rawWorker>[0],
   dependencies: QuotationDeliveryWorkerDependencies = {},
 ) {
-  return rawWorker(input, { drainEffects: async () => ({ applied: 0, failed: 0 }), ...dependencies });
+  return rawWorker(input, {
+    drainEffects: async () => ({ applied: 0, failed: 0 }),
+    sweepMessages: async () => ({ requeued: 0, toReview: 0, dispatched: 0 }),
+    ...dependencies,
+  });
 }
 
 function event(
@@ -155,6 +159,10 @@ test('worker drains pending webhook effects only after the quotation batch and w
       order.push(`drain:${deadlineAt - 1_000_000}`);
       return { applied: 2, failed: 0 };
     },
+    sweepMessages: async (deadlineAt: number) => {
+      order.push(`sweep:${deadlineAt - 1_000_000}`);
+      return { requeued: 0, toReview: 0, dispatched: 0 };
+    },
     clock: () => now,
     environment: { CRON_SECRET: cronSecret },
   };
@@ -162,7 +170,7 @@ test('worker drains pending webhook effects only after the quotation batch and w
   const result = await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), deps);
   assert.equal(result.statusCode, 200);
   assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 1, remaining: false });
-  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`, 'drain:50000']);
+  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`, 'drain:50000', 'sweep:50000']);
 
   order.length = 0;
   deps.processDue = async (limit: number) => {
@@ -171,7 +179,11 @@ test('worker drains pending webhook effects only after the quotation batch and w
     return { processed: 3, remaining: true };
   };
   await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), deps);
-  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`], 'no drain without room left');
+  assert.deepEqual(
+    order,
+    [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`, 'sweep:50000'],
+    'the sweep decides its own room; no drain without room left',
+  );
 });
 
 test('a failing webhook-effects drain never changes the batch result', async () => {
@@ -182,6 +194,9 @@ test('a failing webhook-effects drain never changes the batch result', async () 
       heartbeats.push(value);
     },
     drainEffects: async () => {
+      throw new Error('database unavailable');
+    },
+    sweepMessages: async () => {
       throw new Error('database unavailable');
     },
     environment: { CRON_SECRET: cronSecret },
