@@ -182,16 +182,17 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
 
   await page.goto(`${BASE_URL}/#/dashboard`);
 
-  await expect(page.getByRole('heading', { name: 'Resultados' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Resultados', exact: true })).toBeVisible();
   await expect(page.getByText(/orçamento sem resposta/i)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Ver gasto mensal' }).click();
+  await page.getByRole('tab', { name: 'Financeiro' }).click();
+  await page.locator('summary', { hasText: 'Editar gasto Meta' }).click();
   await expect(page.getByRole('heading', { name: 'Composição financeira' })).toBeVisible();
 
   const metaInput = page.getByLabel('Valor informado de gasto Meta');
   await expect(metaInput).toHaveValue('200');
   await expect(page.getByRole('button', { name: 'Salvar' })).toBeVisible();
-  await expect(page.locator('html')).toHaveClass(/dark/);
-  await expect(page.locator('.aspen-workspace')).toHaveCSS('background-color', 'rgb(13, 13, 13)');
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(229, 230, 236)');
   await expect(metaInput).toBeVisible();
 
   await metaInput.fill('1.234,56');
@@ -211,6 +212,7 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
 
   await page.getByLabel('Período dos resultados').selectOption('last_month');
   await expect(page).toHaveURL(/period=last_month/);
+  await page.locator('summary', { hasText: 'Editar gasto Meta' }).click();
   await expect(page.getByLabel('Valor informado de gasto Meta')).toBeVisible();
   expect(requestedPeriods).toContain('month');
   expect(requestedPeriods).toContain('30d');
@@ -242,7 +244,7 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
 
   for (const [key, label, heading] of [
     ['overview', 'Visão geral', 'Resultados'],
-    ['products', 'Produtos', 'Produtos por receita'],
+    ['products', 'Produtos', 'Receita por produto'],
     ['customers', 'Clientes', 'Clientes por receita'],
     ['finance', 'Financeiro', 'Composição financeira'],
   ]) {
@@ -251,7 +253,7 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
     await expect(page).toHaveURL(new RegExp(`#\\/dashboard${query.replace('?', '\\?')}$`));
     const panel = page.getByRole('tabpanel');
     await expect(panel).toBeVisible();
-    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
   }
 
   const sidebar = page.getByRole('complementary', { name: 'Navegação principal' });
@@ -271,4 +273,39 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
 
   await sidebar.getByRole('button', { name: 'Orçamentos' }).click();
   await expect(page).toHaveURL(/#\/quotations$/);
+});
+
+test('dados inválidos do dashboard produzem erro com retry, sem mascarar métricas como zero @smoke', async ({
+  page,
+}) => {
+  await page.route('**/api/settings**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  );
+  let retried = false;
+  await page.route('**/api/sales-dashboard**', async (route) => {
+    if (!retried) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: false, error: 'Erro controlado' }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(dashboardResponse()),
+    });
+  });
+
+  await page.goto(`${BASE_URL}/#/dashboard`);
+  await expect(page.getByRole('heading', { name: 'Resultados', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Não foi possível carregar os resultados' })
+  ).toBeVisible();
+  await expect(page.getByText('R$ 0', { exact: true })).toHaveCount(0);
+
+  retried = true;
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByRole('heading', { name: 'Resultados', level: 1 })).toBeVisible();
+  await expect(page.getByText('R$ 25 mil', { exact: true }).first()).toBeVisible();
 });

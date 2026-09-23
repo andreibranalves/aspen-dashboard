@@ -307,7 +307,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         if (!createdId) throw new Error('Cliente criado, mas não foi possível abrir o cadastro.');
         toast('Cliente criado com sucesso.', 'success');
         const currentRoute = window.location.hash.replace(/^#/, '').split('?')[0];
-        if (currentRoute === '/leads/cliente/new') {
+        if (currentRoute === '/leads/new' || currentRoute === '/leads/cliente/new') {
           setNavigationGuard(null);
           navigate(`/leads/cliente/${encodeURIComponent(createdId)}`);
         }
@@ -652,6 +652,9 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                       <p className="break-words font-medium">{current.deal.name}</p>
                       {current.deal.status && (
                         <p className="text-xs text-fg-muted">{current.deal.status}</p>
+                      )}
+                      {current.deal.next_step && (
+                        <p className="break-words text-sm">{current.deal.next_step}</p>
                       )}
                     </div>
                     <Button

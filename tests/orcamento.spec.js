@@ -335,7 +335,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.locator('textarea').first().fill('Cliente: Andrei9@gmail.com pediu 30 lenços.');
     await page.getByRole('button', { name: /Extrair/i }).click();
 
-    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByText(/Modelo não encontrado/i)).toHaveCount(0);
     expect(extractRequests).toHaveLength(1);
     expect(extractRequests[0].orderTemplateSelections).toBeUndefined();
@@ -391,7 +391,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     // Aguarda a extração terminar e os rascunhos aparecerem
     // O texto "Resultados (1)" aparece quando os drafts estão prontos
-    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Extrair mais', exact: true })).toHaveCount(0);
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
@@ -458,7 +458,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.goto('/#/auto');
     await page.locator('textarea').first().fill(TEST_INPUT);
     await page.getByRole('button', { name: /Extrair/i }).click();
-    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
 
     await page.getByRole('button', { name: 'Editar' }).click();
@@ -514,7 +514,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.waitForSelector('textarea', { timeout: 10000 });
     await page.locator('textarea').first().fill(TEST_INPUT);
     await page.getByRole('button', { name: /Extrair/i }).click();
-    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
     await page.getByRole('button', { name: 'Editar' }).click();
     await page.getByLabel('Origem').selectOption('Google Ads');
     await page.getByRole('button', { name: 'Concluir' }).click();
@@ -545,7 +545,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
     await expect(page.getByRole('button', { name: 'Tentar novamente' })).toHaveCount(0);
     await page.getByRole('button', { name: /Extrair/i }).click();
-    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
     await page.getByRole('button', { name: 'Modelo de orçamento' }).click();
     await expect(page.getByLabel('Modelo de orçamento')).toBeEnabled();
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
