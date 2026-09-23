@@ -15,6 +15,7 @@ import ProductsPage from './ProductsPage';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import MediaLibrary from '@/features/communication/components/MediaLibrary';
 import MediaUploader from '@/features/communication/components/MediaUploader';
+import { Heading } from '@/components/ui/heading';
 
 const TABS = [
   { value: 'products', label: 'Produtos', icon: Package },
@@ -138,13 +139,13 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                     key={template.id}
                     className="flex min-h-72 flex-col rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
                   >
-                    <h3 className="truncate text-sm font-semibold text-fg" title={template.name}>{template.name}</h3>
+                    <Heading level="subsection" className="truncate" title={template.name}>{template.name}</Heading>
                     <div className={["mt-5 flex h-24 items-end justify-between rounded-control p-5", ['bg-sage text-sage-ink', 'bg-orange text-orange-ink', 'bg-taupe text-taupe-ink'][index % 3]].join(' ')}>
-                      <Boxes size={34} strokeWidth={1.4} aria-hidden="true" />
+                      <Boxes size={32} strokeWidth={1.4} aria-hidden="true" />
                       <span className="text-lg font-semibold">{template.items.length} {template.items.length === 1 ? 'item' : 'itens'}</span>
                     </div>
                     <div className="mt-4 flex-1">
-                      {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-[10px] text-fg-muted">{item.sku}</span></div>)}
+                      {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-3xs text-fg-muted">{item.sku}</span></div>)}
                     </div>
                     <Button className="mt-4 self-start" variant="outline" size="sm" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
                   </article>
@@ -168,7 +169,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               <aside className="space-y-3">
                 <div className="flex justify-end">
                   <Button variant="ghost" size="sm" onClick={() => setMediaUploadOpen(false)}>
-                    <X size={15} /> Fechar painel
+                    <X size={16} /> Fechar painel
                   </Button>
                 </div>
                 <MediaUploader onUploadComplete={() => setMediaRefreshKey((key) => key + 1)} />

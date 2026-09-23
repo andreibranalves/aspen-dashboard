@@ -89,7 +89,7 @@ function Toolbar({ disabled }: { disabled: boolean }) {
     <div className="flex items-center gap-1 border-b border-line bg-surface-muted p-1.5" role="toolbar" aria-label="Formatação de texto">
       {actions.map(({ label, icon: Icon, run }) => (
         <button key={label} type="button" title={label} aria-label={label} disabled={disabled} onClick={run} className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted hover:bg-surface hover:text-fg disabled:opacity-40">
-          <Icon size={15} aria-hidden="true" />
+          <Icon size={16} aria-hidden="true" />
         </button>
       ))}
     </div>

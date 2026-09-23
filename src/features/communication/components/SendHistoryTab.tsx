@@ -253,12 +253,12 @@ export default function SendHistoryTab({
       {!error && visibleEvents.length > 0 && (
         <div className="overflow-x-auto rounded-card bg-surface px-5 pb-5">
           <table className="w-full min-w-[720px] table-fixed text-left text-xs" aria-label="Histórico de envios">
-            <thead className="border-b border-line text-[10px] text-fg-muted"><tr><th className="w-[25%] px-3 py-3 font-medium">Orçamento / fluxo</th><th className="w-[20%] px-3 py-3 font-medium">Etapa / progresso</th><th className="w-[18%] px-3 py-3 font-medium">Situação</th><th className="w-[20%] px-3 py-3 font-medium">Último evento</th><th className="w-[17%] px-3 py-3 font-medium"><span className="sr-only">Inspecionar</span></th></tr></thead>
+            <thead className="border-b border-line text-3xs text-fg-muted"><tr><th className="w-[25%] px-3 py-3 font-medium">Orçamento / fluxo</th><th className="w-[20%] px-3 py-3 font-medium">Etapa / progresso</th><th className="w-[18%] px-3 py-3 font-medium">Situação</th><th className="w-[20%] px-3 py-3 font-medium">Último evento</th><th className="w-[17%] px-3 py-3 font-medium"><span className="sr-only">Inspecionar</span></th></tr></thead>
             <tbody className="divide-y divide-line">
               {visibleEvents.map((event) => {
                 const meta = statusMeta(event.status);
                 return <tr key={event.id} className="align-middle hover:bg-surface-hover">
-                  <td className="px-3 py-4"><EntityIdentity name={event.flow_name || 'Fluxo sem nome'} secondary={event.quotation_id ? <button type="button" className="text-left hover:underline" onClick={() => onOpenQuotation(event.quotation_id!)}>{event.quotation_id}</button> : undefined} /></td>
+                  <td className="px-3 py-4"><EntityIdentity name={event.flow_name || 'Fluxo sem nome'} secondary={event.quotation_id ? <Button type="button" variant="link" size="inline" onClick={() => onOpenQuotation(event.quotation_id!)}>{event.quotation_id}</Button> : undefined} /></td>
                   <td className="px-3 py-4"><span className="block font-medium">WhatsApp</span><span className="mt-1 block text-fg-muted">{stepsLabel(event) || '—'}</span></td>
                   <td className="px-3 py-4"><StatusBadge status={meta.badgeStatus} label={meta.label} />{event.duplicate_warning && <span className="mt-1 block text-warning">Possível duplicidade</span>}{event.error_message && <span className="mt-1 block text-destructive">{event.error_message}</span>}</td>
                   <td className="px-3 py-4 text-fg-muted">{formatDateTime(event.sent_at || event.created_at) || '—'}</td>

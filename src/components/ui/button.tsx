@@ -17,7 +17,18 @@ const variants = {
     'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.98] disabled:opacity-50',
   secondary:
     'bg-raised text-fg hover:brightness-110 active:scale-[0.98] disabled:opacity-50',
+  soft: 'bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50',
+  'outline-destructive':
+    'border border-destructive/20 bg-transparent text-destructive hover:bg-destructive/10 active:scale-[0.98] disabled:opacity-50',
+  /** Contorno na cor do texto herdada, para botões sobre painéis coloridos. */
+  'outline-ink':
+    'border border-current/25 bg-transparent text-current hover:bg-current/10 active:scale-[0.98] disabled:opacity-50',
   ghost: 'text-fg hover:bg-surface-hover disabled:opacity-50',
+  'ghost-muted': 'text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-50',
+  'ghost-destructive': 'text-destructive hover:bg-destructive/10 disabled:opacity-50',
+  /** Ação de remover discreta: neutra em repouso, destrutiva no hover. */
+  'ghost-muted-destructive':
+    'text-fg-muted hover:bg-destructive/10 hover:text-destructive disabled:opacity-50',
   link: 'text-link underline-offset-4 hover:underline disabled:opacity-50',
   success:
     'bg-success-fill text-success-foreground hover:brightness-105 active:scale-[0.98] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
@@ -29,7 +40,10 @@ const sizes = {
   md: 'h-9 px-3 text-sm',
   default: 'h-10 px-4 text-sm',
   lg: 'h-10 px-4 text-sm',
-  icon: 'h-9 w-9 p-0',
+  icon: 'size-9 p-0',
+  'icon-sm': 'size-8 p-0',
+  /** Sem altura, padding nem tamanho de fonte próprio: herda do texto ao redor (ex.: variant="link"). */
+  inline: 'h-auto p-0',
 } as const;
 
 type ButtonVariant = keyof typeof variants;

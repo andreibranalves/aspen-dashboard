@@ -242,6 +242,7 @@ export function QuotationTemplateManager({
               <button
                 type="button"
                 key={template.id}
+                aria-pressed={selectedId === template.id}
                 onClick={() => {
                   if (isDirty) setPendingSelection(template.id);
                   else selectTemplate(template.id);
@@ -253,7 +254,7 @@ export function QuotationTemplateManager({
                 <span className="mt-1 block text-xs text-fg-muted">
                   {template.key} · Usado por {template.usage_count} revisões
                 </span>
-                <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                <span className="mt-2 flex flex-wrap gap-1.5 text-2xs">
                   {template.is_default && <StatusBadge status="Open" label="Padrão" />}
                   <StatusBadge
                     status={template.archived ? 'Draft' : 'Issued'}
@@ -329,7 +330,8 @@ export function QuotationTemplateManager({
                       onChange={(event) => setSource(event.target.value)}
                       disabled={saving}
                       rows={14}
-                      className="min-h-72 resize-y font-mono text-xs leading-[1.4]"
+                      variant="code"
+                      className="min-h-72"
                     />
                   </label>
                 )}
@@ -376,8 +378,7 @@ export function QuotationTemplateManager({
                   {detail && !detail.is_default && !detail.archived && (
                     <Button
                       type="button"
-                      variant="ghost"
-                      className="text-destructive hover:bg-destructive/10"
+                      variant="ghost-destructive"
                       onClick={() => setPendingConfirm('archive')}
                       disabled={saving}
                     >

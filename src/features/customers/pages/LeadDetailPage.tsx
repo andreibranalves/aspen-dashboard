@@ -32,6 +32,7 @@ import { CustomerActionMenu } from '@/features/customers/components/CustomerActi
 import { projectClientDetail, type ProjectedClientDetail } from '@/lib/localProjections';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
 import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
+import { Heading } from '@/components/ui/heading';
 
 interface Address {
   endereco?: string;
@@ -155,9 +156,9 @@ function SectionCard({ title, description, icon: Icon, children, className }: Se
           </div>
         )}
         <div>
-          <h2 id={`section-${title}`} className="text-base font-semibold text-fg">
+          <Heading level="section" id={`section-${title}`}>
             {title}
-          </h2>
+          </Heading>
           {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}
         </div>
       </div>
@@ -179,7 +180,7 @@ function InfoField({
 }) {
   return (
     <div className={`min-w-0 ${className || ''}`}>
-      <span className="text-[11px] uppercase tracking-wide text-fg-muted">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-fg-muted">{label}</span>
       {children || <p className="mt-1 break-words text-sm font-medium text-fg">{value || '—'}</p>}
     </div>
   );
@@ -447,7 +448,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       <Button
         variant="outline"
         size="sm"
-        className="px-2 sm:px-3"
         onClick={() => {
           if (detail) {
             setFields(fieldsFromDetail(detail));
@@ -459,7 +459,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       </Button>
       <Button
         size="sm"
-        className="px-2 sm:px-3"
         onClick={() => createQuoteForClient(current, navigate)}
       >
         <Sparkles size={14} /> Novo orçamento
@@ -603,7 +602,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
             </SectionCard>
             <details className="rounded-card border border-line bg-surface p-5"><summary className="cursor-pointer text-sm font-semibold">Observações</summary><Textarea className="mt-4" aria-label="Observações" value={fields.observacoes} onChange={(event) => setFields((value) => ({ ...value, observacoes: event.target.value }))} /></details>
             </div>
-            {isNewClient && <aside className="rounded-card border border-line bg-surface p-5"><h2 className="text-base font-semibold">Novo relacionamento</h2><p className="mt-5 text-sm text-fg-muted">Preencha os dados essenciais e complete o cadastro durante o atendimento.</p><div className="mt-6 space-y-2"><Button type="button" className="w-full" onClick={() => void save()} disabled={saving}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar cliente'}</Button><Button type="button" variant="outline" className="w-full" onClick={cancelEditing} disabled={saving}>Cancelar</Button></div></aside>}
+            {isNewClient && <aside className="rounded-card border border-line bg-surface p-5"><Heading level="section">Novo relacionamento</Heading><p className="mt-5 text-sm text-fg-muted">Preencha os dados essenciais e complete o cadastro durante o atendimento.</p><div className="mt-6 space-y-2"><Button type="button" className="w-full" onClick={() => void save()} disabled={saving}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar cliente'}</Button><Button type="button" variant="outline" className="w-full" onClick={cancelEditing} disabled={saving}>Cancelar</Button></div></aside>}
           </div>
         ) : (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">

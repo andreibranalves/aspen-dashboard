@@ -25,6 +25,7 @@ import ChannelsTab from '@/features/communication/components/ChannelsTab';
 import { getSettings, saveSettings, type DashboardSettings } from '@/lib/api/settingsApi';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
+import { Heading } from '@/components/ui/heading';
 
 type SettingsTab = 'patterns' | 'templates' | 'flows' | 'company' | 'channels';
 
@@ -311,12 +312,12 @@ export default function SettingsPage() {
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="min-w-0 space-y-5">
                   <section
-                    className="space-y-2 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-2 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="patterns-title"
                   >
-                    <h2 id="patterns-title" className="text-base font-semibold text-fg">
+                    <Heading level="section" id="patterns-title">
                       Condições padrão
-                    </h2>
+                    </Heading>
                     <fieldset className="space-y-4">
                       <legend className="sr-only">Prazos e valores</legend>
                       <div className="grid gap-4 md:grid-cols-2">
@@ -363,12 +364,12 @@ export default function SettingsPage() {
                     </fieldset>
                   </section>
                   <section
-                    className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-5 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="document-sections-title"
                   >
-                    <h2 id="document-sections-title" className="text-base font-semibold text-fg">
+                    <Heading level="section" id="document-sections-title">
                       Seções do documento
-                    </h2>
+                    </Heading>
                     <fieldset className="space-y-5">
                       <legend className="sr-only">Conteúdo do documento</legend>
                       <QuotationSectionsEditor
@@ -393,12 +394,12 @@ export default function SettingsPage() {
                   </section>
                 </div>
                 <aside
-                  className="rounded-card bg-surface p-5 sm:p-[22px]"
+                  className="rounded-card bg-surface p-5 sm:p-5.5"
                   aria-labelledby="patterns-usage-title"
                 >
-                  <h2 id="patterns-usage-title" className="text-base font-semibold text-fg">
+                  <Heading level="section" id="patterns-usage-title">
                     Aplicação dos padrões
-                  </h2>
+                  </Heading>
                   <p className="mt-5 text-sm leading-6 text-fg-muted">
                     Os valores são aplicados a novos orçamentos e podem ser revisados antes da
                     emissão.
@@ -419,7 +420,7 @@ export default function SettingsPage() {
 
           {activeTab === 'templates' && (
             <section
-              className="rounded-card bg-surface p-5 sm:p-[22px]"
+              className="rounded-card bg-surface p-5 sm:p-5.5"
               aria-labelledby="document-templates-title"
             >
               <h2 id="document-templates-title" className="sr-only">
@@ -452,12 +453,12 @@ export default function SettingsPage() {
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="min-w-0 space-y-5">
                   <section
-                    className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-5 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="company-title"
                   >
-                    <h2 id="company-title" className="text-base font-semibold text-fg">
+                    <Heading level="section" id="company-title">
                       Identificação da empresa
-                    </h2>
+                    </Heading>
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Razão social</span>
@@ -533,12 +534,12 @@ export default function SettingsPage() {
                     </div>
                   </section>
                   <section
-                    className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-5 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="company-banking-title"
                   >
-                    <h2 id="company-banking-title" className="text-base font-semibold text-fg">
+                    <Heading level="section" id="company-banking-title">
                       Dados bancários
-                    </h2>
+                    </Heading>
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Banco</span>
@@ -599,12 +600,12 @@ export default function SettingsPage() {
                   </section>
                 </div>
                 <aside
-                  className="rounded-card bg-surface p-5 sm:p-[22px]"
+                  className="rounded-card bg-surface p-5 sm:p-5.5"
                   aria-labelledby="company-usage-title"
                 >
-                  <h2 id="company-usage-title" className="text-base font-semibold text-fg">
+                  <Heading level="section" id="company-usage-title">
                     Onde esses dados aparecem
-                  </h2>
+                  </Heading>
                   <ul className="mt-5 divide-y divide-line text-sm text-fg">
                     {[
                       'Identificação do documento',
@@ -692,7 +693,7 @@ function SettingsFeedback({ error, success }: { error: string | null; success: s
           role="status"
           aria-live="polite"
         >
-          <CheckCircle2 size={18} className="shrink-0 text-success" aria-hidden="true" />
+          <CheckCircle2 size={20} className="shrink-0 text-success" aria-hidden="true" />
           <span>{success}</span>
         </div>
       )}

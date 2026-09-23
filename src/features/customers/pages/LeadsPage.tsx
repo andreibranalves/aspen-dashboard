@@ -683,7 +683,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
-            <Table className="min-w-[760px] [&_td]:py-4 [&_th]:h-12" containerClassName="rounded-none">
+            <Table className="min-w-[760px] [&_th]:h-12">
               <TableHeader>
                 <TableRow>
                   <TableHead className="min-w-[220px]">
@@ -768,7 +768,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         {[row.municipio, row.uf].filter(Boolean).join(', ') || '—'}
                       </TableCell>
                       <TableCell>
-                        <button type="button" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} className="text-xs text-fg hover:text-light-sage hover:underline" aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</button>
+                        <Button type="button" variant="link" size="inline" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</Button>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />
@@ -784,11 +784,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                             <ChevronRight />
                           </Button></span>
                           <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
-                            variant="ghost"
+                            variant="soft"
                             size="icon"
                             title={`Novo orçamento para ${label}`}
                             aria-label={`Novo orçamento para ${label}`}
-                            className="bg-primary/10 text-primary hover:bg-primary/20"
                             onClick={() => createQuoteForClient(row, navigate)}
                           >
                             <ReceiptText />
@@ -874,11 +873,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1 border-t border-line pt-3">
                     <Button
-                      variant="ghost"
+                      variant="soft"
                       size="icon"
                       aria-label={`Novo orçamento para ${label}`}
                       title="Novo orçamento"
-                      className="text-primary"
                       onClick={() => createQuoteForClient(row, navigate)}
                     >
                       <ReceiptText />

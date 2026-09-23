@@ -35,16 +35,34 @@ also carries text or an icon; color is never the only signal.
 Manrope is the product font with `tabular-nums` globally. Monospace is only
 for SKUs and identifiers.
 
-| Role | Size / weight | Where |
+Sizes are theme tokens in `src/index.css`; arbitrary `text-[Npx]` is rejected
+by lint.
+
+| Role | Class / weight | Where |
 | --- | --- | --- |
-| Page title | 28px / 700 (22px below `md`) | `PageHeader` only |
-| Dialog title | 18px / 700 | `Dialog`, `Drawer` |
-| Section title | 16px / 600 | top-level cards in a page |
-| Sub-section | 14px / 600 | groups inside a section card |
-| Body / controls | 14px / 400–600 | text, inputs, selects, buttons |
-| Secondary / meta | 13px | page meta, tabs, breadcrumb |
-| Caption | 12px | field labels, table headers |
-| Badge | 11px / 600 | `StatusBadge`, quality badges |
+| Page title | `text-title` 28px / 700 (`text-stat` 22px below `md`) | `PageHeader` only |
+| Dialog title | `text-lg` 18px / 700 | `Dialog`, `Drawer` |
+| Section title | `Heading level="section"` 16px / 600 | top-level cards in a page |
+| Sub-section | `Heading level="subsection"` 14px / 600 | groups inside a section card |
+| Card title | `Heading level="card"` 15px / 600 | kanban and grid cards |
+| Eyebrow | `Heading level="eyebrow"` 12px / 600 caps | group labels |
+| Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
+| Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb |
+| Caption | `text-xs` 12px | field labels, table headers |
+| Badge | `text-2xs` 11px / 600 | `StatusBadge`, quality badges |
+| Micro | `text-3xs` 10px | counters, dense captions |
+
+Display numbers use `text-hero` (32px) and `tracking-display`. Elevation uses
+`shadow-overlay` (dialogs), `shadow-floating` (popovers) and `shadow-bar`
+(bottom action bars). Headings in `src/features` and `src/app` go through
+`Heading`; a raw `h1`–`h6` with type classes fails lint.
+
+Icons use 12, 14, 16 or 20px; 24, 32 and 48 only in empty states and
+placeholders. Icons inside `Button` and `MenuItem` are forced to 16px.
+
+Stacking uses named layers only (`z-N` fails lint): `z-sticky` 10 (sticky
+headers), `z-nav` 30 (mobile sidebar and its backdrop), `z-floating` 40
+(menus, popovers, autocomplete, bottom bars), `z-overlay` 50 (dialogs).
 
 ### Radius roles
 
@@ -70,8 +88,31 @@ never add their own focus ring. Rows inside clipped containers add
 ### Controls
 
 Fields, selects and the default button are 40px. Button sizes: `xs` 28, `sm`
-32 (dense rows, inline retry), `md` 36, default/`lg` 40. Filled buttons show a
-tinted disabled state at full opacity; quiet variants fade.
+32 (dense rows, inline retry), `md` 36, default/`lg` 40, `icon` 36, `icon-sm`
+32, `inline` (no box and inherited font size, for links in text or tables). `Input` and `Select` take `size` `default` 40, `sm`
+32, `xs` 28; `Select size="icon"` is the compact move-to menu. Filled buttons
+show a tinted disabled state at full opacity; quiet variants fade.
+
+Appearance comes from props, never from `className` on a `components/ui`
+primitive. `eslint.config.js` enforces this with `shadcn/no-restyle`
+(`className` may carry layout only, plus the per-component `contracts`) and
+`shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant. Actions use `Button` or
+`MenuItem`; a plain `<button>` is only for list options, selectable cards,
+disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this in
+`src/features` and `src/app`: a raw `<button>` must declare `role`, `aria-expanded`,
+`aria-pressed`, `aria-selected` or `aria-current`; anything else uses
+`eslint-disable-next-line no-restricted-syntax -- <motivo>`:
+
+| Component | Props |
+| --- | --- |
+| `Button` | `variant`: `default`, `destructive`, `outline`, `outline-destructive`, `outline-ink` (on colored panels), `secondary`, `soft`, `ghost`, `ghost-muted`, `ghost-destructive`, `ghost-muted-destructive` (remove icons), `link`, `success` |
+| `Table` | `density`: `default` (lists), `compact` (documents), `dense` (editable tables in cards); `edges`: `flush`, `inset` |
+| `TableRow` | `selected`, `tone="warning"`, `interactive` |
+| `Input` | `size`, `hideSpinButtons` |
+| `Heading` | `level`: `section`, `subsection`, `card`, `eyebrow`; `as` for the tag |
+| `MenuItem` | `tone`: `default`, `destructive`; `asChild` for links |
+| `Textarea` | `variant`: `default`, `code`, `bare` (composer inside a bordered box) |
+| `StatusBadge` | `status` maps to a tone; `tone` overrides it |
 
 ## Layout
 
@@ -113,7 +154,8 @@ global totals.
 ## Component and state rules
 
 Rows that open a record support keyboard activation and visible focus.
-Icon-only controls have accessible names. Hover affordances have focus-visible
+Icon-only controls have accessible names (`Button size="icon|icon-sm"` without
+`aria-label` fails lint). Hover affordances have focus-visible
 or persistent keyboard and touch equivalents.
 
 Every remotely loaded view has loading, empty, no-results, error, and retry

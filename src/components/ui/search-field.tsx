@@ -1,9 +1,9 @@
 import { Search } from 'lucide-react';
-import { forwardRef, type InputHTMLAttributes } from 'react';
-import { Input } from '@/components/ui/input';
+import { forwardRef } from 'react';
+import { Input, type InputProps } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
-export interface SearchFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
+export interface SearchFieldProps extends Omit<InputProps, 'type'> {
   /** Width of the field wrapper; defaults to fluid up to the 286px list ceiling. */
   containerClassName?: string;
 }

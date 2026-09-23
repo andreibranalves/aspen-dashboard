@@ -238,7 +238,7 @@ function SalesOrderExportMenu({
         id="sales-order-export-menu"
         hidden={!open}
         aria-label="Exportar dados"
-        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+        className={`absolute left-0 top-full z-floating mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
       >
         <ExportCsvButton
           resource="sales-orders"
@@ -383,16 +383,17 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const formatQuotation = (item: SalesOrderItem) => {
     if (item.source_quotation) {
       return (
-        <button
+        <Button
           type="button"
           onClick={(e: MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
             navigate(`/quotations/${encodeURIComponent(item.source_quotation!)}`);
           }}
-          className="text-link text-sm hover:underline"
+          variant="link"
+          size="inline"
         >
           {item.source_quotation}
-        </button>
+        </Button>
       );
     }
     return <span className="text-fg-muted">—</span>;
@@ -423,7 +424,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
       {(summaryData || summaryLoading) && (
         <section aria-label={`Resumo comercial: ${summaryPeriodLabel.toLowerCase()}`} aria-busy={summaryLoading} className="space-y-3">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">
+          <p className="text-xs font-medium uppercase tracking-widest text-fg-muted">
             {summaryPeriodLabel}
           </p>
           <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
@@ -555,7 +556,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* ── Desktop Table (hidden on small screens) ── */}
       {!loading && !error && items.length > 0 && (
         <div className="hidden md:block">
-          <Table className="min-w-[730px]" containerClassName="rounded-none">
+          <Table className="min-w-[730px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[160px]">Pedido</TableHead>
@@ -574,24 +575,24 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                   aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="py-4 text-xs font-semibold">
+                  <TableCell className="text-xs font-semibold">
                     <div>{row.id}</div>
-                    <div className="mt-1 text-[11px] font-normal text-fg-muted">{row.source_quotation ? formatQuotation(row) : 'Sem orçamento de origem'}</div>
+                    <div className="mt-1 text-2xs font-normal text-fg-muted">{row.source_quotation ? formatQuotation(row) : 'Sem orçamento de origem'}</div>
                   </TableCell>
-                  <TableCell className="py-4">
+                  <TableCell >
                     <EntityIdentity name={row.customer_name || 'Cliente não identificado'} />
                   </TableCell>
-                  <TableCell className="py-4 text-fg-muted">{row.date ? formatSalesOrderDate(row.date) : '—'}</TableCell>
-                  <TableCell className="py-4">
+                  <TableCell className="text-fg-muted">{row.date ? formatSalesOrderDate(row.date) : '—'}</TableCell>
+                  <TableCell >
                     <StatusBadge
                       status={row.status || ''}
                       label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                     />
                   </TableCell>
-                  <TableCell className="py-4 text-right font-sans tabular-nums">
+                  <TableCell className="text-right font-sans tabular-nums">
                     {formatBRL(row.grand_total)}
                   </TableCell>
-                  <TableCell className="py-4 text-right text-fg-muted"><ChevronRight size={16} aria-hidden="true" /></TableCell>
+                  <TableCell className="text-right text-fg-muted"><ChevronRight size={16} aria-hidden="true" /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -641,16 +642,17 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 <span>
                   Orçamento relacionado:{' '}
                   {row.source_quotation ? (
-                    <button
+                    <Button
                       type="button"
                       onClick={(e: MouseEvent<HTMLButtonElement>) => {
                         e.stopPropagation();
                         navigate(`/quotations/${encodeURIComponent(row.source_quotation || '')}`);
                       }}
-                      className="text-link hover:underline"
+                      variant="link"
+                      size="inline"
                     >
                       {row.source_quotation}
-                    </button>
+                    </Button>
                   ) : (
                     '—'
                   )}

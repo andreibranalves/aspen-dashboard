@@ -45,6 +45,7 @@ import { fmtPhone } from '@/lib/formatting/formatters';
 import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import EntityIdentity from '@/components/shared/EntityIdentity';
+import { Heading } from '@/components/ui/heading';
 
 interface Deal {
   id: string;
@@ -412,8 +413,8 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           {!narrowLayout && (
             <div className="overflow-x-auto rounded-card border border-line bg-surface p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold">Negócios em acompanhamento</h2>
-                <span className="rounded-control border border-line px-3 py-1.5 text-[11px] text-fg-muted">Etapas configuradas no Aspen</span>
+                <Heading as="h2" level="subsection">Negócios em acompanhamento</Heading>
+                <span className="rounded-control border border-line px-3 py-1.5 text-2xs text-fg-muted">Etapas configuradas no Aspen</span>
               </div>
               <Table className="min-w-[760px]">
                 <TableHeader>
@@ -439,27 +440,27 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         <TableCell className="text-xs">{deal.lead_source || '—'}</TableCell>
                         <TableCell>
                           <StatusBadge
+                            tone="tone-neutral-muted"
                             status={currentStatus}
                             label={
                               orderedColumns.find((column) => column.status === currentStatus)
                                 ?.name || currentStatus
                             }
-                            className="tone-neutral-muted"
                           />
                         </TableCell>
                         <TableCell className="text-xs">{deal.quotation ? deal.quotation_id ? <a href={`#/quotations/${deal.quotation_id}`} onClick={(event) => navigateFromLink(event, `#/quotations/${deal.quotation_id}`)} className="font-medium hover:underline">{deal.quotation}</a> : deal.quotation : '—'}<DealProposals opportunityId={deal.id} /></TableCell>
                         <TableCell className="text-xs text-fg-muted">—</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <Select ref={(element) => setMoveMenuRef(deal.id, element)} value={currentStatus} disabled={moving} aria-label={`Mover ${leadName} para outra etapa`} className="h-8 w-9 max-w-9 cursor-pointer overflow-hidden border-0 bg-surface-subtle px-0 text-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onChange={(event) => moveDeal(deal.id, event.target.value)}>
+                            <div className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><Select size="icon" ref={(element) => setMoveMenuRef(deal.id, element)} value={currentStatus} disabled={moving} aria-label={`Mover ${leadName} para outra etapa`} onChange={(event) => moveDeal(deal.id, event.target.value)}>
                               {moveColumns(currentStatus).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}
-                            </Select>
+                            </Select></div>
                             {deal.quote_lead_id && (
-                              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => startQuotation(deal, leadName)}>
+                              <Button type="button" variant="ghost" size="xs" onClick={() => startQuotation(deal, leadName)}>
                                 <PlusCircle aria-hidden="true" /> Novo orçamento
                               </Button>
                             )}
-                            {href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="inline-flex h-8 items-center gap-1 rounded-control bg-surface-subtle px-2 text-xs font-medium hover:bg-surface-hover"><ArrowUpRight size={13} aria-hidden="true" />Abrir</a> : <span className="text-fg-muted">—</span>}
+                            {href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="inline-flex h-8 items-center gap-1 rounded-control bg-surface-subtle px-2 text-xs font-medium hover:bg-surface-hover"><ArrowUpRight size={14} aria-hidden="true" />Abrir</a> : <span className="text-fg-muted">—</span>}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -490,6 +491,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             {leadName}
                           </a>
                         ) : (
+                          // eslint-disable-next-line no-restricted-syntax -- espelha o link do lead ao lado
                           <h2 className="truncate font-medium">{leadName}</h2>
                         )}
                         {deal.email && (
@@ -502,12 +504,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         )}
                       </div>
                       <StatusBadge
+                        tone="tone-neutral-muted"
                         status={currentStatus}
                         label={
                           orderedColumns.find((column) => column.status === currentStatus)?.name ||
                           currentStatus
                         }
-                        className="tone-neutral-muted shrink-0"
+                        className="shrink-0"
                       />
                     </div>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -562,7 +565,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         value={currentStatus}
                         disabled={moving}
                         aria-label={`Mover para ${leadName}`}
-                        className="w-full text-sm"
+                        className="w-full"
                         onChange={(event) => moveDeal(deal.id, event.target.value)}
                       >
                         {moveColumns(currentStatus).map((destinationColumn) => (
@@ -674,7 +677,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 draggingId === deal.id && 'cursor-grabbing opacity-50'
                               )}
                             >
-                              <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.08em] text-fg-muted">{deal.id.slice(0, 8)}</div>
+                              <div className="mb-3 text-3xs font-medium uppercase tracking-wider text-fg-muted">{deal.id.slice(0, 8)}</div>
                               <div className="flex items-start justify-between gap-2">
                                 {leadClickable ? (
                                   <a
@@ -682,33 +685,33 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                     onClick={(event) =>
                                       leadHref && navigateFromLink(event, leadHref)
                                     }
-                                    className="min-w-0 text-left text-[15px] font-semibold leading-5 text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+                                    className="min-w-0 text-left text-lead font-semibold leading-5 text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
                                     aria-label={`Abrir lead ${displayLeadName}`}
                                   >
                                     <span className="block truncate">{displayLeadName}</span>
                                   </a>
                                 ) : (
-                                  <h3 className="min-w-0 truncate text-[15px] font-semibold leading-5">
+                                  <Heading level="card" className="min-w-0 truncate">
                                     {displayLeadName}
-                                  </h3>
+                                  </Heading>
                                 )}
                                 {moving && (
                                   <span className="shrink-0 text-xs text-fg-muted">Movendo…</span>
                                 )}
                               </div>
-                              <p className="mt-2 truncate text-[11px] text-fg-muted">{deal.lead_source || 'Origem não informada'}</p>
-                              <div className="mt-5 flex items-center justify-between text-[11px] text-fg-muted">
+                              <p className="mt-2 truncate text-2xs text-fg-muted">{deal.lead_source || 'Origem não informada'}</p>
+                              <div className="mt-5 flex items-center justify-between text-2xs text-fg-muted">
                                 <time dateTime={lastUpdate}>{lastUpdate ? daysAgo(lastUpdate) : '—'}</time>
-                                <span className="grid size-7 place-items-center rounded-full bg-avatar-one text-[10px] font-bold text-avatar-ink">AS</span>
+                                <span className="grid size-7 place-items-center rounded-full bg-avatar-one text-3xs font-bold text-avatar-ink">AS</span>
                               </div>
-                              {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={13} aria-hidden="true" />Ver negócio</a>}
-                              <details className="mt-2 text-[11px] text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full text-xs" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
+                              {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={14} aria-hidden="true" />Ver negócio</a>}
+                              <details className="mt-2 text-2xs text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select size="sm" ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
                             </article>
                           );
                         })}
                       </div>
                       {hidden > 0 && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() =>
                             setVisiblePerColumn((prev) => ({
@@ -716,10 +719,11 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               [col.status]: (prev[col.status] ?? 10) + 25,
                             }))
                           }
-                          className="px-2 pb-2 text-xs text-fg-muted transition-colors hover:text-fg"
+                          variant="ghost-muted"
+                          size="xs"
                         >
                           Ver mais ({hidden} restantes)
-                        </button>
+                        </Button>
                       )}
                     </>
                   );

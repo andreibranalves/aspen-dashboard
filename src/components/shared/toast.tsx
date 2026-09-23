@@ -83,11 +83,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={item.id}
             role={item.tone === 'error' ? 'alert' : 'status'}
             className={cn(
-              'pointer-events-auto flex items-start gap-2.5 rounded-nav border px-4 py-3.5 text-xs font-medium shadow-[0_8px_30px_#0005] animate-fade-in',
+              'pointer-events-auto flex items-start gap-2.5 rounded-nav border px-4 py-3.5 text-xs font-medium shadow-floating animate-fade-in',
               TONE_STYLES[item.tone],
             )}
           >
-            <Icon size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <Icon size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">{item.message}</span>
             <button
               type="button"

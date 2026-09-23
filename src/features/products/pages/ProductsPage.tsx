@@ -507,7 +507,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                   className="group rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
                 >
                   <div className={`relative flex h-[110px] items-end justify-between rounded-card p-4 ${visualTone}`}>
-                    <strong className="text-[23px] font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
+                    <strong className="text-stat font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
                     <PackageOpen size={48} strokeWidth={1.25} className="opacity-35" aria-hidden="true" />
                     {selectionMode && <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
                       <input
@@ -520,6 +520,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                     </label>}
                   </div>
                   <div className="space-y-3 px-1 pt-4">
+                    {/* eslint-disable-next-line no-restricted-syntax -- o card inteiro abre o produto */}
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
@@ -542,9 +543,8 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                       <div className="flex shrink-0 items-center gap-1">
                         <StatusBadge status={state.status} label={state.label} />
                         <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
-                          variant="ghost"
+                          variant="ghost-muted-destructive"
                           size="icon"
-                          className="text-fg-muted hover:bg-destructive/10 hover:text-destructive"
                           aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                           title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
                           onClick={() => requestArchive(sku, archived)}
@@ -581,12 +581,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
             Limpar seleção
           </Button>
           <Button
-            variant="outline"
-            className={
-              status === 'archived'
-                ? ''
-                : 'text-destructive border-destructive/20 hover:bg-destructive/10'
-            }
+            variant={status === 'archived' ? 'outline' : 'outline-destructive'}
             onClick={requestBulkArchive}
             disabled={selectedCount === 0}
           >

@@ -47,6 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Heading } from '@/components/ui/heading';
 
 const PAGE_SIZE = 25;
 
@@ -282,9 +283,9 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
           />
         )}
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+          <Heading level="eyebrow">
             Passos da entrega
-          </h3>
+          </Heading>
           <ol
             className="mt-3 space-y-2"
             aria-label={`Passos da entrega ${delivery.businessNumber}`}
@@ -606,7 +607,7 @@ export default function WhatsAppDeliveriesPage() {
         />
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading || clearing}><RefreshCw className={loading ? 'animate-spin' : undefined} />Atualizar</Button>
-          {activeTab === 'pending' && <Button type="button" variant="ghost" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing} className="text-destructive hover:bg-destructive/10"><Trash2 />{clearing ? 'Limpando…' : 'Limpar fila'}</Button>}
+          {activeTab === 'pending' && <Button type="button" variant="ghost-destructive" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing} ><Trash2 />{clearing ? 'Limpando…' : 'Limpar fila'}</Button>}
         </div>
       </div>
 
@@ -652,7 +653,7 @@ export default function WhatsAppDeliveriesPage() {
             <SearchField value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" />
             <Select aria-label="Filtrar envios por situação" value={filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all'} onChange={(event) => { const value = event.target.value; updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false })); }}><option value="all">Todos os status</option><option value="review">Requer ação</option><option value="active">Em andamento</option><option value="retry">Reagendados</option><option value="delivered">Entregues</option></Select>
             <details className="relative ml-auto text-sm text-fg-muted"><summary className="flex h-10 cursor-pointer list-none items-center rounded-control px-3 font-semibold hover:bg-raised hover:text-fg">Filtros avançados</summary>
-            <section className="absolute right-10 z-20 mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
+            <section className="absolute right-10 z-floating mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">
               <label className={filterInputClass(filters.requiresAction)}>
                 <input
@@ -799,63 +800,64 @@ export default function WhatsAppDeliveriesPage() {
           </div>
         ) : result ? (
           <>
-            <Table
-              aria-label="Tabela de entregas WhatsApp"
-              aria-busy={loading}
-              className="table-fixed min-w-[720px]"
-              containerClassName="rounded-b-card bg-surface px-5 [&_th]:h-12 [&_td]:py-4"
-            >
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col" className="w-[25%]">Orçamento / cliente</TableHead>
-                  <TableHead scope="col" className="w-[20%]">Etapa / progresso</TableHead>
-                  <TableHead scope="col" className="w-[18%]">Situação</TableHead>
-                  <TableHead scope="col" className="w-[20%]">Último evento</TableHead>
-                  <TableHead scope="col" className="w-[17%]"><span className="sr-only">Inspecionar</span></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {result.data.map((delivery, index) => {
-                  const projection = projectDelivery(delivery);
-                  return (
-                    <TableRow key={delivery.id}>
-                      <TableCell className="min-w-0">
-                        <EntityIdentity name={delivery.clientName || 'Cliente não identificado'} secondary={delivery.businessNumber} />
-                      </TableCell>
-                      <TableCell className="text-xs"><span className="block font-medium">WhatsApp</span><span className="mt-1 block text-fg-muted">{formatDeliveryProgress(delivery)}</span></TableCell>
-                      <TableCell className="min-w-0">
-                        <span
-                          className="block min-w-0"
-                          role="status"
-                          aria-live="polite"
-                          aria-label={`Estado: ${projection.label}. Progresso: ${formatDeliveryProgress(delivery)}`}
-                        >
-                          <StatusBadge
-                            status={delivery.state}
-                            label={projection.label}
-                            tone={stateTone(delivery.state)}
-                          />
-                        </span>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-fg-muted">
-                        {formatDateTime(delivery.updatedAt) || '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
-                          onClick={() => selectDelivery(delivery)}
-                        >
-                          Inspecionar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <div className="rounded-b-card bg-surface px-5">
+              <Table
+                aria-label="Tabela de entregas WhatsApp"
+                aria-busy={loading}
+                className="table-fixed min-w-[720px] [&_th]:h-12"
+              >
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col" className="w-[25%]">Orçamento / cliente</TableHead>
+                    <TableHead scope="col" className="w-[20%]">Etapa / progresso</TableHead>
+                    <TableHead scope="col" className="w-[18%]">Situação</TableHead>
+                    <TableHead scope="col" className="w-[20%]">Último evento</TableHead>
+                    <TableHead scope="col" className="w-[17%]"><span className="sr-only">Inspecionar</span></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {result.data.map((delivery, index) => {
+                    const projection = projectDelivery(delivery);
+                    return (
+                      <TableRow key={delivery.id}>
+                        <TableCell className="min-w-0">
+                          <EntityIdentity name={delivery.clientName || 'Cliente não identificado'} secondary={delivery.businessNumber} />
+                        </TableCell>
+                        <TableCell className="text-xs"><span className="block font-medium">WhatsApp</span><span className="mt-1 block text-fg-muted">{formatDeliveryProgress(delivery)}</span></TableCell>
+                        <TableCell className="min-w-0">
+                          <span
+                            className="block min-w-0"
+                            role="status"
+                            aria-live="polite"
+                            aria-label={`Estado: ${projection.label}. Progresso: ${formatDeliveryProgress(delivery)}`}
+                          >
+                            <StatusBadge
+                              status={delivery.state}
+                              label={projection.label}
+                              tone={stateTone(delivery.state)}
+                            />
+                          </span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-fg-muted">
+                          {formatDateTime(delivery.updatedAt) || '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
+                            onClick={() => selectDelivery(delivery)}
+                          >
+                            Inspecionar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
 
             <ListPagination
               label="Paginação de envios"

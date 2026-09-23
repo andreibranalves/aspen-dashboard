@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { cn } from '@/lib/utils';
+import { Heading } from '@/components/ui/heading';
 
 type ProductionDeadlineSection = QuotationSectionsSettings['prazo_producao'] & { value: string };
 
@@ -90,7 +91,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
                 : 'border-t border-line pt-4 first:border-0 first:pt-0'
             )}
           >
-            <h3 className="text-sm font-semibold text-fg">{label}</h3>
+            <Heading level="subsection">{label}</Heading>
             <label className="flex items-center gap-2 text-sm font-medium text-fg">
               <input
                 type="checkbox"
@@ -108,7 +109,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
                 value={section.title}
                 onChange={(event) => update(key, 'title', event.target.value)}
                 disabled={!editable}
-                className="text-[15px]"
+                className="font-medium"
               />
             </label>
             {body && (

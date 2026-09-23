@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
+import { MenuItem } from '@/components/ui/menu-item';
 
 // Rótulos canônicos pt-BR vindos de @/lib/statusLabels (quotationStatusLabel /
 // quotationStatusBadgeKey). Os valores de filtro continuam os crus da API
@@ -323,13 +324,14 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     const menuId = `quotation-actions-${placement}-${row.id}`;
     return (
       <div onClick={(event) => event.stopPropagation()}>
-        <button
+        <Button
           type="button"
+          variant="ghost-muted"
+          size="icon-sm"
           popoverTarget={menuId}
           popoverTargetAction="toggle"
           aria-controls={menuId}
           aria-expanded={openActionRow === row.id}
-          className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover hover:text-fg"
           aria-label={`Ações do orçamento ${label}`}
           title={`Ações do orçamento ${label}`}
           onClick={(event) => {
@@ -342,13 +344,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             });
           }}
         >
-          <MoreHorizontal aria-hidden="true" size={18} />
-        </button>
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
         <div
           id={menuId}
           popover="auto"
           aria-label={`Ações do orçamento ${label}`}
-          className="fixed inset-auto top-(--menu-top) left-(--menu-left) m-0 w-48 rounded-control border border-line bg-surface py-1 shadow-lg"
+          className="fixed inset-auto top-(--menu-top) left-(--menu-left) m-0 w-48 rounded-control border border-line bg-surface p-1 shadow-lg"
           style={{ '--menu-top': `${actionMenuPosition.top}px`, '--menu-left': `${actionMenuPosition.left}px` } as CSSProperties}
           onToggle={(event) => {
             setOpenActionRow(event.nativeEvent.newState === 'open' ? row.id : null);
@@ -361,49 +363,45 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             }
           }}
         >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
+          <MenuItem
             onClick={(event) => {
               event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover();
               navigate(`/quotations/${encodeURIComponent(row.id)}`);
             }}
           >
-            <Pencil size={15} /> Editar
-          </button>
+            <Pencil /> Editar
+          </MenuItem>
           {row.revisionId && (
-            <a
-              href={buildQuotationPreviewUrl(row.revisionId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
-              onClick={(event) =>
-                event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover()
-              }
-            >
-              <FileText size={15} /> Visualizar PDF
-            </a>
+            <MenuItem asChild>
+              <a
+                href={buildQuotationPreviewUrl(row.revisionId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) =>
+                  event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover()
+                }
+              >
+                <FileText /> Visualizar PDF
+              </a>
+            </MenuItem>
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
+          <MenuItem
             onClick={(event) => {
               event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover();
               setDuplicateTarget(row.id);
             }}
           >
-            <Copy size={15} /> Duplicar
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+            <Copy /> Duplicar
+          </MenuItem>
+          <MenuItem
+            tone="destructive"
             onClick={(event) => {
               event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover();
               setDeleteTarget(row.id);
             }}
           >
-            <Trash2 size={15} /> Excluir
-          </button>
+            <Trash2 /> Excluir
+          </MenuItem>
         </div>
       </div>
     );
@@ -427,7 +425,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <>
           <MailCheck size={14} className="shrink-0 text-success" aria-hidden="true" />
           {row.emailSentAt && (
-            <span className="whitespace-nowrap text-[11px] text-fg-muted">
+            <span className="whitespace-nowrap text-2xs text-fg-muted">
               {formatDate(row.emailSentAt)}
             </span>
           )}
@@ -522,12 +520,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       {!loading && !error && data.length > 0 && (
         <div className="hidden md:block">
           <Table
-            className="[&_td]:py-4 [&_th]:h-12"
+            className="[&_th]:h-12"
             containerClassName="overflow-hidden"
           >
             <TableHeader>
               <TableRow>
-                {selectionMode && <TableHead className="w-12 px-3">
+                {selectionMode && <TableHead className="w-12">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -549,10 +547,11 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               {data.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={`group cursor-pointer ${selectedIds.includes(row.id) ? 'bg-surface-selected' : ''}`}
+                  className="group"
+                  selected={selectedIds.includes(row.id)}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
-                  {selectionMode && <TableCell className="w-12 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  {selectionMode && <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
@@ -561,31 +560,31 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       className="h-4 w-4 rounded-xs border-line text-primary"
                     />
                   </TableCell>}
-                  <TableCell className="whitespace-nowrap py-2 text-sm [font-variant-numeric:tabular-nums]">
+                  <TableCell className="whitespace-nowrap text-sm tabular-nums">
                     <Button
                       variant="link"
-                      size="sm"
-                      className="h-auto max-w-[180px] justify-start truncate p-0 font-mono text-sm font-semibold"
+                      size="inline"
+                      className="max-w-[180px] justify-start truncate font-mono font-semibold"
                       title={row.businessNumber}
                       onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                     >
                       {row.businessNumber}
                     </Button>
-                    <span className="block text-[11px] text-fg-muted">Revisão {row.revision}</span>
+                    <span className="block text-2xs text-fg-muted">Revisão {row.revision}</span>
                   </TableCell>
-                  <TableCell className="max-w-[300px] py-2" title={row.cliente}>
+                  <TableCell className="max-w-[300px]" title={row.cliente}>
                     <EntityIdentity name={row.cliente || 'Cliente não informado'} secondary={row.name && row.name !== row.cliente ? row.name : undefined} />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap py-2 text-fg-muted">
+                  <TableCell className="whitespace-nowrap text-fg-muted">
                     <span className="block">
                       {formatDate(row.data) || '—'}
                     </span>
                   </TableCell>
-                  <TableCell className="py-2">{statusBadge(row)}</TableCell>
-                  <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
+                  <TableCell>{statusBadge(row)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                     {formatBRL(row.total)}
                   </TableCell>
-                  <TableCell className="w-24 py-2 text-right text-fg-muted">
+                  <TableCell className="w-24 text-right text-fg-muted">
                     <div className="flex items-center justify-end gap-1"><span className="pointer-events-none block shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">{actionButtons(row, 'desktop')}</span><ChevronRight size={16} aria-hidden="true" /></div>
                   </TableCell>
                 </TableRow>
@@ -605,7 +604,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             >
               <div className="flex items-start justify-between gap-3">
                 <div
-                  className="flex min-w-0 items-center gap-2"
+                  className="flex min-w-0 items-center gap-2 text-sm"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <input
@@ -617,8 +616,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   />
                   <Button
                     variant="link"
-                    size="sm"
-                    className="h-auto min-w-0 justify-start truncate p-0 font-mono text-sm font-semibold"
+                    size="inline"
+                    className="min-w-0 justify-start truncate font-mono font-semibold"
                     title={row.businessNumber}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -645,7 +644,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <p className="text-sm text-fg-muted">
                     {formatDate(row.data) || '—'}
                   </p>
-                  <p className="font-mono font-semibold [font-variant-numeric:tabular-nums]">
+                  <p className="font-mono font-semibold tabular-nums">
                     {formatBRL(row.total)}
                   </p>
                 </div>
@@ -691,8 +690,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             Limpar seleção
           </Button>
           <Button
-            variant="outline"
-            className="text-destructive hover:bg-destructive/10"
+            variant="outline-destructive"
             onClick={() => setBulkDeleteOpen(true)}
             disabled={selectedCount === 0 || bulkDeleting}
           >

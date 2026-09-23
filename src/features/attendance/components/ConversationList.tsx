@@ -86,7 +86,7 @@ export default function ConversationList({
                     <span className={cn('truncate text-sm text-fg', item.unreadCount > 0 ? 'font-bold' : 'font-medium')}>
                       {name}
                     </span>
-                    <span className="shrink-0 text-[11px] text-fg-muted">{listTime(item.lastMessageAt)}</span>
+                    <span className="shrink-0 text-2xs text-fg-muted">{listTime(item.lastMessageAt)}</span>
                   </div>
                   <div className="mt-0.5 flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
@@ -103,7 +103,7 @@ export default function ConversationList({
                     )}
                     {item.unreadCount > 0 && (
                       <span
-                        className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-on-solid"
+                        className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1.5 text-2xs font-bold text-on-solid"
                         aria-label={`${item.unreadCount} não lidas`}
                       >
                         {item.unreadCount > 99 ? '99+' : item.unreadCount}

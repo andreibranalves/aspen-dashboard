@@ -1185,7 +1185,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     if (!item.whatsappHref) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
-          <Ban size={13} aria-hidden="true" /> WhatsApp indisponível
+          <Ban size={14} aria-hidden="true" /> WhatsApp indisponível
         </span>
       );
     }
@@ -1197,8 +1197,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
         aria-label={`Abrir WhatsApp de ${contactLabel(item)}`}
       >
-        <MessageCircle size={13} aria-hidden="true" /> WhatsApp
-        <ExternalLink size={11} aria-hidden="true" />
+        <MessageCircle size={14} aria-hidden="true" /> WhatsApp
+        <ExternalLink size={12} aria-hidden="true" />
       </a>
     );
   }
@@ -1210,7 +1210,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         <p>{contactContextLabel(item)}</p>
         {item.contactContext.blockers.length > 0 ? (
           <p className="inline-flex items-center gap-1 text-destructive">
-            <Ban size={13} aria-hidden="true" />
+            <Ban size={14} aria-hidden="true" />
             Bloqueio: {item.contactContext.blockers.map((blocker) => blocker.label).join(', ')}
           </p>
         ) : (
@@ -1295,7 +1295,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           {visibleRows.map((item) => (
             <details key={item.actionId} className="group rounded-card bg-surface">
               <summary className="grid cursor-pointer list-none items-center gap-3 rounded-card p-4 xl:grid-cols-[82px_minmax(0,1fr)_auto_auto] xl:px-5 xl:py-4 [&::-webkit-details-marker]:hidden">
-                <span className="flex flex-col gap-1 text-xs"><time dateTime={item.dueAt} className="font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time><span className="text-[11px] text-fg-muted">{dueStatusLabel(item.dueStatus)}</span></span>
+                <span className="flex flex-col gap-1 text-xs"><time dateTime={item.dueAt} className="font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time><span className="text-2xs text-fg-muted">{dueStatusLabel(item.dueStatus)}</span></span>
                 <EntityIdentity name={contactLabel(item)} primary={item.reason || item.reasonLabel} secondary={`${contactLabel(item)} · ${item.kindLabel}`} />
                 <span className="flex items-center gap-2"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} tone={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
                 <span className="inline-flex items-center justify-center gap-2 rounded-control border border-line px-3 py-2 text-xs font-semibold"> <ChevronRight size={14} aria-hidden="true" className="transition-transform group-open:rotate-90" /> Abrir ação</span>

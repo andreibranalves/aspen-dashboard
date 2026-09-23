@@ -114,6 +114,7 @@ import {
   dispatchAfterDraftPersistence,
   ensureCreationRequestId,
 } from '@/features/quotations/creationRequest';
+import { Heading } from '@/components/ui/heading';
 
 export type NewQuotationMode = 'conversation' | 'manual';
 
@@ -2049,7 +2050,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
-                <h2 className="text-base font-semibold text-fg">Pedido do cliente</h2>
+                <Heading level="section">Pedido do cliente</Heading>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
                 <Settings size={14} /> Gerenciar modelos
@@ -2071,9 +2072,11 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 placeholder="Cole aqui a mensagem do cliente..."
-                className={`mt-0 min-h-[190px] rounded-control border-0 bg-transparent leading-6 ${imagePreview ? 'pt-20 pb-4' : 'py-4'}`}
+                variant="bare"
+                className={imagePreview ? 'mt-0 min-h-[190px] pt-20' : 'mt-0 min-h-[190px]'}
               />
               {imagePreview && (
+                // eslint-disable-next-line no-restricted-syntax -- miniatura da imagem é o próprio botão
                 <button
                   type="button"
                   aria-label="Remover imagem colada"
@@ -2102,15 +2105,15 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid size-7 shrink-0 place-items-center rounded-control bg-raised text-xs text-fg-muted">02</span>
                 <div>
-                  <h2 className="text-base font-semibold text-fg">Resultado</h2>
+                  <Heading level="section">Resultado</Heading>
                 </div>
               </div>
               {(activeDrafts.length > 0 || pendingExtraction.length > 0) && (
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-muted"
                   size="sm"
-                  className="shrink-0 text-fg-muted"
+                  className="shrink-0"
                   disabled={clearResultsBlocked}
                   onClick={clearResultQueue}
                 >
@@ -2235,8 +2238,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="!mt-3 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
           <div className="min-w-0 space-y-5">
             <section aria-label="Cliente e demanda" className="rounded-card border border-line bg-surface p-5 md:p-6">
-              <h2 className="text-base font-semibold text-fg">Cliente e demanda</h2>
-              <h3 className="mt-5 flex items-center gap-2 text-sm font-semibold text-fg"><span className="rounded-control bg-surface-subtle px-2 py-1 text-xs text-fg-muted">01</span> Qual cliente está solicitando?</h3>
+              <Heading level="section">Cliente e demanda</Heading>
+              <Heading level="subsection" className="mt-5 flex items-center gap-2"><span className="rounded-control bg-surface-subtle px-2 py-1 text-xs text-fg-muted">01</span> Qual cliente está solicitando?</Heading>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Cliente
                   <Button type="button" variant="outline" className="flex w-full justify-between text-left font-normal" onClick={() => openClientPanel('existing')} disabled={manualActionsBlocked} aria-label="Selecionar cliente">
@@ -2266,15 +2269,15 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </section>
 
             <section aria-label="Itens do orçamento" className="rounded-card border border-line bg-surface p-5 md:p-6">
-              <div className="flex items-start justify-between gap-3"><h2 className="text-base font-semibold text-fg">Produtos e quantidades</h2><span className="text-sm text-fg-muted">{manual.items.length} {manual.items.length === 1 ? 'item' : 'itens'}</span></div>
-              <h3 className="mt-5 flex items-center gap-2 text-sm font-semibold text-fg"><span className="rounded-control bg-surface-subtle px-2 py-1 text-xs text-fg-muted">02</span> Monte a proposta</h3>
-              <div className="relative mt-4"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" /><Input aria-label="Buscar produto para adicionar ao orçamento" className="pl-9" value={productSearch} disabled={manualActionsBlocked} onChange={onProductSearch} placeholder="Buscar SKU ou nome…" />{productSearching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />}</div>
+              <div className="flex items-start justify-between gap-3"><Heading level="section">Produtos e quantidades</Heading><span className="text-sm text-fg-muted">{manual.items.length} {manual.items.length === 1 ? 'item' : 'itens'}</span></div>
+              <Heading level="subsection" className="mt-5 flex items-center gap-2"><span className="rounded-control bg-surface-subtle px-2 py-1 text-xs text-fg-muted">02</span> Monte a proposta</Heading>
+              <div className="relative mt-4"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" /><Input aria-label="Buscar produto para adicionar ao orçamento" className="pl-9" value={productSearch} disabled={manualActionsBlocked} onChange={onProductSearch} placeholder="Buscar SKU ou nome…" />{productSearching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />}</div>
               {productResults.length > 0 && <div className="mt-2 divide-y divide-border overflow-hidden rounded-control border border-line">{productResults.map((product) => <div key={product.sku} className="flex items-center justify-between gap-3 p-3"><span className="min-w-0 truncate text-sm"><span className="font-mono text-primary">{product.sku}</span> · {product.nome}</span><div className="flex shrink-0 items-center gap-2">{isUnpricedProduct(product) && <span className="text-xs text-fg-muted">Preço indisponível</span>}<Button type="button" size="sm" aria-label={`Adicionar ${product.sku} ao orçamento`} onClick={() => void addProduct(product)} disabled={manualActionsBlocked || Boolean(addingSku) || isUnpricedProduct(product)}>{addingSku === product.sku ? 'Adicionando…' : 'Adicionar'}</Button></div></div>)}</div>}
-              {manual.items.length === 0 ? <div className="mt-4 rounded-control border border-dashed border-line px-4 py-10 text-center text-sm text-fg-muted">Nenhum produto na tabela</div> : <div className="mt-4"><Table className="min-w-[620px] text-sm"><TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-28 text-right">Quantidade</TableHead><TableHead className="w-40 text-right">Unitário</TableHead><TableHead className="w-32 text-right">Total</TableHead><TableHead className="w-10" /></TableRow></TableHeader><TableBody>{manual.items.map((item) => <TableRow key={item._key}><TableCell><span className="font-mono text-xs text-primary">{item.sku}</span><p className="text-sm font-medium text-fg">{item.nome}</p>{item._rateManual && <span className="text-[11px] text-warning">preço manual</span>}</TableCell><TableCell className="text-right"><Input type="number" min="0.001" step="0.001" className="ml-auto w-24 text-right" aria-label={`Quantidade de ${item.sku}`} value={item.qty} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'qty', event.target.value)} /></TableCell><TableCell className="text-right"><div className="flex items-center justify-end gap-1"><Input type="number" min="0" step="0.01" className="w-32 text-right" aria-label={`Preço unitário de ${item.sku}`} value={item.rate} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'rate', event.target.value)} />{item._rateManual && <button type="button" className="min-h-9 min-w-9 rounded-control text-fg-muted hover:bg-surface-hover" aria-label={`Recalcular preço de ${item.sku}`} onClick={() => void resetManualRate(item._key)} disabled={manualActionsBlocked}><RotateCcw size={14} /></button>}</div></TableCell><TableCell className="text-right font-medium tabular-nums">{formatBRL(item.qty * item.rate)}</TableCell><TableCell className="text-right"><button type="button" className="min-h-9 min-w-9 rounded-control text-fg-muted hover:bg-destructive/10 hover:text-destructive" aria-label={`Remover ${item.sku}`} disabled={manualActionsBlocked} onClick={() => { if (!manualActionsBlocked) setManual((current) => ({ ...current, items: current.items.filter((candidate) => candidate._key !== item._key) })); }}><Trash2 size={14} /></button></TableCell></TableRow>)}</TableBody></Table></div>}
+              {manual.items.length === 0 ? <div className="mt-4 rounded-control border border-dashed border-line px-4 py-10 text-center text-sm text-fg-muted">Nenhum produto na tabela</div> : <div className="mt-4"><Table className="min-w-[620px] text-sm"><TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-28 text-right">Quantidade</TableHead><TableHead className="w-40 text-right">Unitário</TableHead><TableHead className="w-32 text-right">Total</TableHead><TableHead className="w-10" /></TableRow></TableHeader><TableBody>{manual.items.map((item) => <TableRow key={item._key}><TableCell><span className="font-mono text-xs text-primary">{item.sku}</span><p className="text-sm font-medium text-fg">{item.nome}</p>{item._rateManual && <span className="text-2xs text-warning">preço manual</span>}</TableCell><TableCell className="text-right"><Input type="number" min="0.001" step="0.001" className="ml-auto w-24 text-right" aria-label={`Quantidade de ${item.sku}`} value={item.qty} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'qty', event.target.value)} /></TableCell><TableCell className="text-right"><div className="flex items-center justify-end gap-1"><Input type="number" min="0" step="0.01" className="w-32 text-right" aria-label={`Preço unitário de ${item.sku}`} value={item.rate} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'rate', event.target.value)} />{item._rateManual && <Button type="button" variant="ghost-muted" size="icon" aria-label={`Recalcular preço de ${item.sku}`} onClick={() => void resetManualRate(item._key)} disabled={manualActionsBlocked}><RotateCcw size={14} /></Button>}</div></TableCell><TableCell className="text-right font-medium tabular-nums">{formatBRL(item.qty * item.rate)}</TableCell><TableCell className="text-right"><Button type="button" variant="ghost-muted-destructive" size="icon" aria-label={`Remover ${item.sku}`} disabled={manualActionsBlocked} onClick={() => { if (!manualActionsBlocked) setManual((current) => ({ ...current, items: current.items.filter((candidate) => candidate._key !== item._key) })); }}><Trash2 size={14} /></Button></TableCell></TableRow>)}</TableBody></Table></div>}
             </section>
 
             <section aria-label="Condições do orçamento" className="rounded-card border border-line bg-surface p-5 md:p-6">
-              <h2 className="text-base font-semibold text-fg">Condições e fechamento</h2>
+              <Heading level="section">Condições e fechamento</Heading>
               {templateError && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-destructive"><p role="alert">{templateError}</p><Button type="button" variant="outline" size="sm" onClick={() => void loadTemplates()}>Tentar novamente</Button></div>}
               <div className="mt-4 grid gap-3 md:grid-cols-2"><label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Prazo de produção<Input aria-label="Prazo de produção" value={manual.prazo} disabled={manualActionsBlocked} onChange={(event) => setManualValue('prazo', event.target.value)} /></label><label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Modelo de orçamento<Select aria-label="Modelo de orçamento" value={manual.templateKey} disabled={manualActionsBlocked || templateLoading || !templates.length} onChange={(event) => { setTemplateKey(event.target.value); setManualValue('templateKey', event.target.value); }} className="w-full">{templates.map((template) => <option key={template.key} value={template.key}>{template.name}</option>)}</Select></label></div>
               <label className="mt-4 flex items-center justify-between gap-3 rounded-control border border-line p-3 text-sm"><span><span className="block font-medium text-fg">Pedido urgente</span><span className="block text-xs text-fg-muted">Itens com preço automático recebem +30%.</span></span><input type="checkbox" aria-label="Pedido urgente" checked={manual.urgente} disabled={manualActionsBlocked} onChange={(event) => setManualUrgente(event.target.checked)} className="h-4 w-4 accent-primary" /></label>
@@ -2283,7 +2286,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </section>
           </div>
           <aside aria-label="Resumo e ações do orçamento" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6 xl:sticky xl:top-4">
-            <h2 className="text-base font-semibold text-fg">Resumo da proposta</h2>
+            <Heading level="section">Resumo da proposta</Heading>
             <p className="mt-5 text-sm text-fg-muted">{manualToEdited(manual).nome || 'Cliente não selecionado'}</p>
             <dl className="mt-7 space-y-3 text-sm tabular-nums"><div className="flex justify-between gap-3"><dt className="text-fg-muted">Subtotal</dt><dd>{formatBRL(subtotal)}</dd></div><div className="flex justify-between gap-3"><dt className="text-fg-muted">Frete</dt><dd>{formatBRL(Number(manual.frete) || 0)}</dd></div><div className="flex justify-between gap-3 border-t border-line pt-4 text-xl font-semibold"><dt>Total</dt><dd>{formatBRL(subtotal + (Number(manual.frete) || 0))}</dd></div></dl>
             {issueErrorByDraft[manualActionDraftIndex] && <InlineAlert className="mt-4">{issueErrorByDraft[manualActionDraftIndex]}</InlineAlert>}
@@ -2298,6 +2301,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             <div className="mt-5 space-y-3">
               <label className="block text-xs font-medium text-fg-muted">Nome, e-mail ou telefone<Input ref={clientPanelInput} aria-label="Buscar cliente" value={clientSearchTerm} disabled={manualActionsBlocked} onChange={onClientSearch} /></label>
               {clientSearching && <p className="text-xs text-fg-muted">Buscando…</p>}
+              {/* eslint-disable-next-line no-restricted-syntax -- opção de resultado de busca */}
               {clientResults.map((client) => <button key={client.id} type="button" aria-label={`Selecionar ${client.nome}`} disabled={manualActionsBlocked} className="block w-full rounded-control border border-line p-3 text-left hover:bg-surface-hover" onClick={() => chooseClient(client)}><span className="block font-medium text-fg">{client.nome}</span><span className="block text-xs text-fg-muted">{client.email || 'E-mail não informado'} · {fmtPhone(client.telefone || '')}</span></button>)}
               <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setClientPanel('new')} disabled={manualActionsBlocked}>Novo cliente</Button><Button type="button" onClick={applyClientPanel} disabled={manualActionsBlocked || !drawerManual?.selectedClient}>Aplicar ao rascunho</Button><Button type="button" variant="ghost" onClick={closeClientPanel} disabled={manualActionsBlocked}>Cancelar</Button></div>
             </div>

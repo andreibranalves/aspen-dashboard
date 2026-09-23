@@ -40,9 +40,8 @@ export default function DealProposals({ opportunityId }: DealProposalsProps) {
     <div className="mt-2">
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         size="sm"
-        className="h-8 rounded-control border border-line bg-surface-subtle px-2 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg"
         aria-expanded={expanded}
         onClick={() => void load()}
       >

@@ -13,6 +13,7 @@ import {
   type OrderTemplate,
 } from '@/lib/api/orderTemplatesApi';
 import type { Product } from '@/types/domain';
+import { Heading } from '@/components/ui/heading';
 
 interface OrderTemplateManagerProps {
   open: boolean;
@@ -249,7 +250,7 @@ export default function OrderTemplateManager({
                         onClick={() => startEdit(template)}
                         disabled={saving}
                       >
-                        <Pencil size={13} />
+                        <Pencil size={14} />
                         Editar
                       </Button>
                       <Button
@@ -260,7 +261,7 @@ export default function OrderTemplateManager({
                         onClick={() => !operationRef.current && setArchiveTarget(template)}
                         disabled={saving}
                       >
-                        <Archive size={13} />
+                        <Archive size={14} />
                       </Button>
                     </div>
                   </div>
@@ -269,9 +270,9 @@ export default function OrderTemplateManager({
             ) : (
               <div className="space-y-5">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-base font-semibold text-fg">
+                  <Heading as="h3" level="section">
                     {editingId === 'new' ? 'Novo modelo' : 'Editar modelo'}
-                  </h3>
+                  </Heading>
                   <Button
                     type="button"
                     variant="ghost"
@@ -306,7 +307,7 @@ export default function OrderTemplateManager({
                   <div className="relative mt-1">
                     <Search
                       className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-                      size={15}
+                      size={16}
                     />
                     <Input
                       id="order-template-product-search"
@@ -318,11 +319,12 @@ export default function OrderTemplateManager({
                       className="pl-9"
                     />
                     {searchTerm.trim().length >= 2 && (
-                      <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-control border border-border-subtle bg-surface p-1 shadow-lg">
+                      <div className="absolute left-0 right-0 top-full z-floating mt-1 max-h-56 overflow-y-auto rounded-control border border-border-subtle bg-surface p-1 shadow-lg">
                         {searchLoading ? (
                           <p className="px-3 py-2 text-sm text-fg-muted">Buscando produtos…</p>
                         ) : searchResults.length ? (
                           searchResults.map((product) => (
+                            // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                             <button
                               key={product.sku}
                               type="button"
@@ -368,25 +370,27 @@ export default function OrderTemplateManager({
                           <p className="break-words text-sm text-fg">{item.name}</p>
                           <p className="font-mono text-xs text-fg-muted">{item.sku}</p>
                         </div>
-                        <button
+                        <Button
                           type="button"
                           aria-label={`Mover ${item.sku} para cima`}
                           onClick={() => moveItem(index, -1)}
                           disabled={saving || index === 0}
-                          className="rounded-control p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
+                          variant="ghost-muted"
+                          size="icon-sm"
                         >
-                          <ChevronUp size={15} />
-                        </button>
-                        <button
+                          <ChevronUp size={16} />
+                        </Button>
+                        <Button
                           type="button"
                           aria-label={`Mover ${item.sku} para baixo`}
                           onClick={() => moveItem(index, 1)}
                           disabled={saving || index === selectedItems.length - 1}
-                          className="rounded-control p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
+                          variant="ghost-muted"
+                          size="icon-sm"
                         >
-                          <ChevronDown size={15} />
-                        </button>
-                        <button
+                          <ChevronDown size={16} />
+                        </Button>
+                        <Button
                           type="button"
                           aria-label={`Remover ${item.sku}`}
                           onClick={() =>
@@ -395,10 +399,11 @@ export default function OrderTemplateManager({
                             )
                           }
                           disabled={saving}
-                          className="rounded-control p-1 text-fg-muted hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                          variant="ghost-muted-destructive"
+                          size="icon-sm"
                         >
-                          <Trash2 size={15} />
-                        </button>
+                          <Trash2 size={16} />
+                        </Button>
                       </div>
                     ))
                   )}

@@ -119,7 +119,7 @@ describe('Aspen UI contract', () => {
     assert.match(button, /rounded-control/);
     assert.match(input, /h-10/);
     assert.match(select, /h-10/);
-    assert.match(read('src/components/ui/badge.tsx'), /rounded-badge[^']*text-\[11px\]/);
+    assert.match(read('src/components/ui/badge.tsx'), /rounded-badge[^']*text-2xs/);
   });
 
   it('ships the shared state compositions', () => {

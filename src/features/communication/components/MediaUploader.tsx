@@ -21,6 +21,7 @@ import {
   normalizeProductGroup,
 } from '@/lib/api/communicationApi';
 import type { ProductGroup } from '@/lib/api/communicationApi';
+import { Heading } from '@/components/ui/heading';
 
 export interface MediaUploaderProps {
   onUploadComplete?: () => void;
@@ -159,19 +160,19 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
   return (
     <section
-      className="space-y-4 rounded-card bg-surface p-5 sm:p-[22px]"
+      className="space-y-4 rounded-card bg-surface p-5 sm:p-5.5"
       aria-labelledby="media-upload-title"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="media-upload-title" className="text-base font-semibold text-fg">
+          <Heading level="section" id="media-upload-title">
             Adicionar mídia
-          </h2>
+          </Heading>
           <p className="mt-1 text-sm text-fg-muted">
             Envie uma imagem ou vídeo para um grupo de produto existente.
           </p>
         </div>
-        <Upload size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
+        <Upload size={20} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
       </div>
 
       <label htmlFor="media-product-group" className="flex flex-col gap-1.5 text-sm text-fg">
@@ -227,12 +228,12 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
       >
         {uploading ? (
           <div className="flex flex-col items-center gap-2" role="status" aria-live="polite">
-            <Loader2 size={28} className="animate-spin text-primary" aria-hidden="true" />
+            <Loader2 size={32} className="animate-spin text-primary" aria-hidden="true" />
             <p className="text-sm text-fg-muted">Enviando arquivo…</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <Upload size={28} className="text-fg-muted" aria-hidden="true" />
+            <Upload size={32} className="text-fg-muted" aria-hidden="true" />
             <p className="text-sm text-fg-muted">
               Arraste uma imagem ou vídeo aqui, ou pressione Enter para selecionar
             </p>
@@ -263,7 +264,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
           role="status"
           aria-live="polite"
         >
-          <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
           <p>{successMessage}</p>
         </div>
       )}

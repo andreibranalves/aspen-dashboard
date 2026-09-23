@@ -21,6 +21,7 @@ import {
   type SalesOrderDetailView,
   type SalesOrderItemView,
 } from '@/features/sales-orders/salesOrderViewModel';
+import { Heading } from '@/components/ui/heading';
 
 const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
@@ -207,7 +208,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 space-y-4">
           <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">
-            <h2 id="sales-order-customer-title" className="text-base font-semibold">Cliente</h2>
+            <Heading level="section" id="sales-order-customer-title">Cliente</Heading>
             <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-avatar-one text-xs font-semibold text-avatar-ink" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.delivery_date && <p className="text-xs text-fg-muted">Entrega prevista: {formatSalesOrderDate(data.delivery_date)}</p>}</div></div>
           </section>
           <section
@@ -216,9 +217,9 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           >
             <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h2 id="sales-order-items-title" className="text-base font-semibold">
+                <Heading level="section" id="sales-order-items-title">
                   Itens do pedido
-                </h2>
+                </Heading>
                 {data.omitted_items > 0 && (
                   <span className="text-xs text-fg-muted">
                     {data.omitted_items}{' '}
@@ -241,7 +242,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           </section>
           <section className="rounded-card border border-line bg-surface p-5">
             <div>
-              <h2 className="text-base font-semibold">Andamento operacional</h2>
+              <Heading level="section">Andamento operacional</Heading>
               <div
                 role="region"
                 aria-label="Progresso do pedido"
@@ -297,9 +298,9 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             className="rounded-card border border-line bg-surface p-5"
             aria-labelledby="sales-order-values-title"
           >
-            <h2 id="sales-order-values-title" className="text-base font-semibold">
+            <Heading level="section" id="sales-order-values-title">
               Valores do pedido
-            </h2>
+            </Heading>
             <dl className="mt-5 space-y-3 text-sm tabular-nums"><div className="flex justify-between gap-2"><dt className="text-fg-muted">Produtos</dt><dd>{itemTotal === undefined ? '—' : formatBRL(itemTotal)}</dd></div><div className="flex justify-between gap-2 border-t border-line pt-4 text-lg font-semibold"><dt>Total</dt><dd>{grandTotal === undefined ? '—' : formatBRL(grandTotal)}</dd></div></dl>
             {data.status === 'Completed' && (
               <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-success">
@@ -308,7 +309,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               </div>
             )}
           </aside>
-          <aside className="rounded-card border border-line bg-surface p-5" aria-label="Rastreabilidade do pedido"><h2 className="text-base font-semibold">Rastreabilidade</h2><div className="mt-5 border-l border-line pl-4 text-sm"><p className="font-medium">Pedido criado</p><p className="mt-1 text-xs text-fg-muted">{orderDate ? formatSalesOrderDate(orderDate) : 'Data não informada'}</p>{data.source_quotation && <p className="mt-5 font-medium">Origem: {data.source_quotation}</p>}{data.quotation_origin && <><p className="mt-5 font-medium">Origem do lead</p><p className={`mt-1 text-xs ${data.quotation_origin.status === 'conflict' ? 'text-destructive' : 'text-fg-muted'}`}>{data.quotation_origin.sourceLabel}</p></>}{data.quotation_origin?.status === 'conflict' && <p className="mt-2 text-xs text-destructive">Origem do orçamento divergente.</p>}</div></aside>
+          <aside className="rounded-card border border-line bg-surface p-5" aria-label="Rastreabilidade do pedido"><Heading level="section">Rastreabilidade</Heading><div className="mt-5 border-l border-line pl-4 text-sm"><p className="font-medium">Pedido criado</p><p className="mt-1 text-xs text-fg-muted">{orderDate ? formatSalesOrderDate(orderDate) : 'Data não informada'}</p>{data.source_quotation && <p className="mt-5 font-medium">Origem: {data.source_quotation}</p>}{data.quotation_origin && <><p className="mt-5 font-medium">Origem do lead</p><p className={`mt-1 text-xs ${data.quotation_origin.status === 'conflict' ? 'text-destructive' : 'text-fg-muted'}`}>{data.quotation_origin.sourceLabel}</p></>}{data.quotation_origin?.status === 'conflict' && <p className="mt-2 text-xs text-destructive">Origem do orçamento divergente.</p>}</div></aside>
         </div>
       </div>
     </PageShell>

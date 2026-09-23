@@ -13,7 +13,7 @@ export default function NotFoundPage({ navigate }: NotFoundPageProps) {
       className="flex min-h-[65vh] flex-col items-center justify-center px-4 py-16 text-center space-y-0"
       aria-labelledby="not-found-title"
     >
-      <span className="text-[90px] font-bold leading-none tracking-[-0.06em] text-sage" aria-hidden="true">404</span>
+      <span className="text-8xl font-bold leading-none tracking-tighter text-sage" aria-hidden="true">404</span>
       <h1 id="not-found-title" className="mt-4 text-2xl font-bold text-fg">
         Esta página não foi encontrada.
       </h1>

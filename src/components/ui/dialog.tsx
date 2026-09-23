@@ -27,7 +27,7 @@ interface ModalBaseProps {
 }
 
 const overlayClass =
-  'fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px] motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0';
+  'fixed inset-0 z-overlay bg-black/60 backdrop-blur-xs motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0';
 
 const FOCUSABLE =
   'input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
@@ -91,7 +91,7 @@ function ModalHeader({
     <div className="flex shrink-0 items-start gap-4 px-6 pb-4 pt-6">
       {icon}
       <div className="min-w-0 flex-1 pt-1">
-        <RadixDialog.Title className="break-words text-lg font-bold leading-6 tracking-[-0.01em] text-fg">
+        <RadixDialog.Title className="break-words text-lg font-bold leading-6 tracking-tight text-fg">
           {title}
         </RadixDialog.Title>
         {description && (
@@ -105,7 +105,7 @@ function ModalHeader({
         aria-label="Fechar"
         className="-mr-2 -mt-1 grid size-9 shrink-0 place-items-center rounded-control text-fg-muted transition-colors hover:bg-raised hover:text-fg disabled:opacity-40"
       >
-        <X size={18} aria-hidden="true" />
+        <X size={20} aria-hidden="true" />
       </RadixDialog.Close>
     </div>
   );
@@ -143,8 +143,8 @@ export function Dialog(props: DialogProps) {
           {...contentProps}
           {...(description ? {} : { 'aria-describedby': undefined })}
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-card border border-line bg-surface text-fg shadow-[0_24px_64px_rgb(0_0_0/0.4)]',
-            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:zoom-in-[0.97]',
+            'fixed left-1/2 top-1/2 z-overlay flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-card border border-line bg-surface text-fg shadow-overlay',
+            'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0 motion-safe:data-[state=open]:zoom-in-95',
             dialogSizes[size],
             className
           )}
@@ -179,7 +179,7 @@ export function Drawer(props: DrawerProps) {
           {...contentProps}
           {...(description ? {} : { 'aria-describedby': undefined })}
           className={cn(
-            'fixed inset-y-3 right-3 z-50 flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-card border border-line bg-surface text-fg shadow-[0_24px_64px_rgb(0_0_0/0.4)] lg:max-w-xl',
+            'fixed inset-y-3 right-3 z-overlay flex w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-card border border-line bg-surface text-fg shadow-overlay lg:max-w-xl',
             'motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:slide-in-from-right-8 motion-safe:data-[state=open]:fade-in-0',
             className
           )}
