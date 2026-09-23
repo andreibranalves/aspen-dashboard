@@ -133,24 +133,6 @@ const MOCK_LEAD_DETAIL = {
   quality_flags: [],
 };
 
-const MOCK_WHATSAPP_LEADS = {
-  success: true,
-  data: [
-    {
-      id: '5511999991234@s.whatsapp.net',
-      remoteJid: '5511999991234@s.whatsapp.net',
-      nome: 'Maria WhatsApp',
-      telefone: '5511999991234',
-      email: 'maria@teste.com',
-      produto: 'canga',
-      quantidade: 100,
-      resumo: 'Cliente: preciso de 100 cangas',
-      texto:
-        'Nome: Maria WhatsApp\nE-mail: maria@teste.com\nTelefone: 5511999991234\nPedido: canga — 100 un',
-    },
-  ],
-};
-
 // ── Helpers ──
 
 async function setupApiMocks(page, orderTemplates = []) {
@@ -245,14 +227,6 @@ async function setupApiMocks(page, orderTemplates = []) {
 
   await page.route('**/api/quotation-deliveries**', async (route) => {
     await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Entrega não encontrada.' }) });
-  });
-
-  await page.route('**/api/whatsapp-leads**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(MOCK_WHATSAPP_LEADS),
-    });
   });
 }
 

@@ -45,7 +45,6 @@ import { handler as settings } from '../_modules/settings.js';
 import { whatsappConversations, whatsappMessages } from '../_modules/whatsapp-attendance.js';
 import { whatsappBackfill } from '../_modules/whatsapp-backfill.js';
 import { handler as whatsappContext } from '../_modules/whatsapp-context.js';
-import { handler as whatsappLeads } from '../_modules/whatsapp-leads.js';
 import { handler as communicationFlowPreview } from '../_modules/communication-flow-preview.js';
 import { handler as communicationSendEvents } from '../_modules/communication-send-events.js';
 import { handler as communicationFlows } from '../_modules/communication-flows.js';
@@ -103,7 +102,6 @@ export const routes: Record<string, LegacyHandler> = {
   'whatsapp-messages': whatsappMessages,
   'whatsapp-backfill': whatsappBackfill,
   'whatsapp-context': whatsappContext,
-  'whatsapp-leads': whatsappLeads,
   'communication-flow-preview': communicationFlowPreview,
   'communication-send-events': communicationSendEvents,
   'communication-flows': communicationFlows,

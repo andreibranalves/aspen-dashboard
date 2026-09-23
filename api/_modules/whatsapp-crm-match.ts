@@ -2,19 +2,11 @@ import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { createHttpError } from '../_shared/http-error.js';
 import { getDatabase, type AppDatabase } from '../_infrastructure/db/client.js';
 import { clients, crmDeals, quoteLeads, quoteRevisions, quotationDeliveries, quotations } from '../_infrastructure/db/schema.js';
-import {
-  cleanText,
-  type WhatsappConversation,
-  type WhatsappConversationStoreDeps,
-} from './whatsapp-conversations-store.js';
-
-export interface WhatsappCrmMatch {
-  id: string;
-  tipo: 'lead' | 'cliente';
-  nome: string;
-  telefone: string | null;
-  email: string | null;
-  matchSource: 'phone' | 'email' | 'name';
+// Identifiers and names only; never applied to a message body.
+function cleanText(value: unknown): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export interface LocalQuoteLeadRecord {
@@ -110,31 +102,10 @@ export interface LocalWhatsappCrmRepository {
   findCandidatesByName?: (name: string, limit: number) => Promise<LocalCrmCandidate[]>;
 }
 
-export interface ResolveCrmMatchDeps extends WhatsappConversationStoreDeps {
-  localCrm?: LocalWhatsappCrmRepository;
-  listQuoteLeads?: () => Promise<LocalQuoteLeadRecord[]>;
-  listClients?: () => Promise<LocalClientRecord[]>;
-  listDeals?: () => Promise<LocalDealRecord[]>;
-  listQuotations?: () => Promise<LocalQuotationRecord[]>;
-  getQuoteLead?: (id: string) => Promise<LocalQuoteLeadRecord | null>;
-  getClient?: (id: string) => Promise<LocalClientRecord | null>;
-  getDeal?: (id: string) => Promise<LocalDealRecord | null>;
-  getQuotation?: (id: string) => Promise<LocalQuotationRecord | null>;
-  findQuoteLeadByExternalId?: (
-    externalId: string,
-    source?: string
-  ) => Promise<LocalQuoteLeadRecord | null>;
-  findCandidatesByPhone?: (phone: string, limit: number) => Promise<LocalCrmCandidate[]>;
-  findCandidatesByEmail?: (emails: string[], limit: number) => Promise<LocalCrmCandidate[]>;
-  findCandidatesByName?: (name: string, limit: number) => Promise<LocalCrmCandidate[]>;
-}
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DISCARDED_LEAD_STATUS = 'discarded';
 const LOST_DEAL_STATUS = 'Perdido';
 const TARGET_LIMIT = 2;
 const CRM_EMAIL_MAX_LENGTH = 254;
-const CRM_EMAIL_SCAN_LIMIT = 6_000;
 const CRM_EMAIL_PATTERN = /[A-Z0-9!#$%&'*+/?^_`{|}~-]+(?:\.[A-Z0-9!#$%&'*+/?^_`{|}~-]+)*@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)*\.[A-Z]{2,63}/gi;
 /**
  * CRM name matching uses the same explicit ASCII/POSIX whitespace set in JS and SQL:
@@ -146,30 +117,12 @@ const CRM_MATCH_EDGE_WHITESPACE = /^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g;
 const CRM_MATCH_WHITESPACE_SQL_FROM = ' \t\n\r\f\v';
 const CRM_MATCH_WHITESPACE_SQL_TO = '      ';
 
-type LocalRows = {
-  leads: LocalQuoteLeadRecord[];
-  clients: LocalClientRecord[];
-  deals: LocalDealRecord[];
-  quotations: LocalQuotationRecord[];
-};
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isUuid(value: unknown): value is string {
-  return typeof value === 'string' && UUID_PATTERN.test(value.trim());
-}
-
 function digits(value: unknown): string {
   return String(value || '').replace(/\D/g, '');
-}
-
-function phoneKey(value: unknown): string {
-  const normalized = digits(value);
-  return normalized.startsWith('55') && normalized.length >= 12
-    ? normalized.slice(2)
-    : normalized;
 }
 
 function phoneVariants(value: unknown): string[] {
@@ -211,21 +164,6 @@ export function normalizeCrmMatchName(value: unknown): string {
 
 function crmNamePredicate(column: unknown, normalizedName: string) {
   return sql`lower(btrim(regexp_replace(translate(${column}, ${CRM_MATCH_WHITESPACE_SQL_FROM}, ${CRM_MATCH_WHITESPACE_SQL_TO}), ' +', ' ', 'g'))) = ${normalizedName}`;
-}
-
-export function messageEmails(messages: Array<{ body?: unknown; direction?: unknown }>): string[] {
-  const found = new Set<string>();
-  for (const message of Array.isArray(messages) ? messages : []) {
-    if (message?.direction !== 'inbound' || typeof message.body !== 'string') continue;
-    const body = message.body;
-    if (body.length > CRM_EMAIL_SCAN_LIMIT || hasEmailControlChars(body, true)) continue;
-    CRM_EMAIL_PATTERN.lastIndex = 0;
-    for (const match of body.matchAll(CRM_EMAIL_PATTERN)) {
-      const normalized = normalizeEmailMatch(match[0]);
-      if (normalized) found.add(normalized);
-    }
-  }
-  return [...found];
 }
 
 function repositoryFailure(error: unknown, fallback: string): never {
@@ -329,15 +267,6 @@ function historyQuotationUrl(quotationId: string): string {
   return `/#/quotations/${encodeURIComponent(quotationId)}`;
 }
 
-function activeRows(rows: LocalRows): LocalRows {
-  return {
-    leads: rows.leads.filter((row) => row.status !== DISCARDED_LEAD_STATUS),
-    clients: rows.clients.filter((row) => !row.arquivado),
-    deals: rows.deals.filter((row) => row.status !== LOST_DEAL_STATUS),
-    quotations: rows.quotations,
-  };
-}
-
 function addCandidate(map: Map<string, LocalCrmCandidate>, candidate: LocalCrmCandidate): void {
   if (!candidate.id || (!candidate.nome && !candidate.telefone && !candidate.email)) return;
   const key = `${candidate.tipo}:${candidate.id}`;
@@ -402,52 +331,10 @@ function candidateForClient(
   };
 }
 
-function buildCandidates(rows: LocalRows): LocalCrmCandidate[] {
-  const map = new Map<string, LocalCrmCandidate>();
-  const leadsById = new Map(rows.leads.map((row) => [row.id, row]));
-  const clientsById = new Map(rows.clients.map((row) => [row.id, row]));
-  const quotationsById = new Map(rows.quotations.map((row) => [row.id, row]));
-  for (const lead of rows.leads) addCandidate(map, candidateForLead(lead, quotationsById));
-  for (const client of rows.clients) addCandidate(map, candidateForClient(client, quotationsById));
-  for (const deal of rows.deals) {
-    if (deal.clientId) {
-      const client = clientsById.get(deal.clientId);
-      if (client) addCandidate(map, candidateForClient(client, quotationsById, deal.quotationId, deal.id));
-    } else if (deal.quoteLeadId) {
-      const lead = leadsById.get(deal.quoteLeadId);
-      if (lead) addCandidate(map, candidateForLead(lead, quotationsById, deal.id));
-    }
-    // Unlinked deals deliberately do not become leads.
-  }
-  for (const quotation of rows.quotations) {
-    const client = clientsById.get(quotation.clientId);
-    if (client) addCandidate(map, candidateForClient(client, quotationsById, quotation.id));
-  }
-  return [...map.values()];
-}
-
-function findByPhone(candidates: LocalCrmCandidate[], phone: string): LocalCrmCandidate[] {
-  const key = phoneKey(phone);
-  return key ? candidates.filter((candidate) => phoneKey(candidate.telefone) === key) : [];
-}
-
-function findByEmail(candidates: LocalCrmCandidate[], emails: string[]): LocalCrmCandidate[] {
-  const wanted = new Set(emails);
-  return candidates.filter((candidate) => candidate.email && wanted.has(emailKey(candidate.email)));
-}
-
 function usableName(value: unknown): boolean {
   const key = normalizeCrmMatchName(value);
   const parts = key.split(CRM_MATCH_WHITESPACE).filter(Boolean);
   return parts.length >= 2 && key.replace(CRM_MATCH_WHITESPACE, '').length >= 5 && !parts.some((part) => part.length < 2);
-}
-
-function findByName(candidates: LocalCrmCandidate[], displayName: string): LocalCrmCandidate[] {
-  const key = normalizeCrmMatchName(displayName);
-  if (!usableName(key)) return [];
-  return candidates.filter((candidate) =>
-    [candidate.nome, ...(candidate.nameAlternatives || [])].some((name) => normalizeCrmMatchName(name) === key)
-  );
 }
 
 function uniqueLimited(candidates: LocalCrmCandidate[], limit = TARGET_LIMIT): LocalCrmCandidate[] {
@@ -456,120 +343,6 @@ function uniqueLimited(candidates: LocalCrmCandidate[], limit = TARGET_LIMIT): L
   return [...map.values()]
     .sort((a, b) => `${a.tipo}:${a.id}`.localeCompare(`${b.tipo}:${b.id}`))
     .slice(0, limit);
-}
-
-function chooseUnique(candidates: LocalCrmCandidate[]): LocalCrmCandidate | null | undefined {
-  const unique = uniqueLimited(candidates, TARGET_LIMIT);
-  if (unique.length === 0) return undefined;
-  if (unique.length > 1) return null;
-  return unique[0];
-}
-
-function matchResult(candidate: LocalCrmCandidate, source: WhatsappCrmMatch['matchSource']): WhatsappCrmMatch {
-  return {
-    id: candidate.id,
-    tipo: candidate.tipo,
-    nome: candidate.nome,
-    telefone: candidate.telefone,
-    email: candidate.email,
-    matchSource: source,
-  };
-}
-
-function sourceForSaved(
-  conversation: WhatsappConversation,
-  candidate: LocalCrmCandidate,
-  emails: string[]
-): WhatsappCrmMatch['matchSource'] {
-  if (
-    conversation.linkedCrmMatchSource === 'phone' ||
-    conversation.linkedCrmMatchSource === 'email' ||
-    conversation.linkedCrmMatchSource === 'name'
-  ) return conversation.linkedCrmMatchSource;
-  if (phoneKey(conversation.canonicalPhone) && phoneKey(candidate.telefone) === phoneKey(conversation.canonicalPhone)) return 'phone';
-  if (candidate.email && emails.includes(emailKey(candidate.email))) return 'email';
-  return 'name';
-}
-
-async function loadRows(repository: LocalWhatsappCrmRepository): Promise<LocalRows> {
-  try {
-    const [leads, clientsRows, deals, quotationsRows] = await Promise.all([
-      repository.listQuoteLeads?.() || Promise.resolve([]),
-      repository.listClients?.() || Promise.resolve([]),
-      repository.listDeals?.() || Promise.resolve([]),
-      repository.listQuotations?.() || Promise.resolve([]),
-    ]);
-    return { leads, clients: clientsRows, deals, quotations: quotationsRows };
-  } catch (error) {
-    return repositoryFailure(error, 'Não foi possível acessar os dados comerciais locais.');
-  }
-}
-
-function listRepository(input: {
-  listQuoteLeads?: () => Promise<LocalQuoteLeadRecord[]>;
-  listClients?: () => Promise<LocalClientRecord[]>;
-  listDeals?: () => Promise<LocalDealRecord[]>;
-  listQuotations?: () => Promise<LocalQuotationRecord[]>;
-  getQuoteLead?: (id: string) => Promise<LocalQuoteLeadRecord | null>;
-  getClient?: (id: string) => Promise<LocalClientRecord | null>;
-  getDeal?: (id: string) => Promise<LocalDealRecord | null>;
-  getQuotation?: (id: string) => Promise<LocalQuotationRecord | null>;
-  findQuoteLeadByExternalId?: (
-    id: string,
-    source?: string
-  ) => Promise<LocalQuoteLeadRecord | null>;
-}): LocalWhatsappCrmRepository {
-  const emptyLeads = async () => [] as LocalQuoteLeadRecord[];
-  const emptyClients = async () => [] as LocalClientRecord[];
-  const emptyDeals = async () => [] as LocalDealRecord[];
-  const emptyQuotations = async () => [] as LocalQuotationRecord[];
-  const listQuoteLeads = input.listQuoteLeads || emptyLeads;
-  const listClients = input.listClients || emptyClients;
-  const listDeals = input.listDeals || emptyDeals;
-  const listQuotations = input.listQuotations || emptyQuotations;
-  const getQuoteLead = input.getQuoteLead || (async (id) => (await listQuoteLeads()).find((row) => row.id === id) || null);
-  const getClient = input.getClient || (async (id) => (await listClients()).find((row) => row.id === id) || null);
-  const getDeal = input.getDeal || (async (id) => (await listDeals()).find((row) => row.id === id) || null);
-  const getQuotation = input.getQuotation || (async (id) => (await listQuotations()).find((row) => row.id === id) || null);
-  const candidateRows = async () => buildCandidates(activeRows(await loadRows({
-    listQuoteLeads,
-    listClients,
-    listDeals,
-    listQuotations,
-    getQuoteLead,
-    getClient,
-    getDeal,
-    getQuotation,
-  })));
-  return {
-    listQuoteLeads,
-    listClients,
-    listDeals,
-    listQuotations,
-    getQuoteLead,
-    getClient,
-    getDeal,
-    getQuotation,
-    findQuoteLeadByExternalId:
-      input.findQuoteLeadByExternalId ||
-      (async (id, source) => {
-        const normalizedSource = cleanText(source);
-        const matches = (await listQuoteLeads())
-          .filter(
-            (row) =>
-              row.externalId === id &&
-              (!normalizedSource || row.source === normalizedSource)
-          )
-          .sort((a, b) => a.id.localeCompare(b.id));
-        if (matches.length > 1) {
-          throw createHttpError(409, 'Identificador externo do WhatsApp ambíguo.');
-        }
-        return matches[0] || null;
-      }),
-    findCandidatesByPhone: async (phone, limit) => uniqueLimited(findByPhone(await candidateRows(), phone), limit),
-    findCandidatesByEmail: async (emails, limit) => uniqueLimited(findByEmail(await candidateRows(), emails), limit),
-    findCandidatesByName: async (name, limit) => uniqueLimited(findByName(await candidateRows(), name), limit),
-  };
 }
 
 function dbFields() {
@@ -1024,228 +797,3 @@ export function createPostgresWhatsappCrmRepository(
   };
 }
 
-async function repositoryFor(deps: ResolveCrmMatchDeps): Promise<LocalWhatsappCrmRepository> {
-  if (deps.localCrm) {
-    const source = deps.localCrm;
-    if (source.findCandidatesByPhone || source.listQuoteLeads || source.listClients || source.listDeals || source.listQuotations) {
-      const fallback = listRepository(source);
-      return {
-        ...fallback,
-        ...source,
-        findQuoteLeadByExternalId: source.findQuoteLeadByExternalId || fallback.findQuoteLeadByExternalId,
-        findCandidatesByPhone: source.findCandidatesByPhone || fallback.findCandidatesByPhone,
-        findCandidatesByEmail: source.findCandidatesByEmail || fallback.findCandidatesByEmail,
-        findCandidatesByName: source.findCandidatesByName || fallback.findCandidatesByName,
-      };
-    }
-    return source;
-  }
-  if (
-    deps.findCandidatesByPhone || deps.findCandidatesByEmail || deps.findCandidatesByName ||
-    deps.listQuoteLeads || deps.listClients || deps.listDeals || deps.listQuotations
-  ) {
-    return {
-      ...listRepository(deps),
-      ...(deps.findCandidatesByPhone ? { findCandidatesByPhone: deps.findCandidatesByPhone } : {}),
-      ...(deps.findCandidatesByEmail ? { findCandidatesByEmail: deps.findCandidatesByEmail } : {}),
-      ...(deps.findCandidatesByName ? { findCandidatesByName: deps.findCandidatesByName } : {}),
-      ...(deps.findQuoteLeadByExternalId ? { findQuoteLeadByExternalId: deps.findQuoteLeadByExternalId } : {}),
-    };
-  }
-  return liveRepository();
-}
-
-async function loadSavedCandidate(
-  conversation: WhatsappConversation,
-  repository: LocalWhatsappCrmRepository
-): Promise<LocalCrmCandidate | null | undefined> {
-  const leadId = conversation.linkedLeadId || null;
-  const dealId = conversation.linkedDealId || null;
-  const quotationId = conversation.linkedQuotationId || null;
-  const entityId = conversation.linkedCrmEntityId || null;
-  const entityType = conversation.linkedCrmEntityType || null;
-  if (!leadId && !dealId && !quotationId && !entityId) return undefined;
-  const [lead, deal, quotation, entity] = await Promise.all([
-    leadId ? repository.getQuoteLead(leadId) : Promise.resolve(null),
-    dealId ? repository.getDeal(dealId) : Promise.resolve(null),
-    quotationId ? repository.getQuotation(quotationId) : Promise.resolve(null),
-    entityId && entityType === 'lead' ? repository.getQuoteLead(entityId) : entityId && entityType === 'cliente' ? repository.getClient(entityId) : Promise.resolve(null),
-  ]);
-  if ((leadId && !lead) || (dealId && !deal) || (quotationId && !quotation) || (entityId && !entity)) return null;
-  if (entityId && entityType !== 'lead' && entityType !== 'cliente') return null;
-  const dealLead = deal?.quoteLeadId
-    ? deal.quoteLeadId === lead?.id
-      ? lead
-      : await repository.getQuoteLead(deal.quoteLeadId)
-    : null;
-  if (deal?.quoteLeadId && !dealLead) return null;
-  if (lead && deal && deal.quoteLeadId !== lead.id) return null;
-  if (lead && quotation && lead.quotationId !== quotation.id) return null;
-  if (deal && quotation && deal.quotationId !== quotation.id) return null;
-  if (deal?.quoteLeadId && quotation && dealLead?.quotationId !== quotation.id) return null;
-  if (deal?.clientId && quotation && deal.clientId !== quotation.clientId) return null;
-  if (lead && entity && entityType === 'lead' && lead.id !== entity.id) return null;
-  if (deal && entity && entityType === 'lead' && deal.quoteLeadId !== entity.id) return null;
-  if (deal && entity && entityType === 'cliente' && deal.clientId !== entity.id) return null;
-  if (quotation && entity && entityType === 'lead' && (entity as LocalQuoteLeadRecord).quotationId !== quotation.id) return null;
-  if (quotation && entity && entityType === 'cliente' && quotation.clientId !== entity.id) return null;
-  if (deal?.clientId && entity && entityType === 'cliente' && deal.clientId !== entity.id) return null;
-
-  if (lead) return candidateForLead(lead, quotation ? new Map([[quotation.id, quotation]]) : new Map(), deal?.id || null);
-  if (entity && entityType === 'lead') {
-    const linkedLead = entity as LocalQuoteLeadRecord;
-    return candidateForLead(linkedLead, quotation ? new Map([[quotation.id, quotation]]) : new Map(), deal?.id || null);
-  }
-  if (entity && entityType === 'cliente') {
-    return candidateForClient(entity as LocalClientRecord, quotation ? new Map([[quotation.id, quotation]]) : new Map(), quotation?.id || null, deal?.id || null);
-  }
-  if (deal) {
-    if (deal.clientId) {
-      const client = await repository.getClient(deal.clientId);
-      return client ? candidateForClient(client, quotation ? new Map([[quotation.id, quotation]]) : new Map(), quotation?.id || null, deal.id) : null;
-    }
-    if (deal.quoteLeadId) {
-      return dealLead ? candidateForLead(dealLead, quotation ? new Map([[quotation.id, quotation]]) : new Map(), deal.id) : null;
-    }
-  }
-  if (quotation) {
-    const client = await repository.getClient(quotation.clientId);
-    return client ? candidateForClient(client, new Map([[quotation.id, quotation]]), quotation.id) : null;
-  }
-  return null;
-}
-
-export interface ResolvedWhatsappCrmCandidate {
-  candidate: LocalCrmCandidate;
-  matchSource: WhatsappCrmMatch['matchSource'];
-}
-
-export type WhatsappCrmSnapshot = Pick<
-  WhatsappConversation,
-  | 'id'
-  | 'canonicalPhone'
-  | 'displayLabel'
-  | 'displayName'
-  | 'identityStatus'
-  | 'linkedLeadId'
-  | 'linkedDealId'
-  | 'linkedQuotationId'
-  | 'linkedCrmEntityId'
-  | 'linkedCrmEntityType'
-  | 'linkedCrmMatchSource'
->;
-
-export async function resolveWhatsappCrmCandidateFromSnapshot(input: {
-  conversation: WhatsappCrmSnapshot;
-  deps: ResolveCrmMatchDeps;
-}): Promise<ResolvedWhatsappCrmCandidate | null> {
-  return resolveWhatsappCrmCandidate({
-    conversation: {
-      ...input.conversation,
-      providerConversationId: '',
-      remoteJid: '',
-      phone: input.conversation.canonicalPhone,
-      identitySource: null,
-      identityConfidence: null,
-      lastMessageAt: new Date(0).toISOString(),
-      lastMessagePreview: '',
-      source: 'evolution',
-      status: 'new',
-      createdAt: new Date(0).toISOString(),
-      updatedAt: new Date(0).toISOString(),
-    },
-    deps: input.deps,
-  });
-}
-
-export async function resolveWhatsappCrmCandidate(input: {
-  conversation: WhatsappConversation;
-  deps: ResolveCrmMatchDeps;
-}): Promise<ResolvedWhatsappCrmCandidate | null> {
-  const { conversation, deps } = input;
-  const repository = await repositoryFor(deps);
-  let messages: Array<{ body?: unknown; direction?: unknown }>;
-  try {
-    messages = await deps.readMessages(conversation.id);
-  } catch (error) {
-    return repositoryFailure(error, 'Não foi possível acessar as mensagens do WhatsApp.');
-  }
-  const emails = messageEmails(messages);
-  try {
-    const saved = await loadSavedCandidate(conversation, repository);
-    if (saved !== undefined) {
-      return saved
-        ? { candidate: saved, matchSource: sourceForSaved(conversation, saved, emails) }
-        : null;
-    }
-
-    const externalLead = await repository.findQuoteLeadByExternalId?.(conversation.id, 'whatsapp');
-    if (externalLead?.source === 'whatsapp') {
-      const candidate = candidateForLead(externalLead, new Map());
-      return { candidate, matchSource: sourceForSaved(conversation, candidate, emails) };
-    }
-    if (conversation.identityStatus !== 'verified' && conversation.identityStatus !== 'derived') return null;
-
-    const byPhone = chooseUnique(
-      await (repository.findCandidatesByPhone?.(conversation.canonicalPhone, TARGET_LIMIT) || Promise.resolve([]))
-    );
-    if (byPhone === null) return null;
-    if (byPhone) return { candidate: byPhone, matchSource: 'phone' };
-    const byEmail = chooseUnique(
-      await (repository.findCandidatesByEmail?.(emails, TARGET_LIMIT) || Promise.resolve([]))
-    );
-    if (byEmail === null) return null;
-    if (byEmail) return { candidate: byEmail, matchSource: 'email' };
-    const byName = chooseUnique(
-      await (repository.findCandidatesByName?.(conversation.displayLabel || conversation.displayName, TARGET_LIMIT) || Promise.resolve([]))
-    );
-    if (byName === null) return null;
-    return byName ? { candidate: byName, matchSource: 'name' } : null;
-  } catch (error) {
-    return repositoryFailure(error, 'Não foi possível acessar os dados comerciais locais.');
-  }
-}
-
-export async function resolveWhatsappCrmMatch(input: {
-  conversation: WhatsappConversation;
-  deps: ResolveCrmMatchDeps;
-}): Promise<WhatsappCrmMatch | null> {
-  const resolved = await resolveWhatsappCrmCandidate(input);
-  return resolved ? matchResult(resolved.candidate, resolved.matchSource) : null;
-}
-
-export async function validateWhatsappConversationLinks(input: {
-  patch: Pick<WhatsappConversation, 'linkedLeadId' | 'linkedDealId' | 'linkedQuotationId'>;
-  deps: ResolveCrmMatchDeps;
-}): Promise<void> {
-  const values = {
-    linkedLeadId: input.patch.linkedLeadId ?? null,
-    linkedDealId: input.patch.linkedDealId ?? null,
-    linkedQuotationId: input.patch.linkedQuotationId ?? null,
-  };
-  for (const [field, value] of Object.entries(values)) {
-    if (value !== null && !isUuid(value)) throw createHttpError(400, `${field} inválido.`);
-  }
-  if (!values.linkedLeadId && !values.linkedDealId && !values.linkedQuotationId) return;
-  const repository = await repositoryFor(input.deps);
-  try {
-    const [lead, deal, quotation] = await Promise.all([
-      values.linkedLeadId ? repository.getQuoteLead(values.linkedLeadId) : Promise.resolve(null),
-      values.linkedDealId ? repository.getDeal(values.linkedDealId) : Promise.resolve(null),
-      values.linkedQuotationId ? repository.getQuotation(values.linkedQuotationId) : Promise.resolve(null),
-    ]);
-    if (values.linkedLeadId && !lead) throw createHttpError(400, 'Lead local não encontrado.');
-    if (values.linkedDealId && !deal) throw createHttpError(400, 'Oportunidade local não encontrada.');
-    if (values.linkedQuotationId && !quotation) throw createHttpError(400, 'Orçamento local não encontrado.');
-    if (lead && deal && deal.quoteLeadId !== lead.id) throw createHttpError(400, 'Lead e oportunidade não estão vinculados.');
-    if (lead && quotation && lead.quotationId !== quotation.id) throw createHttpError(400, 'Lead e orçamento não estão vinculados.');
-    if (deal && quotation && deal.quotationId !== quotation.id) throw createHttpError(400, 'Oportunidade e orçamento não estão vinculados.');
-    if (deal?.clientId && quotation && deal.clientId !== quotation.clientId) throw createHttpError(400, 'Oportunidade e orçamento não estão vinculados ao mesmo cliente.');
-  } catch (error) {
-    return repositoryFailure(error, 'Não foi possível validar os vínculos comerciais locais.');
-  }
-}
-
-export async function liveRepository(): Promise<LocalWhatsappCrmRepository> {
-  return createPostgresWhatsappCrmRepository();
-}

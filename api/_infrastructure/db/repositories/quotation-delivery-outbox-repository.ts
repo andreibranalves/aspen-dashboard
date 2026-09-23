@@ -37,7 +37,7 @@ import {
   type EvolutionReceiptStatus,
   type TransportFailureKind,
 } from '../../../_modules/quotation-delivery-state.js';
-import { normalizeWhatsappPhone } from '../../../_modules/whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from '../../../_shared/whatsapp-phone.js';
 
 type DatabaseProvider = () => AppDatabase;
 type DeliveryDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

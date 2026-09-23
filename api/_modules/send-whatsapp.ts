@@ -21,12 +21,6 @@ import {
   type PublicQuotationDependencies,
 } from './public-quotation.js';
 import {
-  LIVE_DEPS,
-  sanitizeWhatsappMediaUrl,
-  upsertWhatsappMessages,
-  WhatsappAttachment,
-} from './whatsapp-conversations-store.js';
-import {
   allowedMediaMimeTypes,
   downloadApprovedMedia,
   MAX_DOCUMENT_BYTES,
@@ -958,42 +952,6 @@ export async function handler(
           providerAcceptedCount += 1;
           if (deliveryRepository && resolved) await deliveryRepository.recordState({ revisionId: resolved.revisionId, state: 'accepted_partial', providerAcceptanceId: response.providerMessageId });
           evolution.push(response);
-
-          if (step.type === 'document' && step.approvedData === true && resolved) {
-            try {
-              const conversations = await LIVE_DEPS.readConversations();
-              const conversation = conversations.find((item) => item.providerConversationId === number);
-              if (conversation) {
-                const attachment: WhatsappAttachment = {
-                  id: LIVE_DEPS.id(),
-                  kind: 'document',
-                  mimeType: step.mimetype || 'application/pdf',
-                  fileName: step.fileName || `${messageQuotationId}.pdf`,
-                  mediaUrl: sanitizeWhatsappMediaUrl(context.link, { applicationOrigin: baseUrl }),
-                  caption: step.caption || '',
-                  origin: 'internal_generated',
-                  documentRole: 'quotation_pdf',
-                  quotationId: resolved.quotationUuid,
-                  quotationBusinessNumber: resolved.businessNumber,
-                  leadId: null,
-                  customerId: null,
-                };
-                await upsertWhatsappMessages(conversation.id, [{
-                  direction: 'outbound',
-                  fromMe: true,
-                  type: 'document',
-                  body: step.caption || '',
-                  attachments: [attachment],
-                  timestamp: new Date().toISOString(),
-                }]);
-              }
-            } catch (error) {
-              console.error(
-                '[send-whatsapp] persistence failed:',
-                error instanceof Error ? error.name : typeof error,
-              );
-            }
-          }
         }
       }
 

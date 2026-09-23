@@ -29,7 +29,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 
 ## Capabilities and Constraints
 
-- Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Auto, WhatsApp, Envios WhatsApp, Dashboard, Pedidos, CRM, Orçamentos, Produtos, Clientes, Comunicação, Configurações, telas de detalhe e orçamento manual.
+- Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Atendimento, Novo orçamento (Auto e manual), Orçamentos, Comercial, Pedidos, Clientes, Catálogo, Envios, Resultados, Configurações e telas de detalhe.
 - Evolution API é o único transporte de WhatsApp; sem fallbacks de provedor/transporte/persistência novos.
 - Sem biblioteca de estado global; preferência por estado local/contexto.
 - Interface do sketch V01: workspace escuro, navegação lateral clara e uma única aparência.

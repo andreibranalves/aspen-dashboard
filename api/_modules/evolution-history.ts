@@ -90,7 +90,7 @@ export async function evolutionRequest(
       throw createHttpError(
         response.status,
         'Erro ao sincronizar conversas do WhatsApp.',
-        `[whatsapp-conversations] ${path} HTTP ${response.status}`
+        `[evolution-history] ${path} HTTP ${response.status}`
       );
     }
     return data;
@@ -100,13 +100,13 @@ export async function evolutionRequest(
       throw createHttpError(
         504,
         'Tempo limite ao sincronizar conversas do WhatsApp.',
-        `[whatsapp-conversations] ${path} timeout`
+        `[evolution-history] ${path} timeout`
       );
     }
     throw createHttpError(
       502,
       'Falha ao conectar com o WhatsApp. Verifique a instância da Evolution API.',
-      `[whatsapp-conversations] ${path} fetch failed`
+      `[evolution-history] ${path} fetch failed`
     );
   } finally {
     clearTimeout(timer);
