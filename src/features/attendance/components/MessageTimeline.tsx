@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import type { AttendanceMessage } from '@/lib/api/attendanceApi';
 import { deliveryLabel, MESSAGE_TYPE_LABELS } from '@/features/attendance/attendanceLabels';
 
-export type MessageActionName = 'cancel' | 'confirm_sent' | 'confirm_not_sent';
+export type MessageActionName = 'cancel' | 'confirm_sent' | 'confirm_not_sent' | 'resend' | 'resend_uncertain';
 
 interface MessageTimelineProps {
   messages: AttendanceMessage[];
@@ -33,6 +33,7 @@ function MessageBubble({
   const delivery = deliveryLabel(message);
   const cancellable = message.outboxState === 'queued' || message.outboxState === 'retry_scheduled';
   const reviewable = message.outboxState === 'needs_review';
+  const resendable = message.outboxState === 'failed' || message.outboxState === 'cancelled';
   return (
     <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
       <div
@@ -44,13 +45,13 @@ function MessageBubble({
       >
         {typeLabel && <p className="text-xs font-semibold italic opacity-80">{typeLabel}</p>}
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-        <p className="mt-1 text-right text-[11px] opacity-70">
+        <p className="mt-1 text-right text-xs opacity-70">
           <span className="sr-only">{outbound ? 'Enviada às ' : 'Recebida às '}</span>
           {timeFormat.format(new Date(message.timestamp))}
-          {delivery && <span> · {delivery.text}</span>}
+          {delivery && <span> · {delivery}</span>}
         </p>
       </div>
-      {(cancellable || reviewable) && (
+      {(cancellable || reviewable || resendable) && (
         <div className="mt-1 flex flex-wrap justify-end gap-1">
           {cancellable && (
             <Button variant="ghost" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'cancel')}>
@@ -65,7 +66,15 @@ function MessageBubble({
               <Button variant="outline" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'confirm_not_sent')}>
                 Não foi enviada
               </Button>
+              <Button variant="ghost" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'resend_uncertain')}>
+                Enviar de novo
+              </Button>
             </>
+          )}
+          {resendable && (
+            <Button variant="ghost" size="xs" disabled={actionPending} onClick={() => onAction(message.id, 'resend')}>
+              Reenviar
+            </Button>
           )}
         </div>
       )}

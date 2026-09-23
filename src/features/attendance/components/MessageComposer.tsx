@@ -22,6 +22,8 @@ interface PendingSend {
 interface MessageComposerProps {
   conversation: AttendanceConversation;
   onSent: (result: SendResult) => void;
+  /** Text of an earlier reply copied back for an explicit new attempt. */
+  prefill: { text: string; token: number } | null;
 }
 
 const draftKey = (id: string) => `aspen-attendance-draft:${id}`;
@@ -53,7 +55,7 @@ function blockedReason(conversation: AttendanceConversation): string | null {
   return null;
 }
 
-export default function MessageComposer({ conversation, onSent }: MessageComposerProps) {
+export default function MessageComposer({ conversation, onSent, prefill }: MessageComposerProps) {
   const conversationId = conversation.id;
   const [draft, setDraft] = useState(() => readSession<string>(draftKey(conversationId)) || '');
   const [pending, setPending] = useState<PendingSend | null>(() => readSession<PendingSend>(pendingKey(conversationId)));
@@ -132,10 +134,23 @@ export default function MessageComposer({ conversation, onSent }: MessageCompose
     if (readSession<PendingSend>(pendingKey(conversationId))) void recover();
   }, [conversationId, recover]);
 
-  const updateDraft = (value: string) => {
-    setDraft(value);
-    writeSession(draftKey(conversationId), value);
-  };
+  const updateDraft = useCallback(
+    (value: string) => {
+      setDraft(value);
+      writeSession(draftKey(conversationId), value);
+    },
+    [conversationId]
+  );
+
+  useEffect(() => {
+    if (!prefill) return;
+    // Never overwrite what the operator is typing: append instead.
+    setDraft((current) => {
+      const next = current.trim() ? `${current}\n\n${prefill.text}` : prefill.text;
+      writeSession(draftKey(conversationId), next);
+      return next;
+    });
+  }, [prefill, conversationId]);
 
   const canSend = !blocked && !sending && !pending && draft.trim().length > 0 && draft.length <= MAX_REPLY_CHARS;
 

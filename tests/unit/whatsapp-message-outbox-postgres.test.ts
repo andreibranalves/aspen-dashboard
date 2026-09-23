@@ -319,3 +319,71 @@ test('the sweep dispatches only old intents and stops before the budget runs out
   assert.ok(calls.includes('velha'));
   assert.equal((await repository.findByMessageId(old.record.messageId))?.state, 'provider_accepted');
 });
+
+test('the same key raced by two requests yields one intent and an idempotent answer', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const { conversationId } = await conversation();
+  const clientRequestId = randomUUID();
+  const results = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      repository.createIntent({ clientRequestId, conversationId, expectedIdentityVersion: 1, body: 'corrida' }),
+    ),
+  );
+  assert.equal(new Set(results.map((result) => result.record.messageId)).size, 1);
+  assert.equal(results.filter((result) => result.created).length, 1);
+});
+
+test('receipts folded concurrently with acceptance never deadlock or duplicate', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const { attendance, conversationId, instance } = await conversation();
+  for (let round = 0; round < 8; round += 1) {
+    const { record } = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: `c${round}` });
+    const providerId = `prov-${randomUUID()}`;
+    const claimed = await repository.claim(record.id, { leaseMs: 45_000 });
+    await repository.markTransportStarted(record.id, claimed!.leaseToken);
+    await sql`INSERT INTO evolution_receipt_inbox (id, provider_message_id, status, received_at) VALUES (${randomUUID()}, ${providerId}, 'SERVER_ACK', now())`;
+    await Promise.all([
+      attendance.ingestConversation({
+        instance,
+        providerConversationId: `${PHONE}@s.whatsapp.net`,
+        origin: 'live',
+        contactName: null,
+        resolveIdentity: (stored) => stored!,
+        messages: [{ providerMessageId: providerId, direction: 'outbound', messageType: 'text', body: `c${round}`, preview: 'c', providerTimestamp: new Date() }],
+      }),
+      repository.applyReceipts(providerId),
+      repository.markAccepted(record.id, claimed!.leaseToken, providerId),
+    ]);
+    await repository.applyReceipts(providerId);
+    const outbound = (await timeline(conversationId)).filter((item) => item.body === `c${round}`);
+    assert.equal(outbound.length, 1, `round ${round}: one bubble`);
+    assert.equal(outbound[0].deliveryStatus, 'server_ack');
+  }
+});
+
+test('a late provider answer after the lease expired into review is still recorded', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const { conversationId } = await conversation();
+  const { record } = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'tarde' });
+  const past = new Date(Date.now() - 10 * 60_000);
+  const claimed = await repository.claim(record.id, { leaseMs: 1, now: past });
+  await repository.markTransportStarted(record.id, claimed!.leaseToken, past);
+  await repository.recoverExpiredLeases(new Date());
+  assert.equal((await repository.findByMessageId(record.messageId))?.state, 'needs_review');
+
+  const accepted = await repository.markAccepted(record.id, claimed!.leaseToken, 'prov-late');
+  assert.equal(accepted?.state, 'provider_accepted');
+  assert.equal(accepted?.providerMessageId, 'prov-late');
+});
+
+test('receipts consumed by an attendance message stop counting as pending in the inbox', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const { conversationId } = await conversation();
+  const { record } = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'inbox' });
+  const providerId = `prov-${randomUUID()}`;
+  await dispatchOutboxMessage(record.id, { repository, send: accepting(providerId) });
+  await sql`INSERT INTO evolution_receipt_inbox (id, provider_message_id, status, received_at) VALUES (${randomUUID()}, ${providerId}, 'DELIVERY_ACK', now())`;
+  await repository.applyReceipts(providerId);
+  const [{ pending }] = await sql`SELECT count(*)::int AS pending FROM evolution_receipt_inbox WHERE provider_message_id = ${providerId} AND applied_at IS NULL`;
+  assert.equal(pending, 0);
+});

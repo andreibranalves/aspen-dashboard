@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type UIEvent } from 'react';
 import { ArrowDown, ArrowLeft, MessagesSquare } from 'lucide-react';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import EmptyState from '@/components/shared/EmptyState';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ErrorState from '@/components/shared/ErrorState';
@@ -116,6 +117,8 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<{ text: string; token: number } | null>(null);
+  const [confirmResend, setConfirmResend] = useState<string | null>(null);
   const [hasUnseenBelow, setHasUnseenBelow] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -199,6 +202,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   // ── Selected conversation ──────────────────────────────────────────
   const loadThread = useCallback(async (conversationId: string) => {
     setThread(emptyThread(conversationId));
+    setPrefill(null);
     setHasUnseenBelow(false);
     setStatusNotice(null);
     nearBottomRef.current = true;
@@ -369,7 +373,20 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
     }
   };
 
+  const copyForResend = (messageId: string) => {
+    const source = threadRef.current?.messages.find((message) => message.id === messageId);
+    if (source?.body) setPrefill({ text: source.body, token: Date.now() });
+  };
+
   const runAction = async (messageId: string, action: MessageActionName) => {
+    if (action === 'resend') {
+      copyForResend(messageId);
+      return;
+    }
+    if (action === 'resend_uncertain') {
+      setConfirmResend(messageId);
+      return;
+    }
     setActionPending(messageId);
     setStatusNotice(null);
     try {
@@ -519,7 +536,18 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                   <ArrowDown aria-hidden="true" /> Novas mensagens
                 </Button>
               )}
-              <MessageComposer key={conversation.id} conversation={conversation} onSent={onSent} />
+              <MessageComposer key={conversation.id} conversation={conversation} onSent={onSent} prefill={prefill} />
+              <ConfirmDialog
+                open={Boolean(confirmResend)}
+                title="Enviar de novo?"
+                message="O envio anterior pode ter chegado ao cliente. Enviar de novo pode duplicar a mensagem."
+                confirmLabel="Copiar para a resposta"
+                onConfirm={() => {
+                  if (confirmResend) copyForResend(confirmResend);
+                  setConfirmResend(null);
+                }}
+                onCancel={() => setConfirmResend(null)}
+              />
             </>
           )}
         </section>

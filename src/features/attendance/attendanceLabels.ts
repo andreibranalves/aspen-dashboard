@@ -39,41 +39,34 @@ export const MESSAGE_TYPE_LABELS: Record<Exclude<AttendanceMessageType, 'text'>,
   unsupported: 'Tipo de mensagem não suportado',
 };
 
-export type DeliveryTone = 'neutral' | 'warning' | 'destructive';
-
 const FAILURE_LABELS: Record<string, string> = {
-  DESTINATION_CHANGED: 'Não enviada: o destinatário mudou. Revise e envie de novo.',
+  DESTINATION_CHANGED: 'Não enviada: o destinatário mudou.',
   EXTERNAL_WRITES_DISABLED: 'Não enviada: envio desativado neste ambiente.',
-  CONFIRMED_NOT_SENT: 'Não enviada (confirmado).',
 };
 
 /** Sending state shown under an outbound bubble; never promises delivery. */
-export function deliveryLabel(message: AttendanceMessage): { text: string; tone: DeliveryTone } | null {
+export function deliveryLabel(message: AttendanceMessage): string | null {
   if (message.direction !== 'outbound') return null;
   const receipt =
-    message.deliveryStatus === 'read'
-      ? 'Lida'
-      : message.deliveryStatus === 'delivered'
-        ? 'Entregue'
-        : null;
+    message.deliveryStatus === 'read' ? 'Lida' : message.deliveryStatus === 'delivered' ? 'Entregue' : null;
   switch (message.outboxState) {
     case 'queued':
     case 'dispatching':
-      return { text: 'Enviando…', tone: 'neutral' };
+      return 'Enviando…';
     case 'retry_scheduled':
-      return { text: 'Nova tentativa agendada', tone: 'warning' };
+      return 'Nova tentativa agendada';
     case 'failed':
-      return {
-        text: (message.failureCode && FAILURE_LABELS[message.failureCode]) || 'Não enviada.',
-        tone: 'destructive',
-      };
+      if (message.resolution === 'confirmed_not_sent') return 'Não enviada (confirmado por você)';
+      return (message.failureCode && FAILURE_LABELS[message.failureCode]) || 'Não enviada';
     case 'needs_review':
-      return { text: 'Envio não confirmado: confira no WhatsApp.', tone: 'warning' };
+      return 'Envio não confirmado: confira no WhatsApp';
     case 'cancelled':
-      return { text: 'Cancelada', tone: 'neutral' };
+      return 'Cancelada';
     case 'provider_accepted':
-      return { text: receipt || 'Aceita pelo WhatsApp', tone: 'neutral' };
+      // An operator finding is not a provider fact.
+      if (message.resolution === 'confirmed_sent') return receipt || 'Enviada (confirmado por você)';
+      return receipt || 'Aceita pelo WhatsApp';
     default:
-      return receipt ? { text: receipt, tone: 'neutral' } : null;
+      return receipt;
   }
 }

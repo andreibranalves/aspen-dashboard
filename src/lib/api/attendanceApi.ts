@@ -40,6 +40,7 @@ export interface AttendanceMessage {
   deliveryStatus: 'server_ack' | 'delivered' | 'read' | 'error' | null;
   outboxState: OutboxState | null;
   failureCode: string | null;
+  resolution: 'confirmed_sent' | 'confirmed_not_sent' | null;
   supersededBy: string | null;
 }
 

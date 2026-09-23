@@ -103,6 +103,7 @@ function projectMessage(record: WhatsappMessageRecord) {
     deliveryStatus: record.deliveryStatus,
     outboxState: record.outboxState,
     failureCode: record.failureCode,
+    resolution: record.resolution,
     supersededBy: record.supersededBy,
   };
 }

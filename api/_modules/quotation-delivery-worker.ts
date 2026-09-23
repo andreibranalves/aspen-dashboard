@@ -133,10 +133,11 @@ export async function handler(
     dependencies.sweepMessages || ((deadlineAt: number) => sweepOperatorMessages({ deadlineAt, clock }));
   try {
     const result = await processDue(QUOTATION_DELIVERY_WORKER_BATCH_SIZE);
-    // The quotation batch always runs first and unchanged; the message sweep
-    // only transports while a full timeout still fits in the remaining budget.
-    await sweepAfterBatch(sweepMessages, startedAt);
+    // The quotation batch always runs first and unchanged. The DB-only
+    // webhook-effects drain keeps its time before the message sweep, which
+    // only transports while a full timeout still fits in what remains.
     await drainAfterBatch(drainEffects, startedAt, clock);
+    await sweepAfterBatch(sweepMessages, startedAt);
     if (!validResult(result)) {
       await recordResult(recordRun, { result: 'failure' });
       return json(503, { error: 'Não foi possível processar a fila de entregas. Tente novamente.' });

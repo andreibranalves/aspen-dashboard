@@ -82,6 +82,8 @@ export interface WhatsappMessageRecord {
   /** Operator reply lifecycle; null for messages that did not come from the outbox. */
   outboxState: string | null;
   failureCode: string | null;
+  /** Operator finding on an uncertain send; not a provider fact. */
+  resolution: string | null;
   /** Set on an echo merged into an operator reply; clients drop it. */
   supersededBy: string | null;
 }
@@ -172,6 +174,7 @@ const messageColumns = {
   supersededBy: messages.supersededBy,
   outboxState: whatsappMessageOutbox.state,
   failureCode: whatsappMessageOutbox.failureCode,
+  resolution: whatsappMessageOutbox.resolution,
 };
 
 function toConversation(row: Record<string, unknown>): WhatsappConversationRecord {
@@ -205,6 +208,7 @@ function toMessage(row: Record<string, unknown>): WhatsappMessageRecord {
     deliveryStatus: (row.deliveryStatus as WhatsappMessageRecord['deliveryStatus']) ?? null,
     outboxState: (row.outboxState as string | null) ?? null,
     failureCode: (row.failureCode as string | null) ?? null,
+    resolution: (row.resolution as string | null) ?? null,
     supersededBy: (row.supersededBy as string | null) ?? null,
   };
 }

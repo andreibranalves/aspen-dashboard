@@ -170,7 +170,7 @@ test('worker drains pending webhook effects only after the quotation batch and w
   const result = await rawWorker(event({ authorization: `Bearer ${cronSecret}` }), deps);
   assert.equal(result.statusCode, 200);
   assert.deepEqual(JSON.parse(result.body || '{}'), { processed: 1, remaining: false });
-  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`, 'sweep:50000', 'drain:50000']);
+  assert.deepEqual(order, [`batch:${QUOTATION_DELIVERY_WORKER_BATCH_SIZE}`, 'drain:50000', 'sweep:50000']);
 
   order.length = 0;
   deps.processDue = async (limit: number) => {

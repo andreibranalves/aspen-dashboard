@@ -145,6 +145,11 @@ function toRecord(row: typeof outbox.$inferSelect): OutboxRecord {
   };
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  const cause = (error as { cause?: unknown })?.cause ?? error;
+  return (cause as { code?: unknown })?.code === '23505';
+}
+
 function preview(body: string): string {
   const text = body.replace(/\s+/g, ' ').trim();
   return text.length > 280 ? `${text.slice(0, 279)}…` : text;
@@ -183,6 +188,92 @@ async function receiptStatus(tx: Transaction, providerMessageId: string): Promis
 export function createPostgresWhatsappMessageOutboxRepository(
   getDb: DatabaseProvider = getDatabase,
 ): WhatsappMessageOutboxRepository {
+  async function createIntentOnce(input: CreateIntentInput): Promise<{ record: OutboxRecord; created: boolean }> {
+    const now = input.now || new Date();
+    return getDb().transaction(async (tx) => {
+      const [conversation] = await tx
+        .select()
+        .from(conversations)
+        .where(eq(conversations.id, input.conversationId))
+        .for('update');
+      if (!conversation) throw new OutboxIntentRefused('conversation_not_found');
+
+      const [existing] = await tx.select().from(outbox).where(eq(outbox.clientRequestId, input.clientRequestId));
+      if (existing) {
+        // The client never names the destination: it is fixed by the
+        // identity version, so the recorded destination completes the print.
+        const same =
+          existing.fingerprint ===
+          outboxFingerprint({
+            conversationId: input.conversationId,
+            destinationPhone: existing.destinationPhone,
+            identityVersion: input.expectedIdentityVersion,
+            body: input.body,
+          });
+        if (!same) throw new OutboxIntentRefused('idempotency_conflict');
+        return { record: toRecord(existing), created: false };
+      }
+
+      if (conversation.identityStatus === 'conflict') throw new OutboxIntentRefused('identity_conflict');
+      const phone = conversation.canonicalPhone || '';
+      if (!phone || conversation.identityStatus === 'unresolved') {
+        throw new OutboxIntentRefused('identity_unresolved');
+      }
+      if (conversation.identityVersion !== input.expectedIdentityVersion) {
+        throw new OutboxIntentRefused('identity_changed');
+      }
+
+      const revision = Number(conversation.revision) + 1;
+      const messageId = randomUUID();
+      await tx.insert(messages).values({
+        id: messageId,
+        conversationId: conversation.id,
+        providerMessageId: null,
+        direction: 'outbound',
+        messageType: 'text',
+        body: input.body,
+        origin: 'operator',
+        providerTimestamp: now,
+        ingestedAt: now,
+        createdRevision: revision,
+        revision,
+      });
+      const [created] = await tx
+        .insert(outbox)
+        .values({
+          id: randomUUID(),
+          messageId,
+          conversationId: conversation.id,
+          clientRequestId: input.clientRequestId,
+          fingerprint: outboxFingerprint({
+            conversationId: conversation.id,
+            destinationPhone: phone,
+            identityVersion: conversation.identityVersion,
+            body: input.body,
+          }),
+          destinationPhone: phone,
+          identityVersion: conversation.identityVersion,
+          body: input.body,
+          state: 'queued',
+          nextAttemptAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      await tx
+        .update(conversations)
+        .set({
+          revision,
+          lastMessageAt: now,
+          lastMessagePreview: preview(input.body),
+          lastMessageDirection: 'outbound',
+          updatedAt: now,
+        })
+        .where(eq(conversations.id, conversation.id));
+      return { record: toRecord(created), created: true };
+    });
+  }
+
   async function transitionByMessage(
     messageId: string,
     allowed: OutboxState[],
@@ -205,83 +296,14 @@ export function createPostgresWhatsappMessageOutboxRepository(
 
   return {
     async createIntent(input) {
-      const now = input.now || new Date();
-      return getDb().transaction(async (tx) => {
-        const [conversation] = await tx
-          .select()
-          .from(conversations)
-          .where(eq(conversations.id, input.conversationId))
-          .for('update');
-        if (!conversation) throw new OutboxIntentRefused('conversation_not_found');
-
-        const [existing] = await tx.select().from(outbox).where(eq(outbox.clientRequestId, input.clientRequestId));
-        if (existing) {
-          const same =
-            existing.conversationId === input.conversationId &&
-            existing.identityVersion === input.expectedIdentityVersion &&
-            existing.body === input.body;
-          if (!same) throw new OutboxIntentRefused('idempotency_conflict');
-          return { record: toRecord(existing), created: false };
-        }
-
-        if (conversation.identityStatus === 'conflict') throw new OutboxIntentRefused('identity_conflict');
-        const phone = conversation.canonicalPhone || '';
-        if (!phone || conversation.identityStatus === 'unresolved') {
-          throw new OutboxIntentRefused('identity_unresolved');
-        }
-        if (conversation.identityVersion !== input.expectedIdentityVersion) {
-          throw new OutboxIntentRefused('identity_changed');
-        }
-
-        const revision = Number(conversation.revision) + 1;
-        const messageId = randomUUID();
-        await tx.insert(messages).values({
-          id: messageId,
-          conversationId: conversation.id,
-          providerMessageId: null,
-          direction: 'outbound',
-          messageType: 'text',
-          body: input.body,
-          origin: 'operator',
-          providerTimestamp: now,
-          ingestedAt: now,
-          createdRevision: revision,
-          revision,
-        });
-        const [created] = await tx
-          .insert(outbox)
-          .values({
-            id: randomUUID(),
-            messageId,
-            conversationId: conversation.id,
-            clientRequestId: input.clientRequestId,
-            fingerprint: outboxFingerprint({
-              conversationId: conversation.id,
-              destinationPhone: phone,
-              identityVersion: conversation.identityVersion,
-              body: input.body,
-            }),
-            destinationPhone: phone,
-            identityVersion: conversation.identityVersion,
-            body: input.body,
-            state: 'queued',
-            nextAttemptAt: now,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning();
-        await tx
-          .update(conversations)
-          .set({
-            revision,
-            lastMessageAt: now,
-            lastMessagePreview: preview(input.body),
-            lastMessageDirection: 'outbound',
-            updatedAt: now,
-          })
-          .where(eq(conversations.id, conversation.id));
-        return { record: toRecord(created), created: true };
-      });
+      try {
+        return await createIntentOnce(input);
+      } catch (error) {
+        // Two requests with the same key raced past the lookup; the loser
+        // re-reads the committed intent and gets the normal idempotent answer.
+        if (isUniqueViolation(error)) return createIntentOnce(input);
+        throw error;
+      }
     },
 
     async findByClientRequestId(clientRequestId) {
@@ -353,10 +375,25 @@ export function createPostgresWhatsappMessageOutboxRepository(
 
     async markAccepted(id, leaseToken, providerMessageId, now = new Date()) {
       return getDb().transaction(async (tx) => {
+        // A late acceptance after the lease expired into review is still the
+        // provider's real answer for the only transport that ever started.
         const [row] = await tx
           .select()
           .from(outbox)
-          .where(and(eq(outbox.id, id), eq(outbox.leaseToken, leaseToken), eq(outbox.state, 'dispatching')))
+          .where(
+            and(
+              eq(outbox.id, id),
+              or(
+                and(eq(outbox.leaseToken, leaseToken), eq(outbox.state, 'dispatching')),
+                and(
+                  eq(outbox.state, 'needs_review'),
+                  eq(outbox.failureCode, 'LEASE_EXPIRED_AFTER_TRANSPORT'),
+                  isNull(outbox.providerMessageId),
+                  isNull(outbox.resolution),
+                ),
+              ),
+            ),
+          )
           .for('update');
         if (!row) return null;
         // Lock the conversation first so the echo ingestion cannot interleave.
@@ -496,7 +533,7 @@ export function createPostgresWhatsappMessageOutboxRepository(
     async applyReceipts(providerMessageId) {
       return getDb().transaction(async (tx) => {
         const targets = await tx
-          .select({ id: messages.id, conversationId: messages.conversationId, deliveryStatus: messages.deliveryStatus })
+          .select({ id: messages.id, conversationId: messages.conversationId })
           .from(messages)
           .where(
             and(
@@ -510,14 +547,30 @@ export function createPostgresWhatsappMessageOutboxRepository(
         if (!status) return 0;
         let changed = 0;
         for (const target of targets) {
-          const current = target.deliveryStatus as DeliveryStatus | null;
+          // Same lock order as acceptance and ingestion: conversation first.
+          await tx
+            .select({ id: conversations.id })
+            .from(conversations)
+            .where(eq(conversations.id, target.conversationId))
+            .for('update');
+          const [current] = await tx
+            .select({ deliveryStatus: messages.deliveryStatus, providerMessageId: messages.providerMessageId })
+            .from(messages)
+            .where(eq(messages.id, target.id));
+          if (current?.providerMessageId !== providerMessageId) continue;
+          const known = current.deliveryStatus as DeliveryStatus | null;
           // Receipts only move forward; a late or error receipt never regresses.
-          if (current && DELIVERY_RANK[current] >= DELIVERY_RANK[status]) continue;
-          if (current && status === 'error') continue;
+          if (known && (status === 'error' || DELIVERY_RANK[known] >= DELIVERY_RANK[status])) continue;
           await tx.update(messages).set({ deliveryStatus: status }).where(eq(messages.id, target.id));
           await touchMessages(tx, target.conversationId, [target.id], new Date());
           changed += 1;
         }
+        // Receipts of attendance messages are consumed here; the quotation
+        // correlation never matches them and must not count them as pending.
+        await tx
+          .update(evolutionReceiptInbox)
+          .set({ appliedAt: new Date() })
+          .where(and(eq(evolutionReceiptInbox.providerMessageId, providerMessageId), isNull(evolutionReceiptInbox.appliedAt)));
         return changed;
       });
     },

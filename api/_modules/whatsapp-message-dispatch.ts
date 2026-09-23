@@ -25,7 +25,7 @@ export type SendText = (input: { phone: string; text: string }) => Promise<{ pro
 export interface DispatchDependencies {
   repository?: Pick<
     WhatsappMessageOutboxRepository,
-    'claim' | 'markTransportStarted' | 'markAccepted' | 'markFailed'
+    'claim' | 'markTransportStarted' | 'markAccepted' | 'markFailed' | 'applyReceipts'
   >;
   send?: SendText;
   now?: () => Date;
@@ -76,7 +76,17 @@ export async function dispatchOutboxMessage(
   } catch (error) {
     return repository.markFailed(claimed.id, claimed.leaseToken, { ...failureFor(error, claimed, now()), now: now() });
   }
-  return repository.markAccepted(claimed.id, claimed.leaseToken, providerMessageId, now());
+  const accepted = await repository.markAccepted(claimed.id, claimed.leaseToken, providerMessageId, now());
+  // A receipt committed between acceptance's read and its commit found no
+  // message yet; folding again after the commit closes that window.
+  if (accepted) {
+    try {
+      await repository.applyReceipts(providerMessageId);
+    } catch (error) {
+      console.error('[whatsapp-message-dispatch] receipts', error instanceof Error ? error.name : typeof error);
+    }
+  }
+  return accepted;
 }
 
 export interface SweepResult {
