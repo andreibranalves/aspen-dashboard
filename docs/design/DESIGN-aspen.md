@@ -45,8 +45,8 @@ by lint.
 | Section title | `text-base` 16px / 600 | top-level cards in a page |
 | Sub-section | `text-sm` 14px / 600 | groups inside a section card |
 | Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
-| Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb |
-| Caption | `text-xs` 12px | field labels, table headers |
+| Secondary / meta | `text-compact` 13px | page meta, page tabs, breadcrumb |
+| Caption | `text-xs` 12px | field labels, table headers, segmented tabs |
 | Badge | `text-2xs` 11px / 600 | `StatusBadge`, quality badges |
 | Micro | `text-3xs` 10px | counters, dense captions |
 
