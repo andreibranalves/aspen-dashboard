@@ -20,6 +20,7 @@ export type IdentitySource =
   | 'chat.phone'
   | 'chat.senderPn'
   | 'message.key.participant'
+  | 'message.key.remoteJidAlt'
   | 'message.from'
   | 'message.sender'
   | 'providerConversationId'
@@ -56,7 +57,8 @@ function isFromMe(message: Record<string, unknown>): boolean {
 function readHighConfidenceSources(
   chat: Record<string, unknown>,
   messages: Array<Record<string, unknown>>,
-  allowChatFields: boolean
+  allowChatFields: boolean,
+  acceptLidAlternative: boolean
 ): SourceResult[] {
   const results: SourceResult[] = [];
 
@@ -78,6 +80,18 @@ function readHighConfidenceSources(
 
       const chatSender = normalizeWhatsappPhone(chat.sender);
       if (chatSender) results.push({ phone: chatSender, source: 'chat.sender', confidence: 'high' });
+    }
+  }
+
+  // Evolution 2.3 addresses most chats by LID and carries the phone JID of the
+  // same chat in key.remoteJidAlt. It describes the chat, not the sender, so it
+  // counts in both directions; it never merges a LID and a PN conversation.
+  for (const msg of acceptLidAlternative ? messages : []) {
+    const key = (msg.key || {}) as Record<string, unknown>;
+    if (!/@lid$/i.test(String(key.remoteJid || ''))) continue;
+    const alternative = normalizeWhatsappPhoneFromRemoteJid(key.remoteJidAlt);
+    if (alternative) {
+      results.push({ phone: alternative, source: 'message.key.remoteJidAlt', confidence: 'high' });
     }
   }
 
@@ -201,13 +215,23 @@ export function resolveWhatsappIdentity(input: {
   chat: Record<string, unknown>;
   messages?: Array<Record<string, unknown>>;
   storedConversation?: Record<string, unknown> | null;
+  /**
+   * Opt-in: accept key.remoteJidAlt as the phone of a LID chat. Off by default
+   * so follow-up gating keeps its existing unresolved-LID behaviour.
+   */
+  acceptLidAlternative?: boolean;
 }): ResolvedWhatsappIdentity {
   const { chat, messages = [], storedConversation = null } = input;
   const source = input.source || 'provider';
 
   const providerConversationId = readRemoteJid(chat);
 
-  const highSources = readHighConfidenceSources(chat, messages, source === 'provider');
+  const highSources = readHighConfidenceSources(
+    chat,
+    messages,
+    source === 'provider',
+    input.acceptLidAlternative === true
+  );
   const mediumSource = readMediumConfidenceSource(chat);
 
   const fresh = bestSource(highSources, mediumSource);

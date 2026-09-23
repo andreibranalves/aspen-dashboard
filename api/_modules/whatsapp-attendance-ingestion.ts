@@ -76,6 +76,7 @@ export async function ingestWhatsappUpserts(input: IngestWhatsappUpsertsInput): 
           chat: { ...(entries.find((entry) => !entry.fromMe)?.item || entries[0].item), remoteJid },
           messages: entries.map((entry) => entry.item),
           storedConversation: stored ? { ...stored } : null,
+          acceptLidAlternative: true,
         });
         return {
           canonicalPhone: resolved.canonicalPhone,

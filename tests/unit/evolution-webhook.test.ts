@@ -621,3 +621,25 @@ test('webhook still applies effects directly when they cannot be registered, but
   assert.equal(deps.activityCalls.length, 1);
   assert.equal(deps.followUpCalls.length, 1);
 });
+
+test('webhook history resolves a LID chat phone from remoteJidAlt while follow-ups keep the unresolved LID', async () => {
+  const deps = dependencies();
+  await webhook(
+    event(
+      authorization,
+      upsertPayload(
+        upsertItem({
+          key: {
+            id: 'lid-1',
+            remoteJid: '183792384719283741@lid',
+            remoteJidAlt: '5511999990000@s.whatsapp.net',
+            fromMe: false,
+          },
+        }),
+      ),
+    ),
+    deps,
+  );
+  assert.equal(deps.historyCalls[0].resolveIdentity(null).canonicalPhone, '5511999990000');
+  assert.equal((deps.followUpCalls[0] as { identityStatus: string }).identityStatus, 'unresolved');
+});

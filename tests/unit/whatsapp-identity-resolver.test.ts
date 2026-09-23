@@ -214,6 +214,45 @@ describe('whatsapp-identity-resolver', () => {
     });
   });
 
+  describe('Evolution 2.3 LID addressing', () => {
+    it('uses key.remoteJidAlt as the phone of a LID conversation in both directions', () => {
+      for (const fromMe of [false, true]) {
+        const result = resolveWhatsappIdentity({
+          chat: { remoteJid: '183792384719283741@lid' },
+          messages: [{ key: { remoteJid: '183792384719283741@lid', remoteJidAlt: '5521981858541@s.whatsapp.net', fromMe } }],
+          acceptLidAlternative: true,
+        });
+        assert.equal(result.providerConversationId, '183792384719283741@lid');
+        assert.equal(result.canonicalPhone, '5521981858541');
+        assert.equal(result.identityStatus, 'verified');
+        assert.equal(result.identitySource, 'message.key.remoteJidAlt');
+      }
+    });
+
+    it('ignores remoteJidAlt that is not a phone JID or belongs to a PN conversation', () => {
+      const lidAlt = resolveWhatsappIdentity({
+        chat: { remoteJid: '183792384719283741@lid' },
+        messages: [{ key: { remoteJid: '183792384719283741@lid', remoteJidAlt: '99999@lid' } }],
+        acceptLidAlternative: true,
+      });
+      assert.equal(lidAlt.identityStatus, 'unresolved');
+      const pn = resolveWhatsappIdentity({
+        chat: { remoteJid: '5521981858541@s.whatsapp.net' },
+        messages: [{ key: { remoteJid: '5521981858541@s.whatsapp.net', remoteJidAlt: '5521911112222@s.whatsapp.net' } }],
+        acceptLidAlternative: true,
+      });
+      assert.equal(pn.canonicalPhone, '5521981858541');
+    });
+
+    it('keeps follow-up identity unchanged unless the alternative is explicitly accepted', () => {
+      const result = resolveWhatsappIdentity({
+        chat: { remoteJid: '183792384719283741@lid' },
+        messages: [{ key: { remoteJid: '183792384719283741@lid', remoteJidAlt: '5521981858541@s.whatsapp.net' } }],
+      });
+      assert.equal(result.identityStatus, 'unresolved');
+    });
+  });
+
   describe('fromMe normalization', () => {
     it('ignores message.from when fromMe is only set on the key', () => {
       const result = resolveWhatsappIdentity({
