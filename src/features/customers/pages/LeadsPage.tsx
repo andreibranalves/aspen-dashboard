@@ -724,7 +724,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   <TableHead>Localização</TableHead>
                   <TableHead>Orçamentos</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-44" />
+                  <TableHead className="w-48" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -795,7 +795,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />
                       </TableCell>
-                      <TableCell className="w-44 text-right">
+                      <TableCell className="w-48 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
                             variant="ghost"
