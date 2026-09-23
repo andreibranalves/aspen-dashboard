@@ -214,6 +214,8 @@ test.describe('Clientes locais @crm @smoke', () => {
       })
     ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Resumo comercial' })).toBeVisible();
+    const nextActionCard = page.locator('main section').filter({ has: page.getByRole('heading', { name: 'Próxima ação' }) });
+    await expect(nextActionCard.getByText(COMPLETE_DETAIL.deal.next_step, { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'WhatsApp' })).toHaveAttribute(
       'href',
       `https://wa.me/${CLIENT.telefone}`
@@ -229,6 +231,7 @@ test.describe('Clientes locais @crm @smoke', () => {
       page.getByRole('button', { name: 'Mais ações para Cliente com nome longo' })
     ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Atividade recente' })).toBeVisible();
+    await expect(nextActionCard.getByText(COMPLETE_DETAIL.deal.next_step, { exact: true })).toBeVisible();
     const mobileSections = await page.locator('main section h2').allTextContents();
     expect(mobileSections.indexOf('Resumo comercial')).toBeLessThan(
       mobileSections.indexOf('Atividade recente')

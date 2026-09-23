@@ -653,6 +653,9 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                       {current.deal.status && (
                         <p className="text-xs text-fg-muted">{current.deal.status}</p>
                       )}
+                      {current.deal.next_step && (
+                        <p className="break-words text-sm">{current.deal.next_step}</p>
+                      )}
                     </div>
                     <Button
                       variant="outline"
