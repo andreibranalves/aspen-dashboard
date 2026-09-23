@@ -1022,8 +1022,8 @@ function FlowPreview({ step }: { step?: FlowStep }) {
     >
       <h3 id="flow-preview-title" className="text-base font-semibold text-fg">Prévia no WhatsApp</h3>
       <p className="mt-1 text-xs text-fg-muted">{title}</p>
-      <div className="mt-5 overflow-hidden rounded-card border-[7px] border-surface-subtle bg-light-sage">
-        <div className="px-4 py-3 text-xs font-semibold text-on-solid">Aspen · prévia</div>
+      <div className="mt-5 overflow-hidden rounded-card border-[7px] border-surface-subtle bg-taupe">
+        <div className="px-4 py-3 text-xs font-semibold text-taupe-ink">Aspen · prévia</div>
         <div className="min-h-48 bg-chat-background p-3">
           <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-sm">{content}</div>
         </div>

@@ -27,6 +27,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -93,7 +94,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
   const [limit, setLimit] = useHashQueryState('limit', 10, parseQuotationLimit);
   const [totalPages, setTotalPages] = useState<number>(0);
-  const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -164,7 +164,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         }
         setData(projectedRows as QuotationRow[]);
         setTotalPages(totalPages);
-        setTotalRecords(totalRecords);
         setStatusSummary(projectedSummary);
       } catch {
         if (requestGeneration !== requestGenerationRef.current) return;
@@ -209,8 +208,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   );
 
   const onLimitChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      const newLimit = parseInt(e.target.value, 10);
+    (newLimit: number) => {
       setLimit(newLimit);
       setPage(1);
     },
@@ -229,7 +227,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     try {
       await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
       setData((prev) => prev.filter((r) => r.id !== id));
-      setTotalRecords((prev) => prev - 1);
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       toast(`Orçamento ${id} excluído.`, 'success');
     } catch (error) {
@@ -319,15 +316,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     }
   }, [someSelected]);
 
-  // Pagination helpers
-  const getPageNumbers = () => {
-    if (totalPages <= 1) return [];
-    const start = Math.max(1, page - 3);
-    const end = Math.min(totalPages, start + 6);
-    const nums = [];
-    for (let i = start; i <= end; i++) nums.push(i);
-    return nums;
-  };
   const visibleVolume = data.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
 
   const actionButtons = (row: QuotationRow, placement: 'desktop' | 'mobile') => {
@@ -694,54 +682,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       )}
 
       {!loading && !error && data.length > 0 && (
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm">
-          <label className="flex items-center gap-2 text-xs text-fg-muted">
-            Itens por página
-            <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <span className="text-xs text-fg-muted">{totalRecords} orçamento{totalRecords === 1 ? '' : 's'}</span>
-          {totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <span className="text-xs text-fg-muted">
-                Página {page} de {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => onPageChange(page - 1)}
-              >
-                ‹ Anterior
-              </Button>
-              <div className="hidden gap-1 sm:flex">
-                {getPageNumbers().map((p) => (
-                  <Button
-                    key={p}
-                    variant={p === page ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => onPageChange(p)}
-                  >
-                    {p}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => onPageChange(page + 1)}
-              >
-                Próximo ›
-              </Button>
-            </div>
-          )}
-        </footer>
+        <div className="border-t border-line pt-4"><ListPagination label="Paginação de orçamentos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={onPageChange} onLimitChange={onLimitChange} /></div>
       )}
       </section>
 

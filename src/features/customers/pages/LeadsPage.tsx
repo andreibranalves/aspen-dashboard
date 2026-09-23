@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
@@ -227,7 +228,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
   const [limit, setLimit] = useHashQueryState('limit', 10, parseLeadLimit);
   const [totalPages, setTotalPages] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,12 +285,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         }
         setData(projected.data);
         setTotalPages(projected.pagination.total_pages);
-        setTotalRecords(projected.pagination.total);
       } catch {
         if (requestGeneration !== listRequestGenerationRef.current) return;
         setData([]);
         setTotalPages(0);
-        setTotalRecords(0);
         setError('Não foi possível carregar os clientes. Tente novamente.');
       } finally {
         if (requestGeneration === listRequestGenerationRef.current) setLoading(false);
@@ -581,11 +579,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     if (pending.kind === 'row') void runToggleArchive(pending.row);
     else void runBulkArchive(pending.rows, pending.restoring);
   }, [pendingArchive, runBulkArchive, runToggleArchive]);
-
-  const pageNumbers = Array.from(
-    { length: Math.max(0, totalPages) },
-    (_, index) => index + 1
-  ).slice(Math.max(0, page - 3), page + 4);
 
   const clearFilters = () => {
     setSearch('');
@@ -924,59 +917,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       </section>
 
       {!loading && !error && data.length > 0 && (
-        <nav
-          className="flex flex-wrap items-center justify-between gap-3 text-sm"
-          aria-label="Paginação de clientes"
-        >
-          <div className="flex flex-wrap items-center gap-3 text-fg-muted">
-            <span>{totalRecords} registro{totalRecords === 1 ? '' : 's'} · Página {page} de {totalPages || 1}</span>
-            <label className="flex items-center gap-2 text-xs">Itens por página
-              <Select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página">
-                {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-              </Select>
-            </label>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => {
-                const nextPage = page - 1;
-                setPage(nextPage);
-                void fetchData(search, nextPage, status, limit);
-              }}
-            >
-              ‹ Anterior
-            </Button>
-            {pageNumbers.map((number) => (
-              <Button
-                key={number}
-                variant={number === page ? 'default' : 'outline'}
-                size="sm"
-                aria-current={number === page ? 'page' : undefined}
-                onClick={() => {
-                  setPage(number);
-                  void fetchData(search, number, status, limit);
-                }}
-              >
-                {number}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => {
-                const nextPage = page + 1;
-                setPage(nextPage);
-                void fetchData(search, nextPage, status, limit);
-              }}
-            >
-              Próximo ›
-            </Button>
-          </div>
-        </nav>
+        <ListPagination label="Paginação de clientes" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={(nextPage) => { setPage(nextPage); void fetchData(search, nextPage, status, limit); }} onLimitChange={(value) => { setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} />
       )}
 
       {selectedIds.length > 0 && (

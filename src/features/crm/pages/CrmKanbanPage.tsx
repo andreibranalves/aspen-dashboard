@@ -375,7 +375,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                 className={cn(
                   'inline-flex h-8 items-center gap-2 rounded-control px-3 text-xs transition-colors',
                   view === nextView
-                    ? 'bg-light-sage font-medium text-on-solid'
+                    ? 'bg-primary font-medium text-on-solid'
                     : 'text-fg-muted hover:bg-surface hover:text-fg'
                 )}
                 onClick={() => setView(nextView)}
@@ -746,7 +746,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               <p className="mt-2 truncate text-[11px] text-fg-muted">{deal.lead_source || 'Origem não informada'}</p>
                               <div className="mt-5 flex items-center justify-between text-[11px] text-fg-muted">
                                 <time dateTime={lastUpdate}>{lastUpdate ? daysAgo(lastUpdate) : '—'}</time>
-                                <span className="grid size-7 place-items-center rounded-full bg-light-sage text-[10px] font-bold text-on-solid">AS</span>
+                                <span className="grid size-7 place-items-center rounded-full bg-avatar-one text-[10px] font-bold text-avatar-ink">AS</span>
                               </div>
                               {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={13} aria-hidden="true" />Ver negócio</a>}
                               <details className="mt-2 text-[11px] text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full text-xs" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>

@@ -11,7 +11,7 @@ const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>
       ref={ref}
       type={type}
       className={cn(
-        'flex h-10 w-full min-w-0 rounded-control border border-border-control bg-raised px-3 py-2 text-sm leading-5 text-fg',
+        'flex h-10 w-full min-w-0 rounded-control border border-border-control bg-input-surface px-3 py-2 text-sm leading-5 text-fg',
         'placeholder:text-fg-muted',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
         'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',

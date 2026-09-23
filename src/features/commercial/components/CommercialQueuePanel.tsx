@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseE
 import {
   AlertTriangle,
   Ban,
-  ChevronLeft,
   ChevronRight,
   ExternalLink,
   ListChecks,
@@ -15,6 +14,7 @@ import {
   CircleCheck,
 } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
+import ListPagination from '@/components/shared/ListPagination';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
@@ -49,7 +49,7 @@ import {
 } from '@/lib/api/commercialQueueApi';
 import { getFollowUp, type FollowUpView } from '@/lib/api/followUpApi';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZES = [10, 25, 50, 100];
 const QUEUE_FILTERS: ReadonlyArray<[CommercialQueueFilter, string]> = [
   ['active', 'Todas'],
   ['overdue', 'Atrasadas'],
@@ -311,6 +311,7 @@ function manualContactResultLabel(value: CommercialActionHistoryEntry['resultCod
 
 export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelProps) {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [result, setResult] = useState<CommercialQueuePage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -398,7 +399,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       try {
         const next = await listCommercialQueue({
           page: requestedPage,
-          pageSize: PAGE_SIZE,
+          pageSize,
           filter: requestedFilter,
         });
         if (requestGeneration !== requestGenerationRef.current) return;
@@ -417,7 +418,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         if (requestGeneration === requestGenerationRef.current) setLoading(false);
       }
     },
-    []
+    [pageSize]
   );
 
   useEffect(() => {
@@ -436,8 +437,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const total = result?.total ?? 0;
   // The rendered page is always the one the server actually served.
   const currentPage = result?.page ?? page;
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const showPagination = !loading && !error && total > PAGE_SIZE;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const showPagination = !loading && !error && total > 0;
 
   function openClient(event: MouseEvent<HTMLAnchorElement>, clientId: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -1279,18 +1280,6 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         </Button>
       </div>
 
-      {showPagination && (
-        <nav aria-label="Paginação da fila" className="flex items-center justify-end gap-2 text-sm text-fg-muted">
-          <Button type="button" variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || currentPage <= 1}>
-            <ChevronLeft aria-hidden="true" /> Anterior
-          </Button>
-          <span aria-live="polite">Página {Math.min(currentPage, lastPage)} de {lastPage}</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => setPage((current) => Math.min(lastPage, current + 1))} disabled={loading || currentPage >= lastPage}>
-            Próxima <ChevronRight aria-hidden="true" />
-          </Button>
-        </nav>
-      )}
-
       {error && (
         <div role="alert" className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
@@ -1330,6 +1319,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             </details>
           ))}
         </div>
+      )}
+
+      {showPagination && (
+        <ListPagination label="Paginação da fila comercial" page={currentPage} limit={pageSize} pageSizes={PAGE_SIZES} hasNext={currentPage < lastPage} onPageChange={setPage} onLimitChange={(value) => { setPage(1); setPageSize(value); }} />
       )}
 
       {dialog && (

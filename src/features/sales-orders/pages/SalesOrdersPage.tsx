@@ -13,6 +13,7 @@ import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
@@ -364,8 +365,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   }, []);
 
   // ── Limit change ────────────────────────────────────────────────────────────
-  const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    const newLimit = parseInt(e.target.value, 10);
+  const onLimitChange = useCallback((newLimit: number) => {
     setLimit(newLimit);
     setPage(1);
   }, []);
@@ -688,37 +688,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
       {/* Pagination */}
       {!loading && !error && items.length > 0 && (
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-fg-muted">
-            <span>Itens por página</span>
-            <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
-              {[10, 25, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              ‹ Anterior
-            </Button>
-            <span className="px-2 text-sm text-fg-muted">Página {page}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!hasMore}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Próximo ›
-            </Button>
-          </div>
-        </div>
+        <ListPagination label="Paginação de pedidos" page={page} limit={limit} pageSizes={[10, 25, 50, 100]} hasNext={hasMore} onPageChange={setPage} onLimitChange={onLimitChange} />
       )}
 
       </section>

@@ -709,7 +709,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
             </div>
             <SectionCard title="Dados do relacionamento" className="lg:order-1">
               <div className="flex items-center gap-3 pb-2">
-                <div className="grid size-14 shrink-0 place-items-center rounded-full bg-light-sage text-sm font-semibold text-page" aria-hidden="true">{title.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div>
+                <div className="grid size-14 shrink-0 place-items-center rounded-full bg-avatar-one text-sm font-semibold text-avatar-ink" aria-hidden="true">{title.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div>
                 <div className="min-w-0"><p className="truncate text-sm font-semibold text-fg">{title}</p><p className="truncate text-xs text-fg-muted">{current.empresa && current.empresa !== title ? current.empresa : 'Cliente'}</p></div>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

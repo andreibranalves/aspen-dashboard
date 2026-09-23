@@ -98,7 +98,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
                   'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                   isActive
-                    ? 'bg-cream text-page'
+                    ? 'bg-primary-soft text-primary-soft-ink'
                     : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >

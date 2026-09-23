@@ -1,5 +1,5 @@
 /*
- * Aspen sketch V01 foundation.
+ * Aspen Órbita color foundation.
  * Canonical semantic tokens live here; compatibility aliases remain until all
  * repository consumers migrate to the canonical names.
  */
@@ -12,42 +12,67 @@
 
 @layer base {
   :root {
-    /* Aspen sketch V01: dark workspace, white navigation shell, sage actions. */
-    --canvas: 221 221 221;
+    /* Órbita dark palette. Light mode overrides only colors below. */
+    color-scheme: dark;
+    --canvas: 229 229 229;
     --page: 13 13 13;
-    --surface: 20 20 20;
-    --surface-subtle: 32 32 32;
-    --surface-hover: 39 39 37;
-    --surface-selected: 52 65 54;
-    --border-subtle: 41 41 41;
-    --border-default: 41 41 41;
-    --border-strong: 65 71 61;
-    --text-primary: 244 244 242;
-    --text-secondary: 147 147 143;
-    --text-tertiary: 169 169 163;
-    --text-disabled: 111 111 107;
-    --primary: 180 198 181;
-    --on-primary: 27 43 32;
-    --success: 173 214 177;
+    --surface: 22 22 22;
+    --surface-subtle: 36 36 36;
+    --surface-hover: 45 45 51;
+    --surface-selected: 39 49 71;
+    --border-subtle: 49 49 49;
+    --border-default: 49 49 49;
+    --border-strong: 84 84 106;
+    --border-control: 65 65 69;
+    --text-primary: 245 245 243;
+    --text-secondary: 160 160 157;
+    --text-tertiary: 184 185 197;
+    --text-disabled: 118 119 130;
+    --primary: 54 90 173;
+    --on-primary: 255 255 255;
+    --primary-soft: 227 234 247;
+    --primary-soft-ink: 23 36 59;
+    --focus: 168 203 255;
+    --success: 180 221 193;
     --success-fill: 120 167 123;
-    --on-success: 16 39 22;
-    --warning: 231 179 141;
-    --warning-fill: 198 135 82;
-    --on-warning: 48 34 21;
-    --destructive: 226 156 140;
-    --destructive-fill: 184 105 87;
+    --on-success: 25 53 36;
+    --warning: 238 212 155;
+    --warning-fill: 120 91 29;
+    --on-warning: 255 255 255;
+    --destructive: 240 176 189;
+    --destructive-fill: 150 58 82;
     --on-destructive: 255 255 255;
-    --info: 197 215 197;
-    --link: 197 215 197;
-    --primary-text: 197 215 197;
-    --border-control: 71 71 67;
-    --sage: 127 150 133;
-    --orange: 198 135 82;
-    --taupe: 164 147 137;
-    --cream: 241 227 212;
-    --light-sage: 180 198 181;
-    --chat-background: 233 240 233;
-    --rust: 184 105 87;
+    --info: 202 216 247;
+    --link: 180 199 238;
+    --primary-text: 180 199 238;
+    --sage: 128 161 212;
+    --sage-ink: 19 36 60;
+    --orange: 247 244 234;
+    --orange-ink: 39 38 55;
+    --taupe: 192 185 221;
+    --taupe-ink: 41 34 56;
+    --cream: 247 244 234;
+    --light-sage: 180 199 238;
+    --chat-background: 245 243 248;
+    --rust: 219 187 198;
+    --input-surface: 34 34 35;
+    --placeholder: 155 156 167;
+    --skeleton: 35 35 39;
+    --skeleton-mid: 45 45 51;
+    --scroll-thumb: 68 68 73;
+    --avatar-ink: 45 51 71;
+    --avatar-one: 218 229 246;
+    --avatar-two: 240 233 203;
+    --avatar-three: 222 214 236;
+    --chart-one: 54 90 173;
+    --chart-two: 117 90 157;
+    --chart-three: 117 201 200;
+    --chart-four: 247 244 234;
+    --bar-one: 54 90 173;
+    --finance-one: 192 185 221;
+    --finance-two: 117 201 200;
+    --finance-three: 247 244 234;
+    --finance-four: 128 161 212;
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -56,12 +81,12 @@
     --fg-muted: var(--text-secondary);
     --on-solid: var(--on-primary);
     --shell: 255 255 255;
-    --shell-border: 231 233 229;
-    --shell-text: 25 25 25;
-    --shell-muted: 116 119 115;
-    --shell-hover: 242 243 241;
-    --shell-active: 17 17 17;
-    --shell-primary: 96 126 101;
+    --shell-border: 231 233 240;
+    --shell-text: 26 28 33;
+    --shell-muted: 102 105 117;
+    --shell-hover: 241 241 245;
+    --shell-active: 54 90 173;
+    --shell-primary: 54 90 173;
 
     /* Standard primitive aliases. */
     --background: var(--page);
@@ -84,35 +109,39 @@
     --radius: 0.6875rem;
   }
 
-  .dark {
-    /* Sketch V01 keeps the same workspace palette regardless of preference. */
-    --page: 13 13 13;
-    --surface: 20 20 20;
-    --surface-subtle: 32 32 32;
-    --surface-hover: 39 39 37;
-    --surface-selected: 52 65 54;
-    --border-subtle: 41 41 41;
-    --border-default: 41 41 41;
-    --border-strong: 65 71 61;
-    --text-primary: 244 244 242;
-    --text-secondary: 147 147 143;
-    --text-tertiary: 169 169 163;
-    --text-disabled: 111 111 107;
-    --primary: 180 198 181;
-    --on-primary: 27 43 32;
-    --success: 173 214 177;
-    --success-fill: 120 167 123;
-    --on-success: 16 39 22;
-    --warning: 231 179 141;
-    --warning-fill: 198 135 82;
-    --on-warning: 48 34 21;
-    --destructive: 226 156 140;
-    --destructive-fill: 184 105 87;
-    --on-destructive: 255 255 255;
-    --info: 197 215 197;
-    --link: 197 215 197;
-    --primary-text: 197 215 197;
-    --border-control: 71 71 67;
+  :root[data-theme='light'] {
+    color-scheme: light;
+    --canvas: 229 230 236;
+    --page: 243 244 247;
+    --surface: 255 255 255;
+    --surface-subtle: 233 236 243;
+    --surface-hover: 245 246 250;
+    --surface-selected: 227 234 247;
+    --border-subtle: 220 224 235;
+    --border-default: 218 221 230;
+    --border-strong: 162 174 202;
+    --border-control: 198 203 216;
+    --text-primary: 36 38 53;
+    --text-secondary: 98 101 117;
+    --text-tertiary: 112 116 135;
+    --text-disabled: 148 151 166;
+    --focus: 54 90 173;
+    --success: 39 96 70;
+    --success-fill: 39 96 70;
+    --on-success: 255 255 255;
+    --warning: 120 91 29;
+    --destructive: 150 58 82;
+    --info: 54 90 173;
+    --link: 54 90 173;
+    --primary-text: 54 90 173;
+    --light-sage: 54 90 173;
+    --input-surface: 247 248 251;
+    --placeholder: 112 116 135;
+    --skeleton: 229 232 240;
+    --skeleton-mid: 243 244 248;
+    --scroll-thumb: 183 188 203;
+    --finance-one: 153 140 185;
+    --finance-three: 218 208 179;
   }
 
   * {
@@ -129,7 +158,7 @@
   }
 
   *:focus-visible {
-    outline: 2px solid rgb(var(--light-sage));
+    outline: 2px solid rgb(var(--focus));
     outline-offset: 4px;
     border-radius: inherit;
   }
@@ -156,7 +185,7 @@
     position: relative;
     overflow: hidden;
     border-radius: 6px;
-    background-color: rgb(var(--surface-subtle) / 0.55);
+    background-color: rgb(var(--skeleton));
   }
 
   .skeleton::after {
@@ -166,7 +195,7 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgb(var(--text-primary) / 0.05) 50%,
+      rgb(var(--skeleton-mid)) 50%,
       transparent 100%
     );
     transform: translateX(-100%);
@@ -184,7 +213,7 @@
     vertical-align: middle;
     height: 1lh;
     border-radius: 4px;
-    background-color: rgb(var(--surface-subtle) / 0.55);
+    background-color: rgb(var(--skeleton));
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -245,22 +274,27 @@
 }
 
 ::selection {
-  background: rgb(var(--sage) / 0.45);
+  background: rgb(var(--primary) / 0.3);
   color: rgb(var(--text-primary));
 }
 
 input,
 textarea,
 select {
-  caret-color: rgb(var(--light-sage));
+  caret-color: rgb(var(--primary));
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--placeholder));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #343434;
+  background: rgb(var(--scroll-thumb));
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4a4a47;
+  background: rgb(var(--text-secondary));
 }
 
 .aspen-workspace::-webkit-scrollbar {

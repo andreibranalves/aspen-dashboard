@@ -31,6 +31,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import { useToast } from '@/components/shared/toast';
@@ -230,8 +231,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
   );
 
   const onLimitChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const newLimit = Number(event.target.value);
+    (newLimit: number) => {
       clearPendingSearch();
       setLimit(newLimit);
       setPage(1);
@@ -265,15 +265,6 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
     setSort(DEFAULT_SORT);
     setPage(1);
   }, [clearPendingSearch, setPage, setSearch, setSort, setStatus]);
-
-  const getPageNumbers = (): number[] => {
-    if (totalPages <= 1) return [];
-    const start = Math.max(1, Math.min(page - 3, totalPages - 6));
-    const end = Math.min(totalPages, start + 6);
-    const numbers: number[] = [];
-    for (let current = start; current <= end; current += 1) numbers.push(current);
-    return numbers;
-  };
 
   // ── Selection ──
 
@@ -549,14 +540,14 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
               const state = productStatus(product);
               const name = product.nome || product.item_name || 'Produto sem nome';
               const category = product.categoria?.trim();
-              const visualTone = ['bg-sage', 'bg-orange', 'bg-taupe'][index % 3];
+              const visualTone = ['bg-sage text-sage-ink', 'bg-orange text-orange-ink', 'bg-taupe text-taupe-ink'][index % 3];
               return (
                 <article
                   key={sku}
                   data-state={isSelected ? 'selected' : undefined}
                   className="group rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
                 >
-                  <div className={`relative flex h-[110px] items-end justify-between rounded-[17px] p-4 text-on-solid ${visualTone}`}>
+                  <div className={`relative flex h-[110px] items-end justify-between rounded-[17px] p-4 ${visualTone}`}>
                     <strong className="text-[23px] font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
                     <PackageOpen size={48} strokeWidth={1.25} className="opacity-35" aria-hidden="true" />
                     {selectionMode && <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
@@ -612,41 +603,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
       )}
 
       {!loading && !error && data.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex flex-wrap items-center gap-3 text-fg-muted"><span>Página {page} de {totalPages || 1} · {totalRecords} produto{totalRecords !== 1 ? 's' : ''}</span><label className="flex items-center gap-2 text-xs">Itens por página <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</Select></label></div>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-            >
-              ‹ <span className="hidden sm:inline">Anterior</span>
-            </Button>
-            {getPageNumbers().map((number) => (
-              <Button
-                key={number}
-                variant={number === page ? 'default' : 'outline'}
-                size="sm"
-                className="hidden sm:inline-flex"
-                onClick={() => setPage(number)}
-              >
-                {number}
-              </Button>
-            ))}
-            <span className="px-2 text-xs text-fg-muted sm:hidden">
-              {page}/{totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage(page + 1)}
-            >
-              <span className="hidden sm:inline">Próximo</span> ›
-            </Button>
-          </div>
-        </div>
+        <ListPagination label="Paginação de produtos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={setPage} onLimitChange={onLimitChange} />
       )}
 
       <BulkActionBar visible={selectedCount > 0}>

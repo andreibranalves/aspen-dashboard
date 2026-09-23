@@ -8,7 +8,7 @@ interface EntityIdentityProps {
   className?: string;
 }
 
-const AVATAR_COLORS = ['bg-light-sage', 'bg-orange', 'bg-taupe'] as const;
+const AVATAR_COLORS = ['bg-avatar-one', 'bg-avatar-two', 'bg-avatar-three'] as const;
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -21,7 +21,7 @@ export default function EntityIdentity({ name, primary, secondary, className }: 
   const color = AVATAR_COLORS[(name.codePointAt(0) || 0) % AVATAR_COLORS.length];
   return (
     <div className={cn('flex min-w-0 items-center gap-2.5', className)}>
-      <span className={cn('grid size-9 shrink-0 place-items-center rounded-full text-[10px] font-bold text-on-solid', color)} aria-hidden="true">
+      <span className={cn('grid size-9 shrink-0 place-items-center rounded-full text-[10px] font-bold text-avatar-ink', color)} aria-hidden="true">
         {initials(name)}
       </span>
       <div className="min-w-0">

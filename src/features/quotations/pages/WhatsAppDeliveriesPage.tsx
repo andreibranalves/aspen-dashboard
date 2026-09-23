@@ -628,7 +628,7 @@ export default function WhatsAppDeliveriesPage() {
                 'min-h-9 rounded-control px-4 py-2 text-xs font-medium transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 activeTab === tab
-                  ? 'bg-cream text-page'
+                  ? 'bg-primary-soft text-primary-soft-ink'
                   : 'text-fg-muted hover:text-fg'
               )}
             >

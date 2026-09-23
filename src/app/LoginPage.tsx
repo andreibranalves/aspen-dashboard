@@ -1,8 +1,9 @@
 import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowRight, LockKeyhole } from 'lucide-react';
+import { ArrowRight, Moon, Sun } from 'lucide-react';
 import AspenBrand from '@/components/shared/AspenBrand';
+import { applyTheme, readTheme } from '@/lib/theme';
 
 interface LoginPageProps {
   navigate: (hash: string) => void;
@@ -30,6 +31,13 @@ export default function LoginPage({ navigate }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState(readTheme);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+    setTheme(nextTheme);
+  };
 
   // Se já tem cookie válido, redireciona
   useEffect(() => {
@@ -74,7 +82,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
     <div className="min-h-dvh bg-canvas md:p-frame">
       <main className="grid min-h-dvh items-center gap-10 bg-page p-6 text-fg md:min-h-[calc(100dvh-36px)] md:grid-cols-2 md:rounded-shell md:px-[6%]" aria-labelledby="login-title">
         <div className="max-w-lg py-8 md:p-10">
-          <AspenBrand className="invert" />
+          <AspenBrand className="dark:invert" />
           <h1 id="login-title" className="mt-10 max-w-[430px] text-[32px] font-bold leading-[1.18] tracking-[-0.04em] md:text-5xl">
             Da conversa ao próximo bom negócio.
           </h1>
@@ -88,7 +96,9 @@ export default function LoginPage({ navigate }: LoginPageProps) {
               <h2 className="text-[23px] font-bold leading-tight">Bem-vindo à Aspen</h2>
               <p className="mt-2 text-xs text-fg-muted">Entre com a senha para continuar.</p>
             </div>
-            <LockKeyhole size={20} className="text-sage" aria-hidden="true" />
+            <button type="button" onClick={toggleTheme} className="grid size-9 shrink-0 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg" aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}>
+              {theme === 'dark' ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
+            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-4">

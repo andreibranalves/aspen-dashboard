@@ -1294,7 +1294,7 @@ function CoreQuotationDetail({
             <div className="min-w-0">
               <h2 id="issued-client-title" className="text-base font-semibold text-fg">Cliente e oportunidade</h2>
               <div className="mt-5 flex items-center gap-2.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-light-sage text-[10px] font-bold text-on-solid" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-avatar-one text-[10px] font-bold text-avatar-ink" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
                 <div className="min-w-0"><p className="truncate text-sm font-medium text-fg">{data.cliente || 'Cliente não informado'}</p>{(data.email || data.telefone) && <p className="truncate text-xs text-fg-muted">{[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}</p>}</div>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Bell, ChevronDown, ChevronRight, Menu, Search } from 'lucide-react';
+import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER } from '@/app/navigation';
+import { applyTheme, readTheme } from '@/lib/theme';
 import type { BreadcrumbItem } from './Layout';
 
 export interface TopBarProps {
@@ -24,6 +25,7 @@ export default function TopBar({
   onNavigate,
 }: TopBarProps) {
   const [query, setQuery] = useState('');
+  const [theme, setTheme] = useState(readTheme);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,12 @@ export default function TopBar({
     setQuery('');
     setSearchOpen(false);
     searchRef.current?.blur();
+  };
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+    setTheme(nextTheme);
   };
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -150,14 +158,15 @@ export default function TopBar({
         </div>
         <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
         <button type="button" onClick={() => onNavigate('/crm?tab=queue')} className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg" aria-label="Abrir fila comercial"><Bell size={17} aria-hidden="true" /></button>
-        <details className="group relative text-xs font-semibold text-fg">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-control [&::-webkit-details-marker]:hidden">
-            <span className="grid size-9 place-items-center rounded-full bg-light-sage text-[10px] text-on-solid">AS</span>
-            <span className="hidden xl:inline">Equipe Aspen</span>
-            <ChevronDown size={12} className="hidden xl:block" aria-hidden="true" />
-          </summary>
-          <div className="absolute right-0 top-11 z-40 min-w-40 rounded-control border border-line bg-surface p-1 shadow-lg"><button type="button" onClick={() => onNavigate('/settings')} className="w-full rounded-control px-3 py-2 text-left text-xs hover:bg-raised">Configurações</button></div>
-        </details>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
+          title={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
+        >
+          {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
+        </button>
       </div>
     </header>
   );

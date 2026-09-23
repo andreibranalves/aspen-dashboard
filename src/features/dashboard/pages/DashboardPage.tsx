@@ -181,7 +181,7 @@ function DashboardTabs({
           onKeyDown={(event) => handleKeyDown(event, index)}
           className={`inline-flex min-h-9 items-center rounded-control px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${
             tab === option.key
-              ? 'bg-cream font-semibold text-page'
+              ? 'bg-primary-soft font-semibold text-primary-soft-ink'
               : 'text-fg-muted hover:bg-raised hover:text-fg'
           }`}
         >
@@ -214,13 +214,13 @@ function RevenueChart({
   return (
     <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
       <div
-        className="relative flex h-56 items-end justify-around gap-2 border-b border-page/20 px-3 pb-5 pl-9 pt-7"
+        className="relative flex h-56 items-end justify-around gap-2 border-b border-orange-ink/20 px-3 pb-5 pl-9 pt-7"
         style={{ minWidth: `${Math.max(180, series.items.length * 42 + 40)}px` }}
       >
-        <span className="pointer-events-none absolute left-1 top-3 text-xs text-page/70">
+        <span className="pointer-events-none absolute left-1 top-3 text-xs text-orange-ink/70">
           {formatCompactBRL(maxRevenue)}
         </span>
-        <span className="pointer-events-none absolute bottom-5 left-1 text-xs text-page/70">
+        <span className="pointer-events-none absolute bottom-5 left-1 text-xs text-orange-ink/70">
           R$ 0
         </span>
         {series.items.map((day) => {
@@ -230,17 +230,17 @@ function RevenueChart({
               key={day.date}
               className="flex min-w-6 max-w-16 flex-1 flex-col items-center justify-end gap-1"
             >
-              <span className="text-xs tabular-nums text-page/75">
+              <span className="text-xs tabular-nums text-orange-ink/75">
                 {formatCompactBRL(day.revenue)}
               </span>
               <div className="flex h-36 w-full items-end">
                 <div
-                  className="w-full rounded-t-sm bg-page/55"
+                  className="w-full rounded-t-sm bg-bar-one"
                   style={{ height: `${height}%` } as CSSProperties}
                   aria-hidden="true"
                 />
               </div>
-              <span className="whitespace-nowrap text-xs text-page/75">
+              <span className="whitespace-nowrap text-xs text-orange-ink/75">
                 {formatChartDate(day.date)}
               </span>
             </div>
@@ -291,7 +291,7 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
 function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
   const rows = data.ordersBySource?.items || [];
   const total = rows.reduce((sum, row) => sum + row.orders, 0);
-  const colors = ['rgb(var(--shell-primary))', 'rgb(var(--orange))', 'rgb(var(--taupe))', 'rgb(var(--surface-selected))', 'rgb(var(--cream))'];
+  const colors = ['rgb(var(--chart-one))', 'rgb(var(--chart-two))', 'rgb(var(--chart-three))', 'rgb(var(--chart-four))'];
   const labels: Record<string, string> = { site_form: 'Site', whatsapp: 'WhatsApp', typebot: 'Typebot', sem_origem: 'Sem origem' };
   let start = 0;
   const stops = rows.map((row, index) => {
@@ -301,7 +301,7 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
     return stop;
   });
   return (
-    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-on-solid" aria-label="Origem dos pedidos">
+    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-sage-ink" aria-label="Origem dos pedidos">
       <h2 className="text-sm font-semibold">Origem dos pedidos</h2>
       <div className="mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full" style={{ background: total > 0 ? `conic-gradient(${stops.join(', ')})` : 'rgb(var(--light-sage))' }} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
         <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
@@ -338,7 +338,7 @@ function OverviewPanel({
         </div>
         <OrderSourcesPanel data={data} />
         <section
-          className="min-h-[340px] min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-page"
+          className="min-h-[340px] min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-orange-ink"
           aria-labelledby="revenue-chart-title"
         >
           <h2 id="revenue-chart-title" className="text-base font-semibold">
@@ -440,7 +440,7 @@ function FeaturedCustomersPanel({
   const customers = data.topCustomers;
   return (
     <section
-      className="min-h-[340px] rounded-lg border border-border-subtle bg-taupe p-5 text-page [&_p]:text-page/75"
+      className="min-h-[340px] rounded-lg border border-border-subtle bg-taupe p-5 text-taupe-ink [&_p]:text-taupe-ink/75"
       aria-labelledby="featured-customers-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -451,7 +451,7 @@ function FeaturedCustomersPanel({
           type="button"
           variant="outline"
           size="sm"
-          className="border-page/25 text-page hover:bg-page/10"
+          className="border-taupe-ink/25 text-taupe-ink hover:bg-taupe-ink/10"
           onClick={onCustomers}
         >
           Ver clientes
@@ -657,10 +657,10 @@ function FinancePanel({
     ['Lucro calculado', formatBRL(summary.lucro), false],
   ] as const;
   const segments = [
-    { label: 'Custo dos produtos', value: summary.custo, color: 'bg-sage' },
-    { label: 'Anúncios', value: summary.ads, color: 'bg-orange' },
-    { label: 'Impostos', value: summary.imposto, color: 'bg-taupe' },
-    { label: 'Lucro calculado', value: Math.max(0, summary.lucro), color: 'bg-cream' },
+    { label: 'Custo dos produtos', value: summary.custo, color: 'bg-finance-one' },
+    { label: 'Anúncios', value: summary.ads, color: 'bg-finance-two' },
+    { label: 'Impostos', value: summary.imposto, color: 'bg-finance-three' },
+    { label: 'Lucro calculado', value: Math.max(0, summary.lucro), color: 'bg-finance-four' },
   ];
   return (
     <div

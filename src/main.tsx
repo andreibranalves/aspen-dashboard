@@ -1,10 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './app/App';
+import { applyTheme, readTheme } from './lib/theme';
 import './index.css';
 
-document.documentElement.classList.add('dark');
-document.documentElement.style.colorScheme = 'dark';
+applyTheme(readTheme());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

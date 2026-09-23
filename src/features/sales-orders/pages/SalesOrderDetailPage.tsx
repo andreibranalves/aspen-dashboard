@@ -205,7 +205,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         <div className="min-w-0 space-y-4">
           <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">
             <h2 id="sales-order-customer-title" className="text-base font-semibold">Cliente</h2>
-            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-light-sage text-xs font-semibold text-page" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.delivery_date && <p className="text-xs text-fg-muted">Entrega prevista: {formatSalesOrderDate(data.delivery_date)}</p>}</div></div>
+            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-avatar-one text-xs font-semibold text-avatar-ink" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.delivery_date && <p className="text-xs text-fg-muted">Entrega prevista: {formatSalesOrderDate(data.delivery_date)}</p>}</div></div>
           </section>
           <section
             className="min-w-0 rounded-card border border-line bg-surface p-5"
