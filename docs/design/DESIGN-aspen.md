@@ -48,8 +48,8 @@ for SKUs and identifiers.
 
 ### Radius roles
 
-`tailwind.config.js` replaces Tailwind's size scale with roles, so
-`rounded-md/lg/xl` do not exist. Pick by role:
+`src/index.css` defines the radius roles in `@theme inline` and clears
+Tailwind's size scale, so `rounded-md/lg/xl` do not exist. Pick by role:
 
 | Class | Value | Use |
 | --- | --- | --- |

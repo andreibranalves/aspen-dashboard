@@ -707,7 +707,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                         </div>
 
                         {isActive && step.type === STEP_TYPES.TEXT && (
-                          <div className="space-y-1.5">
+                          <div className="flex flex-col gap-1.5">
                             <label
                               htmlFor={`step-template-${step.id}`}
                               className="text-xs font-medium text-fg-muted"
@@ -730,7 +730,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                           <div className="grid gap-3 md:grid-cols-2">
                             <label
                               htmlFor={`step-source-${step.id}`}
-                              className="space-y-1.5 text-sm text-fg"
+                              className="flex flex-col gap-1.5 text-sm text-fg"
                             >
                               <span className="text-xs font-medium text-fg-muted">
                                 Formato do orçamento
@@ -749,7 +749,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                             </label>
                             <label
                               htmlFor={`step-caption-${step.id}`}
-                              className="space-y-1.5 text-sm text-fg"
+                              className="flex flex-col gap-1.5 text-sm text-fg"
                             >
                               <span className="text-xs font-medium text-fg-muted">
                                 Legenda (opcional)
@@ -776,7 +776,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                           <div className="grid gap-3 md:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
                             <label
                               htmlFor={`step-max-items-${step.id}`}
-                              className="space-y-1.5 text-sm text-fg"
+                              className="flex flex-col gap-1.5 text-sm text-fg"
                             >
                               <span className="text-xs font-medium text-fg-muted">
                                 Máx. mídias por grupo
@@ -799,7 +799,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                             </label>
                             <label
                               htmlFor={`step-caption-template-${step.id}`}
-                              className="space-y-1.5 text-sm text-fg"
+                              className="flex flex-col gap-1.5 text-sm text-fg"
                             >
                               <span className="text-xs font-medium text-fg-muted">
                                 Template de legenda (opcional)
@@ -835,7 +835,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                   <label
                     htmlFor={`flow-name-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
+                    className="flex flex-col gap-1.5 text-sm text-fg"
                   >
                     <span className="font-medium">Nome do fluxo</span>
                     <Input
@@ -847,7 +847,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   </label>
                   <label
                     htmlFor={`flow-vendor-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
+                    className="flex flex-col gap-1.5 text-sm text-fg"
                   >
                     <span className="font-medium">Vendedora</span>
                     <Input
@@ -861,7 +861,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   </label>
                   <label
                     htmlFor={`flow-delay-min-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
+                    className="flex flex-col gap-1.5 text-sm text-fg"
                   >
                     <span className="font-medium">Delay mínimo (segundos)</span>
                     <Input
@@ -877,7 +877,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   </label>
                   <label
                     htmlFor={`flow-delay-max-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
+                    className="flex flex-col gap-1.5 text-sm text-fg"
                   >
                     <span className="font-medium">Delay máximo (segundos)</span>
                     <Input
@@ -1013,7 +1013,7 @@ function FlowPreview({ step }: { step?: FlowStep }) {
       <div className="mt-5 overflow-hidden rounded-card border-[7px] border-surface-subtle bg-taupe">
         <div className="px-4 py-3 text-xs font-semibold text-taupe-ink">Aspen · prévia</div>
         <div className="min-h-48 bg-chat-background p-3">
-          <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-sm">{content}</div>
+          <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-xs">{content}</div>
         </div>
       </div>
       <p className="mt-3 text-xs text-fg-muted">{note}</p>

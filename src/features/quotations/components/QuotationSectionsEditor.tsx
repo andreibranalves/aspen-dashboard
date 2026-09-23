@@ -101,7 +101,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
               />
               Exibir seção
             </label>
-            <label className="block space-y-1.5 text-sm text-fg">
+            <label className="flex flex-col gap-1.5 text-sm text-fg">
               <span className="font-medium">Título</span>
               <Input
                 aria-label={`Título - ${label}`}
@@ -112,7 +112,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
               />
             </label>
             {body && (
-              <label className="block space-y-1.5 text-sm text-fg">
+              <label className="flex flex-col gap-1.5 text-sm text-fg">
                 <span className="font-medium">
                   {key === 'pagamento' ? 'Texto adicional' : 'Conteúdo'}
                 </span>
@@ -125,7 +125,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
               </label>
             )}
             {key === 'prazo_producao' && (
-              <label className="block space-y-1.5 text-sm text-fg">
+              <label className="flex flex-col gap-1.5 text-sm text-fg">
                 <span className="font-medium">
                   {mode === 'revision' ? 'Prazo desta revisão' : 'Conteúdo padrão'}
                 </span>

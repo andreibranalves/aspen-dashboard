@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import prettierConfig from 'eslint-config-prettier';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
+import { plugin as shadcn } from '@shadcn/lint';
 
 export default [
   {
@@ -30,7 +31,6 @@ export default [
       'scripts/**/*.{js,mjs}',
       'test_local.mjs',
       '*.config.js',
-      'tailwind.config.js',
     ],
     languageOptions: {
       globals: {
@@ -96,6 +96,9 @@ export default [
         Blob: 'readonly',
         structuredClone: 'readonly',
       },
+    },
+    plugins: {
+      shadcn,
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],

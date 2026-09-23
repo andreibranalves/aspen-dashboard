@@ -102,7 +102,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
           </div>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-4">
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5">
               <label htmlFor="login-password" className="text-sm font-medium text-fg">
                 Senha de acesso
               </label>

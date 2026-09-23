@@ -38,7 +38,7 @@ function MessageBubble({
     <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
       <div
         className={cn(
-          'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-sm',
+          'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-xs',
           outbound ? 'bg-primary-soft text-primary-soft-ink' : 'bg-surface text-fg',
           (message.outboxState === 'failed' || message.outboxState === 'cancelled') && 'opacity-70'
         )}

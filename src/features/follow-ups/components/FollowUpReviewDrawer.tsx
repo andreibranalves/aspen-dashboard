@@ -208,7 +208,7 @@ export default function FollowUpReviewDrawer({
             </div>
           </dl>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <label htmlFor="follow-up-message" className="text-sm font-medium text-fg">
               Mensagem
             </label>
@@ -224,7 +224,7 @@ export default function FollowUpReviewDrawer({
           </div>
 
           {canDismiss && (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <label htmlFor="follow-up-dismiss-reason" className="text-sm font-medium text-fg">
                 Motivo da dispensa
               </label>

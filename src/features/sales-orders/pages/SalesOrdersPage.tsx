@@ -605,7 +605,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           {items.map((row) => (
             <div
               key={row.id}
-              className="bg-surface rounded-card border border-line shadow-sm p-4 space-y-3 cursor-pointer"
+              className="bg-surface rounded-card border border-line shadow-xs p-4 space-y-3 cursor-pointer"
               tabIndex={0}
               role="link"
               aria-label={`Abrir pedido ${row.id}`}

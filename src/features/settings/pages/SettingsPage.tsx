@@ -320,7 +320,7 @@ export default function SettingsPage() {
                     <fieldset className="space-y-4">
                       <legend className="sr-only">Prazos e valores</legend>
                       <div className="grid gap-4 md:grid-cols-2">
-                        <label className="space-y-1.5 text-sm text-fg">
+                        <label className="flex flex-col gap-1.5 text-sm text-fg">
                           <span className="text-xs font-medium text-fg-muted">Validade (dias)</span>
                           <Input
                             type="number"
@@ -333,11 +333,11 @@ export default function SettingsPage() {
                             required
                           />
                         </label>
-                        <label className="space-y-1.5 text-sm text-fg">
+                        <label className="flex flex-col gap-1.5 text-sm text-fg">
                           <span className="text-xs font-medium text-fg-muted">Prazo de produção</span>
                           <Input value={form.entrega} onChange={(event) => updateField('entrega', event.target.value)} disabled={saving} aria-label="Prazo de produção padrão" />
                         </label>
-                        <label className="space-y-1.5 text-sm text-fg">
+                        <label className="flex flex-col gap-1.5 text-sm text-fg">
                           <span className="text-xs font-medium text-fg-muted">Frete padrão (R$)</span>
                           <Input
                             inputMode="decimal"
@@ -348,7 +348,7 @@ export default function SettingsPage() {
                             required
                           />
                         </label>
-                        <label className="space-y-1.5 text-sm text-fg">
+                        <label className="flex flex-col gap-1.5 text-sm text-fg">
                           <span className="text-xs font-medium text-fg-muted">Alíquota (%)</span>
                           <Input
                             inputMode="decimal"
@@ -459,7 +459,7 @@ export default function SettingsPage() {
                       Identificação da empresa
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Razão social</span>
                         <Input
                           value={form.empresa.identity.legal_name}
@@ -471,7 +471,7 @@ export default function SettingsPage() {
                           required
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">CNPJ</span>
                         <Input
                           value={form.empresa.identity.document}
@@ -483,7 +483,7 @@ export default function SettingsPage() {
                           required
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Site</span>
                         <Input
                           type="url"
@@ -495,7 +495,7 @@ export default function SettingsPage() {
                           maxLength={500}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Instagram</span>
                         <Input
                           type="url"
@@ -507,7 +507,7 @@ export default function SettingsPage() {
                           maxLength={500}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">E-mail</span>
                         <Input
                           type="email"
@@ -519,7 +519,7 @@ export default function SettingsPage() {
                           maxLength={500}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Telefone</span>
                         <Input
                           value={form.empresa.contacts.phone}
@@ -540,7 +540,7 @@ export default function SettingsPage() {
                       Dados bancários
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Banco</span>
                         <Input
                           value={form.empresa.banking.bank_name}
@@ -551,7 +551,7 @@ export default function SettingsPage() {
                           maxLength={255}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Código do banco</span>
                         <Input
                           value={form.empresa.banking.bank_code}
@@ -562,7 +562,7 @@ export default function SettingsPage() {
                           maxLength={20}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Agência</span>
                         <Input
                           value={form.empresa.banking.branch}
@@ -573,7 +573,7 @@ export default function SettingsPage() {
                           maxLength={100}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg">
                         <span className="font-medium">Conta</span>
                         <Input
                           value={form.empresa.banking.account}
@@ -584,7 +584,7 @@ export default function SettingsPage() {
                           maxLength={100}
                         />
                       </label>
-                      <label className="space-y-1.5 text-sm text-fg md:col-span-2">
+                      <label className="flex flex-col gap-1.5 text-sm text-fg md:col-span-2">
                         <span className="font-medium">Chave Pix</span>
                         <Input
                           value={form.empresa.banking.pix_key}

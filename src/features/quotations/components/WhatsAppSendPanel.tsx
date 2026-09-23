@@ -69,7 +69,7 @@ export default function WhatsAppSendPanel({
 
   return (
     <>
-      <div className="mb-3 mt-4 space-y-1" aria-busy={isPending}>
+      <div className="mb-3 mt-4 flex flex-col gap-1" aria-busy={isPending}>
         <label htmlFor={flowSelectId} className="text-xs font-medium text-fg-muted">
           Fluxo WhatsApp
         </label>

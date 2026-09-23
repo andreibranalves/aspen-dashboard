@@ -6,9 +6,151 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;450;500;550;600;650;700;750;800&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@plugin "tailwindcss-animate";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Keep semantic colors live when :root[data-theme='light'] overrides their RGB channels. */
+@theme inline {
+  --radius-*: initial;
+  --radius-none: 0;
+  --radius: 4px;
+  --radius-xs: 4px;
+  --radius-badge: 6px;
+  --radius-control: 11px;
+  --radius-nav: 14px;
+  --radius-card: 25px;
+  --radius-shell: 31px;
+  --radius-full: 9999px;
+  --font-sans: Manrope, 'Segoe UI', Arial, sans-serif;
+  --color-canvas: rgb(var(--canvas));
+  --color-sage: rgb(var(--sage));
+  --color-sage-ink: rgb(var(--sage-ink));
+  --color-light-sage: rgb(var(--light-sage));
+  --color-chat-background: rgb(var(--chat-background));
+  --color-orange: rgb(var(--orange));
+  --color-orange-ink: rgb(var(--orange-ink));
+  --color-taupe: rgb(var(--taupe));
+  --color-taupe-ink: rgb(var(--taupe-ink));
+  --color-cream: rgb(var(--cream));
+  --color-rust: rgb(var(--rust));
+  --color-primary-soft: rgb(var(--primary-soft));
+  --color-primary-soft-ink: rgb(var(--primary-soft-ink));
+  --color-input-surface: rgb(var(--input-surface));
+  --color-segment-active: rgb(var(--segment-active));
+  --color-avatar-ink: rgb(var(--avatar-ink));
+  --color-avatar-one: rgb(var(--avatar-one));
+  --color-avatar-two: rgb(var(--avatar-two));
+  --color-avatar-three: rgb(var(--avatar-three));
+  --color-bar-one: rgb(var(--bar-one));
+  --color-finance-one: rgb(var(--finance-one));
+  --color-finance-two: rgb(var(--finance-two));
+  --color-finance-three: rgb(var(--finance-three));
+  --color-finance-four: rgb(var(--finance-four));
+  --color-raised: rgb(var(--surface-subtle));
+  --color-page: rgb(var(--page));
+  --color-surface: rgb(var(--surface));
+  --color-surface-subtle: rgb(var(--surface-subtle));
+  --color-surface-hover: rgb(var(--surface-hover));
+  --color-surface-selected: rgb(var(--surface-selected));
+  --color-surface-muted: rgb(var(--surface-muted));
+  --color-border: rgb(var(--border-default));
+  --color-border-subtle: rgb(var(--border-subtle));
+  --color-border-strong: rgb(var(--border-strong));
+  --color-border-control: rgb(var(--border-control));
+  --color-text-primary: rgb(var(--text-primary));
+  --color-text-secondary: rgb(var(--text-secondary));
+  --color-text-tertiary: rgb(var(--text-tertiary));
+  --color-text-disabled: rgb(var(--text-disabled));
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--on-primary));
+  --color-success: rgb(var(--success));
+  --color-success-fill: rgb(var(--success-fill));
+  --color-success-foreground: rgb(var(--on-success));
+  --color-warning: rgb(var(--warning));
+  --color-warning-fill: rgb(var(--warning-fill));
+  --color-warning-foreground: rgb(var(--on-warning));
+  --color-destructive: rgb(var(--destructive));
+  --color-destructive-fill: rgb(var(--destructive-fill));
+  --color-destructive-foreground: rgb(var(--on-destructive));
+  --color-info: rgb(var(--info));
+  --color-info-foreground: rgb(var(--on-primary));
+  --color-link: rgb(var(--link));
+  --color-focus: rgb(var(--focus));
+  --color-primary-text: rgb(var(--primary-text));
+  --color-line: rgb(var(--line));
+  --color-shell: rgb(var(--shell));
+  --color-shell-border: rgb(var(--shell-border));
+  --color-shell-text: rgb(var(--shell-text));
+  --color-shell-muted: rgb(var(--shell-muted));
+  --color-shell-hover: rgb(var(--shell-hover));
+  --color-shell-active: rgb(var(--shell-active));
+  --color-shell-primary: rgb(var(--shell-primary));
+  --color-fg: rgb(var(--fg));
+  --color-fg-muted: rgb(var(--fg-muted));
+  --color-on-solid: rgb(var(--on-solid));
+  --color-input: rgb(var(--border-default));
+  --color-ring: rgb(var(--primary));
+  --color-background: rgb(var(--page));
+  --color-foreground: rgb(var(--text-primary));
+  --color-card: rgb(var(--surface));
+  --color-card-foreground: rgb(var(--text-primary));
+  --color-popover: rgb(var(--surface));
+  --color-popover-foreground: rgb(var(--text-primary));
+  --color-secondary: rgb(var(--surface-subtle));
+  --color-secondary-foreground: rgb(var(--text-primary));
+  --color-muted: rgb(var(--surface-subtle));
+  --color-muted-foreground: rgb(var(--text-secondary));
+  --color-accent: rgb(var(--surface-hover));
+  --color-accent-foreground: rgb(var(--text-primary));
+  --color-sidebar: rgb(var(--shell));
+  --color-sidebar-foreground: rgb(var(--text-primary));
+  --color-sidebar-hover: rgb(var(--surface-hover));
+  --color-sidebar-active: rgb(var(--surface-selected));
+  --spacing-frame: 18px;
+  --spacing-workspace: 24px;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-page-enter: page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 @layer base {
   :root {
