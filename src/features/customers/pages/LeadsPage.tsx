@@ -614,7 +614,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         title="Clientes"
         actions={
           <>
-            <span className="mr-auto hidden text-xs text-fg-muted xl:inline">O contexto do relacionamento, em um só lugar.</span>
             <ExportCsvButton resource="clients" filters={{ search, status }}>
               Exportar CSV
             </ExportCsvButton>

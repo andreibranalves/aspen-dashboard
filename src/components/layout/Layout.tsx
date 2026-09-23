@@ -137,6 +137,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   );
   const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
   const breadcrumbItems = getBreadcrumb(route, detailLabel);
+  const isQuotationComposer = ['/auto', '/novo-orcamento', '/manual'].includes(routePath(route));
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
@@ -168,7 +169,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
       />
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
         <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">
-          <div key={routePath(route)} className="relative min-h-full motion-safe:animate-page-enter">
+          <div key={routePath(route)} className={`relative min-h-full motion-safe:animate-page-enter ${isQuotationComposer ? 'flex flex-col' : ''}`}>
             <TopBar
               route={route}
               onMenuClick={toggleSidebar}
@@ -179,6 +180,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
             />
             <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
               <main
+                className={isQuotationComposer ? 'flex min-h-0 flex-1 flex-col' : undefined}
                 inert={isMobile && !sidebarCollapsed ? true : undefined}
               >
                 {children}

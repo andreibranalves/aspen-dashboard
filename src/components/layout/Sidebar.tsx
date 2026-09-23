@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AspenBrand from '@/components/shared/AspenBrand';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
@@ -121,14 +121,27 @@ export default function Sidebar({
         className={cn(
           'z-30 flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width,transform] duration-200',
           mobile ? 'fixed inset-y-0 left-0 w-[248px] rounded-none' : 'relative rounded-shell',
-          !mobile && 'w-[248px]',
+          !mobile && (collapsed ? 'w-[76px]' : 'w-[248px]'),
           mobile && collapsed && 'hidden',
           mobile && sidebarOpen && 'shadow-2xl'
         )}
       >
-        <div className="flex h-[62px] shrink-0 items-center justify-between px-6 pt-2">
+        <div className={cn('flex h-[62px] shrink-0 items-center pt-2', !mobile && collapsed ? 'justify-center px-0' : 'justify-between pl-[22px] pr-3')}>
           {!collapsed && (
             <AspenBrand />
+          )}
+          {!mobile && (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="grid size-9 shrink-0 place-items-center rounded-control text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text"
+              aria-label={collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+              title={collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+              aria-expanded={!collapsed}
+              aria-controls="aspen-sidebar"
+            >
+              {collapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+            </button>
           )}
           {mobile && sidebarOpen && (
             <button

@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   Loader2,
+  ClipboardList,
   MapPin,
   PackagePlus,
   RotateCcw,
@@ -80,6 +81,7 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import PageHeader from '@/components/shared/PageHeader';
+import EmptyState from '@/components/shared/EmptyState';
 import PageShell from '@/components/shared/PageShell';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { useToast } from '@/components/shared/toast';
@@ -1975,7 +1977,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       : undefined);
 
   return (
-    <PageShell className="min-w-0 space-y-6 overflow-x-hidden pb-10">
+    <PageShell className="min-w-0 flex min-h-0 flex-1 flex-col space-y-6 overflow-x-hidden pb-0">
       <PageHeader
         title="Novo orçamento"
         className="items-center"
@@ -2042,19 +2044,16 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:grid-cols-2">
+        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:flex-1 xl:grid-cols-2 xl:items-stretch">
           <section aria-label="Conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-fg">Comece com o pedido do cliente</h2>
+              <div className="flex items-center gap-3">
+                <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
+                <h2 className="text-base font-semibold text-fg">Pedido do cliente</h2>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
                 <Settings size={14} /> Gerenciar modelos
               </Button>
-            </div>
-            <div className="mt-6 flex items-center gap-3 text-sm font-medium text-fg">
-              <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
-              <span>Cole a conversa ou adicione uma imagem</span>
             </div>
             <div className="relative mt-4 rounded-control border border-border-control bg-raised focus-within:ring-2 focus-within:ring-focus">
               <Textarea
@@ -2098,11 +2097,13 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </div>
           </section>
 
-          <section aria-label="Resultado da conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6 xl:col-start-2 xl:row-start-1">
+          <section aria-label="Resultado da conversa" className="flex min-h-0 min-w-0 flex-col rounded-card border border-line bg-surface p-5 md:p-6 xl:col-start-2 xl:row-start-1">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold text-fg">Resultado</h2>
-                <p className="mt-1 text-sm text-fg-muted">{activeDrafts.length ? `Resultados (${activeDrafts.length})` : 'Os itens aparecerão aqui após a extração.'}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid size-7 shrink-0 place-items-center rounded-control bg-raised text-xs text-fg-muted">02</span>
+                <div>
+                  <h2 className="text-base font-semibold text-fg">Resultado</h2>
+                </div>
               </div>
               {(activeDrafts.length > 0 || pendingExtraction.length > 0) && (
                 <Button
@@ -2117,6 +2118,14 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 </Button>
               )}
             </div>
+            {activeDrafts.length === 0 && pendingExtraction.length === 0 && (
+              <EmptyState
+                icon={ClipboardList}
+                title="Nenhum orçamento na fila"
+                description="Cole um pedido e extraia os dados para preencher a fila."
+                className="min-h-0 flex-1 rounded-none bg-transparent py-6"
+              />
+            )}
             {activeDraft && (
               <SplitResultCard
                 draft={activeDraft}
