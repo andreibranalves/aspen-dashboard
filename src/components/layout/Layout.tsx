@@ -175,7 +175,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         onNavigate={onNavigate}
       />
       <div className="aspen-workspace min-h-0 min-w-0 flex-1 overflow-y-auto bg-page p-4 text-fg md:rounded-shell md:p-workspace">
-        <div className="relative min-h-full">
+        <div key={routePath(route)} className="relative min-h-full motion-safe:animate-page-enter">
           <TopBar
             route={route}
             onMenuClick={toggleSidebar}
