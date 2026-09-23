@@ -308,7 +308,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               </div>
             )}
           </aside>
-          <aside className="rounded-card border border-line bg-surface p-5" aria-label="Rastreabilidade do pedido"><h2 className="text-base font-semibold">Rastreabilidade</h2><div className="mt-5 border-l border-line pl-4 text-sm"><p className="font-medium">Pedido criado</p><p className="mt-1 text-xs text-fg-muted">{orderDate ? formatSalesOrderDate(orderDate) : 'Data não informada'}</p>{data.source_quotation && <p className="mt-5 font-medium">Origem: {data.source_quotation}</p>}{data.quotation_origin?.status === 'conflict' && <p className="mt-2 text-xs text-destructive">Origem do orçamento divergente.</p>}</div></aside>
+          <aside className="rounded-card border border-line bg-surface p-5" aria-label="Rastreabilidade do pedido"><h2 className="text-base font-semibold">Rastreabilidade</h2><div className="mt-5 border-l border-line pl-4 text-sm"><p className="font-medium">Pedido criado</p><p className="mt-1 text-xs text-fg-muted">{orderDate ? formatSalesOrderDate(orderDate) : 'Data não informada'}</p>{data.source_quotation && <p className="mt-5 font-medium">Origem: {data.source_quotation}</p>}{data.quotation_origin && <><p className="mt-5 font-medium">Origem do lead</p><p className={`mt-1 text-xs ${data.quotation_origin.status === 'conflict' ? 'text-destructive' : 'text-fg-muted'}`}>{data.quotation_origin.sourceLabel}</p></>}{data.quotation_origin?.status === 'conflict' && <p className="mt-2 text-xs text-destructive">Origem do orçamento divergente.</p>}</div></aside>
         </div>
       </div>
     </PageShell>
