@@ -201,7 +201,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       setSavedFlows(loaded);
       setSelectedFlowId(nextSelectedId);
       setExpandedFlow(nextSelectedId || null);
-      setActiveStepId(loaded.find((flow) => flow.id === nextSelectedId)?.steps.at(-1)?.id || '');
+      setActiveStepId(loaded.find((flow) => flow.id === nextSelectedId)?.steps[0]?.id || '');
     } catch (error) {
       setLoadError(errorMessage(error, 'Não foi possível carregar os fluxos.'));
     } finally {
@@ -251,7 +251,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setFlows(next);
     setSelectedFlowId(duplicate.id);
     setExpandedFlow(duplicate.id);
-    setActiveStepId(duplicate.steps.at(-1)?.id || '');
+    setActiveStepId(duplicate.steps[0]?.id || '');
     setActionError('');
     setSaveError('');
     setSuccessMsg('');
@@ -267,7 +267,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     if (selectedFlowId === flowId) {
       setSelectedFlowId(next[0]?.id || '');
       setExpandedFlow(next[0]?.id || null);
-      setActiveStepId(next[0]?.steps.at(-1)?.id || '');
+      setActiveStepId(next[0]?.steps[0]?.id || '');
     }
     setActionError('');
     setSaveError('');
@@ -373,7 +373,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setActiveStepId((current) =>
       selectedFlow.steps.some((step) => step.id === current)
         ? current
-        : selectedFlow.steps.at(-1)!.id
+        : selectedFlow.steps[0]!.id
     );
   }, [selectedFlow]);
 
@@ -381,42 +381,10 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button onClick={addFlow} size="sm">
-          <Plus size={14} aria-hidden="true" /> Novo fluxo
-        </Button>
-      </div>
-
-      {loadError && (
-        <div
-          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="font-medium">Não foi possível carregar os fluxos.</p>
-            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadFlows()}>
-              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {actionError && (
-        <div
-          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <span>{actionError}</span>
-        </div>
-      )}
-
-      {selectedFlow && <div><h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2><p className="mt-1 text-xs text-fg-muted">Sequência e prévia do fluxo selecionado.</p></div>}
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <details className="min-w-0 rounded-control border border-line bg-surface px-4 py-3 xl:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <details className="relative z-20 min-w-0 rounded-control border border-line bg-surface px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium text-fg">Fluxos cadastrados · {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}</summary>
-          <section aria-label="Fluxos cadastrados" className="mt-4 min-w-0 space-y-3">
+          <section aria-label="Fluxos cadastrados" className="mt-4 min-w-0 space-y-3 xl:absolute xl:left-0 xl:top-9 xl:w-[740px] xl:rounded-card xl:border xl:border-line xl:bg-surface xl:p-4 xl:shadow-xl">
 
           {flows.length === 0 ? (
             <EmptyState
@@ -443,7 +411,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                     onClick={() => {
                       setSelectedFlowId(flow.id);
                       setExpandedFlow(flow.id);
-                      setActiveStepId(flow.steps?.at(-1)?.id || '');
+                      setActiveStepId(flow.steps?.[0]?.id || '');
                     }}
                     className={[
                       'min-w-0 rounded-control border p-3 text-left transition-colors',
@@ -506,6 +474,39 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
           )}
           </section>
         </details>
+        <Button onClick={addFlow} size="sm">
+          <Plus size={14} aria-hidden="true" /> Novo fluxo
+        </Button>
+      </div>
+
+      {loadError && (
+        <div
+          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="font-medium">Não foi possível carregar os fluxos.</p>
+            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadFlows()}>
+              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {actionError && (
+        <div
+          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          role="alert"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+          <span>{actionError}</span>
+        </div>
+      )}
+
+      {selectedFlow && <div><h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2><p className="mt-1 text-xs text-fg-muted">Sequência e prévia do fluxo selecionado.</p></div>}
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+
 
         {selectedFlow && (
           <section
@@ -960,7 +961,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
           <FlowPreview
             step={
               selectedFlow.steps?.find((step) => step.id === activeStepId) ||
-              selectedFlow.steps?.at(-1)
+              selectedFlow.steps?.[0]
             }
           />
         )}

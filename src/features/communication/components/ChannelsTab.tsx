@@ -1,28 +1,12 @@
-// ChannelsTab — Evolution API configuration display.
-// The channel is read-only here; transport configuration remains in the environment.
-
 import { useEffect, useState } from 'react';
-import { ChevronDown, Info, KeyRound, MessageCircle, Server, ShieldCheck } from 'lucide-react';
-import { StatusBadge } from '@/components/ui/badge';
+import { ChevronDown, Info, Mail, MessageCircle } from 'lucide-react';
 import {
   fetchDeliveryDiagnostics,
   type DeliveryDiagnostics,
 } from '@/lib/api/whatsappDeliveryDiagnosticsApi';
 import { formatDateTime } from '@/lib/formatting/formatters';
 
-const CONFIGURATION_ITEMS = [
-  { name: 'EVOLUTION_BASE_URL', description: 'URL base da Evolution API', icon: Server },
-  { name: 'EVOLUTION_API_KEY', description: 'Chave de autenticação', icon: KeyRound },
-  { name: 'EVOLUTION_INSTANCE', description: 'Nome da instância', icon: MessageCircle },
-  {
-    name: 'BLOB_READ_WRITE_TOKEN',
-    description: 'Token usado pela biblioteca de mídias',
-    icon: ShieldCheck,
-  },
-] as const;
-
 export default function ChannelsTab() {
-  const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DeliveryDiagnostics | null>(null);
   const [diagnosticsError, setDiagnosticsError] = useState(false);
 
@@ -41,102 +25,50 @@ export default function ChannelsTab() {
   }, []);
 
   return (
-    <section
-      className="rounded-card bg-surface p-4 sm:p-6"
-      aria-labelledby="channels-title"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised">
-            <MessageCircle size={20} className="text-sage" aria-hidden="true" />
+    <section aria-label="Canais de comunicação" className="space-y-6">
+      <div className="grid gap-5 lg:grid-cols-2">
+        <article className="rounded-card bg-surface p-5">
+          <h2 className="text-base font-semibold text-fg">WhatsApp operacional</h2>
+          <div className="mt-5 flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-sage"><MessageCircle size={18} aria-hidden="true" /></span>
+            <div>
+              <p className="pt-1 text-xs text-fg-muted">Conexão operacional usada pelos fluxos e envios.</p>
+              <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-[11px] text-fg-muted">Estado não consultado</span>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 id="channels-title" className="text-base font-semibold text-fg">
-              WhatsApp
-            </h2>
-          </div>
-        </div>
-        <StatusBadge status="Draft" label="Somente leitura" />
-      </div>
-
-      <div className="mt-4 border-t border-line pt-4" role="status">
-        <p className="text-sm font-medium text-fg">Estado não consultado</p>
-        <p className="mt-1 text-sm text-fg-muted">
-          O painel não consulta a conexão nem altera a configuração do canal.
-        </p>
-      </div>
-
-      <div className="mt-4 border-t border-line pt-4" aria-label="Entregas do WhatsApp">
-        <p className="text-sm font-medium text-fg">Entregas do WhatsApp</p>
-        {diagnosticsError ? (
-          <p className="mt-1 text-sm text-fg-muted">
-            Não foi possível ler o diagnóstico das entregas.
-          </p>
-        ) : !diagnostics ? (
-          <p className="mt-1 text-sm text-fg-muted">Consultando…</p>
-        ) : (
-          <dl className="mt-2 space-y-1 text-sm text-fg-muted">
-            <div className="flex flex-wrap gap-x-2">
-              <dt>Última execução do worker:</dt>
-              <dd>
-                {diagnostics.worker?.lastRunAt
-                  ? diagnostics.worker.result === 'failure'
-                    ? `${formatDateTime(diagnostics.worker.lastRunAt)} (falha)`
-                    : `${formatDateTime(diagnostics.worker.lastRunAt)} (${diagnostics.worker.processed} etapa(s) processada(s)${
-                        diagnostics.worker.remaining ? ', fila restante' : ''
-                      })`
-                  : 'nenhuma execução registrada'}
-              </dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt>Etapas em reconciliação:</dt>
-              <dd>{diagnostics.reconcilingSteps}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2">
-              <dt>Recibos sem correlação:</dt>
-              <dd>{diagnostics.pendingReceipts}</dd>
-            </div>
+          <dl className="mt-7 text-xs">
+            <div className="flex justify-between gap-4 border-b border-line py-3"><dt className="text-fg-muted">Credenciais</dt><dd>Fora do painel</dd></div>
+            <div className="flex justify-between gap-4 border-b border-line py-3"><dt className="text-fg-muted">Verificação</dt><dd>Não executada</dd></div>
           </dl>
-        )}
-      </div>
-
-      <div className="mt-4 border-t border-line pt-3">
-        <button
-          type="button"
-          aria-expanded={technicalDetailsOpen}
-          onClick={() => setTechnicalDetailsOpen((open) => !open)}
-          className="flex min-h-9 items-center gap-1.5 rounded-sm text-sm text-fg-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-        >
-          Detalhes técnicos
-          <ChevronDown
-            size={15}
-            className={technicalDetailsOpen ? 'rotate-180' : ''}
-            aria-hidden="true"
-          />
-        </button>
-        {technicalDetailsOpen && (
-          <div className="mt-3 space-y-3" aria-label="Detalhes técnicos">
-            <div className="flex items-start gap-2 text-xs text-fg-muted">
-              <Info size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-              <p>Nomes de configuração usados pelo transporte. Os valores permanecem ocultos.</p>
+          <details className="mt-4 text-xs text-fg-muted">
+            <summary className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line px-3 text-fg"><Info size={14} aria-hidden="true" /> Ver orientação <ChevronDown size={13} aria-hidden="true" /></summary>
+            <div className="mt-3 space-y-2 leading-relaxed">
+              <p>A configuração da Evolution API é mantida fora deste painel. O estado da conexão não é verificado aqui.</p>
+              <p>{diagnosticsError ? 'Não foi possível ler o diagnóstico das entregas.' : !diagnostics ? 'Consultando entregas…' : `Última execução: ${diagnostics.worker?.lastRunAt ? formatDateTime(diagnostics.worker.lastRunAt) : 'nenhuma registrada'}. Etapas em reconciliação: ${diagnostics.reconcilingSteps}. Recibos sem correlação: ${diagnostics.pendingReceipts}.`}</p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {CONFIGURATION_ITEMS.map(({ name, description, icon: Icon }) => (
-                <div
-                  key={name}
-                  className="flex min-w-0 items-start gap-3 rounded-control bg-raised px-3 py-2.5"
-                >
-                  <Icon size={15} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
-                  <div className="min-w-0">
-                    <p className="break-all font-mono text-xs font-medium text-fg">{name}</p>
-                    <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
-                  </div>
-                </div>
-              ))}
+          </details>
+        </article>
+
+        <article className="rounded-card bg-surface p-5">
+          <h2 className="text-base font-semibold text-fg">E-mail de propostas</h2>
+          <div className="mt-5 flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-sage"><Mail size={18} aria-hidden="true" /></span>
+            <div>
+              <p className="pt-1 text-xs text-fg-muted">Canal usado no envio contextual dos orçamentos.</p>
+              <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-[11px] text-fg-muted">Estado não consultado</span>
             </div>
           </div>
-        )}
+          <dl className="mt-7 text-xs">
+            <div className="flex justify-between gap-4 border-b border-line py-3"><dt className="text-fg-muted">Credenciais</dt><dd>Fora do painel</dd></div>
+            <div className="flex justify-between gap-4 border-b border-line py-3"><dt className="text-fg-muted">Verificação</dt><dd>Não executada</dd></div>
+          </dl>
+          <details className="mt-4 text-xs text-fg-muted">
+            <summary className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line px-3 text-fg"><Info size={14} aria-hidden="true" /> Ver orientação <ChevronDown size={13} aria-hidden="true" /></summary>
+            <p className="mt-3 leading-relaxed">A configuração de e-mail é mantida fora deste painel. O estado do canal não é verificado aqui.</p>
+          </details>
+        </article>
       </div>
+      <p className="rounded-control border border-line bg-surface px-4 py-3 text-xs text-fg-muted"><Info size={14} className="mr-2 inline align-text-bottom" aria-hidden="true" />Credenciais e chaves permanecem fora do painel. Nenhum valor sensível é exibido aqui.</p>
     </section>
   );
 }

@@ -34,6 +34,7 @@ interface ComunicacaoPageProps {
 export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'flows', parseCommunicationTab);
   const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
+  const [showMediaUploader, setShowMediaUploader] = useState(false);
   const [flowsDirty, setFlowsDirty] = useState(false);
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
@@ -41,6 +42,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
 
   const handleUploadComplete = useCallback(() => {
     setMediaRefreshKey((k) => k + 1);
+    setShowMediaUploader(false);
   }, []);
 
   const handleTabChange = useCallback(
@@ -122,8 +124,8 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
 
         {activeTab === 'media' && (
           <div className="space-y-6">
-            <MediaUploader onUploadComplete={handleUploadComplete} />
-            <MediaLibrary refreshKey={mediaRefreshKey} />
+            <MediaLibrary refreshKey={mediaRefreshKey} onAdd={() => setShowMediaUploader((current) => !current)} />
+            {showMediaUploader && <MediaUploader onUploadComplete={handleUploadComplete} />}
           </div>
         )}
 
@@ -133,6 +135,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
               navigate(`/quotations/${encodeURIComponent(quotationId)}`)
             }
             onOpenDeliveries={() => navigate('/whatsapp-deliveries?tab=history')}
+            onOpenDelivery={() => navigate('/whatsapp-deliveries?tab=history')}
           />
         )}
 
