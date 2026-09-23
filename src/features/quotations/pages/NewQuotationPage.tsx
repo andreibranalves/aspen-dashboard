@@ -2055,7 +2055,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 <Settings size={14} /> Gerenciar modelos
               </Button>
             </div>
-            <div className="relative mt-4 rounded-control border border-border-control bg-raised focus-within:ring-2 focus-within:ring-focus">
+            <div className="relative mt-4 rounded-control border border-border-control bg-raised">
               <Textarea
                 ref={textareaRef}
                 aria-label="Mensagem do cliente para extração"
@@ -2071,7 +2071,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 placeholder="Cole aqui a mensagem do cliente..."
-                className={`mt-0 min-h-[190px] rounded-control border-0 bg-transparent leading-6 focus-visible:outline-none focus-visible:ring-0 ${imagePreview ? 'pt-20 pb-4' : 'py-4'}`}
+                className={`mt-0 min-h-[190px] rounded-control border-0 bg-transparent leading-6 ${imagePreview ? 'pt-20 pb-4' : 'py-4'}`}
               />
               {imagePreview && (
                 <button
@@ -2080,7 +2080,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   title="Remover imagem"
                   disabled={liveDraftOperation}
                   onClick={clearImage}
-                  className="group absolute left-3 top-3 size-14 overflow-hidden rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50"
+                  className="group absolute left-3 top-3 size-14 overflow-hidden rounded-control disabled:opacity-50"
                 >
                   <img src={imagePreview} alt="" className="size-full object-cover" />
                   <span aria-hidden="true" className="absolute inset-0 grid place-items-center bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
