@@ -81,6 +81,11 @@ function accepting(providerMessageId: string, calls: string[] = []): SendText {
   };
 }
 
+async function revisionOf(messageId: string): Promise<number> {
+  const [row] = await sql`SELECT revision FROM whatsapp_messages WHERE id = ${messageId}`;
+  return Number(row.revision);
+}
+
 async function timeline(conversationId: string) {
   const page = await createPostgresWhatsappAttendanceRepository(() => db).listMessagesBefore({
     conversationId,
@@ -278,7 +283,7 @@ test('cancel and reservation race with a single winner', { skip: databaseSkip },
   for (let round = 0; round < 5; round += 1) {
     const { record } = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: `r${round}` });
     const [cancel, claim] = await Promise.allSettled([
-      repository.cancel(record.messageId),
+      repository.cancel(record.messageId, await revisionOf(record.messageId)),
       repository.claim(record.id, { leaseMs: 45_000 }),
     ]);
     const cancelled = cancel.status === 'fulfilled';
@@ -300,11 +305,39 @@ test('review resolution records the operator finding without retrying', { skip: 
       throw new EvolutionTransportError('t', 'ambiguous', 'EVOLUTION_NETWORK');
     },
   });
-  const resolved = await repository.resolveReview(record.messageId, 'confirmed_sent');
+  const seen = await revisionOf(record.messageId);
+  const resolved = await repository.resolveReview(record.messageId, 'confirmed_sent', seen);
   assert.equal(resolved.state, 'provider_accepted');
   assert.equal(resolved.resolution, 'confirmed_sent');
   assert.equal(resolved.providerMessageId, null, 'no sentinel provider id');
-  await assert.rejects(repository.resolveReview(record.messageId, 'confirmed_not_sent'), OutboxActionRefused);
+  await assert.rejects(
+    repository.resolveReview(record.messageId, 'confirmed_not_sent', seen),
+    (error: unknown) => error instanceof OutboxActionRefused && error.reason === 'stale',
+    'the view the first resolution acted on is stale',
+  );
+  await assert.rejects(
+    repository.resolveReview(record.messageId, 'confirmed_not_sent', await revisionOf(record.messageId)),
+    (error: unknown) => error instanceof OutboxActionRefused && error.reason === 'state',
+  );
+});
+
+test('an action on a stale view changes nothing', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const { conversationId } = await conversation();
+  const { record } = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 's' });
+  const seen = await revisionOf(record.messageId);
+  await dispatchOutboxMessage(record.id, {
+    repository,
+    send: async () => {
+      throw new EvolutionTransportError('t', 'transient_pre_transport', 'EVOLUTION_UNAVAILABLE');
+    },
+  });
+  assert.equal((await repository.findByMessageId(record.messageId))?.state, 'retry_scheduled');
+  await assert.rejects(
+    repository.cancel(record.messageId, seen),
+    (error: unknown) => error instanceof OutboxActionRefused && error.reason === 'stale',
+  );
+  assert.equal((await repository.findByMessageId(record.messageId))?.state, 'retry_scheduled');
 });
 
 test('the sweep dispatches only old intents and stops before the budget runs out', { skip: databaseSkip }, async () => {

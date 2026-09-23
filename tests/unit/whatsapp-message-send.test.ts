@@ -188,14 +188,30 @@ describe('operator message send', () => {
 
   it('answers a cancel that lost the race with 409 and the current state', async () => {
     const handler = createWhatsappMessageActionsHandler({ repository: fakeRepository() });
-    const result = await handler(post({ messageId: randomUUID(), action: 'cancel' }));
+    const result = await handler(post({ messageId: randomUUID(), action: 'cancel', expectedRevision: 3 }));
     const body = JSON.parse(result.body || '{}');
     assert.equal(result.statusCode, 409);
     assert.equal(body.code, 'SEND_ALREADY_RESERVED');
     assert.equal(body.message.state, 'dispatching');
 
-    const resolved = await handler(post({ messageId: randomUUID(), action: 'confirm_not_sent' }));
+    const resolved = await handler(post({ messageId: randomUUID(), action: 'confirm_not_sent', expectedRevision: 3 }));
     assert.equal(JSON.parse(resolved.body || '{}').message.resolution, 'confirmed_not_sent');
-    assert.equal((await handler(post({ messageId: randomUUID(), action: 'retry' }))).statusCode, 400);
+    assert.equal((await handler(post({ messageId: randomUUID(), action: 'retry', expectedRevision: 3 }))).statusCode, 400);
+    assert.equal((await handler(post({ messageId: randomUUID(), action: 'cancel' }))).statusCode, 400, 'version is required');
+  });
+
+  it('refuses an action taken on a stale view with 409 and the current state', async () => {
+    const handler = createWhatsappMessageActionsHandler({
+      repository: fakeRepository({
+        async resolveReview() {
+          throw new OutboxActionRefused(record({ state: 'failed', resolution: 'confirmed_not_sent' }), 'stale');
+        },
+      }),
+    });
+    const result = await handler(post({ messageId: randomUUID(), action: 'confirm_sent', expectedRevision: 2 }));
+    const body = JSON.parse(result.body || '{}');
+    assert.equal(result.statusCode, 409);
+    assert.equal(body.code, 'MESSAGE_VERSION_CHANGED');
+    assert.equal(body.message.state, 'failed');
   });
 });

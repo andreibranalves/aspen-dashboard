@@ -146,8 +146,13 @@ export async function fetchSendByRequest(conversationId: string, clientRequestId
 
 export async function runMessageAction(
   messageId: string,
-  action: 'cancel' | 'confirm_sent' | 'confirm_not_sent'
+  action: 'cancel' | 'confirm_sent' | 'confirm_not_sent',
+  expectedRevision: number
 ): Promise<SendResult> {
-  const body = await apiPost<{ message: SendResult }>('/whatsapp-message-actions', { messageId, action });
+  const body = await apiPost<{ message: SendResult }>('/whatsapp-message-actions', {
+    messageId,
+    action,
+    expectedRevision,
+  });
   return body.message;
 }

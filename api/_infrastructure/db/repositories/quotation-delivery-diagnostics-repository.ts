@@ -5,6 +5,7 @@ import {
   evolutionReceiptInbox,
   quotationDeliverySteps,
   quotationDeliveryWorkerRuns,
+  whatsappMessageSweepRuns,
 } from '../schema.js';
 
 /** Stable identity of the scheduled worker that drains the delivery outbox. */
@@ -21,6 +22,18 @@ export interface QuotationDeliveryWorkerRun {
   remaining: boolean;
 }
 
+export interface MessageSweepRun {
+  lastRunAt: Date;
+  result: 'success' | 'failure';
+  requeued: number;
+  toReview: number;
+  dispatched: number;
+}
+
+export type MessageSweepRunResult =
+  | { result: 'success'; requeued: number; toReview: number; dispatched: number; now?: Date }
+  | { result: 'failure'; now?: Date };
+
 export type QuotationDeliveryWorkerRunResult =
   | { result: 'success'; processed: number; remaining: boolean; now?: Date }
   | { result: 'failure'; now?: Date };
@@ -35,6 +48,7 @@ export type QuotationDeliveryWorkerRunResult =
  */
 export interface QuotationDeliveryDiagnostics {
   worker: QuotationDeliveryWorkerRun | null;
+  messageSweep: MessageSweepRun | null;
   reconcilingSteps: number;
   pendingReceipts: number;
 }
@@ -76,6 +90,23 @@ export async function recordQuotationDeliveryWorkerRun(
     });
 }
 
+export async function recordMessageSweepRun(
+  input: MessageSweepRunResult,
+  getDb: DatabaseProvider = getDatabase
+): Promise<void> {
+  const values = {
+    lastRunAt: input.now instanceof Date ? input.now : new Date(),
+    result: input.result,
+    requeued: input.result === 'success' ? count(input.requeued) : 0,
+    toReview: input.result === 'success' ? count(input.toReview) : 0,
+    dispatched: input.result === 'success' ? count(input.dispatched) : 0,
+  };
+  await getDb()
+    .insert(whatsappMessageSweepRuns)
+    .values({ worker: QUOTATION_DELIVERY_WORKER_NAME, ...values })
+    .onConflictDoUpdate({ target: whatsappMessageSweepRuns.worker, set: values });
+}
+
 export async function readQuotationDeliveryDiagnostics(
   getDb: DatabaseProvider = getDatabase
 ): Promise<QuotationDeliveryDiagnostics> {
@@ -84,6 +115,11 @@ export async function readQuotationDeliveryDiagnostics(
     .select()
     .from(quotationDeliveryWorkerRuns)
     .where(eq(quotationDeliveryWorkerRuns.worker, QUOTATION_DELIVERY_WORKER_NAME))
+    .limit(1);
+  const [sweep] = await db
+    .select()
+    .from(whatsappMessageSweepRuns)
+    .where(eq(whatsappMessageSweepRuns.worker, QUOTATION_DELIVERY_WORKER_NAME))
     .limit(1);
   const [steps] = await db
     .select({
@@ -103,6 +139,15 @@ export async function readQuotationDeliveryDiagnostics(
           result: worker.processed === FAILED_WORKER_RUN_PROCESSED ? 'failure' : 'success',
           processed: count(worker.processed),
           remaining: worker.processed !== FAILED_WORKER_RUN_PROCESSED && worker.remaining === true,
+        }
+      : null,
+    messageSweep: sweep
+      ? {
+          lastRunAt: asDate(sweep.lastRunAt) || new Date(0),
+          result: sweep.result === 'failure' ? 'failure' : 'success',
+          requeued: count(sweep.requeued),
+          toReview: count(sweep.toReview),
+          dispatched: count(sweep.dispatched),
         }
       : null,
     reconcilingSteps: count(steps?.reconciling),

@@ -169,15 +169,30 @@ export function createWhatsappMessageActionsHandler(dependencies: MessageSendDep
       const messageId = uuid(body.messageId, 'Mensagem');
       const action = body.action as MessageAction;
       if (!ACTIONS.includes(action)) throw new InputError('Ação inválida.');
+      const expectedRevision = body.expectedRevision;
+      if (typeof expectedRevision !== 'number' || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+        throw new InputError('Versão da mensagem inválida.');
+      }
       try {
         const record =
           action === 'cancel'
-            ? await repository.cancel(messageId)
-            : await repository.resolveReview(messageId, action === 'confirm_sent' ? 'confirmed_sent' : 'confirmed_not_sent');
+            ? await repository.cancel(messageId, expectedRevision)
+            : await repository.resolveReview(
+                messageId,
+                action === 'confirm_sent' ? 'confirmed_sent' : 'confirmed_not_sent',
+                expectedRevision,
+              );
         return json(200, { message: projectOutbox(record) });
       } catch (error) {
         if (error instanceof OutboxActionRefused) {
           if (!error.current) return json(404, { error: 'Mensagem não encontrada.' });
+          if (error.reason === 'stale') {
+            return json(409, {
+              code: 'MESSAGE_VERSION_CHANGED',
+              error: 'O envio mudou desde que a conversa foi carregada. Confira o estado atual.',
+              message: projectOutbox(error.current),
+            });
+          }
           return json(409, {
             code: action === 'cancel' ? 'SEND_ALREADY_RESERVED' : 'SEND_REQUIRES_REVIEW',
             error:
