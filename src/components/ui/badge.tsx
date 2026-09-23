@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
 /**
- * StatusBadge — Alpine status chips.
+ * StatusBadge — compact semantic status chips from the Aspen sketch system.
  * Neutral surface with semantic color text for each status.
  */
 const badgeVariants: Record<string, string> = {
@@ -39,7 +39,7 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
       title={label || status}
       data-status={status}
       className={cn(
-        'inline-flex max-w-[180px] items-center whitespace-nowrap overflow-hidden text-ellipsis rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+        'inline-flex max-w-[180px] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-badge px-2 py-0.5 text-[11px] font-semibold leading-4 transition-colors',
         variant,
         className
       )}

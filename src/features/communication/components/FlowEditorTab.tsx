@@ -16,11 +16,11 @@ import {
   Loader2,
   MessageSquare,
   Plus,
-  RefreshCw,
   Save,
   Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
@@ -201,7 +201,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       setSavedFlows(loaded);
       setSelectedFlowId(nextSelectedId);
       setExpandedFlow(nextSelectedId || null);
-      setActiveStepId(loaded.find((flow) => flow.id === nextSelectedId)?.steps.at(-1)?.id || '');
+      setActiveStepId(loaded.find((flow) => flow.id === nextSelectedId)?.steps[0]?.id || '');
     } catch (error) {
       setLoadError(errorMessage(error, 'Não foi possível carregar os fluxos.'));
     } finally {
@@ -251,7 +251,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setFlows(next);
     setSelectedFlowId(duplicate.id);
     setExpandedFlow(duplicate.id);
-    setActiveStepId(duplicate.steps.at(-1)?.id || '');
+    setActiveStepId(duplicate.steps[0]?.id || '');
     setActionError('');
     setSaveError('');
     setSuccessMsg('');
@@ -267,7 +267,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     if (selectedFlowId === flowId) {
       setSelectedFlowId(next[0]?.id || '');
       setExpandedFlow(next[0]?.id || null);
-      setActiveStepId(next[0]?.steps.at(-1)?.id || '');
+      setActiveStepId(next[0]?.steps[0]?.id || '');
     }
     setActionError('');
     setSaveError('');
@@ -373,57 +373,18 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     setActiveStepId((current) =>
       selectedFlow.steps.some((step) => step.id === current)
         ? current
-        : selectedFlow.steps.at(-1)!.id
+        : selectedFlow.steps[0]!.id
     );
   }, [selectedFlow]);
 
-  if (loading) return <SkeletonComunicacao />;
+  if (loading) return <SkeletonComunicacao variant="editor" />;
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button onClick={addFlow} size="sm">
-          <Plus size={14} aria-hidden="true" /> Novo fluxo
-        </Button>
-      </div>
-
-      {loadError && (
-        <div
-          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="font-medium">Não foi possível carregar os fluxos.</p>
-            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadFlows()}>
-              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {actionError && (
-        <div
-          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <span>{actionError}</span>
-        </div>
-      )}
-
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
-        <section aria-labelledby="flows-list-title" className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h2 id="flows-list-title" className="text-base font-semibold text-fg">
-                Fluxos cadastrados
-              </h2>
-            </div>
-            <span className="text-xs text-fg-muted">
-              {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}
-            </span>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <details className="relative z-20 min-w-0 rounded-control border border-line bg-surface px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium text-fg">Fluxos cadastrados · {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}</summary>
+          <section aria-label="Fluxos cadastrados" className="mt-4 min-w-0 space-y-3 xl:absolute xl:left-0 xl:top-9 xl:w-[740px] xl:rounded-card xl:border xl:border-line xl:bg-surface xl:p-4 xl:shadow-xl">
 
           {flows.length === 0 ? (
             <EmptyState
@@ -435,10 +396,10 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   <Plus size={14} aria-hidden="true" /> Novo fluxo
                 </Button>
               }
-              className="rounded-md border border-dashed border-line bg-surface py-12"
+              className="rounded-control border border-dashed border-line bg-surface py-12"
             />
           ) : (
-            <div className="grid gap-2">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {flows.map((flow) => {
                 const isSelected = flow.id === selectedFlow?.id;
                 const date = formatDate(flow.updated_at || flow.created_at);
@@ -450,11 +411,10 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                     onClick={() => {
                       setSelectedFlowId(flow.id);
                       setExpandedFlow(flow.id);
-                      setActiveStepId(flow.steps?.at(-1)?.id || '');
+                      setActiveStepId(flow.steps?.[0]?.id || '');
                     }}
                     className={[
-                      'min-w-0 rounded-md border p-3 text-left transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                      'min-w-0 rounded-control border p-3 text-left transition-colors',
                       isSelected
                         ? 'border-primary bg-primary/5'
                         : 'border-line bg-surface hover:border-primary/40 hover:bg-surface-hover',
@@ -511,28 +471,51 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
               })}
             </div>
           )}
-        </section>
+          </section>
+        </details>
+        <Button onClick={addFlow} size="sm">
+          <Plus size={14} aria-hidden="true" /> Novo fluxo
+        </Button>
+      </div>
+
+      {loadError && (
+        <InlineAlert title="Não foi possível carregar os fluxos."
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadFlows()}>
+              Tentar novamente
+            </Button>
+          }
+         />
+      )}
+
+      {actionError && (
+        <InlineAlert>{actionError}</InlineAlert>
+      )}
+
+      {selectedFlow && <h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2>}
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+
 
         {selectedFlow && (
           <section
-            className="rounded-md border border-line bg-surface"
+            className="overflow-hidden rounded-card bg-surface"
             aria-labelledby="selected-flow-title"
           >
-            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-t-md border-b border-line bg-surface/95 p-4 shadow-sm backdrop-blur">
+            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface p-4">
               <button
                 type="button"
                 onClick={() =>
                   setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
                 }
                 aria-expanded={expandedFlow === selectedFlow.id}
-                className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-control text-left"
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10">
-                  <MessageSquare size={18} className="text-primary" aria-hidden="true" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
+                  <MessageSquare size={18} className="text-sage" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
-                    {displayName(selectedFlow)}
+                    Sequência do fluxo
                   </h2>
                 </div>
                 {expandedFlow === selectedFlow.id ? (
@@ -611,75 +594,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
             {expandedFlow === selectedFlow.id && (
               <div className="space-y-5 p-4">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <label
-                    htmlFor={`flow-name-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Nome do fluxo</span>
-                    <Input
-                      id={`flow-name-${selectedFlow.id}`}
-                      type="text"
-                      value={selectedFlow.name || ''}
-                      onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
-                    />
-                  </label>
-                  <label
-                    htmlFor={`flow-vendor-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Vendedora</span>
-                    <Input
-                      id={`flow-vendor-${selectedFlow.id}`}
-                      type="text"
-                      value={selectedFlow.vendor_name || ''}
-                      onChange={(event) =>
-                        updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
-                      }
-                    />
-                  </label>
-                  <label
-                    htmlFor={`flow-delay-min-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Delay mínimo (segundos)</span>
-                    <Input
-                      id={`flow-delay-min-${selectedFlow.id}`}
-                      type="number"
-                      min="0"
-                      max="30"
-                      value={selectedFlow.delay_min_seconds ?? ''}
-                      onChange={(event) =>
-                        updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
-                      }
-                    />
-                  </label>
-                  <label
-                    htmlFor={`flow-delay-max-${selectedFlow.id}`}
-                    className="space-y-1.5 text-sm text-fg"
-                  >
-                    <span className="font-medium">Delay máximo (segundos)</span>
-                    <Input
-                      id={`flow-delay-max-${selectedFlow.id}`}
-                      type="number"
-                      min="0"
-                      max="45"
-                      value={selectedFlow.delay_max_seconds ?? ''}
-                      aria-invalid={delayRangeInvalid}
-                      onChange={(event) =>
-                        updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
-                      }
-                    />
-                    {delayRangeInvalid && (
-                      <span className="text-xs text-destructive" role="alert">
-                        O máximo deve ser maior ou igual ao mínimo.
-                      </span>
-                    )}
-                  </label>
-                </div>
-
                 <section
-                  className="space-y-3 border-t border-line pt-4"
+                  className="space-y-3"
                   aria-labelledby="flow-steps-title"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -687,9 +603,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       <h3 id="flow-steps-title" className="text-sm font-semibold text-fg">
                         Etapas do fluxo
                       </h3>
-                      <p className="mt-1 text-xs text-fg-muted">
-                        A ordem abaixo é a ordem usada no envio.
-                      </p>
                     </div>
                     <Button
                       type="button"
@@ -710,7 +623,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       <article
                         key={step.id}
                         className={[
-                          'space-y-3 rounded-md border p-3',
+                          'space-y-3 rounded-control border p-3',
                           isActive
                             ? 'border-primary bg-primary/5'
                             : 'border-line bg-surface-muted/40',
@@ -720,7 +633,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                           <button
                             type="button"
                             onClick={() => setActiveStepId(step.id)}
-                            className="flex min-h-9 min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                            className="flex min-h-9 min-w-0 items-center gap-2 rounded-control text-left"
                             aria-label={`Editar etapa ${index + 1}`}
                             aria-pressed={isActive}
                           >
@@ -808,7 +721,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                                 updateStep(selectedFlow.id, step.id, 'template', event.target.value)
                               }
                               placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
-                              className="min-h-[96px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                              className="min-h-[96px] w-full resize-y rounded-control border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted"
                             />
                           </div>
                         )}
@@ -917,6 +830,76 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   })}
                 </section>
 
+                <details className="rounded-control border border-line p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-fg">Configurações do fluxo</summary>
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label
+                    htmlFor={`flow-name-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Nome do fluxo</span>
+                    <Input
+                      id={`flow-name-${selectedFlow.id}`}
+                      type="text"
+                      value={selectedFlow.name || ''}
+                      onChange={(event) => updateFlow(selectedFlow.id, 'name', event.target.value)}
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-vendor-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Vendedora</span>
+                    <Input
+                      id={`flow-vendor-${selectedFlow.id}`}
+                      type="text"
+                      value={selectedFlow.vendor_name || ''}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'vendor_name', event.target.value)
+                      }
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-delay-min-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Delay mínimo (segundos)</span>
+                    <Input
+                      id={`flow-delay-min-${selectedFlow.id}`}
+                      type="number"
+                      min="0"
+                      max="30"
+                      value={selectedFlow.delay_min_seconds ?? ''}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'delay_min_seconds', Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <label
+                    htmlFor={`flow-delay-max-${selectedFlow.id}`}
+                    className="space-y-1.5 text-sm text-fg"
+                  >
+                    <span className="font-medium">Delay máximo (segundos)</span>
+                    <Input
+                      id={`flow-delay-max-${selectedFlow.id}`}
+                      type="number"
+                      min="0"
+                      max="45"
+                      value={selectedFlow.delay_max_seconds ?? ''}
+                      aria-invalid={delayRangeInvalid}
+                      onChange={(event) =>
+                        updateFlow(selectedFlow.id, 'delay_max_seconds', Number(event.target.value))
+                      }
+                    />
+                    {delayRangeInvalid && (
+                      <span className="text-xs text-destructive" role="alert">
+                        O máximo deve ser maior ou igual ao mínimo.
+                      </span>
+                    )}
+                  </label>
+                </div>
+                </details>
+
                 <section
                   className="space-y-2 border-t border-line pt-4"
                   aria-labelledby="flow-summary-title"
@@ -942,7 +925,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                           />
                           <button
                             type="button"
-                            className="min-w-0 truncate text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            className="min-w-0 truncate text-left hover:text-primary"
                             onClick={() => setActiveStepId(step.id)}
                             aria-pressed={activeStepId === step.id}
                           >
@@ -966,7 +949,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
           <FlowPreview
             step={
               selectedFlow.steps?.find((step) => step.id === activeStepId) ||
-              selectedFlow.steps?.at(-1)
+              selectedFlow.steps?.[0]
             }
           />
         )}
@@ -1022,14 +1005,16 @@ function FlowPreview({ step }: { step?: FlowStep }) {
 
   return (
     <aside
-      className="min-w-0 rounded-md border border-line bg-surface p-4"
+      className="min-w-0 rounded-card bg-surface p-4"
       aria-labelledby="flow-preview-title"
     >
-      <h3 id="flow-preview-title" className="text-base font-semibold text-fg">
-        {title}
-      </h3>
-      <div className="mt-3 min-h-48 whitespace-pre-line rounded-md border border-line bg-surface-muted p-4 text-sm leading-5 text-fg">
-        {content}
+      <h3 id="flow-preview-title" className="text-base font-semibold text-fg">Prévia no WhatsApp</h3>
+      <p className="mt-1 text-xs text-fg-muted">{title}</p>
+      <div className="mt-5 overflow-hidden rounded-card border-[7px] border-surface-subtle bg-taupe">
+        <div className="px-4 py-3 text-xs font-semibold text-taupe-ink">Aspen · prévia</div>
+        <div className="min-h-48 bg-chat-background p-3">
+          <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-sm">{content}</div>
+        </div>
       </div>
       <p className="mt-3 text-xs text-fg-muted">{note}</p>
     </aside>

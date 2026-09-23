@@ -23,6 +23,7 @@ import {
   quoteRevisionItems,
   quoteRevisions,
   quotations,
+  quoteLeads,
   salesOrderItems,
   salesOrderSequences,
   salesOrders,
@@ -228,6 +229,7 @@ export interface SalesDashboardResult {
     revenue: number;
     orders: number;
   }>;
+  orders_by_source: Array<{ source: string; orders: number }>;
 }
 
 export interface SalesOrdersRepository {
@@ -497,6 +499,22 @@ async function dashboardSummary(
     orders: Number(row?.orders) || 0,
     openOrders: Number(row?.openOrders) || 0,
   };
+}
+
+async function dashboardOrdersBySource(
+  database: SalesOrderDatabase,
+  start: string,
+  end: string
+): Promise<SalesDashboardResult['orders_by_source']> {
+  const rows = await database
+    .select({ source: quoteLeads.source, orders: sql<number>`count(*)::int` })
+    .from(salesOrders)
+    .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
+    .leftJoin(quoteLeads, eq(quotations.quoteLeadId, quoteLeads.id))
+    .where(faturamentoOrdersPeriodFilter(start, end))
+    .groupBy(quoteLeads.source)
+    .orderBy(desc(sql`count(*)`));
+  return rows.map((row) => ({ source: row.source || 'sem_origem', orders: Number(row.orders) || 0 }));
 }
 
 /**
@@ -1301,10 +1319,11 @@ export function createPostgresSalesOrdersRepository(
           previous.start,
           previous.end
         );
-        const [topProducts, topCustomers, salesByDay] = await Promise.all([
+        const [topProducts, topCustomers, salesByDay, ordersBySource] = await Promise.all([
           dashboardTopProducts(database, start, end),
           dashboardTopCustomers(database, start, end),
           dashboardSalesByDay(database, start, end),
+          dashboardOrdersBySource(database, start, end),
         ]);
         const currentAverage = currentSummary.orders
           ? roundNumber(currentSummary.revenue / currentSummary.orders)
@@ -1346,6 +1365,7 @@ export function createPostgresSalesOrdersRepository(
           top_products: topProducts,
           top_customers: topCustomers,
           sales_by_day: salesByDay,
+          orders_by_source: ordersBySource,
         };
       } catch (error) {
         return safeRepositoryError(error);

@@ -5,29 +5,29 @@ import { cn } from '@/lib/utils';
 /**
  * Button is the shared action primitive for Aspen.
  *
- * The public `default` and `success` variants remain for compatibility with
- * existing quotation and CRM actions.
+ * Filled variants show a tinted disabled state at full opacity so the label
+ * stays legible; quiet variants fade instead. Never both.
  */
 const variants = {
   default:
-    'bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] disabled:bg-primary/10 disabled:text-primary disabled:hover:bg-primary/10',
+    'bg-primary text-on-solid hover:brightness-105 active:scale-[0.98] disabled:bg-primary/10 disabled:text-primary disabled:hover:bg-primary/10',
   destructive:
-    'bg-destructive text-on-solid dark:text-page hover:bg-destructive/90 active:scale-[0.97] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
+    'bg-destructive-fill text-destructive-foreground hover:brightness-110 active:scale-[0.98] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
   outline:
-    'border border-border-control bg-transparent text-fg hover:bg-surface-hover active:scale-[0.97]',
+    'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.98] disabled:opacity-50',
   secondary:
-    'border border-border-control bg-surface text-fg hover:bg-surface-hover active:scale-[0.97]',
-  ghost: 'text-fg hover:bg-surface-hover',
-  link: 'text-link underline-offset-4 hover:underline',
+    'bg-raised text-fg hover:brightness-110 active:scale-[0.98] disabled:opacity-50',
+  ghost: 'text-fg hover:bg-surface-hover disabled:opacity-50',
+  link: 'text-link underline-offset-4 hover:underline disabled:opacity-50',
   success:
-    'bg-success text-on-solid dark:text-page hover:bg-success/90 active:scale-[0.97] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
+    'bg-success-fill text-success-foreground hover:brightness-105 active:scale-[0.98] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
 } as const;
 
 const sizes = {
   xs: 'h-7 px-2 text-xs',
   sm: 'h-8 px-3 text-sm',
   md: 'h-9 px-3 text-sm',
-  default: 'h-9 px-3 text-sm',
+  default: 'h-10 px-4 text-sm',
   lg: 'h-10 px-4 text-sm',
   icon: 'h-9 w-9 p-0',
 } as const;
@@ -58,9 +58,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const classes = cn(
-      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm font-medium transition-colors duration-150',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
-      'disabled:pointer-events-none disabled:opacity-50',
+      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-semibold transition-colors duration-150',
+      'disabled:pointer-events-none',
       '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
       variants[variant],
       sizes[size],

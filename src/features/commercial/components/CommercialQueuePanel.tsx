@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import {
-  AlertTriangle,
   Ban,
-  ChevronLeft,
   ChevronRight,
   ExternalLink,
   ListChecks,
@@ -11,18 +9,19 @@ import {
   Star,
 } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
+import ListPagination from '@/components/shared/ListPagination';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import { Dialog } from '@/components/ui/dialog';
 import { StatusBadge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { SearchField } from '@/components/ui/search-field';
+import { Textarea } from '@/components/ui/textarea';
+import PageToolbar from '@/components/shared/PageToolbar';
+import { Select } from '@/components/ui/select';
 import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formatting/formatters';
 import {
   associateCommercialInbound,
@@ -50,7 +49,7 @@ import {
 } from '@/lib/api/commercialQueueApi';
 import { getFollowUp, type FollowUpView } from '@/lib/api/followUpApi';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZES = [10, 25, 50, 100];
 const QUEUE_FILTERS: ReadonlyArray<[CommercialQueueFilter, string]> = [
   ['active', 'Todas'],
   ['overdue', 'Atrasadas'],
@@ -80,7 +79,7 @@ const MANUAL_CONTACT_RESULTS = [
 ] as const satisfies ReadonlyArray<[CommercialManualContactResultCode, string]>;
 
 type ActionKind = (typeof ACTION_KINDS)[number][0];
-type Dialog =
+type ActionDialog =
   | { type: 'create'; item: CommercialQueueItem }
   | { type: 'schedule'; item: CommercialQueueItem }
   | { type: 'complete'; item: CommercialQueueItem }
@@ -258,7 +257,14 @@ function dueStatusLabel(status: CommercialQueueItem['dueStatus']): string {
   if (status === 'overdue') return 'Atrasada';
   if (status === 'today') return 'Hoje';
   if (status === 'closed') return 'Encerrada';
-  return 'Próxima';
+  return 'Agendada';
+}
+
+function dueStatusTone(status: CommercialQueueItem['dueStatus']): string {
+  if (status === 'overdue') return 'tone-destructive-soft';
+  if (status === 'today') return 'tone-warning-soft';
+  if (status === 'closed') return 'tone-neutral-muted';
+  return 'tone-primary-soft';
 }
 
 function dueLabel(item: CommercialQueueItem): string {
@@ -303,12 +309,24 @@ function manualContactResultLabel(value: CommercialActionHistoryEntry['resultCod
   );
 }
 
+
+const DIALOG_TITLES = {
+  create: 'Criar nova ação',
+  schedule: 'Reagendar próxima ação',
+  complete: 'Concluir próxima ação',
+  'manual-contact': 'Registrar contato',
+  'continue-follow-up': 'Decidir continuidade',
+  'associate-response': 'Associar resposta',
+  'unblock-contact': 'Desbloquear contato',
+  history: 'Histórico da próxima ação',
+} as const;
 export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelProps) {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [result, setResult] = useState<CommercialQueuePage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialog, setDialog] = useState<ActionDialog | null>(null);
   const [draft, setDraft] = useState<ScheduleDraft | ManualContactDraft | null>(null);
   const [completionMode, setCompletionMode] = useState<'successor' | 'close'>('successor');
   const [continuityType, setContinuityType] =
@@ -318,6 +336,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   const [submitting, setSubmitting] = useState(false);
   const [urgencySubmitting, setUrgencySubmitting] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<CommercialQueueFilter>('active');
+  const [search, setSearch] = useState('');
   const [manualSuggestion, setManualSuggestion] = useState<ManualContactSuggestion | null>(null);
   const [followUpReview, setFollowUpReview] = useState<FollowUpView | null>(null);
   const [followUpReviewLoading, setFollowUpReviewLoading] = useState(false);
@@ -391,7 +410,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       try {
         const next = await listCommercialQueue({
           page: requestedPage,
-          pageSize: PAGE_SIZE,
+          pageSize,
           filter: requestedFilter,
         });
         if (requestGeneration !== requestGenerationRef.current) return;
@@ -410,7 +429,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         if (requestGeneration === requestGenerationRef.current) setLoading(false);
       }
     },
-    []
+    [pageSize]
   );
 
   useEffect(() => {
@@ -418,11 +437,19 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }, [filter, load, page]);
 
   const rows = result?.data || [];
+  const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
+  const visibleRows = normalizedSearch
+    ? rows.filter((item) =>
+        [contactLabel(item), item.reasonLabel, item.reason, item.demandSummary, item.kindLabel]
+          .filter(Boolean)
+          .some((value) => value!.toLocaleLowerCase('pt-BR').includes(normalizedSearch))
+      )
+    : rows;
   const total = result?.total ?? 0;
   // The rendered page is always the one the server actually served.
   const currentPage = result?.page ?? page;
-  const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const showPagination = !loading && !error && total > PAGE_SIZE;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const showPagination = !loading && !error && total > 0;
 
   function openClient(event: MouseEvent<HTMLAnchorElement>, clientId: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -851,42 +878,39 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           Tipo de ação
-          <select
+          <Select
             aria-label="Tipo de ação"
-            className="h-9 rounded-sm border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.kind}
             onChange={(event) => updateDraft('kind', event.target.value)}
           >
             {kindOptions()}
-          </select>
+          </Select>
         </label>
         <label className="grid gap-1 text-sm">
           Data local
-          <input
+          <Input
             aria-label="Data local"
             required
             type="date"
-            className="h-9 rounded-md border border-input bg-background px-3"
             value={draft.dueDate}
             onChange={(event) => updateDraft('dueDate', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm">
-          Horário local <span className="text-fg-muted">(opcional)</span>
-          <input
+          <span>Horário local <span className="text-fg-muted">(opcional)</span></span>
+          <Input
             aria-label="Horário local"
             type="time"
-            className="h-9 rounded-md border border-input bg-background px-3"
             value={draft.dueTime}
             onChange={(event) => updateDraft('dueTime', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm sm:col-span-2">
           Motivo
-          <textarea
+          <Textarea
             aria-label="Motivo"
             required
-            className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
             value={draft.reason}
             onChange={(event) => updateDraft('reason', event.target.value)}
           />
@@ -905,10 +929,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           Tipo de contato
-          <select
+          <Select
             aria-label="Tipo de contato"
             required
-            className="h-9 rounded-sm border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.contactType}
             onChange={(event) =>
               updateManualDraft('contactType', event.target.value as CommercialManualContactType)
@@ -919,25 +943,24 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="grid gap-1 text-sm">
           Data e hora do contato
-          <input
+          <Input
             aria-label="Data e hora do contato"
             required
             type="datetime-local"
-            className="h-9 rounded-md border border-input bg-background px-3"
             value={draft.occurredAt}
             onChange={(event) => updateManualDraft('occurredAt', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm">
           Resultado
-          <select
+          <Select
             aria-label="Resultado do contato"
             required
-            className="h-9 rounded-sm border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.resultCode}
             onChange={(event) =>
               updateManualDraft(
@@ -951,7 +974,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-2 self-end pb-2 text-sm">
           <input
@@ -963,7 +986,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           Follow-up comercial concluído
         </label>
         {suggestion && (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-muted px-3 py-2 text-sm sm:col-span-2">
+          <div className="flex items-center justify-between gap-3 rounded-control border border-line bg-surface-muted px-3 py-2 text-sm sm:col-span-2">
             <span>
               {suggestion.label} sugerido: {formatDate(suggestion.date)}
             </span>
@@ -974,19 +997,18 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         )}
         <label className="grid gap-1 text-sm sm:col-span-2">
           Observação <span className="text-fg-muted">(opcional)</span>
-          <textarea
+          <Textarea
             aria-label="Observação do contato"
-            className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
             value={draft.note}
             onChange={(event) => updateManualDraft('note', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm sm:col-span-2">
           Continuidade
-          <select
+          <Select
             aria-label="Continuidade"
             required
-            className="h-9 rounded-sm border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.continuation}
             onChange={(event) =>
               updateManualDraft('continuation', event.target.value as ManualContactContinuation)
@@ -996,15 +1018,14 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             <option value="successor">Criar próxima ação</option>
             <option value="wait">Aguardar até uma data</option>
             <option value="close">Fechar oportunidade</option>
-          </select>
+          </Select>
         </label>
         {draft.continuation === 'close' ? (
           <label className="grid gap-1 text-sm sm:col-span-2">
             Motivo do fechamento
-            <textarea
+            <Textarea
               aria-label="Motivo do fechamento"
               required
-              className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
               value={draft.closeReason}
               onChange={(event) => updateManualDraft('closeReason', event.target.value)}
             />
@@ -1013,45 +1034,42 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           <>
             <label className="grid gap-1 text-sm">
               Tipo da próxima ação
-              <select
+              <Select
                 aria-label="Tipo da próxima ação"
                 required
-                className="h-9 rounded-sm border border-input bg-background px-3"
+                containerClassName="w-full" className="w-full"
                 value={draft.kind}
                 onChange={(event) => updateManualDraft('kind', event.target.value as ActionKind)}
               >
                 {kindOptions()}
-              </select>
+              </Select>
             </label>
             <label className="grid gap-1 text-sm">
               {draft.continuation === 'wait' ? 'Data para aguardar' : 'Data da próxima ação'}
-              <input
+              <Input
                 aria-label={
                   draft.continuation === 'wait' ? 'Data para aguardar' : 'Data da próxima ação'
                 }
                 required
                 type="date"
-                className="h-9 rounded-md border border-input bg-background px-3"
                 value={draft.dueDate}
                 onChange={(event) => updateManualDraft('dueDate', event.target.value)}
               />
             </label>
             <label className="grid gap-1 text-sm">
-              Horário <span className="text-fg-muted">(opcional)</span>
-              <input
+              <span>Horário <span className="text-fg-muted">(opcional)</span></span>
+              <Input
                 aria-label="Horário da continuidade"
                 type="time"
-                className="h-9 rounded-md border border-input bg-background px-3"
                 value={draft.dueTime}
                 onChange={(event) => updateManualDraft('dueTime', event.target.value)}
               />
             </label>
             <label className="grid gap-1 text-sm sm:col-span-2">
               Motivo da continuidade
-              <textarea
+              <Textarea
                 aria-label="Motivo da continuidade"
                 required
-                className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
                 value={draft.reason}
                 onChange={(event) => updateManualDraft('reason', event.target.value)}
               />
@@ -1187,8 +1205,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   function contextDetails(item: CommercialQueueItem) {
     return (
-      <div className="space-y-1 text-xs text-fg-muted">
-        <p>Motivo: {item.reason || item.reasonLabel}</p>
+      <div className="space-y-1 rounded-control border border-line bg-surface-subtle p-3 text-xs text-fg-muted">
         <p>Prazo: {dueLabel(item)}</p>
         <p>{contactContextLabel(item)}</p>
         {item.contactContext.blockers.length > 0 ? (
@@ -1223,93 +1240,40 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <div
-          className="mr-auto flex flex-wrap gap-1 rounded-sm border border-line bg-surface p-1"
-          role="tablist"
-          aria-label="Cortes da fila comercial"
-        >
-          {QUEUE_FILTERS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={filter === value}
-              className={
-                filter === value
-                  ? 'rounded-sm bg-surface-muted px-3 py-1.5 text-sm font-medium text-fg'
-                  : 'rounded-sm px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-hover hover:text-fg'
-              }
-              onClick={() => {
-                if (value === filter) return;
-                setPage(1);
-                setFilter(value);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {showPagination && (
-          <nav
-            aria-label="Paginação da fila"
-            className="mr-auto flex items-center gap-2 text-sm text-fg-muted"
-          >
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={loading || currentPage <= 1}
-            >
-              <ChevronLeft aria-hidden="true" />
-              Anterior
-            </Button>
-            <span aria-live="polite">
-              Página {Math.min(currentPage, lastPage)} de {lastPage}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
-              disabled={loading || currentPage >= lastPage}
-            >
-              Próxima
-              <ChevronRight aria-hidden="true" />
-            </Button>
-          </nav>
-        )}
+    <div className="space-y-5">
+      <PageToolbar>
+        <SearchField
+          aria-label="Buscar nesta página da fila"
+          placeholder="Buscar cliente ou ação"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <Select value={filter} onChange={(event) => { setPage(1); setFilter(event.target.value as CommercialQueueFilter); }} aria-label="Filtrar fila por status">
+          {QUEUE_FILTERS.map(([value, label]) => <option key={value} value={value}>{value === 'active' ? 'Todos os status' : label}</option>)}
+        </Select>
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="icon"
+          className="sm:ml-auto"
+          aria-label="Atualizar fila"
           onClick={() => void load(page, filter)}
           disabled={loading}
         >
           <RefreshCw aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
-          Atualizar
         </Button>
-      </div>
+      </PageToolbar>
 
       {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void load(page, filter)}>
+              Tentar novamente
+            </Button>
+          }
         >
-          <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
-          <span>{error}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="ml-auto"
-            onClick={() => void load(page, filter)}
-          >
-            Tentar novamente
-          </Button>
-        </div>
+          {error}
+        </InlineAlert>
       )}
 
       {loading ? (
@@ -1320,187 +1284,129 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           title="Nenhuma próxima ação"
           description="Leads novos entram aqui com o primeiro atendimento pendente."
         />
+      ) : visibleRows.length === 0 ? (
+        <EmptyState
+          icon={ListChecks}
+          title="Nenhuma ação nesta visualização"
+          description="Altere a busca ou o status."
+        />
       ) : (
-        <>
-          <div className="hidden overflow-x-auto rounded-lg border border-line bg-surface lg:block">
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Contato</TableHead>
-                  <TableHead>Demanda</TableHead>
-                  <TableHead>Propostas</TableHead>
-                  <TableHead>Contexto</TableHead>
-                  <TableHead>Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((item) => (
-                  <TableRow key={item.actionId}>
-                    <TableCell>
-                      {clientName(item)}
-                      {item.clientName && item.contactName !== item.clientName && (
-                        <p className="text-xs text-fg-muted">Contato: {item.contactName}</p>
-                      )}
-                      {contactDetail(item) && (
-                        <p className="text-xs text-fg-muted">{contactDetail(item)}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-96 truncate text-fg-muted">
-                      {item.demandSummary || 'Demanda não informada'}
-                    </TableCell>
-                    <TableCell className="text-fg-muted">
-                      {item.proposals.length === 0 ? (
-                        <span className="text-xs">Sem propostas</span>
-                      ) : (
-                        <ul className="space-y-1 text-xs">
-                          {item.proposals.map((proposal) => (
-                            <li key={proposal.quotationId} className="whitespace-nowrap">
-                              {proposalLabel(proposal)}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </TableCell>
-                    <TableCell>{contextDetails(item)}</TableCell>
-                    <TableCell>
-                      <div className="space-y-2">
-                        {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
-                        {urgencyButton(item)}
-                        {whatsappLink(item)}
-                        {actionButtons(item)}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+        <div aria-label="Agenda comercial" className="space-y-3">
+          {visibleRows.map((item) => (
+            <details key={item.actionId} className="group rounded-card bg-surface">
+              <summary className="grid cursor-pointer list-none items-center gap-3 rounded-card p-4 xl:grid-cols-[82px_minmax(0,1fr)_auto_auto] xl:px-5 xl:py-4 [&::-webkit-details-marker]:hidden">
+                <span className="flex flex-col gap-1 text-xs"><time dateTime={item.dueAt} className="font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time><span className="text-[11px] text-fg-muted">{dueStatusLabel(item.dueStatus)}</span></span>
+                <EntityIdentity name={contactLabel(item)} primary={item.reason || item.reasonLabel} secondary={`${contactLabel(item)} · ${item.kindLabel}`} />
+                <span className="flex items-center gap-2"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} className={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
+                <span className="inline-flex items-center justify-center gap-2 rounded-control border border-line px-3 py-2 text-xs font-semibold"> <ChevronRight size={14} aria-hidden="true" className="transition-transform group-open:rotate-90" /> Abrir ação</span>
+              </summary>
+              <div className="grid gap-4 border-t border-line px-5 py-4 text-xs text-fg-muted lg:grid-cols-2">
+                <div className="space-y-2"><div>{clientName(item)}</div><p>{item.demandSummary || 'Demanda não informada'}</p>{contactDetail(item) && <p>{contactDetail(item)}</p>}{item.proposals.length > 0 && <ul className="space-y-1">{item.proposals.map((proposal) => <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>)}</ul>}{contextDetails(item)}</div>
+                <div className="flex flex-wrap items-start justify-start gap-2 lg:justify-end">{urgencyButton(item)}{whatsappLink(item)}{actionButtons(item)}</div>
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
 
-          <div className="grid gap-3 lg:hidden">
-            {rows.map((item) => (
-              <article key={item.actionId} className="rounded-md border border-line bg-surface p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate">{clientName(item)}</p>
-                    {item.clientName && item.contactName !== item.clientName && (
-                      <p className="mt-1 truncate text-xs text-fg-muted">
-                        Contato: {item.contactName}
-                      </p>
-                    )}
-                    {contactDetail(item) && (
-                      <p className="mt-1 text-xs text-fg-muted">{contactDetail(item)}</p>
-                    )}
-                  </div>
-                  {item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}
-                </div>
-                <p className="mt-3 text-sm text-fg-muted">
-                  {item.demandSummary || 'Demanda não informada'}
-                </p>
-                <p className="mt-1 text-xs text-fg-muted">Oportunidade: {item.opportunityId}</p>
-                {item.proposals.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs text-fg-muted">
-                    {item.proposals.map((proposal) => (
-                      <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-3">{contextDetails(item)}</div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {urgencyButton(item)}
-                  {whatsappLink(item)}
-                </div>
-                <div className="mt-3">{actionButtons(item)}</div>
-              </article>
-            ))}
-          </div>
-        </>
+      {showPagination && (
+        <ListPagination label="Paginação da fila comercial" page={currentPage} limit={pageSize} pageSizes={PAGE_SIZES} hasNext={currentPage < lastPage} onPageChange={setPage} onLimitChange={(value) => { setPage(1); setPageSize(value); }} />
       )}
 
       {dialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="commercial-action-dialog-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg border border-line bg-surface p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
-              <h2 id="commercial-action-dialog-title" className="text-lg font-semibold">
-                {dialog.type === 'create'
-                  ? 'Criar nova ação'
-                  : dialog.type === 'schedule'
-                    ? 'Reagendar próxima ação'
-                    : dialog.type === 'complete'
-                        ? 'Concluir próxima ação'
-                        : dialog.type === 'manual-contact'
-                          ? 'Registrar contato'
-                        : dialog.type === 'continue-follow-up'
-                            ? 'Decidir continuidade'
-                          : dialog.type === 'associate-response'
-                            ? 'Associar resposta'
-                          : dialog.type === 'unblock-contact'
-                            ? 'Desbloquear contato'
-                          : 'Histórico da próxima ação'}
-              </h2>
+        <Dialog
+          open
+          size="md"
+          onClose={() => closeDialog()}
+          dismissible={!submitting}
+          title={DIALOG_TITLES[dialog.type]}
+          footer={
+            dialog.type === 'history' ? (
+              <Button type="button" variant="outline" onClick={() => closeDialog()}>
+                Fechar
+              </Button>
+            ) : (
+            <>
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
+                variant="outline"
                 onClick={() => closeDialog()}
                 disabled={submitting}
               >
-                Fechar
+                Cancelar
               </Button>
-            </div>
-
-            {dialog.type === 'history' ? (
-              <div className="mt-4 space-y-3">
-                {dialogError ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {dialogError}
-                  </p>
-                ) : history.length === 0 ? (
-                  <p className="text-sm text-fg-muted">Nenhum evento registrado.</p>
-                ) : (
-                  <ol className="space-y-3">
-                    {history.map((entry) => (
-                      <li key={entry.eventId} className="rounded-md border border-line p-3 text-sm">
-                        <div className="flex justify-between gap-3">
-                          <span className="font-medium">{historyLabel(entry.type)}</span>
-                          <time dateTime={entry.timestamp}>{formatDateTime(entry.timestamp)}</time>
-                        </div>
-                        {entry.type === 'manual_contact' ? (
-                          <>
-                            <p className="mt-1 text-fg-muted">
-                              {manualContactTypeLabel(entry.contactType)} ·{' '}
-                              {manualContactResultLabel(entry.resultCode)} · {entry.actor}
-                            </p>
-                            <p className="mt-1 text-fg-muted">
-                              {entry.countsAsFollowUp
-                                ? 'Contou como follow-up comercial concluído'
-                                : 'Não contou como follow-up comercial'}{' '}
-                              · Continuidade:{' '}
-                              {entry.continuationType === 'close'
-                                ? 'fechamento'
-                                : entry.continuationType === 'wait'
-                                  ? 'aguardar'
-                                  : 'próxima ação'}
-                            </p>
-                            {entry.note && <p className="mt-1 whitespace-pre-wrap">{entry.note}</p>}
-                          </>
-                        ) : (
+              <Button type="submit" form="commercial-action-form" disabled={submitting}>
+                {submitting
+                  ? 'Salvando…'
+                  : dialog.type === 'create'
+                    ? 'Criar ação'
+                    : dialog.type === 'schedule'
+                      ? 'Reagendar'
+                      : dialog.type === 'manual-contact'
+                        ? 'Registrar contato'
+                        : dialog.type === 'continue-follow-up'
+                          ? 'Confirmar continuidade'
+                        : dialog.type === 'associate-response'
+                          ? 'Associar resposta'
+                        : dialog.type === 'unblock-contact'
+                          ? 'Desbloquear contato'
+                        : completionMode === 'successor'
+                          ? 'Concluir e criar próxima'
+                          : 'Concluir e fechar'}
+              </Button>
+            </>
+          )
+        }
+      >
+        {dialog.type === 'history' ? (
+          <div className="space-y-3">
+            {dialogError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {dialogError}
+              </p>
+            ) : history.length === 0 ? (
+              <p className="text-sm text-fg-muted">Nenhum evento registrado.</p>
+            ) : (
+                <ol className="space-y-3">
+                  {history.map((entry) => (
+                    <li key={entry.eventId} className="rounded-control border border-line bg-surface-subtle p-4 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="font-medium">{historyLabel(entry.type)}</span>
+                        <time dateTime={entry.timestamp}>{formatDateTime(entry.timestamp)}</time>
+                      </div>
+                      {entry.type === 'manual_contact' ? (
+                        <>
                           <p className="mt-1 text-fg-muted">
-                            {entry.reason} · {entry.actor} · {entry.origin}
+                            {manualContactTypeLabel(entry.contactType)} ·{' '}
+                            {manualContactResultLabel(entry.resultCode)} · {entry.actor}
                           </p>
-                        )}
+                          <p className="mt-1 text-fg-muted">
+                            {entry.countsAsFollowUp
+                              ? 'Contou como follow-up comercial concluído'
+                              : 'Não contou como follow-up comercial'}{' '}
+                            · Continuidade:{' '}
+                            {entry.continuationType === 'close'
+                              ? 'fechamento'
+                              : entry.continuationType === 'wait'
+                                ? 'aguardar'
+                                : 'próxima ação'}
+                          </p>
+                          {entry.note && <p className="mt-1 whitespace-pre-wrap">{entry.note}</p>}
+                        </>
+                      ) : (
+                        <p className="mt-1 text-fg-muted">
+                          {entry.reason} · {entry.actor} · {entry.origin}
+                        </p>
+                      )}
                       </li>
                     ))}
                   </ol>
                 )}
               </div>
-            ) : (
+          ) : (
               <form
-                className="mt-4 space-y-4"
+                id="commercial-action-form"
+                className="space-y-4"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void (dialog.type === 'schedule' || dialog.type === 'create'
@@ -1519,10 +1425,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {dialog.type === 'associate-response' && (
                   <label className="grid gap-1 text-sm">
                     Oportunidade da resposta
-                    <select
+                    <Select
                       aria-label="Oportunidade da resposta"
                       required
-                      className="h-9 rounded-sm border border-input bg-background px-3"
+                      containerClassName="w-full" className="w-full"
                       value={associationTarget}
                       onChange={(event) => setAssociationTarget(event.target.value)}
                     >
@@ -1531,17 +1437,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                           {candidate.demandSummary || candidate.opportunityId}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {dialog.type === 'unblock-contact' && (
                   <label className="grid gap-1 text-sm">
                     Motivo do desbloqueio
-                    <textarea
+                    <Textarea
                       aria-label="Motivo do desbloqueio"
                       required
                       maxLength={500}
-                      className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
                       value={unblockReason}
                       onChange={(event) => setUnblockReason(event.target.value)}
                     />
@@ -1552,9 +1457,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                   <>
                     <label className="grid gap-1 text-sm">
                       Decisão de continuidade
-                      <select
+                      <Select
                         aria-label="Decisão de continuidade"
-                        className="h-9 rounded-sm border border-input bg-background px-3"
+                        containerClassName="w-full" className="w-full"
                         value={continuityType}
                         onChange={(event) =>
                           setContinuityType(event.target.value as CommercialFollowUpContinuityType)
@@ -1562,7 +1467,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                       >
                         <option value="new_cycle">Iniciar novo ciclo</option>
                         <option value="manual_date">Confirmar uma data</option>
-                      </select>
+                      </Select>
                     </label>
                     {scheduleFields()}
                   </>
@@ -1570,9 +1475,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {dialog.type === 'complete' && (
                   <label className="grid gap-1 text-sm">
                     Resultado
-                    <select
+                    <Select
                       aria-label="Resultado"
-                      className="h-9 rounded-sm border border-input bg-background px-3"
+                      containerClassName="w-full" className="w-full"
                       value={completionMode}
                       onChange={(event: ChangeEvent<HTMLSelectElement>) =>
                         setCompletionMode(event.target.value as 'successor' | 'close')
@@ -1580,17 +1485,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     >
                       <option value="successor">Criar próxima ação</option>
                       <option value="close">Fechar oportunidade</option>
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {dialog.type === 'manual-contact' || dialog.type === 'continue-follow-up' || dialog.type === 'associate-response' || dialog.type === 'unblock-contact' ? null : dialog.type === 'complete' &&
                   completionMode === 'close' ? (
                   <label className="grid gap-1 text-sm">
                     Motivo do fechamento
-                    <textarea
+                    <Textarea
                       aria-label="Motivo do fechamento"
                       required
-                      className="min-h-20 rounded-md border border-input bg-background px-3 py-2"
                       value={draft?.reason || ''}
                       onChange={(event) => updateDraft('reason', event.target.value)}
                     />
@@ -1603,39 +1507,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     {dialogError}
                   </p>
                 )}
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => closeDialog()}
-                    disabled={submitting}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" disabled={submitting}>
-                    {submitting
-                      ? 'Salvando…'
-                      : dialog.type === 'create'
-                        ? 'Criar ação'
-                        : dialog.type === 'schedule'
-                          ? 'Reagendar'
-                          : dialog.type === 'manual-contact'
-                            ? 'Registrar contato'
-                            : dialog.type === 'continue-follow-up'
-                              ? 'Confirmar continuidade'
-                            : dialog.type === 'associate-response'
-                              ? 'Associar resposta'
-                            : dialog.type === 'unblock-contact'
-                              ? 'Desbloquear contato'
-                            : completionMode === 'successor'
-                              ? 'Concluir e criar próxima'
-                              : 'Concluir e fechar'}
-                  </Button>
-                </div>
               </form>
-            )}
-          </div>
-        </div>
+          )}
+        </Dialog>
       )}
 
       <FollowUpReviewDrawer

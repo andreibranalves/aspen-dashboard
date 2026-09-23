@@ -758,7 +758,10 @@ test('weak suggestions allow refusing them in favour of an explicit new client',
     candidates: [candidate()],
     allowNewClient: true,
   });
-  assert.equal(clientResolutionBlockMessage(suggesting), 'Escolha o cliente para continuar.');
+  assert.equal(
+    clientResolutionBlockMessage(suggesting),
+    'Escolha o cliente ou confirme que é um novo cadastro.'
+  );
 
   harness.controller.confirmNewClient(0);
   assert.equal(harness.state.drafts[0].edited.confirm_new_client, true);
@@ -767,6 +770,25 @@ test('weak suggestions allow refusing them in favour of an explicit new client',
     needsConfirmation: true,
     confirmed: true,
   });
+  assert.equal(clientResolutionBlockMessage(harness.controller.views()[0]), null);
+});
+
+test('an e-mail or phone shared with another client may be declined as a new client', async () => {
+  const harness = createHarness([makeDraft()]);
+  harness.sync();
+  await harness.scheduler.advance(300);
+  const matched = IDENTITY_RESPONSE.candidates[0];
+  harness.settles[0].resolve(
+    envelope({ status: 'review', reason: 'identifier_in_use', candidates: [matched] })
+  );
+  await flush();
+
+  const view = harness.controller.views()[0];
+  assert.equal(view.state, 'choice');
+  assert.equal(view.state === 'choice' && view.allowNewClient, true);
+
+  harness.controller.confirmNewClient(0);
+  assert.equal(harness.state.drafts[0].edited.confirm_new_client, true);
   assert.equal(clientResolutionBlockMessage(harness.controller.views()[0]), null);
 });
 

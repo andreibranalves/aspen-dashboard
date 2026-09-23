@@ -15,7 +15,7 @@ test('listas locais falham fechadas quando a segunda linha é inválida @smoke',
     pagination,
   }));
   await page.goto('/#/leads');
-  await expect(page.getByText('Erro ao carregar clientes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível carregar os clientes', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
   await expect(page.getByText('Cliente válido', { exact: true })).toHaveCount(0);
 
@@ -27,7 +27,7 @@ test('listas locais falham fechadas quando a segunda linha é inválida @smoke',
     pagination,
   }));
   await page.goto('/#/products');
-  await expect(page.getByText('Erro ao carregar produtos', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível carregar os produtos', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
   await expect(page.getByText('Produto válido', { exact: true })).toHaveCount(0);
 });

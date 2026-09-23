@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { Eye, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import Skeleton from '@/components/shared/Skeleton';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   archiveQuotationTemplate,
   createQuotationTemplate,
@@ -209,30 +212,27 @@ export function QuotationTemplateManager({
   return (
     <div className="space-y-5">
       {loading && !templates.length && (
-        <div aria-label="Carregando modelos" className="text-sm text-fg-muted">
-          Carregando modelos...
+        <div role="status" aria-busy="true" aria-label="Carregando modelos" className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
+          <div className="space-y-3">
+            <Skeleton className="h-9 w-36 rounded-control" />
+            <Skeleton className="h-28 rounded-card" />
+            <Skeleton className="h-28 rounded-card" />
+          </div>
+          <Skeleton className="h-[440px] rounded-card" />
         </div>
       )}
       {listError && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
-          <div className="flex-1">
-            <p>{listError}</p>
-            <Button
-              className="mt-3"
-              size="sm"
-              variant="outline"
-              onClick={() => void loadTemplates()}
-            >
-              <RefreshCw size={14} /> Recarregar modelos
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadTemplates()}>
+              Recarregar modelos
             </Button>
-          </div>
-        </div>
+          }
+        >
+          {listError}
+        </InlineAlert>
       )}
-      {!listError && (
+      {!listError && !(loading && !templates.length) && (
         <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
           <div className="space-y-2">
             <Button type="button" variant="outline" size="sm" onClick={resetNew}>
@@ -247,7 +247,7 @@ export function QuotationTemplateManager({
                   else selectTemplate(template.id);
                 }}
                 disabled={saving}
-                className={`block w-full rounded-lg border p-3 text-left ${selectedId === template.id ? 'border-primary bg-primary/5' : 'border-line'}`}
+                className={`block w-full rounded-control border p-3 text-left transition-colors ${selectedId === template.id ? 'border-primary bg-surface-selected' : 'border-border-subtle bg-surface hover:bg-surface-hover'}`}
               >
                 <span className="block font-medium text-fg">{template.name}</span>
                 <span className="mt-1 block text-xs text-fg-muted">
@@ -265,25 +265,20 @@ export function QuotationTemplateManager({
           </div>
           <div className="space-y-4">
             {detailLoading && (
-              <div aria-label="Carregando detalhes do modelo" className="text-sm text-fg-muted">
-                Carregando detalhes...
+              <div role="status" aria-busy="true" aria-label="Carregando detalhes do modelo">
+                <Skeleton className="h-[440px] rounded-card" />
               </div>
             )}
             {detailError && selectedId && (
-              <div
-                role="alert"
-                className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm"
+              <InlineAlert
+                action={
+                  <Button variant="outline" size="sm" onClick={() => void loadDetail(selectedId)}>
+                    Tentar novamente
+                  </Button>
+                }
               >
-                <p>{detailError}</p>
-                <Button
-                  className="mt-3"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void loadDetail(selectedId)}
-                >
-                  <RefreshCw size={14} /> Tentar novamente
-                </Button>
-              </div>
+                {detailError}
+              </InlineAlert>
             )}
             {!detailLoading && !detailError && (
               <>
@@ -318,10 +313,10 @@ export function QuotationTemplateManager({
                         title="Pré-visualização do modelo"
                         sandbox=""
                         srcDoc={validation.preview}
-                        className="h-80 w-full rounded-lg border border-line bg-white"
+                        className="h-80 w-full rounded-control border border-border-subtle bg-white"
                       />
                     ) : (
-                      <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed border-line bg-surface-muted p-5 text-center text-sm text-fg-muted">
+                      <div className="flex min-h-48 items-center justify-center rounded-control border border-dashed border-border-subtle bg-raised p-5 text-center text-sm text-fg-muted">
                         Valide o modelo para gerar a prévia.
                       </div>
                     )}
@@ -329,12 +324,12 @@ export function QuotationTemplateManager({
                 ) : (
                   <label className="block space-y-1.5 text-sm text-fg">
                     <span className="font-medium">Conteúdo do modelo</span>
-                    <textarea
+                    <Textarea
                       value={source}
                       onChange={(event) => setSource(event.target.value)}
                       disabled={saving}
                       rows={14}
-                      className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 font-mono text-xs leading-[1.4] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
+                      className="min-h-72 resize-y font-mono text-xs leading-[1.4]"
                     />
                   </label>
                 )}
@@ -348,7 +343,7 @@ export function QuotationTemplateManager({
                     {message}
                   </p>
                 )}
-                <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+                <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-4">
                   <Button
                     type="button"
                     variant="outline"

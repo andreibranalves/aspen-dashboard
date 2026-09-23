@@ -517,11 +517,43 @@ test('Comercial lista o lead novo com demanda, motivo e prazo na Fila', async ({
   await expect(row.getByText('Cangas 100 unidades')).toBeVisible();
   await expect(row.getByText('Primeiro atendimento')).toBeVisible();
   await expect(row.getByText('(21) 99999-0000')).toBeVisible();
-  await expect(row.getByText('11/09/2026, 09:00')).toBeVisible();
+  await expect(row.getByText('11/09/2026', { exact: true })).toBeVisible();
+  await expect(row.getByText('09:00', { exact: true })).toBeVisible();
   await expect(row.getByRole('link', { name: 'Abrir WhatsApp de Lead Sintético' })).toHaveAttribute(
     'href',
     'https://wa.me/5521999990000'
   );
+});
+
+test('a Fila mostra totais limitados à página e busca entre as ações carregadas', async ({ page }) => {
+  await page.route('**/api/commercial-queue**', (route) =>
+    json(route, queue([
+      firstContact,
+      {
+        ...firstContact,
+        action_id: '33333333-3333-4333-8333-333333333333',
+        reason_label: 'Validar prazo do evento',
+        kind_label: 'Compromisso acordado',
+        due_status: 'today',
+        due_date: '2026-09-22',
+        due_time: '10:30',
+        due_at: '2026-09-22T13:30:00.000Z',
+        contact_name: 'Outro lead sintético',
+      },
+    ]))
+  );
+
+  await page.goto('/#/crm?tab=queue');
+
+  const summary = page.getByRole('region', { name: 'Resumo da fila nesta página' });
+  await expect(summary.getByText('1', { exact: true })).toHaveCount(2);
+  await expect(summary.getByText('Nesta página')).toHaveCount(4);
+  await expect(page.getByRole('row', { name: /Lead Sintético/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Outro lead sintético/ })).toBeVisible();
+
+  await page.getByRole('searchbox', { name: 'Buscar nesta página da fila' }).fill('Validar prazo');
+  await expect(page.getByRole('row', { name: /Outro lead sintético/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Lead Sintético/ })).toHaveCount(0);
 });
 
 test('a Fila mantém contexto explícito e oferece os quatro cortes', async ({ page }) => {

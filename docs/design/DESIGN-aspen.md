@@ -1,214 +1,122 @@
-# Aspen UI v2 Design Contract
+# Aspen UI Design Contract
 
-Status: canonical contract for the current Aspen visual foundation and the
-Pedidos slice of issue #210. This is the only normative Aspen UI document.
-`DESIGN-supabase.md` is an aesthetic reference and cannot override Aspen
-behavior, tokens, routes, workflows, or accessibility requirements.
-
-## Source of truth and scope
-
-The visual source is the Figma file
-[`N8BOVUvLkQImveVtThA5CV`](https://www.figma.com/design/N8BOVUvLkQImveVtThA5CV),
-read from these nodes at implementation time:
-
-- Foundations `5:2` and shared components `6:2`;
-- Pedidos list `12:2`, operational detail `12:131`, dark reference `65:21`;
-- Export menu `156:207`.
-
-The Figma frames are structural references. The approved behavior in GitHub
-issue [#210](https://github.com/andreibranalves/aspen-dashboard/issues/210)
-prevails where a sketch is illustrative or conflicts with an existing contract.
-
-This delivery covers the shared shell, shared primitives, and the list/detail
-journey for Pedidos. It also applies the shared outer-shell contract to pages
-that already consume it. It does not claim that the untouched bodies of
-Orçamentos, Clientes, CRM, Dashboard, Catálogo, Envios, Comunicação, or
-Configurações match the new journey design. Their routes and workflows remain
-available and their body redesigns belong to separate journeys.
+Status: the only normative Aspen UI document. `DESIGN-supabase.md` is an
+aesthetic reference and cannot override Aspen behavior, tokens, routes,
+workflows, or accessibility requirements. Journey sections below record
+approved behavior; the foundation and component sections apply to every page.
 
 ## Product character
 
-Aspen is a quiet, precise, operational commercial application. Structure and
-meaning come from typography, alignment, spacing, borders, density, and
-semantic color. Primary blue is an action and link color, not a decorative
-surface or arbitrary badge fill.
+Aspen is a quiet, precise, operational commercial application for one
+experienced operator. Structure and meaning come from typography, alignment,
+spacing, borders, density, and semantic color.
 
-## Rendered semantic tokens
+## Foundation (Órbita)
 
-The values below are the rendered CSS contract. `src/index.css` stores the RGB
-channels; the values below are the resulting hex colors.
+`src/index.css` is the only source of color values: the dark palette on
+`:root` and the light overrides on `:root[data-theme='light']`. This document
+names roles; it does not copy hex values, so it cannot drift from the code.
 
-### Light theme
+| Role | Tokens | Use |
+| --- | --- | --- |
+| Canvas and page | `canvas`, `page` | outer frame and workspace background |
+| Surfaces | `surface`, `surface-subtle`/`raised`, `surface-hover`, `surface-selected`, `input-surface`, `segment-active` | cards, quiet insets, hover, selection, fields, active segment |
+| Borders | `line`/`border`, `border-strong`, `border-control` | separators, emphasized edges, field outlines |
+| Text | `fg`, `fg-muted`, `text-tertiary`, `text-disabled` | primary, secondary, metadata, disabled |
+| Action | `primary`, `on-primary`, `primary-soft`/`primary-soft-ink`, `link`, `primary-text` | buttons, active tab, links |
+| Status | `success`, `warning`, `destructive`, `info` (+ `-fill` for solid buttons) | status text, icons, tinted surfaces |
+| Focus | `focus` | the single focus outline |
 
-| Token              | Value     | Use                                           |
-| ------------------ | --------- | --------------------------------------------- |
-| `page`             | `#f7f8fa` | application background                        |
-| `surface`          | `#ffffff` | cards, controls, panels                       |
-| `surface-subtle`   | `#fafafa` | quiet interior surface                        |
-| `surface-hover`    | `#f7f7f8` | hover surface                                 |
-| `surface-selected` | `#e7f0ff` | selected content rows/controls                |
-| `border-subtle`    | `#ededed` | low-emphasis separators                       |
-| `border-default`   | `#e2e2e5` | normal borders                                |
-| `border-strong`    | `#d1d1d6` | emphasized boundaries                         |
-| `border-control`   | `#8a8a92` | input/select boundaries                       |
-| `text-primary`     | `#18181b` | primary text                                  |
-| `text-secondary`   | `#52525b` | supporting text                               |
-| `text-tertiary`    | `#66666f` | metadata and low-emphasis text                |
-| `text-disabled`    | `#a1a1aa` | disabled content                              |
-| `primary`          | `#165cd8` | actions, focus, active links                  |
-| `link`             | `#165cd8` | link text, distinct from surface/action roles |
-| `on-primary`       | `#ffffff` | text on primary                               |
-| `success`          | `#1a7a4c` | confirmed success                             |
-| `warning`          | `#9a5b13` | attention                                     |
-| `destructive`      | `#b83a39` | destructive action surface/status             |
-| `info`             | `#165cd8` | informational state                           |
+Primary blue is an action and selection color, not decoration. Every status
+also carries text or an icon; color is never the only signal.
 
-### Dark theme
+### Typography
 
-| Token              | Value     | Use                                  |
-| ------------------ | --------- | ------------------------------------ |
-| `page`             | `#0f1420` | application background               |
-| `surface`          | `#141a26` | cards, controls, panels              |
-| `surface-subtle`   | `#1a2230` | quiet interior surface               |
-| `surface-hover`    | `#202a3a` | hover surface                        |
-| `surface-selected` | `#1d2d4a` | selected content rows/controls       |
-| `border-subtle`    | `#252f40` | low-emphasis separators              |
-| `border-default`   | `#334056` | normal borders                       |
-| `border-strong`    | `#46546c` | emphasized boundaries                |
-| `border-control`   | `#687991` | input/select boundaries              |
-| `text-primary`     | `#ffffff` | primary text                         |
-| `text-secondary`   | `#b5bfce` | supporting text                      |
-| `text-tertiary`    | `#929eb0` | metadata and low-emphasis text       |
-| `text-disabled`    | `#66748a` | disabled content                     |
-| `primary`          | `#2f6fdb` | actions and focus                    |
-| `link`             | `#8ab4ff` | link text, distinct from action blue |
-| `on-primary`       | `#ffffff` | text on primary                      |
-| `success`          | `#34c77e` | confirmed success                    |
-| `warning`          | `#f0a857` | attention                            |
-| `destructive`      | `#e2696a` | destructive action surface/status    |
-| `info`             | `#6f9cec` | informational state                  |
+Manrope is the product font with `tabular-nums` globally. Monospace is only
+for SKUs and identifiers.
 
-The live Figma variable names are preserved semantically: `text/link` maps to
-`--link`, `border/control` maps to `--border-control`, and the light Figma
-`--text-muted` value `#66666f` maps to `--text-tertiary`. The light metadata
-color over `surface-selected` measures 4.95:1; the previous `#71717a` would
-measure 4.21:1 and is not used for that context. Text contrast is at least
-4.5:1 for normal text and 3:1 for large text, focus indicators, and meaningful
-component boundaries. Every status also has text, an icon, or another
-non-color signal.
+| Role | Size / weight | Where |
+| --- | --- | --- |
+| Page title | 28px / 700 (22px below `md`) | `PageHeader` only |
+| Dialog title | 18px / 700 | `Dialog`, `Drawer` |
+| Section title | 16px / 600 | top-level cards in a page |
+| Sub-section | 14px / 600 | groups inside a section card |
+| Body / controls | 14px / 400–600 | text, inputs, selects, buttons |
+| Secondary / meta | 13px | page meta, tabs, breadcrumb |
+| Caption | 12px | field labels, table headers |
+| Badge | 11px / 600 | `StatusBadge`, quality badges |
 
-### Shell and action distinctions
+### Radius roles
 
-The sidebar is navy in both themes and has its own existing compatibility
-semantics: `--shell: #0f1420`, `--shell-active: #253040`,
-`--shell-text: #f2f5fa`, `--shell-muted: #b5bfce`,
-`--shell-hover: #1d2736`, and `--shell-primary: #8ab4ff`. Active navigation uses
-`bg-shell-active`, never the pale content `surface-selected`. The collapsed
-desktop sidebar is 64px and the expanded sidebar is 216px; navigation targets
-remain at least 40px high.
+`tailwind.config.js` replaces Tailwind's size scale with roles, so
+`rounded-md/lg/xl` do not exist. Pick by role:
 
-`primary` is the action/focus token. `link` is the text token for links; use
-`text-link` for a link even when the link appears in a compact card. Existing
-`text-primary` consumers are not renamed globally because that would change
-action and status semantics outside this slice. `surface-selected` is for
-content selection, not shell navigation.
+| Class | Value | Use |
+| --- | --- | --- |
+| `rounded-xs` | 4px | tiny marks, chart bars, `kbd` |
+| `rounded-badge` | 6px | status badges, segmented triggers, menu items |
+| `rounded-control` | 11px | buttons, fields, inline alerts, menus, small insets |
+| `rounded-nav` | 14px | sidebar items, top search |
+| `rounded-card` | 25px | cards, panels, dialogs, drawers |
+| `rounded-shell` | 31px | the workspace frame |
+| `rounded-full` | — | avatars and icon discs only |
 
-The destructive action surface uses `destructive`. The shared Button keeps the
-verified existing contrast exception `dark:text-page`: light destructive
-buttons use white on `#b83a39` (5.67:1), while dark destructive buttons use
-`#0f1420` on `#e2696a` (5.66:1). Figma's `destructive/button` is `#b83a39`
-with white text; it does not justify removing the existing dark exception
-without a new measured dark combination. The same rule applies to the
-existing success-button exception. Destructive actions retain secondary-menu
-placement where the journey already uses one.
+### Focus
 
-Compatibility aliases remain available while consumers migrate:
+One global `:focus-visible` outline (2px, `--focus`, 2px offset). Components
+never add their own focus ring. Rows inside clipped containers add
+`focus-inset` to draw it inward.
 
-| Alias             | Canonical variable |
-| ----------------- | ------------------ |
-| `--surface-muted` | `--surface-subtle` |
-| `--line`          | `--border-default` |
-| `--fg`            | `--text-primary`   |
-| `--fg-muted`      | `--text-secondary` |
-| `--on-solid`      | `--on-primary`     |
+### Controls
 
-Aliases are not renamed for aesthetics and are removed only after a repository
-search proves that they have no consumers.
+Fields, selects and the default button are 40px. Button sizes: `xs` 28, `sm`
+32 (dense rows, inline retry), `md` 36, default/`lg` 40. Filled buttons show a
+tinted disabled state at full opacity; quiet variants fade.
 
-## Typography
+## Layout
 
-Inter is the product font. Shared migrated roles are:
+`Layout` owns the frame: sidebar, workspace scroll, and the TopBar with the
+breadcrumb and global utilities at every width. Pages render inside
+`PageShell` (fluid width, 16px rhythm). Nothing in the page is absolutely
+positioned against the shell.
 
-| Role          | Size   | Weight         | Line height |
-| ------------- | ------ | -------------- | ----------- |
-| Page title    | `24px` | `600`          | `32px`      |
-| Section title | `16px` | `600`          | `24px`      |
-| UI body       | `14px` | `400`          | `20px`      |
-| UI emphasis   | `14px` | `500`          | `20px`      |
-| Secondary     | `13px` | `400`          | `18px`      |
-| Metadata      | `12px` | `400` to `500` | `16px`      |
+`PageHeader` is the first element of every page, in normal flow: optional
+`leading` visual, `eyebrow`, the `h1`, optional operational `description`,
+a `meta` row (status, revision, dates), and `actions` on the right (secondary
+→ primary). Descriptions are context (period, counts), never slogans.
 
-Page titles use approximately `-0.2px` letter spacing. Monetary values and
-percentages in the Pedidos list/detail use the normal Inter family with
-`tabular-nums`; monospace remains for identifiers and SKUs. Local headings in
-untouched journeys are not silently reclassified by this contract.
+Intentional inner widths stay: Manual and Settings forms cap at 1060px, detail
+side panels are 280–336px from `xl`, Auto keeps its two-panel split.
 
-## Layout, spacing, and responsive behavior
+## Components: use X for Y
 
-`Layout.tsx` owns the application geometry: a 56px top bar, a 216px expanded
-sidebar or 64px collapsed desktop sidebar, and main padding of 24px at `md`
-and 16px below it. `PageShell.tsx` is the one shared external page container:
-it owns `w-full`, the default 16px vertical rhythm, and page animation. It has
-no outer max-width. Consumers may override only local rhythm or layout needs
-with its existing `className` (for example `space-y-0` for the split Auto
-screen or `pb-28` for a bulk bar).
+| Need | Use | Notes |
+| --- | --- | --- |
+| Modal task or confirmation | `Dialog` / `ConfirmDialog` (`components/ui/dialog`, `shared/ConfirmDialog`) | Radix: Escape, focus trap, restoration; `dismissible={false}` while saving |
+| Side panel | `Drawer` / `DetailDrawer` | read-mostly drill-down |
+| Sections of a page | `Tabs` + `TabList` + `TabPanel` (`variant="page"`) | or `TabBar` when panels live elsewhere |
+| Alternate views/modes | `TabBar variant="segmented"` | Lista/Quadro, Conversa/Manual |
+| Search in a list | `SearchField` inside `PageToolbar` | 286px cap |
+| Pagination | `ListPagination` | shows `de X` only when the endpoint returns a total |
+| Metrics row | `StatCard` in `StatGrid` | pass `loading`; never show 0 before data |
+| Nothing to show | `EmptyState` | distinguish empty base vs no results for filters |
+| Failed load | `ErrorState` | same geometry as `EmptyState`, `role="alert"`, retry |
+| Message in context | `InlineAlert` | tone in icon/border, text in body color, one action |
+| Status | `StatusBadge` | labels from `lib/statusLabels` |
+| Entity avatar + name | `EntityIdentity` | |
 
-`BulkActionBar` is a fixed viewport overlay, not a second page shell. Its
-full-width inner frame uses the same horizontal 16px/24px rhythm and is not
-subject to the old 1060px page cap. `PageLoader`, detail skeletons, error
-branches, and feature pages use `PageShell` where they represent page content.
-
-The shared spacing scale is `4`, `8`, `12`, `16`, `24`, and `32px`.
-Default relationships are an 8px icon gap, 6–8px label/control gap, 12–16px
-control gap, 16px section-internal gap, and 24px section gap. Controls are 36px
-high; buttons are 28/32/36/40px (`xs`/`sm`/`md`/`lg`). Inputs and selects use a
-6px radius; panels and table containers use 8px; dialogs use 12px. Normal
-buttons are not pills and default surfaces are flat with a 1px border. Table
-headers are 36px to 40px high; rows are 44px to 48px, extending up to 56px
-when necessary to show secondary data.
-
-Operational lists are fluid inside `main`, with table overflow contained by
-the table primitive when necessary. The list filters keep proportional flex
-widths with a 286px desktop ceiling. Intentional inner constraints remain
-inside the fluid external shell: the Manual form and Settings form use a
-1060px ceiling, and their order/action panels use 320px columns. Auto keeps
-its deliberate two-panel split. The Pedidos detail uses a fluid main column
-and an intentional 320px side panel from the `xl` breakpoint; the side panel
-contains progress and actions together.
-
-Review evidence covers both themes at `1280x800`, `1440x900`, `1024x800`, and
-`390x844`. At 1024px the sidebar starts collapsed. Below 768px it becomes an
-overlay with Escape/backdrop close and focus restoration. Tables preserve the
-primary entity and status, hide only explicitly secondary columns, and scroll
-horizontally inside their own wrapper. All interactive targets are at least
-24px, with a 32px desktop and 36px narrow-screen target where applicable.
+Primitives in `components/ui` know no domain. Shared compositions live in
+`components/shared`. A new variant goes into the shared component, not into a
+local copy. Metrics are never computed from the current page and shown beside
+global totals.
 
 ## Component and state rules
 
-Primitives under `src/components/ui/` contain no domain knowledge or API calls.
-Shared compositions under `src/components/shared/` own application-wide
-patterns. Feature components know their domain. Existing routes, hash query
-parameters, endpoints, response fields, permissions, and workflows remain
-unchanged.
+Rows that open a record support keyboard activation and visible focus.
+Icon-only controls have accessible names. Hover affordances have focus-visible
+or persistent keyboard and touch equivalents.
 
-Use the shared Button, Input, Select, Textarea, Badge, Table, PageHeader,
-PageToolbar, PageShell, EmptyState, and existing overlays. Rows that open a
-record support keyboard activation and visible focus. Icon-only controls have
-accessible names. Hover affordances have focus-visible or persistent keyboard
-and touch equivalents. Dialogs support Escape, focus restoration, and focus
-containment as already provided by the shared implementation.
-
-Every remotely loaded table has loading, empty, no-results, error, and retry
+Every remotely loaded view has loading, empty, no-results, error, and retry
 states as applicable. Missing relationships stay missing; they are not turned
 into zero, a fake link, a UUID-as-name, or invented metrics. Errors are short
 Brazilian Portuguese recovery messages and never expose raw integrations,
@@ -222,8 +130,8 @@ visual/structural decisions:
 - The list retains every supported period and status, combined search,
   debounce, stale-response protection, page-size selector, export menu,
   query-history return, and `has_more` pagination contract.
-- Pagination shows `Página N` exactly once, with Anterior/Próximo and the
-  page-size selector in the footer. It never invents a total count or displays
+- Pagination (`ListPagination`) shows `Página N` exactly once, with
+  Anterior/Próximo and the page-size selector in the footer. It never invents a total count or displays
   `de X` when the endpoint supplies only `has_more`.
 - The list does not fetch each detail to invent an item count. The known
   columns remain pedido, cliente, status, entrega, valor, with date and source
@@ -276,8 +184,8 @@ slice.
 ## Approved Novo orçamento entry slice
 
 The new-entry journey uses one page at `#/novo-orcamento` with the existing
-`#/auto` and `#/manual` aliases. Its header owns the WAI-ARIA mode tabs
-`Da conversa` and `Manual`; both modes share client identity, origin, address,
+`#/auto` and `#/manual` aliases. A segmented mode control under the header
+switches between `A partir de uma conversa` and `Preencher manualmente`; both modes share client identity, origin, address,
 items, terms, review, and summary state. Desktop uses a main column with a
 320px summary/action column for Manual and a two-panel input/result layout for
 conversation. Client and address editing use a right-side dialog with Escape,

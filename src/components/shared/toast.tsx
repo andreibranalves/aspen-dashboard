@@ -74,7 +74,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     children,
     <div
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[60] flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0"
+      className="fixed bottom-5 right-5 z-[60] flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0"
     >
       {toasts.map((item) => {
         const Icon = TONE_ICONS[item.tone];
@@ -83,7 +83,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={item.id}
             role={item.tone === 'error' ? 'alert' : 'status'}
             className={cn(
-              'pointer-events-auto flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm font-medium shadow-lg backdrop-blur-sm animate-fade-in',
+              'pointer-events-auto flex items-start gap-2.5 rounded-nav border px-4 py-3.5 text-xs font-medium shadow-[0_8px_30px_#0005] animate-fade-in',
               TONE_STYLES[item.tone],
             )}
           >
@@ -93,7 +93,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => dismiss(item.id)}
               aria-label="Fechar aviso"
-              className="-m-1 rounded-md p-1 transition-colors hover:bg-fg/5"
+              className="-m-1 rounded-control p-1 transition-colors hover:bg-fg/5"
             >
               <X size={14} aria-hidden="true" />
             </button>

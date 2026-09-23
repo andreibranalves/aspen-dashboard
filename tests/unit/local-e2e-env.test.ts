@@ -32,6 +32,20 @@ test('local E2E strips operational credentials and fixes test runtime before dis
   assert.equal(env.PATH, '/usr/bin');
 });
 
+test('local E2E preserves Windows process keys needed by the Playwright server', () => {
+  const env = buildLocalE2eEnvironment({
+    PATH: 'C:\\Windows\\System32',
+    Path: 'C:\\Tools\\node;C:\\Windows\\System32',
+    ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+    SystemRoot: 'C:\\Windows',
+    windir: 'C:\\Windows',
+  });
+  assert.equal(env.Path, 'C:\\Tools\\node;C:\\Windows\\System32');
+  assert.equal(env.ComSpec, 'C:\\Windows\\System32\\cmd.exe');
+  assert.equal(env.SystemRoot, 'C:\\Windows');
+  assert.equal(env.windir, 'C:\\Windows');
+});
+
 test('local E2E refuses remote HTTP/database and mismatched targets without echoing values', () => {
   for (const env of [
     { BASE_URL: 'https://production.example.test' },

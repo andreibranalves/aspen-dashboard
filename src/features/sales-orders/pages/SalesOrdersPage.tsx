@@ -7,16 +7,21 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import ErrorState from '@/components/shared/ErrorState';
+import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
@@ -28,7 +33,6 @@ import {
   parseHashString,
   useHashQueryState,
 } from '@/hooks/useHashQueryState';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableHeader,
@@ -51,18 +55,18 @@ const STATUS_LABELS: Record<string, string> = {
 interface PeriodOption {
   value: string;
   label: string;
+  summaryLabel: string;
 }
 
 const PERIODS: PeriodOption[] = [
-  { value: 'today', label: 'Hoje' },
-  { value: '7d', label: '7d' },
-  { value: '30d', label: '30d' },
-  { value: '90d', label: '90d' },
-  { value: 'month', label: 'Mês atual' },
+  { value: 'today', label: 'Hoje', summaryLabel: 'Hoje' },
+  { value: '7d', label: '7d', summaryLabel: 'Últimos 7 dias' },
+  { value: '30d', label: '30d', summaryLabel: 'Últimos 30 dias' },
+  { value: '90d', label: '90d', summaryLabel: 'Últimos 90 dias' },
+  { value: 'month', label: 'Mês atual', summaryLabel: 'Mês atual' },
 ];
 
 const STATUSES = [
-  '',
   'Draft',
   'To Deliver and Bill',
   'To Bill',
@@ -84,6 +88,13 @@ const STATUS_DISPLAY = [
 const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => option.value));
 const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
 const parseSalesOrderLimit = parseHashAllowedInteger([10, 25, 50, 100]);
+
+function formatSummaryDelta(value: number | null, amount: number): string | undefined {
+  if (value === null) return undefined;
+  if (value === 0 && amount === 0) return undefined;
+  if (value === 0) return 'sem variação vs. período anterior';
+  return `${value > 0 ? '+' : ''}${value}% vs. período anterior`;
+}
 
 function formatSalesOrderDate(value: string): string {
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -227,7 +238,7 @@ function SalesOrderExportMenu({
         id="sales-order-export-menu"
         hidden={!open}
         aria-label="Exportar dados"
-        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-sm border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
       >
         <ExportCsvButton
           resource="sales-orders"
@@ -270,7 +281,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     setSummary(null);
     setSummaryError(null);
     try {
-      const response = await apiGet<unknown>('/sales-dashboard?period=30d');
+      const response = await apiGet<unknown>(`/sales-dashboard?period=${encodeURIComponent(period)}`);
       if (requestGeneration !== summaryRequestGenerationRef.current) return;
       const projected = projectDashboardSummary(response);
       if (!projected) throw new Error('Resposta inválida ao carregar métricas de vendas.');
@@ -279,9 +290,9 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       if (requestGeneration !== summaryRequestGenerationRef.current) return;
       setSummaryError('Não foi possível carregar as métricas de vendas. Tente novamente.');
     }
-  }, []);
+  }, [period]);
 
-  // ── Fetch summary on mount ──────────────────────────────────────────────────
+  // ── Fetch summary when the period changes ──────────────────────────────────
   useEffect(() => {
     void fetchSummary();
   }, [fetchSummary]);
@@ -341,6 +352,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
   // ── Period change ───────────────────────────────────────────────────────────
   const onPeriodChange = useCallback((p: string) => {
+    setSummary(null);
+    setSummaryError(null);
     setPeriod(p);
     setPage(1);
   }, []);
@@ -352,8 +365,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   }, []);
 
   // ── Limit change ────────────────────────────────────────────────────────────
-  const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    const newLimit = parseInt(e.target.value, 10);
+  const onLimitChange = useCallback((newLimit: number) => {
     setLimit(newLimit);
     setPage(1);
   }, []);
@@ -391,11 +403,15 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     setSearch('');
     setSearchDraft('');
     setStatus('');
+    setSummary(null);
+    setSummaryError(null);
     setPeriod('30d');
     setPage(1);
   }, []);
   const hasListFilters = Boolean(search || status || period !== '30d');
   const summaryData = summary;
+  const summaryLoading = !summaryData && !summaryError;
+  const summaryPeriodLabel = PERIODS.find((option) => option.value === period)?.summaryLabel ?? 'Últimos 30 dias';
 
   return (
     <PageShell>
@@ -405,28 +421,71 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
       />
 
-      {/* Filter row */}
-      <PageToolbar className="items-end gap-2">
-        {/* Search */}
-        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
-          <span className="text-xs font-medium text-fg-muted">Buscar</span>
-          <Input
-            placeholder="Buscar por Nº ou Cliente…"
-            value={searchDraft}
-            onChange={onSearchChange}
-            aria-label="Buscar pedidos"
-          />
-        </label>
+      {(summaryData || summaryLoading) && (
+        <section aria-label={`Resumo comercial: ${summaryPeriodLabel.toLowerCase()}`} aria-busy={summaryLoading} className="space-y-3">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">
+            {summaryPeriodLabel}
+          </p>
+          <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+            <StatCard
+              icon={ShoppingCart}
+              label="Pedidos"
+              loading={summaryLoading}
+              value={summaryData ? String(summaryData.orders_count) : '—'}
+              metadata={summaryData && summaryData.orders_count > 0 ? `${summaryData.orders_count} no período` : undefined}
+            />
+            <StatCard
+              icon={DollarSign}
+              label="Receita"
+              loading={summaryLoading}
+              value={!summaryData || summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+              metadata={summaryData ? formatSummaryDelta(summaryData.revenue_delta, summaryData.total_revenue) : undefined}
+            />
+            <StatCard
+              icon={Package}
+              label="Em aberto"
+              loading={summaryLoading}
+              value={summaryData ? String(summaryData.open_orders) : '—'}
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Ticket médio"
+              loading={summaryLoading}
+              value={!summaryData || summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+              metadata={summaryData ? formatSummaryDelta(summaryData.avg_ticket_delta, summaryData.avg_ticket) : undefined}
+            />
+          </div>
+        </section>
+      )}
+      {!summaryData && summaryError && (
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
+              Tentar novamente
+            </Button>
+          }
+        >
+          Não foi possível carregar o resumo comercial.
+        </InlineAlert>
+      )}
+
+      <section className="rounded-card bg-surface p-5" aria-label="Lista de pedidos">
+      <PageToolbar className="mb-5">
+        <SearchField
+          placeholder="Buscar pedido ou cliente"
+          value={searchDraft}
+          onChange={onSearchChange}
+          aria-label="Buscar pedidos"
+        />
 
         {/* Status select */}
-        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
-          <span className="text-xs font-medium text-fg-muted">Status</span>
+        <label className="flex w-full min-w-0 sm:w-auto">
           <Select
             aria-label="Filtrar por status"
             value={status}
             onChange={onStatusChange}
             title="Status do pedido"
-            className="w-full"
+            className="w-full sm:min-w-40"
           >
             {STATUSES.map((s, i) => (
               <option key={s} value={s}>
@@ -437,13 +496,12 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </label>
 
         {/* Period select */}
-        <label className="flex w-full min-w-0 flex-col gap-1.5 sm:flex-1 sm:max-w-[286px]">
-          <span className="text-xs font-medium text-fg-muted">Período</span>
+        <label className="flex w-full min-w-0 sm:ml-auto sm:w-auto">
           <Select
             aria-label="Filtrar por período"
             value={period}
             onChange={(event) => onPeriodChange(event.target.value)}
-            className="w-full"
+            className="w-full sm:min-w-28"
           >
             {PERIODS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -455,18 +513,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       </PageToolbar>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={5} rows={8} />}
+      {loading && <SkeletonTable cols={5} rows={8} size="lg" />}
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar pedidos</p>
-          <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={fetchOrders}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os pedidos" onRetry={() => void fetchOrders()} />
       )}
 
       {/* Empty */}
@@ -491,7 +542,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 </Button>
               )}
               <Button asChild>
-                <a href="#/manual">Novo orçamento</a>
+                <a href="#/novo-orcamento">Novo orçamento</a>
               </Button>
               <Button variant="outline" onClick={() => navigate('/quotations')}>
                 Ver orçamentos
@@ -504,51 +555,43 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* ── Desktop Table (hidden on small screens) ── */}
       {!loading && !error && items.length > 0 && (
         <div className="hidden md:block">
-          <Table>
+          <Table className="min-w-[730px]" containerClassName="rounded-none">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[160px]">Pedido</TableHead>
                 <TableHead>Cliente</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Entrega</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Situação</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer bg-surface"
+                  className="cursor-pointer"
                   aria-label={`Abrir pedido ${row.id}`}
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="py-1 font-mono text-sm">
+                  <TableCell className="py-4 text-xs font-semibold">
                     <div>{row.id}</div>
-                    <div className="mt-1 font-sans text-xs font-normal text-fg-muted">
-                      {row.date ? formatSalesOrderDate(row.date) : 'Data não informada'}
-                    </div>
+                    <div className="mt-1 text-[11px] font-normal text-fg-muted">{row.source_quotation ? formatQuotation(row) : 'Sem orçamento de origem'}</div>
                   </TableCell>
-                  <TableCell className="py-1">
-                    <div>{row.customer_name || 'Cliente não identificado'}</div>
-                    <div className="mt-1 text-xs text-fg-muted">
-                      <span>Origem: </span>
-                      {row.source_quotation ? (
-                        <span>{formatQuotation(row)}</span>
-                      ) : (
-                        <span>não informada</span>
-                      )}
-                    </div>
+                  <TableCell className="py-4">
+                    <EntityIdentity name={row.customer_name || 'Cliente não identificado'} />
                   </TableCell>
-                  <TableCell className="py-1">
+                  <TableCell className="py-4 text-fg-muted">{row.date ? formatSalesOrderDate(row.date) : '—'}</TableCell>
+                  <TableCell className="py-4">
                     <StatusBadge
                       status={row.status || ''}
                       label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                     />
                   </TableCell>
-                  <TableCell className="py-1 text-sm text-fg-muted">{formatDelivery(row)}</TableCell>
-                  <TableCell className="py-1 text-right font-sans tabular-nums">
+                  <TableCell className="py-4 text-right font-sans tabular-nums">
                     {formatBRL(row.grand_total)}
                   </TableCell>
+                  <TableCell className="py-4 text-right text-fg-muted"><ChevronRight size={16} aria-hidden="true" /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -562,7 +605,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           {items.map((row) => (
             <div
               key={row.id}
-              className="bg-surface rounded-lg border border-line shadow-sm p-4 space-y-3 cursor-pointer"
+              className="bg-surface rounded-card border border-line shadow-sm p-4 space-y-3 cursor-pointer"
               tabIndex={0}
               role="link"
               aria-label={`Abrir pedido ${row.id}`}
@@ -620,107 +663,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
       {/* Pagination */}
       {!loading && !error && items.length > 0 && (
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-fg-muted">
-            <span>Itens por página</span>
-            <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
-              {[10, 25, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              ‹ Anterior
-            </Button>
-            <span className="px-2 text-sm text-fg-muted">Página {page}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!hasMore}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Próximo ›
-            </Button>
-          </div>
-        </div>
+        <ListPagination label="Paginação de pedidos" page={page} limit={limit} pageSizes={[10, 25, 50, 100]} hasNext={hasMore} onPageChange={setPage} onLimitChange={onLimitChange} />
       )}
 
-      {/* Secondary summary: available on demand after the list journey. */}
-      <details className="group rounded-lg border border-line bg-surface">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
-          <span>Resumo comercial · últimos 30 dias</span>
-          <span className="text-xs font-normal text-fg-muted" aria-live="polite">
-            {summaryError ? 'indisponível' : summaryData ? 'disponível' : 'carregando'}
-          </span>
-        </summary>
-        <div className="border-t border-line p-4">
-          {summaryError && (
-            <div
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-surface-subtle px-3 py-3"
-              role="alert"
-            >
-              <p className="text-sm text-destructive">
-                Não foi possível carregar as métricas de vendas.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
-                Tentar novamente
-              </Button>
-            </div>
-          )}
-          {summaryData && (
-            <div className="flex flex-wrap gap-3">
-              <StatCard
-                icon={DollarSign}
-                label="Receita"
-                className="flex-1"
-                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-                metadata={
-                  summaryData.revenue_delta === null ||
-                  (summaryData.revenue_delta === 0 && !summaryData.total_revenue)
-                    ? undefined
-                    : summaryData.revenue_delta === 0
-                      ? 'sem variação vs período anterior'
-                      : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`
-                }
-              />
-              <StatCard
-                icon={ShoppingCart}
-                label="Pedidos"
-                className="flex-1"
-                value={String(summaryData.orders_count)}
-              />
-              <StatCard
-                icon={TrendingUp}
-                label="Ticket Médio"
-                className="flex-1"
-                value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-                metadata={
-                  summaryData.avg_ticket_delta === null ||
-                  (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket)
-                    ? undefined
-                    : summaryData.avg_ticket_delta === 0
-                      ? 'sem variação vs período anterior'
-                      : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`
-                }
-              />
-              <StatCard
-                icon={Package}
-                label="Pedidos em aberto"
-                className="flex-1"
-                value={String(summaryData.open_orders)}
-              />
-            </div>
-          )}
-        </div>
-      </details>
+      </section>
+
     </PageShell>
   );
 }

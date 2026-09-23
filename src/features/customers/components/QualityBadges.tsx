@@ -44,7 +44,7 @@ export function QualityBadges({ badges, className }: QualityBadgesProps) {
             key={i}
             title={b.title || b.label}
             className={cn(
-              'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors',
+              'inline-flex items-center gap-1 rounded-badge px-2 py-0.5 text-[11px] font-semibold leading-4 transition-colors',
               typeStyles[b.type] || typeStyles.info,
             )}
           >

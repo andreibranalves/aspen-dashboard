@@ -16,7 +16,6 @@ import {
   X,
   Plus,
   Phone,
-  AlertTriangle,
   Loader2,
   Mail,
   Search,
@@ -24,7 +23,7 @@ import {
   ShoppingCart,
   ArrowUpRight,
   ChevronDown,
-  LockKeyhole,
+  Send,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
 import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
@@ -36,9 +35,13 @@ import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import ErrorState from '@/components/shared/ErrorState';
+import { Dialog } from '@/components/ui/dialog';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
 import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
@@ -53,6 +56,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
+import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
 import { type QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
@@ -108,8 +112,6 @@ function readCreatedSalesOrderId(value: unknown): string {
   const id = candidate.trim();
   return SALES_ORDER_ID_PATTERN.test(id) ? id : '';
 }
-const DIALOG_FOCUSABLE_SELECTOR =
-  'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type QuotationItem = ProjectedQuotationItem & {
   _key?: string;
@@ -268,11 +270,7 @@ function CoreQuotationDetail({
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
   const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
-  const techDetailsDialogRef = useRef<HTMLDivElement>(null);
-  const techDetailsCloseRef = useRef<HTMLButtonElement>(null);
-  const lossReasonDialogRef = useRef<HTMLDivElement>(null);
   const lossReasonSelectRef = useRef<HTMLSelectElement>(null);
-  const lossReasonRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [conflict, setConflict] = useState('');
   const { toast } = useToast();
   const { setNavigationGuard } = useRouteGuardContext();
@@ -1086,98 +1084,9 @@ function CoreQuotationDetail({
     void markCommercialStatus('perdido', reason);
   }, [lossReasonChoice, lossReasonDetail, markCommercialStatus]);
 
-  useEffect(() => {
-    if (!lossReasonOpen) return undefined;
-
-    lossReasonRestoreFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    lossReasonSelectRef.current?.focus();
-    const dialog = lossReasonDialogRef.current;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeLossReasonDialog();
-        return;
-      }
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      if (dialog && !dialog.contains(event.target as Node)) lossReasonSelectRef.current?.focus();
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('focusin', handleFocusIn);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('focusin', handleFocusIn);
-      lossReasonRestoreFocusRef.current?.focus();
-      lossReasonRestoreFocusRef.current = null;
-    };
-  }, [closeLossReasonDialog, lossReasonOpen]);
-
   const closeTechDetailsDialog = useCallback(() => {
     setTechDetailsOpen(false);
   }, []);
-
-  useEffect(() => {
-    if (!techDetailsOpen) return undefined;
-
-    techDetailsCloseRef.current?.focus();
-    const dialog = techDetailsDialogRef.current;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeTechDetailsDialog();
-        return;
-      }
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      if (dialog && !dialog.contains(event.target as Node)) techDetailsCloseRef.current?.focus();
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('focusin', handleFocusIn);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('focusin', handleFocusIn);
-      if (moreActionsButtonRef.current && document.contains(moreActionsButtonRef.current)) {
-        moreActionsButtonRef.current.focus();
-      }
-    };
-  }, [closeTechDetailsDialog, techDetailsOpen]);
 
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
@@ -1284,61 +1193,36 @@ function CoreQuotationDetail({
               : '';
 
   const issuedDetail = issuedView ? (
-    <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_336px]">
+    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
       <div id="quotation-panel" className="min-w-0 space-y-5">
         <section
           aria-labelledby="issued-client-title"
-          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6"
+          className="rounded-card bg-surface px-5 py-5 md:px-6"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 id="issued-client-title" className="text-base font-semibold text-fg">
-                Cliente
-              </h2>
-              <p className="mt-2 text-lg font-semibold text-fg">
-                {data.cliente || 'Cliente não informado'}
-              </p>
-              {(data.email || data.telefone) && (
-                <p className="mt-1 break-words text-sm text-fg-muted">
-                  {[data.email, fmtPhone(data.telefone) || data.telefone]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              )}
+              <h2 id="issued-client-title" className="text-base font-semibold text-fg">Cliente e oportunidade</h2>
+              <div className="mt-5 flex items-center gap-2.5">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-avatar-one text-[10px] font-bold text-avatar-ink" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
+                <div className="min-w-0"><p className="truncate text-sm font-medium text-fg">{data.cliente || 'Cliente não informado'}</p>{(data.email || data.telefone) && <p className="truncate text-xs text-fg-muted">{[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}</p>}</div>
+              </div>
             </div>
             {data.clienteId && (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex items-center gap-1 rounded-control border border-line px-3 py-2 text-xs font-medium hover:bg-raised"
                 onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
               >
-                Ver cliente <ArrowUpRight size={14} aria-hidden="true" />
+                <ArrowUpRight size={14} aria-hidden="true" /> Abrir cliente
               </button>
             )}
           </div>
-          {data.clienteId && (
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() => navigate('/crm')}
-              >
-                Abrir no CRM
-              </button>
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                onClick={() => navigate('/quotations')}
-              >
-                Ver orçamentos anteriores
-              </button>
-            </div>
-          )}
+          {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && <div className="mt-5 flex items-center justify-between border-t border-line pt-4 text-xs"><span className="text-fg-muted">Origem</span><span>{data.quotationOrigin.sourceLabel}</span></div>}
         </section>
 
         <section
           aria-labelledby="issued-items-title"
-          className="overflow-hidden rounded-lg border border-line bg-surface"
+          className="overflow-hidden rounded-card bg-surface"
         >
           <div className="px-5 pb-3 pt-5 md:px-6">
             <h2 id="issued-items-title" className="text-base font-semibold text-fg">
@@ -1353,12 +1237,9 @@ function CoreQuotationDetail({
               >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9 w-[12%] px-0">SKU</TableHead>
-                    <TableHead className="h-9 w-[36%] px-2">Produto</TableHead>
-                    <TableHead className="h-9 whitespace-nowrap text-center">Quantidade</TableHead>
-                    <TableHead className="h-9 whitespace-nowrap text-center">
-                      Valor unitário
-                    </TableHead>
+                    <TableHead className="h-9 w-[48%] px-0">Produto</TableHead>
+                    <TableHead className="h-9 whitespace-nowrap text-center">Qtd.</TableHead>
+                    <TableHead className="h-9 whitespace-nowrap text-center">Unitário</TableHead>
                     <TableHead className="h-9 whitespace-nowrap pr-0 text-right">
                       Subtotal
                     </TableHead>
@@ -1367,13 +1248,11 @@ function CoreQuotationDetail({
                 <TableBody>
                   {displayItems.map((item) => (
                     <TableRow key={item._key}>
-                      <TableCell className="px-0 py-3 font-mono text-xs text-fg-muted">
-                        {item.sku || '—'}
-                      </TableCell>
-                      <TableCell className="px-2 py-3">
+                      <TableCell className="px-0 py-3">
                         <span className="block break-words font-medium text-fg">
                           {item.nome || item.item_name || item.sku || 'Produto não informado'}
                         </span>
+                        <span className="mt-1 block font-mono text-[10px] text-fg-muted">{item.sku || '—'}</span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
                         {Number(item.qty)}
@@ -1400,23 +1279,11 @@ function CoreQuotationDetail({
               />
             </div>
           )}
-          <div className="mx-5 flex flex-wrap items-end justify-between gap-5 border-t border-line py-5 md:mx-6">
-            <dl className="text-sm tabular-nums">
-              <dt className="text-xs text-fg-muted">Frete</dt>
-              <dd className="mt-0.5">{formatBRL(data.frete)}</dd>
-            </dl>
-            <dl className="text-right tabular-nums">
-              <dt className="text-sm text-fg-muted">Total do orçamento</dt>
-              <dd className="mt-1 text-xl font-semibold tracking-tight text-fg">
-                {formatBRL(data.total)}
-              </dd>
-            </dl>
-          </div>
         </section>
 
         <section
           aria-labelledby="issued-conditions-title"
-          className="rounded-lg border border-line bg-surface px-5 py-5 md:px-6 [&>section:first-of-type]:border-t-0"
+          className="rounded-card bg-surface px-5 py-5 md:px-6 [&>section:first-of-type]:border-t-0"
         >
           <h2 id="issued-conditions-title" className="text-base font-semibold text-fg">
             Condições comerciais
@@ -1432,7 +1299,7 @@ function CoreQuotationDetail({
           )}
           <div className="divide-y divide-line border-t border-line">
             <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg [&::-webkit-details-marker]:hidden">
                 <span>Detalhes do documento</span>
                 <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
                   Datas e modelo
@@ -1473,7 +1340,7 @@ function CoreQuotationDetail({
             </details>
 
             <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg [&::-webkit-details-marker]:hidden">
                 <span>Histórico e revisões</span>
                 <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
                   R{data.revision}
@@ -1566,12 +1433,23 @@ function CoreQuotationDetail({
         </section>
       </div>
 
-      <aside
-        className="min-w-0 self-start rounded-lg border border-line bg-surface px-5 py-5 xl:sticky xl:top-4"
+      <div className="min-w-0 space-y-5 self-start">
+      <aside className="rounded-card bg-surface p-5" aria-label="Resumo do orçamento">
+        <h2 className="text-base font-semibold">Resumo</h2>
+        <dl className="mt-4 space-y-3 text-xs tabular-nums">
+          <div className="flex justify-between gap-3"><dt className="text-fg-muted">Subtotal</dt><dd>{formatBRL(Number(data.total) - Number(data.frete))}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-fg-muted">Frete</dt><dd>{formatBRL(data.frete)}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-fg-muted">Itens</dt><dd>{displayItems.length}</dd></div>
+          <div className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm"><dt>Total</dt><dd className="text-xl font-bold">{formatBRL(data.total)}</dd></div>
+        </dl>
+        <p className="mt-5 rounded-control border border-line p-3 text-[11px] leading-4 text-fg-muted">Emitir o documento não confirma a entrega por WhatsApp ou e-mail.</p>
+      </aside>
+      <aside id="issued-communication"
+        className="rounded-card bg-surface px-5 py-5"
         aria-labelledby="commercial-followup-title"
       >
         <h2 id="commercial-followup-title" className="text-base font-semibold text-fg">
-          Acompanhamento comercial
+          Comunicação
         </h2>
         <div className="mt-5 space-y-3">
           <label className="block text-xs font-medium text-fg-muted">
@@ -1679,188 +1557,166 @@ function CoreQuotationDetail({
           )}
         </div>
       </aside>
+      </div>
     </div>
   ) : null;
 
   return (
-    <div ref={detailTopRef} className="space-y-0">
+    <div ref={detailTopRef} className="space-y-5">
       <fieldset disabled={saving} className="contents">
-        <header className="flex flex-col gap-4 pb-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            {draftEditable && !editing && (
-              <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
-            )}
-            <h1 className="text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg">
-              {data.businessNumber || displayTitle}
-            </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
-              <span className="font-medium text-fg">{data.cliente || 'Cliente não informado'}</span>
-              <span aria-hidden="true">·</span>
+        <PageHeader
+          eyebrow={draftEditable && !editing ? 'Revisar antes de emitir' : undefined}
+          title={data.businessNumber || displayTitle}
+          meta={
+            <>
+              <StatusBadge {...statusBadgeProps(data.status)} />
+              {data.cliente && <span className="font-medium text-fg">{data.cliente}</span>}
               <span>Revisão {data.revision}</span>
-              {issuedView ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>Válido até {formatDate(data.validade) || '—'}</span>
-                </>
-              ) : currentRevision?.createdAt ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>{formatDate(currentRevision.createdAt) || '—'}</span>
-                </>
-              ) : null}
-            </div>
-            {!issuedView && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
-                <StatusBadge {...statusBadgeProps(data.status)} />
-                <span>Validade: {formatDate(data.validade) || '—'}</span>
-                {data.expired && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-medium text-warning">Expirado</span>
-                  </>
-                )}
-              </div>
-            )}
-            {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && (
-              <div
-                className="mt-2 flex flex-wrap items-center gap-2 text-sm"
-                aria-label="Origem do orçamento"
-              >
-                <span
-                  className={
-                    data.quotationOrigin.status === 'conflict'
-                      ? 'text-destructive'
-                      : 'text-fg-muted'
-                  }
+              {currentRevision?.createdAt && <span>{formatDate(currentRevision.createdAt)}</span>}
+              <span>Validade {formatDate(data.validade) || '—'}</span>
+              {data.expired && <span className="font-medium text-warning">Expirado</span>}
+              {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && (
+                <div
+                  className="flex flex-wrap items-center gap-2"
+                  aria-label="Origem do orçamento"
                 >
-                  Origem: {data.quotationOrigin.sourceLabel}
-                </span>
-                {data.quotationOrigin.salesOrderNumber && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      navigate(
-                        `/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`
-                      )
+                  <span
+                    className={
+                      data.quotationOrigin.status === 'conflict'
+                        ? 'text-destructive'
+                        : 'text-fg-muted'
                     }
                   >
-                    <ShoppingCart size={14} /> Abrir pedido
-                  </Button>
-                )}
-              </div>
-            )}
-            {editing && (
-              <p
-                role="status"
-                aria-live="polite"
-                className={
-                  isDirty ? 'mt-2 text-xs font-medium text-warning' : 'mt-2 text-xs text-fg-muted'
-                }
-              >
-                {saving
-                  ? 'Salvando…'
-                  : isDirty
-                    ? 'Alterações não salvas'
-                    : 'Nenhuma alteração pendente'}
-              </p>
-            )}
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-            {editing ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={saving}
-                  onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}
-                >
-                  Cancelar
-                </Button>
-                <Button variant="outline" size="sm" disabled={saving} onClick={openPreview}>
-                  Pré-visualizar
-                </Button>
-                <Button size="sm" disabled={saving} onClick={save}>
-                  <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
-                </Button>
-              </>
-            ) : (
-              <>
-                {draftEditable ? (
-                  <>
+                    Origem: {data.quotationOrigin.sourceLabel}
+                  </span>
+                  {data.quotationOrigin.salesOrderNumber && (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        showMessage('');
-                        setEditing(true);
-                      }}
+                      onClick={() =>
+                        navigate(
+                          `/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`
+                        )
+                      }
                     >
-                      <Pencil size={14} /> Editar
+                      <ShoppingCart size={14} /> Abrir pedido
                     </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" size="lg" onClick={openIssuedDocument}>
-                    <FileText size={14} /> Visualizar PDF
-                  </Button>
-                )}
-
-                <div className="relative">
-                  <button
-                    ref={moreActionsButtonRef}
-                    type="button"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    aria-label="Mais ações"
-                    className={`flex items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${issuedView ? 'h-10 gap-2 px-4 text-sm font-medium' : 'h-8 w-8'}`}
-                    onClick={() => setMenuOpen((current) => !current)}
-                  >
-                    <MoreHorizontal size={18} />
-                    {issuedView && <span>Mais ações</span>}
-                  </button>
-                  {menuOpen && (
-                    <div
-                      role="menu"
-                      aria-label="Ações do orçamento"
-                      className="absolute right-0 top-9 z-40 w-52 rounded-md border border-line bg-surface py-1 shadow-lg"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setTechDetailsOpen(true);
-                        }}
-                      >
-                        Detalhes técnicos
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="block w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setConfirmDeleteOpen(true);
-                        }}
-                      >
-                        <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
-                      </button>
-                    </div>
-                  )}
-                  {menuOpen && (
-                    <div
-                      aria-hidden="true"
-                      className="fixed inset-0 z-30"
-                      onClick={() => setMenuOpen(false)}
-                    />
                   )}
                 </div>
-              </>
-            )}
-          </div>
-        </header>
+              )}
+              {editing && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={
+                    isDirty ? 'font-medium text-warning' : undefined
+                  }
+                >
+                  {saving
+                    ? 'Salvando…'
+                    : isDirty
+                      ? 'Alterações não salvas'
+                      : 'Nenhuma alteração pendente'}
+                </p>
+              )}
+            </>
+          }
+          actions={
+            <>
+              {editing ? (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button variant="outline" disabled={saving} onClick={openPreview}>
+                    Pré-visualizar
+                  </Button>
+                  <Button disabled={saving} onClick={save}>
+                    <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {draftEditable ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          showMessage('');
+                          setEditing(true);
+                        }}
+                      >
+                        <Pencil size={14} /> Editar
+                      </Button>
+                    </>
+                  ) : (
+                    <Button variant="outline" onClick={openIssuedDocument}>
+                      <FileText size={14} /> Prévia do documento
+                    </Button>
+                  )}
+
+                  {issuedView && data.revisionId && <Button variant="outline" disabled={lifecycleAction !== null} onClick={() => createRevision(data.revisionId!)}><Pencil size={14} />{lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Nova revisão'}</Button>}
+                  {issuedView && <Button onClick={() => document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Send size={14} />Preparar envio</Button>}
+
+                  <div className="relative">
+                    <Button
+                      ref={moreActionsButtonRef}
+                      type="button"
+                      variant="outline"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      onClick={() => setMenuOpen((current) => !current)}
+                    >
+                      <MoreHorizontal aria-hidden="true" />
+                      Mais ações
+                    </Button>
+                    {menuOpen && (
+                      <div
+                        role="menu"
+                        aria-label="Ações do orçamento"
+                        className="absolute right-0 top-12 z-40 w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full rounded-badge px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setTechDetailsOpen(true);
+                          }}
+                        >
+                          Detalhes técnicos
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full rounded-badge px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setConfirmDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
+                        </button>
+                      </div>
+                    )}
+                    {menuOpen && (
+                      <div
+                        aria-hidden="true"
+                        className="fixed inset-0 z-30"
+                        onClick={() => setMenuOpen(false)}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          }
+        />
 
         {(message || emailSuccess) && (
           <p
@@ -1871,36 +1727,16 @@ function CoreQuotationDetail({
             {message || emailSuccess}
           </p>
         )}
-        {issuedView && (
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line pb-5">
-            <div className="flex min-w-0 items-center gap-2 text-sm text-fg-muted">
-              <LockKeyhole size={16} aria-hidden="true" />
-              <span className="font-semibold text-fg">Emitido</span>
-              <span>Somente leitura. Alterações criam uma nova revisão.</span>
-            </div>
-            {data.revisionId && (
-              <button
-                type="button"
-                className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                disabled={lifecycleAction !== null}
-                onClick={() => createRevision(data.revisionId!)}
-              >
-                {lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Criar revisão'}
-              </button>
-            )}
-          </div>
-        )}
-
         {conflict && (
-          <div
-            role="alert"
-            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          <InlineAlert className="mt-4"
+            action={
+              <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
+                Recarregar
+              </Button>
+            }
           >
-            <span className="min-w-0 break-words">{conflict}</span>
-            <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
-              Recarregar
-            </Button>
-          </div>
+            <span className="break-words">{conflict}</span>
+          </InlineAlert>
         )}
 
         {issuedDetail}
@@ -1913,7 +1749,7 @@ function CoreQuotationDetail({
                 : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
             }
           >
-            <div className="min-w-0 rounded-lg border border-line bg-surface p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-5">
+            <div className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
               {draftEditable && !editing && (
                 <h2 className="mb-3 text-base font-semibold text-fg">Conferência</h2>
               )}
@@ -1944,7 +1780,7 @@ function CoreQuotationDetail({
                           )}
                         </div>
                         {clientResults.length > 0 && (
-                          <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
+                          <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
                             {clientResults.map((client) => (
                               <button
                                 key={client.id}
@@ -1984,7 +1820,7 @@ function CoreQuotationDetail({
                           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
                             <button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="text-sm font-medium text-primary hover:underline"
                               onClick={() =>
                                 navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)
                               }
@@ -1993,14 +1829,14 @@ function CoreQuotationDetail({
                             </button>
                             <button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="text-sm font-medium text-primary hover:underline"
                               onClick={() => navigate('/crm')}
                             >
                               Abrir no CRM
                             </button>
                             <button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="text-sm font-medium text-primary hover:underline"
                               onClick={() => navigate('/quotations')}
                             >
                               Ver orçamentos anteriores
@@ -2059,9 +1895,9 @@ function CoreQuotationDetail({
                     <div className="min-w-0">
                       <span className="text-xs font-medium text-fg-muted">Modelo</span>
                       {editing && draftEditable && templates.length > 0 ? (
-                        <select
+                        <Select
                           aria-label="Modelo do orçamento"
-                          className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
+                          containerClassName="w-full mt-1" className="w-full"
                           value={selectedTemplate}
                           onChange={(event) => {
                             const key = event.target.value;
@@ -2076,7 +1912,7 @@ function CoreQuotationDetail({
                               {template.archived ? ' (arquivado)' : ''}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       ) : (
                         <p className="mt-1 break-words">
                           {selectedTemplateMetadata?.name || selectedTemplate || '—'}
@@ -2218,7 +2054,7 @@ function CoreQuotationDetail({
                                     aria-label={`SKU do item ${item.item_name}`}
                                   />
                                   {results.length > 0 && (
-                                    <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
+                                    <div className="absolute left-0 top-9 z-40 w-64 rounded-control border border-line bg-surface shadow-lg">
                                       {results.map((product) => (
                                         <button
                                           type="button"
@@ -2469,7 +2305,7 @@ function CoreQuotationDetail({
 
             {draftEditable && (
               <aside
-                className="min-w-0 rounded-lg border border-line bg-surface p-4 md:p-5"
+                className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6"
                 aria-labelledby="quotation-summary-title"
               >
                 <h2 id="quotation-summary-title" className="text-base font-semibold text-fg">
@@ -2580,135 +2416,100 @@ function CoreQuotationDetail({
         onConfirm={handleDelete}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
-      {techDetailsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={closeTechDetailsDialog}
-            aria-hidden="true"
-          />
-          <div
-            ref={techDetailsDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tech-details-title"
-            tabIndex={-1}
-            className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
-          >
-            <h3 id="tech-details-title" className="text-lg font-semibold text-fg">
-              Detalhes técnicos
-            </h3>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div>
-                <dt className="text-xs text-fg-muted">Modelo</dt>
-                <dd className="mt-0.5 break-words">
-                  {selectedTemplateMetadata?.name || selectedTemplate || '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">Versão do modelo</dt>
-                <dd className="mt-0.5 break-words">
-                  {selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">Snapshot</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">
-                  {data.templateHash ||
-                    selectedTemplateMetadata?.hash ||
-                    selectedTemplateMetadata?.current_hash ||
-                    '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">Revisão</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">{data.revisionId || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">ID interno</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">{data.id}</dd>
-              </div>
-            </dl>
-            <div className="mt-5 flex justify-end">
-              <Button ref={techDetailsCloseRef} variant="outline" onClick={closeTechDetailsDialog}>
-                Fechar
-              </Button>
-            </div>
+      <Dialog
+        open={techDetailsOpen}
+        onClose={closeTechDetailsDialog}
+        returnFocusRef={moreActionsButtonRef}
+        title="Detalhes técnicos"
+      >
+        <dl className="space-y-3 text-sm">
+          <div>
+            <dt className="text-xs text-fg-muted">Modelo</dt>
+            <dd className="mt-0.5 break-words">
+              {selectedTemplateMetadata?.name || selectedTemplate || '—'}
+            </dd>
           </div>
-        </div>
-      )}
-      {lossReasonOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={closeLossReasonDialog}
-            aria-hidden="true"
-          />
-          <div
-            ref={lossReasonDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="loss-reason-title"
-            aria-describedby="loss-reason-description"
-            tabIndex={-1}
-            className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
-          >
-            <h3 id="loss-reason-title" className="text-lg font-semibold text-fg">
-              Motivo da perda
-            </h3>
-            <p id="loss-reason-description" className="mt-2 text-sm text-fg-muted">
-              Informe por que o orçamento {data.businessNumber || ''} foi perdido. O motivo fica
-              registrado no histórico.
-            </p>
-            <label className="mt-4 block text-sm">
-              <span className="text-xs text-fg-muted">Motivo</span>
-              <Select
-                ref={lossReasonSelectRef}
-                value={lossReasonChoice}
-                onChange={(event) => setLossReasonChoice(event.target.value)}
-                className="mt-1 w-full"
-                aria-label="Motivo da perda"
-                required
-              >
-                <option value="">Selecione…</option>
-                {LOSS_REASONS.map((reason) => (
-                  <option key={reason} value={reason}>
-                    {reason}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="mt-3 block text-sm">
-              <span className="text-xs text-fg-muted">
-                Detalhes {lossReasonChoice === 'Outro' ? '(obrigatório)' : '(opcional)'}
-              </span>
-              <textarea
-                value={lossReasonDetail}
-                onChange={(event) => setLossReasonDetail(event.target.value)}
-                rows={3}
-                placeholder="Contexto adicional sobre a perda…"
-                className="mt-1 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm"
-                required={lossReasonChoice === 'Outro'}
-                aria-required={lossReasonChoice === 'Outro' ? 'true' : undefined}
-              />
-            </label>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button variant="outline" onClick={closeLossReasonDialog}>
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={
-                  !lossReasonChoice || (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
-                }
-                onClick={submitLossReason}
-              >
-                Marcar como perdido
-              </Button>
-            </div>
+          <div>
+            <dt className="text-xs text-fg-muted">Versão do modelo</dt>
+            <dd className="mt-0.5 break-words">
+              {selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}
+            </dd>
           </div>
-        </div>
-      )}
+          <div>
+            <dt className="text-xs text-fg-muted">Snapshot</dt>
+            <dd className="mt-0.5 break-all font-mono text-xs">
+              {data.templateHash ||
+                selectedTemplateMetadata?.hash ||
+                selectedTemplateMetadata?.current_hash ||
+                '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">Revisão</dt>
+            <dd className="mt-0.5 break-all font-mono text-xs">{data.revisionId || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">ID interno</dt>
+            <dd className="mt-0.5 break-all font-mono text-xs">{data.id}</dd>
+          </div>
+        </dl>
+      </Dialog>
+      <Dialog
+        open={lossReasonOpen}
+        onClose={closeLossReasonDialog}
+        initialFocusRef={lossReasonSelectRef}
+        title="Motivo da perda"
+        description={`Informe por que o orçamento ${data.businessNumber || ''} foi perdido. O motivo fica registrado no histórico.`}
+        footer={
+          <>
+          <Button variant="outline" onClick={closeLossReasonDialog}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={
+              !lossReasonChoice || (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
+            }
+            onClick={submitLossReason}
+          >
+            Marcar como perdido
+          </Button>
+          </>
+        }
+      >
+        <label className="block text-sm">
+          <span className="text-xs text-fg-muted">Motivo</span>
+          <Select
+            ref={lossReasonSelectRef}
+            value={lossReasonChoice}
+            onChange={(event) => setLossReasonChoice(event.target.value)}
+            className="mt-1 w-full"
+            aria-label="Motivo da perda"
+            required
+          >
+            <option value="">Selecione…</option>
+            {LOSS_REASONS.map((reason) => (
+              <option key={reason} value={reason}>
+                {reason}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="mt-3 block text-sm">
+          <span className="text-xs text-fg-muted">
+            Detalhes {lossReasonChoice === 'Outro' ? '(obrigatório)' : '(opcional)'}
+          </span>
+          <Textarea
+            value={lossReasonDetail}
+            onChange={(event) => setLossReasonDetail(event.target.value)}
+            rows={3}
+            placeholder="Contexto adicional sobre a perda…"
+            className="mt-1"
+            required={lossReasonChoice === 'Outro'}
+            aria-required={lossReasonChoice === 'Outro' ? 'true' : undefined}
+          />
+        </label>
+      </Dialog>
     </div>
   );
 }
@@ -2760,46 +2561,21 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   if (error) {
     const previousRoute = getHashHistoryPreviousRoute();
     const fromCommercial = previousRoute && routePath(previousRoute) === '/crm';
-    const fromSendHistory =
-      previousRoute &&
-      routePath(previousRoute) === '/comunicacao' &&
-      new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
     const fromDeliveries = previousRoute && routePath(previousRoute) === '/whatsapp-deliveries';
-    const returnRoute =
-      fromCommercial
-        ? '/crm'
-        : fromSendHistory || fromDeliveries
-          ? previousRoute
-          : '/quotations';
-    const returnLabel =
-      fromCommercial
-        ? 'Comercial'
-        : fromSendHistory
-          ? 'Histórico de envios'
-          : fromDeliveries
-            ? 'Envios'
-            : 'Orçamentos';
+    const returnRoute = fromCommercial ? '/crm' : fromDeliveries ? previousRoute : '/quotations';
+    const returnLabel = fromCommercial ? 'Comercial' : fromDeliveries ? 'Envios' : 'Orçamentos';
     return (
-      <PageShell className="space-y-4">
-        <button
-          onClick={() => navigate(returnRoute)}
-          className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-        >
-          ← Voltar para {returnLabel}
-        </button>
-        <div
-          role="alert"
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
-        >
-          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
-          <p className="font-medium">Erro ao carregar orçamento</p>
-          <p className="max-w-md text-sm text-fg-muted">
-            Verifique sua conexão e tente novamente. Nenhuma alteração foi realizada.
-          </p>
-          <Button variant="outline" onClick={() => void loadDetail()}>
-            Tentar novamente
-          </Button>
-        </div>
+      <PageShell>
+        <ErrorState
+          title="Não foi possível carregar o orçamento"
+          description="Nenhuma alteração foi realizada."
+          onRetry={() => void loadDetail()}
+          actions={
+            <Button variant="ghost" onClick={() => navigate(returnRoute)}>
+              Voltar para {returnLabel}
+            </Button>
+          }
+        />
       </PageShell>
     );
   }
@@ -2807,15 +2583,16 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   return (
     <PageShell className="space-y-3">
       {reloadWarning && (
-        <div
-          role="status"
-          className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg-muted"
+        <InlineAlert
+          tone="warning"
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadDetail()}>
+              Tentar novamente
+            </Button>
+          }
         >
-          <span>Não foi possível atualizar o orçamento. Exibindo os dados anteriores.</span>
-          <Button variant="outline" size="sm" onClick={() => void loadDetail()}>
-            Tentar novamente
-          </Button>
-        </div>
+          Não foi possível atualizar o orçamento. Exibindo os dados anteriores.
+        </InlineAlert>
       )}
       <CoreQuotationDetail
         data={data}

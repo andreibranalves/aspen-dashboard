@@ -87,7 +87,6 @@ async function intercept(page, handler) {
     blocked.api.push(url.href);
     await route.abort('blockedbyclient');
   });
-  await page.addInitScript(() => globalThis.localStorage.setItem('aspen_theme', 'light'));
   return blocked;
 }
 
@@ -105,10 +104,10 @@ test.describe('issue #210 — fundação e pedidos', () => {
     await expect(page.getByRole('heading', { name: 'Pedidos' })).toBeVisible();
     await expect(page.getByText(order.customer_name, { exact: true }).first()).toBeVisible();
     await expect(page.getByText(order.customer, { exact: true })).toHaveCount(0);
-    await expect(page.locator('#aspen-sidebar')).toHaveCSS('width', '216px');
+    await expect(page.locator('#aspen-sidebar')).toHaveCSS('width', '248px');
     await expect(page.locator('header')).toHaveCSS('height', '56px');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(247, 248, 250)');
-    await expect(page.locator('#aspen-sidebar')).toHaveCSS('background-color', 'rgb(15, 20, 32)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(221, 221, 221)');
+    await expect(page.locator('#aspen-sidebar')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(page.locator('thead th')).toHaveText([
       'Pedido',
       'Cliente',
@@ -120,9 +119,7 @@ test.describe('issue #210 — fundação e pedidos', () => {
     await expect(
       page.getByRole('button', { name: order.source_quotation, exact: true })
     ).toBeVisible();
-    await expect(page.locator('details[open]')).toHaveCount(0);
-
-    await page.getByText('Resumo comercial · últimos 30 dias', { exact: true }).click();
+    await expect(page.getByText('Últimos 30 dias', { exact: true })).toBeVisible();
     await expect(page.getByText('R$ 1.500,00').first()).toBeVisible();
     await page.getByLabel('Filtrar por status').selectOption('Completed');
     await page.getByLabel('Filtrar por período').selectOption('7d');
@@ -241,8 +238,9 @@ test.describe('issue #210 — fundação e pedidos', () => {
     );
 
     await page.goto(`/#/sales-orders/${order.id}`);
-    await page.locator('header').getByRole('button', { name: 'Voltar aos pedidos' }).click();
-    await expect(page).toHaveURL(/#\/sales-orders$/);
+    await page.getByRole('navigation', { name: 'Trilha de navegação' })
+      .getByRole('button', { name: 'Pedidos' }).click();
+    await expect(page).toHaveURL(/#\/sales-orders(?:\?|$)/);
 
     await page.getByRole('button', { name: 'Exportar', exact: true }).click();
     const trigger = page.getByRole('button', { name: 'Exportar', exact: true });
@@ -354,6 +352,9 @@ test.describe('issue #210 — fundação e pedidos', () => {
       if (url.pathname === '/api/quotation-templates') {
         return json(route, { templates: [], default_key: null });
       }
+      if (url.pathname === '/api/communication-flows') {
+        return json(route, { success: true, flows: [], selectedFlowId: null });
+      }
       if (url.pathname === '/api/order-templates') {
         return json(route, { data: [] });
       }
@@ -409,10 +410,15 @@ test.describe('issue #210 — fundação e pedidos', () => {
           })
         )
         .toBe(true);
-      await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(247, 248, 250)');
-      await page.getByRole('button', { name: 'Ativar modo escuro' }).click();
-      await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 20, 32)');
-      await page.getByRole('button', { name: 'Ativar modo claro' }).click();
+      await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(221, 221, 221)');
+      await expect(page.locator('.aspen-workspace')).toHaveCSS(
+        'background-color',
+        'rgb(13, 13, 13)'
+      );
+      await expect(page.locator('#aspen-sidebar')).toHaveCSS(
+        'background-color',
+        'rgb(255, 255, 255)'
+      );
     }
     expect(blocked.api).toEqual([]);
     expect(blocked.methods).toEqual([]);

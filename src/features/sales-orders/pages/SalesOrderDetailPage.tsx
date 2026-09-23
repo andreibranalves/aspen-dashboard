@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Check, DollarSign, FileText, Truck } from 'lucide-react';
+import { Check, DollarSign, FileText, Truck } from 'lucide-react';
 import { apiGet, apiPatch } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
 import {
   Table,
@@ -75,14 +76,13 @@ function ProgressMetric({
 
 function ItemTable({ items }: { items: SalesOrderItemView[] }) {
   return (
-    <Table className="min-w-[600px] xl:min-w-0">
+    <Table className="min-w-[480px] xl:min-w-0">
       <TableHeader>
         <TableRow>
-          <TableHead>SKU</TableHead>
           <TableHead>Produto</TableHead>
-          <TableHead className="text-center">Quantidade</TableHead>
-          <TableHead className="text-center">Valor unitário</TableHead>
-          <TableHead className="text-right">Total</TableHead>
+          <TableHead className="text-center">Qtd.</TableHead>
+          <TableHead className="text-right">Unitário</TableHead>
+          <TableHead className="text-right">Subtotal</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -90,10 +90,9 @@ function ItemTable({ items }: { items: SalesOrderItemView[] }) {
           const amount = item.amount ?? item.qty * item.rate;
           return (
             <TableRow key={`${item.item_code}-${index}`}>
-              <TableCell className="font-mono text-xs">{item.item_code}</TableCell>
-              <TableCell>{item.item_name || item.item_code}</TableCell>
+              <TableCell><span className="block text-sm font-medium">{item.item_name || item.item_code}</span><span className="mt-1 block font-mono text-xs text-fg-muted">{item.item_code}</span></TableCell>
               <TableCell className="text-center">{item.qty}</TableCell>
-              <TableCell className="text-center font-sans tabular-nums">
+              <TableCell className="text-right font-sans tabular-nums">
                 {formatBRL(item.rate)}
               </TableCell>
               <TableCell className="text-right font-sans tabular-nums">
@@ -157,17 +156,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
     return (
       <PageShell>
         <PageHeader title="Pedido" />
-        <div
-          className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
-          role="alert"
-        >
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p className="text-sm text-destructive">Erro ao carregar pedido</p>
-          <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => void fetchDetail()}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar o pedido" onRetry={() => void fetchDetail()} />
       </PageShell>
     );
   }
@@ -197,69 +186,39 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       : undefined;
 
   return (
-    <PageShell>
-      <PageHeader title={data.id} />
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={data.status} label={statusLabel} />
-          <span className="text-sm text-fg-muted">
-            Prazo: {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <PageShell className="space-y-4">
+      <PageHeader
+        title={data.id}
+        meta={
+          <>
+            <StatusBadge status={data.status} label={statusLabel} />
+            {data.customer_name && <span className="font-medium text-fg">{data.customer_name}</span>}
+            {orderDate && <span>{formatSalesOrderDate(orderDate)}</span>}
+          </>
+        }
+        actions={
+          data.source_quotation ? (
+            <Button variant="outline" onClick={() => navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)}>
+              <FileText aria-hidden="true" /> Ver orçamento de origem
+            </Button>
+          ) : undefined
+        }
+      />
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 space-y-4">
+          <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">
+            <h2 id="sales-order-customer-title" className="text-base font-semibold">Cliente</h2>
+            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-avatar-one text-xs font-semibold text-avatar-ink" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.delivery_date && <p className="text-xs text-fg-muted">Entrega prevista: {formatSalesOrderDate(data.delivery_date)}</p>}</div></div>
+          </section>
           <section
-            className="min-w-0 rounded-lg border border-line bg-surface shadow-sm"
-            aria-labelledby="sales-order-execution-title"
+            className="min-w-0 rounded-card border border-line bg-surface p-5"
+            aria-labelledby="sales-order-items-title"
           >
-            <div className="border-b border-line px-5 py-4">
-              <h2 id="sales-order-execution-title" className="text-base font-semibold">
-                Execução do pedido
-              </h2>
-              <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-xs text-fg-muted">Cliente</dt>
-                  <dd className="mt-1 text-sm font-medium">
-                    {data.customer_name || 'Cliente não identificado'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-fg-muted">Data do pedido</dt>
-                  <dd className="mt-1 text-sm font-medium">
-                    {orderDate ? formatSalesOrderDate(orderDate) : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-fg-muted">Prazo de entrega</dt>
-                  <dd className="mt-1 text-sm font-medium">
-                    {data.delivery_date ? formatSalesOrderDate(data.delivery_date) : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-fg-muted">Origem</dt>
-                  <dd className="mt-1 text-sm font-medium">
-                    {data.quotation_origin ? (
-                      <span
-                        className={
-                          data.quotation_origin.status === 'conflict' ? 'text-destructive' : ''
-                        }
-                      >
-                        {data.quotation_origin.sourceLabel}
-                      </span>
-                    ) : data.source_quotation ? (
-                      data.source_quotation
-                    ) : (
-                      'Não informada'
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="px-5 py-4">
+            <div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-base font-semibold">Itens</h2>
+                <h2 id="sales-order-items-title" className="text-base font-semibold">
+                  Itens do pedido
+                </h2>
                 {data.omitted_items > 0 && (
                   <span className="text-xs text-fg-muted">
                     {data.omitted_items}{' '}
@@ -269,9 +228,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
                 )}
               </div>
               {items === undefined ? (
-                <p className="py-6 text-sm text-fg-muted">
-                  Itens não disponíveis para este pedido.
-                </p>
+                <p className="py-6 text-sm text-fg-muted">Itens não disponíveis para este pedido.</p>
               ) : items.length === 0 ? (
                 <p className="py-6 text-sm text-fg-muted">Nenhum item registrado neste pedido.</p>
               ) : (
@@ -280,94 +237,78 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
                 </div>
               )}
             </div>
+
           </section>
-
+          <section className="rounded-card border border-line bg-surface p-5">
+            <div>
+              <h2 className="text-base font-semibold">Andamento operacional</h2>
+              <div
+                role="region"
+                aria-label="Progresso do pedido"
+                className="mt-4 grid gap-4 sm:grid-cols-2"
+              >
+                <ProgressMetric label="Faturamento" value={data.per_billed} tone="success" />
+                <ProgressMetric label="Entrega" value={data.per_delivered} tone="primary" />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {billedBlockedReason && (
+                  <span id="sales-order-billed-reason" className="sr-only">
+                    {billedBlockedReason}
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Marcar faturado"
+                  aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
+                  title={billedBlockedReason}
+                  disabled={Boolean(billedBlockedReason) || updating !== null}
+                  onClick={() => void markProgress('billed')}
+                >
+                  <DollarSign size={14} aria-hidden="true" /> Marcar faturado
+                </Button>
+                {deliveredBlockedReason && (
+                  <span id="sales-order-delivered-reason" className="sr-only">
+                    {deliveredBlockedReason}
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label="Marcar entregue"
+                  aria-describedby={deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined}
+                  title={deliveredBlockedReason}
+                  disabled={Boolean(deliveredBlockedReason) || updating !== null}
+                  onClick={() => void markProgress('delivered')}
+                >
+                  <Truck size={14} aria-hidden="true" /> Marcar entregue
+                </Button>
+              </div>
+              {actionError && (
+                <p className="mt-3 text-sm text-destructive" role="alert">
+                  {actionError}
+                </p>
+              )}
+            </div>
+          </section>
+        </div>
+        <div className="space-y-4">
           <aside
-            className="rounded-lg border border-line bg-surface p-5 shadow-sm"
-            aria-labelledby="sales-order-action-title"
+            className="rounded-card border border-line bg-surface p-5"
+            aria-labelledby="sales-order-values-title"
           >
-            <h2 id="sales-order-action-title" className="text-base font-semibold">
-              Atualizar pedido
+            <h2 id="sales-order-values-title" className="text-base font-semibold">
+              Valores do pedido
             </h2>
-
-            <div
-              role="region"
-              aria-label="Progresso do pedido"
-              className="mt-4 space-y-4 border-b border-line pb-4"
-            >
-              <ProgressMetric label="Faturado" value={data.per_billed} tone="success" />
-              <ProgressMetric label="Entregue" value={data.per_delivered} tone="primary" />
-            </div>
-
-            <div className="mt-4 flex flex-col items-stretch gap-2">
-              {billedBlockedReason && (
-                <span id="sales-order-billed-reason" className="sr-only">
-                  {billedBlockedReason}
-                </span>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                aria-label="Marcar faturado"
-                aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
-                title={billedBlockedReason}
-                disabled={Boolean(billedBlockedReason) || updating !== null}
-                onClick={() => void markProgress('billed')}
-              >
-                <DollarSign size={14} aria-hidden="true" /> Marcar faturado
-              </Button>
-              {deliveredBlockedReason && (
-                <span id="sales-order-delivered-reason" className="sr-only">
-                  {deliveredBlockedReason}
-                </span>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                aria-label="Marcar entregue"
-                aria-describedby={
-                  deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined
-                }
-                title={deliveredBlockedReason}
-                disabled={Boolean(deliveredBlockedReason) || updating !== null}
-                onClick={() => void markProgress('delivered')}
-              >
-                <Truck size={14} aria-hidden="true" /> Marcar entregue
-              </Button>
-            </div>
-
-            {actionError && (
-              <p className="mt-3 text-sm text-destructive" role="alert">
-                {actionError}
-              </p>
-            )}
-
-            <div className="my-5 border-t border-line" />
-            <span className="text-xs text-fg-muted">Total do pedido</span>
-            <p className="mt-1 text-lg font-semibold tabular-nums">
-              {grandTotal === undefined ? '—' : formatBRL(grandTotal)}
-            </p>
-            {data.source_quotation && (
-              <Button
-                variant="link"
-                size="sm"
-                className="mt-4 h-auto w-full justify-start px-0"
-                onClick={() =>
-                  navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)
-                }
-              >
-                <FileText size={14} aria-hidden="true" /> Abrir orçamento {data.source_quotation}
-              </Button>
-            )}
+            <dl className="mt-5 space-y-3 text-sm tabular-nums"><div className="flex justify-between gap-2"><dt className="text-fg-muted">Produtos</dt><dd>{itemTotal === undefined ? '—' : formatBRL(itemTotal)}</dd></div><div className="flex justify-between gap-2 border-t border-line pt-4 text-lg font-semibold"><dt>Total</dt><dd>{grandTotal === undefined ? '—' : formatBRL(grandTotal)}</dd></div></dl>
             {data.status === 'Completed' && (
-              <div className="mt-4 flex items-center gap-1.5 text-xs text-success">
+              <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-success">
                 <Check size={14} aria-hidden="true" />
                 <span>Concluído</span>
               </div>
             )}
           </aside>
+          <aside className="rounded-card border border-line bg-surface p-5" aria-label="Rastreabilidade do pedido"><h2 className="text-base font-semibold">Rastreabilidade</h2><div className="mt-5 border-l border-line pl-4 text-sm"><p className="font-medium">Pedido criado</p><p className="mt-1 text-xs text-fg-muted">{orderDate ? formatSalesOrderDate(orderDate) : 'Data não informada'}</p>{data.source_quotation && <p className="mt-5 font-medium">Origem: {data.source_quotation}</p>}{data.quotation_origin?.status === 'conflict' && <p className="mt-2 text-xs text-destructive">Origem do orçamento divergente.</p>}</div></aside>
         </div>
       </div>
     </PageShell>

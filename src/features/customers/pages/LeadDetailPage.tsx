@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  AlertTriangle,
-  Columns3,
   Edit3,
-  FileText,
   Mail,
   MapPin,
   Phone,
@@ -22,6 +19,8 @@ import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
+import EmptyState from '@/components/shared/EmptyState';
+import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/badge';
@@ -146,17 +145,17 @@ interface SectionCardProps {
 function SectionCard({ title, description, icon: Icon, children, className }: SectionCardProps) {
   return (
     <section
-      className={`space-y-4 rounded-md border border-line bg-surface p-4 md:p-5 ${className || ''}`}
+      className={`space-y-4 rounded-card border border-line bg-surface p-5 md:p-6 ${className || ''}`}
       aria-labelledby={`section-${title}`}
     >
       <div className="flex items-start gap-3">
         {Icon && (
-          <div className="mt-0.5 rounded-sm bg-surface-muted p-2 text-fg-muted">
+          <div className="mt-0.5 rounded-control bg-surface-subtle p-2 text-fg-muted">
             <Icon size={16} aria-hidden="true" />
           </div>
         )}
         <div>
-          <h2 id={`section-${title}`} className="text-sm font-semibold text-fg">
+          <h2 id={`section-${title}`} className="text-base font-semibold text-fg">
             {title}
           </h2>
           {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}
@@ -398,24 +397,20 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   if (loading) return <SkeletonDetail />;
   if (error === 'not_found')
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-fg-muted">
-        <UserRound size={40} className="text-fg-muted/40" aria-hidden="true" />
-        <p className="text-lg font-medium">Registro não encontrado</p>
-        <Button variant="outline" onClick={() => void loadDetail()}>
-          Tentar novamente
-        </Button>
-      </div>
+      <PageShell>
+        <EmptyState
+          icon={UserRound}
+          title="Cliente não encontrado"
+          description="O registro pode ter sido removido ou consolidado com outro cliente."
+          actions={<Button variant="outline" onClick={() => navigate('/leads')}>Voltar para clientes</Button>}
+        />
+      </PageShell>
     );
   if (error)
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-fg-muted" role="alert">
-        <AlertTriangle size={40} className="text-destructive" aria-hidden="true" />
-        <p className="text-lg font-medium">Erro ao carregar cliente</p>
-        <p className="text-sm">{error}</p>
-        <Button variant="outline" onClick={() => void loadDetail()}>
-          Tentar novamente
-        </Button>
-      </div>
+      <PageShell>
+        <ErrorState title="Não foi possível carregar o cliente" onRetry={() => void loadDetail()} />
+      </PageShell>
     );
 
   const current: Partial<ClientDetail> = detail || {};
@@ -479,45 +474,38 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   );
 
   return (
-    <PageShell className="space-y-5">
-      <fieldset disabled={saving} className="space-y-5">
+    <PageShell className="space-y-2">
+      <fieldset disabled={saving} className="space-y-2">
         <PageHeader
           title={editing && !isNewClient ? 'Editar cliente' : title}
-          description={
-            editing && !isNewClient
-              ? title
-              : isNewClient
-                ? undefined
-                : current.modified
-                  ? `Atualizado ${formatDate(current.modified)}`
-                  : undefined
+          description={editing && !isNewClient ? title : undefined}
+          meta={
+            !isNewClient && !editing ? (
+              <>
+                <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
+                {qualityBadges(current as ClientDetail).length > 0 && (
+                  <QualityBadges badges={qualityBadges(current as ClientDetail)} />
+                )}
+                {contextActions.length > 0 && <ContextActions actions={contextActions} />}
+              </>
+            ) : undefined
           }
-          actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
+          actions={confirmDiscardEdits || pendingRoute !== null || isNewClient ? undefined : headerActions}
         />
 
-        {!isNewClient && !editing && (
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
-            <span className="text-xs text-fg-muted">Cliente</span>
-            {qualityBadges(current as ClientDetail).length > 0 && (
-              <QualityBadges badges={qualityBadges(current as ClientDetail)} />
-            )}
-            {contextActions.length > 0 && <ContextActions actions={contextActions} />}
-          </div>
-        )}
-
         {editing ? (
-          <div className="grid items-start gap-5 lg:grid-cols-2">
-            <SectionCard title="Dados do cliente" icon={UserRound}>
+          <div className={isNewClient ? '!mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]' : 'grid items-start gap-5'}>
+            <div className="min-w-0 space-y-8">
+            <SectionCard title={isNewClient ? 'Identificação' : 'Dados do cliente'} icon={isNewClient ? undefined : UserRound}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="text-xs text-fg-muted">
-                  Nome
+                  Nome do cliente *
                   <Input
                     value={fields.nome}
                     onChange={(event) =>
                       setFields((value) => ({ ...value, nome: event.target.value }))
                     }
-                    placeholder="Nome do cliente"
+                    placeholder="Nome ou razão social"
                   />
                 </label>
                 <label className="text-xs text-fg-muted">
@@ -527,10 +515,10 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     onChange={(event) =>
                       setFields((value) => ({ ...value, empresa: event.target.value }))
                     }
-                    placeholder="Empresa"
+                    placeholder="Empresa, se aplicável"
                   />
                 </label>
-                <label className="text-xs text-fg-muted">
+                <label className="order-4 text-xs text-fg-muted">
                   E-mail
                   <Input
                     type="email"
@@ -541,7 +529,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     placeholder="email@exemplo.com"
                   />
                 </label>
-                <label className="text-xs text-fg-muted">
+                <label className="order-5 text-xs text-fg-muted">
                   Telefone
                   <Input
                     value={fields.telefone}
@@ -551,7 +539,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     placeholder="(99) 99999-9999"
                   />
                 </label>
-                <label className="text-xs text-fg-muted">
+                <label className="order-3 text-xs text-fg-muted">
                   Documento
                   <Input
                     value={fields.documento}
@@ -561,20 +549,16 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     placeholder="CPF ou CNPJ"
                   />
                 </label>
-                <label className="text-xs text-fg-muted md:col-span-2">
-                  Observações
-                  <Textarea
-                    aria-label="Observações"
-                    value={fields.observacoes}
-                    onChange={(event) =>
-                      setFields((value) => ({ ...value, observacoes: event.target.value }))
-                    }
-                  />
-                </label>
               </div>
             </SectionCard>
-            <SectionCard title="Endereço" icon={MapPin}>
+            <SectionCard title="Endereço" icon={isNewClient ? undefined : MapPin}>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {addressField('CEP', fields.endereco.cep || '', (value) =>
+                  setFields((currentValue) => ({
+                    ...currentValue,
+                    endereco: { ...currentValue.endereco, cep: value },
+                  }))
+                )}
                 {addressField(
                   'Endereço',
                   fields.endereco.endereco || '',
@@ -583,7 +567,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                       ...currentValue,
                       endereco: { ...currentValue.endereco, endereco: value },
                     })),
-                  'md:col-span-2'
+                  isNewClient ? undefined : 'md:col-span-2'
                 )}
                 {addressField('Número', fields.endereco.numero || '', (value) =>
                   setFields((currentValue) => ({
@@ -615,20 +599,24 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     endereco: { ...currentValue.endereco, uf: value },
                   }))
                 )}
-                {addressField('CEP', fields.endereco.cep || '', (value) =>
-                  setFields((currentValue) => ({
-                    ...currentValue,
-                    endereco: { ...currentValue.endereco, cep: value },
-                  }))
-                )}
               </div>
             </SectionCard>
+            <details className="rounded-card border border-line bg-surface p-5"><summary className="cursor-pointer text-sm font-semibold">Observações</summary><Textarea className="mt-4" aria-label="Observações" value={fields.observacoes} onChange={(event) => setFields((value) => ({ ...value, observacoes: event.target.value }))} /></details>
+            </div>
+            {isNewClient && <aside className="rounded-card border border-line bg-surface p-5"><h2 className="text-base font-semibold">Novo relacionamento</h2><p className="mt-5 text-sm text-fg-muted">Preencha os dados essenciais e complete o cadastro durante o atendimento.</p><div className="mt-6 space-y-2"><Button type="button" className="w-full" onClick={() => void save()} disabled={saving}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar cliente'}</Button><Button type="button" variant="outline" className="w-full" onClick={cancelEditing} disabled={saving}>Cancelar</Button></div></aside>}
           </div>
         ) : (
-          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-5 lg:order-2">
+              <SectionCard title="Resumo comercial">
+                <dl className="space-y-3 text-sm">
+                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Pedidos</dt><dd>{current.orders?.length ?? 0}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Orçamento recente</dt><dd className="max-w-[110px] truncate text-right">{current.latest_quotation?.name || '—'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Valor da proposta</dt><dd className="text-right tabular-nums">{current.latest_quotation?.grand_total != null ? formatBRL(current.latest_quotation.grand_total) : '—'}</dd></div>
+                </dl>
+              </SectionCard>
               {current.latest_quotation && (
-                <SectionCard title="Atividade recente" icon={FileText}>
+                <SectionCard title="Atividade recente">
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
                       Orçamento recente
@@ -658,7 +646,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 </SectionCard>
               )}
               {current.deal && (
-                <SectionCard title="Negócio ativo" icon={Columns3}>
+                <SectionCard title="Próxima ação">
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <p className="break-words font-medium">{current.deal.name}</p>
@@ -684,7 +672,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     {current.orders.map((order) => (
                       <div
                         key={order.name}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-sm border border-line p-3"
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-line bg-surface-subtle p-4"
                       >
                         <div className="min-w-0">
                           <p className="break-words font-medium">{order.name}</p>
@@ -711,26 +699,27 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                 </SectionCard>
               )}
             </div>
-            <SectionCard title="Cadastro" icon={UserRound} className="lg:order-1">
+            <SectionCard title="Dados do relacionamento" className="lg:order-1">
+              <div className="flex items-center gap-3 pb-2">
+                <div className="grid size-14 shrink-0 place-items-center rounded-full bg-avatar-one text-sm font-semibold text-avatar-ink" aria-hidden="true">{title.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div>
+                <div className="min-w-0"><p className="truncate text-sm font-semibold text-fg">{title}</p><p className="truncate text-xs text-fg-muted">{current.empresa && current.empresa !== title ? current.empresa : 'Cliente'}</p></div>
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <InfoField label="Empresa" value={current.empresa || 'Empresa não informada'} />
+                <InfoField label="Contato principal" value={current.empresa && current.empresa !== title ? current.nome : title} />
+                <InfoField label="E-mail" value={current.email || 'E-mail não informado'} />
                 <InfoField
                   label="Telefone"
                   value={fmtPhone(current.telefone) || 'Telefone não informado'}
                 />
                 <InfoField
-                  label="E-mail"
-                  value={current.email || 'E-mail não informado'}
-                />
-                <InfoField
                   label="Documento"
                   value={formatDocument(current.tax_id || current.documento)}
                 />
+                <InfoField label="Cidade / UF" value={current.address ? [current.address.municipio, current.address.uf].filter(Boolean).join(', ') || '—' : '—'} />
                 {current.address && (
                   <InfoField
                     label="Endereço"
                     value={addressText(current.address)}
-                    className="md:col-span-2"
                   />
                 )}
                 {(current.notes || current.observacoes) && (

@@ -3,12 +3,49 @@ export default {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
+    // Radius roles replace Tailwind's size scale: pick by role, never by size.
+    borderRadius: {
+      none: '0',
+      DEFAULT: '4px',
+      xs: '4px',
+      badge: '6px',
+      control: '11px',
+      nav: '14px',
+      card: '25px',
+      shell: '31px',
+      full: '9999px',
+    },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'Inter Variable', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Manrope', 'Segoe UI', 'Arial', 'sans-serif'],
       },
       colors: {
-        // Canonical Aspen semantic tokens.
+        // Aspen Órbita visual tokens.
+        canvas: 'rgb(var(--canvas))',
+        sage: 'rgb(var(--sage))',
+        'sage-ink': 'rgb(var(--sage-ink))',
+        'light-sage': 'rgb(var(--light-sage))',
+        'chat-background': 'rgb(var(--chat-background))',
+        orange: 'rgb(var(--orange))',
+        'orange-ink': 'rgb(var(--orange-ink))',
+        taupe: 'rgb(var(--taupe))',
+        'taupe-ink': 'rgb(var(--taupe-ink))',
+        cream: 'rgb(var(--cream))',
+        rust: 'rgb(var(--rust))',
+        'primary-soft': 'rgb(var(--primary-soft))',
+        'primary-soft-ink': 'rgb(var(--primary-soft-ink))',
+        'input-surface': 'rgb(var(--input-surface))',
+        'segment-active': 'rgb(var(--segment-active))',
+        'avatar-ink': 'rgb(var(--avatar-ink))',
+        'avatar-one': 'rgb(var(--avatar-one))',
+        'avatar-two': 'rgb(var(--avatar-two))',
+        'avatar-three': 'rgb(var(--avatar-three))',
+        'bar-one': 'rgb(var(--bar-one))',
+        'finance-one': 'rgb(var(--finance-one))',
+        'finance-two': 'rgb(var(--finance-two))',
+        'finance-three': 'rgb(var(--finance-three))',
+        'finance-four': 'rgb(var(--finance-four))',
+        raised: 'rgb(var(--surface-subtle))',
         page: 'rgb(var(--page))',
         surface: {
           DEFAULT: 'rgb(var(--surface))',
@@ -35,21 +72,25 @@ export default {
         },
         success: {
           DEFAULT: 'rgb(var(--success))',
-          foreground: 'rgb(var(--on-primary))',
+          fill: 'rgb(var(--success-fill))',
+          foreground: 'rgb(var(--on-success))',
         },
         warning: {
           DEFAULT: 'rgb(var(--warning))',
-          foreground: 'rgb(var(--on-primary))',
+          fill: 'rgb(var(--warning-fill))',
+          foreground: 'rgb(var(--on-warning))',
         },
         destructive: {
           DEFAULT: 'rgb(var(--destructive))',
-          foreground: 'rgb(var(--on-primary))',
+          fill: 'rgb(var(--destructive-fill))',
+          foreground: 'rgb(var(--on-destructive))',
         },
         info: {
           DEFAULT: 'rgb(var(--info))',
           foreground: 'rgb(var(--on-primary))',
         },
         link: 'rgb(var(--link))',
+        focus: 'rgb(var(--focus))',
         'primary-text': 'rgb(var(--primary-text))',
 
         // Compatibility aliases retained while consumers migrate.
@@ -101,12 +142,9 @@ export default {
           active: 'rgb(var(--surface-selected))',
         },
       },
-      borderRadius: {
-        xs: '4px',
-        sm: '6px',
-        md: '8px',
-        lg: '12px',
-        full: '9999px',
+      spacing: {
+        frame: '18px',
+        workspace: '24px',
       },
       keyframes: {
         'accordion-down': {
@@ -121,11 +159,16 @@ export default {
           from: { opacity: '0', transform: 'translateY(4px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'page-enter': {
+          from: { opacity: '0', transform: 'translateY(10px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-in': 'fade-in 0.3s ease-out',
+        'page-enter': 'page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
       },
     },
   },

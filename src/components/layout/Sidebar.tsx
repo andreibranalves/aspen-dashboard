@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AspenBrand from '@/components/shared/AspenBrand';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
-
-const logoUrl = new URL('../../../public/logo_branca.svg', import.meta.url).href;
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -41,8 +40,9 @@ export default function Sidebar({
     ? '/catalog'
     : activeAffinity[currentPath] ?? currentPath;
   const sidebarOpen = !collapsed;
+  const navItems = NAV_ACTION ? [NAV_ACTION, ...NAV_DESTINATIONS] : NAV_DESTINATIONS;
 
-  const renderItem = (item: NavItem, action = false) => {
+  const renderItem = (item: NavItem) => {
     const isActive = effectivePath === item.hash || effectivePath.startsWith(`${item.hash}/`);
     const Icon = item.icon;
     return (
@@ -51,25 +51,18 @@ export default function Sidebar({
         type="button"
         onClick={() => onNavigate(item.hash)}
         className={cn(
-          'mx-4 flex min-h-10 w-[calc(100%-2rem)] items-center gap-3 rounded-sm px-3 py-2 text-sm transition-colors',
+          'mx-3 flex min-h-[45px] w-[calc(100%-1.5rem)] items-center gap-3 rounded-nav px-4 py-2 text-sm font-medium transition-colors',
           collapsed && 'justify-center gap-0 px-0',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-shell-primary',
-          action
-            ? 'bg-primary font-medium text-on-solid hover:bg-primary/90'
-            : isActive
-              ? 'bg-shell-active font-medium text-shell-text'
-              : 'text-shell-muted hover:bg-shell-hover'
+          'focus-inset',
+          isActive ? 'bg-shell-active text-white' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
-        title={collapsed ? (action ? `+ ${item.label}` : item.label) : undefined}
-        aria-label={action ? item.label : undefined}
-        aria-current={!action && isActive ? 'page' : undefined}
+        title={collapsed ? item.label : undefined}
+        aria-label={collapsed ? item.label : undefined}
+        aria-current={isActive ? 'page' : undefined}
       >
         <Icon
           size={20}
-          className={cn(
-            'shrink-0',
-            action ? 'text-on-solid' : isActive ? 'text-shell-primary' : 'text-shell-muted'
-          )}
+          className={cn('shrink-0', isActive ? 'text-white' : 'text-shell-muted')}
           aria-hidden="true"
         />
         {!collapsed && <span className="truncate">{item.label}</span>}
@@ -113,7 +106,7 @@ export default function Sidebar({
       {mobile && sidebarOpen && (
         <div
           data-sidebar-backdrop="true"
-          className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-20 bg-black/65"
           onClick={onToggle}
           aria-hidden="true"
         />
@@ -126,22 +119,35 @@ export default function Sidebar({
         aria-hidden={mobile && collapsed ? true : undefined}
         aria-modal={mobile && sidebarOpen ? true : undefined}
         className={cn(
-          'fixed left-0 top-0 z-30 flex h-full flex-col overflow-hidden bg-shell text-shell-text',
-          'border-r border-shell-border transition-[width,transform] duration-200',
-          collapsed ? 'w-0 md:w-16' : 'w-[216px]',
+          'z-30 flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width,transform] duration-200',
+          mobile ? 'fixed inset-y-0 left-0 w-[248px] rounded-none' : 'relative rounded-shell',
+          !mobile && (collapsed ? 'w-[76px]' : 'w-[248px]'),
           mobile && collapsed && 'hidden',
           mobile && sidebarOpen && 'shadow-2xl'
         )}
       >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-shell-border px-4">
+        <div className={cn('flex h-[62px] shrink-0 items-center pt-2', !mobile && collapsed ? 'justify-center px-0' : 'justify-between pl-[22px] pr-3')}>
           {!collapsed && (
-            <img src={logoUrl} alt="Aspen Estamparia" className="h-8 w-auto" />
+            <AspenBrand />
           )}
-          {(!mobile || sidebarOpen) && (
+          {!mobile && (
             <button
               type="button"
               onClick={onToggle}
-              className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-shell-primary"
+              className="grid size-9 shrink-0 place-items-center rounded-control text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text"
+              aria-label={collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+              title={collapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+              aria-expanded={!collapsed}
+              aria-controls="aspen-sidebar"
+            >
+              {collapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+            </button>
+          )}
+          {mobile && sidebarOpen && (
+            <button
+              type="button"
+              onClick={onToggle}
+              className="min-h-9 min-w-9 shrink-0 rounded-control p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text"
               aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
               aria-expanded={sidebarOpen}
               aria-controls="aspen-sidebar"
@@ -155,19 +161,10 @@ export default function Sidebar({
           )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-2" aria-label="Operação">
-          {!collapsed && (
-            <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-shell-primary">
-              Operação
-            </div>
-          )}
-          {collapsed && (
-            <div className="mx-3 my-2 border-t border-shell-border" aria-hidden="true" />
-          )}
-          {NAV_ACTION && <div className="mb-2">{renderItem(NAV_ACTION, true)}</div>}
-          <div className="space-y-0.5">{NAV_DESTINATIONS.map((item) => renderItem(item))}</div>
+        <nav className="flex-1 pt-2" aria-label="Operação">
+          <div className="space-y-1">{navItems.map((item) => renderItem(item))}</div>
         </nav>
-        <div className="shrink-0 border-t border-shell-border py-2">
+        <div className="shrink-0 pb-3 pt-2">
           {NAV_FOOTER.map((item) => renderItem(item))}
         </div>
       </aside>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
-  AlertTriangle,
   Archive,
   ArchiveRestore,
   Check,
@@ -9,7 +8,6 @@ import {
   Mail,
   Phone,
   ReceiptText,
-  Search,
   Sparkles,
   Users,
   UserPlus,
@@ -19,11 +17,16 @@ import { apiDelete, apiGet, apiPatch, apiPut } from '@/lib/api/api';
 import { fmtPhone, formatBRL, formatDate, whatsappContactUrl } from '@/lib/formatting/formatters';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import ErrorState from '@/components/shared/ErrorState';
+import { SearchField } from '@/components/ui/search-field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -47,7 +50,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
-import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
+import Skeleton from '@/components/shared/Skeleton';
+import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { QualityBadges, type QualityBadge } from '@/features/customers/components/QualityBadges';
 import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
 import { CustomerActionMenu } from '@/features/customers/components/CustomerActionMenu';
@@ -219,14 +223,14 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [search, setSearch] = useHashQueryState('search', '', parseHashString);
   const [status, setStatus] = useHashQueryState<'active' | 'archived' | 'all'>(
     'status',
-    'active',
+    'all',
     parseLeadStatus
   );
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
   const [limit, setLimit] = useHashQueryState('limit', 10, parseLeadLimit);
   const [totalPages, setTotalPages] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listRequestGenerationRef = useRef(0);
   const listRequestKeyRef = useRef<string | null>(null);
@@ -282,12 +286,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         }
         setData(projected.data);
         setTotalPages(projected.pagination.total_pages);
-        setTotalRecords(projected.pagination.total);
       } catch {
         if (requestGeneration !== listRequestGenerationRef.current) return;
         setData([]);
         setTotalPages(0);
-        setTotalRecords(0);
         setError('Não foi possível carregar os clientes. Tente novamente.');
       } finally {
         if (requestGeneration === listRequestGenerationRef.current) setLoading(false);
@@ -438,6 +440,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 empresa: projected.empresa,
                 email: projected.email,
                 telefone: projected.telefone,
+                municipio: projected.address?.municipio,
+                uf: projected.address?.uf,
                 documento: projected.tax_id || projected.documento,
               }
             : row
@@ -577,22 +581,17 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     else void runBulkArchive(pending.rows, pending.restoring);
   }, [pendingArchive, runBulkArchive, runToggleArchive]);
 
-  const pageNumbers = Array.from(
-    { length: Math.max(0, totalPages) },
-    (_, index) => index + 1
-  ).slice(Math.max(0, page - 3), page + 4);
-
   const clearFilters = () => {
     setSearch('');
-    setStatus('active');
+    setStatus('all');
     setPage(1);
-    void fetchData('', 1, 'active', limit);
+    void fetchData('', 1, 'all', limit);
   };
 
   const selectRow = (row: DataRow) => {
     const label = rowLabel(row);
     return (
-      <div>
+      <EntityIdentity name={label} secondary={row.empresa && row.nome && row.empresa !== row.nome ? row.nome : undefined} primary={
         <a
           href={`#/leads/cliente/${encodeURIComponent(row.id)}`}
           onClick={(event) => {
@@ -601,91 +600,44 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             navigateToDetail(row.id);
           }}
           title={label}
-          className="block max-w-[240px] break-words font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          className="block max-w-[240px] break-words font-medium text-fg underline-offset-4 hover:underline"
         >
           {label}
         </a>
-        {row.empresa && <p className="mt-0.5 text-xs text-fg-muted">{row.empresa}</p>}
-      </div>
+      } />
     );
   };
 
   return (
-    <PageShell className="pb-28">
+    <PageShell className="space-y-5 pb-28">
       <PageHeader
         title="Clientes"
-        description={
-          !loading && !error ? `${totalRecords} cliente${totalRecords === 1 ? '' : 's'}` : undefined
-        }
         actions={
           <>
             <ExportCsvButton resource="clients" filters={{ search, status }}>
               Exportar CSV
             </ExportCsvButton>
-            <Button onClick={() => navigate?.('/leads/cliente/new')}>
+            <Button onClick={() => navigate?.('/leads/new')}>
               <UserPlus />
-              Novo contato
+              Novo cliente
             </Button>
           </>
         }
       />
 
-      <PageToolbar className="items-end">
-        <div className="relative w-full max-w-[286px] flex-1">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-            aria-hidden="true"
-          />
-          <Input
-            placeholder="Buscar clientes"
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label="Buscar clientes"
-          />
-        </div>
-        <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-fg-muted">
-          Itens por página
-          <Select
-            value={limit}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              setLimit(value);
-              setPage(1);
-              void fetchData(search, 1, status, value);
-            }}
-            aria-label="Itens por página"
-          >
-            {PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <div
-          className="flex items-center gap-1 rounded-full border border-line bg-surface p-1"
-          role="group"
-          aria-label="Filtrar clientes por status"
-        >
-          {(['active', 'archived', 'all'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={status === value}
-              onClick={() => {
-                setStatus(value);
-                setPage(1);
-                void fetchData(search, 1, value, limit);
-              }}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${status === value ? 'bg-primary text-on-solid' : 'text-fg-muted hover:text-fg'}`}
-            >
-              {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
-            </button>
-          ))}
-        </div>
-        {data.length > 0 && (
+      <section className="rounded-card bg-surface p-5" aria-label="Lista de clientes">
+      <PageToolbar className="mb-5">
+        <SearchField
+          placeholder="Buscar nome, empresa ou e-mail"
+          value={search}
+          onChange={onSearchChange}
+          aria-label="Buscar clientes"
+        />
+        <Select value={status} onChange={(event) => { const value = event.target.value as 'active' | 'archived' | 'all'; setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} aria-label="Filtrar clientes por status">
+          <option value="all">Todos os status</option><option value="active">Ativos</option><option value="archived">Arquivados</option>
+        </Select>
+        <Button type="button" variant="ghost" className="ml-auto" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
+        {selectionMode && data.length > 0 && (
           <label className="flex min-h-9 items-center gap-2 text-sm text-fg md:hidden">
             <input
               type="checkbox"
@@ -700,36 +652,29 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
       {loading && <SkeletonTable cols={6} rows={8} />}
       {!loading && error && (
-        <div className="flex flex-col items-center gap-3 py-16 text-fg-muted" role="alert">
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar clientes</p>
-          <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => void fetchData()}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os clientes" onRetry={() => void fetchData()} />
       )}
       {!loading && !error && data.length === 0 && (
         <EmptyState
           icon={Users}
           title={
-            search || status !== 'active'
+            search || status !== 'all'
               ? 'Nenhum cliente corresponde aos filtros'
               : 'Nenhum cliente encontrado'
           }
           description={
-            search || status !== 'active'
+            search || status !== 'all'
               ? 'Tente ajustar a busca ou o filtro de status.'
               : 'Cadastre um cliente para começar.'
           }
           actions={
-            search || status !== 'active' ? (
+            search || status !== 'all' ? (
               <Button variant="outline" onClick={clearFilters}>
                 Limpar filtros
               </Button>
             ) : (
-              <Button onClick={() => navigate?.('/leads/cliente/new')}>
-                <UserPlus /> Novo contato
+              <Button onClick={() => navigate?.('/leads/new')}>
+                <UserPlus /> Novo cliente
               </Button>
             )
           }
@@ -738,23 +683,26 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
-            <Table>
+            <Table className="min-w-[760px] [&_td]:py-4 [&_th]:h-12" containerClassName="rounded-none">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">
-                    <input
-                      ref={selectAllRef}
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={(event) => toggleAll(event.target.checked)}
-                      aria-label="Selecionar todos os clientes"
-                    />
+                  <TableHead className="min-w-[220px]">
+                    <div className="flex items-center gap-3">
+                      {selectionMode && <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(event) => toggleAll(event.target.checked)}
+                        aria-label="Selecionar todos os clientes"
+                      />}
+                      <span>Cliente</span>
+                    </div>
                   </TableHead>
-                  <TableHead>Cliente</TableHead>
                   <TableHead>Contato</TableHead>
-                  <TableHead className="hidden xl:table-cell">Documento</TableHead>
+                  <TableHead>Localização</TableHead>
+                  <TableHead>Orçamentos</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  <TableHead className="w-48" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -766,7 +714,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       key={row.id}
                       interactive
                       data-state={selectedIds.includes(row.id) ? 'selected' : undefined}
-                      className="cursor-pointer"
+                      className="group cursor-pointer"
                       onClick={(event) => {
                         const target = event.target as HTMLElement;
                         if (target.closest('a,button,input,select,textarea,summary,details'))
@@ -774,22 +722,25 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         navigateToDetail(row.id);
                       }}
                     >
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.includes(row.id)}
-                          onChange={() => toggleSelected(row.id)}
-                          aria-label={`Selecionar ${label}`}
-                        />
+                      <TableCell className="min-w-[220px]">
+                        <div className="flex items-start gap-3">
+                          {selectionMode && <input
+                            className="mt-1 shrink-0"
+                            type="checkbox"
+                            checked={selectedIds.includes(row.id)}
+                            onChange={() => toggleSelected(row.id)}
+                            aria-label={`Selecionar ${label}`}
+                          />}
+                          <div className="min-w-0 flex-1">{selectRow(row)}</div>
+                        </div>
                       </TableCell>
-                      <TableCell>{selectRow(row)}</TableCell>
                       <TableCell className="max-w-[280px]">
                         <div className="space-y-0.5 text-sm">
                           {row.email ? (
                             <a
                               href={`mailto:${row.email}`}
                               title={row.email}
-                              className="block max-w-[260px] truncate text-fg hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="block max-w-[260px] truncate text-fg hover:text-primary"
                             >
                               {row.email}
                             </a>
@@ -802,7 +753,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="Abrir conversa no WhatsApp"
-                              className="block text-xs text-fg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="block text-xs text-fg-muted hover:text-primary"
                             >
                               {phone}
                             </a>
@@ -813,19 +764,26 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="hidden max-w-[180px] xl:table-cell text-xs text-fg-muted">
-                        <span title={row.documento || undefined}>
-                          {row.documento
-                            ? formatDocument(row.documento)
-                            : 'Documento não informado'}
-                        </span>
+                      <TableCell className="text-xs text-fg-muted">
+                        {[row.municipio, row.uf].filter(Boolean).join(', ') || '—'}
+                      </TableCell>
+                      <TableCell>
+                        <button type="button" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} className="text-xs text-fg hover:text-light-sage hover:underline" aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</button>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="w-48 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button
+                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Abrir cliente ${label}`}
+                            onClick={() => navigateToDetail(row.id)}
+                          >
+                            <ChevronRight />
+                          </Button></span>
+                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
                             variant="ghost"
                             size="icon"
                             title={`Novo orçamento para ${label}`}
@@ -842,12 +800,12 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                             aria-label={`Visualização rápida ${label}`}
                           >
                             <Eye />
-                          </Button>
-                          <CustomerActionMenu
+                          </Button></span>
+                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><CustomerActionMenu
                             archived={isArchivedRow(row)}
                             customerName={label}
                             onArchiveToggle={() => toggleArchive(row)}
-                          />
+                          /></span>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -862,15 +820,15 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
               const label = rowLabel(row);
               const phone = fmtPhone(row.telefone);
               return (
-                <article key={row.id} className="rounded-md border border-line bg-surface p-4">
+                <article key={row.id} className="rounded-card border border-line bg-surface p-5">
                   <div className="flex items-start gap-3">
-                    <input
+                    {selectionMode && <input
                       className="mt-1 shrink-0"
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Marcar cartão mobile de ${label}`}
-                    />
+                    />}
                     <div className="min-w-0 flex-1">
                       {selectRow(row)}
                       <StatusBadge
@@ -889,7 +847,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                     {row.email ? (
                       <a
                         href={`mailto:${row.email}`}
-                        className="block break-words text-fg hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="block break-words text-fg hover:text-primary"
                       >
                         {row.email}
                       </a>
@@ -901,7 +859,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         href={whatsappContactUrl(row.telefone)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-xs text-fg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="block text-xs text-fg-muted hover:text-primary"
                       >
                         {phone}
                       </a>
@@ -940,56 +898,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           </div>
         </>
       )}
+      </section>
 
-      {totalPages > 1 && (
-        <nav
-          className="flex flex-wrap items-center justify-between gap-3 text-sm"
-          aria-label="Paginação de clientes"
-        >
-          <span className="text-fg-muted">
-            Página {page} de {totalPages} · {totalRecords} registro{totalRecords === 1 ? '' : 's'}
-          </span>
-          <div className="flex flex-wrap gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => {
-                const nextPage = page - 1;
-                setPage(nextPage);
-                void fetchData(search, nextPage, status, limit);
-              }}
-            >
-              ‹ Anterior
-            </Button>
-            {pageNumbers.map((number) => (
-              <Button
-                key={number}
-                variant={number === page ? 'default' : 'outline'}
-                size="sm"
-                aria-current={number === page ? 'page' : undefined}
-                onClick={() => {
-                  setPage(number);
-                  void fetchData(search, number, status, limit);
-                }}
-              >
-                {number}
-              </Button>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => {
-                const nextPage = page + 1;
-                setPage(nextPage);
-                void fetchData(search, nextPage, status, limit);
-              }}
-            >
-              Próximo ›
-            </Button>
-          </div>
-        </nav>
+      {!loading && !error && data.length > 0 && (
+        <ListPagination label="Paginação de clientes" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={(nextPage) => { setPage(nextPage); void fetchData(search, nextPage, status, limit); }} onLimitChange={(value) => { setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} />
       )}
 
       {selectedIds.length > 0 && (
@@ -1062,25 +974,22 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         }
       >
         {detailLoading && (
-          <div className="py-12 text-center text-sm text-fg-muted" role="status">
-            Carregando detalhes…
+          <div className="space-y-4" role="status" aria-busy="true" aria-label="Carregando detalhes">
+            <Skeleton className="h-24 rounded-card" />
+            <Skeleton className="h-48 rounded-card" />
+            <Skeleton className="h-32 rounded-card" />
           </div>
         )}
         {detailError && !detailLoading && (
-          <div
-            className="flex flex-col items-center gap-3 py-12 text-sm text-fg-muted"
-            role="alert"
+          <InlineAlert
+            action={
+              <Button variant="outline" size="sm" onClick={() => selectedId && void loadDrawerDetail(selectedId)}>
+                Tentar novamente
+              </Button>
+            }
           >
-            <AlertTriangle size={24} className="text-destructive/60" aria-hidden="true" />
-            <p>{detailError}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => selectedId && void loadDrawerDetail(selectedId)}
-            >
-              Tentar novamente
-            </Button>
-          </div>
+            {detailError}
+          </InlineAlert>
         )}
         {detail && !detailLoading && !editMode && (
           <div className="space-y-4 text-sm">
@@ -1113,7 +1022,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
               </div>
             )}
             {detail.latest_quotation && (
-              <div className="rounded-sm border border-line p-3">
+              <div className="rounded-control border border-line p-3">
                 <p className="text-xs uppercase tracking-wide text-fg-muted">Orçamento recente</p>
                 <p className="mt-1 break-words font-medium">{detail.latest_quotation.name}</p>
                 <p className="text-xs text-fg-muted">

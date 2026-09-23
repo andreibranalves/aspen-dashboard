@@ -5,18 +5,15 @@ import {
   useRef,
   type ChangeEvent,
   type DragEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
 } from 'react';
 import {
   Search,
-  AlertTriangle,
   Columns3,
-  Clipboard,
-  Send,
   PlusCircle,
   Rows3,
   Settings2,
+  ArrowUpRight,
 } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api/api';
 import { useToast } from '@/components/shared/toast';
@@ -24,7 +21,10 @@ import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import ErrorState from '@/components/shared/ErrorState';
+import PageToolbar from '@/components/shared/PageToolbar';
+import { SearchField } from '@/components/ui/search-field';
+import { TabBar } from '@/components/ui/tabs';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import {
@@ -37,12 +37,14 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import DealProposals from '@/features/crm/components/DealProposals';
 import PipelineStagesDialog from '@/features/crm/components/PipelineStagesDialog';
 import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
 import { useHashRoute } from '@/hooks/useHashRoute';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 
 interface Deal {
   id: string;
@@ -89,10 +91,11 @@ function daysAgo(dateStr?: string | null): string {
 type CrmView = 'list' | 'board';
 const parseCrmView = parseHashOption<CrmView>(['list', 'board']);
 const CRM_VIEW_TABS = [
-  ['list', 'Lista', Rows3],
-  ['board', 'Quadro', Columns3],
+  { value: 'list', label: 'Lista', icon: Rows3 },
+  { value: 'board', label: 'Quadro', icon: Columns3 },
 ] as const;
 type StageFilter = string;
+const BOARD_STAGE_SWATCHES = ['rgb(var(--light-sage))', 'rgb(var(--orange))', 'rgb(var(--taupe))', 'rgb(var(--cream))'] as const;
 const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
   raw?.trim() || fallback;
 
@@ -131,26 +134,12 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
   const pendingMoveMenuFocusRef = useRef<string | null>(null);
-  const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function navigateFromLink(event: MouseEvent<HTMLAnchorElement>, target: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
       return;
     event.preventDefault();
     navigate(target.replace(/^#/, ''));
-  }
-
-  function handleViewTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % CRM_VIEW_TABS.length;
-    if (event.key === 'ArrowLeft')
-      nextIndex = (index - 1 + CRM_VIEW_TABS.length) % CRM_VIEW_TABS.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = CRM_VIEW_TABS.length - 1;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    setView(CRM_VIEW_TABS[nextIndex][0]);
-    viewTabRefs.current[nextIndex]?.focus();
   }
 
   function startQuotation(deal: Deal, leadName: string) {
@@ -327,14 +316,14 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const hasSearchResults = hasAnyDeals || !hasSearch;
 
   return (
-    <PageShell>
+    <PageShell className="space-y-9">
       {!embedded && (
         <PageHeader
           title="CRM"
           actions={
             <Button
               onClick={(): void => {
-                window.location.hash = '#/manual';
+                window.location.hash = '#/novo-orcamento';
               }}
             >
               <PlusCircle />
@@ -343,96 +332,37 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           }
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div
-          className="flex rounded-sm border border-line bg-surface p-0.5"
-          role="tablist"
-          aria-label="Visualização dos negócios"
-        >
-          {CRM_VIEW_TABS.map(([nextView, label, Icon], index) => (
-            <button
-              key={nextView}
-              ref={(element) => {
-                viewTabRefs.current[index] = element;
-              }}
-              type="button"
-              role="tab"
-              id={`crm-view-tab-${nextView}`}
-              aria-controls="crm-view-panel"
-              aria-selected={view === nextView}
-              tabIndex={view === nextView ? 0 : -1}
-              className={cn(
-                'inline-flex h-8 items-center gap-2 rounded-sm px-3 text-sm transition-colors',
-                view === nextView
-                  ? 'bg-surface-muted font-medium text-fg'
-                  : 'text-fg-muted hover:text-fg'
-              )}
-              onClick={() => setView(nextView)}
-              onKeyDown={(event) => handleViewTabKeyDown(event, index)}
-            >
-              <Icon aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
-          <Select
-            aria-label="Filtrar por etapa"
-            value={stage}
-            onChange={(event) => setStage(event.target.value)}
-          >
-            <option value="all">Todas as etapas ({allDeals.length})</option>
-            {orderedColumns.map((column) => (
-              <option key={column.status} value={column.status}>
-                {column.name} ({column.deals.length})
-              </option>
-            ))}
-          </Select>
+      <PageToolbar>
+        <SearchField placeholder="Buscar negócio ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar negócios" />
+        <Select aria-label="Filtrar por etapa" value={stage} onChange={(event) => setStage(event.target.value)}>
+          <option value="all">Todas as etapas</option>
+          {orderedColumns.map((column) => <option key={column.status} value={column.status}>{column.name} ({column.deals.length})</option>)}
+        </Select>
+        <div className="ml-auto flex items-center gap-2">
+          <TabBar
+            value={view}
+            onValueChange={setView}
+            label="Visualização dos negócios"
+            idPrefix="crm-view"
+            variant="segmented"
+            items={CRM_VIEW_TABS}
+          />
           <Button variant="outline" onClick={() => setPipelineDialogOpen(true)}>
-            <Settings2 aria-hidden="true" /> Editar etapas
+            <Settings2 aria-hidden="true" /> Etapas
           </Button>
         </div>
-      </div>
-      {/* Search stays available for an active query so a zero-result filter can be cleared. */}
-      {!loading && !error && (hasDeals || hasSearch) && (
-        <div className="relative max-w-md">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-            aria-hidden="true"
-          />
-          <Input
-            placeholder="Buscar por nome do negócio…"
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label="Buscar negócios"
-          />
-        </div>
-      )}
+      </PageToolbar>
 
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonKanban />}
+      {loading && (view === 'board' ? <SkeletonKanban /> : <SkeletonTable cols={6} rows={7} size="lg" />)}
 
       {/* Error */}
       {!loading && error && (
-        <div
-          role="alert"
-          className="flex flex-col items-center gap-3 py-16 text-center text-fg-muted"
-        >
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar pipeline CRM</p>
-          <p className="max-w-md text-sm">
-            Não foi possível carregar os negócios agora. Tente novamente.
-          </p>
-          <Button variant="outline" onClick={() => fetchData(search)}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os negócios" onRetry={() => fetchData(search)} />
       )}
 
       {/* Empty and filtered-empty states stay distinct so search never becomes a dead end. */}
@@ -467,7 +397,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           actions={
             <>
               <Button asChild>
-                <a href="#/manual">Novo orçamento</a>
+                <a href="#/novo-orcamento">Novo orçamento</a>
               </Button>
               <Button variant="outline" asChild>
                 <a href="#/quotations">Ver orçamentos</a>
@@ -478,18 +408,22 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       )}
 
       {!loading && !error && hasDeals && view === 'list' && (
-        <div className="space-y-3" id="crm-view-panel">
+        <div className="space-y-3" id="crm-view-panel-list" role="tabpanel" aria-labelledby="crm-view-tab-list">
           {!narrowLayout && (
-            <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-              <Table className="min-w-[900px]">
+            <div className="overflow-x-auto rounded-card border border-line bg-surface p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold">Negócios em acompanhamento</h2>
+                <span className="rounded-control border border-line px-3 py-1.5 text-[11px] text-fg-muted">Etapas configuradas no Aspen</span>
+              </div>
+              <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Negócio</TableHead>
-                    <TableHead>Contato</TableHead>
-                    <TableHead>Orçamento</TableHead>
+                    <TableHead>Negócio / cliente</TableHead>
+                    <TableHead>Origem</TableHead>
                     <TableHead>Etapa</TableHead>
-                    <TableHead>Atualizado</TableHead>
-                    <TableHead className="text-right">Mover</TableHead>
+                    <TableHead>Proposta vinculada</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead className="text-right"><span className="sr-only">Abrir</span></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -497,68 +431,12 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     const leadName = dealName(deal);
                     const href = dealHref(deal);
                     const moving = movingDealIds.has(deal.id);
-                    const lastUpdate = deal.modificado_em || deal.criado_em;
                     return (
-                      <TableRow key={deal.id}>
-                        <TableCell className="max-w-56 font-medium">
-                          {href && leadName !== 'Sem nome' ? (
-                            <a
-                              href={href}
-                              onClick={(event) => navigateFromLink(event, href)}
-                              className="block truncate text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              aria-label={`Abrir lead ${leadName}`}
-                            >
-                              {leadName}
-                            </a>
-                          ) : (
-                            <span className="block truncate">{leadName}</span>
-                          )}
-                          {deal.quote_lead_id && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="mt-1 h-7 px-1 text-xs"
-                              onClick={() => startQuotation(deal, leadName)}
-                            >
-                              <PlusCircle aria-hidden="true" /> Novo orçamento
-                            </Button>
-                          )}
+                      <TableRow key={deal.id} className="group">
+                        <TableCell className="max-w-56">
+                          <EntityIdentity name={leadName} secondary={deal.id.slice(0, 8)} primary={href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="hover:underline">{leadName}</a> : leadName} />
                         </TableCell>
-                        <TableCell className="max-w-56 text-sm">
-                          {deal.email && (
-                            <span className="block truncate text-fg-muted">{deal.email}</span>
-                          )}
-                          {deal.telefone && (
-                            <span className="block whitespace-nowrap text-xs text-fg-muted">
-                              {fmtPhone(deal.telefone) || deal.telefone}
-                            </span>
-                          )}
-                          {!deal.email && !deal.telefone && (
-                            <span className="text-fg-muted">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {deal.quotation ? (
-                            deal.quotation_id ? (
-                              <a
-                                href={`#/quotations/${deal.quotation_id}`}
-                                onClick={(event) =>
-                                  navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
-                                }
-                                className="text-primary hover:underline"
-                                aria-label={`Abrir orçamento ${deal.quotation}`}
-                              >
-                                {deal.quotation}
-                              </a>
-                            ) : (
-                              <span>{deal.quotation}</span>
-                            )
-                          ) : (
-                            <span className="text-fg-muted">—</span>
-                          )}
-                          <DealProposals opportunityId={deal.id} />
-                        </TableCell>
+                        <TableCell className="text-xs">{deal.lead_source || '—'}</TableCell>
                         <TableCell>
                           <StatusBadge
                             status={currentStatus}
@@ -569,28 +447,15 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             className="tone-neutral-muted"
                           />
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-fg-muted">
-                          {lastUpdate ? `Atualizado ${daysAgo(lastUpdate)}` : '—'}
-                        </TableCell>
+                        <TableCell className="text-xs">{deal.quotation ? deal.quotation_id ? <a href={`#/quotations/${deal.quotation_id}`} onClick={(event) => navigateFromLink(event, `#/quotations/${deal.quotation_id}`)} className="font-medium hover:underline">{deal.quotation}</a> : deal.quotation : '—'}<DealProposals opportunityId={deal.id} /></TableCell>
+                        <TableCell className="text-xs text-fg-muted">—</TableCell>
                         <TableCell className="text-right">
-                          <Select
-                            ref={(element) => setMoveMenuRef(deal.id, element)}
-                            value={currentStatus}
-                            disabled={moving}
-                            aria-label={`Mover para ${leadName}`}
-                            className="h-8 max-w-44 py-1 text-xs"
-                            onChange={(event) => moveDeal(deal.id, event.target.value)}
-                          >
-                            {moveColumns(currentStatus).map((destinationColumn) => (
-                              <option
-                                key={destinationColumn.status}
-                                value={destinationColumn.status}
-                              >
-                                {destinationColumn.status === currentStatus ? 'Atual: ' : ''}
-                                {destinationColumn.name}
-                              </option>
-                            ))}
-                          </Select>
+                          <div className="flex items-center justify-end gap-2">
+                            <Select ref={(element) => setMoveMenuRef(deal.id, element)} value={currentStatus} disabled={moving} aria-label={`Mover ${leadName} para outra etapa`} className="h-8 w-9 max-w-9 cursor-pointer overflow-hidden border-0 bg-surface-subtle px-0 text-transparent opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100" onChange={(event) => moveDeal(deal.id, event.target.value)}>
+                              {moveColumns(currentStatus).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}
+                            </Select>
+                            {href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="inline-flex h-8 items-center gap-1 rounded-control bg-surface-subtle px-2 text-xs font-medium hover:bg-surface-hover"><ArrowUpRight size={13} aria-hidden="true" />Abrir</a> : <span className="text-fg-muted">—</span>}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -607,7 +472,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                 const moving = movingDealIds.has(deal.id);
                 const lastUpdate = deal.modificado_em || deal.criado_em;
                 return (
-                  <article key={deal.id} className="rounded-lg border border-line bg-surface p-4">
+                  <article key={deal.id} className="rounded-control border border-line bg-surface p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         {href && leadName !== 'Sem nome' ? (
@@ -714,23 +579,30 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       {/* The board scrolls horizontally on narrow screens; drag/drop is only an enhancement. */}
       {!loading && !error && hasDeals && view === 'board' && (
         <div
-          role="region"
-          aria-label="Pipeline CRM"
-          id="crm-view-panel"
+          role="tabpanel"
+          aria-labelledby="crm-view-tab-board"
+          id="crm-view-panel-board"
           tabIndex={0}
-          className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-auto rounded-lg border border-line bg-page [scrollbar-width:thin] md:max-h-[calc(100vh-10rem)]"
+          className="overflow-x-auto rounded-card [scrollbar-width:thin]"
         >
-          <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
-            {displayColumns.map((col) => (
+          <div className="flex w-max min-w-full gap-3">
+            {displayColumns.map((col, columnIndex) => (
               <div
                 key={col.status}
-                className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-lg border border-line bg-surface"
+                className="flex w-[13.5rem] flex-shrink-0 flex-col rounded-card bg-surface-subtle p-3"
               >
-                <div className="flex items-center justify-between px-4 py-3 text-sm font-medium">
-                  <h2>{col.name}</h2>
+                <div className="flex items-center justify-between gap-3 px-1 py-1 text-xs font-semibold">
+                  <h2 className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: BOARD_STAGE_SWATCHES[columnIndex % BOARD_STAGE_SWATCHES.length] }}
+                    />
+                    <span className="truncate">{col.name}</span>
+                  </h2>
                   <span
                     aria-label={`${col.count} ${col.count === 1 ? 'negócio' : 'negócios'}`}
-                    className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-fg-muted"
+                    className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-fg-muted"
                   >
                     {col.count}
                   </span>
@@ -744,7 +616,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     <>
                       <div
                         className={cn(
-                          'min-h-[120px] flex-1 space-y-2 rounded-b-lg px-2 pb-2',
+                          'min-h-[120px] flex-1 space-y-3 pt-4',
                           draggingId && 'bg-primary/5'
                         )}
                         onDragOver={(e: DragEvent<HTMLDivElement>) => {
@@ -794,11 +666,11 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               onDragEnd={() => setDraggingId(null)}
                               aria-label={`Negócio ${displayLeadName}. Etapa: ${col.name}.`}
                               className={cn(
-                                'rounded-lg border border-line bg-surface p-3 transition-all',
-                                'hover:border-fg-muted/30',
+                                'rounded-card bg-surface-subtle p-4 transition-colors hover:bg-surface-hover',
                                 draggingId === deal.id && 'cursor-grabbing opacity-50'
                               )}
                             >
+                              <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.08em] text-fg-muted">{deal.id.slice(0, 8)}</div>
                               <div className="flex items-start justify-between gap-2">
                                 {leadClickable ? (
                                   <a
@@ -806,13 +678,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                     onClick={(event) =>
                                       leadHref && navigateFromLink(event, leadHref)
                                     }
-                                    className="min-w-0 text-left text-sm font-medium text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+                                    className="min-w-0 text-left text-[15px] font-semibold leading-5 text-fg hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
                                     aria-label={`Abrir lead ${displayLeadName}`}
                                   >
                                     <span className="block truncate">{displayLeadName}</span>
                                   </a>
                                 ) : (
-                                  <h3 className="min-w-0 truncate text-sm font-medium">
+                                  <h3 className="min-w-0 truncate text-[15px] font-semibold leading-5">
                                     {displayLeadName}
                                   </h3>
                                 )}
@@ -820,67 +692,13 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                   <span className="shrink-0 text-xs text-fg-muted">Movendo…</span>
                                 )}
                               </div>
-                              {deal.email && (
-                                <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {deal.email}
-                                </p>
-                              )}
-                              {deal.telefone && (
-                                <p className="mt-0.5 truncate text-xs text-fg-muted">
-                                  {fmtPhone(deal.telefone) || deal.telefone}
-                                </p>
-                              )}
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                {deal.quotation &&
-                                  (deal.quotation_id ? (
-                                    <a
-                                      href={`#/quotations/${deal.quotation_id}`}
-                                      onClick={(event) =>
-                                        navigateFromLink(event, `#/quotations/${deal.quotation_id}`)
-                                      }
-                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
-                                      aria-label={`Abrir orçamento ${deal.quotation}`}
-                                    >
-                                      <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                      {deal.quotation}
-                                    </a>
-                                  ) : (
-                                    <span
-                                      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-primary"
-                                      aria-label={`Orçamento ${deal.quotation}`}
-                                    >
-                                      <Clipboard size={12} className="mr-1" aria-hidden="true" />
-                                      {deal.quotation}
-                                    </span>
-                                  ))}
-                                {Number(deal.follow_up_stage) > 0 && (
-                                  <span className="inline-flex items-center rounded bg-surface-muted px-1.5 py-0.5 text-xs text-fg">
-                                    <Send size={12} className="mr-1" aria-hidden="true" />
-                                    Follow-up {deal.follow_up_stage}
-                                  </span>
-                                )}
-                                {lastUpdate && (
-                                  <time
-                                    dateTime={lastUpdate}
-                                    className="text-xs text-fg-muted"
-                                    title="Última atualização"
-                                  >
-                                    Atualizado {daysAgo(lastUpdate)}
-                                  </time>
-                                )}
+                              <p className="mt-2 truncate text-[11px] text-fg-muted">{deal.lead_source || 'Origem não informada'}</p>
+                              <div className="mt-5 flex items-center justify-between text-[11px] text-fg-muted">
+                                <time dateTime={lastUpdate}>{lastUpdate ? daysAgo(lastUpdate) : '—'}</time>
+                                <span className="grid size-7 place-items-center rounded-full bg-avatar-one text-[10px] font-bold text-avatar-ink">AS</span>
                               </div>
-                              <DealProposals opportunityId={deal.id} />
-                              {deal.quote_lead_id && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="mt-2 w-full"
-                                  onClick={() => startQuotation(deal, leadName)}
-                                >
-                                  <PlusCircle />
-                                  Novo orçamento
-                                </Button>
-                              )}
+                              {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={13} aria-hidden="true" />Ver negócio</a>}
+                              <details className="mt-2 text-[11px] text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full text-xs" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
                             </article>
                           );
                         })}

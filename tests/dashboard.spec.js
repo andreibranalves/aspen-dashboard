@@ -44,6 +44,49 @@ function dashboardResponse({
   };
 }
 
+test('overview mostra orçamentos reais e gráfico legível com um dia', async ({ page }) => {
+  await page.route('**/api/sales-dashboard**', (route) =>
+    route.fulfill({ json: dashboardResponse() })
+  );
+  await page.route('**/api/quotations**', (route) =>
+    route.fulfill({
+      json: {
+        data: [{
+          canonical: {
+            id: '11111111-1111-4111-8111-111111111111',
+            businessNumber: 'ORC-2026-001',
+            name: 'Proposta de camisetas',
+            revisionId: '22222222-2222-4222-8222-222222222222',
+            revision: 1,
+            status: 'emitido',
+            clienteId: '33333333-3333-4333-8333-333333333333',
+            cliente: 'Cliente exemplo',
+            data: '2026-09-22',
+            validade: '2026-10-07',
+            validadeDias: 15,
+            subtotal: '1500.00',
+            total: '1500.00',
+            frete: '0.00',
+            expired: false,
+            concurrencyToken: '2026-09-22T12:00:00.000Z',
+            updatedAt: '2026-09-22T12:00:00.000Z',
+            emailSent: false,
+          },
+        }],
+      },
+    })
+  );
+
+  await page.goto('/#/dashboard');
+  await expect(page.getByRole('heading', { name: 'Últimos orçamentos' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ORC-2026-001' })).toBeVisible();
+  const bar = page.getByRole('img', { name: 'Receita por dia' }).locator('[style*="height"]');
+  await expect(bar).toBeVisible();
+  expect((await bar.boundingBox())?.width).toBeLessThanOrEqual(64);
+  await page.getByRole('button', { name: 'ORC-2026-001' }).click();
+  await expect(page).toHaveURL(/#\/quotations\/11111111-1111-4111-8111-111111111111$/);
+});
+
 const conversionScenarios = [
   { ratio: 0.29, expected: '29%', artifact: '28.999999999999996%' },
   { ratio: 0.57, expected: '57%', artifact: '56.99999999999999%' },
@@ -147,10 +190,9 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
   const metaInput = page.getByLabel('Valor informado de gasto Meta');
   await expect(metaInput).toHaveValue('200');
   await expect(page.getByRole('button', { name: 'Salvar' })).toBeVisible();
-  await page.getByRole('button', { name: 'Ativar modo escuro' }).click();
   await expect(page.locator('html')).toHaveClass(/dark/);
+  await expect(page.locator('.aspen-workspace')).toHaveCSS('background-color', 'rgb(13, 13, 13)');
   await expect(metaInput).toBeVisible();
-  await page.getByRole('button', { name: 'Ativar modo claro' }).click();
 
   await metaInput.fill('1.234,56');
   await page.getByRole('button', { name: 'Salvar' }).click();
@@ -224,7 +266,7 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
     'Resultados',
     'Configurações',
   ]) {
-    await expect(sidebar.getByRole('button', { name: label })).toBeVisible();
+    await expect(sidebar.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
 
   await sidebar.getByRole('button', { name: 'Orçamentos' }).click();

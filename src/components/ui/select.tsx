@@ -3,7 +3,7 @@ import { forwardRef, type SelectHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Select keeps the native browser behavior while matching the 36px Aspen
+ * Select keeps the native browser behavior while matching the 40px Aspen
  * control contract.
  */
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -16,8 +16,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
       <select
         ref={ref}
         className={cn(
-          'h-9 min-w-0 appearance-none rounded-sm border border-border-control bg-surface pl-3 pr-8 text-sm text-fg',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+          'h-10 min-w-0 appearance-none rounded-control border border-border-control bg-input-surface pl-3 pr-8 text-sm text-fg',
           'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',
           'disabled:cursor-not-allowed disabled:opacity-50',
           className

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Boxes, Image as ImageIcon, PlusCircle, RefreshCw, X } from 'lucide-react';
+import { Boxes, Image as ImageIcon, Package, PlusCircle, X } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
+import Skeleton from '@/components/shared/Skeleton';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
+import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
 import { useHashQueryState, parseHashOption, parseHashString } from '@/hooks/useHashQueryState';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
@@ -14,12 +17,12 @@ import MediaLibrary from '@/features/communication/components/MediaLibrary';
 import MediaUploader from '@/features/communication/components/MediaUploader';
 
 const TABS = [
-  { id: 'products', label: 'Produtos' },
-  { id: 'sets', label: 'Conjuntos de produtos' },
-  { id: 'media', label: 'Mídias', icon: ImageIcon },
+  { value: 'products', label: 'Produtos', icon: Package },
+  { value: 'sets', label: 'Conjuntos', icon: Boxes },
+  { value: 'media', label: 'Mídias', icon: ImageIcon },
 ] as const;
-type CatalogTab = (typeof TABS)[number]['id'];
-const parseCatalogTab = parseHashOption<CatalogTab>(TABS.map((tab) => tab.id));
+type CatalogTab = (typeof TABS)[number]['value'];
+const parseCatalogTab = parseHashOption<CatalogTab>(TABS.map((tab) => tab.value));
 const PRODUCT_SORTS = ['item_name asc', 'modified desc', 'modified asc', 'item_code asc'];
 const parseCatalogStatus = parseHashOption(['active', 'archived', 'all']);
 const parseCatalogSort = parseHashOption(PRODUCT_SORTS);
@@ -32,7 +35,8 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'products', parseCatalogTab);
   const [productSearch] = useHashQueryState('search', '', parseHashString);
   const [productSort] = useHashQueryState('sort', 'modified desc', parseCatalogSort);
-  const [productStatus] = useHashQueryState('status', 'active', parseCatalogStatus);
+  const [productStatus] = useHashQueryState('status', 'all', parseCatalogStatus);
+  const [productCount, setProductCount] = useState(0);
   const [, navigate] = useHashRoute();
   const [templates, setTemplates] = useState<OrderTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
@@ -74,139 +78,46 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   };
 
   return (
-    <PageShell className="space-y-6 pb-28">
+    <PageShell className="space-y-4 pb-28">
       <PageHeader
         title={legacy ? 'Produtos' : 'Catálogo'}
-        actions={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {activeTab === 'products' && (
-              <>
-                <ExportCsvButton
-                  resource="products"
-                  filters={{ search: productSearch, status: productStatus, order_by: productSort }}
-                >
-                  Exportar produtos
-                </ExportCsvButton>
-                <ExportCsvButton
-                  resource="product-pricing"
-                  filters={{ search: productSearch, status: productStatus, order_by: productSort }}
-                >
-                  Exportar preços
-                </ExportCsvButton>
-                <Button size="md" onClick={() => navigate('/products/new')}>
-                  <PlusCircle /> Novo produto
-                </Button>
-              </>
-            )}
-            {activeTab === 'sets' && (
-              <Button size="md" onClick={() => openTemplateManager(null)}>
-                <PlusCircle /> Novo conjunto
-              </Button>
-            )}
-          </div>
-        }
       />
 
-      <div
-        role="tablist"
-        aria-label="Seções do catálogo"
-        className="-mx-1 overflow-x-auto border-b border-line px-1"
-      >
-        <div className="flex min-w-max gap-1">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.id;
-            const Icon = 'icon' in tab ? tab.icon : null;
-            return (
-              <button
-                key={tab.id}
-                id={`catalog-tab-${tab.id}`}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`catalog-panel-${tab.id}`}
-                tabIndex={isActive ? 0 : -1}
-                onClick={() => setActiveTab(tab.id)}
-                onKeyDown={(event) => {
-                  const currentIndex = TABS.findIndex((item) => item.id === tab.id);
-                  const nextIndex =
-                    event.key === 'ArrowRight'
-                      ? (currentIndex + 1) % TABS.length
-                      : event.key === 'ArrowLeft'
-                        ? (currentIndex - 1 + TABS.length) % TABS.length
-                        : event.key === 'Home'
-                          ? 0
-                          : event.key === 'End'
-                            ? TABS.length - 1
-                            : -1;
-                  if (nextIndex < 0) return;
-                  event.preventDefault();
-                  setActiveTab(TABS[nextIndex].id);
-                  window.requestAnimationFrame(() => {
-                    document.getElementById(`catalog-tab-${TABS[nextIndex].id}`)?.focus();
-                  });
-                }}
-                className={[
-                  'flex min-h-10 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
-                  isActive
-                    ? 'border-primary text-primary-text'
-                    : 'border-transparent text-fg-muted hover:bg-surface-hover hover:text-fg',
-                ].join(' ')}
-              >
-                {Icon && <Icon size={16} aria-hidden="true" />}
-                {tab.label}
-              </button>
-            );
-          })}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabList
+            label="Seções do catálogo"
+            items={TABS.map((tab) => (tab.value === 'products' ? { ...tab, badge: productCount } : tab))}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab === 'products' && (
+              <>
+                <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar produtos</ExportCsvButton>
+                <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar preços</ExportCsvButton>
+                <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
+              </>
+            )}
+            {activeTab === 'sets' && <Button onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button>}
+          </div>
         </div>
-      </div>
 
-      <div
-        id={`catalog-panel-${activeTab}`}
-        role="tabpanel"
-        aria-labelledby={`catalog-tab-${activeTab}`}
-        tabIndex={0}
-        className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-      >
-        {activeTab === 'products' && <ProductsPage showHeader={false} />}
+        <TabPanel value="products">
+          <ProductsPage showHeader={false} onCountChange={setProductCount} />
+        </TabPanel>
 
-        {activeTab === 'sets' && (
+        <TabPanel value="sets">
           <section className="space-y-4" aria-labelledby="catalog-sets-title">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 id="catalog-sets-title" className="text-base font-semibold text-fg">
-                  Conjuntos de produtos
-                </h2>
-                <p className="mt-1 text-sm text-fg-muted">
-                  Seleções reutilizáveis para montar orçamentos.
-                </p>
-              </div>
-              <span className="text-xs text-fg-muted" aria-live="polite">
-                {templatesLoading
-                  ? 'Carregando…'
-                  : `${templates.length} conjunto${templates.length === 1 ? '' : 's'}`}
-              </span>
-            </div>
+            <h2 id="catalog-sets-title" className="sr-only">Conjuntos de produtos</h2>
 
             {templatesLoading && (
-              <p
-                className="rounded-md border border-line bg-surface px-4 py-10 text-center text-sm text-fg-muted"
-                role="status"
-              >
-                Carregando conjuntos…
-              </p>
+              <div role="status" aria-busy="true" aria-label="Carregando conjuntos" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <Skeleton key={index} className="min-h-72 rounded-card" />
+                ))}
+              </div>
             )}
             {!templatesLoading && templatesError && (
-              <div
-                className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-12 text-center"
-                role="alert"
-              >
-                <AlertTriangle size={28} className="text-destructive" aria-hidden="true" />
-                <p className="text-sm text-fg">{templatesError}</p>
-                <Button variant="outline" onClick={() => void loadTemplates()}>
-                  <RefreshCw size={15} /> Tentar novamente
-                </Button>
-              </div>
+              <ErrorState title="Não foi possível carregar os conjuntos" onRetry={() => void loadTemplates()} />
             )}
             {!templatesLoading && !templatesError && templates.length === 0 && (
               <EmptyState
@@ -221,31 +132,21 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               />
             )}
             {!templatesLoading && !templatesError && templates.length > 0 && (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {templates.map((template) => (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {templates.map((template, index) => (
                   <article
                     key={template.id}
-                    className="flex min-h-32 flex-col justify-between rounded-md border border-line bg-surface p-4"
+                    className="flex min-h-72 flex-col rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
                   >
-                    <div>
-                      <h3 className="truncate font-medium text-fg" title={template.name}>
-                        {template.name}
-                      </h3>
-                      <p className="mt-2 text-sm text-fg-muted">
-                        {template.items.length} produto{template.items.length === 1 ? '' : 's'}
-                      </p>
-                      <p className="mt-1 break-words font-mono text-xs text-fg-muted">
-                        {template.items.map((item) => item.sku).join(' · ')}
-                      </p>
+                    <h3 className="truncate text-sm font-semibold text-fg" title={template.name}>{template.name}</h3>
+                    <div className={["mt-5 flex h-24 items-end justify-between rounded-control p-5", ['bg-sage text-sage-ink', 'bg-orange text-orange-ink', 'bg-taupe text-taupe-ink'][index % 3]].join(' ')}>
+                      <Boxes size={34} strokeWidth={1.4} aria-hidden="true" />
+                      <span className="text-lg font-semibold">{template.items.length} {template.items.length === 1 ? 'item' : 'itens'}</span>
                     </div>
-                    <Button
-                      className="mt-4 self-start"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openTemplateManager(template)}
-                    >
-                      Editar conjunto
-                    </Button>
+                    <div className="mt-4 flex-1">
+                      {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-[10px] text-fg-muted">{item.sku}</span></div>)}
+                    </div>
+                    <Button className="mt-4 self-start" variant="outline" size="sm" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
                   </article>
                 ))}
               </div>
@@ -258,9 +159,9 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               onChanged={reloadTemplates}
             />
           </section>
-        )}
+        </TabPanel>
 
-        {activeTab === 'media' && (
+        <TabPanel value="media">
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
             <MediaLibrary refreshKey={mediaRefreshKey} onAdd={() => setMediaUploadOpen(true)} />
             {mediaUploadOpen && (
@@ -274,8 +175,8 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               </aside>
             )}
           </div>
-        )}
-      </div>
+        </TabPanel>
+      </Tabs>
     </PageShell>
   );
 }

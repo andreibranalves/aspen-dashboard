@@ -49,18 +49,10 @@ function contrastRatio(foreground, background) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
-async function waitForThemeToSettle(page) {
-  await page.evaluate(
-    () =>
-      new Promise((resolve) =>
-        globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve))
-      )
-  );
-}
-
-async function expectSidebarCategoryContrast(page) {
-  for (const category of ['Operação']) {
-    const label = page.getByText(category, { exact: true });
+async function expectSidebarNavigationContrast(page) {
+  for (const category of ['Orçamentos', 'Pedidos', 'Clientes']) {
+    const label = page.getByRole('complementary', { name: 'Navegação principal' })
+      .getByRole('button', { name: category, exact: true });
     const colors = await label.evaluate((element) => ({
       foreground: globalThis.getComputedStyle(element).color,
       background: globalThis.getComputedStyle(element.closest('aside')).backgroundColor,
@@ -92,18 +84,28 @@ test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page 
   await expect(menu).toBeFocused();
 });
 
-test('categorias da sidebar mantêm contraste após a troca de tema', async ({ page }) => {
-  await page.addInitScript(() => globalThis.localStorage.setItem('aspen_theme', 'light'));
+test('shell do sketch mantém contraste na navegação da sidebar', async ({ page }) => {
   await openDashboard(page, { width: 1440, height: 900 });
 
-  await expect(page.locator('html')).not.toHaveClass(/dark/);
-  await waitForThemeToSettle(page);
-  await expectSidebarCategoryContrast(page);
-
-  const themeToggle = page.getByRole('button', { name: 'Ativar modo escuro' });
-  await themeToggle.click();
   await expect(page.locator('html')).toHaveClass(/dark/);
-  await expect(page.getByRole('button', { name: 'Ativar modo claro' })).toBeVisible();
-  await waitForThemeToSettle(page);
-  await expectSidebarCategoryContrast(page);
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(221, 221, 221)');
+  await expect(page.locator('.aspen-workspace')).toHaveCSS('background-color', 'rgb(13, 13, 13)');
+  await expect(page.locator('#aspen-sidebar')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expectSidebarNavigationContrast(page);
+});
+
+test('TopBar e busca permanecem visíveis ao rolar o conteúdo da página', async ({ page }) => {
+  await openDashboard(page, { width: 1440, height: 900 });
+
+  const main = page.locator('main');
+  await main.evaluate((element) => {
+    const content = globalThis.document.createElement('div');
+    content.setAttribute('aria-hidden', 'true');
+    content.style.height = '2000px';
+    element.append(content);
+    element.scrollTop = element.scrollHeight;
+  });
+
+  await expect(page.locator('header')).toBeInViewport();
+  await expect(page.getByRole('searchbox', { name: 'Buscar uma tela' })).toBeInViewport();
 });

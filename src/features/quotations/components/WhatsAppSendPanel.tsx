@@ -6,6 +6,7 @@ import { useId } from 'react';
 import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
 import { isQuotationDeliveryFlow, renderableFlowStepCount } from '@/lib/api/communicationApi';
 import { projectDelivery, type DeliveryView } from '@/lib/api/quotationDeliveryApi';
@@ -72,10 +73,10 @@ export default function WhatsAppSendPanel({
         <label htmlFor={flowSelectId} className="text-xs font-medium text-fg-muted">
           Fluxo WhatsApp
         </label>
-        <select
+        <Select
           id={flowSelectId}
           aria-label="Fluxo WhatsApp"
-          className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          containerClassName="w-full" className="w-full"
           value={selectedFlowId || ''}
           onChange={(e) => onSelectFlow?.(e.target.value)}
           disabled={flows.length === 0 || selectionDisabled}
@@ -85,7 +86,7 @@ export default function WhatsAppSendPanel({
               {flow.name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
       {!hasValidSteps && (
         <p className="mb-2 mt-3 text-xs leading-5 text-warning" role="status">

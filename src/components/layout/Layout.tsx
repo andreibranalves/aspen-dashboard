@@ -1,8 +1,6 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
-import { cn } from '@/lib/utils';
-import { useDarkMode } from '@/hooks/useDarkMode';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
@@ -16,8 +14,8 @@ const PAGE_LABELS: Record<string, string> = {
   '/dashboard': 'Resultados',
   '/quotations': 'Orçamentos',
   '/novo-orcamento': 'Novo orçamento',
-  '/auto': 'Auto',
-  '/manual': 'Novo Orçamento',
+  '/auto': 'Novo orçamento',
+  '/manual': 'Novo orçamento',
   '/sales-orders': 'Pedidos',
   '/crm': 'Comercial',
   '/products': 'Produtos',
@@ -25,7 +23,6 @@ const PAGE_LABELS: Record<string, string> = {
   '/leads': 'Clientes',
   '/settings': 'Configurações',
   '/whatsapp-deliveries': 'Envios',
-  '/comunicacao': 'Comunicação',
   '/404': 'Página não encontrada',
 };
 
@@ -41,12 +38,6 @@ function getQuotationParent(): BreadcrumbItem {
   }
   if (previousRoute && routePath(previousRoute) === '/whatsapp-deliveries') {
     return { label: 'Envios', hash: previousRoute };
-  }
-  if (previousRoute && routePath(previousRoute) === '/comunicacao') {
-    const query = previousRoute.split('?')[1] || '';
-    if (new URLSearchParams(query).get('tab') === 'history') {
-      return { label: 'Histórico de envios', hash: previousRoute };
-    }
   }
   return { label: 'Orçamentos', hash: getParentRoute('/quotations') };
 }
@@ -99,7 +90,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
     ];
   }
   if (path.startsWith('/leads/')) {
-    const id = path.split('/').slice(3).join('/');
+    const id = path === '/leads/new' ? 'new' : path.split('/').slice(3).join('/');
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Clientes', hash: getParentRoute('/leads') },
@@ -126,12 +117,9 @@ export interface LayoutProps {
 }
 
 const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
-const COMPACT_MEDIA_QUERY = '(max-width: 1024px)';
-
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
-  const { darkMode, toggleDarkMode } = useDarkMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') return window.innerWidth <= 1024;
+    if (typeof window !== 'undefined') return window.innerWidth < 768;
     return false;
   });
   const [isMobile, setIsMobile] = useState(
@@ -148,30 +136,30 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
     [route]
   );
   const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
+  const breadcrumbItems = getBreadcrumb(route, detailLabel);
+  const isQuotationComposer = ['/auto', '/novo-orcamento', '/manual'].includes(routePath(route));
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
     const mobileMedia = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const compactMedia = window.matchMedia(COMPACT_MEDIA_QUERY);
     const updateMobile = () => setIsMobile(mobileMedia.matches);
-    const collapseAtCompactWidth = () => {
-      if (compactMedia.matches) setSidebarCollapsed(true);
-    };
     updateMobile();
     mobileMedia.addEventListener?.('change', updateMobile);
-    compactMedia.addEventListener?.('change', collapseAtCompactWidth);
     return () => {
       mobileMedia.removeEventListener?.('change', updateMobile);
-      compactMedia.removeEventListener?.('change', collapseAtCompactWidth);
     };
   }, []);
+
+  useEffect(() => {
+    setSidebarCollapsed(isMobile);
+  }, [isMobile]);
 
   useEffect(() => {
     if (isMobile) setSidebarCollapsed(true);
   }, [isMobile, route]);
 
   return (
-    <div className="flex h-dvh min-h-0 overflow-hidden bg-page">
+    <div className="flex h-dvh min-h-0 gap-frame overflow-hidden bg-canvas md:p-frame">
       <Sidebar
         collapsed={sidebarCollapsed}
         mobile={isMobile}
@@ -179,31 +167,27 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         currentRoute={route}
         onNavigate={onNavigate}
       />
-      <div
-        className={cn(
-          'flex min-h-0 min-w-0 flex-1 flex-col transition-[margin] duration-200',
-          'md:ml-16',
-          !sidebarCollapsed && 'md:ml-[216px]'
-        )}
-      >
-        <TopBar
-          route={route}
-          onMenuClick={toggleSidebar}
-          sidebarOpen={!sidebarCollapsed}
-          isMobile={isMobile}
-          breadcrumbItems={getBreadcrumb(route, detailLabel)}
-          onNavigate={onNavigate}
-          darkMode={darkMode}
-          toggleDarkMode={toggleDarkMode}
-        />
-        <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
-          <main
-            className="min-h-0 flex-1 overflow-auto p-4 md:p-6"
-            inert={isMobile && !sidebarCollapsed ? true : undefined}
-          >
-            {children}
-          </main>
-        </BreadcrumbLabelProvider>
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
+        <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">
+          <div key={routePath(route)} className={`relative min-h-full motion-safe:animate-page-enter ${isQuotationComposer ? 'flex flex-col' : ''}`}>
+            <TopBar
+              route={route}
+              onMenuClick={toggleSidebar}
+              sidebarOpen={!sidebarCollapsed}
+              isMobile={isMobile}
+              breadcrumbItems={breadcrumbItems}
+              onNavigate={onNavigate}
+            />
+            <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
+              <main
+                className={isQuotationComposer ? 'flex min-h-0 flex-1 flex-col' : undefined}
+                inert={isMobile && !sidebarCollapsed ? true : undefined}
+              >
+                {children}
+              </main>
+            </BreadcrumbLabelProvider>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,29 +1,34 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import {
-  Search,
-  Sparkles,
   Pencil,
   FileText,
   Trash2,
-  AlertTriangle,
   Clipboard,
   PlusCircle,
   Copy,
   MailCheck,
   MoreHorizontal,
+  FilePlus2,
+  Send,
+  BadgeCheck,
+  ChevronRight,
+  CircleX,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import ErrorState from '@/components/shared/ErrorState';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
-import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';
+import ListPagination from '@/components/shared/ListPagination';
+import EntityIdentity from '@/components/shared/EntityIdentity';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
@@ -89,9 +94,9 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
   const [limit, setLimit] = useHashQueryState('limit', 10, parseQuotationLimit);
   const [totalPages, setTotalPages] = useState<number>(0);
-  const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [duplicateTarget, setDuplicateTarget] = useState<string | null>(null);
   const [openActionRow, setOpenActionRow] = useState<string | null>(null);
@@ -159,7 +164,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         }
         setData(projectedRows as QuotationRow[]);
         setTotalPages(totalPages);
-        setTotalRecords(totalRecords);
         setStatusSummary(projectedSummary);
       } catch {
         if (requestGeneration !== requestGenerationRef.current) return;
@@ -204,8 +208,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   );
 
   const onLimitChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      const newLimit = parseInt(e.target.value, 10);
+    (newLimit: number) => {
       setLimit(newLimit);
       setPage(1);
     },
@@ -224,7 +227,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     try {
       await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
       setData((prev) => prev.filter((r) => r.id !== id));
-      setTotalRecords((prev) => prev - 1);
       setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
       toast(`Orçamento ${id} excluído.`, 'success');
     } catch (error) {
@@ -314,19 +316,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     }
   }, [someSelected]);
 
-  // Pagination helpers
-  const getPageNumbers = () => {
-    if (totalPages <= 1) return [];
-    const start = Math.max(1, page - 3);
-    const end = Math.min(totalPages, start + 6);
-    const nums = [];
-    for (let i = start; i <= end; i++) nums.push(i);
-    return nums;
-  };
-  const summaryTotal = ['Rascunho', 'Enviado', 'Aprovado', 'Perdido'].reduce(
-    (sum, key) => sum + (statusSummary[key] || 0),
-    0
-  );
+  const summaryPending = loading && Object.keys(statusSummary).length === 0;
 
   const actionButtons = (row: QuotationRow, placement: 'desktop' | 'mobile') => {
     const label = row.businessNumber;
@@ -339,7 +329,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           popoverTargetAction="toggle"
           aria-controls={menuId}
           aria-expanded={openActionRow === row.id}
-          className="flex h-8 w-8 items-center justify-center rounded-sm text-fg-muted hover:bg-surface-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover hover:text-fg"
           aria-label={`Ações do orçamento ${label}`}
           title={`Ações do orçamento ${label}`}
           onClick={(event) => {
@@ -358,7 +348,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           id={menuId}
           popover="auto"
           aria-label={`Ações do orçamento ${label}`}
-          className="fixed inset-auto m-0 w-48 rounded-md border border-line bg-surface py-1 shadow-lg"
+          className="fixed inset-auto m-0 w-48 rounded-control border border-line bg-surface py-1 shadow-lg"
           style={{ top: `${actionMenuPosition.top}px`, left: `${actionMenuPosition.left}px` }}
           onToggle={(event) => {
             setOpenActionRow(event.nativeEvent.newState === 'open' ? row.id : null);
@@ -461,19 +451,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   );
 
   return (
-    <PageShell className={selectedCount > 0 ? 'pb-48 sm:pb-28' : 'pb-4'}>
+    <PageShell className={selectedCount > 0 ? 'space-y-6 pb-48 sm:pb-28' : 'space-y-6 pb-4'}>
       <PageHeader
         title="Orçamentos"
-        description={
-          totalRecords > 0 ? `${totalRecords} orçamento${totalRecords !== 1 ? 's' : ''}` : undefined
-        }
         actions={
           <>
-            <Button onClick={() => navigate('/auto')} variant="outline">
-              <Sparkles />
-              Auto
-            </Button>
-            <Button onClick={() => navigate('/manual')} variant="default">
+            <Button onClick={() => navigate('/novo-orcamento')} variant="default">
               <PlusCircle />
               Novo orçamento
             </Button>
@@ -481,60 +464,32 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         }
       />
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-wrap gap-2" aria-label="Filtrar por status">
-          {STATUS_OPTIONS.map((option) => {
-            const count = option.summaryKey
-              ? (statusSummary[option.summaryKey] ?? 0)
-              : summaryTotal;
-            return (
-              <FilterChip
-                key={option.value}
-                selected={status === option.value}
-                onClick={() => onStatusClick(option.value)}
-                className={
-                  status === option.value
-                    ? 'border border-primary bg-transparent text-link'
-                    : 'border border-line bg-surface text-fg-muted hover:bg-surface-hover hover:text-fg'
-                }
-              >
-                {option.label} <span className="font-normal">· {count}</span>
-              </FilterChip>
-            );
-          })}
-        </div>
-        <PageToolbar className="w-full sm:w-auto">
-          <div className="relative w-full sm:w-64">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-            <Input
-              placeholder="Número ou cliente"
-              value={search}
-              onChange={onSearchChange}
-              className="h-9 pl-9"
-              aria-label="Buscar orçamentos"
-            />
-          </div>
+      <StatGrid label="Resumo dos orçamentos">
+        {[
+          { label: 'Rascunhos', value: statusSummary.Rascunho ?? 0, note: 'Ainda não emitidos', Icon: FilePlus2 },
+          { label: 'Emitidos', value: statusSummary.Enviado ?? 0, note: 'Aguardando decisão', Icon: Send },
+          { label: 'Aprovados', value: statusSummary.Aprovado ?? 0, note: 'Prontos para avançar', Icon: BadgeCheck },
+          { label: 'Perdidos', value: statusSummary.Perdido ?? 0, note: 'Com motivo registrado', Icon: CircleX },
+        ].map(({ label, value, note, Icon }) => (
+          <StatCard key={label} icon={Icon} label={label} value={String(value)} metadata={note} loading={summaryPending} />
+        ))}
+      </StatGrid>
+
+      <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-card bg-surface p-5">
+        <PageToolbar className="mb-5">
+          <SearchField placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar orçamentos" />
+          <Select value={status} onChange={(event) => onStatusClick(event.target.value)} aria-label="Filtrar por status">
+            {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
+          <Button type="button" variant="ghost" className="ml-auto" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
         </PageToolbar>
-      </div>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={7} rows={8} />}
+      {loading && <div className="p-4"><SkeletonTable cols={7} rows={8} /></div>}
 
       {/* Error */}
       {!loading && error && (
-        <div
-          role="alert"
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
-        >
-          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
-          <p className="font-medium">Não foi possível carregar os orçamentos.</p>
-          <p className="max-w-md text-sm text-fg-muted">
-            Verifique sua conexão e tente novamente. Os filtros atuais serão mantidos.
-          </p>
-          <Button variant="outline" onClick={() => fetchData(search, status, page, limit)}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os orçamentos" description="Os filtros atuais serão mantidos." onRetry={() => fetchData(search, status, page, limit)} />
       )}
 
       {/* Empty */}
@@ -555,7 +510,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 Limpar filtros
               </Button>
             ) : (
-              <Button onClick={() => navigate('/manual')}>
+              <Button onClick={() => navigate('/novo-orcamento')}>
                 <PlusCircle />
                 Novo orçamento
               </Button>
@@ -566,43 +521,46 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
       {!loading && !error && data.length > 0 && (
         <div className="hidden md:block">
-          <Table>
+          <Table
+            className="[&_td]:py-4 [&_th]:h-12"
+            containerClassName="overflow-hidden"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12 px-3">
+                {selectionMode && <TableHead className="w-12 px-3">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
                     checked={allSelected}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded-xs border-line text-primary"
                   />
-                </TableHead>
-                <TableHead className="w-[180px]">Número</TableHead>
-                <TableHead className="min-w-[220px]">Cliente</TableHead>
-                <TableHead className="whitespace-nowrap">Atualizado</TableHead>
+                </TableHead>}
+                <TableHead className="w-[190px]">Orçamento</TableHead>
+                <TableHead className="min-w-[220px]">Cliente / demanda</TableHead>
+                <TableHead className="whitespace-nowrap">Data</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="w-16 text-right">Ações</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {data.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={`cursor-pointer bg-surface ${selectedIds.includes(row.id) ? 'bg-surface-selected' : ''}`}
+                  className={`group cursor-pointer ${selectedIds.includes(row.id) ? 'bg-surface-selected' : ''}`}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="w-12 px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                  {selectionMode && <TableCell className="w-12 px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Selecionar orçamento ${row.businessNumber}`}
-                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded-xs border-line text-primary"
                     />
-                  </TableCell>
+                  </TableCell>}
                   <TableCell className="whitespace-nowrap py-2 text-sm [font-variant-numeric:tabular-nums]">
                     <Button
                       variant="link"
@@ -613,25 +571,23 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     >
                       {row.businessNumber}
                     </Button>
+                    <span className="block text-[11px] text-fg-muted">Revisão {row.revision}</span>
                   </TableCell>
                   <TableCell className="max-w-[300px] py-2" title={row.cliente}>
-                    <span className="block truncate font-medium">
-                      {row.cliente || 'Cliente não informado'}
-                    </span>
+                    <EntityIdentity name={row.cliente || 'Cliente não informado'} secondary={row.name && row.name !== row.cliente ? row.name : undefined} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-fg-muted">
                     <span className="block">
-                      {formatDate(row.updatedAt) || formatDate(row.data) || '—'}
-                    </span>
-                    <span className="mt-0.5 block text-xs">
-                      <EmailMarker row={row} />
+                      {formatDate(row.data) || '—'}
                     </span>
                   </TableCell>
                   <TableCell className="py-2">{statusBadge(row)}</TableCell>
                   <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
                     {formatBRL(row.total)}
                   </TableCell>
-                  <TableCell className="py-2 text-right">{actionButtons(row, 'desktop')}</TableCell>
+                  <TableCell className="w-24 py-2 text-right text-fg-muted">
+                    <div className="flex items-center justify-end gap-1"><span className="pointer-events-none block shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">{actionButtons(row, 'desktop')}</span><ChevronRight size={16} aria-hidden="true" /></div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -644,7 +600,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           {data.map((row) => (
             <div
               key={row.id}
-              className={`cursor-pointer space-y-3 rounded-md border border-line bg-surface p-4 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              className={`cursor-pointer space-y-3 rounded-card border border-line bg-surface p-5 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
               <div className="flex items-start justify-between gap-3">
@@ -657,7 +613,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     checked={selectedIds.includes(row.id)}
                     onChange={() => toggleSelected(row.id)}
                     aria-label={`Selecionar orçamento ${row.businessNumber}`}
-                    className="h-4 w-4 shrink-0 rounded border-line text-primary focus:ring-primary"
+                    className="h-4 w-4 shrink-0 rounded-xs border-line text-primary"
                   />
                   <Button
                     variant="link"
@@ -671,21 +627,23 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   >
                     {row.businessNumber}
                   </Button>
+                  <span className="shrink-0 text-xs text-fg-muted">· Rev. {row.revision}</span>
                 </div>
                 {statusBadge(row)}
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-fg-muted">Cliente</p>
                 <p className="break-words font-medium">{row.cliente || 'Cliente não informado'}</p>
+                <p className="mt-0.5 break-words text-xs text-fg-muted">{row.name}</p>
               </div>
               <div className="text-xs text-fg-muted">
                 <EmailMarker row={row} />
               </div>
               <div className="flex items-end justify-between gap-3 border-t border-line pt-3">
                 <div>
-                  <p className="text-xs text-fg-muted">Atualizado · Total</p>
+                  <p className="text-xs text-fg-muted">Data · Valor</p>
                   <p className="text-sm text-fg-muted">
-                    {formatDate(row.updatedAt) || formatDate(row.data) || '—'}
+                    {formatDate(row.data) || '—'}
                   </p>
                   <p className="font-mono font-semibold [font-variant-numeric:tabular-nums]">
                     {formatBRL(row.total)}
@@ -699,54 +657,9 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       )}
 
       {!loading && !error && data.length > 0 && (
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm">
-          <label className="flex items-center gap-2 text-xs text-fg-muted">
-            Itens por página
-            <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
-          </label>
-          {totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <span className="text-xs text-fg-muted">
-                Página {page} de {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => onPageChange(page - 1)}
-              >
-                ‹ Anterior
-              </Button>
-              <div className="hidden gap-1 sm:flex">
-                {getPageNumbers().map((p) => (
-                  <Button
-                    key={p}
-                    variant={p === page ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => onPageChange(p)}
-                  >
-                    {p}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => onPageChange(page + 1)}
-              >
-                Próximo ›
-              </Button>
-            </div>
-          )}
-        </footer>
+        <div className="border-t border-line pt-4"><ListPagination label="Paginação de orçamentos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={onPageChange} onLimitChange={onLimitChange} /></div>
       )}
+      </section>
 
       <BulkActionBar visible={selectedCount > 0}>
         <div className="flex flex-wrap items-center gap-6">
@@ -757,7 +670,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               checked={allSelected}
               onChange={(e) => toggleSelectAll(e.target.checked)}
               aria-label="Selecionar todos os orçamentos desta página"
-              className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+              className="h-4 w-4 rounded-xs border-line text-primary"
             />
             <span>
               {selectedCount} orçamento{selectedCount !== 1 ? 's' : ''} selecionado

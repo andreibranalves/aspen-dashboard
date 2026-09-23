@@ -209,6 +209,8 @@ export function mapClientRow(record: ClientRecord): Record<string, unknown> {
     empresa: record.empresa ?? null,
     email: record.email,
     telefone: record.telefone,
+    municipio: record.address?.municipio ?? null,
+    uf: record.address?.uf ?? null,
     documento: record.documento,
     tax_id: record.documento,
     cnpj: record.documento && record.documento.length === 14 ? record.documento : null,

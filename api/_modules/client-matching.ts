@@ -30,7 +30,8 @@ export type ClientMatchReason =
   | 'multiple_matches'
   | 'identifier_conflict'
   | 'archived_match'
-  | 'weak_matches_only';
+  | 'weak_matches_only'
+  | 'identifier_in_use';
 
 export interface ClientMatchRequest {
   nome?: string;
@@ -100,6 +101,36 @@ export function foldClientText(value: unknown): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+const NAME_CONNECTORS = new Set(['da', 'das', 'de', 'do', 'dos', 'e']);
+
+/** Whole words of a name or company, without connectors or initials. */
+export function clientNameTokens(value: unknown): string[] {
+  return foldClientText(value)
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .split(' ')
+    .filter((token) => token.length >= 2 && !NAME_CONNECTORS.has(token));
+}
+
+/**
+ * Two names are the same person's when every word of the shorter one appears,
+ * as a whole word, in the longer one ("Carla" ≈ "Carla Souza"; "Andrei B." ≈
+ * "Andrei Brandão"). A substring is never enough: "Andrei" is not "Andreia".
+ */
+export function clientNamesMatch(left: unknown, right: unknown): boolean {
+  const a = clientNameTokens(left);
+  const b = clientNameTokens(right);
+  if (!a.length || !b.length) return false;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  if (!shorter.some((token) => token.length >= 3)) return false;
+  const pool = [...longer];
+  return shorter.every((token) => {
+    const index = pool.indexOf(token);
+    if (index < 0) return false;
+    pool.splice(index, 1);
+    return true;
+  });
 }
 
 function readOptionalText(value: unknown, label: string, maximum: number): string | null {
@@ -193,13 +224,10 @@ function matchedFieldsFor(
   if (input.email && record.email === input.email) fields.push('email');
   if (input.telefone && record.telefone === input.telefone) fields.push('telefone');
 
-  const foldedName = foldClientText(record.nome);
-  const foldedCompany = foldClientText(record.empresa);
-  for (const term of input.textTerms) {
-    const folded = foldClientText(term);
-    if (!folded) continue;
-    if (foldedName.includes(folded) && !fields.includes('nome')) fields.push('nome');
-    if (foldedCompany.includes(folded) && !fields.includes('empresa')) fields.push('empresa');
+  for (const text of [input.nome, input.empresa]) {
+    if (!text) continue;
+    if (clientNamesMatch(text, record.nome) && !fields.includes('nome')) fields.push('nome');
+    if (clientNamesMatch(text, record.empresa) && !fields.includes('empresa')) fields.push('empresa');
   }
   return fields;
 }
@@ -237,14 +265,40 @@ function envelope(
 }
 
 /**
+ * A candidate is the same client only on two independent signals: a valid
+ * document alone, or two of {name or company, e-mail, phone}. One shared field
+ * is a coincidence to confirm, never an identity (two "Carla" with different
+ * contacts, one family phone).
+ */
+function isStrongCandidate(candidate: ClientMatchCandidate): boolean {
+  const fields = candidate.matched_by;
+  if (fields.includes('documento')) return true;
+  const signals =
+    Number(fields.includes('nome') || fields.includes('empresa')) +
+    Number(fields.includes('email')) +
+    Number(fields.includes('telefone'));
+  return signals >= 2;
+}
+
+/**
  * Classifies the identity against the *complete* set of candidates. Pagination
  * is display only: it never changes the decision, and `total_candidates` counts
  * the whole considered set, never just the loaded page.
+ *
+ * - One active strong candidate links, even with archived or weaker ones around.
+ * - Only archived strong candidates block with `archived_match`.
+ * - Several active strong candidates, or one whose filled identifiers diverge,
+ *   require a choice.
+ * - Without a strong candidate, an e-mail/phone already used by another client
+ *   is `identifier_in_use` (choose or confirm a new client); name/company
+ *   suggestions only exist when the input carries no identifier at all.
  */
 export function classifyClientMatch(
   input: NormalizedClientMatchInput,
   records: readonly ClientMatchRecord[]
 ): ClientMatchResponse {
+  if (!isSearchableClientMatchInput(input)) return envelope('insufficient', null, [], input);
+
   const deduped = new Map<string, ClientMatchCandidate>();
   for (const record of records) {
     const matched_by = matchedFieldsFor(input, record);
@@ -252,55 +306,36 @@ export function classifyClientMatch(
     if (deduped.has(record.id)) continue;
     deduped.set(record.id, { ...record, matched_by });
   }
+  const all = [...deduped.values()];
 
-  const strong = orderByName(
-    [...deduped.values()].filter((candidate) =>
-      candidate.matched_by.some((field) => field === 'documento' || field === 'email' || field === 'telefone')
-    )
-  );
+  const strong = all.filter(isStrongCandidate);
+  if (strong.length) {
+    const active = orderByName(strong.filter((candidate) => !candidate.arquivado));
+    if (!active.length) {
+      return envelope('review', null, orderByName(strong), input, 'archived_match');
+    }
+    if (active.length > 1) return envelope('review', null, active, input, 'multiple_matches');
+    const candidate = active[0];
+    const diverges = STRONG_FIELDS.some(
+      (field) => input[field] && candidate[field] && candidate[field] !== input[field]
+    );
+    if (diverges) return envelope('review', null, active, input, 'identifier_conflict');
+    return envelope('matched', candidate.id, active, input);
+  }
 
-  if (!strong.length) {
-    if (!isSearchableClientMatchInput(input)) return envelope('insufficient', null, [], input);
-    const weak = orderByName(
-      [...deduped.values()].filter(
-        (candidate) => !strong.some((match) => match.id === candidate.id)
+  const hasIdentifier = STRONG_FIELDS.some((field) => Boolean(input[field]));
+  const active = all.filter((candidate) => !candidate.arquivado);
+  if (hasIdentifier) {
+    const sharing = orderByName(
+      active.filter((candidate) =>
+        candidate.matched_by.some((field) => field === 'email' || field === 'telefone')
       )
     );
-    if (weak.length) return envelope('review', null, weak, input, 'weak_matches_only');
+    if (sharing.length) return envelope('review', null, sharing, input, 'identifier_in_use');
     return envelope('not_found', null, [], input);
   }
 
-  if (strong.some((candidate) => candidate.arquivado)) {
-    return envelope('review', null, strong, input, 'archived_match');
-  }
-
-  const active = strong.filter((candidate) => !candidate.arquivado);
-
-  // Identifiers filled on both sides must agree: an e-mail pointing to one
-  // client while the phone points to another is a conflict, not a guess.
-  const hitsByField = new Map<ClientMatchStrongField, Set<string>>();
-  for (const field of STRONG_FIELDS) {
-    if (!input[field]) continue;
-    const hits = new Set(
-      strong.filter((candidate) => candidate[field] === input[field]).map((candidate) => candidate.id)
-    );
-    if (hits.size) hitsByField.set(field, hits);
-  }
-  const hitSets = [...hitsByField.values()];
-  for (let left = 0; left < hitSets.length; left += 1) {
-    for (let right = left + 1; right < hitSets.length; right += 1) {
-      const overlaps = [...hitSets[left]].some((id) => hitSets[right].has(id));
-      if (!overlaps) return envelope('review', null, strong, input, 'identifier_conflict');
-    }
-  }
-
-  if (active.length > 1) return envelope('review', null, strong, input, 'multiple_matches');
-
-  const candidate = active[0];
-  const diverges = STRONG_FIELDS.some(
-    (field) => input[field] && candidate[field] && candidate[field] !== input[field]
-  );
-  if (diverges) return envelope('review', null, strong, input, 'identifier_conflict');
-
-  return envelope('matched', candidate.id, [candidate], input);
+  const suggestions = orderByName(active);
+  if (suggestions.length) return envelope('review', null, suggestions, input, 'weak_matches_only');
+  return envelope('not_found', null, [], input);
 }

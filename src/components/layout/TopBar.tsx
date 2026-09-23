@@ -1,40 +1,82 @@
-import { Fragment } from 'react';
-import { Menu, ChevronRight, Moon, Sun } from 'lucide-react';
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
+import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER } from '@/app/navigation';
+import { applyTheme, readTheme } from '@/lib/theme';
 import type { BreadcrumbItem } from './Layout';
 
 export interface TopBarProps {
-  /** Kept for compatibility with direct consumers; breadcrumbItems is canonical. */
   route?: string;
   onMenuClick: () => void;
   sidebarOpen?: boolean;
   isMobile?: boolean;
   breadcrumbItems: BreadcrumbItem[];
   onNavigate: (hash: string) => void;
-  darkMode?: boolean;
-  toggleDarkMode?: () => void;
 }
 
-/**
- * TopBar is intentionally limited to navigation context and global utilities.
- * Page-specific actions belong to PageHeader on the rendered screen.
- */
+const SEARCH_DESTINATIONS = [NAV_ACTION, ...NAV_DESTINATIONS, ...NAV_FOOTER].filter(
+  (item): item is NonNullable<typeof item> => item !== null
+);
+
 export default function TopBar({
   onMenuClick,
   sidebarOpen = false,
   isMobile = false,
   breadcrumbItems,
   onNavigate,
-  darkMode = false,
-  toggleDarkMode,
 }: TopBarProps) {
+  const [query, setQuery] = useState('');
+  const [theme, setTheme] = useState(readTheme);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const matches = query.trim()
+    ? SEARCH_DESTINATIONS.filter((item) =>
+        item.label.toLocaleLowerCase('pt-BR').includes(query.trim().toLocaleLowerCase('pt-BR'))
+      )
+    : [];
+
+  useEffect(() => {
+    const focusSearch = (event: globalThis.KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', focusSearch);
+    return () => document.removeEventListener('keydown', focusSearch);
+  }, []);
+
+  const navigateFromSearch = (hash: string) => {
+    onNavigate(hash);
+    setQuery('');
+    setSearchOpen(false);
+    searchRef.current?.blur();
+  };
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+    setTheme(nextTheme);
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setSearchOpen(false);
+      searchRef.current?.blur();
+    } else if (event.key === 'Enter' && matches[0]) {
+      event.preventDefault();
+      navigateFromSearch(matches[0].hash);
+    }
+  };
+
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4 md:px-6">
+    <header className="mb-5 flex min-h-14 shrink-0 items-center justify-between gap-4 bg-page">
       <div className="flex min-w-0 items-center gap-3">
         {isMobile && (
           <button
             type="button"
             onClick={onMenuClick}
-            className="min-h-9 min-w-9 shrink-0 rounded-sm p-2 text-fg transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex min-h-10 min-w-10 items-center justify-center rounded-control text-fg transition-colors hover:bg-raised"
             aria-label="Abrir menu"
             aria-expanded={sidebarOpen}
             aria-controls="aspen-sidebar"
@@ -43,24 +85,22 @@ export default function TopBar({
           </button>
         )}
         <nav
-          className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
+          className="flex min-w-0 items-center gap-2 overflow-hidden text-[13px] text-fg-muted"
           aria-label="Trilha de navegação"
         >
-          {breadcrumbItems.map((item, i) => (
-            <Fragment key={`${item.label}-${i}`}>
-              {i > 0 && (
-                <ChevronRight size={14} className="shrink-0 text-fg-muted" aria-hidden="true" />
-              )}
+          {breadcrumbItems.map((item, index) => (
+            <Fragment key={`${item.label}-${index}`}>
+              {index > 0 && <ChevronRight size={14} className="shrink-0" aria-hidden="true" />}
               {item.hash ? (
                 <button
                   type="button"
                   onClick={() => onNavigate(item.hash!)}
-                  className="truncate rounded-sm text-fg-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="truncate rounded-control py-1 transition-colors hover:text-fg"
                 >
                   {item.label}
                 </button>
               ) : (
-                <span className="truncate font-medium text-fg" aria-current="page">
+                <span className="truncate font-semibold text-fg" aria-current="page">
                   {item.label}
                 </span>
               )}
@@ -69,17 +109,65 @@ export default function TopBar({
         </nav>
       </div>
 
-      {toggleDarkMode && (
+      <div className="flex shrink-0 items-center gap-3">
+        <div
+          ref={searchContainerRef}
+          className="relative hidden lg:block"
+          onBlur={(event) => {
+            if (!searchContainerRef.current?.contains(event.relatedTarget)) setSearchOpen(false);
+          }}
+        >
+          <label className="flex h-[46px] w-[244px] items-center gap-2 rounded-nav bg-surface px-4 text-fg-muted focus-within:ring-2 focus-within:ring-focus">
+            <Search size={17} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Buscar uma tela..."
+              aria-label="Buscar uma tela"
+              className="w-full min-w-0 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
+            />
+            <kbd className="whitespace-nowrap rounded-xs border border-line px-1 text-[10px]">
+              Ctrl K
+            </kbd>
+          </label>
+          {searchOpen && query.trim() && (
+            <div className="absolute right-0 top-[52px] z-40 w-[244px] overflow-hidden rounded-control border border-line bg-surface p-1 shadow-lg">
+              {matches.length > 0 ? (
+                matches.map((item) => (
+                  <button
+                    key={item.hash}
+                    type="button"
+                    onClick={() => navigateFromSearch(item.hash)}
+                    className="flex w-full items-center rounded-control px-3 py-2 text-left text-sm text-fg hover:bg-raised"
+                  >
+                    {item.label}
+                  </button>
+                ))
+              ) : (
+                <p className="px-3 py-2 text-xs text-fg-muted">Nenhuma tela encontrada</p>
+              )}
+            </div>
+          )}
+        </div>
+        <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
+        <button type="button" onClick={() => onNavigate('/crm?tab=queue')} className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg" aria-label="Abrir fila comercial"><Bell size={17} aria-hidden="true" /></button>
         <button
           type="button"
-          onClick={toggleDarkMode}
-          className="min-h-9 min-w-9 shrink-0 rounded-sm p-2 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
-          title={darkMode ? 'Modo claro' : 'Modo escuro'}
+          onClick={toggleTheme}
+          className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg"
+          aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
+          title={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
         >
-          {darkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+          {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
         </button>
-      )}
+      </div>
     </header>
   );
 }

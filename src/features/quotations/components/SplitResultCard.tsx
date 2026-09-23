@@ -39,7 +39,6 @@ import type { CommunicationFlow } from '@/lib/api/communicationApi';
 import type { DeliveryResolution, DeliveryView } from '@/lib/api/quotationDeliveryApi';
 import type {
   ClientResolutionCandidate,
-  ClientResolutionMatchedBy,
   ClientResolutionView,
 } from '@/features/quotations/automaticClientResolution';
 
@@ -97,21 +96,6 @@ export interface SplitResultCardProps {
   clientBlockMessage?: string | null;
 }
 
-const CLIENT_MATCH_FIELD_LABELS: Record<ClientResolutionMatchedBy, string> = {
-  documento: 'documento',
-  email: 'e-mail',
-  telefone: 'telefone',
-  nome: 'nome',
-  empresa: 'empresa',
-};
-
-function matchedByLabel(fields: ClientResolutionMatchedBy[]): string {
-  const labels = fields.map((field) => CLIENT_MATCH_FIELD_LABELS[field]);
-  if (labels.length === 0) return 'sem campo informado';
-  if (labels.length === 1) return labels[0];
-  return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
-}
-
 function clientResolutionAnnouncement(view: ClientResolutionView): string {
   switch (view.state) {
     case 'checking':
@@ -119,7 +103,7 @@ function clientResolutionAnnouncement(view: ClientResolutionView): string {
     case 'linked':
       return `Cliente já cadastrado: ${view.nome}`;
     case 'choice':
-      return `${view.candidates.length} clientes encontrados. Escolha o cliente para continuar.`;
+      return choiceHeading(view);
     case 'archived':
       return 'Cliente arquivado.';
     case 'new_client':
@@ -131,51 +115,123 @@ function clientResolutionAnnouncement(view: ClientResolutionView): string {
   }
 }
 
+/** Heading of a choice, in the operator's words: what was found and why it
+ * needs a decision. */
+function choiceHeading(view: Extract<ClientResolutionView, { state: 'choice' }>): string {
+  const count = view.candidates.length;
+  switch (view.reason) {
+    case 'identifier_in_use': {
+      if (count === 1) {
+        const [candidate] = view.candidates;
+        const field = candidate.matchedBy.includes('email') ? 'e-mail' : 'telefone';
+        return `Este ${field} já está no cadastro de ${candidate.nome}.`;
+      }
+      return 'O e-mail e o telefone já estão em outros cadastros.';
+    }
+    case 'identifier_conflict':
+      return 'Cadastro encontrado, mas com dados diferentes.';
+    case 'weak_matches_only':
+      return count === 1 ? 'Cliente com nome parecido.' : `${count} clientes com nome parecido.`;
+    case 'archived_match':
+      return 'Só há cadastros arquivados com estes dados.';
+    default:
+      return `${count} cadastros com estes dados.`;
+  }
+}
+
+function sameDigits(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = (left ?? '').replace(/\D/g, '');
+  const b = (right ?? '').replace(/\D/g, '');
+  return a.length > 0 && a === b;
+}
+
+function sameEmail(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = (left ?? '').trim().toLowerCase();
+  return a.length > 0 && a === (right ?? '').trim().toLowerCase();
+}
+
+/** One contact of a candidate, marked against what the draft says: equal (✓),
+ * different (≠) or unknown on one side (plain). */
+function CandidateContact({
+  value,
+  draftValue,
+  same,
+}: {
+  value: string | null;
+  draftValue?: string;
+  same: boolean;
+}) {
+  if (!value) return null;
+  const differs = Boolean(draftValue?.trim()) && !same;
+  return (
+    <span className={cn('inline-flex items-center gap-1', differs && 'text-warning')}>
+      {same && <Check size={12} className="text-success" aria-label="igual ao pedido" />}
+      {differs && <span aria-label="diferente do pedido">≠</span>}
+      {value}
+    </span>
+  );
+}
+
+const VISIBLE_CANDIDATES = 3;
+
 interface ClientResolutionAreaProps {
   view: ClientResolutionView;
   draftIdx: number;
   disabled: boolean;
+  /** Contacts extracted for the draft, to mark each candidate's equal and different fields. */
+  identity: { email?: string; telefone?: string };
   onSelectClient?: (draftIdx: number, candidate: ClientResolutionCandidate) => void;
   onConfirmNewClient?: (draftIdx: number) => void;
   onRetryClientResolution?: (draftIdx: number) => void;
   onClearClientSelection?: (draftIdx: number) => void;
 }
 
-/** Compact identity state of the card, next to the identity fields it decides.
- * Every action is a button, so the whole area works by keyboard, and the state
+/** Identity decision of the card, one line when settled and a short choice when
+ * not. Every action is a button, so the area works by keyboard, and the state
  * is announced without moving focus. */
 function ClientResolutionArea({
   view,
   draftIdx,
   disabled,
+  identity,
   onSelectClient,
   onConfirmNewClient,
   onRetryClientResolution,
   onClearClientSelection,
 }: ClientResolutionAreaProps) {
+  const [showAll, setShowAll] = useState(false);
   if (view.state === 'idle') return null;
+
+  const selectable =
+    view.state === 'choice' ? view.candidates.filter((candidate) => !candidate.arquivado) : [];
+  const visible = showAll ? selectable : selectable.slice(0, VISIBLE_CANDIDATES);
+  const hidden = selectable.length - visible.length;
+
   return (
-    <div className="mt-2 rounded-sm border border-line bg-surface/40 px-2 py-1.5">
+    <div className="border-b border-border-subtle px-4 py-3 text-[13px]">
       <p className="sr-only" aria-live="polite">
         {clientResolutionAnnouncement(view)}
       </p>
+
       {view.state === 'checking' && (
-        <p className="flex items-center gap-2 text-[11px] text-fg-muted">
-          <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+        <p className="flex items-center gap-2 text-fg-muted">
+          <Loader2 size={14} className="animate-spin" aria-hidden="true" />
           Verificando cliente…
         </p>
       )}
+
       {view.state === 'linked' && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-          <span className="inline-flex items-center gap-1 font-medium text-fg">
-            <Check size={12} aria-hidden="true" />
-            Cliente já cadastrado
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex min-w-0 items-center gap-1.5 font-semibold text-fg">
+            <Check size={14} className="shrink-0 text-success" aria-hidden="true" />
+            <span className="truncate">{view.nome}</span>
           </span>
-          <span className="truncate text-fg-muted">{view.nome}</span>
+          <span className="text-fg-muted">cliente cadastrado</span>
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="xs"
+            className="ml-auto"
             disabled={disabled || !onClearClientSelection}
             onClick={() => onClearClientSelection?.(draftIdx)}
           >
@@ -183,103 +239,117 @@ function ClientResolutionArea({
           </Button>
         </div>
       )}
+
       {view.state === 'choice' && (
-        <div className="space-y-1">
-          <p className="text-[10px] font-medium text-fg-muted">Escolha o cliente</p>
-          <ul className="space-y-1">
-            {view.candidates.map((candidate) => (
-              <li key={candidate.id}>
-                <button
-                  type="button"
-                  disabled={candidate.arquivado || disabled || !onSelectClient}
-                  onClick={() => onSelectClient?.(draftIdx, candidate)}
-                  className="w-full rounded-sm border border-line bg-surface px-2 py-1 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-surface"
-                >
-                  <span className="flex flex-wrap items-center gap-x-2 text-xs font-medium text-fg">
-                    <span className="truncate">{candidate.nome}</span>
-                    {candidate.empresa && (
-                      <span className="truncate text-[10px] font-normal text-fg-muted">
-                        {candidate.empresa}
-                      </span>
+        <div className="space-y-2">
+          <p className="font-semibold text-fg">{choiceHeading(view)}</p>
+          <ul className="divide-y divide-border-subtle overflow-hidden rounded-control border border-border-subtle bg-surface">
+            {visible.map((candidate) => (
+              <li key={candidate.id} className="flex items-center gap-3 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-fg">
+                    {candidate.nome}
+                    {candidate.empresa && candidate.empresa !== candidate.nome && (
+                      <span className="font-normal text-fg-muted"> · {candidate.empresa}</span>
                     )}
-                  </span>
-                  {(candidate.documento || candidate.email || candidate.telefone) && (
-                    <span className="block truncate text-[10px] text-fg-muted">
-                      {[candidate.documento, candidate.email, candidate.telefone]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </span>
-                  )}
-                  <span className="block text-[10px] text-fg-muted">
-                    Corresponde por {matchedByLabel(candidate.matchedBy)}
-                  </span>
-                  {candidate.arquivado && (
-                    <span className="block text-[10px] font-medium text-destructive">
-                      Cliente arquivado — indisponível para seleção
-                    </span>
-                  )}
-                </button>
+                  </p>
+                  <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-fg-muted">
+                    <CandidateContact
+                      value={candidate.email}
+                      draftValue={identity.email}
+                      same={sameEmail(candidate.email, identity.email)}
+                    />
+                    <CandidateContact
+                      value={candidate.telefone ? fmtPhone(candidate.telefone) || candidate.telefone : null}
+                      draftValue={identity.telefone}
+                      same={sameDigits(candidate.telefone, identity.telefone)}
+                    />
+                    {candidate.documento && <span>{candidate.documento}</span>}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  disabled={disabled || !onSelectClient}
+                  onClick={() => onSelectClient?.(draftIdx, candidate)}
+                  aria-label={`Usar o cadastro de ${candidate.nome}`}
+                >
+                  Usar
+                </Button>
               </li>
             ))}
           </ul>
-          {view.allowNewClient && (
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              disabled={disabled || !onConfirmNewClient}
-              onClick={() => onConfirmNewClient?.(draftIdx)}
-            >
-              É outro cliente: cadastrar novo
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {hidden > 0 && (
+              <Button type="button" variant="ghost" size="xs" onClick={() => setShowAll(true)}>
+                Mostrar mais {hidden}
+              </Button>
+            )}
+            {view.allowNewClient && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="ml-auto"
+                disabled={disabled || !onConfirmNewClient}
+                onClick={() => onConfirmNewClient?.(draftIdx)}
+              >
+                É outra pessoa: cadastrar novo
+              </Button>
+            )}
+          </div>
         </div>
       )}
+
       {view.state === 'new_client' && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="inline-flex items-center gap-1 font-medium text-fg">
-            {view.confirmed && <Check size={12} aria-hidden="true" />}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-fg">
+            {view.confirmed && <Check size={14} className="text-success" aria-hidden="true" />}
             Novo cliente
           </span>
+          <span className="text-fg-muted">será cadastrado ao salvar</span>
           {!view.confirmed && view.needsConfirmation && (
             <Button
               type="button"
               variant="outline"
               size="xs"
+              className="ml-auto"
               disabled={disabled || !onConfirmNewClient}
               onClick={() => onConfirmNewClient?.(draftIdx)}
             >
-              É outro cliente: cadastrar novo
+              Confirmar novo cliente
             </Button>
           )}
         </div>
       )}
+
       {view.state === 'archived' && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="inline-flex items-center gap-1 font-medium text-destructive">
-            <AlertTriangle size={12} aria-hidden="true" />
-            Cliente arquivado
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-warning">
+            <AlertTriangle size={14} aria-hidden="true" />
+            Cadastro arquivado
           </span>
           {view.nome && <span className="truncate text-fg-muted">{view.nome}</span>}
-          <Button type="button" variant="outline" size="xs" asChild>
-            <a
-              href={view.clientId ? `#/leads/cliente/${encodeURIComponent(view.clientId)}` : '#/leads'}
-            >
+          <Button type="button" variant="outline" size="xs" className="ml-auto" asChild>
+            <a href={view.clientId ? `#/leads/cliente/${encodeURIComponent(view.clientId)}` : '#/leads'}>
               Abrir cadastro
             </a>
           </Button>
         </div>
       )}
+
       {view.state === 'error' && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="inline-flex items-center gap-1 font-medium text-destructive">
-            <AlertTriangle size={12} aria-hidden="true" />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-destructive">
+            <AlertTriangle size={14} aria-hidden="true" />
             Não foi possível verificar o cliente
           </span>
           <Button
             type="button"
             variant="outline"
             size="xs"
+            className="ml-auto"
             disabled={disabled || !onRetryClientResolution}
             onClick={() => onRetryClientResolution?.(draftIdx)}
           >
@@ -342,6 +412,7 @@ export default function SplitResultCard({
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(reviewOnly);
   const [templateExpanded, setTemplateExpanded] = useState(false);
+  const [opportunityExpanded, setOpportunityExpanded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const editingBlocked = Boolean(isProcessing || isSavingDraft || parentEditingBlocked);
   const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
@@ -560,15 +631,15 @@ export default function SplitResultCard({
       ref={cardRef}
       aria-busy={isProcessing || issueBlocked || parentEditingBlocked || pricingPending}
       className={cn(
-        'rounded-lg border border-line bg-surface',
+        'rounded-control border border-border-subtle bg-surface',
         isProcessing && !immutableIssue && 'opacity-60'
       )}
     >
       {/* ── Header ── */}
       <div
         className={cn(
-          'flex items-start justify-between gap-3 p-4 bg-surface/50',
-          !isDone && 'border-b border-line'
+          'flex items-start justify-between gap-3 rounded-t-control bg-raised p-4',
+          !isDone && 'border-b border-border-subtle'
         )}
       >
         <div className="min-w-0 flex-1">
@@ -578,17 +649,17 @@ export default function SplitResultCard({
             </span>
 
             {draft.edited.urgente && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">
                 <AlertTriangle size={10} /> Urgente
               </span>
             )}
             {isDone && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                 <Check size={10} /> Emitido
               </span>
             )}
             {!isDone && hasSavedSnapshot && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-fg-muted">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-surface px-2 py-0.5 text-[11px] font-semibold text-fg-muted">
                 <Check size={10} /> Rascunho salvo
               </span>
             )}
@@ -649,7 +720,7 @@ export default function SplitResultCard({
                     value={draft.edited.origem || ''}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
                     disabled={editingBlocked}
-                    className="h-7 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                    className="h-7 w-full rounded-control border border-border-control bg-raised px-2 text-xs text-fg"
                   >
                     <option value="">Selecione a origem…</option>
                     {LEAD_SOURCES.map((source) => (
@@ -666,7 +737,7 @@ export default function SplitResultCard({
               <h3 className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
-                  <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                  <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-[11px] font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}
@@ -677,17 +748,6 @@ export default function SplitResultCard({
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
               </div>
             </>
-          )}
-          {!isDone && !hasSavedSnapshot && clientResolution && (
-            <ClientResolutionArea
-              view={clientResolution}
-              draftIdx={draft.index}
-              disabled={editingBlocked}
-              onSelectClient={onSelectClient}
-              onConfirmNewClient={onConfirmNewClient}
-              onRetryClientResolution={onRetryClientResolution}
-              onClearClientSelection={onClearClientSelection}
-            />
           )}
         </div>
         <div className="text-right shrink-0">
@@ -700,16 +760,47 @@ export default function SplitResultCard({
         </div>
       </div>
 
+      {!isDone && !hasSavedSnapshot && clientResolution && (
+        <ClientResolutionArea
+          view={clientResolution}
+          draftIdx={draft.index}
+          disabled={editingBlocked}
+          identity={{ email: draft.edited.email, telefone: draft.edited.telefone }}
+          onSelectClient={onSelectClient}
+          onConfirmNewClient={onConfirmNewClient}
+          onRetryClientResolution={onRetryClientResolution}
+          onClearClientSelection={onClearClientSelection}
+        />
+      )}
+
       {/* ── Demand selector (automatic flow) ── */}
       {!isDone && opportunitySelector && (
-        <div className="border-b border-line bg-surface/20 px-4 py-3">
-          {opportunitySelector}
+        <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
+            aria-expanded={opportunityExpanded}
+            aria-controls={`quotation-opportunity-${draft.index}`}
+            onClick={() => setOpportunityExpanded((expanded) => !expanded)}
+          >
+            Oportunidade
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={cn('transition-transform', opportunityExpanded && 'rotate-180')}
+            />
+          </button>
+          {opportunityExpanded && (
+            <div id={`quotation-opportunity-${draft.index}`} className="mt-3">
+              {opportunitySelector}
+            </div>
+          )}
         </div>
       )}
 
       {/* ── Template selector ── */}
       {!isDone && (
-        <div className="border-b border-line bg-surface/20 px-4 py-3">
+        <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
@@ -737,7 +828,7 @@ export default function SplitResultCard({
                   value={draft.edited.template_key || ''}
                   onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                   disabled={editingBlocked || templateLoading || templates.length === 0}
-                  className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                  className="h-8 w-full rounded-control border border-border-control bg-raised px-2 text-xs text-fg"
                   containerClassName="w-full"
                 >
                   {!draft.edited.template_key && <option value="">Modelo padrão</option>}
@@ -787,8 +878,8 @@ export default function SplitResultCard({
                   <TableRow
                     key={ii}
                     className={cn(
-                      'border-b border-line last:border-b-0 hover:bg-surface/30',
-                      pricingConflictItems.includes(item.item_code) && 'bg-amber-50 dark:bg-amber-500/10',
+                      'border-b border-line last:border-b-0 hover:bg-surface-hover',
+                      pricingConflictItems.includes(item.item_code) && 'bg-warning/10',
                     )}
                   >
                     <TableCell className="py-2 pl-4 pr-2">
@@ -809,7 +900,7 @@ export default function SplitResultCard({
                             />
                           )}
                           {showDropdown && (
-                            <div className="absolute z-50 left-0 right-0 top-8 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            <div className="absolute left-0 right-0 top-8 z-50 max-h-48 overflow-y-auto rounded-control border border-border-subtle bg-surface shadow-lg">
                               {results.map((p) => (
                                 <button
                                   key={p.sku || p.item_code}
@@ -821,10 +912,10 @@ export default function SplitResultCard({
                                       : undefined
                                   }
                                   className={cn(
-                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
+                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 focus-inset',
                                     isUnpricedProduct(p)
                                       ? 'cursor-not-allowed opacity-50'
-                                      : 'hover:bg-surface-muted'
+                                      : 'hover:bg-surface-hover'
                                   )}
                                   onMouseDown={(e) => e.preventDefault()}
                           onClick={() => void handleSelectProduct(ii, p)}
@@ -925,7 +1016,7 @@ export default function SplitResultCard({
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
                         disabled={editingBlocked}
-                        className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                        className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive"
                         aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
                         title="Excluir produto"
                       >
@@ -947,7 +1038,7 @@ export default function SplitResultCard({
       )}
 
       {isDone && (
-        <div className="px-4 pb-2 border-t border-line bg-surface/20">
+        <div className="border-t border-border-subtle bg-raised/60 px-4 pb-3">
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
@@ -969,9 +1060,12 @@ export default function SplitResultCard({
       )}
 
       {/* ── Stage 3 + actions ── */}
-      <div className="flex flex-wrap items-center gap-2 border-t border-line bg-surface/30 p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-b-control border-t border-border-subtle bg-raised p-3">
         {!isDone && actionBlockMessage && (
-          <p id={actionStatusId} className="w-full border-b border-line pb-3 text-xs leading-5 text-fg-muted">
+          <p
+            id={actionStatusId}
+            className="w-full border-b border-border-subtle pb-3 text-xs leading-5 text-fg-muted"
+          >
             {actionBlockMessage}
           </p>
         )}
@@ -1004,12 +1098,12 @@ export default function SplitResultCard({
                 href={issueViewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-surface px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-control bg-surface px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-hover"
               >
                 <FileText size={13} /> Abrir PDF
               </a>
             ) : (
-              <span aria-disabled="true" className="inline-flex h-8 items-center gap-2 rounded-sm bg-surface px-3 text-xs font-medium text-fg opacity-40">
+              <span aria-disabled="true" className="inline-flex h-8 items-center gap-2 rounded-control bg-surface px-3 text-xs font-medium text-fg opacity-40">
                 <FileText size={13} /> Abrir PDF
               </span>
             )}
@@ -1078,7 +1172,9 @@ export default function SplitResultCard({
       </div>
 
       {issueError && !isDone && (
-        <p role="alert" className="border-t border-line px-4 py-3 text-xs text-destructive">{issueError}</p>
+        <p role="alert" className="border-t border-border-subtle px-4 py-3 text-xs text-destructive">
+          {issueError}
+        </p>
       )}
 
     </div>

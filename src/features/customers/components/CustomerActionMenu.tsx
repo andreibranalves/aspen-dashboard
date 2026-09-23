@@ -76,7 +76,7 @@ export function CustomerActionMenu({
         aria-expanded={open}
         title={accessibleLabel}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
       >
         <MoreHorizontal className="size-4" aria-hidden="true" />
         <span className="sr-only">{accessibleLabel}</span>
@@ -86,7 +86,7 @@ export function CustomerActionMenu({
           ref={menuRef}
           role="menu"
           aria-label={accessibleLabel}
-          className="absolute right-0 top-full z-20 mt-1 min-w-44 rounded-md border border-line bg-surface p-1 shadow-lg"
+          className="absolute right-0 top-full z-20 mt-1 min-w-44 rounded-control border border-line bg-surface p-1 shadow-lg"
         >
           <button
             ref={actionRef}
@@ -96,7 +96,7 @@ export function CustomerActionMenu({
               dismiss(true);
               onArchiveToggle();
             }}
-            className="flex min-h-9 w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex min-h-9 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-surface-hover"
           >
             <Icon className="size-4" aria-hidden="true" />
             {actionLabel}
@@ -104,7 +104,7 @@ export function CustomerActionMenu({
           {onDelete && (
             <button type="button" role="menuitem"
               onClick={() => { dismiss(true); onDelete(); }}
-              className="flex min-h-9 w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              className="flex min-h-9 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10">
               <Trash2 className="size-4" aria-hidden="true" /> Excluir cliente
             </button>
           )}

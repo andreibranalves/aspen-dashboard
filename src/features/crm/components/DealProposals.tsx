@@ -37,12 +37,12 @@ export default function DealProposals({ opportunityId }: DealProposalsProps) {
   }
 
   return (
-    <div className="mt-1">
+    <div className="mt-2">
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className="h-7 px-1 text-xs"
+        className="h-8 rounded-control border border-line bg-surface-subtle px-2 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg"
         aria-expanded={expanded}
         onClick={() => void load()}
       >
@@ -50,7 +50,7 @@ export default function DealProposals({ opportunityId }: DealProposalsProps) {
         Propostas
       </Button>
       {expanded && (
-        <ul className="mt-1 space-y-0.5 text-xs text-fg-muted">
+        <ul className="mt-2 space-y-1 rounded-control border border-line bg-surface-subtle p-3 text-xs text-fg-muted">
           {error ? (
             <li>Não foi possível carregar as propostas.</li>
           ) : proposals && proposals.length > 0 ? (

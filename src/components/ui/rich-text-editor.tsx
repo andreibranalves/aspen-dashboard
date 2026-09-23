@@ -88,7 +88,7 @@ function Toolbar({ disabled }: { disabled: boolean }) {
   return (
     <div className="flex items-center gap-1 border-b border-line bg-surface-muted p-1.5" role="toolbar" aria-label="Formatação de texto">
       {actions.map(({ label, icon: Icon, run }) => (
-        <button key={label} type="button" title={label} aria-label={label} disabled={disabled} onClick={run} className="flex h-8 w-8 items-center justify-center rounded-sm text-fg-muted hover:bg-surface hover:text-fg disabled:opacity-40">
+        <button key={label} type="button" title={label} aria-label={label} disabled={disabled} onClick={run} className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted hover:bg-surface hover:text-fg disabled:opacity-40">
           <Icon size={15} aria-hidden="true" />
         </button>
       ))}
@@ -102,7 +102,7 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
   const container = useRef<HTMLDivElement | null>(null);
   return (
     <LexicalComposer initialConfig={{ namespace: ariaLabel, nodes: [ListNode, ListItemNode], editable: !disabled, onError: (error) => { throw error; }, theme: { paragraph: 'mb-2 last:mb-0', list: { ul: 'ml-5 list-disc', ol: 'ml-5 list-decimal', listitem: 'my-1' }, text: { bold: 'font-semibold', italic: 'italic' } } }}>
-      <div ref={container} className={cn('overflow-hidden rounded-md border border-line bg-surface focus-within:ring-2 focus-within:ring-primary', disabled && 'opacity-50')}>
+      <div ref={container} className={cn('overflow-hidden rounded-control border border-line bg-surface focus-within:ring-2 focus-within:ring-focus', disabled && 'opacity-50')}>
         <Toolbar disabled={disabled} />
         <div className="relative">
           <RichTextPlugin
@@ -114,12 +114,15 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
         <ListPlugin />
         <SynchronizePlugin value={value} lastEditorValue={lastEditorValue} editorVersion={editorVersion} container={container} />
         <EditablePlugin editable={!disabled} />
-        <OnChangePlugin ignoreSelectionChange onChange={(_, editor) => editor.read(() => {
+        <OnChangePlugin ignoreSelectionChange onChange={(_, editor, tags) => {
+          if (tags.has(SKIP_DOM_SELECTION_TAG)) return;
+          editor.read(() => {
           const html = $getRoot().getTextContent().trim() ? $generateHtmlFromNodes(editor) : '';
           editorVersion.current += 1;
           lastEditorValue.current = html;
           onChange(html);
-        })} />
+          });
+        }} />
       </div>
     </LexicalComposer>
   );

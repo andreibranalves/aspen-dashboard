@@ -119,6 +119,7 @@ const OPERATIONAL_KEY_PATTERNS = [
 const ALLOWED_RUNTIME_KEYS = new Set([
   // Process / OS essentials.
   'PATH',
+  'Path',
   'HOME',
   'TMPDIR',
   'TEMP',
@@ -148,8 +149,10 @@ const ALLOWED_RUNTIME_KEYS = new Set([
   'SYSTEMROOT',
   'SystemRoot',
   'COMSPEC',
+  'ComSpec',
   'PATHEXT',
   'WINDIR',
+  'windir',
   'USERPROFILE',
   'APPDATA',
   'LOCALAPPDATA',

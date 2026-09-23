@@ -1,10 +1,10 @@
 /*
- * Aspen UI v2 foundation.
+ * Aspen Órbita color foundation.
  * Canonical semantic tokens live here; compatibility aliases remain until all
  * repository consumers migrate to the canonical names.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;450;500;550;600;650;700;750;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,28 +12,68 @@
 
 @layer base {
   :root {
-    /* Canonical Aspen light tokens. */
-    --page: 247 248 250;
-    --surface: 255 255 255;
-    --surface-subtle: 250 250 250;
-    --surface-hover: 247 247 248;
-    --surface-selected: 231 240 255;
-    --border-subtle: 237 237 237;
-    --border-default: 226 226 229;
-    --border-strong: 209 209 214;
-    --text-primary: 24 24 27;
-    --text-secondary: 82 82 91;
-    --text-tertiary: 102 102 111;
-    --text-disabled: 161 161 170;
-    --primary: 22 92 216;
+    /* Órbita dark palette. Light mode overrides only colors below. */
+    color-scheme: dark;
+    --canvas: 229 229 229;
+    --page: 13 13 13;
+    --surface: 22 22 22;
+    --surface-subtle: 36 36 36;
+    --surface-hover: 45 45 51;
+    --surface-selected: 39 49 71;
+    --border-subtle: 49 49 49;
+    --border-default: 49 49 49;
+    --border-strong: 84 84 106;
+    --border-control: 65 65 69;
+    --text-primary: 245 245 243;
+    --text-secondary: 160 160 157;
+    --text-tertiary: 184 185 197;
+    --text-disabled: 118 119 130;
+    --primary: 54 90 173;
     --on-primary: 255 255 255;
-    --success: 26 122 76;
-    --warning: 154 91 19;
-    --destructive: 184 58 57;
-    --info: 22 92 216;
-    --link: 22 92 216;
-    --primary-text: 22 92 216;
-    --border-control: 138 138 146;
+    --primary-soft: 227 234 247;
+    --primary-soft-ink: 23 36 59;
+    --focus: 168 203 255;
+    --success: 180 221 193;
+    --success-fill: 120 167 123;
+    --on-success: 25 53 36;
+    --warning: 238 212 155;
+    --warning-fill: 120 91 29;
+    --on-warning: 255 255 255;
+    --destructive: 240 176 189;
+    --destructive-fill: 150 58 82;
+    --on-destructive: 255 255 255;
+    --info: 202 216 247;
+    --link: 180 199 238;
+    --primary-text: 180 199 238;
+    --sage: 128 161 212;
+    --sage-ink: 19 36 60;
+    --orange: 247 244 234;
+    --orange-ink: 39 38 55;
+    --taupe: 192 185 221;
+    --taupe-ink: 41 34 56;
+    --cream: 247 244 234;
+    --light-sage: 180 199 238;
+    --chat-background: 245 243 248;
+    --rust: 219 187 198;
+    --input-surface: 34 34 35;
+    --segment-active: 58 58 64;
+    --placeholder: 155 156 167;
+    --skeleton: 35 35 39;
+    --skeleton-mid: 45 45 51;
+    --scroll-thumb: 68 68 73;
+    --avatar-ink: 45 51 71;
+    --avatar-one: 218 229 246;
+    --avatar-two: 240 233 203;
+    --avatar-three: 222 214 236;
+    --chart-one: 54 90 173;
+    --chart-two: 117 90 157;
+    --chart-three: 117 201 200;
+    --chart-four: 247 244 234;
+    --bar-one: 54 90 173;
+    --finance-one: 192 185 221;
+    --finance-two: 117 201 200;
+    --finance-three: 247 244 234;
+    --finance-four: 128 161 212;
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -41,13 +81,13 @@
     --fg: var(--text-primary);
     --fg-muted: var(--text-secondary);
     --on-solid: var(--on-primary);
-    --shell: 15 20 32;
-    --shell-border: 35 45 61;
-    --shell-text: 242 245 250;
-    --shell-muted: 181 191 206;
-    --shell-hover: 29 39 54;
-    --shell-active: 37 48 64;
-    --shell-primary: 138 180 255;
+    --shell: 255 255 255;
+    --shell-border: 231 233 240;
+    --shell-text: 26 28 33;
+    --shell-muted: 102 105 117;
+    --shell-hover: 241 241 245;
+    --shell-active: 54 90 173;
+    --shell-primary: 54 90 173;
 
     /* Standard primitive aliases. */
     --background: var(--page);
@@ -63,36 +103,47 @@
     --muted-foreground: var(--text-secondary);
     --accent: var(--surface-hover);
     --accent-foreground: var(--text-primary);
-    --destructive-foreground: var(--on-primary);
+    --destructive-foreground: var(--on-destructive);
     --border: var(--border-default);
     --input: var(--border-default);
     --ring: var(--primary);
-    --radius: 0.5rem;
+    --radius: 0.6875rem;
   }
 
-  .dark {
-    /* Canonical Aspen dark tokens. */
-    --page: 15 20 32;
-    --surface: 20 26 38;
-    --surface-subtle: 26 34 48;
-    --surface-hover: 32 42 58;
-    --surface-selected: 29 45 74;
-    --border-subtle: 37 47 64;
-    --border-default: 51 64 86;
-    --border-strong: 70 84 108;
-    --text-primary: 255 255 255;
-    --text-secondary: 181 191 206;
-    --text-tertiary: 146 158 176;
-    --text-disabled: 102 116 138;
-    --primary: 47 111 219;
-    --on-primary: 255 255 255;
-    --success: 52 199 126;
-    --warning: 240 168 87;
-    --destructive: 226 105 106;
-    --info: 111 156 236;
-    --link: 138 180 255;
-    --primary-text: 138 180 255;
-    --border-control: 104 121 145;
+  :root[data-theme='light'] {
+    color-scheme: light;
+    --canvas: 229 230 236;
+    --page: 243 244 247;
+    --surface: 255 255 255;
+    --surface-subtle: 233 236 243;
+    --surface-hover: 245 246 250;
+    --surface-selected: 227 234 247;
+    --border-subtle: 220 224 235;
+    --border-default: 218 221 230;
+    --border-strong: 162 174 202;
+    --border-control: 198 203 216;
+    --text-primary: 36 38 53;
+    --text-secondary: 98 101 117;
+    --text-tertiary: 112 116 135;
+    --text-disabled: 148 151 166;
+    --focus: 54 90 173;
+    --success: 39 96 70;
+    --success-fill: 39 96 70;
+    --on-success: 255 255 255;
+    --warning: 120 91 29;
+    --destructive: 150 58 82;
+    --info: 54 90 173;
+    --link: 54 90 173;
+    --primary-text: 54 90 173;
+    --light-sage: 54 90 173;
+    --input-surface: 247 248 251;
+    --segment-active: 255 255 255;
+    --placeholder: 112 116 135;
+    --skeleton: 229 232 240;
+    --skeleton-mid: 243 244 248;
+    --scroll-thumb: 183 188 203;
+    --finance-one: 153 140 185;
+    --finance-three: 218 208 179;
   }
 
   * {
@@ -101,30 +152,22 @@
 
   body {
     @apply bg-page text-fg;
-    font-family:
-      'Inter',
-      'Inter Variable',
-      system-ui,
-      -apple-system,
-      sans-serif;
-    font-feature-settings:
-      'cv01' 1,
-      'cv05' 1,
-      'cv09' 1,
-      'cv11' 1,
-      'ss03' 1,
-      'ss07' 1,
-      'dlig' 1,
-      'rlig' 1,
-      'calt' 1;
+    background-color: rgb(var(--canvas));
+    font-family: 'Manrope', 'Segoe UI', Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* The only focus indicator in the product. Components never add their own ring. */
   *:focus-visible {
-    outline: 2px solid rgb(var(--primary));
+    outline: 2px solid rgb(var(--focus));
     outline-offset: 2px;
-    border-radius: inherit;
+  }
+
+  /* Rows and list items inside clipped containers draw the ring inward. */
+  .focus-inset:focus-visible {
+    outline-offset: -2px;
   }
 }
 
@@ -149,7 +192,7 @@
     position: relative;
     overflow: hidden;
     border-radius: 6px;
-    background-color: rgb(var(--surface-subtle) / 0.55);
+    background-color: rgb(var(--skeleton));
   }
 
   .skeleton::after {
@@ -159,7 +202,7 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgb(var(--text-primary) / 0.05) 50%,
+      rgb(var(--skeleton-mid)) 50%,
       transparent 100%
     );
     transform: translateX(-100%);
@@ -177,7 +220,7 @@
     vertical-align: middle;
     height: 1lh;
     border-radius: 4px;
-    background-color: rgb(var(--surface-subtle) / 0.55);
+    background-color: rgb(var(--skeleton));
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -209,27 +252,27 @@
 @layer components {
   /* Status and semantic badges are the only normal use of full-radius pills. */
   .tone-primary-soft {
-    @apply rounded-full border border-transparent bg-primary/10 text-primary-text;
+    @apply rounded-badge border border-transparent bg-primary/10 text-primary-text;
   }
 
   .tone-success-soft {
-    @apply rounded-full border border-transparent bg-success/10 text-success;
+    @apply rounded-badge border border-transparent bg-success/10 text-success;
   }
 
   .tone-warning-soft {
-    @apply rounded-full border border-transparent bg-warning/10 text-warning;
+    @apply rounded-badge border border-transparent bg-warning/10 text-warning;
   }
 
   .tone-destructive-soft {
-    @apply rounded-full border border-transparent bg-destructive/10 text-destructive;
+    @apply rounded-badge border border-transparent bg-destructive/10 text-destructive;
   }
 
   .tone-info-soft {
-    @apply rounded-full border border-transparent bg-info/10 text-primary-text;
+    @apply rounded-badge border border-transparent bg-info/10 text-primary-text;
   }
 
   .tone-neutral-soft {
-    @apply rounded-full border border-transparent bg-surface-muted text-fg-muted;
+    @apply rounded-badge border border-transparent bg-surface-muted text-fg-muted;
   }
 
   .tone-neutral-muted {
@@ -238,6 +281,38 @@
 }
 
 ::selection {
-  background: rgb(var(--primary) / 0.25);
+  background: rgb(var(--primary) / 0.3);
   color: rgb(var(--text-primary));
+}
+
+input,
+textarea,
+select {
+  caret-color: rgb(var(--primary));
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--placeholder));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--scroll-thumb));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-secondary));
+}
+
+.aspen-workspace::-webkit-scrollbar {
+  width: 12px;
+}
+
+.aspen-workspace::-webkit-scrollbar-button {
+  display: none;
+}
+
+.aspen-workspace::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  background-clip: content-box;
 }

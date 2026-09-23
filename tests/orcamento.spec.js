@@ -377,7 +377,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     await page.goto('/#/pre-orcamentos');
     // rota desconhecida agora exibe 404 em vez de cair no Auto
-    await expect(page.getByRole('heading', { name: 'Página não encontrada' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Esta página não foi encontrada.' })).toBeVisible();
     await expect(page.getByText('Pré-orçamentos', { exact: true })).toHaveCount(0);
   });
 

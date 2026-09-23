@@ -1,14 +1,17 @@
 import PageShell from '@/components/shared/PageShell';
+import Skeleton from '@/components/shared/Skeleton';
 
 export default function PageLoader() {
   return (
-    <PageShell className="flex h-[50vh] items-center justify-center space-y-0 text-fg-muted">
-      <div role="status" aria-live="polite">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary"
-          aria-hidden="true"
-        />
-        <span className="sr-only">Carregando página…</span>
+    <PageShell>
+      <div role="status" aria-busy="true" aria-label="Carregando página" className="space-y-5">
+        <Skeleton className="h-12 w-64 max-w-full rounded-control" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-[145px] rounded-card" />
+          ))}
+        </div>
+        <Skeleton className="h-[400px] rounded-card" />
       </div>
     </PageShell>
   );

@@ -44,7 +44,7 @@ export default function OpportunitySelector({
               <label
                 key={choice.opportunityId}
                 className={cn(
-                  'flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm',
+                  'flex cursor-pointer items-center gap-3 rounded-control border p-3 text-sm',
                   checked ? 'border-primary/40 bg-primary/5' : 'border-line'
                 )}
               >
@@ -63,7 +63,7 @@ export default function OpportunitySelector({
           })}
           <label
             className={cn(
-              'flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm',
+              'flex cursor-pointer items-center gap-3 rounded-control border p-3 text-sm',
               value.mode === 'new' ? 'border-primary/40 bg-primary/5' : 'border-line'
             )}
           >

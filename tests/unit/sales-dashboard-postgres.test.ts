@@ -134,6 +134,7 @@ test(
       assert.deepEqual(body.top_products, []);
       assert.deepEqual(body.top_customers, []);
       assert.deepEqual(body.sales_by_day, []);
+      assert.deepEqual(body.orders_by_source, []);
       assert.equal('stale_quotations' in body, false);
     } finally {
       await client.end({ timeout: 5 });
@@ -342,7 +343,7 @@ test(
         event('GET', undefined, { from: '2098-08-01', to: '2098-08-10' })
       );
       assert.equal(response.statusCode, 200);
-      assert.equal(queryCount, 9, `dashboard used ${queryCount} SQL queries`);
+      assert.equal(queryCount, 10, `dashboard used ${queryCount} SQL queries`);
       const body = JSON.parse(response.body || '{}');
       assert.deepEqual(body.period, {
         label: 'De 01/08/2098 a 10/08/2098',
@@ -399,6 +400,7 @@ test(
         { date: '2098-08-01', revenue: 100, orders: 1 },
         { date: '2098-08-10', revenue: 61.7, orders: 13 },
       ]);
+      assert.deepEqual(body.orders_by_source, [{ source: 'sem_origem', orders: 14 }]);
       assert.equal('stale_quotations' in body, false);
     } finally {
       if (migrated) {
@@ -447,6 +449,7 @@ test('sales dashboard handler does not call external fetch', async () => {
             top_products: [],
             top_customers: [],
             sales_by_day: [],
+            orders_by_source: [],
           };
         },
       },
@@ -478,6 +481,7 @@ test('PUT rejects Meta spend outside Este mês and Mês passado', async () => {
           top_products: [],
           top_customers: [],
           sales_by_day: [],
+          orders_by_source: [],
         };
       },
     },

@@ -1,32 +1,33 @@
 import Skeleton from '@/components/shared/Skeleton';
 
-/** Skeleton shared by the remotely loaded Communication sections. */
-export default function SkeletonComunicacao() {
-  return (
-    <div className="space-y-4" aria-busy="true" aria-label="Carregando comunicação">
-      <div className="flex items-center justify-between gap-3">
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-4 w-64 max-w-full opacity-70" />
+/** Shape placeholders sized to the three Communication layouts. */
+export default function SkeletonComunicacao({ variant = 'cards' }: { variant?: 'cards' | 'editor' | 'list' }) {
+  if (variant === 'editor') {
+    return (
+      <div className="space-y-5" role="status" aria-busy="true" aria-label="Carregando fluxos">
+        <Skeleton className="h-12 w-64 max-w-full rounded-control" />
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <Skeleton className="h-[520px] rounded-card" />
+          <Skeleton className="h-[520px] rounded-card" />
         </div>
-        <Skeleton className="h-9 w-24 rounded-sm" />
       </div>
-      <div className="grid gap-2 md:grid-cols-2">
-        {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="rounded-md border border-line bg-surface p-3 space-y-3">
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-4 w-4 rounded-full" />
-              <Skeleton className="h-4 w-36" />
-              <Skeleton className="ml-auto h-5 w-14 rounded-full" />
-            </div>
-            <Skeleton className="h-3 w-48 opacity-70" />
-            <div className="flex gap-2 border-t border-line pt-2">
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-3 w-28 opacity-70" />
-            </div>
-          </div>
-        ))}
+    );
+  }
+
+  if (variant === 'list') {
+    return (
+      <div className="space-y-4" role="status" aria-busy="true" aria-label="Carregando histórico">
+        <Skeleton className="h-10 w-full rounded-card" />
+        <Skeleton className="h-[450px] rounded-card" />
       </div>
+    );
+  }
+
+  return (
+    <div role="status" aria-busy="true" aria-label="Carregando mídias" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }, (_, index) => (
+        <Skeleton key={index} className="h-[210px] rounded-card" />
+      ))}
     </div>
   );
 }

@@ -223,7 +223,7 @@ test(
   'client-matches PostgreSQL: cliente arquivado é detectado e impede vínculo automático',
   { skip: !TEST_DATABASE_URL, concurrency: false },
   async () => {
-    const input = normalizeClientMatchInput({ telefone: PHONE_OTHER });
+    const input = normalizeClientMatchInput({ nome: 'Arquivada Antiga', telefone: PHONE_OTHER });
     const response = classifyClientMatch(input, await searchClientMatchCandidates(db, input));
     assert.equal(response.status, 'review');
     assert.equal(response.reason, 'archived_match');
@@ -298,7 +298,7 @@ test(
       repository: createPostgresClientMatchRepository(() => db),
     });
 
-    const created = await handler(functionEvent({ telefone: '11987654321' }));
+    const created = await handler(functionEvent({ nome: 'Acme Industrial', telefone: '11987654321' }));
     assert.equal(created.statusCode, 200);
     const body = JSON.parse(created.body || '{}') as Record<string, unknown>;
     assert.equal(body.status, 'matched');
@@ -313,7 +313,7 @@ test(
 );
 
 test(
-  'client-matches PostgreSQL: identificadores que apontam para cadastros diferentes exigem escolha',
+  'client-matches PostgreSQL: identificador isolado em outro cadastro pede escolha ou confirmação',
   { skip: !TEST_DATABASE_URL, concurrency: false },
   async () => {
     const extraIds = [
@@ -341,14 +341,14 @@ test(
       const samePhone = normalizeClientMatchInput({ telefone: PHONE });
       const repeated = classifyClientMatch(samePhone, await searchClientMatchCandidates(db, samePhone));
       assert.equal(repeated.status, 'review');
-      assert.equal(repeated.reason, 'multiple_matches');
+      assert.equal(repeated.reason, 'identifier_in_use');
       assert.equal(repeated.total_candidates, 2);
       assert.equal(repeated.matched_client_id, null);
 
       const crossed = normalizeClientMatchInput({ email: EMAIL, telefone: '11955554444' });
       const conflict = classifyClientMatch(crossed, await searchClientMatchCandidates(db, crossed));
       assert.equal(conflict.status, 'review');
-      assert.equal(conflict.reason, 'identifier_conflict');
+      assert.equal(conflict.reason, 'identifier_in_use');
       assert.equal(conflict.matched_client_id, null);
       assert.equal(conflict.total_candidates, 2);
     } finally {

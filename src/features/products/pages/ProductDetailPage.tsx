@@ -13,7 +13,6 @@ import {
   Edit3,
   Save,
   X,
-  AlertTriangle,
   Search,
   Copy,
   Trash2,
@@ -25,11 +24,15 @@ import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from '@/lib/api/api';
 import { clearProductCache } from '@/lib/api/productCache';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import EmptyState from '@/components/shared/EmptyState';
+import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
+import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
@@ -194,10 +197,10 @@ interface SectionCardProps {
 
 function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
   return (
-    <section className="space-y-4 rounded-md border border-line bg-surface p-5">
+    <section className="space-y-4 rounded-card bg-surface p-5 sm:p-[22px]">
       <div className="flex items-start gap-3">
         {Icon && (
-          <div className="mt-0.5 rounded-md bg-surface-muted p-2 text-fg-muted" aria-hidden="true">
+          <div className="mt-0.5 rounded-control bg-raised p-2 text-light-sage" aria-hidden="true">
             <Icon size={16} />
           </div>
         )}
@@ -343,8 +346,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           );
           if (!isCurrentRequest()) return;
           setProduct(result);
-          setEditing(false);
-          setEdited({});
+          setEditing(true);
+          setEdited(buildEditedState(result.produto, result.precos, result.preco_base ?? result.produto.preco_base));
         } catch (err) {
           if (!isCurrentRequest()) return;
           const apiErr = err as { status?: number };
@@ -642,19 +645,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (error === 'not_found') {
     return (
       <PageShell>
-        <div
-          className="flex flex-col items-center gap-3 py-16 text-center text-fg-muted"
-          role="status"
-        >
-          <Search size={40} className="text-fg-muted/40" aria-hidden="true" />
-          <h1 className="text-lg font-semibold text-fg">Produto não encontrado</h1>
-          <p className="max-w-md break-words text-sm">
-            O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.
-          </p>
-          <Button variant="outline" onClick={returnToCatalog}>
-            Voltar ao catálogo
-          </Button>
-        </div>
+        <EmptyState
+          icon={Search}
+          title="Produto não encontrado"
+          description={<span className="break-words">O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.</span>}
+          actions={<Button variant="outline" onClick={returnToCatalog}>Voltar ao catálogo</Button>}
+        />
       </PageShell>
     );
   }
@@ -662,19 +658,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (error) {
     return (
       <PageShell>
-        <div
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-4 py-16 text-center text-fg-muted"
-          role="alert"
-        >
-          <AlertTriangle size={40} className="text-destructive" aria-hidden="true" />
-          <h1 className="text-lg font-semibold text-fg">Erro ao carregar produto</h1>
-          <p className="max-w-md text-sm">
-            Não foi possível carregar este produto. Tente novamente.
-          </p>
-          <Button variant="outline" onClick={() => void fetchProduct({ force: true })}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar o produto" onRetry={() => void fetchProduct({ force: true })} />
       </PageShell>
     );
   }
@@ -683,14 +667,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (!produto) {
     return (
       <PageShell>
-        <div className="flex flex-col items-center gap-3 py-16 text-center text-fg-muted">
-          <Package size={40} className="text-fg-muted/40" aria-hidden="true" />
-          <h1 className="text-lg font-semibold text-fg">Dados do produto indisponíveis</h1>
-          <p className="max-w-md text-sm">Não há conteúdo suficiente para exibir este cadastro.</p>
-          <Button variant="outline" onClick={returnToCatalog}>
-            Voltar ao catálogo
-          </Button>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="Dados do produto indisponíveis"
+          description="Não há conteúdo suficiente para exibir este cadastro."
+          actions={<Button variant="outline" onClick={returnToCatalog}>Voltar ao catálogo</Button>}
+        />
       </PageShell>
     );
   }
@@ -700,13 +682,15 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const basePrice = product?.preco_base ?? produto.preco_base;
   const hasBasePrice = basePrice != null && String(basePrice).trim() !== '';
   const hasTiers = Boolean(product?.precos && product.precos.length > 0);
+  const tierPrices = product?.precos?.map((tier) => tier.unit_price ?? tier.rate).filter((price) => price != null && String(price).trim() !== '').map(Number).filter((price) => Number.isFinite(price) && price >= 0) || [];
+  const previewPrice = hasBasePrice ? Number(basePrice) : tierPrices.length ? Math.min(...tierPrices) : null;
   const status = isNewProduct
     ? { value: 'Draft', label: 'Rascunho', className: 'tone-warning-soft' }
     : produto.ativo
       ? { value: 'Active', label: 'Ativo', className: '' }
       : { value: 'Archived', label: 'Arquivado', className: '' };
   const pageActions = (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <>
       {!isNewProduct && (
         <Button
           variant="outline"
@@ -746,76 +730,46 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </Button>
       )}
       {!isNewProduct && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={requestArchive}
-          disabled={saving || deleting}
-          aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
-          className="border-destructive/20 text-destructive hover:bg-destructive/10"
-        >
-          {produto.ativo === false ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+        <Button variant="ghost" onClick={requestArchive} disabled={saving || deleting} aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'} className="text-destructive hover:bg-destructive/10">
+          {produto.ativo === false ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}
           {deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}
         </Button>
       )}
-    </div>
+    </>
   );
 
   return (
     <PageShell className="space-y-6">
       <fieldset disabled={saving} className="space-y-6">
-      <header className="flex flex-col gap-4 rounded-md border border-line bg-surface p-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          {hasImage ? (
-            <img
-              src={produto.imagem ?? undefined}
-              alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-md border border-line object-cover"
-            />
+      <PageHeader
+        leading={
+          hasImage ? (
+            <img src={produto.imagem ?? undefined} alt={displayName} className="size-14 rounded-control object-cover" />
           ) : (
-            <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
-              aria-label="Imagem não cadastrada"
-            >
+            <div className="grid size-14 place-items-center rounded-control bg-sage text-sage-ink" aria-label="Imagem não cadastrada">
               <Package size={20} aria-hidden="true" />
             </div>
-          )}
-          <div className="min-w-0">
-            <p className="font-mono text-xs text-fg-muted">{produto.sku || 'SKU não informado'}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="max-w-full break-words text-xl font-semibold tracking-[-0.2px] text-fg">
-                {isNewProduct ? 'Novo produto' : displayName}
-              </h1>
-              <StatusBadge
-                status={status.value}
-                label={status.label}
-                className={status.className}
-              />
-            </div>
-            <p className="mt-1 max-w-2xl break-words text-sm text-fg-muted">
-              {produto.descricao?.trim() || 'Sem descrição cadastrada.'}
-            </p>
-          </div>
-        </div>
-        {pageActions}
-      </header>
+          )
+        }
+        eyebrow={<span className="font-mono">{produto.sku || 'SKU não informado'}</span>}
+        title={isNewProduct ? 'Novo produto' : displayName}
+        meta={<StatusBadge status={status.value} label={status.label} className={status.className} />}
+        actions={pageActions}
+      />
 
       {isDuplicateDraft && (
-        <div
-          className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-          role="note"
-        >
-          <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o
-          produto.
-        </div>
+        <InlineAlert tone="warning">
+          <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o produto.
+        </InlineAlert>
       )}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-        <SectionCard title="Dados gerais" icon={Package}>
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
+        <SectionCard title="Informações do produto" icon={Package}>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {editing && (
-              <div className="md:col-span-2">
-                <label htmlFor="product-name" className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
+              <div className="order-2">
+                <label htmlFor="product-name" className="text-[11px] font-medium text-fg-muted">Nome</label>
                 <Input
                   id="product-name"
                   value={edited.nome || ''}
@@ -827,8 +781,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div className="md:col-span-2">
-                <label htmlFor="product-description" className="text-fg-muted text-[11px] uppercase tracking-wide">
+              <div className="order-7 md:col-span-2">
+                <label htmlFor="product-description" className="text-[11px] font-medium text-fg-muted">
                   Descrição
                 </label>
                 <textarea
@@ -837,7 +791,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   onChange={(event) =>
                     setEdited((previous) => ({ ...previous, descricao: event.target.value }))
                   }
-                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-control border border-border-control bg-raised px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted"
                   placeholder="Descrição do produto"
                   maxLength={4000}
                 />
@@ -847,8 +801,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
-                <label htmlFor="product-sku" className="text-fg-muted text-[11px] uppercase tracking-wide">SKU</label>
+              <div className="order-1">
+                <label htmlFor="product-sku" className="text-[11px] font-medium text-fg-muted">SKU</label>
                 <Input
                   id="product-sku"
                   value={isNewProduct ? edited.sku || '' : produto.sku || ''}
@@ -864,8 +818,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div className="flex min-w-0 flex-col">
-                <label htmlFor="product-status" className="block text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
+              <div className="order-6 flex min-w-0 flex-col">
+                <label htmlFor="product-status" className="block text-[11px] font-medium text-fg-muted">Status</label>
                 <Select
                   id="product-status"
                   value={edited.ativo ? 'ativo' : 'inativo'}
@@ -886,8 +840,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
-                <label htmlFor="product-category" className="text-fg-muted text-[11px] uppercase tracking-wide">
+              <div className="order-3">
+                <label htmlFor="product-category" className="text-[11px] font-medium text-fg-muted">
                   Categoria
                 </label>
                 <Input
@@ -904,8 +858,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
-                <label htmlFor="product-brand" className="text-fg-muted text-[11px] uppercase tracking-wide">Marca</label>
+              <div className="order-5">
+                <label htmlFor="product-brand" className="text-[11px] font-medium text-fg-muted">Marca</label>
                 <Input
                   id="product-brand"
                   value={edited.marca || ''}
@@ -920,8 +874,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
-                <label htmlFor="product-unit-cost" className="text-fg-muted text-[11px] uppercase tracking-wide">
+              <div className="order-8">
+                <label htmlFor="product-unit-cost" className="text-[11px] font-medium text-fg-muted">
                   Custo unitário (R$)
                 </label>
                 <Input
@@ -944,8 +898,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             )}
 
             {editing ? (
-              <div>
-                <label htmlFor="product-unit" className="text-fg-muted text-[11px] uppercase tracking-wide">Unidade</label>
+              <div className="order-4">
+                <label htmlFor="product-unit" className="text-[11px] font-medium text-fg-muted">Unidade</label>
                 <Input
                   id="product-unit"
                   value={edited.unidade || ''}
@@ -959,26 +913,22 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               <InfoField label="Unidade" value={produto.unidade || '—'} />
             )}
 
-            <InfoField
+            <div className="order-9"><InfoField
               label="Criado / modificado"
               value={produto.modificado_em ? formatDate(produto.modificado_em) : '—'}
-            />
+            /></div>
           </div>
         </SectionCard>
-
+        </div>
+        <div className="min-w-0 xl:col-start-1 xl:row-start-2">
         <SectionCard
-          title="Preços do catálogo"
+          title="Faixas de preço"
           icon={Tag}
         >
           {editing ? (
             <div className="space-y-4">
               {!edited.precoBase?.trim() && (edited.tiers || []).length === 0 && (
-                <p
-                  className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-                  role="note"
-                >
-                  Preço indisponível para este produto.
-                </p>
+                <InlineAlert tone="warning">Preço indisponível para este produto.</InlineAlert>
               )}
               <div className="max-w-xs">
                 <label htmlFor="product-base-price" className="text-xs font-medium text-fg-muted">Preço base (opcional)</label>
@@ -1023,7 +973,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   </Button>
                 </div>
                 {(edited.tiers || []).length === 0 && (
-                  <p className="rounded-lg border border-dashed border-line px-3 py-3 text-sm text-fg-muted">
+                  <p className="rounded-control border border-dashed border-line bg-raised px-3 py-3 text-xs text-fg-muted">
                     Nenhuma faixa configurada. O preço base será usado quando preenchido.
                   </p>
                 )}
@@ -1031,7 +981,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   {(edited.tiers || []).map((tier, index) => (
                     <div
                       key={`tier-${index}`}
-                      className="grid grid-cols-1 items-end gap-3 rounded-md border border-line p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                      className="grid grid-cols-1 items-end gap-3 rounded-control bg-raised p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
                     >
                       <label className="text-xs text-fg-muted">
                         Quantidade mínima
@@ -1100,7 +1050,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           ) : (
             <div className="space-y-4">
               {hasBasePrice ? (
-                <div className="rounded-lg border border-line bg-surface/50 p-3 max-w-xs">
+                <div className="max-w-xs rounded-control bg-raised p-4">
                   <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
                     Preço base
                   </p>
@@ -1110,7 +1060,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 </div>
               ) : null}
               {hasTiers ? (
-                <div className="overflow-x-auto rounded-md border border-line">
+                <div className="overflow-x-auto rounded-control bg-surface">
                   <Table className="min-w-[360px]">
                     <TableHeader>
                       <TableRow>
@@ -1137,16 +1087,18 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   </Table>
                 </div>
               ) : !hasBasePrice ? (
-                <p
-                  className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-                  role="note"
-                >
-                  Preço indisponível para este produto.
-                </p>
+                <InlineAlert tone="warning">Preço indisponível para este produto.</InlineAlert>
               ) : null}
             </div>
           )}
         </SectionCard>
+        </div>
+        <aside className="rounded-card bg-surface p-5 xl:col-start-2 xl:row-start-1" aria-label="Prévia do cadastro">
+          <h2 className="text-base font-semibold">Prévia do cadastro</h2>
+          <div className="mt-5 flex h-44 items-end justify-between rounded-control bg-sage p-5 text-sage-ink"><Package size={32} strokeWidth={1.5} aria-hidden="true" /><span className="text-xl font-semibold">{previewPrice === null ? '—' : formatBRL(previewPrice)}</span></div>
+          {!hasBasePrice && tierPrices.length > 0 && <p className="mt-2 text-xs text-fg-muted">A partir de, conforme a quantidade.</p>}
+          <p className="mt-4 text-xs leading-5 text-fg-muted">{produto.categoria || 'Sem categoria'} · {produto.unidade || 'Unidade não informada'}</p>
+        </aside>
       </div>
 
       {!isNewProduct && (
@@ -1175,7 +1127,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               {atividades.map((atividade, index) => (
                 <div
                   key={atividade.id || `${atividade.tipo}-${atividade.data}-${index}`}
-                  className="rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm"
+                  className="rounded-control bg-raised px-4 py-3 text-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-fg break-words">{atividade.texto}</span>

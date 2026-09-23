@@ -92,16 +92,11 @@ async function installApiFixtures(page) {
  * @param {import('@playwright/test').Page} page
  * @param {{ route: string, viewport: { width: number, height: number }, filename: string, prepare: () => Promise<void> }} options
  */
-async function capturePair(page, { route, viewport, filename, prepare }) {
+async function captureSketchV01(page, { route, viewport, filename, prepare }) {
   await page.setViewportSize(viewport);
   await page.goto(route);
   await page.reload();
-  await expect(page.getByRole('button', { name: /Ativar modo (claro|escuro)/ })).toBeVisible();
-  if (await page.locator('html').evaluate((element) => element.classList.contains('dark'))) {
-    await page
-      .locator('header button[aria-label="Ativar modo claro"]')
-      .evaluate((element) => /** @type {HTMLButtonElement} */ (element).click());
-  }
+  await expect(page.locator('html')).toHaveClass(/dark/);
   await prepare();
   await page.evaluate(() => globalThis.document.fonts.ready);
   if (viewport.width >= 1280) {
@@ -114,14 +109,7 @@ async function capturePair(page, { route, viewport, filename, prepare }) {
       .toBeGreaterThan(0);
   }
   await page.waitForTimeout(500);
-  await page.screenshot({ path: `docs/design/evidence/clientes/${filename}-light.png` });
-
-  await page
-    .locator('header button[aria-label="Ativar modo escuro"]')
-    .evaluate((element) => /** @type {HTMLButtonElement} */ (element).click());
-  await expect(page.locator('html')).toHaveClass(/dark/);
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: `docs/design/evidence/clientes/${filename}-dark.png` });
+  await page.screenshot({ path: `docs/design/evidence/clientes/${filename}-sketch-v01.png` });
 }
 
 test.describe('Evidência visual de Clientes', () => {
@@ -133,7 +121,7 @@ test.describe('Evidência visual de Clientes', () => {
   test('captura a jornada de Clientes nos estados aprovados', async ({ page }) => {
     await installApiFixtures(page);
 
-    await capturePair(page, {
+    await captureSketchV01(page, {
       route: '/#/leads',
       viewport: { width: 1440, height: 900 },
       filename: 'lista-1440x900',
@@ -142,7 +130,7 @@ test.describe('Evidência visual de Clientes', () => {
       },
     });
 
-    await capturePair(page, {
+    await captureSketchV01(page, {
       route: '/#/leads',
       viewport: { width: 1280, height: 800 },
       filename: 'drawer-1280x800',
@@ -153,7 +141,7 @@ test.describe('Evidência visual de Clientes', () => {
       },
     });
 
-    await capturePair(page, {
+    await captureSketchV01(page, {
       route: `/#/leads/cliente/${CLIENT_ID}`,
       viewport: { width: 1440, height: 900 },
       filename: 'cadastro-1440x900',
@@ -163,7 +151,7 @@ test.describe('Evidência visual de Clientes', () => {
       },
     });
 
-    await capturePair(page, {
+    await captureSketchV01(page, {
       route: `/#/leads/cliente/${CLIENT_ID}`,
       viewport: { width: 1024, height: 800 },
       filename: 'edicao-1024x800',
@@ -174,7 +162,7 @@ test.describe('Evidência visual de Clientes', () => {
       },
     });
 
-    await capturePair(page, {
+    await captureSketchV01(page, {
       route: `/#/leads/cliente/${CLIENT_ID}`,
       viewport: { width: 390, height: 844 },
       filename: 'cadastro-mobile-390x844',
