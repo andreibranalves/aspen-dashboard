@@ -179,7 +179,7 @@ function InfoField({
 }) {
   return (
     <div className={`min-w-0 ${className || ''}`}>
-      <span className="text-[11px] uppercase tracking-wide text-fg-muted">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-fg-muted">{label}</span>
       {children || <p className="mt-1 break-words text-sm font-medium text-fg">{value || '—'}</p>}
     </div>
   );
@@ -447,7 +447,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       <Button
         variant="outline"
         size="sm"
-        className="px-2 sm:px-3"
         onClick={() => {
           if (detail) {
             setFields(fieldsFromDetail(detail));
@@ -459,7 +458,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       </Button>
       <Button
         size="sm"
-        className="px-2 sm:px-3"
         onClick={() => createQuoteForClient(current, navigate)}
       >
         <Sparkles size={14} /> Novo orçamento

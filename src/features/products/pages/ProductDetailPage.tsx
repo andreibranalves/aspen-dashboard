@@ -197,7 +197,7 @@ interface SectionCardProps {
 
 function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
   return (
-    <section className="space-y-4 rounded-card bg-surface p-5 sm:p-[22px]">
+    <section className="space-y-4 rounded-card bg-surface p-5 sm:p-5.5">
       <div className="flex items-start gap-3">
         {Icon && (
           <div className="mt-0.5 rounded-control bg-raised p-2 text-light-sage" aria-hidden="true">
@@ -730,7 +730,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </Button>
       )}
       {!isNewProduct && (
-        <Button variant="ghost" onClick={requestArchive} disabled={saving || deleting} aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'} className="text-destructive hover:bg-destructive/10">
+        <Button variant="ghost-destructive" onClick={requestArchive} disabled={saving || deleting} aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'} >
           {produto.ativo === false ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}
           {deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}
         </Button>
@@ -769,12 +769,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {editing && (
               <div className="order-2">
-                <label htmlFor="product-name" className="text-[11px] font-medium text-fg-muted">Nome</label>
+                <label htmlFor="product-name" className="text-2xs font-medium text-fg-muted">Nome</label>
                 <Input
                   id="product-name"
                   value={edited.nome || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, nome: e.target.value }))}
-                  className="mt-1 text-sm"
+                  className="mt-1"
                   placeholder="Nome do produto"
                 />
               </div>
@@ -782,7 +782,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-7 md:col-span-2">
-                <label htmlFor="product-description" className="text-[11px] font-medium text-fg-muted">
+                <label htmlFor="product-description" className="text-2xs font-medium text-fg-muted">
                   Descrição
                 </label>
                 <textarea
@@ -802,13 +802,13 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-1">
-                <label htmlFor="product-sku" className="text-[11px] font-medium text-fg-muted">SKU</label>
+                <label htmlFor="product-sku" className="text-2xs font-medium text-fg-muted">SKU</label>
                 <Input
                   id="product-sku"
                   value={isNewProduct ? edited.sku || '' : produto.sku || ''}
                   disabled={!isNewProduct}
                   onChange={(e) => setEdited((prev) => ({ ...prev, sku: e.target.value }))}
-                  className="mt-1 text-sm font-mono"
+                  className="mt-1 font-mono"
                   placeholder="LNC-SED-70"
                   maxLength={120}
                 />
@@ -819,7 +819,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-6 flex min-w-0 flex-col">
-                <label htmlFor="product-status" className="block text-[11px] font-medium text-fg-muted">Status</label>
+                <label htmlFor="product-status" className="block text-2xs font-medium text-fg-muted">Status</label>
                 <Select
                   id="product-status"
                   value={edited.ativo ? 'ativo' : 'inativo'}
@@ -841,14 +841,14 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-3">
-                <label htmlFor="product-category" className="text-[11px] font-medium text-fg-muted">
+                <label htmlFor="product-category" className="text-2xs font-medium text-fg-muted">
                   Categoria
                 </label>
                 <Input
                   id="product-category"
                   value={edited.categoria || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, categoria: e.target.value }))}
-                  className="mt-1 text-sm"
+                  className="mt-1"
                   placeholder="Categoria"
                   maxLength={255}
                 />
@@ -859,12 +859,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-5">
-                <label htmlFor="product-brand" className="text-[11px] font-medium text-fg-muted">Marca</label>
+                <label htmlFor="product-brand" className="text-2xs font-medium text-fg-muted">Marca</label>
                 <Input
                   id="product-brand"
                   value={edited.marca || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, marca: e.target.value }))}
-                  className="mt-1 text-sm"
+                  className="mt-1"
                   placeholder="Marca"
                   maxLength={255}
                 />
@@ -875,7 +875,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-8">
-                <label htmlFor="product-unit-cost" className="text-[11px] font-medium text-fg-muted">
+                <label htmlFor="product-unit-cost" className="text-2xs font-medium text-fg-muted">
                   Custo unitário (R$)
                 </label>
                 <Input
@@ -886,7 +886,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   onChange={(e) =>
                     setEdited((prev) => ({ ...prev, custoUnitario: e.target.value }))
                   }
-                  className="mt-1 text-sm font-mono"
+                  className="mt-1 font-mono"
                   placeholder="0,00"
                 />
               </div>
@@ -899,12 +899,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
             {editing ? (
               <div className="order-4">
-                <label htmlFor="product-unit" className="text-[11px] font-medium text-fg-muted">Unidade</label>
+                <label htmlFor="product-unit" className="text-2xs font-medium text-fg-muted">Unidade</label>
                 <Input
                   id="product-unit"
                   value={edited.unidade || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, unidade: e.target.value }))}
-                  className="mt-1 text-sm"
+                  className="mt-1"
                   placeholder="Und"
                   maxLength={32}
                 />
@@ -942,7 +942,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   onChange={(event) =>
                     setEdited((previous) => ({ ...previous, precoBase: event.target.value }))
                   }
-                  className="mt-1 text-sm font-mono"
+                  className="mt-1 font-mono"
                   placeholder="0,00"
                 />
               </div>
@@ -1001,7 +1001,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                               ),
                             }))
                           }
-                          className="mt-1 text-sm font-mono"
+                          className="mt-1 font-mono"
                         />
                       </label>
                       <label className="text-xs text-fg-muted">
@@ -1022,12 +1022,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                               ),
                             }))
                           }
-                          className="mt-1 text-sm font-mono"
+                          className="mt-1 font-mono"
                         />
                       </label>
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="outline-destructive"
                         size="sm"
                         aria-label={`Remover faixa ${index + 1}`}
                         onClick={() =>
@@ -1038,7 +1038,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                             ),
                           }))
                         }
-                        className="text-destructive border-destructive/20"
                       >
                         <Trash2 size={14} />
                       </Button>
@@ -1051,7 +1050,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             <div className="space-y-4">
               {hasBasePrice ? (
                 <div className="max-w-xs rounded-control bg-raised p-4">
-                  <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
+                  <p className="text-2xs uppercase tracking-wide text-fg-muted font-medium">
                     Preço base
                   </p>
                   <p className="mt-1 text-sm font-medium text-fg font-mono">

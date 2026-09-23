@@ -26,13 +26,13 @@ export default function PageHeader({ title, leading, eyebrow, description, meta,
       <div className="flex min-w-0 flex-1 basis-80 items-center gap-4">
         {leading && <div className="shrink-0">{leading}</div>}
         <div className="min-w-0 flex-1">
-          {eyebrow && <div className="mb-1 text-[13px] font-medium text-fg-muted">{eyebrow}</div>}
-          <h1 className="break-words text-[28px] font-bold leading-[1.2] tracking-[-0.035em] text-fg max-md:text-[22px]">
+          {eyebrow && <div className="mb-1 text-compact font-medium text-fg-muted">{eyebrow}</div>}
+          <h1 className="break-words text-title font-bold leading-tight tracking-display text-fg max-md:text-stat">
             {title}
           </h1>
-          {description && <p className="mt-1 text-[13px] text-fg-muted">{description}</p>}
+          {description && <p className="mt-1 text-compact text-fg-muted">{description}</p>}
           {meta && (
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-fg-muted">{meta}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-compact text-fg-muted">{meta}</div>
           )}
         </div>
       </div>

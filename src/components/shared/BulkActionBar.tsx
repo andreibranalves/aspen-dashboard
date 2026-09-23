@@ -15,7 +15,7 @@ export default function BulkActionBar({ visible, children }: BulkActionBarProps)
   return (
     <div className="fixed inset-x-0 bottom-0 z-40">
       <div className="w-full px-4">
-        <div className="overflow-hidden rounded-t-card border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
+        <div className="overflow-hidden rounded-t-card border border-b-0 border-line bg-surface/95 backdrop-blur shadow-bar">
           <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
             {children}
           </div>

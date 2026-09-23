@@ -126,7 +126,7 @@ export default function Sidebar({
           mobile && sidebarOpen && 'shadow-2xl'
         )}
       >
-        <div className={cn('flex h-[62px] shrink-0 items-center pt-2', !mobile && collapsed ? 'justify-center px-0' : 'justify-between pl-[22px] pr-3')}>
+        <div className={cn('flex h-[62px] shrink-0 items-center pt-2', !mobile && collapsed ? 'justify-center px-0' : 'justify-between pl-5.5 pr-3')}>
           {!collapsed && (
             <AspenBrand />
           )}

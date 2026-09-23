@@ -311,7 +311,7 @@ export default function SettingsPage() {
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="min-w-0 space-y-5">
                   <section
-                    className="space-y-2 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-2 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="patterns-title"
                   >
                     <h2 id="patterns-title" className="text-base font-semibold text-fg">
@@ -363,7 +363,7 @@ export default function SettingsPage() {
                     </fieldset>
                   </section>
                   <section
-                    className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-5 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="document-sections-title"
                   >
                     <h2 id="document-sections-title" className="text-base font-semibold text-fg">
@@ -393,7 +393,7 @@ export default function SettingsPage() {
                   </section>
                 </div>
                 <aside
-                  className="rounded-card bg-surface p-5 sm:p-[22px]"
+                  className="rounded-card bg-surface p-5 sm:p-5.5"
                   aria-labelledby="patterns-usage-title"
                 >
                   <h2 id="patterns-usage-title" className="text-base font-semibold text-fg">
@@ -419,7 +419,7 @@ export default function SettingsPage() {
 
           {activeTab === 'templates' && (
             <section
-              className="rounded-card bg-surface p-5 sm:p-[22px]"
+              className="rounded-card bg-surface p-5 sm:p-5.5"
               aria-labelledby="document-templates-title"
             >
               <h2 id="document-templates-title" className="sr-only">
@@ -452,7 +452,7 @@ export default function SettingsPage() {
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="min-w-0 space-y-5">
                   <section
-                    className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-5 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="company-title"
                   >
                     <h2 id="company-title" className="text-base font-semibold text-fg">
@@ -533,7 +533,7 @@ export default function SettingsPage() {
                     </div>
                   </section>
                   <section
-                    className="space-y-5 rounded-card bg-surface p-5 sm:p-[22px]"
+                    className="space-y-5 rounded-card bg-surface p-5 sm:p-5.5"
                     aria-labelledby="company-banking-title"
                   >
                     <h2 id="company-banking-title" className="text-base font-semibold text-fg">
@@ -599,7 +599,7 @@ export default function SettingsPage() {
                   </section>
                 </div>
                 <aside
-                  className="rounded-card bg-surface p-5 sm:p-[22px]"
+                  className="rounded-card bg-surface p-5 sm:p-5.5"
                   aria-labelledby="company-usage-title"
                 >
                   <h2 id="company-usage-title" className="text-base font-semibold text-fg">

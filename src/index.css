@@ -111,6 +111,17 @@
   --color-sidebar-foreground: rgb(var(--text-primary));
   --color-sidebar-hover: rgb(var(--surface-hover));
   --color-sidebar-active: rgb(var(--surface-selected));
+  --text-3xs: 0.625rem;
+  --text-2xs: 0.6875rem;
+  --text-compact: 0.8125rem;
+  --text-lead: 0.9375rem;
+  --text-stat: 1.375rem;
+  --text-title: 1.75rem;
+  --text-hero: 2rem;
+  --tracking-display: -0.04em;
+  --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.4);
+  --shadow-floating: 0 8px 30px rgb(0 0 0 / 0.33);
+  --shadow-bar: 0 -12px 24px rgb(0 0 0 / 0.08);
   --spacing-frame: 18px;
   --spacing-workspace: 24px;
   --animate-accordion-down: accordion-down 0.2s ease-out;

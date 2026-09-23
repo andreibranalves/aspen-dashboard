@@ -41,7 +41,7 @@ export default function ChannelsTab() {
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-sage"><MessageCircle size={18} aria-hidden="true" /></span>
             <div>
               <p className="pt-1 text-xs text-fg-muted">Conexão operacional usada pelos fluxos e envios.</p>
-              <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-[11px] text-fg-muted">Estado não consultado</span>
+              <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-2xs text-fg-muted">Estado não consultado</span>
             </div>
           </div>
           <dl className="mt-7 text-xs">
@@ -64,7 +64,7 @@ export default function ChannelsTab() {
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-sage"><Mail size={18} aria-hidden="true" /></span>
             <div>
               <p className="pt-1 text-xs text-fg-muted">Canal usado no envio contextual dos orçamentos.</p>
-              <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-[11px] text-fg-muted">Estado não consultado</span>
+              <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-2xs text-fg-muted">Estado não consultado</span>
             </div>
           </div>
           <dl className="mt-7 text-xs">

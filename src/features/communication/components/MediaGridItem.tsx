@@ -31,10 +31,10 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
       </div>
       <h3 className="mt-4 truncate text-sm font-semibold" title={item.title || undefined}>{item.title || 'Sem título'}</h3>
       <p className="mt-3 truncate text-xs text-fg-muted">{type}{size ? ` · ${size}` : ''}</p>
-      {item.caption && <p className="mt-1 truncate text-[11px] text-fg-muted" title={item.caption}>{item.caption}</p>}
+      {item.caption && <p className="mt-1 truncate text-2xs text-fg-muted" title={item.caption}>{item.caption}</p>}
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {item.active === false && <span className="rounded-control bg-raised px-2 py-1 text-[10px] text-fg-muted">Inativa</span>}
+          {item.active === false && <span className="rounded-control bg-raised px-2 py-1 text-3xs text-fg-muted">Inativa</span>}
           {onDelete && <button type="button" onClick={() => onDelete(item)} className="inline-flex size-8 items-center justify-center rounded-control text-fg-muted opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100" aria-label={`Remover ${item.title || 'mídia'}`}><Trash2 size={14} aria-hidden="true" /></button>}
         </div>
         {item.blob_url && <a href={item.blob_url} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line px-2 text-xs hover:bg-raised"><ArrowUpRight size={14} aria-hidden="true" />Ver mídia</a>}

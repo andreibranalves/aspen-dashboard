@@ -266,7 +266,7 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
       <div className={`mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full ${total > 0 ? 'bg-(image:--pie)' : 'bg-light-sage'}`} style={total > 0 ? { '--pie': `conic-gradient(${stops.join(', ')})` } as CSSProperties : undefined} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
         <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
       </div>
-      <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-[11px]"><span className={`mt-1 size-2 shrink-0 rounded-full ${swatches[index % swatches.length]}`} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
+      <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-2xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${swatches[index % swatches.length]}`} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
       {data.ordersBySource === null && <p className="mt-auto text-xs">Origem indisponível.</p>}
     </section>
   );
@@ -409,9 +409,8 @@ function FeaturedCustomersPanel({
         </h2>
         <Button
           type="button"
-          variant="outline"
+          variant="outline-ink"
           size="sm"
-          className="border-taupe-ink/25 text-taupe-ink hover:bg-taupe-ink/10"
           onClick={onCustomers}
         >
           Ver clientes
@@ -484,7 +483,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
             <p className="mt-1 text-xs text-fg-muted">Distribuição da receita dos pedidos</p>
             <div className="mt-8 space-y-6">
               {rows.slice(0, 6).map((row, index) => (
-                <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-[11px]">
+                <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-2xs">
                   <span className="truncate text-fg-muted" title={row.name}>{row.name}</span>
                   <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={`h-full w-(--bar-w) ${['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]}`} style={{ '--bar-w': `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%` } as CSSProperties} /></div>
                   <span className="tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
@@ -658,7 +657,7 @@ function FinancePanel({
               {rows.map(([label, value, expense]) => (
                 <TableRow key={label}>
                   <TableCell
-                    className={label === 'Lucro calculado' ? 'pt-6 font-semibold' : 'font-medium'}
+                    className={label === 'Lucro calculado' ? 'font-semibold' : 'font-medium'}
                   >
                     {label}
                   </TableCell>

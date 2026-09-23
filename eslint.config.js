@@ -109,6 +109,25 @@ export default [
       'shadcn/no-raw-colors': 'error',
       'shadcn/no-inline-styles': 'error',
       'shadcn/require-static-classes': 'error',
+      // Layout livre; aparência vem de variant/size/density dos componentes em src/components/ui.
+      'shadcn/no-restyle': [
+        'error',
+        {
+          allow: ['layout'],
+          contracts: [
+            { pattern: '^Table$', allow: ['layout', 'typography'] },
+            {
+              pattern: '^TableCell$',
+              allow: ['layout', 'typography', 'text-fg-muted', 'text-destructive'],
+            },
+            { pattern: '^Button$', allow: ['layout', 'font-mono', 'font-normal', 'font-semibold', 'truncate', 'shadow-*'] },
+            { pattern: '^Input$', allow: ['layout', 'font-mono', 'font-medium', 'tracking-widest', 'pl-*', 'pr-*'] },
+            { pattern: '^Textarea$', allow: ['layout', 'font-mono', 'pt-*'] },
+          ],
+        },
+      ],
+      // Medidas de layout (grids, alturas de gráfico) podem ser arbitrárias; aparência usa tokens do tema.
+      'shadcn/no-arbitrary-values': ['error', { allow: ['layout', 'transition-[width]'] }],
     },
   },
   // ── TypeScript (frontend + backend futuro) ──

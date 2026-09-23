@@ -25,7 +25,7 @@ export function StatCard({ icon: Icon, label, value, metadata, footer, loading =
     <div
       aria-busy={loading || undefined}
       className={cn(
-        'flex min-h-[104px] min-w-0 flex-col gap-2 rounded-card bg-surface p-4 md:min-h-[145px] md:gap-3 md:p-[22px]',
+        'flex min-h-[104px] min-w-0 flex-col gap-2 rounded-card bg-surface p-4 md:min-h-[145px] md:gap-3 md:p-5.5',
         className
       )}
     >
@@ -40,14 +40,14 @@ export function StatCard({ icon: Icon, label, value, metadata, footer, loading =
       <div
         title={textValue}
         className={cn(
-          'font-bold leading-tight tracking-[-0.04em] tabular-nums text-fg',
-          textValue ? 'line-clamp-2 break-words text-base md:text-lg' : 'text-[22px] md:text-[28px]'
+          'font-bold leading-tight tracking-display tabular-nums text-fg',
+          textValue ? 'line-clamp-2 break-words text-base md:text-lg' : 'text-stat md:text-title'
         )}
       >
         {loading ? <span className="skeleton-text w-16 max-w-full" aria-label="Carregando" /> : value}
       </div>
       {(metadata != null || footer != null) && (
-        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 text-[11px] text-fg-muted">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 text-2xs text-fg-muted">
           {metadata != null && <span>{metadata}</span>}
           {footer != null && <span>{footer}</span>}
         </div>

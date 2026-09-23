@@ -159,7 +159,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
   return (
     <section
-      className="space-y-4 rounded-card bg-surface p-5 sm:p-[22px]"
+      className="space-y-4 rounded-card bg-surface p-5 sm:p-5.5"
       aria-labelledby="media-upload-title"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">

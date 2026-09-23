@@ -1203,7 +1203,7 @@ function CoreQuotationDetail({
             <div className="min-w-0">
               <h2 id="issued-client-title" className="text-base font-semibold text-fg">Cliente e oportunidade</h2>
               <div className="mt-5 flex items-center gap-2.5">
-                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-avatar-one text-[10px] font-bold text-avatar-ink" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-avatar-one text-3xs font-bold text-avatar-ink" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
                 <div className="min-w-0"><p className="truncate text-sm font-medium text-fg">{data.cliente || 'Cliente não informado'}</p>{(data.email || data.telefone) && <p className="truncate text-xs text-fg-muted">{[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}</p>}</div>
               </div>
             </div>
@@ -1232,15 +1232,17 @@ function CoreQuotationDetail({
           {displayItems.length > 0 ? (
             <div className="px-5 md:px-6">
               <Table
+                density="compact"
+                edges="flush"
                 className="table-fixed text-sm"
-                containerClassName="overflow-hidden border-0 rounded-none"
+                containerClassName="overflow-hidden"
               >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-9 w-[48%] px-0">Produto</TableHead>
+                    <TableHead className="h-9 w-[48%]">Produto</TableHead>
                     <TableHead className="h-9 whitespace-nowrap text-center">Qtd.</TableHead>
                     <TableHead className="h-9 whitespace-nowrap text-center">Unitário</TableHead>
-                    <TableHead className="h-9 whitespace-nowrap pr-0 text-right">
+                    <TableHead className="h-9 whitespace-nowrap text-right">
                       Subtotal
                     </TableHead>
                   </TableRow>
@@ -1248,19 +1250,19 @@ function CoreQuotationDetail({
                 <TableBody>
                   {displayItems.map((item) => (
                     <TableRow key={item._key}>
-                      <TableCell className="px-0 py-3">
+                      <TableCell>
                         <span className="block break-words font-medium text-fg">
                           {item.nome || item.item_name || item.sku || 'Produto não informado'}
                         </span>
-                        <span className="mt-1 block font-mono text-[10px] text-fg-muted">{item.sku || '—'}</span>
+                        <span className="mt-1 block font-mono text-3xs text-fg-muted">{item.sku || '—'}</span>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
+                      <TableCell className="whitespace-nowrap text-center tabular-nums">
                         {Number(item.qty)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-3 text-center tabular-nums">
+                      <TableCell className="whitespace-nowrap text-center tabular-nums">
                         {formatBRL(item.applied_unit_price)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-3 pr-0 text-right font-medium tabular-nums">
+                      <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
                         {formatBRL(
                           item.line_total || Number(item.qty) * Number(item.applied_unit_price)
                         )}
@@ -1353,16 +1355,16 @@ function CoreQuotationDetail({
               </summary>
               <div className="overflow-x-auto pb-4">
                 {(data.revisionHistory || []).length > 0 ? (
-                  <Table className="min-w-[680px] text-sm">
+                  <Table density="compact" edges="flush" className="min-w-[680px] text-sm">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="h-9 pl-0">Revisão</TableHead>
+                        <TableHead className="h-9">Revisão</TableHead>
                         <TableHead className="h-9">Criada em</TableHead>
                         <TableHead className="h-9">Validade</TableHead>
                         <TableHead className="h-9">Estado</TableHead>
                         <TableHead className="h-9 text-right">Total</TableHead>
                         <TableHead className="h-9">PDF</TableHead>
-                        <TableHead className="h-9 pr-0" />
+                        <TableHead className="h-9" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1370,13 +1372,13 @@ function CoreQuotationDetail({
                         const eligible = entry.status !== 'rascunho' && !draftEditable;
                         return (
                           <TableRow key={entry.revisionId}>
-                            <TableCell className="whitespace-nowrap py-2 pl-0 font-medium">
+                            <TableCell className="whitespace-nowrap font-medium">
                               R{entry.revision}
                             </TableCell>
-                            <TableCell className="whitespace-nowrap py-2">
+                            <TableCell className="whitespace-nowrap">
                               {formatDate(entry.createdAt) || '—'}
                             </TableCell>
-                            <TableCell className="whitespace-nowrap py-2">
+                            <TableCell className="whitespace-nowrap">
                               {formatDate(entry.validade) || '—'}
                               {entry.expired && (
                                 <span className="block text-xs text-warning">Expirada</span>
@@ -1385,7 +1387,7 @@ function CoreQuotationDetail({
                             <TableCell>
                               <StatusBadge {...statusBadgeProps(entry.status)} />
                             </TableCell>
-                            <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
+                            <TableCell className="whitespace-nowrap text-right tabular-nums">
                               {formatBRL(entry.total)}
                             </TableCell>
                             <TableCell>
@@ -1407,7 +1409,7 @@ function CoreQuotationDetail({
                                 <span className="text-xs text-fg-muted">—</span>
                               )}
                             </TableCell>
-                            <TableCell className="py-2 pr-0 text-right">
+                            <TableCell className="text-right">
                               {eligible && (
                                 <Button
                                   variant="outline"
@@ -1442,7 +1444,7 @@ function CoreQuotationDetail({
           <div className="flex justify-between gap-3"><dt className="text-fg-muted">Itens</dt><dd>{displayItems.length}</dd></div>
           <div className="flex items-center justify-between gap-3 border-t border-line pt-4 text-sm"><dt>Total</dt><dd className="text-xl font-bold">{formatBRL(data.total)}</dd></div>
         </dl>
-        <p className="mt-5 rounded-control border border-line p-3 text-[11px] leading-4 text-fg-muted">Emitir o documento não confirma a entrega por WhatsApp ou e-mail.</p>
+        <p className="mt-5 rounded-control border border-line p-3 text-2xs leading-4 text-fg-muted">Emitir o documento não confirma a entrega por WhatsApp ou e-mail.</p>
       </aside>
       <aside id="issued-communication"
         className="rounded-card bg-surface px-5 py-5"
@@ -1531,8 +1533,8 @@ function CoreQuotationDetail({
                 Aprovar e criar pedido
               </Button>
               <Button
-                variant="ghost"
-                className="w-full text-fg-muted"
+                variant="ghost-muted"
+                className="w-full"
                 disabled={lifecycleAction !== null}
                 onClick={openLossReasonDialog}
               >
@@ -1988,10 +1990,7 @@ function CoreQuotationDetail({
                     </span>
                   </div>
                   {displayItems.length > 0 ? (
-                    <Table
-                      className="min-w-[620px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:h-8 [&_th]:px-3"
-                      containerClassName="border-0 rounded-none"
-                    >
+                    <Table density="compact" className="min-w-[620px] text-sm [&_th]:h-8">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="h-8 w-full min-w-[280px]">Produto</TableHead>
@@ -2024,7 +2023,7 @@ function CoreQuotationDetail({
                                   <label className="block space-y-1">
                                     <Input
                                       aria-label={`Nome exibido no orçamento ${item.sku}`}
-                                      className="h-8 text-sm"
+                                      className="h-8"
                                       value={item.item_name}
                                       onChange={(event) =>
                                         updateItem(item._key, {
@@ -2049,7 +2048,7 @@ function CoreQuotationDetail({
                                 )}
                               </TableCell>
                               {editing && (
-                                <TableCell className="relative whitespace-nowrap py-2 font-mono">
+                                <TableCell className="relative whitespace-nowrap font-mono">
                                   <Input
                                     value={productTerms[item._key] ?? item.sku}
                                     onChange={(event) =>
@@ -2078,7 +2077,7 @@ function CoreQuotationDetail({
                                   )}
                                 </TableCell>
                               )}
-                              <TableCell className="whitespace-nowrap py-2 text-center">
+                              <TableCell className="whitespace-nowrap text-center">
                                 {editing ? (
                                   <Input
                                     aria-label={`Quantidade de ${item.sku}`}
@@ -2102,11 +2101,11 @@ function CoreQuotationDetail({
                                 )}
                               </TableCell>
                               {editing && (
-                                <TableCell className="whitespace-nowrap py-2 text-right">
+                                <TableCell className="whitespace-nowrap text-right">
                                   {formatBRL(item.suggested_unit_price)}
                                 </TableCell>
                               )}
-                              <TableCell className="whitespace-nowrap py-2 text-right">
+                              <TableCell className="whitespace-nowrap text-right">
                                 {editing ? (
                                   <Input
                                     aria-label={`Preço aplicado ${item.sku}`}
@@ -2128,7 +2127,7 @@ function CoreQuotationDetail({
                               </TableCell>
                               {editing && (
                                 <TableCell
-                                  className={`whitespace-nowrap py-2 text-right ${
+                                  className={`whitespace-nowrap text-right ${
                                     Number(item.price_difference) > 0 ? 'text-destructive' : ''
                                   }`}
                                 >
@@ -2231,7 +2230,7 @@ function CoreQuotationDetail({
                     <summary className="mb-3 cursor-pointer text-sm font-medium text-primary hover:underline">
                       Ver histórico completo
                     </summary>
-                    <Table className="min-w-[720px] text-sm">
+                    <Table density="compact" className="min-w-[720px] text-sm">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="h-9">Revisão</TableHead>
@@ -2249,13 +2248,13 @@ function CoreQuotationDetail({
                           const eligible = entry.status !== 'rascunho' && !draftEditable;
                           return (
                             <TableRow key={entry.revisionId}>
-                              <TableCell className="whitespace-nowrap py-2 font-medium">
+                              <TableCell className="whitespace-nowrap font-medium">
                                 R{entry.revision}
                               </TableCell>
-                              <TableCell className="whitespace-nowrap py-2">
+                              <TableCell className="whitespace-nowrap">
                                 {formatDate(entry.createdAt) || '—'}
                               </TableCell>
-                              <TableCell className="whitespace-nowrap py-2">
+                              <TableCell className="whitespace-nowrap">
                                 {formatDate(entry.validade) || '—'}
                                 {expired && (
                                   <span className="block text-xs text-warning">Expirada</span>
@@ -2264,7 +2263,7 @@ function CoreQuotationDetail({
                               <TableCell>
                                 <StatusBadge {...statusBadgeProps(entry.status)} />
                               </TableCell>
-                              <TableCell className="whitespace-nowrap py-2 text-right tabular-nums">
+                              <TableCell className="whitespace-nowrap text-right tabular-nums">
                                 {formatBRL(entry.total)}
                               </TableCell>
                               <TableCell>

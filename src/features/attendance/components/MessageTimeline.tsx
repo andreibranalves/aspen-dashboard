@@ -107,7 +107,7 @@ const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
           return (
             <Fragment key={message.id}>
               {separator && (
-                <p className="py-1 text-center text-[11px] font-medium text-fg-muted">{day}</p>
+                <p className="py-1 text-center text-2xs font-medium text-fg-muted">{day}</p>
               )}
               <MessageBubble message={message} actionPending={actionPending === message.id} onAction={onAction} />
             </Fragment>

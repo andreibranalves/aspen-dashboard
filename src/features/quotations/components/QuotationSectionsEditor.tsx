@@ -108,7 +108,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
                 value={section.title}
                 onChange={(event) => update(key, 'title', event.target.value)}
                 disabled={!editable}
-                className="text-[15px]"
+                className="font-medium"
               />
             </label>
             {body && (

@@ -85,7 +85,7 @@ export default function TopBar({
           </button>
         )}
         <nav
-          className="flex min-w-0 items-center gap-2 overflow-hidden text-[13px] text-fg-muted"
+          className="flex min-w-0 items-center gap-2 overflow-hidden text-compact text-fg-muted"
           aria-label="Trilha de navegação"
         >
           {breadcrumbItems.map((item, index) => (
@@ -133,7 +133,7 @@ export default function TopBar({
               aria-label="Buscar uma tela"
               className="w-full min-w-0 bg-transparent text-xs text-fg outline-hidden placeholder:text-fg-muted"
             />
-            <kbd className="whitespace-nowrap rounded-xs border border-line px-1 text-[10px]">
+            <kbd className="whitespace-nowrap rounded-xs border border-line px-1 text-3xs">
               Ctrl K
             </kbd>
           </label>

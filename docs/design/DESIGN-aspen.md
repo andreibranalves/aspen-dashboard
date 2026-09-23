@@ -35,16 +35,24 @@ also carries text or an icon; color is never the only signal.
 Manrope is the product font with `tabular-nums` globally. Monospace is only
 for SKUs and identifiers.
 
-| Role | Size / weight | Where |
+Sizes are theme tokens in `src/index.css`; arbitrary `text-[Npx]` is rejected
+by lint.
+
+| Role | Class / weight | Where |
 | --- | --- | --- |
-| Page title | 28px / 700 (22px below `md`) | `PageHeader` only |
-| Dialog title | 18px / 700 | `Dialog`, `Drawer` |
-| Section title | 16px / 600 | top-level cards in a page |
-| Sub-section | 14px / 600 | groups inside a section card |
-| Body / controls | 14px / 400–600 | text, inputs, selects, buttons |
-| Secondary / meta | 13px | page meta, tabs, breadcrumb |
-| Caption | 12px | field labels, table headers |
-| Badge | 11px / 600 | `StatusBadge`, quality badges |
+| Page title | `text-title` 28px / 700 (`text-stat` 22px below `md`) | `PageHeader` only |
+| Dialog title | `text-lg` 18px / 700 | `Dialog`, `Drawer` |
+| Section title | `text-base` 16px / 600 | top-level cards in a page |
+| Sub-section | `text-sm` 14px / 600 | groups inside a section card |
+| Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
+| Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb |
+| Caption | `text-xs` 12px | field labels, table headers |
+| Badge | `text-2xs` 11px / 600 | `StatusBadge`, quality badges |
+| Micro | `text-3xs` 10px | counters, dense captions |
+
+Display numbers use `text-hero` (32px) and `tracking-display`. Elevation uses
+`shadow-overlay` (dialogs), `shadow-floating` (popovers) and `shadow-bar`
+(bottom action bars).
 
 ### Radius roles
 
@@ -70,8 +78,24 @@ never add their own focus ring. Rows inside clipped containers add
 ### Controls
 
 Fields, selects and the default button are 40px. Button sizes: `xs` 28, `sm`
-32 (dense rows, inline retry), `md` 36, default/`lg` 40. Filled buttons show a
-tinted disabled state at full opacity; quiet variants fade.
+32 (dense rows, inline retry), `md` 36, default/`lg` 40, `inline` (no box, for
+links in text or tables). `Input` and `Select` take `size` `default` 40, `sm`
+32, `xs` 28; `Select size="icon"` is the compact move-to menu. Filled buttons
+show a tinted disabled state at full opacity; quiet variants fade.
+
+Appearance comes from props, never from `className` on a `components/ui`
+primitive. `eslint.config.js` enforces this with `shadcn/no-restyle`
+(`className` may carry layout only, plus the per-component `contracts`) and
+`shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant:
+
+| Component | Props |
+| --- | --- |
+| `Button` | `variant`: `default`, `destructive`, `outline`, `outline-destructive`, `outline-ink` (on colored panels), `secondary`, `soft`, `ghost`, `ghost-muted`, `ghost-destructive`, `link`, `success` |
+| `Table` | `density`: `default` (lists), `compact` (documents), `dense` (editable tables in cards); `edges`: `flush`, `inset` |
+| `TableRow` | `selected`, `tone="warning"`, `interactive` |
+| `Input` | `size`, `hideSpinButtons` |
+| `Textarea` | `variant`: `default`, `code`, `bare` (composer inside a bordered box) |
+| `StatusBadge` | `status` maps to a tone; `tone` overrides it |
 
 ## Layout
 

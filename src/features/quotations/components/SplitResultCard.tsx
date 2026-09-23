@@ -208,7 +208,7 @@ function ClientResolutionArea({
   const hidden = selectable.length - visible.length;
 
   return (
-    <div className="border-b border-border-subtle px-4 py-3 text-[13px]">
+    <div className="border-b border-border-subtle px-4 py-3 text-compact">
       <p className="sr-only" aria-live="polite">
         {clientResolutionAnnouncement(view)}
       </p>
@@ -649,17 +649,17 @@ export default function SplitResultCard({
             </span>
 
             {draft.edited.urgente && (
-              <span className="inline-flex items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-2xs font-semibold text-warning">
                 <AlertTriangle size={10} /> Urgente
               </span>
             )}
             {isDone && (
-              <span className="inline-flex items-center gap-1 rounded-badge bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-primary/10 px-2 py-0.5 text-2xs font-semibold text-primary">
                 <Check size={10} /> Emitido
               </span>
             )}
             {!isDone && hasSavedSnapshot && (
-              <span className="inline-flex items-center gap-1 rounded-badge bg-surface px-2 py-0.5 text-[11px] font-semibold text-fg-muted">
+              <span className="inline-flex items-center gap-1 rounded-badge bg-surface px-2 py-0.5 text-2xs font-semibold text-fg-muted">
                 <Check size={10} /> Rascunho salvo
               </span>
             )}
@@ -668,59 +668,60 @@ export default function SplitResultCard({
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-fg-muted">Nome</span>
+                  <span className="text-3xs font-medium text-fg-muted">Nome</span>
                   <Input
                     aria-label="Nome"
                     value={draft.edited.nome || ''}
                     onChange={(e) => onUpdateField(draft.index, 'nome', e.target.value)}
                     disabled={editingBlocked}
                     placeholder="Nome"
-                    className="h-7 text-xs"
+                    size="xs"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-fg-muted">Empresa</span>
+                  <span className="text-3xs font-medium text-fg-muted">Empresa</span>
                   <Input
                     aria-label="Empresa"
                     value={draft.edited.empresa || ''}
                     onChange={(e) => onUpdateField(draft.index, 'empresa', e.target.value)}
                     disabled={editingBlocked}
                     placeholder="Empresa"
-                    className="h-7 text-xs"
+                    size="xs"
                   />
                 </label>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[4fr_3fr_3fr]">
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-fg-muted">E-mail</span>
+                  <span className="text-3xs font-medium text-fg-muted">E-mail</span>
                   <Input
                     aria-label="E-mail"
                     value={draft.edited.email || ''}
                     onChange={(e) => onUpdateField(draft.index, 'email', e.target.value)}
                     disabled={editingBlocked}
                     placeholder="E-mail"
-                    className="h-7 text-xs"
+                    size="xs"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-medium text-fg-muted">Telefone</span>
+                  <span className="text-3xs font-medium text-fg-muted">Telefone</span>
                   <Input
                     aria-label="Telefone"
                     value={draft.edited.telefone || ''}
                     onChange={(e) => onUpdateField(draft.index, 'telefone', e.target.value)}
                     disabled={editingBlocked}
                     placeholder="Telefone"
-                    className="h-7 text-xs"
+                    size="xs"
                   />
                 </label>
                 <label className="flex flex-col gap-1 [&>div]:flex [&>div]:w-full">
-                  <span className="text-[10px] font-medium text-fg-muted">Origem</span>
+                  <span className="text-3xs font-medium text-fg-muted">Origem</span>
                   <Select
                     aria-label="Origem"
                     value={draft.edited.origem || ''}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
                     disabled={editingBlocked}
-                    className="h-7 w-full rounded-control border border-border-control bg-raised px-2 text-xs text-fg"
+                    size="xs"
+                    className="w-full"
                   >
                     <option value="">Selecione a origem…</option>
                     {LEAD_SOURCES.map((source) => (
@@ -737,12 +738,12 @@ export default function SplitResultCard({
               <h3 className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
-                  <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-[11px] font-medium leading-3 text-primary">
+                  <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-2xs font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}
               </h3>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-fg-muted">
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-fg-muted">
                 {draft.edited.empresa && <span>{draft.edited.empresa}</span>}
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{fmtPhone(draft.edited.telefone) || draft.edited.telefone}</span>}
@@ -751,11 +752,11 @@ export default function SplitResultCard({
           )}
         </div>
         <div className="text-right shrink-0">
-          <p className="text-[10px] font-medium text-fg-muted uppercase">Total</p>
+          <p className="text-3xs font-medium text-fg-muted uppercase">Total</p>
           <p className="text-lg font-bold text-fg">{totalDisplay}</p>
-          {isDone && snapshot && <p className="text-[10px] text-fg-muted">Frete: {formatBRL(snapshot.frete)}</p>}
+          {isDone && snapshot && <p className="text-3xs text-fg-muted">Frete: {formatBRL(snapshot.frete)}</p>}
           {draft.edited.urgente && (
-            <p className="text-[10px] text-fg-muted">Base: {totalDisplay}</p>
+            <p className="text-3xs text-fg-muted">Base: {totalDisplay}</p>
           )}
         </div>
       </div>
@@ -778,7 +779,7 @@ export default function SplitResultCard({
         <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
           <button
             type="button"
-            className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
+            className="flex w-full items-center justify-between gap-2 text-left text-3xs font-medium text-fg-muted"
             aria-expanded={opportunityExpanded}
             aria-controls={`quotation-opportunity-${draft.index}`}
             onClick={() => setOpportunityExpanded((expanded) => !expanded)}
@@ -803,7 +804,7 @@ export default function SplitResultCard({
         <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
           <button
             type="button"
-            className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
+            className="flex w-full items-center justify-between gap-2 text-left text-3xs font-medium text-fg-muted"
             aria-expanded={templateExpanded}
             aria-controls={`quotation-template-${draft.index}`}
             onClick={() => setTemplateExpanded((expanded) => !expanded)}
@@ -828,7 +829,8 @@ export default function SplitResultCard({
                   value={draft.edited.template_key || ''}
                   onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                   disabled={editingBlocked || templateLoading || templates.length === 0}
-                  className="h-8 w-full rounded-control border border-border-control bg-raised px-2 text-xs text-fg"
+                  size="sm"
+                  className="w-full"
                   containerClassName="w-full"
                 >
                   {!draft.edited.template_key && <option value="">Modelo padrão</option>}
@@ -845,8 +847,9 @@ export default function SplitResultCard({
       {/* ── Items table ── */}
       {!isDone && (
         <Table
-          containerClassName="border-0 rounded-none"
-          className="w-full max-w-full table-fixed text-xs"
+          density="dense"
+          edges="inset"
+          className="w-full max-w-full table-fixed"
           aria-label={`Itens do pedido ${displayIdx + 1}`}
         >
             <colgroup>
@@ -854,15 +857,15 @@ export default function SplitResultCard({
               <col />
               <col className="w-16" />
               <col className="w-20" />
-              <col className="w-10" />
+              <col className="w-12" />
             </colgroup>
             <TableHeader>
-              <TableRow className="text-fg-muted">
-                <TableHead scope="col" className="py-2 pl-4 pr-2 text-left font-medium">SKU</TableHead>
-                <TableHead scope="col" className="px-2 py-2 text-left font-medium">Produto</TableHead>
-                <TableHead scope="col" className="px-2 py-2 text-center font-medium">Qtd</TableHead>
-                <TableHead scope="col" className="px-2 py-2 text-center font-medium">Preço</TableHead>
-                <TableHead scope="col" className="px-1 py-2" />
+              <TableRow>
+                <TableHead scope="col">SKU</TableHead>
+                <TableHead scope="col">Produto</TableHead>
+                <TableHead scope="col" className="text-center">Qtd</TableHead>
+                <TableHead scope="col" className="text-center">Preço</TableHead>
+                <TableHead scope="col" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -877,16 +880,14 @@ export default function SplitResultCard({
                 return (
                   <TableRow
                     key={ii}
-                    className={cn(
-                      'border-b border-line last:border-b-0 hover:bg-surface-hover',
-                      pricingConflictItems.includes(item.item_code) && 'bg-warning/10',
-                    )}
+                    tone={pricingConflictItems.includes(item.item_code) ? 'warning' : 'default'}
                   >
-                    <TableCell className="py-2 pl-4 pr-2">
+                    <TableCell>
                       {editing ? (
                         <div className="relative" data-item-search-cell>
                           <Input
-                            className="h-7 text-xs pr-6"
+                            size="xs"
+                            className="pr-6"
                             placeholder="Buscar SKU ou nome…"
                             value={searchValue}
                             onChange={(e) => onItemSkuChange(ii, e.target.value)}
@@ -920,14 +921,14 @@ export default function SplitResultCard({
                                   onMouseDown={(e) => e.preventDefault()}
                           onClick={() => void handleSelectProduct(ii, p)}
                                 >
-                                  <span className="font-mono text-[10px] text-fg-muted shrink-0">
+                                  <span className="font-mono text-3xs text-fg-muted shrink-0">
                                     {p.sku || p.item_code}
                                   </span>
                                   <span className="truncate">
                                     {String(p.nome || p.item_name || '—')}
                                   </span>
                                   {isUnpricedProduct(p) && (
-                                    <span className="ml-auto shrink-0 text-[10px] text-destructive">
+                                    <span className="ml-auto shrink-0 text-3xs text-destructive">
                                       Preço indisponível
                                     </span>
                                   )}
@@ -942,11 +943,11 @@ export default function SplitResultCard({
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="px-2 py-2">
+                    <TableCell>
                       {editing ? (
                         <Input
                           aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
-                          className="h-7 text-xs"
+                          size="xs"
                           value={item.item_name || ''}
                           onChange={(event) =>
                             onUpdateItem(draft.index, ii, 'item_name', event.target.value)
@@ -962,7 +963,7 @@ export default function SplitResultCard({
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="px-2 py-2 text-center">
+                    <TableCell className="text-center">
                       {editing ? (
                         <Input
                           type="number"
@@ -983,7 +984,9 @@ export default function SplitResultCard({
                             }, 600);
                           }}
                           disabled={editingBlocked}
-                          className="h-7 w-full [appearance:textfield] text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+                          size="xs"
+                          hideSpinButtons
+                          className="w-full text-center"
                         />
                       ) : hasCode ? (
                         Number(item.qty)
@@ -991,7 +994,7 @@ export default function SplitResultCard({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className="px-2 py-2 text-center">
+                    <TableCell className="text-center">
                       {editing ? (
                         <Input
                           type="number"
@@ -1003,7 +1006,9 @@ export default function SplitResultCard({
                           }
                           disabled={editingBlocked}
                           data-conflict-sku={item.item_code || undefined}
-                          className="h-7 w-full [appearance:textfield] text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+                          size="xs"
+                          hideSpinButtons
+                          className="w-full text-center"
                         />
                       ) : item.rate ? (
                         formatBRL(item.rate)
@@ -1011,7 +1016,7 @@ export default function SplitResultCard({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className="px-1 py-2">
+                    <TableCell>
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
@@ -1028,7 +1033,7 @@ export default function SplitResultCard({
               })}
               {displayItems.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-4 text-center text-xs text-fg-muted">
+                  <TableCell colSpan={5} className="h-12 text-center text-fg-muted">
                     Nenhum item adicionado
                   </TableCell>
                 </TableRow>

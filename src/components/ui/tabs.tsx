@@ -69,7 +69,7 @@ export function TabList<T extends string>({ label, items, variant = 'page', idPr
           disabled={disabled}
           {...(idPrefix ? { id: `${idPrefix}-tab-${value}`, 'aria-controls': `${idPrefix}-panel-${value}` } : {})}
           className={cn(
-            'inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-[13px] font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50',
+            'inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-compact font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50',
             triggerVariants[variant]
           )}
         >

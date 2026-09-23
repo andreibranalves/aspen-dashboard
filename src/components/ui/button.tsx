@@ -17,7 +17,15 @@ const variants = {
     'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.98] disabled:opacity-50',
   secondary:
     'bg-raised text-fg hover:brightness-110 active:scale-[0.98] disabled:opacity-50',
+  soft: 'bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50',
+  'outline-destructive':
+    'border border-destructive/20 bg-transparent text-destructive hover:bg-destructive/10 active:scale-[0.98] disabled:opacity-50',
+  /** Contorno na cor do texto herdada, para botões sobre painéis coloridos. */
+  'outline-ink':
+    'border border-current/25 bg-transparent text-current hover:bg-current/10 active:scale-[0.98] disabled:opacity-50',
   ghost: 'text-fg hover:bg-surface-hover disabled:opacity-50',
+  'ghost-muted': 'text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-50',
+  'ghost-destructive': 'text-destructive hover:bg-destructive/10 disabled:opacity-50',
   link: 'text-link underline-offset-4 hover:underline disabled:opacity-50',
   success:
     'bg-success-fill text-success-foreground hover:brightness-105 active:scale-[0.98] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
@@ -30,6 +38,8 @@ const sizes = {
   default: 'h-10 px-4 text-sm',
   lg: 'h-10 px-4 text-sm',
   icon: 'h-9 w-9 p-0',
+  /** Sem altura nem padding, para ações em linha com o texto (ex.: variant="link" em tabela). */
+  inline: 'h-auto p-0 text-sm',
 } as const;
 
 type ButtonVariant = keyof typeof variants;

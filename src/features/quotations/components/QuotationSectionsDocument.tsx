@@ -128,7 +128,7 @@ export function QuotationSectionsDocument({
                   role="switch"
                   checked={section.enabled}
                   onChange={(event) => update(key, 'enabled', event.target.checked)}
-                  className="h-4 w-4 accent-[rgb(var(--primary))]"
+                  className="h-4 w-4 accent-primary"
                 />
                 <span>Visível<span className="sr-only">: {label}</span></span>
               </label>

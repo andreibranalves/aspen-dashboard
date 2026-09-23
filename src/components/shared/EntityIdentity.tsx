@@ -21,12 +21,12 @@ export default function EntityIdentity({ name, primary, secondary, className }: 
   const color = AVATAR_COLORS[(name.codePointAt(0) || 0) % AVATAR_COLORS.length];
   return (
     <div className={cn('flex min-w-0 items-center gap-2.5', className)}>
-      <span className={cn('grid size-9 shrink-0 place-items-center rounded-full text-[10px] font-bold text-avatar-ink', color)} aria-hidden="true">
+      <span className={cn('grid size-9 shrink-0 place-items-center rounded-full text-3xs font-bold text-avatar-ink', color)} aria-hidden="true">
         {initials(name)}
       </span>
       <div className="min-w-0">
         <div className="truncate text-xs font-semibold text-fg">{primary ?? name}</div>
-        {secondary != null && <div className="mt-0.5 truncate text-[11px] text-fg-muted">{secondary}</div>}
+        {secondary != null && <div className="mt-0.5 truncate text-2xs text-fg-muted">{secondary}</div>}
       </div>
     </div>
   );

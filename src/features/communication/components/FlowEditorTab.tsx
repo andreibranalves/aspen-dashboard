@@ -542,9 +542,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghost-destructive"
                   size="icon"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => setConfirmDeleteFlowId(selectedFlow.id)}
                   aria-label={`Remover ${displayName(selectedFlow)}`}
                   title="Remover fluxo"
@@ -693,9 +692,8 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                             </Button>
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="ghost-destructive"
                               size="icon"
-                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                               onClick={() => removeStep(selectedFlow.id, step.id)}
                               disabled={selectedFlow.steps.length <= 1}
                               aria-label={`Remover etapa ${index + 1}`}
@@ -1010,7 +1008,7 @@ function FlowPreview({ step }: { step?: FlowStep }) {
     >
       <h3 id="flow-preview-title" className="text-base font-semibold text-fg">Prévia no WhatsApp</h3>
       <p className="mt-1 text-xs text-fg-muted">{title}</p>
-      <div className="mt-5 overflow-hidden rounded-card border-[7px] border-surface-subtle bg-taupe">
+      <div className="mt-5 overflow-hidden rounded-card border-8 border-surface-subtle bg-taupe">
         <div className="px-4 py-3 text-xs font-semibold text-taupe-ink">Aspen · prévia</div>
         <div className="min-h-48 bg-chat-background p-3">
           <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-xs">{content}</div>

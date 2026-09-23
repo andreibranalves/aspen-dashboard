@@ -253,7 +253,7 @@ export default function SendHistoryTab({
       {!error && visibleEvents.length > 0 && (
         <div className="overflow-x-auto rounded-card bg-surface px-5 pb-5">
           <table className="w-full min-w-[720px] table-fixed text-left text-xs" aria-label="Histórico de envios">
-            <thead className="border-b border-line text-[10px] text-fg-muted"><tr><th className="w-[25%] px-3 py-3 font-medium">Orçamento / fluxo</th><th className="w-[20%] px-3 py-3 font-medium">Etapa / progresso</th><th className="w-[18%] px-3 py-3 font-medium">Situação</th><th className="w-[20%] px-3 py-3 font-medium">Último evento</th><th className="w-[17%] px-3 py-3 font-medium"><span className="sr-only">Inspecionar</span></th></tr></thead>
+            <thead className="border-b border-line text-3xs text-fg-muted"><tr><th className="w-[25%] px-3 py-3 font-medium">Orçamento / fluxo</th><th className="w-[20%] px-3 py-3 font-medium">Etapa / progresso</th><th className="w-[18%] px-3 py-3 font-medium">Situação</th><th className="w-[20%] px-3 py-3 font-medium">Último evento</th><th className="w-[17%] px-3 py-3 font-medium"><span className="sr-only">Inspecionar</span></th></tr></thead>
             <tbody className="divide-y divide-line">
               {visibleEvents.map((event) => {
                 const meta = statusMeta(event.status);
