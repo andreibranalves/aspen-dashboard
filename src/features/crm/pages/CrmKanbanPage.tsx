@@ -709,7 +709,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                         })}
                       </div>
                       {hidden > 0 && (
-                        <button
+                        <Button
                           type="button"
                           onClick={() =>
                             setVisiblePerColumn((prev) => ({
@@ -717,10 +717,11 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                               [col.status]: (prev[col.status] ?? 10) + 25,
                             }))
                           }
-                          className="px-2 pb-2 text-xs text-fg-muted transition-colors hover:text-fg"
+                          variant="ghost-muted"
+                          size="xs"
                         >
                           Ver mais ({hidden} restantes)
-                        </button>
+                        </Button>
                       )}
                     </>
                   );

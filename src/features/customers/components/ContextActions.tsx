@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ExternalLink } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -28,48 +29,44 @@ export function ContextActions({ actions, className }: ContextActionsProps) {
         const isDisabled = a.disabled === true;
         const isLink = !!a.href && !isDisabled;
         const Icon = a.icon;
-
-        const buttonClasses = cn(
-          'inline-flex items-center gap-1.5 rounded-control border border-border-control bg-surface px-3 py-1.5 text-xs font-medium transition-colors',
-          isDisabled
-            ? 'cursor-not-allowed opacity-35 bg-surface-muted text-fg-muted'
-            : 'text-fg hover:bg-surface-subtle active:scale-[0.97]',
-        );
-
         const content = (
           <>
-            {Icon && <Icon className="size-3.5 shrink-0" />}
-            <span className="whitespace-nowrap">{a.label}</span>
-            {isLink && <ExternalLink className="size-3 shrink-0 opacity-50" />}
+            {Icon && <Icon aria-hidden="true" />}
+            <span>{a.label}</span>
+            {isLink && <ExternalLink aria-hidden="true" />}
           </>
         );
 
         if (isLink) {
           return (
-            <a
-              key={i}
-              href={a.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={a.title || a.label}
-              className={buttonClasses}
-            >
-              {content}
-            </a>
+            <Button key={i} asChild variant="outline" size="xs">
+              <a href={a.href} target="_blank" rel="noopener noreferrer" title={a.title || a.label}>
+                {content}
+              </a>
+            </Button>
           );
         }
 
-        return (
-          <button
+        const button = (
+          <Button
             key={i}
             type="button"
+            variant="outline"
+            size="xs"
             onClick={a.onClick}
             disabled={isDisabled}
             title={a.title || a.label}
-            className={buttonClasses}
           >
             {content}
-          </button>
+          </Button>
+        );
+        // Botão desabilitado não recebe hover; o wrapper mantém o motivo no title.
+        return isDisabled ? (
+          <span key={i} title={a.title || a.label}>
+            {button}
+          </span>
+        ) : (
+          button
         );
       })}
     </div>

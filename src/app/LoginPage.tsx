@@ -96,9 +96,9 @@ export default function LoginPage({ navigate }: LoginPageProps) {
               <h2 className="text-stat font-bold leading-tight">Bem-vindo à Aspen</h2>
               <p className="mt-2 text-xs text-fg-muted">Entre com a senha para continuar.</p>
             </div>
-            <button type="button" onClick={toggleTheme} className="grid size-9 shrink-0 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg" aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}>
-              {theme === 'dark' ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
-            </button>
+            <Button type="button" variant="ghost-muted" size="icon" onClick={toggleTheme} className="shrink-0" aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}>
+              {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            </Button>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-4">

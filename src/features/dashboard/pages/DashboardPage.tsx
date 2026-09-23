@@ -360,13 +360,14 @@ function RecentQuotationsPanel({
             {data.items.map((quotation) => (
               <TableRow key={quotation.id}>
                 <TableCell>
-                  <button
+                  <Button
                     type="button"
-                    className="font-semibold text-primary-text hover:underline"
+                    variant="link"
+                    size="inline"
                     onClick={() => onNavigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
                   >
                     {quotation.businessNumber}
-                  </button>
+                  </Button>
                 </TableCell>
                 <TableCell className="max-w-[260px] truncate">{quotation.cliente}</TableCell>
                 <TableCell className="whitespace-nowrap text-fg-muted">

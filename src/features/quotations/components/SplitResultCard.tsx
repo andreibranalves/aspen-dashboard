@@ -1017,16 +1017,17 @@ export default function SplitResultCard({
                       )}
                     </TableCell>
                     <TableCell>
-                      <button
+                      <Button
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
                         disabled={editingBlocked}
-                        className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        variant="ghost-muted-destructive"
+                        size="icon-sm"
                         aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
                         title="Excluir produto"
                       >
                         <X size={13} />
-                      </button>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );

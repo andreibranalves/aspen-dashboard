@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
+import { MenuItem } from '@/components/ui/menu-item';
 
 // Rótulos canônicos pt-BR vindos de @/lib/statusLabels (quotationStatusLabel /
 // quotationStatusBadgeKey). Os valores de filtro continuam os crus da API
@@ -323,13 +324,14 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     const menuId = `quotation-actions-${placement}-${row.id}`;
     return (
       <div onClick={(event) => event.stopPropagation()}>
-        <button
+        <Button
           type="button"
+          variant="ghost-muted"
+          size="icon-sm"
           popoverTarget={menuId}
           popoverTargetAction="toggle"
           aria-controls={menuId}
           aria-expanded={openActionRow === row.id}
-          className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover hover:text-fg"
           aria-label={`Ações do orçamento ${label}`}
           title={`Ações do orçamento ${label}`}
           onClick={(event) => {
@@ -342,13 +344,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             });
           }}
         >
-          <MoreHorizontal aria-hidden="true" size={18} />
-        </button>
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
         <div
           id={menuId}
           popover="auto"
           aria-label={`Ações do orçamento ${label}`}
-          className="fixed inset-auto top-(--menu-top) left-(--menu-left) m-0 w-48 rounded-control border border-line bg-surface py-1 shadow-lg"
+          className="fixed inset-auto top-(--menu-top) left-(--menu-left) m-0 w-48 rounded-control border border-line bg-surface p-1 shadow-lg"
           style={{ '--menu-top': `${actionMenuPosition.top}px`, '--menu-left': `${actionMenuPosition.left}px` } as CSSProperties}
           onToggle={(event) => {
             setOpenActionRow(event.nativeEvent.newState === 'open' ? row.id : null);
@@ -361,49 +363,45 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             }
           }}
         >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
+          <MenuItem
             onClick={(event) => {
               event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover();
               navigate(`/quotations/${encodeURIComponent(row.id)}`);
             }}
           >
-            <Pencil size={15} /> Editar
-          </button>
+            <Pencil /> Editar
+          </MenuItem>
           {row.revisionId && (
-            <a
-              href={buildQuotationPreviewUrl(row.revisionId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
-              onClick={(event) =>
-                event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover()
-              }
-            >
-              <FileText size={15} /> Visualizar PDF
-            </a>
+            <MenuItem asChild>
+              <a
+                href={buildQuotationPreviewUrl(row.revisionId)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) =>
+                  event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover()
+                }
+              >
+                <FileText /> Visualizar PDF
+              </a>
+            </MenuItem>
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover"
+          <MenuItem
             onClick={(event) => {
               event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover();
               setDuplicateTarget(row.id);
             }}
           >
-            <Copy size={15} /> Duplicar
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+            <Copy /> Duplicar
+          </MenuItem>
+          <MenuItem
+            tone="destructive"
             onClick={(event) => {
               event.currentTarget.closest<HTMLElement>('[popover]')?.hidePopover();
               setDeleteTarget(row.id);
             }}
           >
-            <Trash2 size={15} /> Excluir
-          </button>
+            <Trash2 /> Excluir
+          </MenuItem>
         </div>
       </div>
     );
@@ -606,7 +604,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             >
               <div className="flex items-start justify-between gap-3">
                 <div
-                  className="flex min-w-0 items-center gap-2"
+                  className="flex min-w-0 items-center gap-2 text-sm"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <input

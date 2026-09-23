@@ -383,16 +383,17 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const formatQuotation = (item: SalesOrderItem) => {
     if (item.source_quotation) {
       return (
-        <button
+        <Button
           type="button"
           onClick={(e: MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
             navigate(`/quotations/${encodeURIComponent(item.source_quotation!)}`);
           }}
-          className="text-link text-sm hover:underline"
+          variant="link"
+          size="inline"
         >
           {item.source_quotation}
-        </button>
+        </Button>
       );
     }
     return <span className="text-fg-muted">—</span>;
@@ -641,16 +642,17 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 <span>
                   Orçamento relacionado:{' '}
                   {row.source_quotation ? (
-                    <button
+                    <Button
                       type="button"
                       onClick={(e: MouseEvent<HTMLButtonElement>) => {
                         e.stopPropagation();
                         navigate(`/quotations/${encodeURIComponent(row.source_quotation || '')}`);
                       }}
-                      className="text-link hover:underline"
+                      variant="link"
+                      size="inline"
                     >
                       {row.source_quotation}
-                    </button>
+                    </Button>
                   ) : (
                     '—'
                   )}

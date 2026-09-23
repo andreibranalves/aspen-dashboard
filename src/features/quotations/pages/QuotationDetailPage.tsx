@@ -76,6 +76,7 @@ import {
   type ProjectedQuotationData,
   type ProjectedQuotationItem,
 } from '@/lib/localProjections';
+import { MenuItem } from '@/components/ui/menu-item';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
 const LEGACY_CONVERSATION_STATUS: Record<string, { label: string; badge: string }> = {
@@ -1208,13 +1209,14 @@ function CoreQuotationDetail({
               </div>
             </div>
             {data.clienteId && (
-              <button
+              <Button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-control border border-line px-3 py-2 text-xs font-medium hover:bg-raised"
+                variant="outline"
+                size="xs"
                 onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
               >
-                <ArrowUpRight size={14} aria-hidden="true" /> Abrir cliente
-              </button>
+                <ArrowUpRight aria-hidden="true" /> Abrir cliente
+              </Button>
             )}
           </div>
           {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && <div className="mt-5 flex items-center justify-between border-t border-line pt-4 text-xs"><span className="text-fg-muted">Origem</span><span>{data.quotationOrigin.sourceLabel}</span></div>}
@@ -1392,9 +1394,10 @@ function CoreQuotationDetail({
                             </TableCell>
                             <TableCell>
                               {entry.status !== 'rascunho' ? (
-                                <button
+                                <Button
                                   type="button"
-                                  className="text-xs font-medium text-primary hover:underline"
+                                  variant="link"
+                                  size="inline"
                                   onClick={() => {
                                     window.open(
                                       `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
@@ -1404,7 +1407,7 @@ function CoreQuotationDetail({
                                   }}
                                 >
                                   Visualizar
-                                </button>
+                                </Button>
                               ) : (
                                 <span className="text-xs text-fg-muted">—</span>
                               )}
@@ -1687,28 +1690,25 @@ function CoreQuotationDetail({
                         aria-label="Ações do orçamento"
                         className="absolute right-0 top-12 z-40 w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
                       >
-                        <button
-                          type="button"
+                        <MenuItem
                           role="menuitem"
-                          className="block w-full rounded-badge px-3 py-2 text-left text-sm hover:bg-surface-subtle"
                           onClick={() => {
                             setMenuOpen(false);
                             setTechDetailsOpen(true);
                           }}
                         >
                           Detalhes técnicos
-                        </button>
-                        <button
-                          type="button"
+                        </MenuItem>
+                        <MenuItem
                           role="menuitem"
-                          className="block w-full rounded-badge px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+                          tone="destructive"
                           onClick={() => {
                             setMenuOpen(false);
                             setConfirmDeleteOpen(true);
                           }}
                         >
-                          <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
-                        </button>
+                          <Trash2 aria-hidden="true" /> Excluir orçamento
+                        </MenuItem>
                       </div>
                     )}
                     {menuOpen && (
@@ -1825,29 +1825,32 @@ function CoreQuotationDetail({
                         )}
                         {data.clienteId && (
                           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                            <button
+                            <Button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline"
+                              variant="link"
+                              size="inline"
                               onClick={() =>
                                 navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)
                               }
                             >
                               Ver cliente
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline"
+                              variant="link"
+                              size="inline"
                               onClick={() => navigate('/crm')}
                             >
                               Abrir no CRM
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline"
+                              variant="link"
+                              size="inline"
                               onClick={() => navigate('/quotations')}
                             >
                               Ver orçamentos anteriores
-                            </button>
+                            </Button>
                           </div>
                         )}
                       </>
@@ -2144,14 +2147,15 @@ function CoreQuotationDetail({
                               </TableCell>
                               {editing && (
                                 <TableCell>
-                                  <button
+                                  <Button
                                     type="button"
-                                    className="text-fg-muted hover:text-destructive"
+                                    variant="ghost-muted-destructive"
+                                    size="icon-sm"
                                     onClick={() => removeItem(item._key)}
                                     aria-label={`Remover item ${item.item_name || item.sku}`}
                                   >
                                     <X size={15} />
-                                  </button>
+                                  </Button>
                                 </TableCell>
                               )}
                             </TableRow>
@@ -2268,9 +2272,10 @@ function CoreQuotationDetail({
                               </TableCell>
                               <TableCell>
                                 {entry.status !== 'rascunho' ? (
-                                  <button
+                                  <Button
                                     type="button"
-                                    className="text-xs text-primary hover:underline"
+                                    variant="link"
+                                    size="inline"
                                     onClick={() => {
                                       window.open(
                                         `/api/quotation-preview?id=${encodeURIComponent(entry.revisionId)}&format=pdf`,
@@ -2280,7 +2285,7 @@ function CoreQuotationDetail({
                                     }}
                                   >
                                     Visualizar
-                                  </button>
+                                  </Button>
                                 ) : (
                                   <span className="text-xs text-fg-muted">—</span>
                                 )}

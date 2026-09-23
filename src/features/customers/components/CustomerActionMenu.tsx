@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Archive, ArchiveRestore, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { MenuItem } from '@/components/ui/menu-item';
 
 export interface CustomerActionMenuProps {
   archived: boolean;
@@ -68,19 +70,19 @@ export function CustomerActionMenu({
 
   return (
     <div className="relative inline-block">
-      <button
+      <Button
         ref={triggerRef}
         type="button"
+        variant="ghost-muted"
+        size="icon"
         aria-label={accessibleLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         title={accessibleLabel}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-control text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
       >
-        <MoreHorizontal className="size-4" aria-hidden="true" />
-        <span className="sr-only">{accessibleLabel}</span>
-      </button>
+        <MoreHorizontal aria-hidden="true" />
+      </Button>
       {open && (
         <div
           ref={menuRef}
@@ -88,25 +90,21 @@ export function CustomerActionMenu({
           aria-label={accessibleLabel}
           className="absolute right-0 top-full z-20 mt-1 min-w-44 rounded-control border border-line bg-surface p-1 shadow-lg"
         >
-          <button
+          <MenuItem
             ref={actionRef}
-            type="button"
             role="menuitem"
             onClick={() => {
               dismiss(true);
               onArchiveToggle();
             }}
-            className="flex min-h-9 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-fg transition-colors hover:bg-surface-hover"
           >
-            <Icon className="size-4" aria-hidden="true" />
+            <Icon aria-hidden="true" />
             {actionLabel}
-          </button>
+          </MenuItem>
           {onDelete && (
-            <button type="button" role="menuitem"
-              onClick={() => { dismiss(true); onDelete(); }}
-              className="flex min-h-9 w-full items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10">
-              <Trash2 className="size-4" aria-hidden="true" /> Excluir cliente
-            </button>
+            <MenuItem role="menuitem" tone="destructive" onClick={() => { dismiss(true); onDelete(); }}>
+              <Trash2 aria-hidden="true" /> Excluir cliente
+            </MenuItem>
           )}
         </div>
       )}

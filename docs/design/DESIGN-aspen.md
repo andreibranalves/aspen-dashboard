@@ -78,22 +78,25 @@ never add their own focus ring. Rows inside clipped containers add
 ### Controls
 
 Fields, selects and the default button are 40px. Button sizes: `xs` 28, `sm`
-32 (dense rows, inline retry), `md` 36, default/`lg` 40, `inline` (no box, for
-links in text or tables). `Input` and `Select` take `size` `default` 40, `sm`
+32 (dense rows, inline retry), `md` 36, default/`lg` 40, `icon` 36, `icon-sm`
+32, `inline` (no box and inherited font size, for links in text or tables). `Input` and `Select` take `size` `default` 40, `sm`
 32, `xs` 28; `Select size="icon"` is the compact move-to menu. Filled buttons
 show a tinted disabled state at full opacity; quiet variants fade.
 
 Appearance comes from props, never from `className` on a `components/ui`
 primitive. `eslint.config.js` enforces this with `shadcn/no-restyle`
 (`className` may carry layout only, plus the per-component `contracts`) and
-`shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant:
+`shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant. Actions use `Button` or
+`MenuItem`; a plain `<button>` is only for list options, selectable cards,
+disclosure toggles and navigation chrome:
 
 | Component | Props |
 | --- | --- |
-| `Button` | `variant`: `default`, `destructive`, `outline`, `outline-destructive`, `outline-ink` (on colored panels), `secondary`, `soft`, `ghost`, `ghost-muted`, `ghost-destructive`, `link`, `success` |
+| `Button` | `variant`: `default`, `destructive`, `outline`, `outline-destructive`, `outline-ink` (on colored panels), `secondary`, `soft`, `ghost`, `ghost-muted`, `ghost-destructive`, `ghost-muted-destructive` (remove icons), `link`, `success` |
 | `Table` | `density`: `default` (lists), `compact` (documents), `dense` (editable tables in cards); `edges`: `flush`, `inset` |
 | `TableRow` | `selected`, `tone="warning"`, `interactive` |
 | `Input` | `size`, `hideSpinButtons` |
+| `MenuItem` | `tone`: `default`, `destructive`; `asChild` for links |
 | `Textarea` | `variant`: `default`, `code`, `bare` (composer inside a bordered box) |
 | `StatusBadge` | `status` maps to a tone; `tone` overrides it |
 

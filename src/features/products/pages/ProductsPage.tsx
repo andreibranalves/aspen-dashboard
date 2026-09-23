@@ -542,7 +542,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                       <div className="flex shrink-0 items-center gap-1">
                         <StatusBadge status={state.status} label={state.label} />
                         <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
-                          variant="ghost-muted"
+                          variant="ghost-muted-destructive"
                           size="icon"
                           aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                           title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}

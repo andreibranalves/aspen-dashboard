@@ -368,25 +368,27 @@ export default function OrderTemplateManager({
                           <p className="break-words text-sm text-fg">{item.name}</p>
                           <p className="font-mono text-xs text-fg-muted">{item.sku}</p>
                         </div>
-                        <button
+                        <Button
                           type="button"
                           aria-label={`Mover ${item.sku} para cima`}
                           onClick={() => moveItem(index, -1)}
                           disabled={saving || index === 0}
-                          className="rounded-control p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
+                          variant="ghost-muted"
+                          size="icon-sm"
                         >
                           <ChevronUp size={15} />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           aria-label={`Mover ${item.sku} para baixo`}
                           onClick={() => moveItem(index, 1)}
                           disabled={saving || index === selectedItems.length - 1}
-                          className="rounded-control p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
+                          variant="ghost-muted"
+                          size="icon-sm"
                         >
                           <ChevronDown size={15} />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           aria-label={`Remover ${item.sku}`}
                           onClick={() =>
@@ -395,10 +397,11 @@ export default function OrderTemplateManager({
                             )
                           }
                           disabled={saving}
-                          className="rounded-control p-1 text-fg-muted hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                          variant="ghost-muted-destructive"
+                          size="icon-sm"
                         >
                           <Trash2 size={15} />
-                        </button>
+                        </Button>
                       </div>
                     ))
                   )}

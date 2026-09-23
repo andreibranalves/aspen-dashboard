@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowUpRight, FileText, Image, Trash2, Video } from 'lucide-react';
 import type { MediaItem } from '@/lib/api/communicationApi';
+import { Button } from '@/components/ui/button';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '';
@@ -35,9 +36,9 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {item.active === false && <span className="rounded-control bg-raised px-2 py-1 text-3xs text-fg-muted">Inativa</span>}
-          {onDelete && <button type="button" onClick={() => onDelete(item)} className="inline-flex size-8 items-center justify-center rounded-control text-fg-muted opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100" aria-label={`Remover ${item.title || 'mídia'}`}><Trash2 size={14} aria-hidden="true" /></button>}
+          {onDelete && <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"><Button type="button" variant="ghost-muted-destructive" size="icon-sm" onClick={() => onDelete(item)} aria-label={`Remover ${item.title || 'mídia'}`}><Trash2 aria-hidden="true" /></Button></span>}
         </div>
-        {item.blob_url && <a href={item.blob_url} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-control border border-line px-2 text-xs hover:bg-raised"><ArrowUpRight size={14} aria-hidden="true" />Ver mídia</a>}
+        {item.blob_url && <Button asChild variant="outline" size="xs"><a href={item.blob_url} target="_blank" rel="noopener noreferrer"><ArrowUpRight aria-hidden="true" />Ver mídia</a></Button>}
       </div>
     </article>
   );

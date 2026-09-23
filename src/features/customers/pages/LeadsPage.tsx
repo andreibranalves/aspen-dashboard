@@ -768,7 +768,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         {[row.municipio, row.uf].filter(Boolean).join(', ') || '—'}
                       </TableCell>
                       <TableCell>
-                        <button type="button" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} className="text-xs text-fg hover:text-light-sage hover:underline" aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</button>
+                        <Button type="button" variant="link" size="inline" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</Button>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />

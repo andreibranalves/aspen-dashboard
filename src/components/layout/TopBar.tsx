@@ -3,6 +3,8 @@ import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER } from '@/app/navigation';
 import { applyTheme, readTheme } from '@/lib/theme';
 import type { BreadcrumbItem } from './Layout';
+import { Button } from '@/components/ui/button';
+import { MenuItem } from '@/components/ui/menu-item';
 
 export interface TopBarProps {
   route?: string;
@@ -73,16 +75,17 @@ export default function TopBar({
     <header className="mb-5 flex min-h-14 shrink-0 items-center justify-between gap-4 bg-page">
       <div className="flex min-w-0 items-center gap-3">
         {isMobile && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={onMenuClick}
-            className="flex min-h-10 min-w-10 items-center justify-center rounded-control text-fg transition-colors hover:bg-raised"
             aria-label="Abrir menu"
             aria-expanded={sidebarOpen}
             aria-controls="aspen-sidebar"
           >
-            <Menu size={20} aria-hidden="true" />
-          </button>
+            <Menu aria-hidden="true" />
+          </Button>
         )}
         <nav
           className="flex min-w-0 items-center gap-2 overflow-hidden text-compact text-fg-muted"
@@ -141,14 +144,9 @@ export default function TopBar({
             <div className="absolute right-0 top-[52px] z-40 w-[244px] overflow-hidden rounded-control border border-line bg-surface p-1 shadow-lg">
               {matches.length > 0 ? (
                 matches.map((item) => (
-                  <button
-                    key={item.hash}
-                    type="button"
-                    onClick={() => navigateFromSearch(item.hash)}
-                    className="flex w-full items-center rounded-control px-3 py-2 text-left text-sm text-fg hover:bg-raised"
-                  >
+                  <MenuItem key={item.hash} onClick={() => navigateFromSearch(item.hash)}>
                     {item.label}
-                  </button>
+                  </MenuItem>
                 ))
               ) : (
                 <p className="px-3 py-2 text-xs text-fg-muted">Nenhuma tela encontrada</p>
@@ -157,16 +155,17 @@ export default function TopBar({
           )}
         </div>
         <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
-        <button type="button" onClick={() => onNavigate('/crm?tab=queue')} className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg" aria-label="Abrir fila comercial"><Bell size={17} aria-hidden="true" /></button>
-        <button
+        <Button type="button" variant="ghost-muted" size="icon" onClick={() => onNavigate('/crm?tab=queue')} aria-label="Abrir fila comercial"><Bell aria-hidden="true" /></Button>
+        <Button
           type="button"
+          variant="ghost-muted"
+          size="icon"
           onClick={toggleTheme}
-          className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg"
           aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
           title={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
         >
-          {theme === 'dark' ? <Sun size={17} aria-hidden="true" /> : <Moon size={17} aria-hidden="true" />}
-        </button>
+          {theme === 'dark' ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        </Button>
       </div>
     </header>
   );
