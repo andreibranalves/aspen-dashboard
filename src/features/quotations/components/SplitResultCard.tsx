@@ -412,6 +412,7 @@ export default function SplitResultCard({
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(reviewOnly);
   const [templateExpanded, setTemplateExpanded] = useState(false);
+  const [opportunityExpanded, setOpportunityExpanded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const editingBlocked = Boolean(isProcessing || isSavingDraft || parentEditingBlocked);
   const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
@@ -637,7 +638,7 @@ export default function SplitResultCard({
       {/* ── Header ── */}
       <div
         className={cn(
-          'flex items-start justify-between gap-3 rounded-t-card bg-raised p-4',
+          'flex items-start justify-between gap-3 rounded-t-control bg-raised p-4',
           !isDone && 'border-b border-border-subtle'
         )}
       >
@@ -775,7 +776,25 @@ export default function SplitResultCard({
       {/* ── Demand selector (automatic flow) ── */}
       {!isDone && opportunitySelector && (
         <div className="border-b border-border-subtle bg-raised/60 px-4 py-3">
-          {opportunitySelector}
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 text-left text-[10px] font-medium text-fg-muted"
+            aria-expanded={opportunityExpanded}
+            aria-controls={`quotation-opportunity-${draft.index}`}
+            onClick={() => setOpportunityExpanded((expanded) => !expanded)}
+          >
+            Oportunidade
+            <ChevronDown
+              size={14}
+              aria-hidden="true"
+              className={cn('transition-transform', opportunityExpanded && 'rotate-180')}
+            />
+          </button>
+          {opportunityExpanded && (
+            <div id={`quotation-opportunity-${draft.index}`} className="mt-3">
+              {opportunitySelector}
+            </div>
+          )}
         </div>
       )}
 
@@ -1019,7 +1038,7 @@ export default function SplitResultCard({
       )}
 
       {isDone && (
-        <div className="rounded-b-card border-t border-border-subtle bg-raised/60 px-4 pb-3">
+        <div className="border-t border-border-subtle bg-raised/60 px-4 pb-3">
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
@@ -1041,7 +1060,7 @@ export default function SplitResultCard({
       )}
 
       {/* ── Stage 3 + actions ── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-b-card border-t border-border-subtle bg-raised p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-b-control border-t border-border-subtle bg-raised p-3">
         {!isDone && actionBlockMessage && (
           <p
             id={actionStatusId}

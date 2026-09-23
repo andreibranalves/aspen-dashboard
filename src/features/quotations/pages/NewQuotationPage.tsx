@@ -8,7 +8,6 @@ import {
   type ClipboardEvent,
 } from 'react';
 import {
-  Image as ImageIcon,
   Loader2,
   MapPin,
   PackagePlus,
@@ -18,6 +17,7 @@ import {
   Trash2,
   MessagesSquare,
   PencilLine,
+  X,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
 import { isApiError } from '@/types/api';
@@ -564,7 +564,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [addingSku, setAddingSku] = useState<string | null>(null);
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { imageData, imagePreview, imageInputRef, clearImage, handleImageFile, handleDragOver, handleDragLeave, handleDrop } = useImageInput();
+  const { imageData, imagePreview, clearImage, handleImageFile, handleDragOver, handleDragLeave, handleDrop } = useImageInput();
 
   const beginOfficialIssue = useCallback((key: string) => {
     officialIssueKeys.current.add(key);
@@ -628,7 +628,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const activeClientResolution = activeDraft
     ? clientResolution.views[activeDraft.index]
     : undefined;
-  const draftCountLabel = activeDrafts.length === 1 ? '1 rascunho' : `${activeDrafts.length} rascunhos`;
   const issuedRevisionIds = useMemo(() => activeDrafts.flatMap((draft) => {
     const stored = draft as StoredAutoQuoteDraft;
     const issue = stored.issue;
@@ -1975,46 +1974,25 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       ? deliveryErrorsByKey[activeDeliveryKey] || enqueueErrorByKey[activeDeliveryKey]
       : undefined);
 
-  const headlineDescription = mode === 'conversation' && activeDraft
-    ? `${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}`
-    : undefined;
-
   return (
     <PageShell className="min-w-0 space-y-6 overflow-x-hidden pb-10">
       <PageHeader
         title="Novo orçamento"
-        description={headlineDescription}
+        className="items-center"
         actions={
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
-            {mode === 'conversation' && activeDrafts.length > 0 && (
-              <label className="flex min-w-0 max-w-full flex-[1_1_12rem] items-center gap-2 text-xs text-fg-muted">
-                <span>Rascunho ativo</span>
-                <Select
-                  aria-label="Rascunho ativo"
-                  value={activeDraftIndex ?? ''}
-                  onChange={(event) => setActiveDraftIndex(Number(event.target.value))}
-                  disabled={liveDraftOperation}
-                  className="max-w-full flex-1"
-                >
-                  {activeDrafts.map((draft) => <option key={draft.index} value={draft.index}>{draft.edited.nome || 'Cliente'} · #{draft.index + 1}</option>)}
-                </Select>
-              </label>
-            )}
-          </div>
+          <TabBar
+            value={mode}
+            onValueChange={switchMode}
+            label="Modo de criação"
+            idPrefix="quotation-mode"
+            variant="segmented"
+            className="!mt-0"
+            items={[
+              { value: 'conversation', label: 'A partir de uma conversa', icon: MessagesSquare, disabled: pricingPending },
+              { value: 'manual', label: 'Preencher manualmente', icon: PencilLine, disabled: pricingPending },
+            ]}
+          />
         }
-      />
-
-      <TabBar
-        value={mode}
-        onValueChange={switchMode}
-        label="Modo de criação"
-        idPrefix="quotation-mode"
-        variant="segmented"
-        className="!mt-3"
-        items={[
-          { value: 'conversation', label: 'A partir de uma conversa', icon: MessagesSquare, disabled: pricingPending },
-          { value: 'manual', label: 'Preencher manualmente', icon: PencilLine, disabled: pricingPending },
-        ]}
       />
 
       {manual.originPrefill && (
@@ -2064,7 +2042,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
+        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:grid-cols-2">
           <section aria-label="Conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -2078,29 +2056,39 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
               <span>Cole a conversa ou adicione uma imagem</span>
             </div>
-            <Textarea
-              ref={textareaRef}
-              aria-label="Mensagem do cliente para extração"
-              value={text}
-              disabled={extracting || liveDraftOperation}
-              onChange={(event) => setText(event.target.value)}
-              onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                for (const item of Array.from(event.clipboardData?.items || [])) {
-                  if (item.type.startsWith('image/')) { event.preventDefault(); handleImageFile(item.getAsFile()); break; }
-                }
-              }}
-              placeholder="Cole aqui a mensagem do cliente..."
-              className="mt-4 min-h-[190px] rounded-control bg-raised py-4 leading-6"
-            />
-            <div className="mt-4 rounded-control border border-dashed border-border-control p-3" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-              <input id="new-quotation-image" ref={imageInputRef} type="file" accept="image/*" className="sr-only" aria-label="Imagem de referência" onChange={(event) => handleImageFile(event.target.files?.[0] ?? null)} />
-              <div className="flex min-h-14 flex-wrap items-center gap-3">
-                {imagePreview ? <img src={imagePreview} alt="Prévia da solicitação" className="size-12 rounded-control object-cover" /> : <ImageIcon size={20} className="text-fg-muted" aria-hidden="true" />}
-                <button type="button" disabled={liveDraftOperation} onClick={() => imageInputRef.current?.click()} className="min-h-9 flex-1 text-left text-sm text-fg-muted hover:text-fg disabled:opacity-50">
-                  {imageData ? 'Trocar imagem de referência' : 'Selecionar imagem de referência · opcional'}
+            <div className="relative mt-4 rounded-control border border-border-control bg-raised focus-within:ring-2 focus-within:ring-focus">
+              <Textarea
+                ref={textareaRef}
+                aria-label="Mensagem do cliente para extração"
+                value={text}
+                disabled={extracting || liveDraftOperation}
+                onChange={(event) => setText(event.target.value)}
+                onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+                  for (const item of Array.from(event.clipboardData?.items || [])) {
+                    if (item.type.startsWith('image/')) { event.preventDefault(); handleImageFile(item.getAsFile()); break; }
+                  }
+                }}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                placeholder="Cole aqui a mensagem do cliente..."
+                className={`mt-0 min-h-[190px] rounded-control border-0 bg-transparent leading-6 focus-visible:outline-none focus-visible:ring-0 ${imagePreview ? 'pt-20 pb-4' : 'py-4'}`}
+              />
+              {imagePreview && (
+                <button
+                  type="button"
+                  aria-label="Remover imagem colada"
+                  title="Remover imagem"
+                  disabled={liveDraftOperation}
+                  onClick={clearImage}
+                  className="group absolute left-3 top-3 size-14 overflow-hidden rounded-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-50"
+                >
+                  <img src={imagePreview} alt="" className="size-full object-cover" />
+                  <span aria-hidden="true" className="absolute inset-0 grid place-items-center bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    <X size={14} />
+                  </span>
                 </button>
-                {imageData && <Button type="button" variant="ghost" size="sm" onClick={clearImage} disabled={liveDraftOperation}>Remover</Button>}
-              </div>
+              )}
             </div>
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <Button type="button" onClick={() => void handleExtract()} disabled={extracting || liveDraftOperation || (!text.trim() && !imageData)}>
@@ -2110,16 +2098,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </div>
           </section>
 
-          <aside aria-labelledby="before-issue-title" className="rounded-card bg-surface p-5 md:p-6 xl:col-start-2 xl:row-start-1">
-            <h2 id="before-issue-title" className="text-base font-semibold text-fg">Antes de emitir</h2>
-            <ol className="mt-5 space-y-5 border-l border-line pl-5 text-sm">
-              <li><strong className="block font-semibold text-fg">Identifique o cliente</strong><span className="mt-1 block text-fg-muted">Evite cadastros duplicados.</span></li>
-              <li><strong className="block font-semibold text-fg">Vincule a oportunidade</strong><span className="mt-1 block text-fg-muted">Selecione a demanda correspondente.</span></li>
-              <li><strong className="block font-semibold text-fg">Confira a proposta</strong><span className="mt-1 block text-fg-muted">Revise itens, preços e condições.</span></li>
-            </ol>
-          </aside>
-
-          {(activeDrafts.length > 0 || pendingExtraction.length > 0) && <section aria-label="Resultado da conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6 xl:col-start-1">
+          <section aria-label="Resultado da conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6 xl:col-start-2 xl:row-start-1">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-fg">Resultado</h2>
@@ -2241,7 +2220,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 />
               </div>
             ))}
-          </section>}
+          </section>
         </div>
       ) : (
         <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="!mt-3 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
