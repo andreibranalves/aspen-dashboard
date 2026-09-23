@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
-import { formatDateTime } from '@/lib/formatting/formatters';
+import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 
 type SendStatus = 'sent' | 'failed' | 'skipped' | 'pending';
