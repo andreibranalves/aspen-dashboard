@@ -203,8 +203,8 @@ test('lista de orçamentos apresenta resumo, revisão, demanda e abre o item sel
 
   await page.goto('/#/quotations');
   await expect(page.getByRole('heading', { name: 'Orçamentos' })).toBeVisible();
-  await expect(page.getByText('Volume das propostas')).toBeVisible();
-  await expect(page.getByText('Soma dos itens desta página')).toBeVisible();
+  await expect(page.getByText('Perdidos')).toBeVisible();
+  await expect(page.getByText('Com motivo registrado')).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Orçamento · revisão' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ORC-20260007', exact: true }).first()).toBeVisible();
   await expect(page.getByText('Rev. 3').first()).toBeVisible();

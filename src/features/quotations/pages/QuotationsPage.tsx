@@ -12,13 +12,14 @@ import {
   FilePlus2,
   Send,
   BadgeCheck,
-  Wallet,
   ChevronRight,
+  CircleX,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
@@ -315,7 +316,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     }
   }, [someSelected]);
 
-  const visibleVolume = data.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
+  const summaryPending = loading && Object.keys(statusSummary).length === 0;
 
   const actionButtons = (row: QuotationRow, placement: 'desktop' | 'mobile') => {
     const label = row.businessNumber;
@@ -463,23 +464,16 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         }
       />
 
-      <section aria-label="Resumo dos orçamentos" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <StatGrid label="Resumo dos orçamentos">
         {[
           { label: 'Rascunhos', value: statusSummary.Rascunho ?? 0, note: 'Ainda não emitidos', Icon: FilePlus2 },
           { label: 'Emitidos', value: statusSummary.Enviado ?? 0, note: 'Aguardando decisão', Icon: Send },
           { label: 'Aprovados', value: statusSummary.Aprovado ?? 0, note: 'Prontos para avançar', Icon: BadgeCheck },
-          { label: 'Volume das propostas', value: formatBRL(visibleVolume), note: 'Soma dos itens desta página', Icon: Wallet },
+          { label: 'Perdidos', value: statusSummary.Perdido ?? 0, note: 'Com motivo registrado', Icon: CircleX },
         ].map(({ label, value, note, Icon }) => (
-          <div key={label} className="relative min-h-[145px] rounded-card bg-surface p-[22px]">
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-fg-muted">{label}</p>
-              <p className="mt-4 break-words text-[24px] font-bold tracking-tight text-fg [font-variant-numeric:tabular-nums]">{value}</p>
-              <p className="mt-4 text-[11px] text-fg-muted">{note}</p>
-            </div>
-            <Icon size={18} className="absolute right-[22px] top-[22px] text-fg-muted" aria-hidden="true" />
-          </div>
+          <StatCard key={label} icon={Icon} label={label} value={String(value)} metadata={note} loading={summaryPending} />
         ))}
-      </section>
+      </StatGrid>
 
       <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-card bg-surface p-5">
         <PageToolbar className="mb-5">

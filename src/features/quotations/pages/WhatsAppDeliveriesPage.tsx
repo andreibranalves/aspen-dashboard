@@ -9,6 +9,7 @@ import QuotationDeliveryStatus from '@/features/quotations/components/QuotationD
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
+import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import PageToolbar from '@/components/shared/PageToolbar';
 import { SearchField } from '@/components/ui/search-field';
 import ListPagination from '@/components/shared/ListPagination';
@@ -608,14 +609,18 @@ export default function WhatsAppDeliveriesPage() {
         </div>
       </div>
 
-      {activeTab === 'pending' && <section aria-label="Resumo dos envios" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: 'Requer ação', value: result?.summary.requiresAction, note: 'Revisão operacional', Icon: AlertTriangle },
-          { label: 'Em andamento', value: result?.summary.active, note: 'Ainda não entregue', Icon: Clock3 },
-          { label: 'Reagendados', value: result?.summary.retryScheduled, note: 'Próxima tentativa', Icon: RefreshCw },
-          { label: 'Entregues', value: result?.summary.deliveredLast24Hours, note: 'Últimas 24 horas', Icon: Check },
-        ].map(({ label, value, note, Icon }) => <div key={label} className="relative min-h-[145px] rounded-card bg-surface p-[22px]"><p className="text-xs text-fg-muted">{label}</p><Icon size={16} className="absolute right-[22px] top-[22px] text-fg-muted" aria-hidden="true" /><p className="mt-4 text-[28px] font-bold tabular-nums">{value ?? '—'}</p><p className="mt-3 text-[11px] text-fg-muted">{note}</p></div>)}
-      </section>}
+      {activeTab === 'pending' && (
+        <StatGrid label="Resumo dos envios">
+          {[
+            { label: 'Requer ação', value: result?.summary.requiresAction, note: 'Revisão operacional', Icon: AlertTriangle },
+            { label: 'Em andamento', value: result?.summary.active, note: 'Ainda não entregue', Icon: Clock3 },
+            { label: 'Reagendados', value: result?.summary.retryScheduled, note: 'Próxima tentativa', Icon: RefreshCw },
+            { label: 'Entregues', value: result?.summary.deliveredLast24Hours, note: 'Últimas 24 horas', Icon: Check },
+          ].map(({ label, value, note, Icon }) => (
+            <StatCard key={label} icon={Icon} label={label} value={value ?? '—'} metadata={note} loading={loading && !result} />
+          ))}
+        </StatGrid>
+      )}
 
       <TabPanel value={activeTab}>
         {activeTab === 'history' && (

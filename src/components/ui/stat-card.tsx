@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
  * Abaixo de `md` fica compacto para a lista de trabalho aparecer na primeira dobra.
  */
 export interface StatCardProps {
-  icon: LucideIcon;
+  icon?: LucideIcon;
   label: string;
   value: ReactNode;
   /** metadado opcional (ex.: variação vs período anterior) */
@@ -19,6 +19,8 @@ export interface StatCardProps {
 }
 
 export function StatCard({ icon: Icon, label, value, metadata, footer, loading = false, className }: StatCardProps) {
+  // Names (e.g. "Produto líder") would not fit the numeric display size.
+  const textValue = typeof value === 'string' && value.length > 16 && /[a-zA-ZÀ-ÿ]{3}/.test(value) ? value : undefined;
   return (
     <div
       aria-busy={loading || undefined}
@@ -29,11 +31,19 @@ export function StatCard({ icon: Icon, label, value, metadata, footer, loading =
     >
       <div className="flex items-center justify-between gap-3 text-xs text-fg-muted">
         <span className="min-w-0 truncate font-medium">{label}</span>
-        <span className="hidden size-8 shrink-0 place-items-center rounded-control bg-raised text-light-sage md:grid">
-          <Icon className="size-4" aria-hidden="true" />
-        </span>
+        {Icon && (
+          <span className="hidden size-8 shrink-0 place-items-center rounded-control bg-raised text-light-sage md:grid">
+            <Icon className="size-4" aria-hidden="true" />
+          </span>
+        )}
       </div>
-      <div className="text-[22px] font-bold leading-tight tracking-[-0.04em] tabular-nums text-fg md:text-[28px]">
+      <div
+        title={textValue}
+        className={cn(
+          'font-bold leading-tight tracking-[-0.04em] tabular-nums text-fg',
+          textValue ? 'line-clamp-2 break-words text-base md:text-lg' : 'text-[22px] md:text-[28px]'
+        )}
+      >
         {loading ? <span className="skeleton-text w-16 max-w-full" aria-label="Carregando" /> : value}
       </div>
       {(metadata != null || footer != null) && (

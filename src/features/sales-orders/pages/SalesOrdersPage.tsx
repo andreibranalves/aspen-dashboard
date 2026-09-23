@@ -425,44 +425,34 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">
             {summaryPeriodLabel}
           </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {summaryLoading
-              ? Array.from({ length: 4 }, (_, index) => (
-                  <Skeleton key={index} className="h-[145px] rounded-card" />
-                ))
-              : summaryData && (
-                  <>
-                    <StatCard
-                      icon={ShoppingCart}
-                      label="Pedidos"
-                      value={String(summaryData.orders_count)}
-                      metadata={
-                        summaryData.orders_count === 0 ? undefined : `${summaryData.orders_count} no período`
-                      }
-                      className="border-border-subtle bg-surface"
-                    />
-                    <StatCard
-                      icon={DollarSign}
-                      label="Receita"
-                      value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-                      metadata={formatSummaryDelta(summaryData.revenue_delta, summaryData.total_revenue)}
-                      className="border-border-subtle bg-surface"
-                    />
-                    <StatCard
-                      icon={Package}
-                      label="Em aberto"
-                      value={String(summaryData.open_orders)}
-                      className="border-border-subtle bg-surface"
-                    />
-                    <StatCard
-                      icon={TrendingUp}
-                      label="Ticket médio"
-                      value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-                      metadata={formatSummaryDelta(summaryData.avg_ticket_delta, summaryData.avg_ticket)}
-                      className="border-border-subtle bg-surface"
-                    />
-                  </>
-                )}
+          <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+            <StatCard
+              icon={ShoppingCart}
+              label="Pedidos"
+              loading={summaryLoading}
+              value={summaryData ? String(summaryData.orders_count) : '—'}
+              metadata={summaryData && summaryData.orders_count > 0 ? `${summaryData.orders_count} no período` : undefined}
+            />
+            <StatCard
+              icon={DollarSign}
+              label="Receita"
+              loading={summaryLoading}
+              value={!summaryData || summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+              metadata={summaryData ? formatSummaryDelta(summaryData.revenue_delta, summaryData.total_revenue) : undefined}
+            />
+            <StatCard
+              icon={Package}
+              label="Em aberto"
+              loading={summaryLoading}
+              value={summaryData ? String(summaryData.open_orders) : '—'}
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Ticket médio"
+              loading={summaryLoading}
+              value={!summaryData || summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+              metadata={summaryData ? formatSummaryDelta(summaryData.avg_ticket_delta, summaryData.avg_ticket) : undefined}
+            />
           </div>
         </section>
       )}

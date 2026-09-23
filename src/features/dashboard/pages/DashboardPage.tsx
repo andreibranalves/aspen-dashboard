@@ -13,6 +13,7 @@ import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
+import { StatCard } from '@/components/ui/stat-card';
 import { TabBar } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -128,13 +129,7 @@ function formatExpense(value: number): string {
 }
 
 function MetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="flex min-h-[145px] min-w-0 flex-col rounded-card bg-surface p-[22px]">
-      <p className="truncate text-xs font-medium text-fg-muted">{label}</p>
-      <p className="mt-4 line-clamp-2 break-words text-[24px] font-bold leading-7 tabular-nums text-fg" title={value}>{value}</p>
-      <p className="mt-auto truncate pt-4 text-[11px] text-fg-muted">{detail}</p>
-    </div>
-  );
+  return <StatCard label={label} value={value} metadata={detail} />;
 }
 
 function DashboardTabs({
@@ -474,7 +469,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
   const orders = summary?.orders_count || 0;
   return (
     <div id={`results-panel-${kind}`} role="tabpanel" aria-labelledby={`results-tab-${kind}`} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
         <MetricCard label="Receita total" value={formatBRL(revenue)} detail="Pedidos confirmados" />
         <MetricCard label={product ? 'Produtos no ranking' : 'Clientes no ranking'} value={rows ? String(rows.length) : '—'} detail="Com vendas no período" />
         <MetricCard label={product ? 'Produto líder' : 'Maior participação'} value={rows?.[0]?.name || '—'} detail={rows?.[0] ? `${formatBRL(rows[0].revenue)} em receita` : 'Sem dados no período'} />
@@ -632,7 +627,7 @@ function FinancePanel({
       aria-labelledby="results-tab-finance"
       className="space-y-4"
     >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
         <MetricCard label="Receita" value={formatBRL(summary.total_revenue)} detail="Pedidos do período" />
         <MetricCard label="Custo dos produtos" value={formatBRL(summary.custo)} detail="Custos registrados" />
         <MetricCard label="Anúncios + impostos" value={formatBRL(summary.ads + summary.imposto)} detail="Gastos considerados" />
@@ -806,7 +801,7 @@ function UnavailableResults({
           aria-label="Resultados indisponíveis"
           className="space-y-4"
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
             {['Pedidos', 'Conversão', 'Receita', 'Ticket médio'].map((label) => (
               <MetricCard key={label} label={label} value="—" detail="Dados indisponíveis" />
             ))}
