@@ -5,7 +5,6 @@ import {
   useRef,
   type ChangeEvent,
   type DragEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
 } from 'react';
 import {
@@ -23,7 +22,9 @@ import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import PageToolbar from '@/components/shared/PageToolbar';
+import { SearchField } from '@/components/ui/search-field';
+import { TabBar } from '@/components/ui/tabs';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import {
@@ -90,8 +91,8 @@ function daysAgo(dateStr?: string | null): string {
 type CrmView = 'list' | 'board';
 const parseCrmView = parseHashOption<CrmView>(['list', 'board']);
 const CRM_VIEW_TABS = [
-  ['list', 'Lista', Rows3],
-  ['board', 'Quadro', Columns3],
+  { value: 'list', label: 'Lista', icon: Rows3 },
+  { value: 'board', label: 'Quadro', icon: Columns3 },
 ] as const;
 type StageFilter = string;
 const BOARD_STAGE_SWATCHES = ['rgb(var(--light-sage))', 'rgb(var(--orange))', 'rgb(var(--taupe))', 'rgb(var(--cream))'] as const;
@@ -133,26 +134,12 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
   const pendingMoveMenuFocusRef = useRef<string | null>(null);
-  const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function navigateFromLink(event: MouseEvent<HTMLAnchorElement>, target: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
       return;
     event.preventDefault();
     navigate(target.replace(/^#/, ''));
-  }
-
-  function handleViewTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % CRM_VIEW_TABS.length;
-    if (event.key === 'ArrowLeft')
-      nextIndex = (index - 1 + CRM_VIEW_TABS.length) % CRM_VIEW_TABS.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = CRM_VIEW_TABS.length - 1;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    setView(CRM_VIEW_TABS[nextIndex][0]);
-    viewTabRefs.current[nextIndex]?.focus();
   }
 
   function startQuotation(deal: Deal, leadName: string) {
@@ -336,7 +323,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           actions={
             <Button
               onClick={(): void => {
-                window.location.hash = '#/manual';
+                window.location.hash = '#/novo-orcamento';
               }}
             >
               <PlusCircle />
@@ -345,52 +332,26 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           }
         />
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-52 max-w-full">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
-          <Input placeholder="Buscar negócio ou cliente" value={search} onChange={onSearchChange} className="h-10 pl-9 text-xs" aria-label="Buscar negócios" />
-        </div>
-        <Select aria-label="Filtrar por etapa" value={stage} onChange={(event) => setStage(event.target.value)} className="h-10 w-auto min-w-36 text-xs">
-          <option value="all">Todos os status</option>
+      <PageToolbar>
+        <SearchField placeholder="Buscar negócio ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar negócios" />
+        <Select aria-label="Filtrar por etapa" value={stage} onChange={(event) => setStage(event.target.value)}>
+          <option value="all">Todas as etapas</option>
           {orderedColumns.map((column) => <option key={column.status} value={column.status}>{column.name} ({column.deals.length})</option>)}
         </Select>
         <div className="ml-auto flex items-center gap-2">
-          <div
-            className="flex rounded-control bg-surface-subtle p-1"
-            role="tablist"
-            aria-label="Visualização dos negócios"
-          >
-            {CRM_VIEW_TABS.map(([nextView, label, Icon], index) => (
-              <button
-                key={nextView}
-                ref={(element) => {
-                  viewTabRefs.current[index] = element;
-                }}
-                type="button"
-                role="tab"
-                id={`crm-view-tab-${nextView}`}
-                aria-controls="crm-view-panel"
-                aria-selected={view === nextView}
-                tabIndex={view === nextView ? 0 : -1}
-                className={cn(
-                  'inline-flex h-8 items-center gap-2 rounded-control px-3 text-xs transition-colors',
-                  view === nextView
-                    ? 'bg-primary font-medium text-on-solid'
-                    : 'text-fg-muted hover:bg-surface hover:text-fg'
-                )}
-                onClick={() => setView(nextView)}
-                onKeyDown={(event) => handleViewTabKeyDown(event, index)}
-              >
-                <Icon aria-hidden="true" />
-                {label}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setPipelineDialogOpen(true)}>
+          <TabBar
+            value={view}
+            onValueChange={setView}
+            label="Visualização dos negócios"
+            idPrefix="crm-view"
+            variant="segmented"
+            items={CRM_VIEW_TABS}
+          />
+          <Button variant="outline" onClick={() => setPipelineDialogOpen(true)}>
             <Settings2 aria-hidden="true" /> Etapas
           </Button>
         </div>
-      </div>
+      </PageToolbar>
 
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}
@@ -448,7 +409,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           actions={
             <>
               <Button asChild>
-                <a href="#/manual">Novo orçamento</a>
+                <a href="#/novo-orcamento">Novo orçamento</a>
               </Button>
               <Button variant="outline" asChild>
                 <a href="#/quotations">Ver orçamentos</a>
@@ -459,7 +420,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       )}
 
       {!loading && !error && hasDeals && view === 'list' && (
-        <div className="space-y-3" id="crm-view-panel">
+        <div className="space-y-3" id="crm-view-panel-list" role="tabpanel" aria-labelledby="crm-view-tab-list">
           {!narrowLayout && (
             <div className="overflow-x-auto rounded-card border border-line bg-surface p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -630,9 +591,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       {/* The board scrolls horizontally on narrow screens; drag/drop is only an enhancement. */}
       {!loading && !error && hasDeals && view === 'board' && (
         <div
-          role="region"
-          aria-label="Pipeline CRM"
-          id="crm-view-panel"
+          role="tabpanel"
+          aria-labelledby="crm-view-tab-board"
+          id="crm-view-panel-board"
           tabIndex={0}
           className="overflow-x-auto rounded-card [scrollbar-width:thin]"
         >

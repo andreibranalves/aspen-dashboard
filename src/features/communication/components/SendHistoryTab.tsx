@@ -118,7 +118,6 @@ function parseSendEvents(value: unknown): SendEvent[] {
 
 interface SendHistoryTabProps {
   onOpenQuotation: (quotationId: string) => void;
-  embedded?: boolean;
   filters?: {
     status?: 'all' | 'sent' | 'pending' | 'failed';
     search?: string;
@@ -127,7 +126,6 @@ interface SendHistoryTabProps {
   };
   onOpenDelivery?: (event: SendEvent) => void;
   refreshKey?: number;
-  onOpenDeliveries?: () => void;
   autoInspectId?: string | null;
 }
 
@@ -155,18 +153,14 @@ function stepsLabel(event: SendEvent): string | null {
 
 export default function SendHistoryTab({
   onOpenQuotation,
-  embedded = false,
   filters,
   onOpenDelivery,
   refreshKey = 0,
-  onOpenDeliveries,
   autoInspectId,
 }: SendHistoryTabProps) {
   const [events, setEvents] = useState<SendEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [localSearch, setLocalSearch] = useState('');
-  const [localStatus, setLocalStatus] = useState('all');
   const inspectedIdRef = useRef<string | null>(null);
 
   const loadEvents = useCallback(async () => {
@@ -218,8 +212,6 @@ export default function SendHistoryTab({
     const dateValue = event.sent_at || event.created_at || '';
     return (
       (!search || haystack.includes(search)) &&
-      (!localSearch.trim() || haystack.includes(localSearch.trim().toLocaleLowerCase('pt-BR'))) &&
-      (localStatus === 'all' || event.status === localStatus) &&
       (!from || dateValue.slice(0, 10) >= from) &&
       (!to || dateValue.slice(0, 10) <= to)
     );
@@ -228,28 +220,7 @@ export default function SendHistoryTab({
   if (loading) return <SkeletonComunicacao variant="list" />;
 
   return (
-    <section
-      className="space-y-4"
-      aria-label={embedded ? 'Histórico de envios' : undefined}
-      aria-labelledby={embedded ? undefined : 'send-history-title'}
-    >
-      {!embedded && (
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 id="send-history-title" className="text-sm text-fg-muted">
-              Registro de tentativas e resultados de comunicação.
-            </h2>
-          </div>
-          <div className="flex items-center gap-3">
-            {onOpenDeliveries && (
-              <Button type="button" variant="outline" size="sm" onClick={onOpenDeliveries}>
-                Abrir em Envios
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
+    <section className="space-y-4" aria-label="Histórico de envios">
       {error && (
         <div
           className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
@@ -265,11 +236,6 @@ export default function SendHistoryTab({
           </div>
         </div>
       )}
-
-      {!error && !embedded && <div className="flex flex-wrap gap-2 rounded-t-card bg-surface px-5 pt-5">
-        <input aria-label="Buscar cliente ou orçamento" placeholder="Buscar cliente ou orçamento" value={localSearch} onChange={(event) => setLocalSearch(event.target.value)} className="h-10 w-52 rounded-control border border-border-control bg-raised px-3 text-xs text-fg" />
-        <select aria-label="Filtrar histórico por status" value={localStatus} onChange={(event) => setLocalStatus(event.target.value)} className="h-10 rounded-control border border-border-control bg-raised px-3 text-xs text-fg"><option value="all">Todos os status</option><option value="sent">Enviado</option><option value="pending">Pendente</option><option value="failed">Falhou</option><option value="skipped">Ignorado</option></select>
-      </div>}
 
       {!error && visibleEvents.length === 0 && (
         <EmptyState
@@ -289,7 +255,7 @@ export default function SendHistoryTab({
       )}
 
       {!error && visibleEvents.length > 0 && (
-        <div className={embedded ? 'overflow-x-auto rounded-card bg-surface px-5 pb-5' : 'overflow-x-auto rounded-b-card bg-surface px-5 pb-5'}>
+        <div className="overflow-x-auto rounded-card bg-surface px-5 pb-5">
           <table className="w-full min-w-[720px] table-fixed text-left text-xs" aria-label="Histórico de envios">
             <thead className="border-b border-line text-[10px] text-fg-muted"><tr><th className="w-[25%] px-3 py-3 font-medium">Orçamento / fluxo</th><th className="w-[20%] px-3 py-3 font-medium">Etapa / progresso</th><th className="w-[18%] px-3 py-3 font-medium">Situação</th><th className="w-[20%] px-3 py-3 font-medium">Último evento</th><th className="w-[17%] px-3 py-3 font-medium"><span className="sr-only">Inspecionar</span></th></tr></thead>
             <tbody className="divide-y divide-line">

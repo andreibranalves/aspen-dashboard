@@ -523,7 +523,7 @@ test('paginação usa apenas has_more e exportação fecha com Escape restaurand
   await expect(page.getByText('Página 2', { exact: true })).toBeVisible();
   await expect(page.getByText('Página 2 de 3', { exact: true })).toHaveCount(0);
 
-  const next = page.getByRole('button', { name: 'Próximo ›' });
+  const next = page.getByRole('button', { name: 'Próximo' });
   await expect(next).toBeEnabled();
   await next.click();
   await expect(page.getByText('PED-2026-0003', { exact: true }).first()).toBeVisible();

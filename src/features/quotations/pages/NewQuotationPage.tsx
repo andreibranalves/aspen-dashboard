@@ -6,7 +6,6 @@ import {
   useState,
   type ChangeEvent,
   type ClipboardEvent,
-  type KeyboardEvent,
 } from 'react';
 import {
   AlertTriangle,
@@ -18,6 +17,8 @@ import {
   Search,
   Settings,
   Trash2,
+  MessagesSquare,
+  PencilLine,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
 import { isApiError } from '@/types/api';
@@ -72,8 +73,8 @@ import type {
   StoredAutoQuoteDraft,
 } from '@/types/domain';
 import { formatBRL, formatPhoneInput, normalizePhoneDigits, fmtPhone } from '@/lib/formatting/formatters';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { TabBar } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -1169,16 +1170,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     switchMode(initialMode);
   }, [initialMode, switchMode]);
 
-  const onModeKeyDown = useCallback((event: KeyboardEvent<HTMLButtonElement>, current: NewQuotationMode) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    const next = event.key === 'Home' || (event.key === 'ArrowLeft' && current === 'manual')
-      ? 'conversation'
-      : 'manual';
-    switchMode(next);
-    (event.currentTarget.parentElement?.querySelector(`[data-mode="${next}"]`) as HTMLElement | null)?.focus();
-  }, [switchMode]);
-
   const updatePendingField = useCallback((draftIdx: number, field: keyof DraftEdited, value: unknown) => {
     if (liveDraftOperation) return;
     setPendingExtraction((current) => current.map((draft) => draft.index === draftIdx
@@ -2013,26 +2004,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         }
       />
 
-      <div role="tablist" aria-label="Modo de criação" className="!mt-1 flex w-full gap-6 border-b border-line">
-        {(['conversation', 'manual'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            role="tab"
-            id={`quotation-mode-tab-${option}`}
-            data-mode={option}
-            aria-selected={mode === option}
-            aria-controls={`quotation-mode-panel-${option}`}
-            tabIndex={mode === option ? 0 : -1}
-            onClick={() => switchMode(option)}
-            onKeyDown={(event) => onModeKeyDown(event, option)}
-            disabled={pricingPending}
-            className={cn('min-h-11 border-b-2 px-0 pb-3 pt-2 text-sm transition-colors', mode === option ? 'border-light-sage font-semibold text-fg' : 'border-transparent text-fg-muted hover:text-fg')}
-          >
-            {option === 'conversation' ? 'A partir de uma conversa' : 'Preencher manualmente'}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        value={mode}
+        onValueChange={switchMode}
+        label="Modo de criação"
+        idPrefix="quotation-mode"
+        variant="segmented"
+        className="!mt-3"
+        items={[
+          { value: 'conversation', label: 'A partir de uma conversa', icon: MessagesSquare, disabled: pricingPending },
+          { value: 'manual', label: 'Preencher manualmente', icon: PencilLine, disabled: pricingPending },
+        ]}
+      />
 
       {manual.originPrefill && (
         <p className="text-sm text-fg-muted" role="status">

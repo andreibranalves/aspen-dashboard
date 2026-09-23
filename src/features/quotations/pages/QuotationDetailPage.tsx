@@ -2587,25 +2587,9 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   if (error) {
     const previousRoute = getHashHistoryPreviousRoute();
     const fromCommercial = previousRoute && routePath(previousRoute) === '/crm';
-    const fromSendHistory =
-      previousRoute &&
-      routePath(previousRoute) === '/comunicacao' &&
-      new URLSearchParams(previousRoute.split('?')[1] || '').get('tab') === 'history';
     const fromDeliveries = previousRoute && routePath(previousRoute) === '/whatsapp-deliveries';
-    const returnRoute =
-      fromCommercial
-        ? '/crm'
-        : fromSendHistory || fromDeliveries
-          ? previousRoute
-          : '/quotations';
-    const returnLabel =
-      fromCommercial
-        ? 'Comercial'
-        : fromSendHistory
-          ? 'Histórico de envios'
-          : fromDeliveries
-            ? 'Envios'
-            : 'Orçamentos';
+    const returnRoute = fromCommercial ? '/crm' : fromDeliveries ? previousRoute : '/quotations';
+    const returnLabel = fromCommercial ? 'Comercial' : fromDeliveries ? 'Envios' : 'Orçamentos';
     return (
       <PageShell className="space-y-4">
         <button

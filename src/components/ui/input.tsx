@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Input is the canonical 36px Aspen text control.
+ * Input is the canonical 40px Aspen text control.
  * Labels, helper text and validation messaging remain with the consumer.
  */
 const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(

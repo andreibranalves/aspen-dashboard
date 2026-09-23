@@ -56,6 +56,7 @@
     --chat-background: 245 243 248;
     --rust: 219 187 198;
     --input-surface: 34 34 35;
+    --segment-active: 58 58 64;
     --placeholder: 155 156 167;
     --skeleton: 35 35 39;
     --skeleton-mid: 45 45 51;
@@ -136,6 +137,7 @@
     --primary-text: 54 90 173;
     --light-sage: 54 90 173;
     --input-surface: 247 248 251;
+    --segment-active: 255 255 255;
     --placeholder: 112 116 135;
     --skeleton: 229 232 240;
     --skeleton-mid: 243 244 248;

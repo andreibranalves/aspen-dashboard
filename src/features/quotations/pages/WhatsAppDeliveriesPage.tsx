@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock3, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Check, Clock3, RefreshCw, Trash2 } from 'lucide-react';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
 import PageHeader from '@/components/shared/PageHeader';
@@ -9,6 +9,10 @@ import QuotationDeliveryStatus from '@/features/quotations/components/QuotationD
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
+import PageToolbar from '@/components/shared/PageToolbar';
+import { SearchField } from '@/components/ui/search-field';
+import ListPagination from '@/components/shared/ListPagination';
+import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
 import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -370,7 +374,6 @@ export default function WhatsAppDeliveriesPage() {
   // A silent poll must never overwrite a newer authoritative write (filters,
   // manual reload, resolution). Foreground writers bump this epoch.
   const resultEpochRef = useRef(0);
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('all');
   const [historySearch, setHistorySearch] = useState('');
   const [historyFrom, setHistoryFrom] = useState('');
@@ -586,62 +589,22 @@ export default function WhatsAppDeliveriesPage() {
     setHistoryDetailError('');
   };
 
-  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % DELIVERY_TABS.length;
-    if (event.key === 'ArrowLeft')
-      nextIndex = (index - 1 + DELIVERY_TABS.length) % DELIVERY_TABS.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = DELIVERY_TABS.length - 1;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    setActiveTab(DELIVERY_TABS[nextIndex]);
-    tabRefs.current[nextIndex]?.focus();
-  };
-
   return (
     <PageShell className="space-y-5 pb-10">
       <PageHeader title="Envios" description="Visibilidade sobre cada envio de WhatsApp." />
 
-      <div role="tablist" aria-label="Seções de envios">
-        <div className="flex gap-2">
-          {(
-            [
-              ['pending', 'Pendências'],
-              ['history', 'Histórico'],
-            ] as const
-          ).map(([tab, label], index) => (
-            <button
-              key={tab}
-              ref={(element) => {
-                tabRefs.current[index] = element;
-              }}
-              type="button"
-              role="tab"
-              id={`delivery-tab-${tab}`}
-              aria-selected={activeTab === tab}
-              aria-controls="delivery-panel"
-              tabIndex={activeTab === tab ? 0 : -1}
-              onClick={() => setActiveTab(tab)}
-              onKeyDown={(event) => handleTabKeyDown(event, index)}
-              className={cn(
-                'min-h-9 rounded-control px-4 py-2 text-xs font-medium transition-colors',
-                activeTab === tab
-                  ? 'bg-primary-soft text-primary-soft-ink'
-                  : 'text-fg-muted hover:text-fg'
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-fg-muted">{activeTab === 'pending' ? 'Acompanhe exceções e confirme o resultado de cada etapa.' : 'Consulte o resultado dos envios anteriores.'}</p>
+        <TabList
+          label="Seções de envios"
+          items={[
+            { value: 'pending', label: 'Pendências' },
+            { value: 'history', label: 'Histórico' },
+          ]}
+        />
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading || clearing}><RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />Atualizar</Button>
-          {activeTab === 'pending' && <details className="relative text-xs"><summary className="cursor-pointer rounded-control px-2 py-2 text-fg-muted hover:bg-raised">Mais</summary><div className="absolute right-0 top-full z-20 min-w-32 rounded-control border border-line bg-surface p-2 shadow-lg"><Button type="button" variant="ghost" size="sm" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing} className="w-full text-destructive hover:bg-destructive/10"><Trash2 size={14} />{clearing ? 'Limpando…' : 'Limpar fila'}</Button></div></details>}
+          <Button type="button" variant="outline" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading || clearing}><RefreshCw className={loading ? 'animate-spin' : undefined} />Atualizar</Button>
+          {activeTab === 'pending' && <Button type="button" variant="ghost" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing} className="text-destructive hover:bg-destructive/10"><Trash2 />{clearing ? 'Limpando…' : 'Limpar fila'}</Button>}
         </div>
       </div>
 
@@ -654,88 +617,35 @@ export default function WhatsAppDeliveriesPage() {
         ].map(({ label, value, note, Icon }) => <div key={label} className="relative min-h-[145px] rounded-card bg-surface p-[22px]"><p className="text-xs text-fg-muted">{label}</p><Icon size={16} className="absolute right-[22px] top-[22px] text-fg-muted" aria-hidden="true" /><p className="mt-4 text-[28px] font-bold tabular-nums">{value ?? '—'}</p><p className="mt-3 text-[11px] text-fg-muted">{note}</p></div>)}
       </section>}
 
-      <div id="delivery-panel" role="tabpanel" aria-labelledby={`delivery-tab-${activeTab}`}>
+      <TabPanel value={activeTab}>
         {activeTab === 'history' && (
-          <div className="rounded-t-card bg-surface p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-52 max-w-full"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Buscar cliente ou orçamento" aria-label="Buscar histórico" className="h-10 pl-9 text-xs" /></div>
-            <Select aria-label="Filtrar histórico por situação" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value as HistoryStatus)} className="h-10 w-auto min-w-36 text-xs"><option value="all">Todos os status</option><option value="sent">Entregues</option><option value="pending">Pendentes</option><option value="failed">Falhas</option></Select>
-            <details className="relative ml-auto text-xs text-fg-muted"><summary className="cursor-pointer rounded-control px-3 py-2 hover:bg-raised">Período</summary>
-          <section className="absolute right-0 z-20 mt-2 w-[min(800px,80vw)] space-y-4 rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros do histórico">
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  ['all', 'Todos'],
-                  ['sent', 'Entregues'],
-                  ['pending', 'Pendentes'],
-                  ['failed', 'Falhas'],
-                ] as const
-              ).map(([status, label]) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setHistoryStatus(status)}
-                  className={filterInputClass(historyStatus === status)}
-                  aria-pressed={historyStatus === status}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <label
-                className="relative block text-xs font-medium text-fg-muted"
-                htmlFor="history-search"
-              >
-                <span className="mb-1.5 block">Busca</span>
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-[2.15rem] text-fg-muted"
-                />
-                <Input
-                  id="history-search"
-                  value={historySearch}
-                  onChange={(event) => setHistorySearch(event.target.value)}
-                  placeholder="Buscar envio, fluxo, orçamento ou telefone"
-                  className="pl-9"
-                />
-              </label>
-              <fieldset className="grid grid-cols-2 gap-3">
-                <legend className="sr-only">Período do histórico</legend>
-                <label className="block text-xs font-medium text-fg-muted" htmlFor="history-from">
-                  <span className="mb-1.5 block">Data inicial</span>
-                  <Input
-                    id="history-from"
-                    type="date"
-                    value={historyFrom}
-                    onChange={(event) => setHistoryFrom(event.target.value)}
-                  />
-                </label>
-                <label className="block text-xs font-medium text-fg-muted" htmlFor="history-to">
-                  <span className="mb-1.5 block">Data final</span>
-                  <Input
-                    id="history-to"
-                    type="date"
-                    value={historyTo}
-                    onChange={(event) => setHistoryTo(event.target.value)}
-                  />
-                </label>
-              </fieldset>
-            </div>
-            <p className="text-xs text-fg-muted">
-              Busca e período consideram os 200 envios mais recentes.
-            </p>
-          </section></details>
-          </div>
-          </div>
+          <PageToolbar className="mb-4">
+            <SearchField
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+              placeholder="Buscar envio, fluxo, orçamento ou telefone"
+              aria-label="Buscar histórico"
+            />
+            <Select aria-label="Filtrar histórico por situação" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value as HistoryStatus)}>
+              <option value="all">Todos os status</option>
+              <option value="sent">Entregues</option>
+              <option value="pending">Pendentes</option>
+              <option value="failed">Falhas</option>
+            </Select>
+            <fieldset className="flex items-center gap-2">
+              <legend className="sr-only">Período do histórico</legend>
+              <Input type="date" aria-label="Data inicial" value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} className="w-40" />
+              <span className="text-sm text-fg-muted" aria-hidden="true">até</span>
+              <Input type="date" aria-label="Data final" value={historyTo} onChange={(event) => setHistoryTo(event.target.value)} className="w-40" />
+            </fieldset>
+          </PageToolbar>
         )}
 
         {activeTab === 'pending' && (
-          <div className="rounded-card bg-surface p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-52 max-w-full"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" className="h-10 pl-9 text-xs" /></div>
-            <Select aria-label="Filtrar envios por situação" className="h-10 w-auto min-w-36 text-xs" value={filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all'} onChange={(event) => { const value = event.target.value; updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false })); }}><option value="all">Todos os status</option><option value="review">Requer ação</option><option value="active">Em andamento</option><option value="retry">Reagendados</option><option value="delivered">Entregues</option></Select>
-            <details className="relative ml-auto text-xs text-fg-muted"><summary className="cursor-pointer rounded-control px-3 py-2 hover:bg-raised">Filtros avançados</summary>
+          <PageToolbar className="mb-4">
+            <SearchField value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" />
+            <Select aria-label="Filtrar envios por situação" value={filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all'} onChange={(event) => { const value = event.target.value; updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false })); }}><option value="all">Todos os status</option><option value="review">Requer ação</option><option value="active">Em andamento</option><option value="retry">Reagendados</option><option value="delivered">Entregues</option></Select>
+            <details className="relative ml-auto text-sm text-fg-muted"><summary className="flex h-10 cursor-pointer list-none items-center rounded-control px-3 font-semibold hover:bg-raised hover:text-fg">Filtros avançados</summary>
             <section className="absolute right-10 z-20 mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">
               <label className={filterInputClass(filters.requiresAction)}>
@@ -790,27 +700,7 @@ export default function WhatsAppDeliveriesPage() {
               ))}
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-              <label
-                className="relative block text-xs font-medium text-fg-muted"
-                htmlFor="delivery-search"
-              >
-                <span className="mb-1.5 block">Busca</span>
-                <Search
-                  size={15}
-                  className="pointer-events-none absolute left-3 top-[2.15rem] text-fg-muted"
-                />
-                <Input
-                  id="delivery-search"
-                  aria-label="Busca"
-                  value={filters.search}
-                  onChange={(event) =>
-                    updateFilters((current) => ({ ...current, search: event.target.value }))
-                  }
-                  placeholder="Buscar orçamento, cliente, telefone ou fluxo"
-                  className="pl-9"
-                />
-              </label>
+            <div>
               <fieldset className="grid grid-cols-2 gap-3">
                 <legend className="sr-only">Período</legend>
                 <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-from">
@@ -859,8 +749,7 @@ export default function WhatsAppDeliveriesPage() {
               </fieldset>
             </div>
             </section></details>
-          </div>
-          </div>
+          </PageToolbar>
         )}
 
         {activeTab === 'pending' && error && (
@@ -886,7 +775,6 @@ export default function WhatsAppDeliveriesPage() {
 
         {activeTab === 'history' ? (
           <SendHistoryTab
-            embedded
             autoInspectId={new URLSearchParams(window.location.hash.split('?')[1] || '').get('event')}
             refreshKey={reloadVersion}
             filters={{
@@ -972,46 +860,19 @@ export default function WhatsAppDeliveriesPage() {
               </TableBody>
             </Table>
 
-            <div
-              className="flex flex-wrap items-center justify-between gap-3"
-              aria-label="Paginação"
-            >
-              <p className="text-sm text-fg-muted">
-                {result.total === 0
-                  ? 'Nenhum resultado'
-                  : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, result.total)} de ${result.total}`}
-              </p>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-fg-muted">
-                  Página {page} de {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Página anterior"
-                  onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  disabled={page <= 1 || loading}
-                >
-                  <ChevronLeft size={15} />
-                  Anterior
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Próxima página"
-                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                  disabled={page >= totalPages || loading}
-                >
-                  Próximo
-                  <ChevronRight size={15} />
-                </Button>
-              </div>
-            </div>
+            <ListPagination
+              label="Paginação de envios"
+              page={page}
+              limit={PAGE_SIZE}
+              total={result.total}
+              hasNext={page < totalPages}
+              disabled={loading}
+              onPageChange={setPage}
+            />
           </>
         ) : null}
-      </div>
+      </TabPanel>
+      </Tabs>
 
       <ConfirmDialog
         open={clearConfirmOpen}

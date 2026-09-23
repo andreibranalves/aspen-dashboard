@@ -331,7 +331,7 @@ test('filters expose Portuguese controls and query state, search, and period', a
   ]) {
     await expect(page.getByLabel(label)).toBeVisible();
   }
-  await expect(page.getByLabel('Busca', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Buscar cliente ou orçamento')).toBeVisible();
   await expect(page.getByLabel('Data inicial')).toBeVisible();
   await expect(page.getByLabel('Data final')).toBeVisible();
 

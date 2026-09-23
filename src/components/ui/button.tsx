@@ -27,7 +27,7 @@ const sizes = {
   xs: 'h-7 px-2 text-xs',
   sm: 'h-8 px-3 text-sm',
   md: 'h-9 px-3 text-sm',
-  default: 'h-9 px-3 text-sm',
+  default: 'h-10 px-4 text-sm',
   lg: 'h-10 px-4 text-sm',
   icon: 'h-9 w-9 p-0',
 } as const;

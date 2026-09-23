@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { matchSegments, prefix } from '@/app/match-route';
 import LoginPage from '@/app/LoginPage';
+import RouteRedirect from '@/app/RouteRedirect';
 import NotFoundPage from '@/components/shared/NotFoundPage';
 import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
 
@@ -29,11 +30,25 @@ const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDe
 const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
 const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
 const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
-const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
 const WhatsAppDeliveriesPage = lazy(
   () => import('@/features/quotations/pages/WhatsAppDeliveriesPage')
 );
 const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
+
+function communicationRedirect(hash: string): string {
+  const params = new URLSearchParams(hash.split('?')[1] || '');
+  const event = params.get('event');
+  switch (params.get('tab')) {
+    case 'media':
+      return '/catalog?tab=media';
+    case 'history':
+      return `/whatsapp-deliveries?tab=history${event ? `&event=${encodeURIComponent(event)}` : ''}`;
+    case 'channels':
+      return '/settings?tab=channels';
+    default:
+      return '/settings?tab=flows';
+  }
+}
 
 export interface RouteContext {
   navigate: (hash: string) => void;
@@ -169,9 +184,9 @@ export const routes: AppRoute[] = [
     nav: { label: 'Clientes', icon: Users, placement: 'destination', order: 4 },
   },
   {
+    // Retired: each section now lives where it is used.
     path: '/comunicacao',
-    suspense: true,
-    render: ({ navigate }) => <ComunicacaoPage navigate={navigate} />,
+    render: () => <RouteRedirect to={communicationRedirect(window.location.hash)} />,
   },
   {
     path: '/settings',

@@ -124,7 +124,7 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
     await page.getByRole('button', { name: 'Exportar produtos' }).click();
     await expect.poll(() => exportUrl).toContain('status=archived');
 
-    const setsTab = page.getByRole('tab', { name: 'Conjuntos de produtos' });
+    const setsTab = page.getByRole('tab', { name: 'Conjuntos' });
     await setsTab.focus();
     await setsTab.press('Enter');
     await expect(page).toHaveURL(/#\/catalog\?status=archived&tab=sets$/);

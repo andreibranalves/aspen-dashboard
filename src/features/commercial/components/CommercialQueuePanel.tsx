@@ -6,12 +6,8 @@ import {
   ExternalLink,
   ListChecks,
   MessageCircle,
-  Search,
   RefreshCw,
   Star,
-  Clock3,
-  CalendarDays,
-  CircleCheck,
 } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
 import ListPagination from '@/components/shared/ListPagination';
@@ -21,7 +17,10 @@ import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpRevie
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { StatusBadge } from '@/components/ui/badge';
-import { StatCard } from '@/components/ui/stat-card';
+import { Input } from '@/components/ui/input';
+import { SearchField } from '@/components/ui/search-field';
+import { Textarea } from '@/components/ui/textarea';
+import PageToolbar from '@/components/shared/PageToolbar';
 import { Select } from '@/components/ui/select';
 import { fmtPhone, formatBRL, formatDate, formatDateTime } from '@/lib/formatting/formatters';
 import {
@@ -879,42 +878,39 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           Tipo de ação
-          <select
+          <Select
             aria-label="Tipo de ação"
-            className="h-9 rounded-control border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.kind}
             onChange={(event) => updateDraft('kind', event.target.value)}
           >
             {kindOptions()}
-          </select>
+          </Select>
         </label>
         <label className="grid gap-1 text-sm">
           Data local
-          <input
+          <Input
             aria-label="Data local"
             required
             type="date"
-            className="h-9 rounded-control border border-input bg-background px-3"
             value={draft.dueDate}
             onChange={(event) => updateDraft('dueDate', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm">
-          Horário local <span className="text-fg-muted">(opcional)</span>
-          <input
+          <span>Horário local <span className="text-fg-muted">(opcional)</span></span>
+          <Input
             aria-label="Horário local"
             type="time"
-            className="h-9 rounded-control border border-input bg-background px-3"
             value={draft.dueTime}
             onChange={(event) => updateDraft('dueTime', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm sm:col-span-2">
           Motivo
-          <textarea
+          <Textarea
             aria-label="Motivo"
             required
-            className="min-h-20 rounded-control border border-input bg-background px-3 py-2"
             value={draft.reason}
             onChange={(event) => updateDraft('reason', event.target.value)}
           />
@@ -933,10 +929,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="grid gap-1 text-sm">
           Tipo de contato
-          <select
+          <Select
             aria-label="Tipo de contato"
             required
-            className="h-9 rounded-control border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.contactType}
             onChange={(event) =>
               updateManualDraft('contactType', event.target.value as CommercialManualContactType)
@@ -947,25 +943,24 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="grid gap-1 text-sm">
           Data e hora do contato
-          <input
+          <Input
             aria-label="Data e hora do contato"
             required
             type="datetime-local"
-            className="h-9 rounded-control border border-input bg-background px-3"
             value={draft.occurredAt}
             onChange={(event) => updateManualDraft('occurredAt', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm">
           Resultado
-          <select
+          <Select
             aria-label="Resultado do contato"
             required
-            className="h-9 rounded-control border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.resultCode}
             onChange={(event) =>
               updateManualDraft(
@@ -979,7 +974,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-2 self-end pb-2 text-sm">
           <input
@@ -1002,19 +997,18 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         )}
         <label className="grid gap-1 text-sm sm:col-span-2">
           Observação <span className="text-fg-muted">(opcional)</span>
-          <textarea
+          <Textarea
             aria-label="Observação do contato"
-            className="min-h-20 rounded-control border border-input bg-background px-3 py-2"
             value={draft.note}
             onChange={(event) => updateManualDraft('note', event.target.value)}
           />
         </label>
         <label className="grid gap-1 text-sm sm:col-span-2">
           Continuidade
-          <select
+          <Select
             aria-label="Continuidade"
             required
-            className="h-9 rounded-control border border-input bg-background px-3"
+            containerClassName="w-full" className="w-full"
             value={draft.continuation}
             onChange={(event) =>
               updateManualDraft('continuation', event.target.value as ManualContactContinuation)
@@ -1024,15 +1018,14 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             <option value="successor">Criar próxima ação</option>
             <option value="wait">Aguardar até uma data</option>
             <option value="close">Fechar oportunidade</option>
-          </select>
+          </Select>
         </label>
         {draft.continuation === 'close' ? (
           <label className="grid gap-1 text-sm sm:col-span-2">
             Motivo do fechamento
-            <textarea
+            <Textarea
               aria-label="Motivo do fechamento"
               required
-              className="min-h-20 rounded-control border border-input bg-background px-3 py-2"
               value={draft.closeReason}
               onChange={(event) => updateManualDraft('closeReason', event.target.value)}
             />
@@ -1041,45 +1034,42 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           <>
             <label className="grid gap-1 text-sm">
               Tipo da próxima ação
-              <select
+              <Select
                 aria-label="Tipo da próxima ação"
                 required
-                className="h-9 rounded-control border border-input bg-background px-3"
+                containerClassName="w-full" className="w-full"
                 value={draft.kind}
                 onChange={(event) => updateManualDraft('kind', event.target.value as ActionKind)}
               >
                 {kindOptions()}
-              </select>
+              </Select>
             </label>
             <label className="grid gap-1 text-sm">
               {draft.continuation === 'wait' ? 'Data para aguardar' : 'Data da próxima ação'}
-              <input
+              <Input
                 aria-label={
                   draft.continuation === 'wait' ? 'Data para aguardar' : 'Data da próxima ação'
                 }
                 required
                 type="date"
-                className="h-9 rounded-control border border-input bg-background px-3"
                 value={draft.dueDate}
                 onChange={(event) => updateManualDraft('dueDate', event.target.value)}
               />
             </label>
             <label className="grid gap-1 text-sm">
-              Horário <span className="text-fg-muted">(opcional)</span>
-              <input
+              <span>Horário <span className="text-fg-muted">(opcional)</span></span>
+              <Input
                 aria-label="Horário da continuidade"
                 type="time"
-                className="h-9 rounded-control border border-input bg-background px-3"
                 value={draft.dueTime}
                 onChange={(event) => updateManualDraft('dueTime', event.target.value)}
               />
             </label>
             <label className="grid gap-1 text-sm sm:col-span-2">
               Motivo da continuidade
-              <textarea
+              <Textarea
                 aria-label="Motivo da continuidade"
                 required
-                className="min-h-20 rounded-control border border-input bg-background px-3 py-2"
                 value={draft.reason}
                 onChange={(event) => updateManualDraft('reason', event.target.value)}
               />
@@ -1251,32 +1241,14 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
 
   return (
     <div className="space-y-5">
-      {!loading && !error && (
-        <section aria-label="Resumo da fila nesta página" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {([
-            ['Atrasadas', 'overdue', 'Precisam de atenção', Clock3],
-            ['Hoje', 'today', 'Ações programadas', ListChecks],
-            ['Agendadas', 'upcoming', 'Próximos dias', CalendarDays],
-            ['Encerradas', 'closed', 'Nesta página', CircleCheck],
-          ] as const).map(([label, status, note, Icon]) => (
-            <StatCard key={status} icon={Icon} label={label} value={String(rows.filter((item) => item.dueStatus === status).length)} metadata={note} />
-          ))}
-        </section>
-      )}
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <label className="relative min-w-0 sm:w-[210px]">
-          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
-          <input
-            type="search"
-            aria-label="Buscar nesta página da fila"
-            placeholder="Buscar cliente ou ação"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-10 w-full rounded-control border-0 bg-surface pl-9 pr-3 text-xs"
-          />
-        </label>
-        <Select value={filter} onChange={(event) => { setPage(1); setFilter(event.target.value as CommercialQueueFilter); }} aria-label="Filtrar fila por status" className="sm:w-[150px]">
+      <PageToolbar>
+        <SearchField
+          aria-label="Buscar nesta página da fila"
+          placeholder="Buscar cliente ou ação"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <Select value={filter} onChange={(event) => { setPage(1); setFilter(event.target.value as CommercialQueueFilter); }} aria-label="Filtrar fila por status">
           {QUEUE_FILTERS.map(([value, label]) => <option key={value} value={value}>{value === 'active' ? 'Todos os status' : label}</option>)}
         </Select>
         <Button
@@ -1290,7 +1262,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         >
           <RefreshCw aria-hidden="true" className={loading ? 'animate-spin' : undefined} />
         </Button>
-      </div>
+      </PageToolbar>
 
       {error && (
         <div role="alert" className="flex items-center gap-2 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -1449,10 +1421,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {dialog.type === 'associate-response' && (
                   <label className="grid gap-1 text-sm">
                     Oportunidade da resposta
-                    <select
+                    <Select
                       aria-label="Oportunidade da resposta"
                       required
-                      className="h-9 rounded-control border border-input bg-background px-3"
+                      containerClassName="w-full" className="w-full"
                       value={associationTarget}
                       onChange={(event) => setAssociationTarget(event.target.value)}
                     >
@@ -1461,17 +1433,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                           {candidate.demandSummary || candidate.opportunityId}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {dialog.type === 'unblock-contact' && (
                   <label className="grid gap-1 text-sm">
                     Motivo do desbloqueio
-                    <textarea
+                    <Textarea
                       aria-label="Motivo do desbloqueio"
                       required
                       maxLength={500}
-                      className="min-h-20 rounded-control border border-input bg-background px-3 py-2"
                       value={unblockReason}
                       onChange={(event) => setUnblockReason(event.target.value)}
                     />
@@ -1482,9 +1453,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                   <>
                     <label className="grid gap-1 text-sm">
                       Decisão de continuidade
-                      <select
+                      <Select
                         aria-label="Decisão de continuidade"
-                        className="h-9 rounded-control border border-input bg-background px-3"
+                        containerClassName="w-full" className="w-full"
                         value={continuityType}
                         onChange={(event) =>
                           setContinuityType(event.target.value as CommercialFollowUpContinuityType)
@@ -1492,7 +1463,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                       >
                         <option value="new_cycle">Iniciar novo ciclo</option>
                         <option value="manual_date">Confirmar uma data</option>
-                      </select>
+                      </Select>
                     </label>
                     {scheduleFields()}
                   </>
@@ -1500,9 +1471,9 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                 {dialog.type === 'complete' && (
                   <label className="grid gap-1 text-sm">
                     Resultado
-                    <select
+                    <Select
                       aria-label="Resultado"
-                      className="h-9 rounded-control border border-input bg-background px-3"
+                      containerClassName="w-full" className="w-full"
                       value={completionMode}
                       onChange={(event: ChangeEvent<HTMLSelectElement>) =>
                         setCompletionMode(event.target.value as 'successor' | 'close')
@@ -1510,17 +1481,16 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
                     >
                       <option value="successor">Criar próxima ação</option>
                       <option value="close">Fechar oportunidade</option>
-                    </select>
+                    </Select>
                   </label>
                 )}
                 {dialog.type === 'manual-contact' || dialog.type === 'continue-follow-up' || dialog.type === 'associate-response' || dialog.type === 'unblock-contact' ? null : dialog.type === 'complete' &&
                   completionMode === 'close' ? (
                   <label className="grid gap-1 text-sm">
                     Motivo do fechamento
-                    <textarea
+                    <Textarea
                       aria-label="Motivo do fechamento"
                       required
-                      className="min-h-20 rounded-control border border-input bg-background px-3 py-2"
                       value={draft?.reason || ''}
                       onChange={(event) => updateDraft('reason', event.target.value)}
                     />

@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent,
   type ReactNode,
 } from 'react';
 import { apiGet, apiPut } from '@/lib/api/api';
@@ -14,6 +13,7 @@ import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
+import { TabBar } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
@@ -144,51 +144,14 @@ function DashboardTabs({
   tab: DashboardTab;
   onChange: (tab: DashboardTab) => void;
 }) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const last = TABS.length - 1;
-    const next =
-      event.key === 'ArrowRight'
-        ? index === last
-          ? 0
-          : index + 1
-        : event.key === 'ArrowLeft'
-          ? index === 0
-            ? last
-            : index - 1
-          : event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? last
-              : null;
-    if (next === null) return;
-    event.preventDefault();
-    onChange(TABS[next].key);
-    document.getElementById(`results-tab-${TABS[next].key}`)?.focus();
-  };
-
   return (
-    <div className="flex flex-wrap gap-1" role="tablist" aria-label="Seções de resultados">
-      {TABS.map((option, index) => (
-        <button
-          key={option.key}
-          id={`results-tab-${option.key}`}
-          type="button"
-          role="tab"
-          aria-selected={tab === option.key}
-          aria-controls={`results-panel-${option.key}`}
-          tabIndex={tab === option.key ? 0 : -1}
-          onClick={() => onChange(option.key)}
-          onKeyDown={(event) => handleKeyDown(event, index)}
-          className={`inline-flex min-h-9 items-center rounded-control px-3 py-1 text-xs transition-colors ${
-            tab === option.key
-              ? 'bg-primary-soft font-semibold text-primary-soft-ink'
-              : 'text-fg-muted hover:bg-raised hover:text-fg'
-          }`}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <TabBar
+      value={tab}
+      onValueChange={onChange}
+      label="Seções de resultados"
+      idPrefix="results"
+      items={TABS.map((option) => ({ value: option.key, label: option.label }))}
+    />
   );
 }
 

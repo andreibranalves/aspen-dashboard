@@ -4,28 +4,37 @@ import { cn } from '@/lib/utils';
 
 /**
  * StatCard — núcleo visual único para métricas: rótulo, valor, ícone e metadado opcional.
+ * Enquanto `loading`, o valor vira skeleton: nunca exibir zero antes da resposta.
+ * Abaixo de `md` fica compacto para a lista de trabalho aparecer na primeira dobra.
  */
 export interface StatCardProps {
   icon: LucideIcon;
   label: string;
-  value: string;
+  value: ReactNode;
   /** metadado opcional (ex.: variação vs período anterior) */
   metadata?: ReactNode;
   footer?: ReactNode;
+  loading?: boolean;
   className?: string;
 }
 
-export function StatCard({ icon: Icon, label, value, metadata, footer, className }: StatCardProps) {
+export function StatCard({ icon: Icon, label, value, metadata, footer, loading = false, className }: StatCardProps) {
   return (
-    <div className={cn('flex min-h-[145px] min-w-0 flex-col gap-3 rounded-card bg-surface p-[22px]', className)}>
+    <div
+      aria-busy={loading || undefined}
+      className={cn(
+        'flex min-h-[104px] min-w-0 flex-col gap-2 rounded-card bg-surface p-4 md:min-h-[145px] md:gap-3 md:p-[22px]',
+        className
+      )}
+    >
       <div className="flex items-center justify-between gap-3 text-xs text-fg-muted">
         <span className="min-w-0 truncate font-medium">{label}</span>
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-control bg-raised text-light-sage">
-          <Icon className="h-4 w-4" aria-hidden="true" />
+        <span className="hidden size-8 shrink-0 place-items-center rounded-control bg-raised text-light-sage md:grid">
+          <Icon className="size-4" aria-hidden="true" />
         </span>
       </div>
-      <div className="text-[28px] font-bold leading-tight tracking-[-0.04em] tabular-nums text-fg">
-        {value}
+      <div className="text-[22px] font-bold leading-tight tracking-[-0.04em] tabular-nums text-fg md:text-[28px]">
+        {loading ? <span className="skeleton-text w-16 max-w-full" aria-label="Carregando" /> : value}
       </div>
       {(metadata != null || footer != null) && (
         <div className="mt-auto flex flex-wrap items-center justify-between gap-2 text-[11px] text-fg-muted">
@@ -34,5 +43,14 @@ export function StatCard({ icon: Icon, label, value, metadata, footer, className
         </div>
       )}
     </div>
+  );
+}
+
+/** Grid for a row of StatCards: two columns on phones, four on wide screens. */
+export function StatGrid({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <section aria-label={label} className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
+      {children}
+    </section>
   );
 }

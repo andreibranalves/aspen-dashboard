@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Boxes, Image as ImageIcon, PlusCircle, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Boxes, Image as ImageIcon, Package, PlusCircle, RefreshCw, X } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
 import { Button } from '@/components/ui/button';
+import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
 import { useHashQueryState, parseHashOption, parseHashString } from '@/hooks/useHashQueryState';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
@@ -15,12 +16,12 @@ import MediaLibrary from '@/features/communication/components/MediaLibrary';
 import MediaUploader from '@/features/communication/components/MediaUploader';
 
 const TABS = [
-  { id: 'products', label: 'Produtos' },
-  { id: 'sets', label: 'Conjuntos de produtos' },
-  { id: 'media', label: 'Mídias', icon: ImageIcon },
+  { value: 'products', label: 'Produtos', icon: Package },
+  { value: 'sets', label: 'Conjuntos', icon: Boxes },
+  { value: 'media', label: 'Mídias', icon: ImageIcon },
 ] as const;
-type CatalogTab = (typeof TABS)[number]['id'];
-const parseCatalogTab = parseHashOption<CatalogTab>(TABS.map((tab) => tab.id));
+type CatalogTab = (typeof TABS)[number]['value'];
+const parseCatalogTab = parseHashOption<CatalogTab>(TABS.map((tab) => tab.value));
 const PRODUCT_SORTS = ['item_name asc', 'modified desc', 'modified asc', 'item_code asc'];
 const parseCatalogStatus = parseHashOption(['active', 'archived', 'all']);
 const parseCatalogSort = parseHashOption(PRODUCT_SORTS);
@@ -82,79 +83,29 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
         description="Produtos, conjuntos e materiais da Aspen."
       />
 
-      <div
-        role="tablist"
-        aria-label="Seções do catálogo"
-        className="overflow-x-auto px-1"
-      >
-        <div className="flex min-w-max gap-1 pb-2">
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.id;
-            const Icon = 'icon' in tab ? tab.icon : null;
-            return (
-              <button
-                key={tab.id}
-                id={`catalog-tab-${tab.id}`}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`catalog-panel-${tab.id}`}
-                tabIndex={isActive ? 0 : -1}
-                onClick={() => setActiveTab(tab.id)}
-                onKeyDown={(event) => {
-                  const currentIndex = TABS.findIndex((item) => item.id === tab.id);
-                  const nextIndex =
-                    event.key === 'ArrowRight'
-                      ? (currentIndex + 1) % TABS.length
-                      : event.key === 'ArrowLeft'
-                        ? (currentIndex - 1 + TABS.length) % TABS.length
-                        : event.key === 'Home'
-                          ? 0
-                          : event.key === 'End'
-                            ? TABS.length - 1
-                            : -1;
-                  if (nextIndex < 0) return;
-                  event.preventDefault();
-                  setActiveTab(TABS[nextIndex].id);
-                  window.requestAnimationFrame(() => {
-                    document.getElementById(`catalog-tab-${TABS[nextIndex].id}`)?.focus();
-                  });
-                }}
-                className={[
-                  'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
-                  isActive
-                    ? 'bg-primary-soft text-primary-soft-ink'
-                    : 'text-fg-muted hover:bg-raised hover:text-fg',
-                ].join(' ')}
-              >
-                {Icon && <Icon size={16} aria-hidden="true" />}
-                {tab.label}
-              </button>
-            );
-          })}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TabList
+            label="Seções do catálogo"
+            items={TABS.map((tab) => (tab.value === 'products' ? { ...tab, badge: productCount } : tab))}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            {activeTab === 'products' && (
+              <>
+                <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar produtos</ExportCsvButton>
+                <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar preços</ExportCsvButton>
+                <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
+              </>
+            )}
+            {activeTab === 'sets' && <Button onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button>}
+          </div>
         </div>
-      </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {activeTab === 'products' && <span className="mr-auto text-xs text-fg-muted">{productCount} produto{productCount === 1 ? '' : 's'} no catálogo</span>}
-        {activeTab === 'products' && <>
-          <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar produtos</ExportCsvButton>
-          <details className="relative"><summary className="cursor-pointer rounded-control px-2 py-2 text-xs text-fg-muted hover:bg-raised">Mais</summary><div className="absolute right-0 z-10 rounded-control bg-raised p-2 shadow-lg"><ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar preços</ExportCsvButton></div></details>
-          <Button size="md" onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
-        </>}
-        {activeTab === 'sets' && <><span className="mr-auto text-xs text-fg-muted">Seleções reutilizáveis para montar orçamentos.</span><Button size="md" onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button></>}
-      </div>
+        <TabPanel value="products">
+          <ProductsPage showHeader={false} onCountChange={setProductCount} />
+        </TabPanel>
 
-      <div
-        id={`catalog-panel-${activeTab}`}
-        role="tabpanel"
-        aria-labelledby={`catalog-tab-${activeTab}`}
-        tabIndex={0}
-        className="min-h-[400px]"
-      >
-        {activeTab === 'products' && <ProductsPage showHeader={false} onCountChange={setProductCount} />}
-
-        {activeTab === 'sets' && (
+        <TabPanel value="sets">
           <section className="space-y-4" aria-labelledby="catalog-sets-title">
             <h2 id="catalog-sets-title" className="sr-only">Conjuntos de produtos</h2>
 
@@ -217,9 +168,9 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               onChanged={reloadTemplates}
             />
           </section>
-        )}
+        </TabPanel>
 
-        {activeTab === 'media' && (
+        <TabPanel value="media">
           <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
             <MediaLibrary refreshKey={mediaRefreshKey} onAdd={() => setMediaUploadOpen(true)} />
             {mediaUploadOpen && (
@@ -233,8 +184,8 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               </aside>
             )}
           </div>
-        )}
-      </div>
+        </TabPanel>
+      </Tabs>
     </PageShell>
   );
 }

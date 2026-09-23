@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import {
-  Search,
   Pencil,
   FileText,
   Trash2,
@@ -20,7 +19,7 @@ import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -484,18 +483,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       </section>
 
       <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-card bg-surface p-5">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <PageToolbar className="w-full sm:w-auto">
-            <div className="relative w-full sm:w-72">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
-              <Input placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} className="h-9 pl-9" aria-label="Buscar orçamentos" />
-            </div>
-            <Select value={status} onChange={(event) => onStatusClick(event.target.value)} aria-label="Filtrar por status">
-              {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </Select>
-          </PageToolbar>
-          <button type="button" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} className="rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
-        </div>
+        <PageToolbar className="mb-5">
+          <SearchField placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar orçamentos" />
+          <Select value={status} onChange={(event) => onStatusClick(event.target.value)} aria-label="Filtrar por status">
+            {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
+          <Button type="button" variant="ghost" className="ml-auto" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
+        </PageToolbar>
 
       {/* Loading */}
       {loading && <div className="p-4"><SkeletonTable cols={7} rows={8} /></div>}

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } from 'react';
 import {
-  Search,
   AlertTriangle,
   Tag,
   PlusCircle,
@@ -21,8 +20,7 @@ import { apiGet, apiDelete, apiPatch } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { clearProductCache } from '@/lib/api/productCache';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { FilterChip } from '@/components/ui/filter-chip';
+import { SearchField } from '@/components/ui/search-field';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -397,58 +395,33 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         />
       )}
 
-      <PageToolbar className="w-full items-center gap-3">
-        <div className="min-w-0 flex-1 basis-full lg:w-52 lg:flex-none lg:basis-auto">
-          <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-              aria-hidden="true"
-            />
-            <Input
-              id="product-search"
-              placeholder="Buscar produto ou SKU"
-              value={searchInput}
-              onChange={onSearchChange}
-              className="pl-9"
-              aria-label="Buscar produtos"
-            />
-          </div>
-        </div>
-
-        <Select value={status} onChange={(event) => setStatusFilter(event.target.value as ProductStatus)} aria-label="Filtrar produtos por status" className="lg:w-36">
-          <option value="all">Todos os status</option><option value="active">Ativos</option><option value="archived">Arquivados</option>
+      <PageToolbar>
+        <SearchField
+          id="product-search"
+          placeholder="Buscar produto ou SKU"
+          value={searchInput}
+          onChange={onSearchChange}
+          aria-label="Buscar produtos"
+        />
+        <Select value={status} onChange={(event) => setStatusFilter(event.target.value as ProductStatus)} aria-label="Filtrar produtos por status">
+          <option value="all">Todos os status</option>
+          <option value="active">Ativos</option>
+          <option value="archived">Arquivados</option>
         </Select>
-        <button type="button" className="ml-auto rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode} onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
-      <details className="relative text-xs text-fg-muted">
-        <summary className="w-fit cursor-pointer rounded-control px-2 py-1 hover:bg-raised">Ordenar</summary>
-      <div className="absolute right-0 top-full z-20 min-w-[280px] rounded-card bg-raised p-3 shadow-xl">
-      <PageToolbar className="justify-between gap-2">
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label="Ordenar produtos"
-        >
-          <span className="mr-1 text-xs font-medium text-fg-muted">Ordenar por</span>
+        <Select value={sort} onChange={(event) => setSortFilter(event.target.value)} aria-label="Ordenar produtos">
           {SORT_OPTIONS.map((option) => (
-            <FilterChip
-              key={option.value}
-              selected={sort === option.value}
-              onClick={() => setSortFilter(option.value)}
-            >
-              {option.label}
-            </FilterChip>
+            <option key={option.value} value={option.value}>{option.label}</option>
           ))}
-        </div>
+        </Select>
         {(hasFilters || sort !== DEFAULT_SORT) && (
-          <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
-            <X />
+          <Button type="button" variant="ghost" onClick={clearFilters}>
+            <X aria-hidden="true" />
             Limpar filtros
           </Button>
         )}
-      </PageToolbar>
-      </div>
-      </details>
+        <Button type="button" variant="ghost" className="ml-auto" aria-pressed={selectionMode} onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }}>
+          {selectionMode ? 'Cancelar seleção' : 'Selecionar'}
+        </Button>
       </PageToolbar>
 
       {showHeader && <div

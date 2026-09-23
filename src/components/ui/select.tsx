@@ -3,7 +3,7 @@ import { forwardRef, type SelectHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * Select keeps the native browser behavior while matching the 36px Aspen
+ * Select keeps the native browser behavior while matching the 40px Aspen
  * control contract.
  */
 interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {

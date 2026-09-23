@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle, Search, ChevronRight } from 'lucide-react';
+import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle, ChevronRight } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
@@ -20,6 +20,7 @@ import SkeletonTable from '@/components/shared/SkeletonTable';
 import Skeleton from '@/components/shared/Skeleton';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
+import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
@@ -31,7 +32,6 @@ import {
   parseHashString,
   useHashQueryState,
 } from '@/hooks/useHashQueryState';
-import { Input } from '@/components/ui/input';
 import {
   Table,
   TableHeader,
@@ -482,18 +482,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       )}
 
       <section className="rounded-card bg-surface p-5" aria-label="Lista de pedidos">
-      <PageToolbar className="mb-5 items-center gap-2">
-        {/* Search */}
-        <label className="relative flex w-full min-w-0 sm:flex-1 sm:max-w-[286px]">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
-          <Input
-            placeholder="Buscar pedido ou cliente"
-            value={searchDraft}
-            onChange={onSearchChange}
-            aria-label="Buscar pedidos"
-            className="pl-9"
-          />
-        </label>
+      <PageToolbar className="mb-5">
+        <SearchField
+          placeholder="Buscar pedido ou cliente"
+          value={searchDraft}
+          onChange={onSearchChange}
+          aria-label="Buscar pedidos"
+        />
 
         {/* Status select */}
         <label className="flex w-full min-w-0 sm:w-auto">

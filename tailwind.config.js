@@ -35,6 +35,7 @@ export default {
         'primary-soft': 'rgb(var(--primary-soft))',
         'primary-soft-ink': 'rgb(var(--primary-soft-ink))',
         'input-surface': 'rgb(var(--input-surface))',
+        'segment-active': 'rgb(var(--segment-active))',
         'avatar-ink': 'rgb(var(--avatar-ink))',
         'avatar-one': 'rgb(var(--avatar-one))',
         'avatar-two': 'rgb(var(--avatar-two))',

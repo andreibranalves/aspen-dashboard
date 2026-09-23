@@ -9,7 +9,6 @@ import {
   Mail,
   Phone,
   ReceiptText,
-  Search,
   Sparkles,
   Users,
   UserPlus,
@@ -19,6 +18,7 @@ import { apiDelete, apiGet, apiPatch, apiPut } from '@/lib/api/api';
 import { fmtPhone, formatBRL, formatDate, whatsappContactUrl } from '@/lib/formatting/formatters';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import { Button } from '@/components/ui/button';
+import { SearchField } from '@/components/ui/search-field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
@@ -627,25 +627,17 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       />
 
       <section className="rounded-card bg-surface p-5" aria-label="Lista de clientes">
-      <PageToolbar className="mb-5 items-center">
-        <div className="relative w-full max-w-[286px] flex-1">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-            aria-hidden="true"
-          />
-          <Input
-            placeholder="Buscar nome, empresa ou e-mail"
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label="Buscar clientes"
-          />
-        </div>
+      <PageToolbar className="mb-5">
+        <SearchField
+          placeholder="Buscar nome, empresa ou e-mail"
+          value={search}
+          onChange={onSearchChange}
+          aria-label="Buscar clientes"
+        />
         <Select value={status} onChange={(event) => { const value = event.target.value as 'active' | 'archived' | 'all'; setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} aria-label="Filtrar clientes por status">
           <option value="all">Todos os status</option><option value="active">Ativos</option><option value="archived">Arquivados</option>
         </Select>
-        <button type="button" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} className="ml-auto rounded-control px-3 py-2 text-xs text-fg-muted hover:bg-raised hover:text-fg" aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</button>
+        <Button type="button" variant="ghost" className="ml-auto" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
         {selectionMode && data.length > 0 && (
           <label className="flex min-h-9 items-center gap-2 text-sm text-fg md:hidden">
             <input

@@ -52,7 +52,7 @@ test('comercial alterna negócios entre Lista e Quadro', async ({ page }) => {
   await page.getByRole('tab', { name: 'Lista' }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(page).toHaveURL(/#\/crm\?tab=deals&view=board$/);
-  await expect(page.getByRole('region', { name: 'Pipeline CRM' })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: 'Quadro' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Orçamento Enviado' })).toBeVisible();
   await expect(page.getByText('ORC-COMERCIAL', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Origem · site', { exact: true })).toBeVisible();
