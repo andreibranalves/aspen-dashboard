@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { Check, DollarSign, FileText, Truck } from 'lucide-react';
 import { apiGet, apiPatch } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -65,8 +65,8 @@ function ProgressMetric({
       {value !== undefined && (
         <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
           <div
-            className={`h-full rounded-full transition-all ${tone === 'success' ? 'bg-success' : 'bg-primary'}`}
-            style={{ width: `${width}%` }}
+            className={`h-full w-(--progress-w) rounded-full transition-all ${tone === 'success' ? 'bg-success' : 'bg-primary'}`}
+            style={{ '--progress-w': `${width}%` } as CSSProperties}
           />
         </div>
       )}

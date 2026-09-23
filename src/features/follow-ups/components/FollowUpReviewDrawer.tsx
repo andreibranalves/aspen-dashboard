@@ -3,7 +3,7 @@ import { Check, X } from 'lucide-react';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { StatusBadge } from '@/components/ui/badge';
+import { StatusBadge, type StatusTone } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
 import {
   approveFollowUp,
@@ -51,7 +51,7 @@ function formatDate(value: string | null): string {
   return Number.isNaN(new Date(value).getTime()) ? 'Data indisponível' : formatDateTime(value);
 }
 
-function toneForState(value: string): string {
+function toneForState(value: string): StatusTone {
   if (value === 'ready' || value === 'sent' || value === 'approved') return 'tone-success-soft';
   if (value === 'waiting' || value === 'processing') return 'tone-warning-soft';
   if (value === 'failed' || value === 'needs_review') return 'tone-destructive-soft';
@@ -172,7 +172,7 @@ export default function FollowUpReviewDrawer({
             <StatusBadge
               status={followUp.state}
               label={STATE_LABELS[followUp.state] || followUp.state}
-              className={toneForState(followUp.state)}
+              tone={toneForState(followUp.state)}
             />
             <span className="text-sm text-fg-muted">{followUp.clientName}</span>
           </div>

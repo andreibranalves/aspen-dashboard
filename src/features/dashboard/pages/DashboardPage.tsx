@@ -173,8 +173,8 @@ function RevenueChart({
   return (
     <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
       <div
-        className="relative flex h-56 items-end justify-around gap-2 border-b border-orange-ink/20 px-3 pb-5 pl-9 pt-7"
-        style={{ minWidth: `${Math.max(180, series.items.length * 42 + 40)}px` }}
+        className="relative flex h-56 min-w-(--chart-min-w) items-end justify-around gap-2 border-b border-orange-ink/20 px-3 pb-5 pl-9 pt-7"
+        style={{ '--chart-min-w': `${Math.max(180, series.items.length * 42 + 40)}px` } as CSSProperties}
       >
         <span className="pointer-events-none absolute left-1 top-3 text-xs text-orange-ink/70">
           {formatCompactBRL(maxRevenue)}
@@ -194,8 +194,8 @@ function RevenueChart({
               </span>
               <div className="flex h-36 w-full items-end">
                 <div
-                  className="w-full rounded-t-xs bg-bar-one"
-                  style={{ height: `${height}%` } as CSSProperties}
+                  className="h-(--bar-h) w-full rounded-t-xs bg-bar-one"
+                  style={{ '--bar-h': `${height}%` } as CSSProperties}
                   aria-hidden="true"
                 />
               </div>
@@ -251,6 +251,7 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
   const rows = data.ordersBySource?.items || [];
   const total = rows.reduce((sum, row) => sum + row.orders, 0);
   const colors = ['rgb(var(--chart-one))', 'rgb(var(--chart-two))', 'rgb(var(--chart-three))', 'rgb(var(--chart-four))'];
+  const swatches = ['bg-chart-one', 'bg-chart-two', 'bg-chart-three', 'bg-chart-four'];
   const labels: Record<string, string> = { site_form: 'Site', whatsapp: 'WhatsApp', typebot: 'Typebot', sem_origem: 'Sem origem' };
   let start = 0;
   const stops = rows.map((row, index) => {
@@ -262,10 +263,10 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
   return (
     <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-sage-ink" aria-label="Origem dos pedidos">
       <h2 className="text-sm font-semibold">Origem dos pedidos</h2>
-      <div className="mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full" style={{ background: total > 0 ? `conic-gradient(${stops.join(', ')})` : 'rgb(var(--light-sage))' }} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
+      <div className={`mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full ${total > 0 ? 'bg-(image:--pie)' : 'bg-light-sage'}`} style={total > 0 ? { '--pie': `conic-gradient(${stops.join(', ')})` } as CSSProperties : undefined} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
         <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
       </div>
-      <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-[11px]"><span className="mt-1 size-2 shrink-0 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
+      <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-[11px]"><span className={`mt-1 size-2 shrink-0 rounded-full ${swatches[index % swatches.length]}`} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
       {data.ordersBySource === null && <p className="mt-auto text-xs">Origem indisponível.</p>}
     </section>
   );
@@ -485,7 +486,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
               {rows.slice(0, 6).map((row, index) => (
                 <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-[11px]">
                   <span className="truncate text-fg-muted" title={row.name}>{row.name}</span>
-                  <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]} style={{ width: `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%`, height: '100%' }} /></div>
+                  <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={`h-full w-(--bar-w) ${['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]}`} style={{ '--bar-w': `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%` } as CSSProperties} /></div>
                   <span className="tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
                 </div>
               ))}
@@ -639,7 +640,7 @@ function FinancePanel({
         <h2 className="text-base font-semibold text-fg">Composição financeira</h2>
         <p className="mt-1 text-xs text-fg-muted">Valores registrados no período</p>
         <div className="mt-8 flex h-12 w-full overflow-hidden rounded-control bg-raised" role="img" aria-label={segments.map((item) => `${item.label}: ${formatBRL(item.value)}`).join('; ')}>
-          {segments.map((item) => <div key={item.label} className={item.color} style={{ width: `${summary.total_revenue > 0 ? Math.max(0, item.value / summary.total_revenue * 100) : 0}%` }} />)}
+          {segments.map((item) => <div key={item.label} className={`w-(--segment-w) ${item.color}`} style={{ '--segment-w': `${summary.total_revenue > 0 ? Math.max(0, item.value / summary.total_revenue * 100) : 0}%` } as CSSProperties} />)}
         </div>
         <div className="mt-8 grid gap-4 sm:grid-cols-2">{segments.map((item) => <div key={item.label} className="flex items-start gap-2 text-xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${item.color}`} /><div><span className="text-fg-muted">{item.label}</span><strong className="mt-1 block tabular-nums">{formatBRL(item.value)}</strong></div></div>)}</div>
       </section>

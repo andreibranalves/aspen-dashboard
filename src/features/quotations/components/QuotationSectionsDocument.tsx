@@ -88,7 +88,7 @@ export function QuotationSectionsDocument({
                 {displayTitle(label, aliases, section.title)}
               </h2>
               <div
-                className="rich-text-read mt-2 max-w-[68ch] text-sm leading-6 text-fg [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-1 [&_ul]:list-disc"
+                className="mt-2 max-w-[68ch] text-sm leading-6 text-fg [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-1 [&_ul]:list-disc"
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             </section>

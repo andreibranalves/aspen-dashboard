@@ -16,7 +16,7 @@ import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpRevie
 import { Button } from '@/components/ui/button';
 import InlineAlert from '@/components/shared/InlineAlert';
 import { Dialog } from '@/components/ui/dialog';
-import { StatusBadge } from '@/components/ui/badge';
+import { StatusBadge, type StatusTone } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { SearchField } from '@/components/ui/search-field';
 import { Textarea } from '@/components/ui/textarea';
@@ -260,7 +260,7 @@ function dueStatusLabel(status: CommercialQueueItem['dueStatus']): string {
   return 'Agendada';
 }
 
-function dueStatusTone(status: CommercialQueueItem['dueStatus']): string {
+function dueStatusTone(status: CommercialQueueItem['dueStatus']): StatusTone {
   if (status === 'overdue') return 'tone-destructive-soft';
   if (status === 'today') return 'tone-warning-soft';
   if (status === 'closed') return 'tone-neutral-muted';
@@ -1297,7 +1297,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
               <summary className="grid cursor-pointer list-none items-center gap-3 rounded-card p-4 xl:grid-cols-[82px_minmax(0,1fr)_auto_auto] xl:px-5 xl:py-4 [&::-webkit-details-marker]:hidden">
                 <span className="flex flex-col gap-1 text-xs"><time dateTime={item.dueAt} className="font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time><span className="text-[11px] text-fg-muted">{dueStatusLabel(item.dueStatus)}</span></span>
                 <EntityIdentity name={contactLabel(item)} primary={item.reason || item.reasonLabel} secondary={`${contactLabel(item)} · ${item.kindLabel}`} />
-                <span className="flex items-center gap-2"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} className={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
+                <span className="flex items-center gap-2"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} tone={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
                 <span className="inline-flex items-center justify-center gap-2 rounded-control border border-line px-3 py-2 text-xs font-semibold"> <ChevronRight size={14} aria-hidden="true" className="transition-transform group-open:rotate-90" /> Abrir ação</span>
               </summary>
               <div className="grid gap-4 border-t border-line px-5 py-4 text-xs text-fg-muted lg:grid-cols-2">

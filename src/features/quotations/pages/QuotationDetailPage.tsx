@@ -1878,7 +1878,7 @@ function CoreQuotationDetail({
                             onChange={(event) => setValidadeDias(event.target.value)}
                             className="mt-1 w-28"
                           />
-                          <p className="mt-1 text-xs text-fg-tertiary">
+                          <p className="mt-1 text-xs text-fg-muted">
                             {Number(validadeDias) !== Number(data.validadeDias)
                               ? 'A data final será recalculada ao salvar.'
                               : formatDate(data.validade)
@@ -1890,7 +1890,7 @@ function CoreQuotationDetail({
                         <p className="mt-1 break-words">
                           {data.validadeDias ?? '—'} dias configurados
                           {formatDate(data.validade) && (
-                            <span className="block text-xs text-fg-tertiary">
+                            <span className="block text-xs text-fg-muted">
                               Válida até {formatDate(data.validade)}
                             </span>
                           )}
@@ -2041,7 +2041,7 @@ function CoreQuotationDetail({
                                       item.sku ||
                                       'Produto não informado'}
                                     {item.sku && (
-                                      <span className="block font-mono text-xs text-fg-tertiary">
+                                      <span className="block font-mono text-xs text-fg-muted">
                                         {item.sku}
                                       </span>
                                     )}

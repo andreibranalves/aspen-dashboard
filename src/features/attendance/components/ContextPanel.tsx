@@ -146,7 +146,7 @@ export default function ContextPanel({ conversationId, identityVersion }: Contex
               {contact.nome}
             </a>
             {context.matchSource && (
-              <StatusBadge status={context.matchSource} label={SOURCE_LABELS[context.matchSource]} className="tone-neutral-soft" />
+              <StatusBadge status={context.matchSource} label={SOURCE_LABELS[context.matchSource]} tone="tone-neutral-soft" />
             )}
           </div>
           {contact.telefone && <p className="text-fg-muted">{fmtPhone(contact.telefone)}</p>}

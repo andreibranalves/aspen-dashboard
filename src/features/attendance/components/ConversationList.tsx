@@ -96,7 +96,8 @@ export default function ConversationList({
                     {item.status !== 'open' && (
                       <StatusBadge
                         status={STATUS_BADGE[item.status].status}
-                        className={cn('shrink-0', STATUS_BADGE[item.status].className)}
+                        tone={STATUS_BADGE[item.status].tone}
+                        className="shrink-0"
                         label={STATUS_LABELS[item.status]}
                       />
                     )}
