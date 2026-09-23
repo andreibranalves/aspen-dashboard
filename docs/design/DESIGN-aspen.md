@@ -47,9 +47,9 @@ by lint.
 | Card title | `Heading level="card"` 15px / 600 | kanban and grid cards |
 | Eyebrow | `Heading level="eyebrow"` 12px / 600 caps | group labels |
 | Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
-| Secondary / meta | `text-compact` 13px | page meta, breadcrumb |
+| Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb |
 | Caption | `text-xs` 12px | field labels, table headers |
-| Badge | `text-2xs` 11px / 600 | `StatusBadge`, quality badges, tabs |
+| Badge | `text-2xs` 11px / 600 | `StatusBadge`, quality badges |
 | Micro | `text-3xs` 10px | counters, dense captions |
 
 Display numbers use `text-hero` (32px) and `tracking-display`. Elevation uses
