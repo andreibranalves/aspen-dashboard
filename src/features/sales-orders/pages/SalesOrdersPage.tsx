@@ -238,7 +238,7 @@ function SalesOrderExportMenu({
         id="sales-order-export-menu"
         hidden={!open}
         aria-label="Exportar dados"
-        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+        className={`absolute left-0 top-full z-floating mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
       >
         <ExportCsvButton
           resource="sales-orders"

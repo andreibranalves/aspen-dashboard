@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowUpRight, FileText, Image, Trash2, Video } from 'lucide-react';
 import type { MediaItem } from '@/lib/api/communicationApi';
 import { Button } from '@/components/ui/button';
+import { Heading } from '@/components/ui/heading';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '';
@@ -28,9 +29,9 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
       <div className="grid h-32 place-items-center overflow-hidden rounded-control bg-surface-selected text-light-sage">
         {isImage && !previewError && item.blob_url ? (
           <img src={item.blob_url} alt="" loading="lazy" onError={() => setPreviewError(true)} className="h-full w-full object-cover" />
-        ) : <Icon size={34} strokeWidth={1.4} aria-hidden="true" />}
+        ) : <Icon size={32} strokeWidth={1.4} aria-hidden="true" />}
       </div>
-      <h3 className="mt-4 truncate text-sm font-semibold" title={item.title || undefined}>{item.title || 'Sem título'}</h3>
+      <Heading level="subsection" className="mt-4 truncate" title={item.title || undefined}>{item.title || 'Sem título'}</Heading>
       <p className="mt-3 truncate text-xs text-fg-muted">{type}{size ? ` · ${size}` : ''}</p>
       {item.caption && <p className="mt-1 truncate text-2xs text-fg-muted" title={item.caption}>{item.caption}</p>}
       <div className="mt-4 flex items-center justify-between gap-2">

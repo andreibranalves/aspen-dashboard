@@ -87,7 +87,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               TONE_STYLES[item.tone],
             )}
           >
-            <Icon size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <Icon size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">{item.message}</span>
             <button
               type="button"

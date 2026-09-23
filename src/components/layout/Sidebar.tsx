@@ -106,7 +106,7 @@ export default function Sidebar({
       {mobile && sidebarOpen && (
         <div
           data-sidebar-backdrop="true"
-          className="fixed inset-0 z-20 bg-black/65"
+          className="fixed inset-0 z-nav bg-black/65"
           onClick={onToggle}
           aria-hidden="true"
         />
@@ -119,7 +119,7 @@ export default function Sidebar({
         aria-hidden={mobile && collapsed ? true : undefined}
         aria-modal={mobile && sidebarOpen ? true : undefined}
         className={cn(
-          'z-30 flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width] duration-200',
+          'z-nav flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width] duration-200',
           mobile ? 'fixed inset-y-0 left-0 w-[248px] rounded-none' : 'relative rounded-shell',
           !mobile && (collapsed ? 'w-[76px]' : 'w-[248px]'),
           mobile && collapsed && 'hidden',
@@ -140,7 +140,7 @@ export default function Sidebar({
               aria-expanded={!collapsed}
               aria-controls="aspen-sidebar"
             >
-              {collapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+              {collapsed ? <PanelLeftOpen size={20} aria-hidden="true" /> : <PanelLeftClose size={20} aria-hidden="true" />}
             </button>
           )}
           {mobile && sidebarOpen && (

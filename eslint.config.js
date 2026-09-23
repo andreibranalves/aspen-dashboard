@@ -4,6 +4,37 @@ import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import { plugin as shadcn } from '@shadcn/lint';
 
+const ICON_SIZES = [12, 14, 16, 20, 24, 32, 48];
+const Z_INDEX_MESSAGE = 'Use as camadas z-sticky, z-nav, z-floating ou z-overlay.';
+const HEADING_TYPE = String.raw`\b(text-(3xs|2xs|xs|sm|base|lead|lg|xl|stat|title|hero)|font-(medium|semibold|bold))\b`;
+
+const designScaleSyntax = [
+  {
+    selector: `JSXAttribute[name.name='size'] > JSXExpressionContainer > Literal${ICON_SIZES.map((n) => `[value!=${n}]`).join('')}`,
+    message: `Tamanho de ícone fora da escala (${ICON_SIZES.join('/')}).`,
+  },
+  { selector: String.raw`Literal[value=/(^|\s)-?z-\d/]`, message: Z_INDEX_MESSAGE },
+  { selector: String.raw`TemplateElement[value.raw=/(^|\s)-?z-\d/]`, message: Z_INDEX_MESSAGE },
+];
+
+const featureSyntax = [
+  {
+    selector:
+      "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(role|aria-expanded|aria-pressed|aria-selected|aria-current)$/]))",
+    message:
+      'Use Button ou MenuItem de @/components/ui. <button> cru só para toggle (aria-expanded), seleção (aria-pressed/aria-selected) ou navegação (aria-current).',
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.name='Button']:has(JSXAttribute[name.name='size'][value.value=/^icon/]):not(:has(JSXAttribute[name.name=/^aria-label(ledby)?$/]))",
+    message: 'Botão só com ícone precisa de aria-label.',
+  },
+  {
+    selector: `JSXOpeningElement[name.name=/^h[1-6]$/]:has(JSXAttribute[name.name='className'] :matches(Literal[value=/${HEADING_TYPE}/], TemplateElement[value.raw=/${HEADING_TYPE}/]))`,
+    message: 'Use Heading de @/components/ui/heading para tipografia de título.',
+  },
+];
+
 export default [
   {
     ignores: [
@@ -123,6 +154,7 @@ export default [
             { pattern: '^Button$', allow: ['layout', 'font-mono', 'font-normal', 'font-semibold', 'truncate', 'shadow-*'] },
             { pattern: '^Input$', allow: ['layout', 'font-mono', 'font-medium', 'tracking-widest', 'pl-*', 'pr-*'] },
             { pattern: '^Textarea$', allow: ['layout', 'font-mono', 'pt-*'] },
+            { pattern: '^Heading$', allow: ['layout', 'truncate', 'gap-*'] },
           ],
         },
       ],
@@ -130,24 +162,19 @@ export default [
       'shadcn/no-arbitrary-values': ['error', { allow: ['layout', 'transition-[width]'] }],
     },
   },
-  // ── Ações nas features passam pelos primitivos (Button, MenuItem) ──
+  // ── Escalas do design system em todo o front ──
+  // Ícone: 12/14/16/20 na UI; 24/32/48 em empty state e placeholder; camadas: z-sticky/nav/floating/overlay.
+  {
+    files: ['src/**/*.tsx'],
+    rules: { 'no-restricted-syntax': ['error', ...designScaleSyntax] },
+  },
+  // ── Features compõem primitivos (Button, MenuItem, Heading) ──
   // <button> cru só é aceito quando declara semântica que não é ação
   // (toggle, seleção, navegação); demais exceções usam eslint-disable com motivo.
   {
     files: ['src/features/**/*.tsx', 'src/app/**/*.tsx'],
-    rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector:
-            "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(role|aria-expanded|aria-pressed|aria-selected|aria-current)$/]))",
-          message:
-            'Use Button ou MenuItem de @/components/ui. <button> cru só para toggle (aria-expanded), seleção (aria-pressed/aria-selected) ou navegação (aria-current).',
-        },
-      ],
-    },
+    rules: { 'no-restricted-syntax': ['error', ...designScaleSyntax, ...featureSyntax] },
   },
-  // ── TypeScript (frontend + backend futuro) ──
   {
     files: ['src/**/*.{ts,tsx}', 'api/**/*.{ts,tsx}'],
     languageOptions: {

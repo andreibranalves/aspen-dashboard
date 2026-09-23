@@ -1185,7 +1185,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     if (!item.whatsappHref) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-fg-muted">
-          <Ban size={13} aria-hidden="true" /> WhatsApp indisponível
+          <Ban size={14} aria-hidden="true" /> WhatsApp indisponível
         </span>
       );
     }
@@ -1197,8 +1197,8 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
         aria-label={`Abrir WhatsApp de ${contactLabel(item)}`}
       >
-        <MessageCircle size={13} aria-hidden="true" /> WhatsApp
-        <ExternalLink size={11} aria-hidden="true" />
+        <MessageCircle size={14} aria-hidden="true" /> WhatsApp
+        <ExternalLink size={12} aria-hidden="true" />
       </a>
     );
   }
@@ -1210,7 +1210,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         <p>{contactContextLabel(item)}</p>
         {item.contactContext.blockers.length > 0 ? (
           <p className="inline-flex items-center gap-1 text-destructive">
-            <Ban size={13} aria-hidden="true" />
+            <Ban size={14} aria-hidden="true" />
             Bloqueio: {item.contactContext.blockers.map((blocker) => blocker.label).join(', ')}
           </p>
         ) : (

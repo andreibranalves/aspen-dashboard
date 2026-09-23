@@ -42,8 +42,10 @@ by lint.
 | --- | --- | --- |
 | Page title | `text-title` 28px / 700 (`text-stat` 22px below `md`) | `PageHeader` only |
 | Dialog title | `text-lg` 18px / 700 | `Dialog`, `Drawer` |
-| Section title | `text-base` 16px / 600 | top-level cards in a page |
-| Sub-section | `text-sm` 14px / 600 | groups inside a section card |
+| Section title | `Heading level="section"` 16px / 600 | top-level cards in a page |
+| Sub-section | `Heading level="subsection"` 14px / 600 | groups inside a section card |
+| Card title | `Heading level="card"` 15px / 600 | kanban and grid cards |
+| Eyebrow | `Heading level="eyebrow"` 12px / 600 caps | group labels |
 | Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
 | Secondary / meta | `text-compact` 13px | page meta, breadcrumb |
 | Caption | `text-xs` 12px | field labels, table headers |
@@ -52,7 +54,15 @@ by lint.
 
 Display numbers use `text-hero` (32px) and `tracking-display`. Elevation uses
 `shadow-overlay` (dialogs), `shadow-floating` (popovers) and `shadow-bar`
-(bottom action bars).
+(bottom action bars). Headings in `src/features` and `src/app` go through
+`Heading`; a raw `h1`–`h6` with type classes fails lint.
+
+Icons use 12, 14, 16 or 20px; 24, 32 and 48 only in empty states and
+placeholders. Icons inside `Button` and `MenuItem` are forced to 16px.
+
+Stacking uses named layers only (`z-N` fails lint): `z-sticky` 10 (sticky
+headers), `z-nav` 30 (mobile sidebar and its backdrop), `z-floating` 40
+(menus, popovers, autocomplete, bottom bars), `z-overlay` 50 (dialogs).
 
 ### Radius roles
 
@@ -99,6 +109,7 @@ disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this i
 | `Table` | `density`: `default` (lists), `compact` (documents), `dense` (editable tables in cards); `edges`: `flush`, `inset` |
 | `TableRow` | `selected`, `tone="warning"`, `interactive` |
 | `Input` | `size`, `hideSpinButtons` |
+| `Heading` | `level`: `section`, `subsection`, `card`, `eyebrow`; `as` for the tag |
 | `MenuItem` | `tone`: `default`, `destructive`; `asChild` for links |
 | `Textarea` | `variant`: `default`, `code`, `bare` (composer inside a bordered box) |
 | `StatusBadge` | `status` maps to a tone; `tone` overrides it |
@@ -143,7 +154,8 @@ global totals.
 ## Component and state rules
 
 Rows that open a record support keyboard activation and visible focus.
-Icon-only controls have accessible names. Hover affordances have focus-visible
+Icon-only controls have accessible names (`Button size="icon|icon-sm"` without
+`aria-label` fails lint). Hover affordances have focus-visible
 or persistent keyboard and touch equivalents.
 
 Every remotely loaded view has loading, empty, no-results, error, and retry

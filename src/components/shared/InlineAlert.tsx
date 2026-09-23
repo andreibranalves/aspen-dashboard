@@ -29,7 +29,7 @@ export default function InlineAlert({ tone = 'destructive', title, children, act
       role={tone === 'destructive' ? 'alert' : 'status'}
       className={cn('flex flex-wrap items-start gap-3 rounded-control border p-3 text-sm text-fg', box, className)}
     >
-      <Icon size={18} className={cn('mt-px shrink-0', icon)} aria-hidden="true" />
+      <Icon size={20} className={cn('mt-px shrink-0', icon)} aria-hidden="true" />
       <div className="min-w-0 flex-1">
         {title && <p className="font-semibold">{title}</p>}
         {children && <div className={title ? 'mt-0.5 text-fg-muted' : undefined}>{children}</div>}

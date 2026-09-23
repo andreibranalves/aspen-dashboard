@@ -36,6 +36,7 @@ import {
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
 import { quotationStatusBadgeKey, quotationStatusLabel } from '@/lib/statusLabels';
+import { Heading } from '@/components/ui/heading';
 
 interface PeriodOption {
   key: string;
@@ -262,7 +263,7 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
   });
   return (
     <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-sage-ink" aria-label="Origem dos pedidos">
-      <h2 className="text-sm font-semibold">Origem dos pedidos</h2>
+      <Heading as="h2" level="subsection">Origem dos pedidos</Heading>
       <div className={`mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full ${total > 0 ? 'bg-(image:--pie)' : 'bg-light-sage'}`} style={total > 0 ? { '--pie': `conic-gradient(${stops.join(', ')})` } as CSSProperties : undefined} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
         <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
       </div>
@@ -301,9 +302,9 @@ function OverviewPanel({
           className="min-h-[340px] min-w-0 rounded-card border border-border-subtle bg-orange p-5 text-orange-ink"
           aria-labelledby="revenue-chart-title"
         >
-          <h2 id="revenue-chart-title" className="text-base font-semibold">
+          <Heading level="section" id="revenue-chart-title">
             Receita por dia · R$ mil
-          </h2>
+          </Heading>
           <div className="mt-4">
             <RevenueChart series={data.salesByDay} />
           </div>
@@ -330,9 +331,9 @@ function RecentQuotationsPanel({
       aria-labelledby="recent-quotations-title"
     >
       <div className="flex items-center justify-between gap-4">
-        <h2 id="recent-quotations-title" className="text-base font-semibold">
+        <Heading level="section" id="recent-quotations-title">
           Últimos orçamentos
-        </h2>
+        </Heading>
         <Button type="button" variant="outline" size="sm" onClick={() => onNavigate('/quotations')}>
           Ver todos
         </Button>
@@ -405,9 +406,9 @@ function FeaturedCustomersPanel({
       aria-labelledby="featured-customers-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="featured-customers-title" className="text-base font-semibold">
+        <Heading level="section" id="featured-customers-title">
           Clientes em destaque
-        </h2>
+        </Heading>
         <Button
           type="button"
           variant="outline-ink"
@@ -480,7 +481,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
       {rows === null ? <Unavailable>Receita por {title} não está disponível.</Unavailable> : rows.length === 0 ? <Unavailable>Nenhum {title} com venda no período.</Unavailable> : (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="min-w-0 rounded-card bg-surface p-5" aria-label={`Receita por ${title}`}>
-            <h2 className="text-base font-semibold">Receita por {title}</h2>
+            <Heading level="section">Receita por {title}</Heading>
             <p className="mt-1 text-xs text-fg-muted">Distribuição da receita dos pedidos</p>
             <div className="mt-8 space-y-6">
               {rows.slice(0, 6).map((row, index) => (
@@ -493,7 +494,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
             </div>
           </section>
           <section className="min-w-0 rounded-card bg-surface p-5" aria-label={`Participação por ${title}`}>
-            <h2 className="text-base font-semibold">{product ? 'Participação no catálogo' : 'Clientes por receita'}</h2>
+            <Heading level="section">{product ? 'Participação no catálogo' : 'Clientes por receita'}</Heading>
             <Table className="mt-6 min-w-[390px]">
               <TableHeader><TableRow><TableHead>{product ? 'Produto' : 'Cliente'}</TableHead><TableHead className="text-right">Receita</TableHead><TableHead className="text-right">Participação</TableHead></TableRow></TableHeader>
               <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? `${(row.revenue / revenue * 100).toFixed(1).replace('.', ',')}%` : '—'}</TableCell></TableRow>)}</TableBody>
@@ -544,7 +545,7 @@ function MetaSpendForm({
   return (
     <form className="space-y-4" onSubmit={onSave}>
       <div>
-        <h2 className="text-base font-semibold text-fg">Editar gasto Meta do mês</h2>
+        <Heading level="section">Editar gasto Meta do mês</Heading>
         <dl className="mt-4 space-y-3 text-sm">
           <div>
             <dt className="text-xs font-medium text-fg-muted">Mês de referência</dt>
@@ -637,7 +638,7 @@ function FinancePanel({
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
       <section className="min-w-0 rounded-card bg-surface p-5" aria-label="Composição financeira">
-        <h2 className="text-base font-semibold text-fg">Composição financeira</h2>
+        <Heading level="section">Composição financeira</Heading>
         <p className="mt-1 text-xs text-fg-muted">Valores registrados no período</p>
         <div className="mt-8 flex h-12 w-full overflow-hidden rounded-control bg-raised" role="img" aria-label={segments.map((item) => `${item.label}: ${formatBRL(item.value)}`).join('; ')}>
           {segments.map((item) => <div key={item.label} className={`w-(--segment-w) ${item.color}`} style={{ '--segment-w': `${summary.total_revenue > 0 ? Math.max(0, item.value / summary.total_revenue * 100) : 0}%` } as CSSProperties} />)}
@@ -645,7 +646,7 @@ function FinancePanel({
         <div className="mt-8 grid gap-4 sm:grid-cols-2">{segments.map((item) => <div key={item.label} className="flex items-start gap-2 text-xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${item.color}`} /><div><span className="text-fg-muted">{item.label}</span><strong className="mt-1 block tabular-nums">{formatBRL(item.value)}</strong></div></div>)}</div>
       </section>
       <section className="min-w-0 rounded-card bg-surface p-5" aria-labelledby="finance-summary-title">
-        <h2 id="finance-summary-title" className="text-base font-semibold text-fg">Memória do cálculo</h2>
+        <Heading level="section" id="finance-summary-title">Memória do cálculo</Heading>
         <div className="mt-4">
           <Table>
             <TableHeader>

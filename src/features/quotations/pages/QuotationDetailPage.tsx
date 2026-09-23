@@ -77,6 +77,7 @@ import {
   type ProjectedQuotationItem,
 } from '@/lib/localProjections';
 import { MenuItem } from '@/components/ui/menu-item';
+import { Heading } from '@/components/ui/heading';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
 const LEGACY_CONVERSATION_STATUS: Record<string, { label: string; badge: string }> = {
@@ -1202,7 +1203,7 @@ function CoreQuotationDetail({
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 id="issued-client-title" className="text-base font-semibold text-fg">Cliente e oportunidade</h2>
+              <Heading level="section" id="issued-client-title">Cliente e oportunidade</Heading>
               <div className="mt-5 flex items-center gap-2.5">
                 <span className="grid size-9 shrink-0 place-items-center rounded-full bg-avatar-one text-3xs font-bold text-avatar-ink" aria-hidden="true">{(data.cliente || 'CL').slice(0, 2).toLocaleUpperCase('pt-BR')}</span>
                 <div className="min-w-0"><p className="truncate text-sm font-medium text-fg">{data.cliente || 'Cliente não informado'}</p>{(data.email || data.telefone) && <p className="truncate text-xs text-fg-muted">{[data.email, fmtPhone(data.telefone) || data.telefone].filter(Boolean).join(' · ')}</p>}</div>
@@ -1227,9 +1228,9 @@ function CoreQuotationDetail({
           className="overflow-hidden rounded-card bg-surface"
         >
           <div className="px-5 pb-3 pt-5 md:px-6">
-            <h2 id="issued-items-title" className="text-base font-semibold text-fg">
+            <Heading level="section" id="issued-items-title">
               Itens do orçamento
-            </h2>
+            </Heading>
           </div>
           {displayItems.length > 0 ? (
             <div className="px-5 md:px-6">
@@ -1289,15 +1290,15 @@ function CoreQuotationDetail({
           aria-labelledby="issued-conditions-title"
           className="rounded-card bg-surface px-5 py-5 md:px-6 [&>section:first-of-type]:border-t-0"
         >
-          <h2 id="issued-conditions-title" className="text-base font-semibold text-fg">
+          <Heading level="section" id="issued-conditions-title">
             Condições comerciais
-          </h2>
+          </Heading>
           <QuotationSectionsDocument sections={sections} editable={false} onChange={setSections} />
           {entrega && (
             <section className="border-t border-line py-5" aria-labelledby="issued-delivery-title">
-              <h3 id="issued-delivery-title" className="text-sm font-semibold text-fg">
+              <Heading level="subsection" id="issued-delivery-title">
                 Previsão de entrega
-              </h3>
+              </Heading>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-fg-muted">{entrega}</p>
             </section>
           )}
@@ -1440,7 +1441,7 @@ function CoreQuotationDetail({
 
       <div className="min-w-0 space-y-5 self-start">
       <aside className="rounded-card bg-surface p-5" aria-label="Resumo do orçamento">
-        <h2 className="text-base font-semibold">Resumo</h2>
+        <Heading level="section">Resumo</Heading>
         <dl className="mt-4 space-y-3 text-xs tabular-nums">
           <div className="flex justify-between gap-3"><dt className="text-fg-muted">Subtotal</dt><dd>{formatBRL(Number(data.total) - Number(data.frete))}</dd></div>
           <div className="flex justify-between gap-3"><dt className="text-fg-muted">Frete</dt><dd>{formatBRL(data.frete)}</dd></div>
@@ -1453,9 +1454,9 @@ function CoreQuotationDetail({
         className="rounded-card bg-surface px-5 py-5"
         aria-labelledby="commercial-followup-title"
       >
-        <h2 id="commercial-followup-title" className="text-base font-semibold text-fg">
+        <Heading level="section" id="commercial-followup-title">
           Comunicação
-        </h2>
+        </Heading>
         <div className="mt-5 space-y-3">
           <label className="block text-xs font-medium text-fg-muted">
             <span className="mb-1.5 block">Fluxo WhatsApp</span>
@@ -1519,7 +1520,7 @@ function CoreQuotationDetail({
           className="mt-5 border-t border-line pt-4"
         />
         <div className="mt-5 border-t border-line pt-5">
-          <h3 className="text-sm font-semibold text-fg">Resultado da negociação</h3>
+          <Heading level="subsection">Resultado da negociação</Heading>
           {data.status === 'emitido' ? (
             <div className="mt-3 space-y-2">
               <Button
@@ -1686,9 +1687,16 @@ function CoreQuotationDetail({
                     </Button>
                     {menuOpen && (
                       <div
+                        aria-hidden="true"
+                        className="fixed inset-0 z-floating"
+                        onClick={() => setMenuOpen(false)}
+                      />
+                    )}
+                    {menuOpen && (
+                      <div
                         role="menu"
                         aria-label="Ações do orçamento"
-                        className="absolute right-0 top-12 z-40 w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
+                        className="absolute right-0 top-12 z-floating w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
                       >
                         <MenuItem
                           role="menuitem"
@@ -1710,13 +1718,6 @@ function CoreQuotationDetail({
                           <Trash2 aria-hidden="true" /> Excluir orçamento
                         </MenuItem>
                       </div>
-                    )}
-                    {menuOpen && (
-                      <div
-                        aria-hidden="true"
-                        className="fixed inset-0 z-30"
-                        onClick={() => setMenuOpen(false)}
-                      />
                     )}
                   </div>
                 </>
@@ -1758,14 +1759,14 @@ function CoreQuotationDetail({
           >
             <div className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
               {draftEditable && !editing && (
-                <h2 className="mb-3 text-base font-semibold text-fg">Conferência</h2>
+                <Heading level="section" className="mb-3">Conferência</Heading>
               )}
               <>
                 {/* Cliente */}
                 <section aria-labelledby="cliente-title" className="border-t border-line py-5">
-                  <h2 id="cliente-title" className="text-sm font-semibold text-fg">
+                  <Heading as="h2" level="subsection" id="cliente-title">
                     Cliente
-                  </h2>
+                  </Heading>
                   <div className="mt-2">
                     {editing ? (
                       <div className="relative max-w-md">
@@ -1787,7 +1788,7 @@ function CoreQuotationDetail({
                           )}
                         </div>
                         {clientResults.length > 0 && (
-                          <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
+                          <div className="absolute left-0 right-0 z-floating mt-1 max-h-40 overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
                             {clientResults.map((client) => (
                               // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                               <button
@@ -1861,9 +1862,9 @@ function CoreQuotationDetail({
 
                 {/* Dados do orçamento */}
                 <section aria-labelledby="dados-title" className="border-t border-line py-5">
-                  <h2 id="dados-title" className="text-sm font-semibold text-fg">
+                  <Heading as="h2" level="subsection" id="dados-title">
                     Dados do orçamento
-                  </h2>
+                  </Heading>
                   <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="min-w-0">
                       <span className="text-xs font-medium text-fg-muted">Data do orçamento</span>
@@ -1986,9 +1987,9 @@ function CoreQuotationDetail({
                   className="border-t border-line py-5"
                 >
                   <div className="mb-3 flex flex-wrap items-baseline gap-2">
-                    <h2 id="quotation-items-title" className="text-sm font-semibold text-fg">
+                    <Heading as="h2" level="subsection" id="quotation-items-title">
                       Itens
-                    </h2>
+                    </Heading>
                     <span className="text-xs text-fg-muted">
                       {quotationItemCountLabel(displayItems.length)}
                     </span>
@@ -2062,7 +2063,7 @@ function CoreQuotationDetail({
                                     aria-label={`SKU do item ${item.item_name}`}
                                   />
                                   {results.length > 0 && (
-                                    <div className="absolute left-0 top-9 z-40 w-64 rounded-control border border-line bg-surface shadow-lg">
+                                    <div className="absolute left-0 top-9 z-floating w-64 rounded-control border border-line bg-surface shadow-lg">
                                       {results.map((product) => (
                                         // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                                         <button
@@ -2156,7 +2157,7 @@ function CoreQuotationDetail({
                                     onClick={() => removeItem(item._key)}
                                     aria-label={`Remover item ${item.item_name || item.sku}`}
                                   >
-                                    <X size={15} />
+                                    <X size={16} />
                                   </Button>
                                 </TableCell>
                               )}
@@ -2215,7 +2216,7 @@ function CoreQuotationDetail({
               {/* Revisões */}
               {(data.revisionHistory || []).length > 0 && (
                 <section className="border-t border-line py-5" aria-label="Revisões">
-                  <h2 className="text-sm font-semibold text-fg">Revisões</h2>
+                  <Heading as="h2" level="subsection">Revisões</Heading>
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
                     <span>
                       Revisão atual: <b className="font-semibold">R{data.revision}</b>
@@ -2319,9 +2320,9 @@ function CoreQuotationDetail({
                 className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6"
                 aria-labelledby="quotation-summary-title"
               >
-                <h2 id="quotation-summary-title" className="text-base font-semibold text-fg">
+                <Heading level="section" id="quotation-summary-title">
                   Resumo
-                </h2>
+                </Heading>
                 <dl className="mt-4 space-y-3 text-sm tabular-nums">
                   <div className="flex justify-between gap-4">
                     <dt className="text-fg-muted">Subtotal</dt>

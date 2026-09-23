@@ -13,6 +13,7 @@ import {
   type ClientLinkInput,
   type ContextContact,
 } from '@/lib/api/attendanceContextApi';
+import { Heading } from '@/components/ui/heading';
 
 const SOURCE_LABELS: Record<NonNullable<AttendanceContext['matchSource']>, string> = {
   operator: 'Vinculado',
@@ -213,7 +214,7 @@ export default function ContextPanel({ conversationId, identityVersion }: Contex
 
       {contact && (context.quotations?.length || 0) > 0 && (
         <section aria-label="Orçamentos" className="space-y-1">
-          <h3 className="text-xs font-semibold uppercase text-fg-muted">Orçamentos</h3>
+          <Heading level="eyebrow">Orçamentos</Heading>
           <ul className="space-y-1">
             {context.quotations!.map((quotation) => (
               <li key={quotation.id} className="flex items-center justify-between gap-2">
@@ -231,7 +232,7 @@ export default function ContextPanel({ conversationId, identityVersion }: Contex
 
       {contact && (context.deliveries?.length || 0) > 0 && (
         <section aria-label="Entregas" className="space-y-1">
-          <h3 className="text-xs font-semibold uppercase text-fg-muted">Entregas</h3>
+          <Heading level="eyebrow">Entregas</Heading>
           <ul className="space-y-1">
             {context.deliveries!.map((delivery) => (
               <li key={delivery.id} className="flex items-center justify-between gap-2">

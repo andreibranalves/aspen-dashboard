@@ -121,7 +121,7 @@ export default function TopBar({
           }}
         >
           <label className="flex h-[46px] w-[244px] items-center gap-2 rounded-nav bg-surface px-4 text-fg-muted focus-within:ring-2 focus-within:ring-focus">
-            <Search size={17} aria-hidden="true" />
+            <Search size={16} aria-hidden="true" />
             <input
               ref={searchRef}
               type="search"
@@ -141,7 +141,7 @@ export default function TopBar({
             </kbd>
           </label>
           {searchOpen && query.trim() && (
-            <div className="absolute right-0 top-[52px] z-40 w-[244px] overflow-hidden rounded-control border border-line bg-surface p-1 shadow-lg">
+            <div className="absolute right-0 top-[52px] z-floating w-[244px] overflow-hidden rounded-control border border-line bg-surface p-1 shadow-lg">
               {matches.length > 0 ? (
                 matches.map((item) => (
                   <MenuItem key={item.hash} onClick={() => navigateFromSearch(item.hash)}>

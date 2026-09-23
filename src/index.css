@@ -22,6 +22,10 @@
   --radius-card: 25px;
   --radius-shell: 31px;
   --radius-full: 9999px;
+  --z-index-sticky: 10;
+  --z-index-nav: 30;
+  --z-index-floating: 40;
+  --z-index-overlay: 50;
   --font-sans: Manrope, 'Segoe UI', Arial, sans-serif;
   --color-canvas: rgb(var(--canvas));
   --color-sage: rgb(var(--sage));

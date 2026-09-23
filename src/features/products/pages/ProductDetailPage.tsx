@@ -45,6 +45,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
+import { Heading } from '@/components/ui/heading';
 
 interface Produto {
   sku: string;
@@ -205,7 +206,7 @@ function SectionCard({ title, description, icon: Icon, children }: SectionCardPr
           </div>
         )}
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-fg">{title}</h2>
+          <Heading level="section">{title}</Heading>
           {description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
         </div>
       </div>
@@ -1093,7 +1094,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </SectionCard>
         </div>
         <aside className="rounded-card bg-surface p-5 xl:col-start-2 xl:row-start-1" aria-label="Prévia do cadastro">
-          <h2 className="text-base font-semibold">Prévia do cadastro</h2>
+          <Heading level="section">Prévia do cadastro</Heading>
           <div className="mt-5 flex h-44 items-end justify-between rounded-control bg-sage p-5 text-sage-ink"><Package size={32} strokeWidth={1.5} aria-hidden="true" /><span className="text-xl font-semibold">{previewPrice === null ? '—' : formatBRL(previewPrice)}</span></div>
           {!hasBasePrice && tierPrices.length > 0 && <p className="mt-2 text-xs text-fg-muted">A partir de, conforme a quantidade.</p>}
           <p className="mt-4 text-xs leading-5 text-fg-muted">{produto.categoria || 'Sem categoria'} · {produto.unidade || 'Unidade não informada'}</p>

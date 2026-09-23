@@ -83,6 +83,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
       <main className="grid min-h-dvh items-center gap-10 bg-page p-6 text-fg md:min-h-[calc(100dvh-36px)] md:grid-cols-2 md:rounded-shell md:px-16" aria-labelledby="login-title">
         <div className="max-w-lg py-8 md:p-10">
           <AspenBrand />
+          {/* eslint-disable-next-line no-restricted-syntax -- tipografia de marca da tela de login */}
           <h1 id="login-title" className="mt-10 max-w-[430px] text-hero font-bold leading-tight tracking-display md:text-5xl">
             Da conversa ao próximo bom negócio.
           </h1>
@@ -93,6 +94,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
         <section className="w-full max-w-[390px] rounded-card bg-surface p-6 md:p-9">
           <div className="flex items-start justify-between gap-4">
             <div>
+              {/* eslint-disable-next-line no-restricted-syntax -- tipografia de marca da tela de login */}
               <h2 className="text-stat font-bold leading-tight">Bem-vindo à Aspen</h2>
               <p className="mt-2 text-xs text-fg-muted">Entre com a senha para continuar.</p>
             </div>

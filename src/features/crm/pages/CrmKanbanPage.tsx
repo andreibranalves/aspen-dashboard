@@ -45,6 +45,7 @@ import { fmtPhone } from '@/lib/formatting/formatters';
 import { storeQuotationOriginPrefill } from '@/features/crm/quotationOriginPrefill';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import EntityIdentity from '@/components/shared/EntityIdentity';
+import { Heading } from '@/components/ui/heading';
 
 interface Deal {
   id: string;
@@ -412,7 +413,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
           {!narrowLayout && (
             <div className="overflow-x-auto rounded-card border border-line bg-surface p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold">Negócios em acompanhamento</h2>
+                <Heading as="h2" level="subsection">Negócios em acompanhamento</Heading>
                 <span className="rounded-control border border-line px-3 py-1.5 text-2xs text-fg-muted">Etapas configuradas no Aspen</span>
               </div>
               <Table className="min-w-[760px]">
@@ -459,7 +460,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 <PlusCircle aria-hidden="true" /> Novo orçamento
                               </Button>
                             )}
-                            {href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="inline-flex h-8 items-center gap-1 rounded-control bg-surface-subtle px-2 text-xs font-medium hover:bg-surface-hover"><ArrowUpRight size={13} aria-hidden="true" />Abrir</a> : <span className="text-fg-muted">—</span>}
+                            {href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} className="inline-flex h-8 items-center gap-1 rounded-control bg-surface-subtle px-2 text-xs font-medium hover:bg-surface-hover"><ArrowUpRight size={14} aria-hidden="true" />Abrir</a> : <span className="text-fg-muted">—</span>}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -490,6 +491,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                             {leadName}
                           </a>
                         ) : (
+                          // eslint-disable-next-line no-restricted-syntax -- espelha o link do lead ao lado
                           <h2 className="truncate font-medium">{leadName}</h2>
                         )}
                         {deal.email && (
@@ -689,9 +691,9 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                     <span className="block truncate">{displayLeadName}</span>
                                   </a>
                                 ) : (
-                                  <h3 className="min-w-0 truncate text-lead font-semibold leading-5">
+                                  <Heading level="card" className="min-w-0 truncate">
                                     {displayLeadName}
-                                  </h3>
+                                  </Heading>
                                 )}
                                 {moving && (
                                   <span className="shrink-0 text-xs text-fg-muted">Movendo…</span>
@@ -702,7 +704,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 <time dateTime={lastUpdate}>{lastUpdate ? daysAgo(lastUpdate) : '—'}</time>
                                 <span className="grid size-7 place-items-center rounded-full bg-avatar-one text-3xs font-bold text-avatar-ink">AS</span>
                               </div>
-                              {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={13} aria-hidden="true" />Ver negócio</a>}
+                              {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={14} aria-hidden="true" />Ver negócio</a>}
                               <details className="mt-2 text-2xs text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select size="sm" ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
                             </article>
                           );

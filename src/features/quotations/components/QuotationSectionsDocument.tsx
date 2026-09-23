@@ -2,6 +2,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { Input } from '@/components/ui/input';
 import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import { quotationContentHasText } from '@/lib/quotationDisplay';
+import { Heading } from '@/components/ui/heading';
 
 interface SectionCard {
   key: keyof Pick<QuotationSectionsSnapshot, 'prazo_producao' | 'pagamento' | 'condicoes_gerais'>;
@@ -81,12 +82,12 @@ export function QuotationSectionsDocument({
               aria-labelledby={`quote-section-${key}-title`}
               className="border-t border-border-subtle py-5"
             >
-              <h2
+              <Heading as="h2" level="subsection"
                 id={`quote-section-${key}-title`}
-                className="text-sm font-semibold text-fg"
-              >
+                
+>
                 {displayTitle(label, aliases, section.title)}
-              </h2>
+              </Heading>
               <div
                 className="mt-2 max-w-[68ch] text-sm leading-6 text-fg [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-1 [&_ul]:list-disc"
                 dangerouslySetInnerHTML={{ __html: html }}
@@ -112,7 +113,7 @@ export function QuotationSectionsDocument({
             className="border-t border-border-subtle pt-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 id={`quote-section-edit-${key}-title`} className="flex items-center gap-2 text-sm font-semibold text-fg">
+              <Heading as="h2" level="subsection" id={`quote-section-edit-${key}-title`} className="flex items-center gap-2">
                 {section.enabled ? (
                   displayTitle(label, aliases, section.title)
                 ) : (
@@ -121,7 +122,7 @@ export function QuotationSectionsDocument({
                     <span className="ml-2 text-xs font-normal text-warning">— oculto no orçamento</span>
                   </span>
                 )}
-              </h2>
+              </Heading>
               <label className="flex items-center gap-2 text-xs text-fg-muted">
                 <input
                   type="checkbox"

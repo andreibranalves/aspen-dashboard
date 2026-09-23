@@ -47,6 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Heading } from '@/components/ui/heading';
 
 const PAGE_SIZE = 25;
 
@@ -282,9 +283,9 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
           />
         )}
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+          <Heading level="eyebrow">
             Passos da entrega
-          </h3>
+          </Heading>
           <ol
             className="mt-3 space-y-2"
             aria-label={`Passos da entrega ${delivery.businessNumber}`}
@@ -652,7 +653,7 @@ export default function WhatsAppDeliveriesPage() {
             <SearchField value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" />
             <Select aria-label="Filtrar envios por situação" value={filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all'} onChange={(event) => { const value = event.target.value; updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false })); }}><option value="all">Todos os status</option><option value="review">Requer ação</option><option value="active">Em andamento</option><option value="retry">Reagendados</option><option value="delivered">Entregues</option></Select>
             <details className="relative ml-auto text-sm text-fg-muted"><summary className="flex h-10 cursor-pointer list-none items-center rounded-control px-3 font-semibold hover:bg-raised hover:text-fg">Filtros avançados</summary>
-            <section className="absolute right-10 z-20 mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
+            <section className="absolute right-10 z-floating mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">
               <label className={filterInputClass(filters.requiresAction)}>
                 <input

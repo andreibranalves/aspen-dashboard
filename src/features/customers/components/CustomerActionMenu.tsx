@@ -88,7 +88,7 @@ export function CustomerActionMenu({
           ref={menuRef}
           role="menu"
           aria-label={accessibleLabel}
-          className="absolute right-0 top-full z-20 mt-1 min-w-44 rounded-control border border-line bg-surface p-1 shadow-lg"
+          className="absolute right-0 top-full z-floating mt-1 min-w-44 rounded-control border border-line bg-surface p-1 shadow-lg"
         >
           <MenuItem
             ref={actionRef}

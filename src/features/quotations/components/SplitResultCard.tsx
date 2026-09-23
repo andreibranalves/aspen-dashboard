@@ -41,6 +41,7 @@ import type {
   ClientResolutionCandidate,
   ClientResolutionView,
 } from '@/features/quotations/automaticClientResolution';
+import { Heading } from '@/components/ui/heading';
 
 export interface SplitResultCardProps {
   draft: Draft;
@@ -650,17 +651,17 @@ export default function SplitResultCard({
 
             {draft.edited.urgente && (
               <span className="inline-flex items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-2xs font-semibold text-warning">
-                <AlertTriangle size={10} /> Urgente
+                <AlertTriangle size={12} /> Urgente
               </span>
             )}
             {isDone && (
               <span className="inline-flex items-center gap-1 rounded-badge bg-primary/10 px-2 py-0.5 text-2xs font-semibold text-primary">
-                <Check size={10} /> Emitido
+                <Check size={12} /> Emitido
               </span>
             )}
             {!isDone && hasSavedSnapshot && (
               <span className="inline-flex items-center gap-1 rounded-badge bg-surface px-2 py-0.5 text-2xs font-semibold text-fg-muted">
-                <Check size={10} /> Rascunho salvo
+                <Check size={12} /> Rascunho salvo
               </span>
             )}
           </div>
@@ -735,14 +736,14 @@ export default function SplitResultCard({
             </div>
           ) : (
             <>
-              <h3 className="mt-1 flex min-w-0 items-center gap-2 text-sm font-semibold text-fg">
+              <Heading level="subsection" className="mt-1 flex min-w-0 items-center gap-2">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
                   <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-2xs font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}
-              </h3>
+              </Heading>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-fg-muted">
                 {draft.edited.empresa && <span>{draft.edited.empresa}</span>}
                 {draft.edited.email && <span>{draft.edited.email}</span>}
@@ -901,7 +902,7 @@ export default function SplitResultCard({
                             />
                           )}
                           {showDropdown && (
-                            <div className="absolute left-0 right-0 top-8 z-50 max-h-48 overflow-y-auto rounded-control border border-border-subtle bg-surface shadow-lg">
+                            <div className="absolute left-0 right-0 top-8 z-floating max-h-48 overflow-y-auto rounded-control border border-border-subtle bg-surface shadow-lg">
                               {results.map((p) => (
                                 // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                                 <button
@@ -1027,7 +1028,7 @@ export default function SplitResultCard({
                         aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
                         title="Excluir produto"
                       >
-                        <X size={13} />
+                        <X size={14} />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -1079,7 +1080,7 @@ export default function SplitResultCard({
         {!isDone && !reviewOnly && (
           <>
             <Button variant="ghost" size="sm" onClick={toggleEditing} disabled={editingBlocked}>
-              <Pencil size={13} />
+              <Pencil size={14} />
               {editing ? 'Concluir' : 'Editar'}
             </Button>
             {editing && (
@@ -1089,7 +1090,7 @@ export default function SplitResultCard({
                 onClick={() => onAddItem(draft.index)}
                 disabled={editingBlocked}
               >
-                <Plus size={13} />
+                <Plus size={14} />
                 Item
               </Button>
             )}
@@ -1107,11 +1108,11 @@ export default function SplitResultCard({
                 rel="noopener noreferrer"
                 className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-control bg-surface px-3 text-xs font-medium text-fg transition-colors hover:bg-surface-hover"
               >
-                <FileText size={13} /> Abrir PDF
+                <FileText size={14} /> Abrir PDF
               </a>
             ) : (
               <span aria-disabled="true" className="inline-flex h-8 items-center gap-2 rounded-control bg-surface px-3 text-xs font-medium text-fg opacity-40">
-                <FileText size={13} /> Abrir PDF
+                <FileText size={14} /> Abrir PDF
               </span>
             )}
             {waSendEnabled ? (
@@ -1121,7 +1122,7 @@ export default function SplitResultCard({
                 title={deliveryError || (delivery ? 'Este orçamento já possui uma entrega pelo WhatsApp.' : undefined)}
                 onClick={() => onSendWhatsApp?.(draft.index)}
               >
-                <Phone size={13} /> {deliveryError ? 'Falha no envio' : deliveryPending ? 'Enviando…' : delivery ? 'Enviado' : 'Enviar WhatsApp'}
+                <Phone size={14} /> {deliveryError ? 'Falha no envio' : deliveryPending ? 'Enviando…' : delivery ? 'Enviado' : 'Enviar WhatsApp'}
               </Button>
             ) : null}
           </>
@@ -1141,7 +1142,7 @@ export default function SplitResultCard({
                 title="Abre uma pré-visualização temporária sem salvar ou emitir."
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
-                <Eye size={13} />
+                <Eye size={14} />
                 Revisar
               </Button>
             )}
@@ -1152,7 +1153,7 @@ export default function SplitResultCard({
                 disabled={actionBlocked || !canCreate}
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
               >
-                {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                {isProcessing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                 {isProcessing ? 'Emitindo…' : 'Emitir orçamento'}
               </Button>
             )}

@@ -34,6 +34,7 @@ import type {
   FlowContext,
 } from '@/lib/api/communicationApi';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
+import { Heading } from '@/components/ui/heading';
 const STEP_TYPES = {
   TEXT: 'text',
   DOCUMENT: 'document',
@@ -382,7 +383,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <details className="relative z-20 min-w-0 rounded-control border border-line bg-surface px-4 py-3">
+        <details className="relative z-floating min-w-0 rounded-control border border-line bg-surface px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium text-fg">Fluxos cadastrados · {flows.length} {flows.length === 1 ? 'fluxo' : 'fluxos'}</summary>
           <section aria-label="Fluxos cadastrados" className="mt-4 min-w-0 space-y-3 xl:absolute xl:left-0 xl:top-9 xl:w-[740px] xl:rounded-card xl:border xl:border-line xl:bg-surface xl:p-4 xl:shadow-xl">
 
@@ -424,13 +425,13 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       <div className="flex min-w-0 items-start gap-2">
                         {flow.enabled ? (
                           <CheckCircle2
-                            size={17}
+                            size={16}
                             className="mt-0.5 shrink-0 text-success"
                             aria-hidden="true"
                           />
                         ) : (
                           <CircleOff
-                            size={17}
+                            size={16}
                             className="mt-0.5 shrink-0 text-fg-muted"
                             aria-hidden="true"
                           />
@@ -461,7 +462,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       </span>
                       {date && (
                         <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
-                          <CalendarDays size={13} aria-hidden="true" />
+                          <CalendarDays size={14} aria-hidden="true" />
                           <time dateTime={flow.updated_at || flow.created_at}>{date}</time>
                         </span>
                       )}
@@ -492,7 +493,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         <InlineAlert>{actionError}</InlineAlert>
       )}
 
-      {selectedFlow && <h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2>}
+      {selectedFlow && <Heading level="section">{displayName(selectedFlow)}</Heading>}
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
 
 
@@ -501,7 +502,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
             className="overflow-hidden rounded-card bg-surface"
             aria-labelledby="selected-flow-title"
           >
-            <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface p-4">
+            <div className="sticky top-0 z-sticky flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface p-4">
               <button
                 type="button"
                 onClick={() =>
@@ -511,18 +512,18 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 className="flex min-w-0 flex-1 items-center gap-3 rounded-control text-left"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
-                  <MessageSquare size={18} className="text-sage" aria-hidden="true" />
+                  <MessageSquare size={20} className="text-sage" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
-                  <h2 id="selected-flow-title" className="truncate text-base font-semibold text-fg">
+                  <Heading level="section" id="selected-flow-title" className="truncate">
                     Sequência do fluxo
-                  </h2>
+                  </Heading>
                 </div>
                 {expandedFlow === selectedFlow.id ? (
-                  <ChevronUp size={18} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
+                  <ChevronUp size={20} className="mt-1 shrink-0 text-fg-muted" aria-hidden="true" />
                 ) : (
                   <ChevronDown
-                    size={18}
+                    size={20}
                     className="mt-1 shrink-0 text-fg-muted"
                     aria-hidden="true"
                   />
@@ -599,9 +600,9 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 id="flow-steps-title" className="text-sm font-semibold text-fg">
+                      <Heading level="subsection" id="flow-steps-title">
                         Etapas do fluxo
-                      </h3>
+                      </Heading>
                     </div>
                     <Button
                       type="button"
@@ -902,9 +903,9 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   className="space-y-2 border-t border-line pt-4"
                   aria-labelledby="flow-summary-title"
                 >
-                  <h3 id="flow-summary-title" className="text-sm font-semibold text-fg">
+                  <Heading level="subsection" id="flow-summary-title">
                     Resumo das etapas
-                  </h3>
+                  </Heading>
                   <ol className="space-y-1.5">
                     {(selectedFlow.steps || []).map((step, index) => {
                       const StepIcon = STEP_TYPE_ICONS[step.type] || MessageSquare;
@@ -917,7 +918,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                             {index + 1}.
                           </span>
                           <StepIcon
-                            size={15}
+                            size={16}
                             className="mt-0.5 shrink-0 text-fg-muted"
                             aria-hidden="true"
                           />
@@ -1006,7 +1007,7 @@ function FlowPreview({ step }: { step?: FlowStep }) {
       className="min-w-0 rounded-card bg-surface p-4"
       aria-labelledby="flow-preview-title"
     >
-      <h3 id="flow-preview-title" className="text-base font-semibold text-fg">Prévia no WhatsApp</h3>
+      <Heading as="h3" level="section" id="flow-preview-title">Prévia no WhatsApp</Heading>
       <p className="mt-1 text-xs text-fg-muted">{title}</p>
       <div className="mt-5 overflow-hidden rounded-card border-8 border-surface-subtle bg-taupe">
         <div className="px-4 py-3 text-xs font-semibold text-taupe-ink">Aspen · prévia</div>

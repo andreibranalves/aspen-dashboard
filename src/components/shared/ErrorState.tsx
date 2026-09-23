@@ -20,7 +20,7 @@ export default function ErrorState({ title, description, onRetry, actions, class
       className={cn('flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center', className)}
     >
       <span className="grid size-12 place-items-center rounded-full bg-destructive/10 text-destructive">
-        <AlertTriangle size={22} aria-hidden="true" />
+        <AlertTriangle size={24} aria-hidden="true" />
       </span>
       <h2 className="text-base font-bold text-fg">{title}</h2>
       {description && <p className="max-w-md text-sm text-fg-muted">{description}</p>}
