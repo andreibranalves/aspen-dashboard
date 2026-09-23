@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,6 +13,7 @@ export default defineConfig({
   envDir: process.env.NODE_ENV === 'test' ? false : undefined,
   plugins: [
     react(),
+    tailwindcss(),
     ...(sentryAuthToken
       ? [
           sentryVitePlugin({

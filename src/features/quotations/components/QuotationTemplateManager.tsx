@@ -283,7 +283,7 @@ export function QuotationTemplateManager({
             {!detailLoading && !detailError && (
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="space-y-1.5 text-sm text-fg">
+                  <label className="flex flex-col gap-1.5 text-sm text-fg">
                     <span className="font-medium">Nome</span>
                     <Input
                       value={name}
@@ -291,7 +291,7 @@ export function QuotationTemplateManager({
                       disabled={saving}
                     />
                   </label>
-                  <label className="space-y-1.5 text-sm text-fg">
+                  <label className="flex flex-col gap-1.5 text-sm text-fg">
                     <span className="font-medium">Identificador</span>
                     <Input
                       value={key}
@@ -322,7 +322,7 @@ export function QuotationTemplateManager({
                     )}
                   </div>
                 ) : (
-                  <label className="block space-y-1.5 text-sm text-fg">
+                  <label className="flex flex-col gap-1.5 text-sm text-fg">
                     <span className="font-medium">Conteúdo do modelo</span>
                     <Textarea
                       value={source}

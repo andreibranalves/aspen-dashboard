@@ -667,7 +667,7 @@ export default function SplitResultCard({
           {editing && !isDone ? (
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <label className="block space-y-1">
+                <label className="flex flex-col gap-1">
                   <span className="text-[10px] font-medium text-fg-muted">Nome</span>
                   <Input
                     aria-label="Nome"
@@ -678,7 +678,7 @@ export default function SplitResultCard({
                     className="h-7 text-xs"
                   />
                 </label>
-                <label className="block space-y-1">
+                <label className="flex flex-col gap-1">
                   <span className="text-[10px] font-medium text-fg-muted">Empresa</span>
                   <Input
                     aria-label="Empresa"
@@ -691,7 +691,7 @@ export default function SplitResultCard({
                 </label>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[4fr_3fr_3fr]">
-                <label className="block space-y-1">
+                <label className="flex flex-col gap-1">
                   <span className="text-[10px] font-medium text-fg-muted">E-mail</span>
                   <Input
                     aria-label="E-mail"
@@ -702,7 +702,7 @@ export default function SplitResultCard({
                     className="h-7 text-xs"
                   />
                 </label>
-                <label className="block space-y-1">
+                <label className="flex flex-col gap-1">
                   <span className="text-[10px] font-medium text-fg-muted">Telefone</span>
                   <Input
                     aria-label="Telefone"
@@ -713,7 +713,7 @@ export default function SplitResultCard({
                     className="h-7 text-xs"
                   />
                 </label>
-                <label className="block space-y-1 [&>div]:flex [&>div]:w-full">
+                <label className="flex flex-col gap-1 [&>div]:flex [&>div]:w-full">
                   <span className="text-[10px] font-medium text-fg-muted">Origem</span>
                   <Select
                     aria-label="Origem"

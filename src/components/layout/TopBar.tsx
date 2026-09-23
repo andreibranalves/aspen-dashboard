@@ -131,7 +131,7 @@ export default function TopBar({
               onKeyDown={handleSearchKeyDown}
               placeholder="Buscar uma tela..."
               aria-label="Buscar uma tela"
-              className="w-full min-w-0 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
+              className="w-full min-w-0 bg-transparent text-xs text-fg outline-hidden placeholder:text-fg-muted"
             />
             <kbd className="whitespace-nowrap rounded-xs border border-line px-1 text-[10px]">
               Ctrl K

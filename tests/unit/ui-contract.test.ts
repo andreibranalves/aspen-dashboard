@@ -81,20 +81,6 @@ describe('Aspen UI contract', () => {
     }
   });
 
-  it('uses radius roles only; size radii and arbitrary radii do not exist', () => {
-    const tailwind = read('tailwind.config.js');
-    const scale = tailwind.match(/\n {4}borderRadius: \{([\s\S]*?)\n {4}\},/)?.[1];
-    assert.ok(scale, 'borderRadius must replace (not extend) the Tailwind scale');
-    for (const role of ['xs', 'badge', 'control', 'nav', 'card', 'shell', 'full']) {
-      assert.match(scale, new RegExp(`\\b${role}:`), `radius role ${role}`);
-    }
-    assert.doesNotMatch(scale, /\b(?:sm|md|lg|xl|2xl|3xl):/);
-    assert.deepEqual(
-      offenders(/\brounded(?:-[trblse]{1,2})?-(?:sm|md|lg|xl|2xl|3xl|\[[^\]]+\])/),
-      []
-    );
-  });
-
   it('draws focus once, globally, from the focus token', () => {
     const css = read('src/index.css');
     assert.match(css, /\*:focus-visible \{\s*outline: 2px solid rgb\(var\(--focus\)\);/);

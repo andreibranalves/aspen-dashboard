@@ -174,7 +174,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         <Upload size={18} className="mt-0.5 shrink-0 text-fg-muted" aria-hidden="true" />
       </div>
 
-      <label htmlFor="media-product-group" className="block space-y-1.5 text-sm text-fg">
+      <label htmlFor="media-product-group" className="flex flex-col gap-1.5 text-sm text-fg">
         <span className="font-medium">Grupo de produto</span>
         <Select
           id="media-product-group"

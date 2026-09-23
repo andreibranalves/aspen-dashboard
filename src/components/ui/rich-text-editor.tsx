@@ -106,7 +106,7 @@ export function RichTextEditor({ value, onChange, disabled = false, ariaLabel, p
         <Toolbar disabled={disabled} />
         <div className="relative">
           <RichTextPlugin
-            contentEditable={<ContentEditable aria-label={ariaLabel} aria-placeholder={placeholder} placeholder={<span className="pointer-events-none absolute left-3 top-3 text-sm text-fg-muted">{placeholder}</span>} className="relative min-h-28 px-3 py-2.5 text-sm leading-6 text-fg outline-none" />}
+            contentEditable={<ContentEditable aria-label={ariaLabel} aria-placeholder={placeholder} placeholder={<span className="pointer-events-none absolute left-3 top-3 text-sm text-fg-muted">{placeholder}</span>} className="relative min-h-28 px-3 py-2.5 text-sm leading-6 text-fg outline-hidden" />}
             ErrorBoundary={LexicalErrorBoundary}
           />
         </div>

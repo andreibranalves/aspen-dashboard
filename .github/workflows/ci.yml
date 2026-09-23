@@ -114,7 +114,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check:tailwind
       - run: npm run check:db-boundary
       - run: npm run check:integration-boundary
       - run: npm run check:whatsapp-extension

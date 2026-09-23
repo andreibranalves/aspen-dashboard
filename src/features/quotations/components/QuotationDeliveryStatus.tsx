@@ -197,7 +197,7 @@ export function QuotationDeliveryStatus({
         }
       >
         <form id={formId} onSubmit={submitResolution} className="space-y-4 text-sm">
-          <label className="block space-y-1" htmlFor={noteId}>
+          <label className="flex flex-col gap-1" htmlFor={noteId}>
             <span className="font-medium">Justificativa</span>
             <Textarea
               ref={noteRef}
