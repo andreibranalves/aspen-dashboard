@@ -187,16 +187,130 @@ async function contextForCandidate(
   };
 }
 
-export function createWhatsappContextHandler(
+export interface WhatsappContextRequest {
+  method: 'GET' | 'PUT' | 'DELETE';
+  /** Connected account and technical conversation, both normalized JIDs. */
+  scope: { accountId: string; conversationId: string } | null;
+  technicalId: string;
+  phone: string;
+  /** The phone came from evidence stronger than what the chat shows. */
+  phoneTrusted: boolean;
+  search: string;
+  body?: string;
+}
+
+export interface WhatsappContextResult {
+  statusCode: number;
+  body: Record<string, unknown>;
+  /** The link write was refused because the link or the client changed. */
+  linkConflict?: boolean;
+}
+
+const LINK_CONFLICT_MESSAGE = 'O vínculo ou o cliente mudou. Atualize o painel e tente novamente.';
+
+/**
+ * Commercial context shared by the extension and the Atendimento panel. It
+ * knows nothing about origins or transport: each caller resolves the scope and
+ * the phone evidence and adapts the result to its own contract.
+ */
+export async function resolveWhatsappContext(
+  request: WhatsappContextRequest,
   dependencies: WhatsappContextHandlerDependencies = {},
-): LegacyHandler {
-  const env = dependencies.env || process.env;
-  const configuredOrigin = configuredWhatsappContextOrigin(env);
+): Promise<WhatsappContextResult> {
   let crm = dependencies.crm;
   const getCrm = () => {
     crm ||= createPostgresWhatsappCrmRepository();
     return crm;
   };
+  const reply = (statusCode: number, body: Record<string, unknown>): WhatsappContextResult => ({ statusCode, body });
+  const { scope, technicalId, phone, search } = request;
+  const linkRepository = dependencies.links || (scope ? createWhatsappClientLinksRepository() : null);
+  const jidPhone = technicalId.endsWith('@s.whatsapp.net') ? parseContactPhone('+' + technicalId.split('@')[0]) : '';
+  const evidenceConflict = Boolean(phone && jidPhone && phone !== jidPhone && brazilMobileAlternative(phone) !== jidPhone);
+  const observedPhone = phone || jidPhone;
+  const trustedPhoneEvidence = Boolean(jidPhone || request.phoneTrusted && scope && phone);
+  try {
+    if (request.method !== 'GET') {
+      if (!scope || !linkRepository || evidenceConflict) return reply(409, { error: 'Confirme a conta e a conversa antes de vincular.' });
+      let input;
+      try { input = JSON.parse(request.body || '{}'); } catch { return reply(400, { error: 'Dados inválidos.' }); }
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!input || typeof input !== 'object' || Array.isArray(input) || !(input.expectedVersion === null || typeof input.expectedVersion === 'string' && uuid.test(input.expectedVersion))) return reply(400, { error: 'Versão do vínculo inválida.' });
+      if (request.method === 'DELETE') {
+        if (!input.expectedVersion) return reply(400, { error: 'Versão do vínculo obrigatória.' });
+        await linkRepository.remove(scope, input.expectedVersion);
+      } else {
+        if (typeof input.clientId !== 'string' || !uuid.test(input.clientId) || typeof input.expectedClientName !== 'string' || !(input.expectedClientPhone === null || typeof input.expectedClientPhone === 'string')) return reply(400, { error: 'Cliente inválido.' });
+        await linkRepository.save(scope, { clientId: input.clientId, observedPhone: observedPhone || null, expectedVersion: input.expectedVersion, expectedClientPhone: input.expectedClientPhone, expectedClientName: input.expectedClientName });
+      }
+      return reply(200, { ok: true });
+    }
+    const link = scope && linkRepository ? await linkRepository.get(scope) : null;
+    const linking = { available: Boolean(scope), version: link?.version || null };
+    if (evidenceConflict) return reply(200, { match: 'conflict', reason: 'Os identificadores da conversa apontam para telefones diferentes.', linking: { ...linking, available: false }, candidates: [] });
+    if (search) {
+      if (!scope || !linkRepository || search.length < 2 || search.length > 100) return reply(400, { error: 'Informe de 2 a 100 caracteres para pesquisar.' });
+      return reply(200, { match: 'suggested', candidates: (await linkRepository.search(search)).map(client => ({ ...client, tipo: 'cliente' })), linking, reason: 'Selecione o cadastro desta conversa.' });
+    }
+    if (link) {
+      const client = await (dependencies.getClient || getCrm().getClient)(link.clientId);
+      const currentPhone = parseContactPhone(client?.telefone) || null;
+      const changedEvidence = observedPhone && observedPhone !== link.observedPhone;
+      if (!client || client.arquivado || currentPhone !== link.clientPhone || changedEvidence) {
+        return reply(200, { match: 'conflict', reason: 'Os dados mudaram desde a confirmação. Revise o vínculo.', linking, candidates: [] });
+      }
+      const result = await contextForCandidate({ ...client, tipo: 'cliente' }, { ...dependencies, crm, getClient: async () => client });
+      return reply(200, { ...result, linking, matchSource: 'operator' });
+    }
+    if (!observedPhone) return reply(200, { match: 'unresolved', reason: 'Telefone não disponível. Pesquise e vincule o cliente.', linking, candidates: [] });
+    const findCandidatesByPhone = dependencies.findCandidatesByPhone || getCrm().findCandidatesByPhone;
+    if (!findCandidatesByPhone) return reply(503, { error: 'Contexto comercial indisponível.' });
+    const projectCurrentCandidate = async (selected: LocalCrmCandidate, expectedPhone: string) => {
+      let projectionDependencies = { ...dependencies, crm };
+      if (selected.tipo === 'cliente') {
+        const client = await (dependencies.getClient || getCrm().getClient)(selected.id);
+        if (!client || client.arquivado || parseContactPhone(client.telefone) !== expectedPhone) return null;
+        projectionDependencies = { ...projectionDependencies, getClient: async () => client };
+      } else {
+        const lead = await (dependencies.getQuoteLead || getCrm().getQuoteLead)(selected.id);
+        if (!lead || lead.status === 'discarded' || parseContactPhone(lead.telefone) !== expectedPhone) return null;
+        projectionDependencies = { ...projectionDependencies, getQuoteLead: async () => lead };
+      }
+      return contextForCandidate(selected, projectionDependencies);
+    };
+    const candidates = uniqueCandidates(await findCandidatesByPhone(observedPhone, 20)).filter(candidate => parseContactPhone(candidate.telefone) === observedPhone);
+    if (candidates.length === 0) {
+      const alternative = brazilMobileAlternative(observedPhone);
+      const suggested = alternative ? uniqueCandidates(await findCandidatesByPhone(alternative, 20)).filter(candidate => candidate.tipo === 'cliente' && parseContactPhone(candidate.telefone) === alternative) : [];
+      if (suggested.length > 1) return reply(200, { match: 'ambiguous', reason: 'Mais de um cadastro corresponde à variação do telefone.', contact: null, candidates: suggested, linking, actions: { search: createContactUrl(observedPhone) } });
+      if (suggested.length === 1 && trustedPhoneEvidence && alternative) {
+        const result = await projectCurrentCandidate(suggested[0], alternative);
+        if (!result) return reply(200, { match: 'conflict', reason: 'O cadastro mudou durante a consulta. Pesquise novamente.', candidates: [], linking });
+        return reply(200, { ...result, linking, matchSource: 'phone-variant' });
+      }
+      if (suggested.length) return reply(200, { match: 'suggested', reason: 'Possível correspondência: diferença no nono dígito.', candidates: suggested, linking });
+      return reply(200, { match: 'not_found', contact: null, linking, actions: { createContact: createContactUrl(observedPhone) } });
+    }
+    if (candidates.length > 1) {
+      return reply(200, { match: 'ambiguous', contact: null, candidates, linking, actions: { search: createContactUrl(observedPhone) } });
+    }
+    if (!trustedPhoneEvidence) return reply(200, { match: 'suggested', reason: 'Confirme o cliente indicado pelo telefone exibido nesta conversa.', candidates, linking });
+    const selected = candidates[0];
+    const result = await projectCurrentCandidate(selected, observedPhone);
+    if (!result) return reply(200, { match: 'conflict', reason: 'O cadastro mudou durante a consulta. Pesquise novamente.', candidates: [], linking });
+    return reply(200, { ...result, linking, matchSource: 'phone' });
+  } catch (error) {
+    if (error instanceof LinkConflict) return { statusCode: 409, body: { error: LINK_CONFLICT_MESSAGE }, linkConflict: true };
+    console.error('[whatsapp-context]', error instanceof Error ? error.name : typeof error);
+    return reply(503, { error: 'Não foi possível consultar o contexto comercial.' });
+  }
+}
+
+export function createWhatsappContextHandler(
+  dependencies: WhatsappContextHandlerDependencies = {},
+): LegacyHandler {
+  const env = dependencies.env || process.env;
+  const configuredOrigin = configuredWhatsappContextOrigin(env);
   return async (event: FunctionEvent): Promise<FunctionResult> => {
     const origin = requestOrigin(event.headers || {});
     const cors = whatsappContextCorsHeaders(origin, env);
@@ -207,98 +321,25 @@ export function createWhatsappContextHandler(
       if (!configuredOrigin) return json(503, { error: 'Extensão Aspen não configurada.' });
       return { statusCode: 204, headers: cors, body: '' };
     }
-    if (!['GET', 'PUT', 'DELETE'].includes(event.httpMethod)) return json(405, { error: 'Método não permitido.' }, cors);
+    if (event.httpMethod !== 'GET' && event.httpMethod !== 'PUT' && event.httpMethod !== 'DELETE') return json(405, { error: 'Método não permitido.' }, cors);
     if (!configuredOrigin && origin) return json(503, { error: 'Extensão Aspen não configurada.' }, cors);
     const query = event.queryStringParameters || {};
     const phone = parseContactPhone(query.phone?.startsWith('+') ? query.phone : query.phone ? '+' + query.phone : '');
     const technicalId = conversationId(query.conversationId);
     const accountId = conversationId(query.accountId);
-    const scope = technicalId && accountId ? { accountId, conversationId: technicalId } : null;
-    const linkRepository = dependencies.links || (scope ? createWhatsappClientLinksRepository() : null);
-    const search = text(query.search);
-    const phoneSource = text(query.phoneSource);
     if (query.conversationId && !technicalId || query.accountId && !accountId || query.phone && !phone) {
       return json(400, { error: 'Identidade da conversa inválida.' }, cors);
     }
-    const jidPhone = technicalId.endsWith('@s.whatsapp.net') ? parseContactPhone('+' + technicalId.split('@')[0]) : '';
-    const evidenceConflict = Boolean(phone && jidPhone && phone !== jidPhone && brazilMobileAlternative(phone) !== jidPhone);
-    const observedPhone = phone || jidPhone;
-    const trustedPhoneEvidence = Boolean(jidPhone || phoneSource === 'active-model' && scope && phone);
-    try {
-      if (event.httpMethod !== 'GET') {
-        if (!scope || !linkRepository || evidenceConflict) return json(409, { error: 'Confirme a conta e a conversa antes de vincular.' }, cors);
-        let input;
-        try { input = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Dados inválidos.' }, cors); }
-        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (!input || typeof input !== 'object' || Array.isArray(input) || !(input.expectedVersion === null || typeof input.expectedVersion === 'string' && uuid.test(input.expectedVersion))) return json(400, { error: 'Versão do vínculo inválida.' }, cors);
-        if (event.httpMethod === 'DELETE') {
-          if (!input.expectedVersion) return json(400, { error: 'Versão do vínculo obrigatória.' }, cors);
-          await linkRepository.remove(scope, input.expectedVersion);
-        } else {
-          if (typeof input.clientId !== 'string' || !uuid.test(input.clientId) || typeof input.expectedClientName !== 'string' || !(input.expectedClientPhone === null || typeof input.expectedClientPhone === 'string')) return json(400, { error: 'Cliente inválido.' }, cors);
-          await linkRepository.save(scope, { clientId: input.clientId, observedPhone: observedPhone || null, expectedVersion: input.expectedVersion, expectedClientPhone: input.expectedClientPhone, expectedClientName: input.expectedClientName });
-        }
-        return json(200, { ok: true }, cors);
-      }
-      const link = scope && linkRepository ? await linkRepository.get(scope) : null;
-      const linking = { available: Boolean(scope), version: link?.version || null };
-      if (evidenceConflict) return json(200, { match: 'conflict', reason: 'Os identificadores da conversa apontam para telefones diferentes.', linking: { ...linking, available: false }, candidates: [] }, cors);
-      if (search) {
-        if (!scope || !linkRepository || search.length < 2 || search.length > 100) return json(400, { error: 'Informe de 2 a 100 caracteres para pesquisar.' }, cors);
-        return json(200, { match: 'suggested', candidates: (await linkRepository.search(search)).map(client => ({ ...client, tipo: 'cliente' })), linking, reason: 'Selecione o cadastro desta conversa.' }, cors);
-      }
-      if (link) {
-        const client = await (dependencies.getClient || getCrm().getClient)(link.clientId);
-        const currentPhone = parseContactPhone(client?.telefone) || null;
-        const changedEvidence = observedPhone && observedPhone !== link.observedPhone;
-        if (!client || client.arquivado || currentPhone !== link.clientPhone || changedEvidence) {
-          return json(200, { match: 'conflict', reason: 'Os dados mudaram desde a confirmação. Revise o vínculo.', linking, candidates: [] }, cors);
-        }
-        const result = await contextForCandidate({ ...client, tipo: 'cliente' }, { ...dependencies, crm, getClient: async () => client });
-        return json(200, { ...result, linking, matchSource: 'operator' }, cors);
-      }
-      if (!observedPhone) return json(200, { match: 'unresolved', reason: 'Telefone não disponível. Pesquise e vincule o cliente.', linking, candidates: [] }, cors);
-      const findCandidatesByPhone = dependencies.findCandidatesByPhone || getCrm().findCandidatesByPhone;
-      if (!findCandidatesByPhone) return json(503, { error: 'Contexto comercial indisponível.' }, cors);
-      const projectCurrentCandidate = async (selected: LocalCrmCandidate, expectedPhone: string) => {
-        let projectionDependencies = { ...dependencies, crm };
-        if (selected.tipo === 'cliente') {
-          const client = await (dependencies.getClient || getCrm().getClient)(selected.id);
-          if (!client || client.arquivado || parseContactPhone(client.telefone) !== expectedPhone) return null;
-          projectionDependencies = { ...projectionDependencies, getClient: async () => client };
-        } else {
-          const lead = await (dependencies.getQuoteLead || getCrm().getQuoteLead)(selected.id);
-          if (!lead || lead.status === 'discarded' || parseContactPhone(lead.telefone) !== expectedPhone) return null;
-          projectionDependencies = { ...projectionDependencies, getQuoteLead: async () => lead };
-        }
-        return contextForCandidate(selected, projectionDependencies);
-      };
-      const candidates = uniqueCandidates(await findCandidatesByPhone(observedPhone, 20)).filter(candidate => parseContactPhone(candidate.telefone) === observedPhone);
-      if (candidates.length === 0) {
-        const alternative = brazilMobileAlternative(observedPhone);
-        const suggested = alternative ? uniqueCandidates(await findCandidatesByPhone(alternative, 20)).filter(candidate => candidate.tipo === 'cliente' && parseContactPhone(candidate.telefone) === alternative) : [];
-        if (suggested.length > 1) return json(200, { match: 'ambiguous', reason: 'Mais de um cadastro corresponde à variação do telefone.', contact: null, candidates: suggested, linking, actions: { search: createContactUrl(observedPhone) } }, cors);
-        if (suggested.length === 1 && trustedPhoneEvidence && alternative) {
-          const result = await projectCurrentCandidate(suggested[0], alternative);
-          if (!result) return json(200, { match: 'conflict', reason: 'O cadastro mudou durante a consulta. Pesquise novamente.', candidates: [], linking }, cors);
-          return json(200, { ...result, linking, matchSource: 'phone-variant' }, cors);
-        }
-        if (suggested.length) return json(200, { match: 'suggested', reason: 'Possível correspondência: diferença no nono dígito.', candidates: suggested, linking }, cors);
-        return json(200, { match: 'not_found', contact: null, linking, actions: { createContact: createContactUrl(observedPhone) } }, cors);
-      }
-      if (candidates.length > 1) {
-        return json(200, { match: 'ambiguous', contact: null, candidates, linking, actions: { search: createContactUrl(observedPhone) } }, cors);
-      }
-      if (!trustedPhoneEvidence) return json(200, { match: 'suggested', reason: 'Confirme o cliente indicado pelo telefone exibido nesta conversa.', candidates, linking }, cors);
-      const selected = candidates[0];
-      const result = await projectCurrentCandidate(selected, observedPhone);
-      if (!result) return json(200, { match: 'conflict', reason: 'O cadastro mudou durante a consulta. Pesquise novamente.', candidates: [], linking }, cors);
-      return json(200, { ...result, linking, matchSource: 'phone' }, cors);
-    } catch (error) {
-      if (error instanceof LinkConflict) return json(409, { error: 'O vínculo ou o cliente mudou. Atualize o painel e tente novamente.' }, cors);
-      console.error('[whatsapp-context]', error instanceof Error ? error.name : typeof error);
-      return json(503, { error: 'Não foi possível consultar o contexto comercial.' }, cors);
-    }
+    const result = await resolveWhatsappContext({
+      method: event.httpMethod,
+      scope: technicalId && accountId ? { accountId, conversationId: technicalId } : null,
+      technicalId,
+      phone,
+      phoneTrusted: text(query.phoneSource) === 'active-model',
+      search: text(query.search),
+      body: event.body || undefined,
+    }, dependencies);
+    return json(result.statusCode, result.body, cors);
   };
 }
 

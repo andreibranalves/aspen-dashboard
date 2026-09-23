@@ -53,6 +53,7 @@ function repository(overrides: Partial<WhatsappAttendanceRepository> = {}): What
     markRead: async (input) => ({ ...conversation, readRevision: input.readRevision, unreadCount: 0 }),
     listConversations: async () => ({ items: [conversation], hasMore: true }),
     getConversation: async (id) => (id === conversationId ? conversation : null),
+    getConversationScope: async () => null,
     listMessagesBefore: async () => ({ items: [messageRecord('a1b2c3d4-0000-4000-8000-000000000001', 7)], hasMore: false }),
     listMessagesAfterRevision: async () => ({ items: [], hasMore: false }),
     ...overrides,
