@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import {
   projectDelivery,
@@ -32,25 +33,13 @@ export function QuotationDeliveryStatus({
   onResolve,
   className,
 }: QuotationDeliveryStatusProps) {
-  const titleId = useId();
   const noteId = useId();
+  const formId = useId();
   const [decision, setDecision] = useState<DeliveryResolution | null>(null);
   const [note, setNote] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog || !decision) return;
-    if (!dialog.open) dialog.showModal();
-    noteRef.current?.focus();
-    return () => {
-      if (dialog.open) dialog.close();
-    };
-  }, [decision]);
 
   if (!delivery && !pending) return null;
 
@@ -70,8 +59,6 @@ export function QuotationDeliveryStatus({
   const progressLabel = delivery ? formatProgress(delivery) : null;
 
   const openDialog = (nextDecision: DeliveryResolution) => {
-    const activeElement = document.activeElement;
-    previousFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null;
     setDecision(nextDecision);
     setNote('');
     setDialogError(null);
@@ -81,16 +68,11 @@ export function QuotationDeliveryStatus({
     setDecision(null);
     setNote('');
     setDialogError(null);
-    const previousFocus = previousFocusRef.current;
-    previousFocusRef.current = null;
-    if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
   };
 
   const closeDialog = () => {
     if (submitting) return;
-    const dialog = dialogRef.current;
-    if (dialog?.open) dialog.close();
-    else resetDialog();
+    resetDialog();
   };
 
   const submitResolution = async (event: FormEvent<HTMLFormElement>) => {
@@ -174,57 +156,27 @@ export function QuotationDeliveryStatus({
           </Button>
         </div>
       )}
-      {decision && (
-        <dialog
-          ref={dialogRef}
-          aria-modal="true"
-          aria-labelledby={titleId}
-          onCancel={(event) => {
-            event.preventDefault();
-            closeDialog();
-          }}
-          onClose={resetDialog}
-          className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-lg border border-border-subtle bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
-        >
-          <form onSubmit={submitResolution} className="space-y-4 p-5">
-            <div>
-              <h2 id={titleId} className="text-base font-semibold">
-                {decision === 'retry_same_revision' ? 'Confirmar reenvio' : 'Confirmar resolução'}
-              </h2>
-              <p className="mt-1 text-xs leading-5 text-fg-muted">
-                {decision === 'confirmed_received'
+      <Dialog
+        open={decision !== null}
+        onClose={closeDialog}
+        dismissible={!submitting}
+        initialFocusRef={noteRef}
+        title={decision === 'retry_same_revision' ? 'Confirmar reenvio' : 'Confirmar resolução'}
+        description={
+          decision === 'confirmed_received'
                   ? 'Confirme que o cliente recebeu as mensagens já enviadas. O restante não enviado continua na fila.'
                   : decision === 'retry_same_revision'
                     ? 'Somente a etapa comprovadamente não enviada volta para a fila. O reenvio da mesma revisão depende do worker.'
-                    : 'Confirme que o cliente não recebeu. Uma nova tentativa pode gerar duplicidade.'}
-              </p>
-            </div>
-            <label className="block space-y-1" htmlFor={noteId}>
-              <span className="font-medium">Justificativa</span>
-              <Textarea
-                ref={noteRef}
-                id={noteId}
-                aria-label="Justificativa"
-                minLength={3}
-                maxLength={500}
-                required
-                rows={4}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                disabled={submitting}
-              />
-            </label>
-            {dialogError && (
-              <p role="alert" className="text-destructive">
-                {dialogError}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
+                    : 'Confirme que o cliente não recebeu. Uma nova tentativa pode gerar duplicidade.'
+        }
+        footer={
+          <>
               <Button type="button" variant="ghost" onClick={closeDialog} disabled={submitting}>
                 Cancelar
               </Button>
               <Button
                 type="submit"
+                form={formId}
                 disabled={
                   submitting ||
                   note.trim().length < 3 ||
@@ -241,10 +193,32 @@ export function QuotationDeliveryStatus({
                     ? 'Reenviar mesma revisão'
                     : 'Confirmar resolução'}
               </Button>
-            </div>
-          </form>
-        </dialog>
-      )}
+          </>
+        }
+      >
+        <form id={formId} onSubmit={submitResolution} className="space-y-4 text-sm">
+          <label className="block space-y-1" htmlFor={noteId}>
+            <span className="font-medium">Justificativa</span>
+            <Textarea
+              ref={noteRef}
+              id={noteId}
+              aria-label="Justificativa"
+              minLength={3}
+              maxLength={500}
+              required
+              rows={4}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              disabled={submitting}
+            />
+          </label>
+          {dialogError && (
+            <p role="alert" className="text-destructive">
+              {dialogError}
+            </p>
+          )}
+        </form>
+      </Dialog>
     </section>
   );
 }

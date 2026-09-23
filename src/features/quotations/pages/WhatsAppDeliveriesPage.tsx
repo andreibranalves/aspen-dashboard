@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock3, RefreshCw, Search, Trash2 } from 'lucide-react';
-import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
+import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -254,7 +254,7 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
       </dl>
       <div className="grid min-w-0 gap-5">
         {readOnly ? (
-          <div className="rounded-lg border border-line bg-surface p-3">
+          <div className="rounded-control border border-line bg-surface p-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
               Estado atual
             </p>
@@ -284,14 +284,14 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
             aria-label={`Passos da entrega ${delivery.businessNumber}`}
           >
             {delivery.steps.length === 0 && (
-              <li className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-fg-muted">
+              <li className="rounded-control border border-dashed border-line bg-surface p-3 text-xs text-fg-muted">
                 Nenhuma etapa configurada para esta entrega.
               </li>
             )}
             {delivery.steps.map((step, index) => (
               <li
                 key={step.id}
-                className="flex items-start gap-3 rounded-lg border border-line bg-surface p-3 text-xs"
+                className="flex items-start gap-3 rounded-control border border-line bg-surface p-3 text-xs"
               >
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-muted font-semibold text-fg-muted">
                   {index + 1}
@@ -626,7 +626,6 @@ export default function WhatsAppDeliveriesPage() {
               onKeyDown={(event) => handleTabKeyDown(event, index)}
               className={cn(
                 'min-h-9 rounded-control px-4 py-2 text-xs font-medium transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 activeTab === tab
                   ? 'bg-primary-soft text-primary-soft-ink'
                   : 'text-fg-muted hover:text-fg'
@@ -866,7 +865,7 @@ export default function WhatsAppDeliveriesPage() {
 
         {activeTab === 'pending' && error && (
           <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
             role="alert"
           >
             <span className="flex items-center gap-2">
@@ -908,7 +907,7 @@ export default function WhatsAppDeliveriesPage() {
           </div>
         ) : result && result.data.length === 0 ? (
           <div
-            className="rounded-lg border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
+            className="rounded-control border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
             role="status"
           >
             Nenhuma entrega encontrada para os filtros selecionados.
@@ -1051,7 +1050,7 @@ export default function WhatsAppDeliveriesPage() {
       >
         {selectedHistoryEvent ? (
           <div className="space-y-5 text-sm">
-            <div className="rounded-lg border border-line bg-surface-muted/40 p-3">
+            <div className="rounded-control border border-line bg-surface-muted/40 p-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
                 Registro de origem
               </p>

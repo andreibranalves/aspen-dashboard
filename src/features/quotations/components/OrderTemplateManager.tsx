@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Archive, ChevronDown, ChevronUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Archive, ChevronDown, ChevronUp, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import {
@@ -31,14 +32,6 @@ function selectedFromTemplate(template: OrderTemplate): SelectedItem[] {
     .map(({ sku, name }) => ({ sku, name }));
 }
 
-function focusableElements(container: HTMLElement): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )
-  );
-}
-
 export default function OrderTemplateManager({
   open,
   templates,
@@ -55,72 +48,10 @@ export default function OrderTemplateManager({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<OrderTemplate | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  const archiveTargetRef = useRef<OrderTemplate | null>(null);
   const operationRef = useRef(false);
 
   const editing = editingId !== null;
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    archiveTargetRef.current = archiveTarget;
-  }, [archiveTarget]);
-
-  useEffect(() => {
-    if (!open) {
-      const previousFocus = previousFocusRef.current;
-      previousFocusRef.current = null;
-      if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
-      return;
-    }
-
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Tab' && !archiveTargetRef.current) {
-        const dialog = dialogRef.current;
-        if (!dialog) return;
-        const focusable = focusableElements(dialog);
-        const first = focusable[0];
-        const last = focusable.at(-1);
-        const active = document.activeElement;
-        if (!first || !last) {
-          event.preventDefault();
-          dialog.focus();
-        } else if (
-          event.shiftKey &&
-          (active === dialog || active === first || !dialog.contains(active))
-        ) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
-          event.preventDefault();
-          first.focus();
-        }
-        return;
-      }
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      if (operationRef.current) return;
-      if (archiveTargetRef.current) {
-        setArchiveTarget(null);
-        return;
-      }
-      onCloseRef.current();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    const frame = window.requestAnimationFrame(() => dialogRef.current?.focus());
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      window.cancelAnimationFrame(frame);
-    };
-  }, [open]);
 
   useEffect(() => {
     if (!open || editingId === null) return;
@@ -271,44 +202,18 @@ export default function OrderTemplateManager({
 
   return (
     <>
-      <div
-        data-testid="order-template-manager-backdrop"
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6"
-        onClick={(event) => {
-          if (event.target === event.currentTarget && !saving && !operationRef.current) onClose();
+      <Dialog
+        open
+        size="lg"
+        onClose={() => {
+          if (!operationRef.current) onClose();
         }}
+        dismissible={!saving}
+        title="Modelos de pedido"
+        description="Conjuntos de produtos reutilizáveis, sem quantidades."
       >
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="order-template-manager-title"
-          tabIndex={-1}
-          className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-xl focus:outline-none sm:max-h-[calc(100vh-3rem)]"
-        >
-          <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-raised/60 px-4 py-3 sm:px-6">
-            <div>
-              <h2 id="order-template-manager-title" className="text-lg font-semibold text-fg">
-                Modelos de pedido
-              </h2>
-              <p className="text-xs text-fg-muted">
-                Conjuntos de produtos reutilizáveis, sem quantidades.
-              </p>
-            </div>
-            <button
-              type="button"
-              aria-label="Fechar"
-              onClick={onClose}
-              disabled={saving}
-              className="rounded-control p-2 text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg disabled:opacity-40"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {error && (
-              <div className="mb-4 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+              <div className="mb-4 rounded-control border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
                 {error}
               </div>
             )}
@@ -329,7 +234,7 @@ export default function OrderTemplateManager({
                 {templates.map((template) => (
                   <div
                     key={template.id}
-                    className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 rounded-control border border-border-subtle bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium text-fg">{template.name}</p>
@@ -414,7 +319,7 @@ export default function OrderTemplateManager({
                       className="pl-9"
                     />
                     {searchTerm.trim().length >= 2 && (
-                      <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-border-subtle bg-surface p-1 shadow-lg">
+                      <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-control border border-border-subtle bg-surface p-1 shadow-lg">
                         {searchLoading ? (
                           <p className="px-3 py-2 text-sm text-fg-muted">Buscando produtos…</p>
                         ) : searchResults.length ? (
@@ -424,7 +329,7 @@ export default function OrderTemplateManager({
                               type="button"
                               aria-label={`Adicionar produto ${product.sku}`}
                               onClick={() => addProduct(product)}
-                              className="flex w-full min-w-0 items-start gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+                              className="flex w-full min-w-0 items-start gap-3 rounded-control px-3 py-2 text-left text-sm transition-colors hover:bg-surface-hover focus-inset"
                             >
                               <span className="shrink-0 font-mono text-xs text-fg-muted">
                                 {product.sku}
@@ -447,7 +352,7 @@ export default function OrderTemplateManager({
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-fg">SKUs selecionados</p>
                   {selectedItems.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border-subtle bg-raised/50 px-3 py-6 text-center text-sm text-fg-muted">
+                    <div className="rounded-control border border-dashed border-border-subtle bg-raised/50 px-3 py-6 text-center text-sm text-fg-muted">
                       Busque e selecione os produtos que entram neste modelo.
                     </div>
                   ) : (
@@ -455,7 +360,7 @@ export default function OrderTemplateManager({
                       <div
                         key={item.sku}
                         aria-label={`SKU selecionado ${item.sku}`}
-                        className="flex min-w-0 items-center gap-2 rounded-lg border border-border-subtle bg-raised px-3 py-2"
+                        className="flex min-w-0 items-center gap-2 rounded-control border border-border-subtle bg-raised px-3 py-2"
                       >
                         <span className="w-6 shrink-0 text-center text-xs text-fg-muted">
                           {index + 1}
@@ -469,7 +374,7 @@ export default function OrderTemplateManager({
                           aria-label={`Mover ${item.sku} para cima`}
                           onClick={() => moveItem(index, -1)}
                           disabled={saving || index === 0}
-                          className="rounded-md p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
+                          className="rounded-control p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
                         >
                           <ChevronUp size={15} />
                         </button>
@@ -478,7 +383,7 @@ export default function OrderTemplateManager({
                           aria-label={`Mover ${item.sku} para baixo`}
                           onClick={() => moveItem(index, 1)}
                           disabled={saving || index === selectedItems.length - 1}
-                          className="rounded-md p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
+                          className="rounded-control p-1 text-fg-muted hover:bg-surface-hover disabled:opacity-30"
                         >
                           <ChevronDown size={15} />
                         </button>
@@ -491,7 +396,7 @@ export default function OrderTemplateManager({
                             )
                           }
                           disabled={saving}
-                          className="rounded-md p-1 text-fg-muted hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                          className="rounded-control p-1 text-fg-muted hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
                         >
                           <Trash2 size={15} />
                         </button>
@@ -515,9 +420,7 @@ export default function OrderTemplateManager({
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      </div>
+      </Dialog>
 
       <ConfirmDialog
         open={Boolean(archiveTarget)}

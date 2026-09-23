@@ -156,7 +156,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       <PageShell>
         <PageHeader title="Pedido" />
         <div
-          className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
+          className="flex flex-col items-center gap-3 rounded-control border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
           role="alert"
         >
           <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />

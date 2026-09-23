@@ -75,7 +75,7 @@ export default function WhatsAppSendPanel({
         <select
           id={flowSelectId}
           aria-label="Fluxo WhatsApp"
-          className="w-full rounded-control border border-border-control bg-raised px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          className="w-full rounded-control border border-border-control bg-raised px-3 py-2 text-sm text-fg"
           value={selectedFlowId || ''}
           onChange={(e) => onSelectFlow?.(e.target.value)}
           disabled={flows.length === 0 || selectionDisabled}

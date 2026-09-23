@@ -31,7 +31,6 @@ export function ContextActions({ actions, className }: ContextActionsProps) {
 
         const buttonClasses = cn(
           'inline-flex items-center gap-1.5 rounded-control border border-border-control bg-surface px-3 py-1.5 text-xs font-medium transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
           isDisabled
             ? 'cursor-not-allowed opacity-35 bg-surface-muted text-fg-muted'
             : 'text-fg hover:bg-surface-subtle active:scale-[0.97]',

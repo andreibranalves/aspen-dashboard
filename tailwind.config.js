@@ -3,6 +3,18 @@ export default {
   darkMode: ['class'],
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
+    // Radius roles replace Tailwind's size scale: pick by role, never by size.
+    borderRadius: {
+      none: '0',
+      DEFAULT: '4px',
+      xs: '4px',
+      badge: '6px',
+      control: '11px',
+      nav: '14px',
+      card: '25px',
+      shell: '31px',
+      full: '9999px',
+    },
     extend: {
       fontFamily: {
         sans: ['Manrope', 'Segoe UI', 'Arial', 'sans-serif'],
@@ -77,6 +89,7 @@ export default {
           foreground: 'rgb(var(--on-primary))',
         },
         link: 'rgb(var(--link))',
+        focus: 'rgb(var(--focus))',
         'primary-text': 'rgb(var(--primary-text))',
 
         // Compatibility aliases retained while consumers migrate.
@@ -127,17 +140,6 @@ export default {
           hover: 'rgb(var(--surface-hover))',
           active: 'rgb(var(--surface-selected))',
         },
-      },
-      borderRadius: {
-        xs: '4px',
-        sm: '11px',
-        md: '14px',
-        lg: '16px',
-        card: '25px',
-        shell: '31px',
-        control: '11px',
-        nav: '14px',
-        full: '9999px',
       },
       spacing: {
         frame: '18px',

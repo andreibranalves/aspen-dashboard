@@ -86,7 +86,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
             className={cn(
               'space-y-3',
               mode === 'revision'
-                ? 'rounded-lg border border-border-subtle bg-surface p-4'
+                ? 'rounded-control border border-border-subtle bg-surface p-4'
                 : 'border-t border-line pt-4 first:border-0 first:pt-0'
             )}
           >

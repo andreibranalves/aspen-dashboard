@@ -76,7 +76,7 @@ export default function TopBar({
           <button
             type="button"
             onClick={onMenuClick}
-            className="flex min-h-10 min-w-10 items-center justify-center rounded-control text-fg transition-colors hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
+            className="flex min-h-10 min-w-10 items-center justify-center rounded-control text-fg transition-colors hover:bg-raised"
             aria-label="Abrir menu"
             aria-expanded={sidebarOpen}
             aria-controls="aspen-sidebar"
@@ -95,7 +95,7 @@ export default function TopBar({
                 <button
                   type="button"
                   onClick={() => onNavigate(item.hash!)}
-                  className="truncate rounded-control py-1 transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
+                  className="truncate rounded-control py-1 transition-colors hover:text-fg"
                 >
                   {item.label}
                 </button>
@@ -117,7 +117,7 @@ export default function TopBar({
             if (!searchContainerRef.current?.contains(event.relatedTarget)) setSearchOpen(false);
           }}
         >
-          <label className="flex h-[46px] w-[244px] items-center gap-2 rounded-[15px] bg-surface px-4 text-fg-muted focus-within:ring-2 focus-within:ring-sage">
+          <label className="flex h-[46px] w-[244px] items-center gap-2 rounded-nav bg-surface px-4 text-fg-muted focus-within:ring-2 focus-within:ring-focus">
             <Search size={17} aria-hidden="true" />
             <input
               ref={searchRef}
@@ -133,7 +133,7 @@ export default function TopBar({
               aria-label="Buscar uma tela"
               className="w-full min-w-0 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
             />
-            <kbd className="whitespace-nowrap rounded border border-line px-1 text-[10px]">
+            <kbd className="whitespace-nowrap rounded-xs border border-line px-1 text-[10px]">
               Ctrl K
             </kbd>
           </label>
@@ -145,7 +145,7 @@ export default function TopBar({
                     key={item.hash}
                     type="button"
                     onClick={() => navigateFromSearch(item.hash)}
-                    className="flex w-full items-center rounded-control px-3 py-2 text-left text-sm text-fg hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
+                    className="flex w-full items-center rounded-control px-3 py-2 text-left text-sm text-fg hover:bg-raised"
                   >
                     {item.label}
                   </button>
@@ -161,7 +161,7 @@ export default function TopBar({
         <button
           type="button"
           onClick={toggleTheme}
-          className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="grid size-9 place-items-center rounded-control text-fg-muted hover:bg-raised hover:text-fg"
           aria-label={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
           title={`Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
         >

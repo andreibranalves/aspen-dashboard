@@ -50,7 +50,7 @@ export default function DealProposals({ opportunityId }: DealProposalsProps) {
         Propostas
       </Button>
       {expanded && (
-        <ul className="mt-2 space-y-1 rounded-xl border border-line bg-surface-subtle p-3 text-xs text-fg-muted">
+        <ul className="mt-2 space-y-1 rounded-control border border-line bg-surface-subtle p-3 text-xs text-fg-muted">
           {error ? (
             <li>Não foi possível carregar as propostas.</li>
           ) : proposals && proposals.length > 0 ? (

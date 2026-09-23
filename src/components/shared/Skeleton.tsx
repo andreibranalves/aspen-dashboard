@@ -22,7 +22,7 @@ export default function Skeleton({
       ? 'rounded-full'
       : variant === 'text'
         ? 'skeleton-text'
-        : 'rounded-md';
+        : 'rounded-control';
 
   return (
     <Component

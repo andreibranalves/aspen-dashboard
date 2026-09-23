@@ -36,9 +36,11 @@ import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
 import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
@@ -108,8 +110,6 @@ function readCreatedSalesOrderId(value: unknown): string {
   const id = candidate.trim();
   return SALES_ORDER_ID_PATTERN.test(id) ? id : '';
 }
-const DIALOG_FOCUSABLE_SELECTOR =
-  'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type QuotationItem = ProjectedQuotationItem & {
   _key?: string;
@@ -268,11 +268,7 @@ function CoreQuotationDetail({
   const [lossReasonChoice, setLossReasonChoice] = useState('');
   const [lossReasonDetail, setLossReasonDetail] = useState('');
   const moreActionsButtonRef = useRef<HTMLButtonElement>(null);
-  const techDetailsDialogRef = useRef<HTMLDivElement>(null);
-  const techDetailsCloseRef = useRef<HTMLButtonElement>(null);
-  const lossReasonDialogRef = useRef<HTMLDivElement>(null);
   const lossReasonSelectRef = useRef<HTMLSelectElement>(null);
-  const lossReasonRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [conflict, setConflict] = useState('');
   const { toast } = useToast();
   const { setNavigationGuard } = useRouteGuardContext();
@@ -1086,98 +1082,9 @@ function CoreQuotationDetail({
     void markCommercialStatus('perdido', reason);
   }, [lossReasonChoice, lossReasonDetail, markCommercialStatus]);
 
-  useEffect(() => {
-    if (!lossReasonOpen) return undefined;
-
-    lossReasonRestoreFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    lossReasonSelectRef.current?.focus();
-    const dialog = lossReasonDialogRef.current;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeLossReasonDialog();
-        return;
-      }
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      if (dialog && !dialog.contains(event.target as Node)) lossReasonSelectRef.current?.focus();
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('focusin', handleFocusIn);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('focusin', handleFocusIn);
-      lossReasonRestoreFocusRef.current?.focus();
-      lossReasonRestoreFocusRef.current = null;
-    };
-  }, [closeLossReasonDialog, lossReasonOpen]);
-
   const closeTechDetailsDialog = useCallback(() => {
     setTechDetailsOpen(false);
   }, []);
-
-  useEffect(() => {
-    if (!techDetailsOpen) return undefined;
-
-    techDetailsCloseRef.current?.focus();
-    const dialog = techDetailsDialogRef.current;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        closeTechDetailsDialog();
-        return;
-      }
-      if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE_SELECTOR));
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      if (dialog && !dialog.contains(event.target as Node)) techDetailsCloseRef.current?.focus();
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    document.addEventListener('focusin', handleFocusIn);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      document.removeEventListener('focusin', handleFocusIn);
-      if (moreActionsButtonRef.current && document.contains(moreActionsButtonRef.current)) {
-        moreActionsButtonRef.current.focus();
-      }
-    };
-  }, [closeTechDetailsDialog, techDetailsOpen]);
 
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
@@ -1301,7 +1208,7 @@ function CoreQuotationDetail({
             {data.clienteId && (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-control border border-line px-3 py-2 text-xs font-medium hover:bg-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex items-center gap-1 rounded-control border border-line px-3 py-2 text-xs font-medium hover:bg-raised"
                 onClick={() => navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)}
               >
                 <ArrowUpRight size={14} aria-hidden="true" /> Abrir cliente
@@ -1390,7 +1297,7 @@ function CoreQuotationDetail({
           )}
           <div className="divide-y divide-line border-t border-line">
             <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg [&::-webkit-details-marker]:hidden">
                 <span>Detalhes do documento</span>
                 <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
                   Datas e modelo
@@ -1431,7 +1338,7 @@ function CoreQuotationDetail({
             </details>
 
             <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-fg [&::-webkit-details-marker]:hidden">
                 <span>Histórico e revisões</span>
                 <span className="flex items-center gap-3 text-xs font-normal text-fg-muted">
                   R{data.revision}
@@ -1655,7 +1562,7 @@ function CoreQuotationDetail({
   return (
     <div ref={detailTopRef} className="space-y-5">
       <fieldset disabled={saving} className="contents">
-        <header className={issuedView ? 'flex flex-wrap items-center justify-between gap-3 bg-page pt-5' : 'flex flex-col gap-4 rounded-3xl border border-line bg-surface p-5 md:flex-row md:items-start md:justify-between md:p-6'}>
+        <header className={issuedView ? 'flex flex-wrap items-center justify-between gap-3 bg-page pt-5' : 'flex flex-col gap-4 rounded-card border border-line bg-surface p-5 md:flex-row md:items-start md:justify-between md:p-6'}>
           <div className={issuedView ? 'min-w-0 xl:absolute xl:left-0 xl:top-0' : 'min-w-0'}>
             {draftEditable && !editing && (
               <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
@@ -1788,7 +1695,7 @@ function CoreQuotationDetail({
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
                     aria-label="Mais ações"
-                    className={`flex items-center justify-center rounded-sm border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${issuedView ? 'h-10 gap-2 px-4 text-sm font-medium' : 'h-8 w-8'}`}
+                    className={`flex items-center justify-center rounded-control border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg ${issuedView ? 'h-10 gap-2 px-4 text-sm font-medium' : 'h-8 w-8'}`}
                     onClick={() => setMenuOpen((current) => !current)}
                   >
                     <MoreHorizontal size={18} />
@@ -1798,7 +1705,7 @@ function CoreQuotationDetail({
                     <div
                       role="menu"
                       aria-label="Ações do orçamento"
-                      className="absolute right-0 top-9 z-40 w-52 rounded-md border border-line bg-surface py-1 shadow-lg"
+                      className="absolute right-0 top-9 z-40 w-52 rounded-control border border-line bg-surface py-1 shadow-lg"
                     >
                       <button
                         type="button"
@@ -1849,7 +1756,7 @@ function CoreQuotationDetail({
         {conflict && (
           <div
             role="alert"
-            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
           >
             <span className="min-w-0 break-words">{conflict}</span>
             <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
@@ -1868,7 +1775,7 @@ function CoreQuotationDetail({
                 : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
             }
           >
-            <div className="min-w-0 rounded-3xl border border-line bg-surface p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-6">
+            <div className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
               {draftEditable && !editing && (
                 <h2 className="mb-3 text-base font-semibold text-fg">Conferência</h2>
               )}
@@ -1899,7 +1806,7 @@ function CoreQuotationDetail({
                           )}
                         </div>
                         {clientResults.length > 0 && (
-                          <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
+                          <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
                             {clientResults.map((client) => (
                               <button
                                 key={client.id}
@@ -1939,7 +1846,7 @@ function CoreQuotationDetail({
                           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
                             <button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="text-sm font-medium text-primary hover:underline"
                               onClick={() =>
                                 navigate(`/leads/cliente/${encodeURIComponent(data.clienteId)}`)
                               }
@@ -1948,14 +1855,14 @@ function CoreQuotationDetail({
                             </button>
                             <button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="text-sm font-medium text-primary hover:underline"
                               onClick={() => navigate('/crm')}
                             >
                               Abrir no CRM
                             </button>
                             <button
                               type="button"
-                              className="text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="text-sm font-medium text-primary hover:underline"
                               onClick={() => navigate('/quotations')}
                             >
                               Ver orçamentos anteriores
@@ -2016,7 +1923,7 @@ function CoreQuotationDetail({
                       {editing && draftEditable && templates.length > 0 ? (
                         <select
                           aria-label="Modelo do orçamento"
-                          className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
+                          className="mt-1 h-9 w-full rounded-control border border-line bg-surface px-2 text-sm"
                           value={selectedTemplate}
                           onChange={(event) => {
                             const key = event.target.value;
@@ -2173,7 +2080,7 @@ function CoreQuotationDetail({
                                     aria-label={`SKU do item ${item.item_name}`}
                                   />
                                   {results.length > 0 && (
-                                    <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
+                                    <div className="absolute left-0 top-9 z-40 w-64 rounded-control border border-line bg-surface shadow-lg">
                                       {results.map((product) => (
                                         <button
                                           type="button"
@@ -2424,7 +2331,7 @@ function CoreQuotationDetail({
 
             {draftEditable && (
               <aside
-                className="min-w-0 rounded-3xl border border-line bg-surface p-5 md:p-6"
+                className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6"
                 aria-labelledby="quotation-summary-title"
               >
                 <h2 id="quotation-summary-title" className="text-base font-semibold text-fg">
@@ -2535,135 +2442,100 @@ function CoreQuotationDetail({
         onConfirm={handleDelete}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
-      {techDetailsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={closeTechDetailsDialog}
-            aria-hidden="true"
-          />
-          <div
-            ref={techDetailsDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tech-details-title"
-            tabIndex={-1}
-            className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
-          >
-            <h3 id="tech-details-title" className="text-lg font-semibold text-fg">
-              Detalhes técnicos
-            </h3>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div>
-                <dt className="text-xs text-fg-muted">Modelo</dt>
-                <dd className="mt-0.5 break-words">
-                  {selectedTemplateMetadata?.name || selectedTemplate || '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">Versão do modelo</dt>
-                <dd className="mt-0.5 break-words">
-                  {selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">Snapshot</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">
-                  {data.templateHash ||
-                    selectedTemplateMetadata?.hash ||
-                    selectedTemplateMetadata?.current_hash ||
-                    '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">Revisão</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">{data.revisionId || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-fg-muted">ID interno</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">{data.id}</dd>
-              </div>
-            </dl>
-            <div className="mt-5 flex justify-end">
-              <Button ref={techDetailsCloseRef} variant="outline" onClick={closeTechDetailsDialog}>
-                Fechar
-              </Button>
-            </div>
+      <Dialog
+        open={techDetailsOpen}
+        onClose={closeTechDetailsDialog}
+        returnFocusRef={moreActionsButtonRef}
+        title="Detalhes técnicos"
+      >
+        <dl className="space-y-3 text-sm">
+          <div>
+            <dt className="text-xs text-fg-muted">Modelo</dt>
+            <dd className="mt-0.5 break-words">
+              {selectedTemplateMetadata?.name || selectedTemplate || '—'}
+            </dd>
           </div>
-        </div>
-      )}
-      {lossReasonOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={closeLossReasonDialog}
-            aria-hidden="true"
-          />
-          <div
-            ref={lossReasonDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="loss-reason-title"
-            aria-describedby="loss-reason-description"
-            tabIndex={-1}
-            className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
-          >
-            <h3 id="loss-reason-title" className="text-lg font-semibold text-fg">
-              Motivo da perda
-            </h3>
-            <p id="loss-reason-description" className="mt-2 text-sm text-fg-muted">
-              Informe por que o orçamento {data.businessNumber || ''} foi perdido. O motivo fica
-              registrado no histórico.
-            </p>
-            <label className="mt-4 block text-sm">
-              <span className="text-xs text-fg-muted">Motivo</span>
-              <Select
-                ref={lossReasonSelectRef}
-                value={lossReasonChoice}
-                onChange={(event) => setLossReasonChoice(event.target.value)}
-                className="mt-1 w-full"
-                aria-label="Motivo da perda"
-                required
-              >
-                <option value="">Selecione…</option>
-                {LOSS_REASONS.map((reason) => (
-                  <option key={reason} value={reason}>
-                    {reason}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="mt-3 block text-sm">
-              <span className="text-xs text-fg-muted">
-                Detalhes {lossReasonChoice === 'Outro' ? '(obrigatório)' : '(opcional)'}
-              </span>
-              <textarea
-                value={lossReasonDetail}
-                onChange={(event) => setLossReasonDetail(event.target.value)}
-                rows={3}
-                placeholder="Contexto adicional sobre a perda…"
-                className="mt-1 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm"
-                required={lossReasonChoice === 'Outro'}
-                aria-required={lossReasonChoice === 'Outro' ? 'true' : undefined}
-              />
-            </label>
-            <div className="mt-5 flex justify-end gap-3">
-              <Button variant="outline" onClick={closeLossReasonDialog}>
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={
-                  !lossReasonChoice || (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
-                }
-                onClick={submitLossReason}
-              >
-                Marcar como perdido
-              </Button>
-            </div>
+          <div>
+            <dt className="text-xs text-fg-muted">Versão do modelo</dt>
+            <dd className="mt-0.5 break-words">
+              {selectedTemplateMetadata?.current_version ?? data.templateVersion ?? '—'}
+            </dd>
           </div>
-        </div>
-      )}
+          <div>
+            <dt className="text-xs text-fg-muted">Snapshot</dt>
+            <dd className="mt-0.5 break-all font-mono text-xs">
+              {data.templateHash ||
+                selectedTemplateMetadata?.hash ||
+                selectedTemplateMetadata?.current_hash ||
+                '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">Revisão</dt>
+            <dd className="mt-0.5 break-all font-mono text-xs">{data.revisionId || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-fg-muted">ID interno</dt>
+            <dd className="mt-0.5 break-all font-mono text-xs">{data.id}</dd>
+          </div>
+        </dl>
+      </Dialog>
+      <Dialog
+        open={lossReasonOpen}
+        onClose={closeLossReasonDialog}
+        initialFocusRef={lossReasonSelectRef}
+        title="Motivo da perda"
+        description={`Informe por que o orçamento ${data.businessNumber || ''} foi perdido. O motivo fica registrado no histórico.`}
+        footer={
+          <>
+          <Button variant="outline" onClick={closeLossReasonDialog}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={
+              !lossReasonChoice || (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
+            }
+            onClick={submitLossReason}
+          >
+            Marcar como perdido
+          </Button>
+          </>
+        }
+      >
+        <label className="block text-sm">
+          <span className="text-xs text-fg-muted">Motivo</span>
+          <Select
+            ref={lossReasonSelectRef}
+            value={lossReasonChoice}
+            onChange={(event) => setLossReasonChoice(event.target.value)}
+            className="mt-1 w-full"
+            aria-label="Motivo da perda"
+            required
+          >
+            <option value="">Selecione…</option>
+            {LOSS_REASONS.map((reason) => (
+              <option key={reason} value={reason}>
+                {reason}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="mt-3 block text-sm">
+          <span className="text-xs text-fg-muted">
+            Detalhes {lossReasonChoice === 'Outro' ? '(obrigatório)' : '(opcional)'}
+          </span>
+          <Textarea
+            value={lossReasonDetail}
+            onChange={(event) => setLossReasonDetail(event.target.value)}
+            rows={3}
+            placeholder="Contexto adicional sobre a perda…"
+            className="mt-1"
+            required={lossReasonChoice === 'Outro'}
+            aria-required={lossReasonChoice === 'Outro' ? 'true' : undefined}
+          />
+        </label>
+      </Dialog>
     </div>
   );
 }
@@ -2738,13 +2610,13 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       <PageShell className="space-y-4">
         <button
           onClick={() => navigate(returnRoute)}
-          className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          className="text-sm text-primary hover:underline"
         >
           ← Voltar para {returnLabel}
         </button>
         <div
           role="alert"
-          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
+          className="flex flex-col items-center gap-3 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
         >
           <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
           <p className="font-medium">Erro ao carregar orçamento</p>
@@ -2764,7 +2636,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
       {reloadWarning && (
         <div
           role="status"
-          className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg-muted"
+          className="flex items-center justify-between gap-3 rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg-muted"
         >
           <span>Não foi possível atualizar o orçamento. Exibindo os dados anteriores.</span>
           <Button variant="outline" size="sm" onClick={() => void loadDetail()}>

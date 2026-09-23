@@ -296,7 +296,6 @@ export default function SettingsPage() {
                 onKeyDown={(event) => tabKeyDown(event, index)}
                 className={[
                   'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                   selected ? 'bg-primary-soft text-primary-soft-ink' : 'text-fg-muted hover:bg-raised hover:text-fg',
                 ].join(' ')}
               >
@@ -312,7 +311,7 @@ export default function SettingsPage() {
         role="tabpanel"
         aria-labelledby={`settings-tab-${activeTab}`}
         tabIndex={-1}
-        className="!mt-4 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
+        className="!mt-4 min-w-0"
       >
         {loading && (activeTab === 'patterns' || activeTab === 'company') && (
           <div className="space-y-5" role="status" aria-busy="true" aria-label="Carregando configurações">

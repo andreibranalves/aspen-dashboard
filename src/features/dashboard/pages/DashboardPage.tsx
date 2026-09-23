@@ -179,7 +179,7 @@ function DashboardTabs({
           tabIndex={tab === option.key ? 0 : -1}
           onClick={() => onChange(option.key)}
           onKeyDown={(event) => handleKeyDown(event, index)}
-          className={`inline-flex min-h-9 items-center rounded-control px-3 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page ${
+          className={`inline-flex min-h-9 items-center rounded-control px-3 py-1 text-xs transition-colors ${
             tab === option.key
               ? 'bg-primary-soft font-semibold text-primary-soft-ink'
               : 'text-fg-muted hover:bg-raised hover:text-fg'
@@ -235,7 +235,7 @@ function RevenueChart({
               </span>
               <div className="flex h-36 w-full items-end">
                 <div
-                  className="w-full rounded-t-sm bg-bar-one"
+                  className="w-full rounded-t-xs bg-bar-one"
                   style={{ height: `${height}%` } as CSSProperties}
                   aria-hidden="true"
                 />
@@ -338,7 +338,7 @@ function OverviewPanel({
         </div>
         <OrderSourcesPanel data={data} />
         <section
-          className="min-h-[340px] min-w-0 rounded-lg border border-border-subtle bg-orange p-5 text-orange-ink"
+          className="min-h-[340px] min-w-0 rounded-card border border-border-subtle bg-orange p-5 text-orange-ink"
           aria-labelledby="revenue-chart-title"
         >
           <h2 id="revenue-chart-title" className="text-base font-semibold">
@@ -402,7 +402,7 @@ function RecentQuotationsPanel({
                 <TableCell>
                   <button
                     type="button"
-                    className="font-semibold text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="font-semibold text-primary-text hover:underline"
                     onClick={() => onNavigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
                   >
                     {quotation.businessNumber}
@@ -440,7 +440,7 @@ function FeaturedCustomersPanel({
   const customers = data.topCustomers;
   return (
     <section
-      className="min-h-[340px] rounded-lg border border-border-subtle bg-taupe p-5 text-taupe-ink [&_p]:text-taupe-ink/75"
+      className="min-h-[340px] rounded-card border border-border-subtle bg-taupe p-5 text-taupe-ink [&_p]:text-taupe-ink/75"
       aria-labelledby="featured-customers-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -526,7 +526,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
               {rows.slice(0, 6).map((row, index) => (
                 <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-[11px]">
                   <span className="truncate text-fg-muted" title={row.name}>{row.name}</span>
-                  <div className="h-5 overflow-hidden rounded-sm bg-raised"><div className={['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]} style={{ width: `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%`, height: '100%' }} /></div>
+                  <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]} style={{ width: `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%`, height: '100%' }} /></div>
                   <span className="tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
                 </div>
               ))}
@@ -830,7 +830,7 @@ function UnavailableResults({
           id={`results-panel-${tab}`}
           role="tabpanel"
           aria-label={`${TABS.find((option) => option.key === tab)?.label} indisponível`}
-          className="rounded-lg border border-line bg-surface p-5"
+          className="rounded-card border border-line bg-surface p-5"
         >
           <p className="mt-4 text-sm text-fg-muted">Não foi possível carregar os resultados.</p>
           <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onRetry}>
@@ -851,7 +851,7 @@ function UnavailableResults({
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)]">
             <section
-              className="rounded-lg border border-line bg-surface p-5"
+              className="rounded-card border border-line bg-surface p-5"
               aria-labelledby="unavailable-chart-title"
             >
               <h2 id="unavailable-chart-title" className="text-base font-semibold text-fg">
@@ -871,7 +871,7 @@ function UnavailableResults({
               </div>
             </section>
             <section
-              className="rounded-lg border border-line bg-surface p-5"
+              className="rounded-card border border-line bg-surface p-5"
               aria-labelledby="unavailable-acquisition-title"
             >
               <h2 id="unavailable-acquisition-title" className="text-base font-semibold text-fg">

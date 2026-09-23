@@ -523,7 +523,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                 const moving = movingDealIds.has(deal.id);
                 const lastUpdate = deal.modificado_em || deal.criado_em;
                 return (
-                  <article key={deal.id} className="rounded-lg border border-line bg-surface p-4">
+                  <article key={deal.id} className="rounded-control border border-line bg-surface p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         {href && leadName !== 'Sem nome' ? (

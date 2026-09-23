@@ -66,7 +66,6 @@ const PERIODS: PeriodOption[] = [
 ];
 
 const STATUSES = [
-  '',
   'Draft',
   'To Deliver and Bill',
   'To Bill',
@@ -238,7 +237,7 @@ function SalesOrderExportMenu({
         id="sales-order-export-menu"
         hidden={!open}
         aria-label="Exportar dados"
-        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-sm border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+        className={`absolute left-0 top-full z-20 mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
       >
         <ExportCsvButton
           resource="sales-orders"
@@ -470,7 +469,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       )}
       {!summaryData && summaryError && (
         <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-3"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/30 bg-surface px-4 py-3"
           role="alert"
         >
           <p className="text-sm text-destructive">
@@ -630,7 +629,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           {items.map((row) => (
             <div
               key={row.id}
-              className="bg-surface rounded-lg border border-line shadow-sm p-4 space-y-3 cursor-pointer"
+              className="bg-surface rounded-card border border-line shadow-sm p-4 space-y-3 cursor-pointer"
               tabIndex={0}
               role="link"
               aria-label={`Abrir pedido ${row.id}`}

@@ -7,7 +7,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLText
       ref={ref}
       className={cn(
         'min-h-20 w-full resize-y rounded-control border border-border-control bg-input-surface px-3 py-2 text-sm text-fg',
-        'placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
+        'placeholder:text-fg-muted',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}

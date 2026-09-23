@@ -826,7 +826,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   onChange={(event) =>
                     setEdited((previous) => ({ ...previous, descricao: event.target.value }))
                   }
-                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-control border border-border-control bg-raised px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
+                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-control border border-border-control bg-raised px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted"
                   placeholder="Descrição do produto"
                   maxLength={4000}
                 />

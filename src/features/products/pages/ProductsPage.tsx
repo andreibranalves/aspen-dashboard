@@ -528,7 +528,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
               checked={allSelected}
               onChange={(event) => toggleSelectAll(event.target.checked)}
               aria-label="Selecionar todos os produtos desta página"
-              className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
+              className="h-4 w-4 rounded-xs border-line accent-light-sage"
             />
             Selecionar página
           </label>}
@@ -547,7 +547,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                   data-state={isSelected ? 'selected' : undefined}
                   className="group rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
                 >
-                  <div className={`relative flex h-[110px] items-end justify-between rounded-[17px] p-4 ${visualTone}`}>
+                  <div className={`relative flex h-[110px] items-end justify-between rounded-card p-4 ${visualTone}`}>
                     <strong className="text-[23px] font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
                     <PackageOpen size={48} strokeWidth={1.25} className="opacity-35" aria-hidden="true" />
                     {selectionMode && <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
@@ -556,7 +556,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                         checked={isSelected}
                         onChange={() => toggleSelected(sku)}
                         aria-label={`Selecionar produto ${sku}`}
-                        className="h-4 w-4 rounded border-line accent-light-sage focus:ring-light-sage"
+                        className="h-4 w-4 rounded-xs border-line accent-light-sage"
                       />
                     </label>}
                   </div>
@@ -564,7 +564,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                      className="block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                      className="block w-full min-w-0 text-left"
                       aria-label={`Abrir produto ${sku}: ${name}`}
                     >
                       <span className="block truncate text-sm font-semibold text-fg" title={name}>

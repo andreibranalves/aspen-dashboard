@@ -53,7 +53,7 @@ export default function Sidebar({
         className={cn(
           'mx-3 flex min-h-[45px] w-[calc(100%-1.5rem)] items-center gap-3 rounded-nav px-4 py-2 text-sm font-medium transition-colors',
           collapsed && 'justify-center gap-0 px-0',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sage',
+          'focus-inset',
           isActive ? 'bg-shell-active text-white' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
         title={collapsed ? item.label : undefined}
@@ -134,7 +134,7 @@ export default function Sidebar({
             <button
               type="button"
               onClick={onToggle}
-              className="min-h-9 min-w-9 shrink-0 rounded-control p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
+              className="min-h-9 min-w-9 shrink-0 rounded-control p-1.5 text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text"
               aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
               aria-expanded={sidebarOpen}
               aria-controls="aspen-sidebar"

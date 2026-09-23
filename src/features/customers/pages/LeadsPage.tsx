@@ -50,7 +50,7 @@ import {
 } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import Skeleton from '@/components/shared/Skeleton';
-import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
+import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { QualityBadges, type QualityBadge } from '@/features/customers/components/QualityBadges';
 import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
 import { CustomerActionMenu } from '@/features/customers/components/CustomerActionMenu';
@@ -599,7 +599,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             navigateToDetail(row.id);
           }}
           title={label}
-          className="block max-w-[240px] break-words font-medium text-fg underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          className="block max-w-[240px] break-words font-medium text-fg underline-offset-4 hover:underline"
         >
           {label}
         </a>
@@ -756,7 +756,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                             <a
                               href={`mailto:${row.email}`}
                               title={row.email}
-                              className="block max-w-[260px] truncate text-fg hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="block max-w-[260px] truncate text-fg hover:text-primary"
                             >
                               {row.email}
                             </a>
@@ -769,7 +769,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                               target="_blank"
                               rel="noopener noreferrer"
                               title="Abrir conversa no WhatsApp"
-                              className="block text-xs text-fg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="block text-xs text-fg-muted hover:text-primary"
                             >
                               {phone}
                             </a>
@@ -863,7 +863,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                     {row.email ? (
                       <a
                         href={`mailto:${row.email}`}
-                        className="block break-words text-fg hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="block break-words text-fg hover:text-primary"
                       >
                         {row.email}
                       </a>
@@ -875,7 +875,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         href={whatsappContactUrl(row.telefone)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-xs text-fg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="block text-xs text-fg-muted hover:text-primary"
                       >
                         {phone}
                       </a>
@@ -1043,7 +1043,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
               </div>
             )}
             {detail.latest_quotation && (
-              <div className="rounded-sm border border-line p-3">
+              <div className="rounded-control border border-line p-3">
                 <p className="text-xs uppercase tracking-wide text-fg-muted">Orçamento recente</p>
                 <p className="mt-1 break-words font-medium">{detail.latest_quotation.name}</p>
                 <p className="text-xs text-fg-muted">

@@ -65,7 +65,7 @@ const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
         onKeyDown={isInteractive ? handleKeyDown : onKeyDown}
         className={cn(
           'min-h-11 border-b border-line transition-colors hover:bg-surface-hover data-[state=selected]:bg-surface-selected',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset',
+          'focus-inset',
           className
         )}
         {...props}

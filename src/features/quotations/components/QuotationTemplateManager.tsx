@@ -223,7 +223,7 @@ export function QuotationTemplateManager({
       {listError && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm"
+          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm"
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
           <div className="flex-1">
@@ -254,7 +254,7 @@ export function QuotationTemplateManager({
                   else selectTemplate(template.id);
                 }}
                 disabled={saving}
-                className={`block w-full rounded-lg border p-3 text-left transition-colors ${selectedId === template.id ? 'border-primary bg-surface-selected' : 'border-border-subtle bg-surface hover:bg-surface-hover'}`}
+                className={`block w-full rounded-control border p-3 text-left transition-colors ${selectedId === template.id ? 'border-primary bg-surface-selected' : 'border-border-subtle bg-surface hover:bg-surface-hover'}`}
               >
                 <span className="block font-medium text-fg">{template.name}</span>
                 <span className="mt-1 block text-xs text-fg-muted">
@@ -279,7 +279,7 @@ export function QuotationTemplateManager({
             {detailError && selectedId && (
               <div
                 role="alert"
-                className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm"
+                className="rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm"
               >
                 <p>{detailError}</p>
                 <Button
@@ -325,10 +325,10 @@ export function QuotationTemplateManager({
                         title="Pré-visualização do modelo"
                         sandbox=""
                         srcDoc={validation.preview}
-                        className="h-80 w-full rounded-lg border border-border-subtle bg-white"
+                        className="h-80 w-full rounded-control border border-border-subtle bg-white"
                       />
                     ) : (
-                      <div className="flex min-h-48 items-center justify-center rounded-lg border border-dashed border-border-subtle bg-raised p-5 text-center text-sm text-fg-muted">
+                      <div className="flex min-h-48 items-center justify-center rounded-control border border-dashed border-border-subtle bg-raised p-5 text-center text-sm text-fg-muted">
                         Valide o modelo para gerar a prévia.
                       </div>
                     )}

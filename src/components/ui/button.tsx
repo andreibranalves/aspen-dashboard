@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 /**
  * Button is the shared action primitive for Aspen.
  *
- * The public `default` and `success` variants remain for compatibility with
- * existing quotation and CRM actions.
+ * Filled variants show a tinted disabled state at full opacity so the label
+ * stays legible; quiet variants fade instead. Never both.
  */
 const variants = {
   default:
@@ -14,11 +14,11 @@ const variants = {
   destructive:
     'bg-destructive-fill text-destructive-foreground hover:brightness-110 active:scale-[0.98] disabled:bg-destructive/10 disabled:text-destructive disabled:hover:bg-destructive/10',
   outline:
-    'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.98]',
+    'border border-line bg-transparent text-fg hover:bg-surface-hover active:scale-[0.98] disabled:opacity-50',
   secondary:
-    'bg-raised text-fg hover:brightness-110 active:scale-[0.98]',
-  ghost: 'text-fg hover:bg-surface-hover',
-  link: 'text-link underline-offset-4 hover:underline',
+    'bg-raised text-fg hover:brightness-110 active:scale-[0.98] disabled:opacity-50',
+  ghost: 'text-fg hover:bg-surface-hover disabled:opacity-50',
+  link: 'text-link underline-offset-4 hover:underline disabled:opacity-50',
   success:
     'bg-success-fill text-success-foreground hover:brightness-105 active:scale-[0.98] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
 } as const;
@@ -59,8 +59,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const classes = cn(
       'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control font-semibold transition-colors duration-150',
-      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
-      'disabled:pointer-events-none disabled:opacity-50',
+      'disabled:pointer-events-none',
       '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
       variants[variant],
       sizes[size],

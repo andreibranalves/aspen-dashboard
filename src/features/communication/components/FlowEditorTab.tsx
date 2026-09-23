@@ -396,7 +396,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   <Plus size={14} aria-hidden="true" /> Novo fluxo
                 </Button>
               }
-              className="rounded-md border border-dashed border-line bg-surface py-12"
+              className="rounded-control border border-dashed border-line bg-surface py-12"
             />
           ) : (
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -415,7 +415,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                     }}
                     className={[
                       'min-w-0 rounded-control border p-3 text-left transition-colors',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                       isSelected
                         ? 'border-primary bg-primary/5'
                         : 'border-line bg-surface hover:border-primary/40 hover:bg-surface-hover',
@@ -481,7 +480,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
       {loadError && (
         <div
-          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -496,7 +495,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
 
       {actionError && (
         <div
-          className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -520,7 +519,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
                 }
                 aria-expanded={expandedFlow === selectedFlow.id}
-                className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-control text-left"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
                   <MessageSquare size={18} className="text-sage" aria-hidden="true" />
@@ -635,7 +634,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       <article
                         key={step.id}
                         className={[
-                          'space-y-3 rounded-md border p-3',
+                          'space-y-3 rounded-control border p-3',
                           isActive
                             ? 'border-primary bg-primary/5'
                             : 'border-line bg-surface-muted/40',
@@ -645,7 +644,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                           <button
                             type="button"
                             onClick={() => setActiveStepId(step.id)}
-                            className="flex min-h-9 min-w-0 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                            className="flex min-h-9 min-w-0 items-center gap-2 rounded-control text-left"
                             aria-label={`Editar etapa ${index + 1}`}
                             aria-pressed={isActive}
                           >
@@ -733,7 +732,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                                 updateStep(selectedFlow.id, step.id, 'template', event.target.value)
                               }
                               placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
-                              className="min-h-[96px] w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                              className="min-h-[96px] w-full resize-y rounded-control border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted"
                             />
                           </div>
                         )}
@@ -937,7 +936,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                           />
                           <button
                             type="button"
-                            className="min-w-0 truncate text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            className="min-w-0 truncate text-left hover:text-primary"
                             onClick={() => setActiveStepId(step.id)}
                             aria-pressed={activeStepId === step.id}
                           >

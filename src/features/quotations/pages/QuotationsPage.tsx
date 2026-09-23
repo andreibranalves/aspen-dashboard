@@ -329,7 +329,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           popoverTargetAction="toggle"
           aria-controls={menuId}
           aria-expanded={openActionRow === row.id}
-          className="flex h-8 w-8 items-center justify-center rounded-sm text-fg-muted hover:bg-surface-hover hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted hover:bg-surface-hover hover:text-fg"
           aria-label={`Ações do orçamento ${label}`}
           title={`Ações do orçamento ${label}`}
           onClick={(event) => {
@@ -348,7 +348,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           id={menuId}
           popover="auto"
           aria-label={`Ações do orçamento ${label}`}
-          className="fixed inset-auto m-0 w-48 rounded-md border border-line bg-surface py-1 shadow-lg"
+          className="fixed inset-auto m-0 w-48 rounded-control border border-line bg-surface py-1 shadow-lg"
           style={{ top: `${actionMenuPosition.top}px`, left: `${actionMenuPosition.left}px` }}
           onToggle={(event) => {
             setOpenActionRow(event.nativeEvent.newState === 'open' ? row.id : null);
@@ -504,7 +504,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       {!loading && error && (
         <div
           role="alert"
-          className="m-4 flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
+          className="m-4 flex flex-col items-center gap-3 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
         >
           <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
           <p className="font-medium">Não foi possível carregar os orçamentos.</p>
@@ -559,7 +559,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     checked={allSelected}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded-xs border-line text-primary"
                   />
                 </TableHead>}
                 <TableHead className="w-[190px]">Orçamento</TableHead>
@@ -583,7 +583,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Selecionar orçamento ${row.businessNumber}`}
-                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded-xs border-line text-primary"
                     />
                   </TableCell>}
                   <TableCell className="whitespace-nowrap py-2 text-sm [font-variant-numeric:tabular-nums]">
@@ -625,7 +625,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           {data.map((row) => (
             <div
               key={row.id}
-              className={`cursor-pointer space-y-3 rounded-3xl border border-line bg-surface p-5 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              className={`cursor-pointer space-y-3 rounded-card border border-line bg-surface p-5 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
               <div className="flex items-start justify-between gap-3">
@@ -638,7 +638,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     checked={selectedIds.includes(row.id)}
                     onChange={() => toggleSelected(row.id)}
                     aria-label={`Selecionar orçamento ${row.businessNumber}`}
-                    className="h-4 w-4 shrink-0 rounded border-line text-primary focus:ring-primary"
+                    className="h-4 w-4 shrink-0 rounded-xs border-line text-primary"
                   />
                   <Button
                     variant="link"
@@ -695,7 +695,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               checked={allSelected}
               onChange={(e) => toggleSelectAll(e.target.checked)}
               aria-label="Selecionar todos os orçamentos desta página"
-              className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+              className="h-4 w-4 rounded-xs border-line text-primary"
             />
             <span>
               {selectedCount} orçamento{selectedCount !== 1 ? 's' : ''} selecionado

@@ -680,7 +680,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     {current.orders.map((order) => (
                       <div
                         key={order.name}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-subtle p-4"
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-line bg-surface-subtle p-4"
                       >
                         <div className="min-w-0">
                           <p className="break-words font-medium">{order.name}</p>

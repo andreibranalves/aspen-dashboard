@@ -19,7 +19,7 @@ export default function BackButton({ onClick, label = 'voltar', className }: Bac
       className={cn(
         'inline-flex min-h-9 items-center gap-2 rounded-control pl-1 pr-3 py-1 text-sm font-semibold',
         'border border-border-control bg-surface text-link hover:bg-primary/5 active:scale-[0.97]',
-        'shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage',
+        'shrink-0 transition-colors duration-150',
         className
       )}
       aria-label={label}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
-import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
+import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
@@ -167,7 +167,7 @@ export default function FollowUpReviewDrawer({
     >
       {followUp && (
         <div className="space-y-5">
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-subtle p-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-control border border-line bg-surface-subtle p-3">
             <StatusBadge
               status={followUp.state}
               label={STATE_LABELS[followUp.state] || followUp.state}
@@ -177,31 +177,31 @@ export default function FollowUpReviewDrawer({
           </div>
 
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-xl border border-line bg-surface p-3">
+            <div className="rounded-control border border-line bg-surface p-3">
               <dt className="text-xs text-fg-muted">Orçamento</dt>
               <dd className="break-words font-medium text-fg">{followUp.businessNumber}</dd>
             </div>
-            <div className="rounded-xl border border-line bg-surface p-3">
+            <div className="rounded-control border border-line bg-surface p-3">
               <dt className="text-xs text-fg-muted">Valor</dt>
               <dd className="whitespace-nowrap font-medium tabular-nums text-fg">
                 {formatBRL(followUp.amount)}
               </dd>
             </div>
-            <div className="rounded-xl border border-line bg-surface p-3">
+            <div className="rounded-control border border-line bg-surface p-3">
               <dt className="text-xs text-fg-muted">Destino</dt>
               <dd className="whitespace-nowrap font-medium text-fg">
                 {fmtPhone(followUp.canonicalPhone) || 'Telefone indisponível'}
               </dd>
             </div>
-            <div className="rounded-xl border border-line bg-surface p-3">
+            <div className="rounded-control border border-line bg-surface p-3">
               <dt className="text-xs text-fg-muted">Motivo</dt>
               <dd className="font-medium text-fg">{followUp.reasonLabel}</dd>
             </div>
-            <div className="rounded-xl border border-line bg-surface p-3">
+            <div className="rounded-control border border-line bg-surface p-3">
               <dt className="text-xs text-fg-muted">Recibo do provedor</dt>
               <dd className="font-medium text-fg">{formatDate(followUp.firstProviderReceiptAt)}</dd>
             </div>
-            <div className="rounded-xl border border-line bg-surface p-3">
+            <div className="rounded-control border border-line bg-surface p-3">
               <dt className="text-xs text-fg-muted">Disponível em</dt>
               <dd className="font-medium text-fg">{formatDate(followUp.dueAt)}</dd>
             </div>
@@ -218,7 +218,7 @@ export default function FollowUpReviewDrawer({
               disabled={!canApprove || pending !== null}
               maxLength={4000}
               rows={7}
-              className="flex w-full min-w-0 resize-y rounded-xl border border-line bg-surface-subtle px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full min-w-0 resize-y rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 
@@ -232,7 +232,7 @@ export default function FollowUpReviewDrawer({
                 value={reason}
                 onChange={(event) => setReason(event.target.value as DismissReason)}
                 disabled={pending !== null}
-                className="flex h-9 w-full rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-9 w-full rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm text-fg disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {DISMISS_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>

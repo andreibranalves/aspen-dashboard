@@ -96,7 +96,6 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
                 onClick={() => handleTabChange(tab.id)}
                 className={[
                   'flex min-h-10 items-center gap-2 whitespace-nowrap rounded-control px-3 py-2 text-xs font-semibold transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
                   isActive
                     ? 'bg-primary-soft text-primary-soft-ink'
                     : 'text-fg-muted hover:bg-raised hover:text-fg',
@@ -114,7 +113,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
         role="tabpanel"
         aria-labelledby={`communication-tab-${activeTab}`}
         tabIndex={0}
-        className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
+        className="min-h-[400px]"
       >
         {(activeTab === 'flows' || flowsDirty) && (
           <div className={activeTab === 'flows' ? undefined : 'hidden'}>

@@ -252,7 +252,7 @@ export default function SendHistoryTab({
 
       {error && (
         <div
-          className="flex items-start gap-3 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
+          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
           role="alert"
         >
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
@@ -284,7 +284,7 @@ export default function SendHistoryTab({
               ? 'O histórico aparecerá aqui após o primeiro envio de um fluxo WhatsApp.'
               : undefined
           }
-          className="rounded-md border border-dashed border-line bg-surface py-12"
+          className="rounded-control border border-dashed border-line bg-surface py-12"
         />
       )}
 

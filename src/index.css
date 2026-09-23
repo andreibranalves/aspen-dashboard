@@ -157,10 +157,15 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* The only focus indicator in the product. Components never add their own ring. */
   *:focus-visible {
     outline: 2px solid rgb(var(--focus));
-    outline-offset: 4px;
-    border-radius: inherit;
+    outline-offset: 2px;
+  }
+
+  /* Rows and list items inside clipped containers draw the ring inward. */
+  .focus-inset:focus-visible {
+    outline-offset: -2px;
   }
 }
 
@@ -245,27 +250,27 @@
 @layer components {
   /* Status and semantic badges are the only normal use of full-radius pills. */
   .tone-primary-soft {
-    @apply rounded-full border border-transparent bg-primary/10 text-primary-text;
+    @apply rounded-badge border border-transparent bg-primary/10 text-primary-text;
   }
 
   .tone-success-soft {
-    @apply rounded-[6px] border border-transparent bg-success/10 text-success;
+    @apply rounded-badge border border-transparent bg-success/10 text-success;
   }
 
   .tone-warning-soft {
-    @apply rounded-[6px] border border-transparent bg-warning/10 text-warning;
+    @apply rounded-badge border border-transparent bg-warning/10 text-warning;
   }
 
   .tone-destructive-soft {
-    @apply rounded-[6px] border border-transparent bg-destructive/10 text-destructive;
+    @apply rounded-badge border border-transparent bg-destructive/10 text-destructive;
   }
 
   .tone-info-soft {
-    @apply rounded-[6px] border border-transparent bg-info/10 text-primary-text;
+    @apply rounded-badge border border-transparent bg-info/10 text-primary-text;
   }
 
   .tone-neutral-soft {
-    @apply rounded-[6px] border border-transparent bg-surface-muted text-fg-muted;
+    @apply rounded-badge border border-transparent bg-surface-muted text-fg-muted;
   }
 
   .tone-neutral-muted {

@@ -74,7 +74,7 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
         id="commercial-panel"
         role="tabpanel"
         aria-labelledby={`commercial-tab-${tab}`}
-        className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+
       >
         {tab === 'deals' && <CrmKanbanPage embedded />}
         {tab === 'queue' && <CommercialQueuePanel navigate={navigate} />}

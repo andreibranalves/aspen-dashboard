@@ -221,7 +221,6 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         onClick={() => !uploading && groups.length > 0 && fileInputRef.current?.click()}
         className={[
           'relative flex min-h-36 items-center justify-center rounded-control border border-dashed p-6 text-center transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page',
           dragging
             ? 'border-light-sage bg-sage/20'
             : 'border-line bg-raised hover:border-light-sage hover:bg-surface-hover',
