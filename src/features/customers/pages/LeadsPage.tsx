@@ -724,7 +724,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   <TableHead>Localização</TableHead>
                   <TableHead>Orçamentos</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-10" />
+                  <TableHead className="w-44" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -795,9 +795,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       <TableCell>
                         <StatusBadge status={statusKey(row)} label={statusLabel(row)} />
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="w-44 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><Button
+                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
                             variant="ghost"
                             size="icon"
                             aria-label={`Abrir cliente ${label}`}
@@ -805,7 +805,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                           >
                             <ChevronRight />
                           </Button></span>
-                          <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><Button
+                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
                             variant="ghost"
                             size="icon"
                             title={`Novo orçamento para ${label}`}
@@ -823,7 +823,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                           >
                             <Eye />
                           </Button></span>
-                          <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><CustomerActionMenu
+                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><CustomerActionMenu
                             archived={isArchivedRow(row)}
                             customerName={label}
                             onArchiveToggle={() => toggleArchive(row)}

@@ -580,7 +580,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <TableHead className="whitespace-nowrap">Data</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -623,8 +623,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
                     {formatBRL(row.total)}
                   </TableCell>
-                  <TableCell className="py-2 text-right text-fg-muted">
-                    <div className="flex items-center justify-end gap-1"><span className="hidden group-hover:block group-focus-within:block">{actionButtons(row, 'desktop')}</span><ChevronRight size={16} aria-hidden="true" /></div>
+                  <TableCell className="w-24 py-2 text-right text-fg-muted">
+                    <div className="flex items-center justify-end gap-1"><span className="pointer-events-none block shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">{actionButtons(row, 'desktop')}</span><ChevronRight size={16} aria-hidden="true" /></div>
                   </TableCell>
                 </TableRow>
               ))}

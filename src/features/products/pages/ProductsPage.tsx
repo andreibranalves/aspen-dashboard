@@ -585,7 +585,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
                         <StatusBadge status={state.status} label={state.label} />
-                        <span className="hidden group-hover:inline-flex group-focus-within:inline-flex"><Button
+                        <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
                           variant="ghost"
                           size="icon"
                           className="text-fg-muted hover:bg-destructive/10 hover:text-destructive"
