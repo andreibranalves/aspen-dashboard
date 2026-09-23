@@ -903,6 +903,7 @@ export default function SplitResultCard({
                           {showDropdown && (
                             <div className="absolute left-0 right-0 top-8 z-50 max-h-48 overflow-y-auto rounded-control border border-border-subtle bg-surface shadow-lg">
                               {results.map((p) => (
+                                // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                                 <button
                                   key={p.sku || p.item_code}
                                   type="button"

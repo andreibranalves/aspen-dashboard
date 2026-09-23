@@ -1789,6 +1789,7 @@ function CoreQuotationDetail({
                         {clientResults.length > 0 && (
                           <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
                             {clientResults.map((client) => (
+                              // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                               <button
                                 key={client.id}
                                 type="button"
@@ -2063,6 +2064,7 @@ function CoreQuotationDetail({
                                   {results.length > 0 && (
                                     <div className="absolute left-0 top-9 z-40 w-64 rounded-control border border-line bg-surface shadow-lg">
                                       {results.map((product) => (
+                                        // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                                         <button
                                           type="button"
                                           key={product.sku}

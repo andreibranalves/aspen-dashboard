@@ -242,6 +242,7 @@ export function QuotationTemplateManager({
               <button
                 type="button"
                 key={template.id}
+                aria-pressed={selectedId === template.id}
                 onClick={() => {
                   if (isDirty) setPendingSelection(template.id);
                   else selectTemplate(template.id);

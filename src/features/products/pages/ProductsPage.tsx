@@ -520,6 +520,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
                     </label>}
                   </div>
                   <div className="space-y-3 px-1 pt-4">
+                    {/* eslint-disable-next-line no-restricted-syntax -- o card inteiro abre o produto */}
                     <button
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}

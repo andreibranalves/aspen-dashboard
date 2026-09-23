@@ -323,6 +323,7 @@ export default function OrderTemplateManager({
                           <p className="px-3 py-2 text-sm text-fg-muted">Buscando produtos…</p>
                         ) : searchResults.length ? (
                           searchResults.map((product) => (
+                            // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
                             <button
                               key={product.sku}
                               type="button"

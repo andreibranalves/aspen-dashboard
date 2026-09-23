@@ -130,6 +130,23 @@ export default [
       'shadcn/no-arbitrary-values': ['error', { allow: ['layout', 'transition-[width]'] }],
     },
   },
+  // ── Ações nas features passam pelos primitivos (Button, MenuItem) ──
+  // <button> cru só é aceito quando declara semântica que não é ação
+  // (toggle, seleção, navegação); demais exceções usam eslint-disable com motivo.
+  {
+    files: ['src/features/**/*.tsx', 'src/app/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(role|aria-expanded|aria-pressed|aria-selected|aria-current)$/]))",
+          message:
+            'Use Button ou MenuItem de @/components/ui. <button> cru só para toggle (aria-expanded), seleção (aria-pressed/aria-selected) ou navegação (aria-current).',
+        },
+      ],
+    },
+  },
   // ── TypeScript (frontend + backend futuro) ──
   {
     files: ['src/**/*.{ts,tsx}', 'api/**/*.{ts,tsx}'],

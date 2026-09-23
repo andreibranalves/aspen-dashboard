@@ -88,7 +88,10 @@ primitive. `eslint.config.js` enforces this with `shadcn/no-restyle`
 (`className` may carry layout only, plus the per-component `contracts`) and
 `shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant. Actions use `Button` or
 `MenuItem`; a plain `<button>` is only for list options, selectable cards,
-disclosure toggles and navigation chrome:
+disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this in
+`src/features` and `src/app`: a raw `<button>` must declare `role`, `aria-expanded`,
+`aria-pressed`, `aria-selected` or `aria-current`; anything else uses
+`eslint-disable-next-line no-restricted-syntax -- <motivo>`:
 
 | Component | Props |
 | --- | --- |

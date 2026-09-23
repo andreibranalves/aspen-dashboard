@@ -2075,6 +2075,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 className={imagePreview ? 'mt-0 min-h-[190px] pt-20' : 'mt-0 min-h-[190px]'}
               />
               {imagePreview && (
+                // eslint-disable-next-line no-restricted-syntax -- miniatura da imagem é o próprio botão
                 <button
                   type="button"
                   aria-label="Remover imagem colada"
@@ -2299,6 +2300,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             <div className="mt-5 space-y-3">
               <label className="block text-xs font-medium text-fg-muted">Nome, e-mail ou telefone<Input ref={clientPanelInput} aria-label="Buscar cliente" value={clientSearchTerm} disabled={manualActionsBlocked} onChange={onClientSearch} /></label>
               {clientSearching && <p className="text-xs text-fg-muted">Buscando…</p>}
+              {/* eslint-disable-next-line no-restricted-syntax -- opção de resultado de busca */}
               {clientResults.map((client) => <button key={client.id} type="button" aria-label={`Selecionar ${client.nome}`} disabled={manualActionsBlocked} className="block w-full rounded-control border border-line p-3 text-left hover:bg-surface-hover" onClick={() => chooseClient(client)}><span className="block font-medium text-fg">{client.nome}</span><span className="block text-xs text-fg-muted">{client.email || 'E-mail não informado'} · {fmtPhone(client.telefone || '')}</span></button>)}
               <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setClientPanel('new')} disabled={manualActionsBlocked}>Novo cliente</Button><Button type="button" onClick={applyClientPanel} disabled={manualActionsBlocked || !drawerManual?.selectedClient}>Aplicar ao rascunho</Button><Button type="button" variant="ghost" onClick={closeClientPanel} disabled={manualActionsBlocked}>Cancelar</Button></div>
             </div>
