@@ -888,6 +888,7 @@ export default function WhatsAppDeliveriesPage() {
         {activeTab === 'history' ? (
           <SendHistoryTab
             embedded
+            autoInspectId={new URLSearchParams(window.location.hash.split('?')[1] || '').get('event')}
             refreshKey={reloadVersion}
             filters={{
               status: historyStatus,

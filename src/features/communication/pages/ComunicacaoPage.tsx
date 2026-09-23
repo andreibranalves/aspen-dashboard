@@ -135,7 +135,7 @@ export default function ComunicacaoPage({ navigate }: ComunicacaoPageProps) {
               navigate(`/quotations/${encodeURIComponent(quotationId)}`)
             }
             onOpenDeliveries={() => navigate('/whatsapp-deliveries?tab=history')}
-            onOpenDelivery={() => navigate('/whatsapp-deliveries?tab=history')}
+            onOpenDelivery={(event) => navigate(`/whatsapp-deliveries?tab=history&event=${encodeURIComponent(event.id)}`)}
           />
         )}
 

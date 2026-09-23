@@ -1,7 +1,7 @@
 // SendHistoryTab — recent WhatsApp delivery records from the PostgreSQL outbox.
 // The existing read-only endpoint and send history data shape are preserved.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -128,6 +128,7 @@ interface SendHistoryTabProps {
   onOpenDelivery?: (event: SendEvent) => void;
   refreshKey?: number;
   onOpenDeliveries?: () => void;
+  autoInspectId?: string | null;
 }
 
 function statusMeta(status: string) {
@@ -159,12 +160,14 @@ export default function SendHistoryTab({
   onOpenDelivery,
   refreshKey = 0,
   onOpenDeliveries,
+  autoInspectId,
 }: SendHistoryTabProps) {
   const [events, setEvents] = useState<SendEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [localSearch, setLocalSearch] = useState('');
   const [localStatus, setLocalStatus] = useState('all');
+  const inspectedIdRef = useRef<string | null>(null);
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -188,6 +191,15 @@ export default function SendHistoryTab({
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
+
+  useEffect(() => {
+    if (!autoInspectId || !onOpenDelivery || loading || inspectedIdRef.current === autoInspectId) return;
+    const event = events.find((item) => item.id === autoInspectId);
+    if (event) {
+      inspectedIdRef.current = autoInspectId;
+      onOpenDelivery(event);
+    }
+  }, [autoInspectId, events, loading, onOpenDelivery]);
 
   const search = filters?.search?.trim().toLocaleLowerCase() || '';
   const from = filters?.from || '';
