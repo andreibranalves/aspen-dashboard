@@ -8,6 +8,7 @@ import { checkRateLimitAsync } from '../_shared/rate-limit.js';
 import { wrapFunctionHandler } from '../_http/function-adapter.js';
 import { routes } from './routes.js';
 import { requestOrigin, whatsappContextCorsHeaders } from '../_shared/whatsapp-context-cors.js';
+import { captureApiException } from '../_infrastructure/integrations/sentry/client.js';
 
 const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
@@ -28,7 +29,9 @@ export function normalizeHandlerError(
     };
   }
   const statusCode =
-    err !== null && typeof err === 'object' && Number.isInteger((err as { statusCode?: unknown }).statusCode)
+    err !== null &&
+    typeof err === 'object' &&
+    Number.isInteger((err as { statusCode?: unknown }).statusCode)
       ? (err as { statusCode: number }).statusCode
       : 500;
   return { statusCode, message: 'Erro interno. Tente novamente.' };
@@ -61,16 +64,27 @@ function isOversizedEvolutionWebhookRequest(request: VercelRequestLike): boolean
   const rawContentLength = requestHeader(request, 'content-length');
   if (rawContentLength !== undefined) {
     const contentLength = Number(rawContentLength);
-    if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) {
+    if (
+      !Number.isSafeInteger(contentLength) ||
+      contentLength < 0 ||
+      contentLength > MAX_EVOLUTION_WEBHOOK_BODY_BYTES
+    ) {
       request.resume?.();
       return true;
     }
   }
-  if (request.rawBody !== undefined && requestBodyByteLength(request.rawBody) > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) {
+  if (
+    request.rawBody !== undefined &&
+    requestBodyByteLength(request.rawBody) > MAX_EVOLUTION_WEBHOOK_BODY_BYTES
+  ) {
     request.resume?.();
     return true;
   }
-  if (rawContentLength === undefined && request.readable === true && request.readableEnded !== true) {
+  if (
+    rawContentLength === undefined &&
+    request.readable === true &&
+    request.readableEnded !== true
+  ) {
     request.resume?.();
     return true;
   }
@@ -85,7 +99,7 @@ export async function handleApiRequest(
   const routeName = getRouteName(requestLike);
   if (routeName === 'whatsapp-context') {
     const headers = whatsappContextCorsHeaders(
-      requestOrigin((requestLike.headers || {}) as Record<string, string | string[] | undefined>),
+      requestOrigin((requestLike.headers || {}) as Record<string, string | string[] | undefined>)
     );
     for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
   }
@@ -111,6 +125,12 @@ export async function handleApiRequest(
   } catch (err) {
     console.error(`[api/${routeName}]`, err instanceof Error ? err.name : typeof err);
     const { statusCode, message } = normalizeHandlerError(routeName, err);
+    if (statusCode >= 500) {
+      captureApiException(err, {
+        routeName,
+        method: String(requestLike.method || '').toUpperCase(),
+      });
+    }
     res.status(statusCode).json({ error: message });
   }
 }

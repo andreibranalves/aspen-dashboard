@@ -1,13 +1,38 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
+
 export default defineConfig({
   // Vite não usa DOTENV_CONFIG_PATH: desligar seu loader também no E2E.
   envDir: process.env.NODE_ENV === 'test' ? false : undefined,
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(sentryAuthToken
+      ? [
+          sentryVitePlugin({
+            authToken: sentryAuthToken,
+            org: 'aspen-estamparia',
+            project: 'aspen-web',
+            telemetry: false,
+            release: {
+              name: process.env.VERCEL_GIT_COMMIT_SHA,
+              setCommits: false,
+            },
+            sourcemaps: {
+              filesToDeleteAfterUpload: ['./public/assets/**/*.map'],
+            },
+            errorHandler(error) {
+              console.warn(`[sentry] source map upload failed (${error.name})`);
+            },
+          }),
+        ]
+      : []),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -17,6 +42,7 @@ export default defineConfig({
   build: {
     outDir: 'public',
     emptyOutDir: false, // preserva arquivos não-gerados (dashboard-old.html etc)
+    sourcemap: sentryAuthToken ? 'hidden' : false,
     rollupOptions: {
       output: {
         manualChunks(id) {
