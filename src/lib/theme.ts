@@ -9,7 +9,7 @@ export function readTheme(): AspenTheme {
   } catch {
     // Use the current document theme when browser storage is unavailable.
   }
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
 export function applyTheme(theme: AspenTheme): void {
