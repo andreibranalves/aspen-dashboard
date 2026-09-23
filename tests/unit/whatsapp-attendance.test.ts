@@ -6,10 +6,11 @@ import {
   createWhatsappMessagesHandler,
   encodeCursor,
 } from '../../api/_modules/whatsapp-attendance.js';
-import type {
-  WhatsappAttendanceRepository,
-  WhatsappConversationRecord,
-  WhatsappMessageRecord,
+import {
+  WhatsappConversationChangedError,
+  type WhatsappAttendanceRepository,
+  type WhatsappConversationRecord,
+  type WhatsappMessageRecord,
 } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 
 const conversationId = '0b9f1e52-7c1f-4d0e-9a51-3f7d3c1a2b40';
@@ -48,6 +49,8 @@ function repository(overrides: Partial<WhatsappAttendanceRepository> = {}): What
     ingestConversation: async () => {
       throw new Error('not used');
     },
+    updateStatus: async (input) => ({ ...conversation, status: input.status, revision: input.expectedRevision + 1 }),
+    markRead: async (input) => ({ ...conversation, readRevision: input.readRevision, unreadCount: 0 }),
     listConversations: async () => ({ items: [conversation], hasMore: true }),
     getConversation: async (id) => (id === conversationId ? conversation : null),
     listMessagesBefore: async () => ({ items: [messageRecord('a1b2c3d4-0000-4000-8000-000000000001', 7)], hasMore: false }),
@@ -64,6 +67,7 @@ describe('whatsapp attendance handlers', () => {
   it('lists conversations without exposing provider identifiers', async () => {
     let received: unknown;
     const handler = createWhatsappConversationsHandler({
+      environment: { EVOLUTION_INSTANCE: 'aspen' },
       repository: repository({
         listConversations: async (input) => {
           received = input;
@@ -75,7 +79,7 @@ describe('whatsapp attendance handlers', () => {
     const body = JSON.parse(result.body || '{}');
 
     assert.equal(result.statusCode, 200);
-    assert.deepEqual(received, { status: 'active', search: 'Maria', limit: 20, cursor: null });
+    assert.deepEqual(received, { instance: 'aspen', status: 'active', search: 'Maria', limit: 20, cursor: null });
     assert.equal(body.items[0].phone, '5511999990000');
     assert.equal(JSON.stringify(body).includes('providerConversationId'), false);
     assert.equal(JSON.stringify(body).includes('@s.whatsapp.net'), false);
@@ -86,7 +90,10 @@ describe('whatsapp attendance handlers', () => {
   });
 
   it('rejects invalid ids, cursors, statuses and limits with pt-BR messages', async () => {
-    const conversations = createWhatsappConversationsHandler({ repository: repository() });
+    const conversations = createWhatsappConversationsHandler({
+      environment: { EVOLUTION_INSTANCE: 'aspen' },
+      repository: repository(),
+    });
     const messages = createWhatsappMessagesHandler({ repository: repository() });
 
     for (const result of [
@@ -135,6 +142,7 @@ describe('whatsapp attendance handlers', () => {
 
   it('hides database failures behind a neutral message', async () => {
     const handler = createWhatsappConversationsHandler({
+      environment: { EVOLUTION_INSTANCE: 'aspen' },
       repository: repository({
         listConversations: async () => {
           throw new Error('relation "whatsapp_conversations" does not exist');
@@ -144,5 +152,42 @@ describe('whatsapp attendance handlers', () => {
     const result = await handler(get({}));
     assert.equal(result.statusCode, 503);
     assert.equal(JSON.parse(result.body || '{}').error, 'Não foi possível carregar as conversas. Tente novamente.');
+  });
+
+  it('patches status with the expected revision and read position separately', async () => {
+    const handler = createWhatsappConversationsHandler({ repository: repository() });
+    const patch = (body: unknown) =>
+      handler({ httpMethod: 'PATCH', headers: {}, queryStringParameters: {}, body: JSON.stringify(body) });
+
+    const closed = await patch({ id: conversationId, status: 'closed', expectedRevision: 7 });
+    assert.equal(closed.statusCode, 200);
+    assert.equal(JSON.parse(closed.body || '{}').conversation.status, 'closed');
+
+    const read = await patch({ id: conversationId, readRevision: 7 });
+    assert.equal(JSON.parse(read.body || '{}').conversation.unreadCount, 0);
+
+    assert.equal((await patch({ id: conversationId, status: 'closed' })).statusCode, 400);
+    assert.equal((await patch({ id: conversationId, status: 'closed', readRevision: 1, expectedRevision: 7 })).statusCode, 400);
+    assert.equal((await patch({ id: conversationId, status: 'archived', expectedRevision: 7 })).statusCode, 400);
+  });
+
+  it('answers 409 CONVERSATION_CHANGED with the current state on a stale status change', async () => {
+    const handler = createWhatsappConversationsHandler({
+      repository: repository({
+        updateStatus: async () => {
+          throw new WhatsappConversationChangedError({ ...conversation, revision: 8 });
+        },
+      }),
+    });
+    const result = await handler({
+      httpMethod: 'PATCH',
+      headers: {},
+      queryStringParameters: {},
+      body: JSON.stringify({ id: conversationId, status: 'closed', expectedRevision: 7 }),
+    });
+    const body = JSON.parse(result.body || '{}');
+    assert.equal(result.statusCode, 409);
+    assert.equal(body.code, 'CONVERSATION_CHANGED');
+    assert.equal(body.conversation.revision, 8);
   });
 });

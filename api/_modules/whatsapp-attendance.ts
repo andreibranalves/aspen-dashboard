@@ -5,6 +5,7 @@ import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import {
   createPostgresWhatsappAttendanceRepository,
   WHATSAPP_CONVERSATION_STATUSES,
+  WhatsappConversationChangedError,
   type TimelineCursor,
   type WhatsappAttendanceRepository,
   type WhatsappConversationRecord,
@@ -19,6 +20,7 @@ const MAX_SEARCH_CHARS = 80;
 
 export interface WhatsappAttendanceDependencies {
   repository?: WhatsappAttendanceRepository;
+  environment?: { EVOLUTION_INSTANCE?: string };
 }
 
 class InputError extends Error {}
@@ -113,10 +115,70 @@ async function handleErrors(run: () => Promise<FunctionResult>, failure: string)
   }
 }
 
+function parseBody(event: FunctionEvent): Record<string, unknown> {
+  try {
+    const value = JSON.parse(event.body || '');
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  } catch {
+    // handled below
+  }
+  throw new InputError('Corpo da requisição inválido.');
+}
+
+function nonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new InputError(`${label} inválida.`);
+  }
+  return value;
+}
+
+async function patchConversation(
+  event: FunctionEvent,
+  repository: WhatsappAttendanceRepository,
+): Promise<FunctionResult> {
+  return handleErrors(async () => {
+    const body = parseBody(event);
+    const id = parseId(typeof body.id === 'string' ? body.id : '', 'Conversa');
+    const hasStatus = body.status !== undefined;
+    const hasRead = body.readRevision !== undefined;
+    if (hasStatus === hasRead) throw new InputError('Informe a situação ou a posição de leitura.');
+
+    if (hasRead) {
+      const updated = await repository.markRead({ id, readRevision: nonNegativeInteger(body.readRevision, 'Posição de leitura') });
+      if (!updated) return json(404, { error: 'Conversa não encontrada.' });
+      return json(200, { conversation: projectConversation(updated) });
+    }
+
+    const status = typeof body.status === 'string' ? body.status : '';
+    if (!(WHATSAPP_CONVERSATION_STATUSES as readonly string[]).includes(status)) {
+      throw new InputError('Situação inválida.');
+    }
+    try {
+      const updated = await repository.updateStatus({
+        id,
+        status: status as WhatsappConversationStatus,
+        expectedRevision: nonNegativeInteger(body.expectedRevision, 'Revisão esperada'),
+      });
+      if (!updated) return json(404, { error: 'Conversa não encontrada.' });
+      return json(200, { conversation: projectConversation(updated) });
+    } catch (error) {
+      if (error instanceof WhatsappConversationChangedError) {
+        return json(409, {
+          code: 'CONVERSATION_CHANGED',
+          error: 'A conversa mudou desde a última atualização. Revise as mensagens novas antes de alterar a situação.',
+          conversation: projectConversation(error.current),
+        });
+      }
+      throw error;
+    }
+  }, 'Não foi possível atualizar a conversa. Tente novamente.');
+}
+
 export function createWhatsappConversationsHandler(dependencies: WhatsappAttendanceDependencies = {}) {
   return async function whatsappConversationsHandler(event: FunctionEvent): Promise<FunctionResult> {
     const repository = dependencies.repository || createPostgresWhatsappAttendanceRepository();
     const method = String(event.httpMethod || '').toUpperCase();
+    if (method === 'PATCH') return patchConversation(event, repository);
     if (method !== 'GET') return json(405, { error: 'Método não permitido.' });
 
     return handleErrors(async () => {
@@ -127,9 +189,12 @@ export function createWhatsappConversationsHandler(dependencies: WhatsappAttenda
         return json(200, { conversation: projectConversation(conversation) });
       }
 
+      const instance = (dependencies.environment || process.env).EVOLUTION_INSTANCE?.trim();
+      if (!instance) return json(503, { error: 'Integração WhatsApp não configurada.' });
       const limit = parseLimit(query(event, 'limit'));
       const search = query(event, 'q').slice(0, MAX_SEARCH_CHARS);
       const page = await repository.listConversations({
+        instance,
         status: parseStatusFilter(query(event, 'status')),
         search,
         limit,

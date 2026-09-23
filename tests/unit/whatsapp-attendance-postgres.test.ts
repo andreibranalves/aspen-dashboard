@@ -11,6 +11,7 @@ import postgres from 'postgres';
 import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
   createPostgresWhatsappAttendanceRepository,
+  WhatsappConversationChangedError,
   type IngestWhatsappConversationInput,
   type IngestWhatsappMessage,
   type WhatsappTransportIdentity,
@@ -211,4 +212,81 @@ test('concurrent ingestion of the same event stores one message and sequential r
     [1, 2, 3],
   );
   assert.equal((await repository.getConversation(conversationId))?.unreadCount, 3);
+});
+
+test('read cursor only advances and never marks a message that arrived after the viewed position', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappAttendanceRepository(() => db);
+  const instance = `test-${randomUUID()}`;
+  const { conversationId } = await repository.ingestConversation(
+    input(instance, [message('r1', '2026-09-01T10:00:00Z'), message('r2', '2026-09-01T10:01:00Z')]),
+  );
+  const viewed = await repository.getConversation(conversationId);
+  // A message arrives while the operator is still looking at revision 2.
+  await repository.ingestConversation(input(instance, [message('r3', '2026-09-01T10:02:00Z')]));
+
+  const read = await repository.markRead({ id: conversationId, readRevision: viewed!.revision });
+  assert.equal(read?.readRevision, 2);
+  assert.equal(read?.unreadCount, 1, 'the unseen message stays unread');
+
+  const stale = await repository.markRead({ id: conversationId, readRevision: 1 });
+  assert.equal(stale?.readRevision, 2, 'the cursor never moves back');
+  assert.equal(stale?.unreadCount, 1);
+
+  const beyond = await repository.markRead({ id: conversationId, readRevision: 999 });
+  assert.equal(beyond?.readRevision, 3, 'the cursor is clamped to the committed revision');
+  assert.equal(beyond?.unreadCount, 0);
+});
+
+test('status change is refused when a message arrived after the operator view', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappAttendanceRepository(() => db);
+  const instance = `test-${randomUUID()}`;
+  const { conversationId } = await repository.ingestConversation(input(instance, [message('s1', '2026-09-01T10:00:00Z')]));
+  const viewed = await repository.getConversation(conversationId);
+  await repository.ingestConversation(input(instance, [message('s2', '2026-09-01T10:01:00Z')]));
+
+  await assert.rejects(
+    repository.updateStatus({ id: conversationId, status: 'closed', expectedRevision: viewed!.revision }),
+    WhatsappConversationChangedError,
+  );
+  const current = await repository.getConversation(conversationId);
+  const closed = await repository.updateStatus({ id: conversationId, status: 'closed', expectedRevision: current!.revision });
+  assert.equal(closed?.status, 'closed');
+  assert.equal(closed?.revision, current!.revision + 1);
+
+  await repository.updateStatus({ id: conversationId, status: 'ignored', expectedRevision: closed!.revision });
+  await repository.ingestConversation(input(instance, [message('s3', '2026-09-01T10:02:00Z')]));
+  assert.equal((await repository.getConversation(conversationId))?.status, 'ignored', 'ignored is never reopened');
+});
+
+test('250 conversations stay reachable through the cursor with status and search filters', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappAttendanceRepository(() => db);
+  const instance = `test-${randomUUID()}`;
+  const start = Date.parse('2026-06-01T00:00:00Z');
+  for (let index = 0; index < 250; index += 1) {
+    await repository.ingestConversation(
+      input(instance, [message(`l${index}`, new Date(start + index * 1000).toISOString())], {
+        providerConversationId: `55119${String(index).padStart(8, '0')}@s.whatsapp.net`,
+        contactName: index === 42 ? 'Maria 50% Souza' : `Contato ${index}`,
+        resolveIdentity: () => ({ ...verified, canonicalPhone: `55119${String(index).padStart(8, '0')}` }),
+      }),
+    );
+  }
+
+  const ids = new Set<string>();
+  let cursor = null;
+  for (;;) {
+    const page = await repository.listConversations({ instance, limit: 100, cursor });
+    for (const item of page.items) ids.add(item.id);
+    if (!page.hasMore) break;
+    const last = page.items.at(-1)!;
+    cursor = { at: last.lastMessageAt!, id: last.id };
+  }
+  assert.equal(ids.size, 250);
+
+  const byName = await repository.listConversations({ instance, limit: 10, search: '50%' });
+  assert.deepEqual(byName.items.map((item) => item.displayName), ['Maria 50% Souza']);
+  const byPhone = await repository.listConversations({ instance, limit: 10, search: '(11) 9 0000-0042' });
+  assert.equal(byPhone.items.length, 1);
+  assert.equal((await repository.listConversations({ instance, limit: 10, status: 'ignored' })).items.length, 0);
+  assert.equal((await repository.listConversations({ instance: `other-${randomUUID()}`, limit: 10 })).items.length, 0);
 });

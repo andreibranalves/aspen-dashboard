@@ -85,6 +85,7 @@ export interface TimelineCursor {
 }
 
 export interface ListConversationsInput {
+  instance: string;
   status?: WhatsappConversationStatus | 'active';
   search?: string;
   limit: number;
@@ -96,7 +97,25 @@ export interface ListMessagesPage {
   hasMore: boolean;
 }
 
+export class WhatsappConversationChangedError extends Error {
+  constructor(readonly current: WhatsappConversationRecord) {
+    super('conversation changed');
+    this.name = 'WhatsappConversationChangedError';
+  }
+}
+
 export interface WhatsappAttendanceRepository {
+  /**
+   * Changes the attendance status only if nothing changed since the operator
+   * saw `expectedRevision`; returns null when the conversation does not exist.
+   */
+  updateStatus(input: {
+    id: string;
+    status: WhatsappConversationStatus;
+    expectedRevision: number;
+  }): Promise<WhatsappConversationRecord | null>;
+  /** Moves the read cursor forward only; unread is recounted from messages. */
+  markRead(input: { id: string; readRevision: number }): Promise<WhatsappConversationRecord | null>;
   ingestConversation(input: IngestWhatsappConversationInput): Promise<IngestWhatsappConversationResult>;
   listConversations(input: ListConversationsInput): Promise<{ items: WhatsappConversationRecord[]; hasMore: boolean }>;
   getConversation(id: string): Promise<WhatsappConversationRecord | null>;
@@ -317,8 +336,59 @@ export function createPostgresWhatsappAttendanceRepository(
       });
     },
 
+    async updateStatus(input) {
+      return getDb().transaction(async (tx) => {
+        const [current] = await tx
+          .select(conversationColumns)
+          .from(conversations)
+          .where(eq(conversations.id, input.id))
+          .for('update');
+        if (!current) return null;
+        const record = toConversation(current);
+        if (record.revision !== input.expectedRevision) throw new WhatsappConversationChangedError(record);
+        if (record.status === input.status) return record;
+        const [updated] = await tx
+          .update(conversations)
+          .set({ status: input.status, revision: record.revision + 1, updatedAt: new Date() })
+          .where(eq(conversations.id, input.id))
+          .returning(conversationColumns);
+        return toConversation(updated);
+      });
+    },
+
+    async markRead(input) {
+      return getDb().transaction(async (tx) => {
+        const [current] = await tx
+          .select(conversationColumns)
+          .from(conversations)
+          .where(eq(conversations.id, input.id))
+          .for('update');
+        if (!current) return null;
+        const record = toConversation(current);
+        const readRevision = Math.max(record.readRevision, Math.min(input.readRevision, record.revision));
+        if (readRevision === record.readRevision) return record;
+        const [{ unread }] = await tx
+          .select({ unread: sql<number>`count(*)::int` })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.conversationId, input.id),
+              eq(messages.direction, 'inbound'),
+              eq(messages.origin, 'live'),
+              gt(messages.createdRevision, readRevision),
+            ),
+          );
+        const [updated] = await tx
+          .update(conversations)
+          .set({ readRevision, unreadCount: Number(unread), updatedAt: new Date() })
+          .where(eq(conversations.id, input.id))
+          .returning(conversationColumns);
+        return toConversation(updated);
+      });
+    },
+
     async listConversations(input) {
-      const filters: SQL[] = [];
+      const filters: SQL[] = [eq(conversations.instance, input.instance)];
       if (input.status === 'active') {
         filters.push(inArray(conversations.status, ['open', 'waiting_customer', 'closed']));
       } else if (input.status) {
@@ -345,7 +415,7 @@ export function createPostgresWhatsappAttendanceRepository(
       const rows = await getDb()
         .select(conversationColumns)
         .from(conversations)
-        .where(filters.length ? and(...filters) : undefined)
+        .where(and(...filters))
         .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`, desc(conversations.id))
         .limit(input.limit + 1);
       return {
