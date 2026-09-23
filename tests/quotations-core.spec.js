@@ -315,7 +315,7 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
   });
 
   await page.goto('/#/quotations');
-  await expect(page.getByText('Não foi possível carregar os orçamentos.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Não foi possível carregar os orçamentos' })).toBeVisible();
   await expect(page.getByText('internal database details')).toHaveCount(0);
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByRole('button', { name: 'ORC-RETRY-1', exact: true })).toBeVisible();
@@ -669,6 +669,9 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
         topBarTop: topBar?.getBoundingClientRect().top,
         workspaceTop: workspaceBounds?.top,
         workspaceBottom: workspaceBounds?.bottom,
+        workspaceScrollHeight: workspace?.scrollHeight,
+        workspaceClientHeight: workspace?.clientHeight,
+        workspaceScrollTop: workspace?.scrollTop,
         workspacePaddingTop: workspaceStyle ? Number.parseFloat(workspaceStyle.paddingTop) : 0,
         workspacePaddingBottom: workspaceStyle ? Number.parseFloat(workspaceStyle.paddingBottom) : 0,
       };
@@ -676,16 +679,26 @@ test('detalhe mantém um único scroll vertical no shell @quotations @smoke', as
 
   const initial = await readScrollState();
   expect(initial.documentHeight).toBeLessThanOrEqual(initial.viewportHeight);
-  await page.locator('main').evaluate((main) => {
-    main.scrollTop = main.scrollHeight;
+  await page.locator('.aspen-workspace').evaluate((workspace) => {
+    workspace.scrollTop = workspace.scrollHeight;
   });
   await expect(page.getByRole('navigation', { name: 'Trilha de navegação' })).toBeVisible();
   const scrolled = await readScrollState();
   expect(scrolled.windowY).toBe(0);
   expect(scrolled.documentHeight).toBeLessThanOrEqual(scrolled.viewportHeight);
-  expect(scrolled.mainBottom).toBe(scrolled.workspaceBottom - scrolled.workspacePaddingBottom);
-  expect(scrolled.topBarTop).toBe(scrolled.workspaceTop + scrolled.workspacePaddingTop);
-  expect(scrolled.mainScrollHeight).toBeGreaterThan(scrolled.mainClientHeight);
+  expect(scrolled.workspaceScrollHeight).toBeGreaterThan(scrolled.workspaceClientHeight);
+  expect(scrolled.workspaceScrollTop).toBeGreaterThan(0);
+  const lowerContent = page.locator('main section').last();
+  await expect(lowerContent).toBeVisible();
+  expect(await lowerContent.textContent()).toMatch(/\S/);
+  const contentBounds = await lowerContent.boundingBox();
+  const workspaceBounds = await page.locator('.aspen-workspace').boundingBox();
+  expect(contentBounds).not.toBeNull();
+  expect(workspaceBounds).not.toBeNull();
+  expect(contentBounds.y).toBeGreaterThanOrEqual(workspaceBounds.y);
+  expect(contentBounds.y + contentBounds.height).toBeLessThanOrEqual(
+    workspaceBounds.y + workspaceBounds.height
+  );
 });
 
 test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({

@@ -264,7 +264,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/products/CORE-PRICED');
     await expect(page.getByText(/10,00/).first()).toBeVisible();
-    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await page.getByLabel('Preço base').fill('11.00');
     await page.getByRole('button', { name: 'Adicionar faixa de preço' }).click();
     await page.getByLabel('Quantidade mínima da faixa 1').fill('30');
@@ -336,7 +336,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page).toHaveURL(/#\/products\/CORE-NEW$/);
     await expect(page.getByText('Produto novo', { exact: true }).first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await page.getByPlaceholder('Nome do produto').fill('Produto editado');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
@@ -344,7 +344,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/products');
     await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
-    await page.getByPlaceholder('Buscar por SKU ou nome…').fill('CORE-NEW');
+    await page.getByRole('searchbox', { name: 'Buscar produtos' }).fill('CORE-NEW');
     await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
   });
 
@@ -413,12 +413,12 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     });
     await expect(productHeader.getByText('Ativo', { exact: true })).toBeVisible();
     await expect(productHeader.getByRole('button', { name: 'Arquivar produto' })).toBeVisible();
-    await expect(page.getByText('Nome', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Nome', exact: true })).toHaveValue('Produto com atividade local');
     await expect(page.getByText('Produto criado', { exact: true })).toBeVisible();
     await expect(page.getByText(/10,00/).first()).toBeVisible();
     await expect.poll(() => activityRequests).toBe(1);
 
-    await productHeader.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(productHeader.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await expect(page.getByPlaceholder('Nome do produto')).toHaveValue(
       'Produto com atividade local'
     );
@@ -442,7 +442,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByText('Produto local', { exact: true }).first()).toBeVisible();
     await expect.poll(() => activityRequests).toBe(1);
 
-    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await page.getByPlaceholder('Nome do produto').fill('Produto local atualizado');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
@@ -599,7 +599,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByText('Atividade antiga', { exact: true })).toBeVisible();
     await page.goto('/#/products/ACTIVITY-NEW');
     await expect.poll(() => newActivityStarted).toBe(1);
-    await expect(page.getByRole('status')).toHaveText('Carregando atividade…');
+    await expect(page.getByText('Carregando atividade…', { exact: true })).toHaveText('Carregando atividade…');
     await expect(page.getByText('Atividade antiga', { exact: true })).toHaveCount(0);
     releaseNewActivity();
     await expect(page.getByText('Atividade nova', { exact: true })).toBeVisible();
@@ -646,13 +646,13 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     });
 
     await page.goto('/#/products/STATE-FIRST');
-    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await page.getByPlaceholder('Nome do produto').fill('Produto primeiro salvo');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect.poll(() => saveStarted).toBe(1);
     await page.goto('/#/products/STATE-SECOND');
     await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeEnabled();
     const saveResponse = page.waitForResponse((response) => {
       const request = response.request();
       return (
@@ -662,7 +662,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await releaseSave();
     await saveResponse;
     await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Arquivar produto' })).toBeEnabled();
     await expect(page.getByRole('button', { name: /Salvando|Atualizando/ })).toHaveCount(0);
     await expect(page.getByText('Produto primeiro salvo', { exact: true })).toHaveCount(0);
@@ -675,7 +675,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect.poll(() => deleteStarted).toBe(1);
     await page.goto('/#/products/STATE-SECOND');
     await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeEnabled();
     const deleteResponse = page.waitForResponse((response) => {
       const request = response.request();
       return (
@@ -685,7 +685,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await releaseDelete();
     await deleteResponse;
     await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Arquivar produto' })).toBeEnabled();
     await expect(page.getByRole('button', { name: /Salvando|Atualizando/ })).toHaveCount(0);
     await expect(page.getByText('Produto primeiro salvo', { exact: true })).toHaveCount(0);
@@ -739,7 +739,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/products/SAVE-SKU');
     await expect.poll(() => activityRequests).toBe(1);
-    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await page.getByPlaceholder('Nome do produto').fill('Produto depois');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
@@ -792,7 +792,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
       page.getByText('Sem atividade recente para este produto.', { exact: true })
     ).toHaveCount(0);
     await page.getByRole('alert').getByRole('button', { name: 'Tentar novamente' }).click();
-    await expect(page.getByRole('status')).toHaveText('Carregando atividade…');
+    await expect(page.getByText('Carregando atividade…', { exact: true })).toHaveText('Carregando atividade…');
     await expect(
       page.getByText('Sem atividade recente para este produto.', { exact: true })
     ).toHaveCount(0);
@@ -876,6 +876,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     const displayedName = page.getByText(longName, { exact: true }).first();
 
     await expect(productCard).toBeVisible();
+    await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
     await checkbox.focus();
     await checkbox.press('Space');
     await expect(checkbox).toBeChecked();
@@ -911,6 +912,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await page.goto('/#/products');
 
     const checkbox = page.getByRole('checkbox', { name: 'Selecionar produto MOBILE-SKU' });
+    await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
     await expect(checkbox).toBeVisible();
     await checkbox.click();
     await expect(checkbox).toBeChecked();
@@ -919,7 +921,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByRole('dialog')).toContainText('Arquivar produto');
     await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click();
 
-    await page.getByRole('textbox', { name: 'Buscar produtos' }).fill('SEM-RESULTADO');
+    await page.getByRole('searchbox', { name: 'Buscar produtos' }).fill('SEM-RESULTADO');
     await expect(
       page.getByText('Nenhum produto encontrado para estes filtros', { exact: true })
     ).toBeVisible();

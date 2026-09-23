@@ -120,7 +120,7 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
     await page.goto('/#/catalog');
     await expect(page.getByRole('heading', { name: 'Catálogo' })).toBeVisible();
     await expect(page.getByText('CAT-001').first()).toBeVisible();
-    await page.getByRole('button', { name: 'Arquivados' }).click();
+    await page.getByRole('combobox', { name: 'Filtrar produtos por status' }).selectOption('archived');
     await page.getByRole('button', { name: 'Exportar produtos' }).click();
     await expect.poll(() => exportUrl).toContain('status=archived');
 
@@ -139,7 +139,7 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
     await page.keyboard.press('Escape');
 
     await page.getByRole('tab', { name: 'Mídias' }).click();
-    await expect(page.getByRole('heading', { name: 'Biblioteca de mídias' })).toBeVisible();
+    await expect(page.getByText('Materiais reutilizáveis nas comunicações e propostas.')).toBeVisible();
     await expect(page.getByText('Campanha de inverno')).toBeVisible();
     await page.getByRole('button', { name: 'Adicionar mídia' }).click();
     await expect(page.getByRole('heading', { name: 'Adicionar mídia' })).toBeVisible();

@@ -64,7 +64,7 @@ test('dashboard inválido exibe retry e nunca mascara métrica como zero @smoke'
     top_products: [], top_customers: [], sales_by_day: [], stale_quotations: [],
   }));
   await page.goto('/#/dashboard');
-  await expect(page.getByText('Não foi possível carregar os resultados.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Não foi possível carregar os resultados' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
   await expect(page.getByText('R$ 0,00', { exact: true })).toHaveCount(0);
 });

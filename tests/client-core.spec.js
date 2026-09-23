@@ -83,6 +83,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     const phoneLinks = page.locator('a[href^="https://wa.me/"]');
     await expect(phoneLinks).toHaveCount(2);
     for (const link of await phoneLinks.all()) await expect(link).toHaveAttribute('href', expectedUrl);
+    await page.locator('tbody tr').filter({ hasText: CLIENT.nome }).hover();
     await page.getByRole('button', { name: `Visualização rápida ${CLIENT.nome}`, exact: true }).click();
     await expect(page.getByRole('link', { name: 'WhatsApp', exact: true })).toHaveAttribute('href', expectedUrl);
     await page.goto(`/#/leads/cliente/${CLIENT.id}`);
@@ -131,9 +132,8 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.goto('/#/leads');
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Novo contato' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Ativos' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Arquivados' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Novo cliente' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Filtrar clientes por status' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
 
     await page.getByText(CLIENT.nome, { exact: true }).first().click();
@@ -163,16 +163,18 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(table.getByRole('columnheader')).toHaveText([
       'Cliente',
       'Contato',
-      'Documento',
+      'Localização',
+      'Orçamentos',
       'Status',
-      'Ações',
+      '',
     ]);
     const row = table.getByRole('row').nth(1);
     await expect(row.getByRole('link', { name: CLIENT.nome })).toHaveAttribute(
       'href',
       `#/leads/cliente/${CLIENT.id}`
     );
-    await expect(row.getByRole('cell').nth(2)).toHaveText('123.456.789-01');
+    await expect(row.getByRole('cell').nth(0)).toContainText(CLIENT.nome);
+    await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
     await expect(row.getByRole('button', { name: `Abrir cliente ${CLIENT.nome}` })).toBeVisible();
     await expect(row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` })).toBeVisible();
     await expect(page.getByText('1 cliente selecionado')).toHaveCount(0);
@@ -211,7 +213,7 @@ test.describe('Clientes locais @crm @smoke', () => {
         exact: true,
       })
     ).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Negócio ativo' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Resumo comercial' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'WhatsApp' })).toHaveAttribute(
       'href',
       `https://wa.me/${CLIENT.telefone}`
@@ -228,21 +230,20 @@ test.describe('Clientes locais @crm @smoke', () => {
     ).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Atividade recente' })).toBeVisible();
     const mobileSections = await page.locator('main section h2').allTextContents();
-    expect(mobileSections.indexOf('Atividade recente')).toBeLessThan(
-      mobileSections.indexOf('Cadastro')
+    expect(mobileSections.indexOf('Resumo comercial')).toBeLessThan(
+      mobileSections.indexOf('Atividade recente')
     );
 
     await page.setViewportSize({ width: 768, height: 900 });
-    await expect(page.locator('html')).toHaveClass(/dark/);
-    await expect(page.locator('.aspen-workspace')).toHaveCSS('background-color', 'rgb(13, 13, 13)');
-    await expect(page.getByRole('heading', { name: 'Negócio ativo' })).toBeVisible();
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+    await expect(page.getByRole('heading', { name: 'Resumo comercial' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Editar cadastro' }).click();
-    await expect(page.getByPlaceholder('Nome do cliente')).toHaveValue(
+    await expect(page.getByRole('textbox', { name: 'Nome do cliente *' })).toHaveValue(
       COMPLETE_DETAIL.display_name
     );
-    await expect(page.getByPlaceholder('email@exemplo.com')).toHaveValue(COMPLETE_DETAIL.email);
-    await expect(page.getByPlaceholder('(99) 99999-9999')).toHaveValue(COMPLETE_DETAIL.telefone);
+    await expect(page.getByRole('textbox', { name: 'E-mail' })).toHaveValue(COMPLETE_DETAIL.email);
+    await expect(page.getByRole('textbox', { name: 'Telefone' })).toHaveValue(COMPLETE_DETAIL.telefone);
     await expect(page.getByRole('textbox', { name: 'Endereço', exact: true })).toHaveValue(
       COMPLETE_DETAIL.address.endereco
     );
@@ -274,6 +275,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.goto('/#/leads');
     await expect(page.locator('tbody tr').filter({ hasText: CLIENT.nome })).toBeVisible();
+    await page.locator('tbody tr').filter({ hasText: CLIENT.nome }).hover();
     await page.getByRole('button', { name: `Novo orçamento para ${CLIENT.nome}` }).click();
     await expect(page).toHaveURL(/#\/auto$/);
     const textarea = page.locator('textarea').first();
@@ -424,16 +426,14 @@ test.describe('Clientes locais @crm @smoke', () => {
     });
 
     await page.goto('/#/leads');
-    await page.getByRole('button', { name: 'Clientes' }).first().click();
-    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Novo contato' }).click();
-    await expect(page).toHaveURL(/#\/leads\/cliente\/new/);
+    await page.getByRole('button', { name: 'Novo cliente' }).click();
+    await expect(page).toHaveURL(/#\/leads\/new/);
     await expect(page.getByRole('heading', { name: 'Novo cliente', exact: true })).toBeVisible();
-    await page.getByPlaceholder('Nome do cliente').fill('Ana Cliente');
-    await page.getByRole('button', { name: 'Criar cliente' }).last().click();
+    await page.getByRole('textbox', { name: 'Nome do cliente *' }).fill('Ana Cliente');
+    await page.getByRole('button', { name: 'Salvar cliente' }).last().click();
 
     await page.getByRole('button', { name: 'Clientes' }).first().click();
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
@@ -442,6 +442,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
 
     const row = page.locator('tbody tr').filter({ hasText: 'Ana Cliente' }).first();
+    await row.hover();
     await row.getByRole('button', { name: /Visualização rápida Ana Cliente/ }).click();
     await expect(page.getByText('Empresa', { exact: true })).toBeVisible();
     await expect(page.getByText('Empresa não informada', { exact: true })).toBeVisible();
@@ -459,17 +460,20 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByRole('button', { name: 'Fechar', exact: true }).click();
 
     // Ações secundárias usam menu e confirmação (sem confirm() nativo)
+    await page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first().hover();
     await page.getByRole('button', { name: /Mais ações para Ana Cliente Editada/ }).click();
     await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
-    await page.getByRole('button', { name: 'Arquivados' }).click();
+    await page.getByRole('combobox', { name: 'Filtrar clientes por status' }).selectOption('archived');
     await expect(
       page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()
     ).toBeVisible();
+    await page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first().hover();
     await page.getByRole('button', { name: /Mais ações para Ana Cliente Editada/ }).click();
     await page.getByRole('menu').getByRole('menuitem', { name: 'Restaurar cliente' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Restaurar', exact: true }).click();
-    await page.getByRole('button', { name: 'Ativos' }).click();
+    await expect(page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' })).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Filtrar clientes por status' }).selectOption('active');
     await expect(
       page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()
     ).toBeVisible();
@@ -482,9 +486,41 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.goto('/#/leads/cliente/new');
     await expect(page.getByRole('heading', { name: 'Novo cliente', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Criar cliente' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Salvar cliente' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
     expect(requests.some((url) => url.includes('/api/leads-clients'))).toBe(false);
+  });
+
+  test('deep-link novo cliente navega após um único POST @smoke', async ({ page }) => {
+    const id = '33333333-3333-4333-8333-333333333333';
+    let postCount = 0;
+    /** @type {() => void} */
+    let releasePost = () => {};
+    const pendingPost = new Promise((resolve) => {
+      releasePost = resolve;
+    });
+    await page.route('**/api/leads-clients**', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.fulfill({ json: { data: [], pagination: { total: 0 } } });
+        return;
+      }
+      postCount += 1;
+      await pendingPost;
+      await route.fulfill({ json: { created: id } });
+    });
+    await page.route('**/api/client-detail**', (route) =>
+      route.fulfill({ json: { ...DETAIL, id, name: id, nome: 'Cliente Deep Link', display_name: 'Cliente Deep Link' } })
+    );
+
+    await page.goto('/#/leads/cliente/new');
+    await page.getByRole('textbox', { name: 'Nome do cliente *' }).fill('Cliente Deep Link');
+    await page.getByRole('button', { name: 'Salvar cliente' }).last().click();
+    await expect.poll(() => postCount).toBe(1);
+    await expect(page).toHaveURL(/#\/leads\/cliente\/new$/);
+    releasePost();
+    await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${id}$`));
+    await expect(page.getByRole('heading', { name: 'Cliente Deep Link' })).toBeVisible();
+    expect(postCount).toBe(1);
   });
 
   test('lista mantém o contrato local enquanto a API está pendente', async ({ page }) => {
@@ -524,7 +560,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     release();
     await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Novo contato' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Novo cliente' }).first()).toBeVisible();
     await expect(sidebarClients).toBeVisible();
     await expect(page.getByText('Leads', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
@@ -584,21 +620,22 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.goto('/#/leads');
     await expect(page.locator('tbody tr').filter({ hasText: CLIENT.nome })).toBeVisible();
+    await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
     await page.getByLabel(`Selecionar ${CLIENT.nome}`).check();
     await expect(page.getByRole('button', { name: 'Arquivar clientes' })).toBeVisible();
     await page.getByRole('button', { name: 'Arquivar clientes' }).click();
     await expect(page.getByRole('dialog').getByText('Arquivar 1 cliente?')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
-    await expect(page.getByText('Nenhum cliente encontrado')).toBeVisible();
+    await expect(page.locator('tbody tr').filter({ hasText: CLIENT.nome })).toContainText('Arquivado');
     expect(archiveRequests).toEqual([{ id: CLIENT.id }]);
 
-    await page.getByRole('button', { name: 'Todos' }).click();
+    await page.getByRole('combobox', { name: 'Filtrar clientes por status' }).selectOption('all');
     await page.getByLabel(`Selecionar ${CLIENT.nome}`).check();
     await page.getByRole('button', { name: 'Arquivar clientes' }).click();
     await expect(page.getByText('Selecione clientes ativos para arquivar.')).toBeVisible();
     expect(archiveRequests).toHaveLength(1);
 
-    await page.getByRole('button', { name: 'Arquivados' }).click();
+    await page.getByRole('combobox', { name: 'Filtrar clientes por status' }).selectOption('archived');
     await expect(page.locator('tbody tr').filter({ hasText: CLIENT.nome })).toBeVisible();
     await page.getByLabel(`Selecionar ${CLIENT.nome}`).check();
     await expect(page.getByRole('button', { name: 'Restaurar clientes' })).toBeVisible();
@@ -689,17 +726,18 @@ test.describe('Clientes locais @crm @smoke', () => {
       });
     });
 
-    await page.goto('/#/leads/cliente/new');
-    await expect(page.getByText('Empresa', { exact: true })).toHaveCount(0);
+    await page.goto('/#/leads/new');
+    await expect(page.getByRole('heading', { name: 'Identificação' })).toBeVisible();
     await expect(page.getByText('Origem', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Contribuinte', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Inscrição estadual', { exact: true })).toHaveCount(0);
-    await page.getByPlaceholder('Nome do cliente').fill('Cliente com observação');
-    await page.getByPlaceholder('email@exemplo.com').fill('cliente@example.com');
-    await page.getByPlaceholder('(99) 99999-9999').fill('(11) 99999-0000');
-    await page.getByPlaceholder('CPF ou CNPJ').fill('12345678901');
+    await page.getByRole('textbox', { name: 'Nome do cliente *' }).fill('Cliente com observação');
+    await page.getByRole('textbox', { name: 'E-mail' }).fill('cliente@example.com');
+    await page.getByRole('textbox', { name: 'Telefone' }).fill('(11) 99999-0000');
+    await page.getByRole('textbox', { name: 'Documento' }).fill('12345678901');
+    await page.locator('details').filter({ has: page.locator('summary', { hasText: 'Observações' }) }).locator('summary').click();
     await page.getByLabel('Observações').fill('Nota criada');
-    await page.getByRole('button', { name: 'Criar cliente' }).click();
+    await page.getByRole('button', { name: 'Salvar cliente' }).click();
     await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${id}$`));
     await expect(page.getByText('Nota criada', { exact: true })).toBeVisible();
     expect(createdNotes).toBe('Nota criada');
@@ -711,6 +749,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.getByRole('button', { name: 'Editar cadastro' }).click();
     await expect(page.getByLabel('Observações')).toHaveValue('Nota criada');
+    await page.locator('details').filter({ has: page.locator('summary', { hasText: 'Observações' }) }).locator('summary').click();
     await page.getByLabel('Observações').fill('Nota editada');
     await page.getByRole('button', { name: 'Salvar' }).click();
     await expect(page.getByText('Nota editada', { exact: true })).toBeVisible();
@@ -768,6 +807,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     expect(exportRequest.searchParams.get('search')).toBe('Maria');
     expect(exportRequest.searchParams.get('status')).toBe('all');
 
+    await page.locator('tbody tr').filter({ hasText: 'Cliente com nome longo' }).hover();
     await page.getByRole('button', { name: /Mais ações para Cliente com nome longo/ }).click();
     await page.getByRole('menu').getByRole('menuitem', { name: 'Arquivar cliente' }).click();
     await expect(
@@ -804,11 +844,11 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.goto(`/#/leads/cliente/${CLIENT.id}`);
     await expect(page.getByRole('heading', { name: serverName }).first()).toBeVisible();
     await expect(page.getByText('Observações', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Orçamento recente', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Abrir orçamento recente' })).toHaveCount(0);
     await expect(page.getByText('Endereço', { exact: true })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Editar cadastro' }).click();
-    await page.getByPlaceholder('Nome do cliente').fill('Alteração descartada');
+    await page.getByRole('textbox', { name: 'Nome do cliente *' }).fill('Alteração descartada');
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Descartar', exact: true }).click();
     await expect(page.getByText(serverName, { exact: true }).first()).toBeVisible();
@@ -838,6 +878,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.goto('/#/leads');
     const trigger = page.getByRole('button', { name: `Visualização rápida ${CLIENT.nome}` });
+    await page.locator('tbody tr').filter({ hasText: CLIENT.nome }).hover();
     await trigger.click();
     await page.getByRole('button', { name: 'Editar', exact: true }).click();
     const name = page.getByRole('textbox', { name: 'Nome', exact: true });

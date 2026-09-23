@@ -1575,6 +1575,11 @@ function CoreQuotationDetail({
               {currentRevision?.createdAt && <span>{formatDate(currentRevision.createdAt)}</span>}
               <span>Validade {formatDate(data.validade) || '—'}</span>
               {data.expired && <span className="font-medium text-warning">Expirado</span>}
+              {issuedView && (
+                <span role="status" className="text-xs font-medium text-fg-muted">
+                  Somente leitura. Alterações criam uma nova revisão.
+                </span>
+              )}
               {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && (
                 <div
                   className="flex flex-wrap items-center gap-2"

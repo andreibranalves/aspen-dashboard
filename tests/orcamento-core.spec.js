@@ -54,7 +54,10 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
 
     await page.goto('/#/manual');
     await expect(page.getByText('Não foi possível carregar os modelos de orçamento.')).toBeVisible();
+    await page.getByRole('button', { name: 'Selecionar cliente' }).click();
+    await page.getByRole('button', { name: 'Novo cliente' }).click();
     await expect(page.getByLabel('Nome do cliente')).toBeVisible();
+    await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await expect(page.getByLabel('Buscar produto para adicionar ao orçamento')).toBeEnabled();
     await expect(page.getByLabel('Prazo de produção')).toBeEnabled();
 
@@ -125,13 +128,13 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     });
 
     await page.goto('/#/manual');
-    await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
+    await page.getByRole('button', { name: 'Selecionar cliente' }).click();
     await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Maria');
     await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
     await page.getByRole('button', { name: 'Aplicar ao rascunho' }).click();
 
-    await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
+    await page.getByRole('combobox', { name: 'Origem *' }).selectOption('Google Ads');
     await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
@@ -220,7 +223,10 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
 
     await page.goto('/#/manual');
     await expect(page.getByText('Informe o cliente e adicione ao menos um item para continuar.', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Selecionar cliente' }).click();
+    await page.getByRole('button', { name: 'Novo cliente' }).click();
     await page.getByLabel('Nome do cliente').fill('Cliente emissão');
+    await page.getByRole('button', { name: 'Aplicar ao rascunho' }).click();
     await expect(page.getByText('Adicione ao menos um item para continuar.', { exact: true })).toBeVisible();
     await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
@@ -296,12 +302,12 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     });
 
     await page.goto('/#/manual');
-    await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
+    await page.getByRole('button', { name: 'Selecionar cliente' }).click();
     await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Maria');
     await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
     await page.getByRole('button', { name: 'Aplicar ao rascunho' }).click();
-    await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
+    await page.getByRole('combobox', { name: 'Origem *' }).selectOption('Google Ads');
     await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
