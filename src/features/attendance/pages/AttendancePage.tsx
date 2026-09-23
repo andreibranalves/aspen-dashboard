@@ -17,6 +17,7 @@ import {
   fetchMessagesAfter,
   fetchMessagesBefore,
   markConversationRead,
+  runMessageAction,
   updateConversationStatus,
   type AttendanceConversation,
   type AttendanceMessage,
@@ -25,7 +26,8 @@ import {
 } from '@/lib/api/attendanceApi';
 import type { ApiError } from '@/lib/api/api';
 import ConversationList, { conversationName } from '@/features/attendance/components/ConversationList';
-import MessageTimeline from '@/features/attendance/components/MessageTimeline';
+import MessageComposer from '@/features/attendance/components/MessageComposer';
+import MessageTimeline, { type MessageActionName } from '@/features/attendance/components/MessageTimeline';
 import { STATUS_FILTERS, STATUS_LABELS } from '@/features/attendance/attendanceLabels';
 import { useVisiblePolling } from '@/features/attendance/useVisiblePolling';
 
@@ -66,6 +68,11 @@ function byActivity(a: AttendanceConversation, b: AttendanceConversation): numbe
 function mergeMessages(current: AttendanceMessage[], incoming: AttendanceMessage[]): AttendanceMessage[] {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) {
+    // An echo merged into an operator reply is removed, not shown twice.
+    if (message.supersededBy) {
+      byId.delete(message.id);
+      continue;
+    }
     const known = byId.get(message.id);
     if (!known || known.revision <= message.revision) byId.set(message.id, message);
   }
@@ -108,6 +115,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   threadRef.current = thread;
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState<string | null>(null);
   const [hasUnseenBelow, setHasUnseenBelow] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -361,6 +369,24 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
     }
   };
 
+  const runAction = async (messageId: string, action: MessageActionName) => {
+    setActionPending(messageId);
+    setStatusNotice(null);
+    try {
+      await runMessageAction(messageId, action);
+    } catch (error) {
+      setStatusNotice(errorMessage(error, 'Não foi possível atualizar o envio.'));
+    } finally {
+      setActionPending(null);
+      void pollThread();
+    }
+  };
+
+  const onSent = useCallback(() => {
+    stickToBottomRef.current = true;
+    void pollThread();
+  }, [pollThread]);
+
   const selectConversation = (id: string) => navigate(`/atendimento?conversationId=${encodeURIComponent(id)}`);
   const filtered = statusFilter !== 'active' || Boolean(debouncedSearch);
   const conversation = thread?.conversation || null;
@@ -476,6 +502,8 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 <MessageTimeline
                   ref={timelineRef}
                   messages={thread.messages}
+                  actionPending={actionPending}
+                  onAction={(messageId, action) => void runAction(messageId, action)}
                   hasOlder={thread.hasOlder}
                   loadingOlder={loadingOlder}
                   onLoadOlder={() => void loadOlder()}
@@ -485,15 +513,13 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               {hasUnseenBelow && (
                 <Button
                   size="sm"
-                  className="absolute bottom-14 left-1/2 -translate-x-1/2 shadow-md"
+                  className="absolute bottom-28 left-1/2 -translate-x-1/2 shadow-md"
                   onClick={scrollToEnd}
                 >
                   <ArrowDown aria-hidden="true" /> Novas mensagens
                 </Button>
               )}
-              <p className="border-t border-border-subtle px-4 py-3 text-xs text-fg-muted">
-                Resposta pelo Aspen ainda não disponível; responda pelo WhatsApp.
-              </p>
+              <MessageComposer key={conversation.id} conversation={conversation} onSent={onSent} />
             </>
           )}
         </section>
