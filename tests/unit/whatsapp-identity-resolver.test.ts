@@ -159,4 +159,83 @@ describe('whatsapp-identity-resolver', () => {
     assert.equal(result.identityStatus, 'verified');
     assert.equal(result.identitySource, 'message.key.participant');
   });
+
+  describe('precedence against stored identity', () => {
+    const storedHigh = {
+      canonicalPhone: '5521981858541',
+      identityStatus: 'verified',
+      identitySource: 'chat.senderPn',
+      identityConfidence: 'high',
+    };
+
+    it('reports conflict when two fresh sources contradict a trusted stored phone', () => {
+      const result = resolveWhatsappIdentity({
+        chat: { remoteJid: '183792384719283741@lid', phone: '5521911112222', senderPn: '5521933334444' },
+        storedConversation: storedHigh,
+      });
+      assert.equal(result.identityStatus, 'conflict');
+      assert.equal(result.canonicalPhone, '');
+    });
+
+    it('reports conflict when a single fresh phone contradicts a trusted stored phone', () => {
+      const result = resolveWhatsappIdentity({
+        chat: { remoteJid: '183792384719283741@lid', senderPn: '5521911112222' },
+        storedConversation: storedHigh,
+      });
+      assert.equal(result.identityStatus, 'conflict');
+      assert.equal(result.canonicalPhone, '');
+    });
+
+    it('reports conflict when weaker fresh evidence names another phone', () => {
+      const result = resolveWhatsappIdentity({
+        chat: { remoteJid: '5521911112222@s.whatsapp.net' },
+        storedConversation: storedHigh,
+      });
+      assert.equal(result.identityStatus, 'conflict');
+    });
+
+    it('keeps the trusted stored phone when weaker fresh evidence agrees', () => {
+      const result = resolveWhatsappIdentity({
+        chat: { remoteJid: '5521981858541@s.whatsapp.net' },
+        storedConversation: storedHigh,
+      });
+      assert.equal(result.identityStatus, 'verified');
+      assert.equal(result.canonicalPhone, '5521981858541');
+      assert.equal(result.identityConfidence, 'high');
+    });
+  });
+
+  describe('fromMe normalization', () => {
+    it('ignores message.from when fromMe is only set on the key', () => {
+      const result = resolveWhatsappIdentity({
+        source: 'stored',
+        chat: { remoteJid: '183792384719283741@lid' },
+        messages: [{ key: { fromMe: true }, from: '5521911112222' }],
+      });
+      assert.equal(result.canonicalPhone, '');
+      assert.equal(result.identityStatus, 'unresolved');
+    });
+
+    it('ignores key.participant when fromMe is only set on the envelope', () => {
+      const result = resolveWhatsappIdentity({
+        source: 'stored',
+        chat: { remoteJid: '183792384719283741@lid' },
+        messages: [{ fromMe: true, key: { participant: '5521911112222@s.whatsapp.net' } }],
+      });
+      assert.equal(result.canonicalPhone, '');
+    });
+
+    it('ignores sender fields of a chat that is itself an outgoing message', () => {
+      const result = resolveWhatsappIdentity({
+        chat: {
+          remoteJid: '183792384719283741@lid',
+          key: { fromMe: true },
+          sender: '5521911112222',
+          participant: '5521933334444',
+        },
+      });
+      assert.equal(result.canonicalPhone, '');
+      assert.equal(result.identityStatus, 'unresolved');
+    });
+  });
 });
