@@ -1940,6 +1940,48 @@ export const whatsappWebhookEffects = pgTable(
 );
 
 
+/**
+ * Resumable backfill of the attendance history from the Evolution instance,
+ * one row per provider conversation. `gap` declares that the provider did not
+ * return the complete history; nothing is fabricated to fill it.
+ */
+export const whatsappBackfillProgress = pgTable(
+  'whatsapp_backfill_progress',
+  {
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    state: varchar('state', { length: 16 }).notNull().default('pending'),
+    nextPage: integer('next_page').notNull().default(1),
+    pagesTotal: integer('pages_total'),
+    messagesSeen: integer('messages_seen').notNull().default(0),
+    messagesInserted: integer('messages_inserted').notNull().default(0),
+    gapReason: varchar('gap_reason', { length: 32 }),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'whatsapp_backfill_progress_pkey',
+      columns: [table.instance, table.providerConversationId],
+    }),
+    index('whatsapp_backfill_progress_state_idx').on(table.instance, table.state),
+    check(
+      'whatsapp_backfill_progress_state_check',
+      sql`${table.state} IN ('pending', 'done', 'gap')`,
+    ),
+    check(
+      'whatsapp_backfill_progress_counts_check',
+      sql`${table.nextPage} > 0 AND ${table.messagesSeen} >= 0 AND ${table.messagesInserted} >= 0 AND (${table.pagesTotal} IS NULL OR ${table.pagesTotal} > 0)`,
+    ),
+    check(
+      'whatsapp_backfill_progress_gap_check',
+      sql`(${table.state} = 'gap') = (${table.gapReason} IS NOT NULL)`,
+    ),
+  ],
+);
+
+
 // Singular aliases make repository/tests that speak in domain terms concise
 // without changing the SQL table names used by migrations.
 export const quoteSequence = quoteSequences;

@@ -67,7 +67,7 @@ describe('whatsapp attendance handlers', () => {
   it('lists conversations without exposing provider identifiers', async () => {
     let received: unknown;
     const handler = createWhatsappConversationsHandler({
-      environment: { EVOLUTION_INSTANCE: 'aspen' },
+      instance: () => 'aspen',
       repository: repository({
         listConversations: async (input) => {
           received = input;
@@ -91,7 +91,7 @@ describe('whatsapp attendance handlers', () => {
 
   it('rejects invalid ids, cursors, statuses and limits with pt-BR messages', async () => {
     const conversations = createWhatsappConversationsHandler({
-      environment: { EVOLUTION_INSTANCE: 'aspen' },
+      instance: () => 'aspen',
       repository: repository(),
     });
     const messages = createWhatsappMessagesHandler({ repository: repository() });
@@ -142,7 +142,7 @@ describe('whatsapp attendance handlers', () => {
 
   it('hides database failures behind a neutral message', async () => {
     const handler = createWhatsappConversationsHandler({
-      environment: { EVOLUTION_INSTANCE: 'aspen' },
+      instance: () => 'aspen',
       repository: repository({
         listConversations: async () => {
           throw new Error('relation "whatsapp_conversations" does not exist');

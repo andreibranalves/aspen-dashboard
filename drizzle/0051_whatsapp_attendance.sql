@@ -107,3 +107,26 @@ ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_
 ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_attempts_check" CHECK ("whatsapp_webhook_effects"."attempts" >= 0);
 --> statement-breakpoint
 ALTER TABLE "whatsapp_webhook_effects" ADD CONSTRAINT "whatsapp_webhook_effects_failure_check" CHECK ("whatsapp_webhook_effects"."last_failure" IS NULL OR "whatsapp_webhook_effects"."last_failure" IN ('activity_failed', 'follow_up_failed'));
+--> statement-breakpoint
+CREATE TABLE "whatsapp_backfill_progress" (
+	"instance" varchar(120) NOT NULL,
+	"provider_conversation_id" varchar(255) NOT NULL,
+	"state" varchar(16) DEFAULT 'pending' NOT NULL,
+	"next_page" integer DEFAULT 1 NOT NULL,
+	"pages_total" integer,
+	"messages_seen" integer DEFAULT 0 NOT NULL,
+	"messages_inserted" integer DEFAULT 0 NOT NULL,
+	"gap_reason" varchar(32),
+	"last_run_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "whatsapp_backfill_progress_pkey" PRIMARY KEY("instance","provider_conversation_id")
+);
+--> statement-breakpoint
+CREATE INDEX "whatsapp_backfill_progress_state_idx" ON "whatsapp_backfill_progress" USING btree ("instance","state");
+--> statement-breakpoint
+ALTER TABLE "whatsapp_backfill_progress" ADD CONSTRAINT "whatsapp_backfill_progress_state_check" CHECK ("whatsapp_backfill_progress"."state" IN ('pending', 'done', 'gap'));
+--> statement-breakpoint
+ALTER TABLE "whatsapp_backfill_progress" ADD CONSTRAINT "whatsapp_backfill_progress_counts_check" CHECK ("whatsapp_backfill_progress"."next_page" > 0 AND "whatsapp_backfill_progress"."messages_seen" >= 0 AND "whatsapp_backfill_progress"."messages_inserted" >= 0 AND ("whatsapp_backfill_progress"."pages_total" IS NULL OR "whatsapp_backfill_progress"."pages_total" > 0));
+--> statement-breakpoint
+ALTER TABLE "whatsapp_backfill_progress" ADD CONSTRAINT "whatsapp_backfill_progress_gap_check" CHECK (("whatsapp_backfill_progress"."state" = 'gap') = ("whatsapp_backfill_progress"."gap_reason" IS NOT NULL));

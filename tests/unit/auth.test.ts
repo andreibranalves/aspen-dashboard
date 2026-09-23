@@ -45,6 +45,7 @@ describe('auth guard', () => {
     assert.equal(isMachineRoute('quotation-delivery-worker'), true);
     assert.equal(isMachineRoute('quotation-follow-up-worker'), true);
     assert.equal(isMachineRoute('site-quote-leads'), true);
+    assert.equal(isMachineRoute('whatsapp-backfill'), true);
     assert.equal(isMachineRoute('quotation-deliveries'), false);
     assert.equal(isAuthenticated({ url: '/api/evolution-webhook' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/quotation-delivery-worker' }, {}), true);

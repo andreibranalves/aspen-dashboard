@@ -8,6 +8,7 @@ const MACHINE_ROUTES = new Set([
   'quotation-delivery-worker',
   'quotation-follow-up-worker',
   'site-quote-leads',
+  'whatsapp-backfill',
 ]);
 const MAX_COOKIE_HEADER_LENGTH = 8192;
 

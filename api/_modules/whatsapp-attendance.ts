@@ -2,6 +2,7 @@
 // conversation ids and instance names never leave the backend.
 
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import {
   createPostgresWhatsappAttendanceRepository,
   WHATSAPP_CONVERSATION_STATUSES,
@@ -20,7 +21,7 @@ const MAX_SEARCH_CHARS = 80;
 
 export interface WhatsappAttendanceDependencies {
   repository?: WhatsappAttendanceRepository;
-  environment?: { EVOLUTION_INSTANCE?: string };
+  instance?: () => string;
 }
 
 class InputError extends Error {}
@@ -189,7 +190,7 @@ export function createWhatsappConversationsHandler(dependencies: WhatsappAttenda
         return json(200, { conversation: projectConversation(conversation) });
       }
 
-      const instance = (dependencies.environment || process.env).EVOLUTION_INSTANCE?.trim();
+      const instance = (dependencies.instance || (() => getEvolutionConfig().instance))().trim();
       if (!instance) return json(503, { error: 'Integração WhatsApp não configurada.' });
       const limit = parseLimit(query(event, 'limit'));
       const search = query(event, 'q').slice(0, MAX_SEARCH_CHARS);

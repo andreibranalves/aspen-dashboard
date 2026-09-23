@@ -43,6 +43,7 @@ import { handler as whatsappDeliveryDiagnostics } from '../_modules/whatsapp-del
 import { handler as sendWhatsappFlow } from '../_modules/send-whatsapp-flow.js';
 import { handler as settings } from '../_modules/settings.js';
 import { whatsappConversations, whatsappMessages } from '../_modules/whatsapp-attendance.js';
+import { whatsappBackfill } from '../_modules/whatsapp-backfill.js';
 import { handler as whatsappContext } from '../_modules/whatsapp-context.js';
 import { handler as whatsappLeads } from '../_modules/whatsapp-leads.js';
 import { handler as communicationFlowPreview } from '../_modules/communication-flow-preview.js';
@@ -100,6 +101,7 @@ export const routes: Record<string, LegacyHandler> = {
   settings,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-messages': whatsappMessages,
+  'whatsapp-backfill': whatsappBackfill,
   'whatsapp-context': whatsappContext,
   'whatsapp-leads': whatsappLeads,
   'communication-flow-preview': communicationFlowPreview,
