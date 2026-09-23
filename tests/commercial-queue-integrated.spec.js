@@ -105,6 +105,32 @@ async function queuePage(request, page) {
   return response.json();
 }
 
+/**
+ * Finds a queue item by client name in the agenda (one <details> per action),
+ * paging through the UI when needed, and opens it to expose its actions.
+ */
+async function openQueueItem(page, name, pageSizeValue = '100') {
+  const agenda = page.getByLabel('Agenda comercial');
+  await expect(agenda).toBeVisible();
+  const pageSize = page.getByRole('combobox', { name: 'Itens por página' });
+  if ((await pageSize.count()) > 0 && (await pageSize.inputValue()) !== pageSizeValue) {
+    await pageSize.selectOption(pageSizeValue);
+  }
+  const item = agenda.locator('details').filter({ hasText: name });
+  for (let attempt = 0; attempt < 30 && (await item.count()) === 0; attempt += 1) {
+    const next = page.getByRole('button', { name: 'Próximo' });
+    if ((await next.count()) === 0 || !(await next.isEnabled())) {
+      await page.waitForTimeout(200);
+      continue;
+    }
+    await next.click();
+    await page.waitForTimeout(200);
+  }
+  await expect(item).toBeVisible();
+  if (!(await item.evaluate((element) => element.open))) await item.locator('summary').click();
+  return item;
+}
+
 /** Walks the real API pages and returns where an action is visible. */
 async function locateAction(request, actionId) {
   const first = await queuePage(request, 1);
@@ -223,8 +249,7 @@ test('operador registra contato manual com continuidade e histórico separado', 
   `;
   createdLeadIds.push(lead.id);
   await page.goto('/#/crm?tab=queue');
-  const row = page.getByRole('row', { name: new RegExp(payload.nome) });
-  await expect(row).toBeVisible();
+  const row = await openQueueItem(page, payload.nome);
   await row.getByRole('button', { name: 'Registrar contato' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Registrar contato' })).toBeVisible();
@@ -253,8 +278,7 @@ test('operador registra contato manual com continuidade e histórico separado', 
   const manualRequest = await submitRequest;
   expect(JSON.parse(manualRequest.postData() || '{}').command).toBe('manual_contact');
 
-  const refreshedRow = page.getByRole('row', { name: new RegExp(payload.nome) });
-  await expect(refreshedRow).toBeVisible();
+  const refreshedRow = await openQueueItem(page, payload.nome);
   await refreshedRow.getByRole('button', { name: 'Histórico' }).click();
   await expect(page.getByRole('heading', { name: 'Histórico da próxima ação' })).toBeVisible();
   await expect(page.getByText('Declaração manual')).toBeVisible();
@@ -285,8 +309,7 @@ test('operador fecha contato manual preenchendo somente o motivo explícito', as
   createdLeadIds.push(lead.id);
 
   await page.goto('/#/crm?tab=queue');
-  const row = page.getByRole('row', { name: new RegExp(payload.nome) });
-  await expect(row).toBeVisible();
+  const row = await openQueueItem(page, payload.nome);
   await row.getByRole('button', { name: 'Registrar contato' }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('combobox', { name: 'Continuidade' }).selectOption('close');
@@ -306,9 +329,8 @@ test('operador fecha contato manual preenchendo somente o motivo explícito', as
   });
   await expect(dialog).toBeHidden();
 
-  await page.getByRole('tab', { name: 'Encerradas' }).click();
-  const closedRow = page.getByRole('row', { name: new RegExp(payload.nome) });
-  await expect(closedRow).toBeVisible();
+  await page.getByRole('combobox', { name: 'Filtrar fila por status' }).selectOption('closed');
+  const closedRow = await openQueueItem(page, payload.nome);
   await expect(closedRow.getByText('Status final: Perdido')).toBeVisible();
   await expect(
     closedRow.getByText('Motivo do encerramento: Cliente não prosseguiu.')
@@ -373,12 +395,14 @@ test('lead ingested over HTTP reaches the queue UI once, even on retry, without 
   const lastPage = Math.ceil(located.total / located.pageSize);
 
   await page.goto('/#/crm?tab=queue');
+  await expect(page.getByLabel('Agenda comercial')).toBeVisible();
+  const pageSize = page.getByRole('combobox', { name: 'Itens por página' });
+  if (lastPage > 1) await pageSize.selectOption(String(located.pageSize));
   for (let pageNumber = 1; pageNumber < located.page; pageNumber += 1) {
-    await page.getByRole('button', { name: 'Próxima' }).click();
-    await expect(page.getByText(`Página ${pageNumber + 1} de ${lastPage}`)).toBeVisible();
+    await page.getByRole('button', { name: 'Próximo' }).click();
+    await expect(page.getByText(`Página ${pageNumber + 1}`, { exact: true })).toBeVisible();
   }
-  const row = page.getByRole('row', { name: new RegExp(payload.nome) });
-  await expect(row).toBeVisible();
+  const row = await openQueueItem(page, payload.nome, String(located.pageSize));
   await expect(row.getByText('Primeiro atendimento')).toBeVisible();
   await expect(row.getByText('Cangas')).toBeVisible();
 
@@ -441,13 +465,15 @@ test('every ingested action stays reachable when the real queue has more than 25
   }
 
   await page.goto('/#/crm?tab=queue');
-  await expect(page.getByRole('navigation', { name: 'Paginação da fila' })).toBeVisible();
-  await expect(page.getByText(`Página 1 de ${lastPage}`)).toBeVisible();
-  await expect(page.getByRole('row')).toHaveCount(26);
+  await expect(page.getByRole('navigation', { name: 'Paginação da fila comercial' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Itens por página' }).selectOption('25');
+  const agendaItems = page.getByLabel('Agenda comercial').locator('details');
+  await expect(page.getByText('Página 1', { exact: true })).toBeVisible();
+  await expect(agendaItems).toHaveCount(25);
 
-  await page.getByRole('button', { name: 'Próxima' }).click();
-  await expect(page.getByText(`Página 2 de ${lastPage}`)).toBeVisible();
+  await page.getByRole('button', { name: 'Próximo' }).click();
+  await expect(page.getByText('Página 2', { exact: true })).toBeVisible();
   const secondPage = await queuePage(request, 2);
-  await expect(page.getByRole('row')).toHaveCount(secondPage.data.length + 1);
+  await expect(agendaItems).toHaveCount(secondPage.data.length);
   await expect(page.getByRole('button', { name: 'Anterior' })).toBeEnabled();
 });
