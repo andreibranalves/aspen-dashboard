@@ -1,0 +1,403 @@
+import { randomUUID } from 'node:crypto';
+
+import { and, asc, desc, eq, gt, ilike, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+
+import { getDatabase, type AppDatabase } from '../client.js';
+import { whatsappConversations, whatsappMessages } from '../schema.js';
+import type { WhatsappMessageType } from '../../../_modules/whatsapp-message-content.js';
+
+type DatabaseProvider = () => AppDatabase;
+
+export type WhatsappConversationStatus = 'open' | 'waiting_customer' | 'closed' | 'ignored';
+export type WhatsappMessageOrigin = 'live' | 'backfill' | 'operator' | 'quotation';
+export type WhatsappIdentityStatus = 'verified' | 'derived' | 'unresolved' | 'conflict';
+
+export const WHATSAPP_CONVERSATION_STATUSES: readonly WhatsappConversationStatus[] = [
+  'open',
+  'waiting_customer',
+  'closed',
+  'ignored',
+];
+
+export interface WhatsappTransportIdentity {
+  canonicalPhone: string;
+  identityStatus: WhatsappIdentityStatus;
+  identitySource: string | null;
+  identityConfidence: 'high' | 'medium' | 'low' | null;
+}
+
+export interface IngestWhatsappMessage {
+  providerMessageId: string;
+  direction: 'inbound' | 'outbound';
+  messageType: WhatsappMessageType;
+  body: string | null;
+  preview: string;
+  providerTimestamp: Date;
+}
+
+export interface IngestWhatsappConversationInput {
+  instance: string;
+  providerConversationId: string;
+  origin: 'live' | 'backfill';
+  /** Contact-provided name, only from inbound messages. */
+  contactName: string | null;
+  /** Resolves transport identity against the stored state, inside the lock. */
+  resolveIdentity: (stored: WhatsappTransportIdentity | null) => WhatsappTransportIdentity;
+  messages: IngestWhatsappMessage[];
+}
+
+export interface IngestWhatsappConversationResult {
+  conversationId: string;
+  inserted: number;
+  duplicates: number;
+}
+
+export interface WhatsappConversationRecord {
+  id: string;
+  canonicalPhone: string | null;
+  identityStatus: WhatsappIdentityStatus;
+  identityVersion: number;
+  displayName: string | null;
+  status: WhatsappConversationStatus;
+  revision: number;
+  readRevision: number;
+  unreadCount: number;
+  lastMessageAt: Date | null;
+  lastMessagePreview: string | null;
+  lastMessageDirection: 'inbound' | 'outbound' | null;
+}
+
+export interface WhatsappMessageRecord {
+  id: string;
+  conversationId: string;
+  direction: 'inbound' | 'outbound';
+  messageType: WhatsappMessageType;
+  body: string | null;
+  origin: WhatsappMessageOrigin;
+  providerTimestamp: Date;
+  createdRevision: number;
+  revision: number;
+}
+
+export interface TimelineCursor {
+  at: Date;
+  id: string;
+}
+
+export interface ListConversationsInput {
+  status?: WhatsappConversationStatus | 'active';
+  search?: string;
+  limit: number;
+  cursor?: TimelineCursor | null;
+}
+
+export interface ListMessagesPage {
+  items: WhatsappMessageRecord[];
+  hasMore: boolean;
+}
+
+export interface WhatsappAttendanceRepository {
+  ingestConversation(input: IngestWhatsappConversationInput): Promise<IngestWhatsappConversationResult>;
+  listConversations(input: ListConversationsInput): Promise<{ items: WhatsappConversationRecord[]; hasMore: boolean }>;
+  getConversation(id: string): Promise<WhatsappConversationRecord | null>;
+  /** Newest page first in the query, returned in chronological order. */
+  listMessagesBefore(input: {
+    conversationId: string;
+    before?: TimelineCursor | null;
+    limit: number;
+  }): Promise<ListMessagesPage>;
+  /** Changes committed after `afterRevision`, in revision order. */
+  listMessagesAfterRevision(input: {
+    conversationId: string;
+    afterRevision: number;
+    limit: number;
+  }): Promise<ListMessagesPage>;
+}
+
+const conversations = whatsappConversations;
+const messages = whatsappMessages;
+
+const conversationColumns = {
+  id: conversations.id,
+  canonicalPhone: conversations.canonicalPhone,
+  identityStatus: conversations.identityStatus,
+  identityVersion: conversations.identityVersion,
+  displayName: conversations.displayName,
+  status: conversations.status,
+  revision: conversations.revision,
+  readRevision: conversations.readRevision,
+  unreadCount: conversations.unreadCount,
+  lastMessageAt: conversations.lastMessageAt,
+  lastMessagePreview: conversations.lastMessagePreview,
+  lastMessageDirection: conversations.lastMessageDirection,
+};
+
+const messageColumns = {
+  id: messages.id,
+  conversationId: messages.conversationId,
+  direction: messages.direction,
+  messageType: messages.messageType,
+  body: messages.body,
+  origin: messages.origin,
+  providerTimestamp: messages.providerTimestamp,
+  createdRevision: messages.createdRevision,
+  revision: messages.revision,
+};
+
+function toConversation(row: Record<string, unknown>): WhatsappConversationRecord {
+  return {
+    id: String(row.id),
+    canonicalPhone: (row.canonicalPhone as string | null) || null,
+    identityStatus: row.identityStatus as WhatsappIdentityStatus,
+    identityVersion: Number(row.identityVersion),
+    displayName: (row.displayName as string | null) || null,
+    status: row.status as WhatsappConversationStatus,
+    revision: Number(row.revision),
+    readRevision: Number(row.readRevision),
+    unreadCount: Number(row.unreadCount),
+    lastMessageAt: (row.lastMessageAt as Date | null) || null,
+    lastMessagePreview: (row.lastMessagePreview as string | null) || null,
+    lastMessageDirection: (row.lastMessageDirection as 'inbound' | 'outbound' | null) || null,
+  };
+}
+
+function toMessage(row: Record<string, unknown>): WhatsappMessageRecord {
+  return {
+    id: String(row.id),
+    conversationId: String(row.conversationId),
+    direction: row.direction as 'inbound' | 'outbound',
+    messageType: row.messageType as WhatsappMessageType,
+    body: (row.body as string | null) ?? null,
+    origin: row.origin as WhatsappMessageOrigin,
+    providerTimestamp: row.providerTimestamp as Date,
+    createdRevision: Number(row.createdRevision),
+    revision: Number(row.revision),
+  };
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function identityChanged(
+  stored: WhatsappTransportIdentity,
+  next: WhatsappTransportIdentity,
+): boolean {
+  return (
+    (stored.canonicalPhone || '') !== (next.canonicalPhone || '') ||
+    stored.identityStatus !== next.identityStatus
+  );
+}
+
+export function createPostgresWhatsappAttendanceRepository(
+  getDb: DatabaseProvider = getDatabase,
+): WhatsappAttendanceRepository {
+  return {
+    async ingestConversation(input) {
+      const instance = input.instance.trim();
+      const providerConversationId = input.providerConversationId.trim();
+      if (!instance || !providerConversationId) throw new Error('conversation scope is required');
+      if (input.messages.length === 0) throw new Error('at least one message is required');
+
+      return getDb().transaction(async (tx) => {
+        const now = new Date();
+        const created = await tx
+          .insert(conversations)
+          .values({
+            id: randomUUID(),
+            instance,
+            providerConversationId,
+            identityStatus: 'unresolved',
+            // A conversation first seen through the backfill is history, not a
+            // new attendance: it must not appear as open work.
+            status: input.origin === 'backfill' ? 'closed' : 'open',
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing({
+            target: [conversations.instance, conversations.providerConversationId],
+          })
+          .returning({ id: conversations.id });
+        const isNew = created.length > 0;
+
+        // The row lock serializes every writer of this conversation, so revision
+        // numbers are committed in order and incremental readers never skip one.
+        const [current] = await tx
+          .select()
+          .from(conversations)
+          .where(
+            and(
+              eq(conversations.instance, instance),
+              eq(conversations.providerConversationId, providerConversationId),
+            ),
+          )
+          .for('update');
+        if (!current) throw new Error('conversation row missing after upsert');
+
+        const stored: WhatsappTransportIdentity | null = isNew
+          ? null
+          : {
+              canonicalPhone: current.canonicalPhone || '',
+              identityStatus: current.identityStatus as WhatsappIdentityStatus,
+              identitySource: current.identitySource,
+              identityConfidence: current.identityConfidence as WhatsappTransportIdentity['identityConfidence'],
+            };
+        const identity = input.resolveIdentity(stored);
+        const identityVersion =
+          stored && identityChanged(stored, identity) ? current.identityVersion + 1 : current.identityVersion;
+
+        let revision = Number(current.revision);
+        let inserted = 0;
+        let liveInbound = 0;
+        let latest: IngestWhatsappMessage | null = null;
+        for (const message of input.messages) {
+          const nextRevision = revision + 1;
+          const rows = await tx
+            .insert(messages)
+            .values({
+              id: randomUUID(),
+              conversationId: current.id,
+              providerMessageId: message.providerMessageId,
+              direction: message.direction,
+              messageType: message.messageType,
+              body: message.body,
+              origin: input.origin,
+              providerTimestamp: message.providerTimestamp,
+              ingestedAt: now,
+              createdRevision: nextRevision,
+              revision: nextRevision,
+            })
+            .onConflictDoNothing({ target: [messages.conversationId, messages.providerMessageId] })
+            .returning({ id: messages.id });
+          if (rows.length === 0) continue;
+          revision = nextRevision;
+          inserted += 1;
+          if (input.origin === 'live' && message.direction === 'inbound') liveInbound += 1;
+          if (!latest || message.providerTimestamp.getTime() > latest.providerTimestamp.getTime()) {
+            latest = message;
+          }
+        }
+
+        const summaryIsNewer =
+          latest &&
+          (!current.lastMessageAt || latest.providerTimestamp.getTime() >= current.lastMessageAt.getTime());
+        // Only a new live inbound message reopens the attendance; `ignored`
+        // stays ignored until the operator acts.
+        const reopen =
+          liveInbound > 0 && (current.status === 'waiting_customer' || current.status === 'closed');
+
+        await tx
+          .update(conversations)
+          .set({
+            canonicalPhone: identity.canonicalPhone || null,
+            identityStatus: identity.identityStatus,
+            identitySource: identity.identitySource,
+            identityConfidence: identity.identityConfidence,
+            identityVersion,
+            ...(input.contactName ? { displayName: input.contactName.slice(0, 255) } : {}),
+            revision,
+            unreadCount: current.unreadCount + liveInbound,
+            ...(reopen ? { status: 'open' } : {}),
+            ...(summaryIsNewer && latest
+              ? {
+                  lastMessageAt: latest.providerTimestamp,
+                  lastMessagePreview: latest.preview.slice(0, 280) || null,
+                  lastMessageDirection: latest.direction,
+                }
+              : {}),
+            updatedAt: now,
+          })
+          .where(eq(conversations.id, current.id));
+
+        return {
+          conversationId: current.id,
+          inserted,
+          duplicates: input.messages.length - inserted,
+        };
+      });
+    },
+
+    async listConversations(input) {
+      const filters: SQL[] = [];
+      if (input.status === 'active') {
+        filters.push(inArray(conversations.status, ['open', 'waiting_customer', 'closed']));
+      } else if (input.status) {
+        filters.push(eq(conversations.status, input.status));
+      }
+      const search = input.search?.trim();
+      if (search) {
+        const digits = search.replace(/\D/g, '');
+        const byName = ilike(conversations.displayName, `%${escapeLike(search)}%`);
+        filters.push(
+          digits.length >= 4
+            ? (or(byName, sql`${conversations.canonicalPhone} LIKE ${`%${digits}%`}`) as SQL)
+            : byName,
+        );
+      }
+      if (input.cursor) {
+        filters.push(
+          or(
+            lt(conversations.lastMessageAt, input.cursor.at),
+            and(eq(conversations.lastMessageAt, input.cursor.at), lt(conversations.id, input.cursor.id)),
+          ) as SQL,
+        );
+      }
+      const rows = await getDb()
+        .select(conversationColumns)
+        .from(conversations)
+        .where(filters.length ? and(...filters) : undefined)
+        .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`, desc(conversations.id))
+        .limit(input.limit + 1);
+      return {
+        items: rows.slice(0, input.limit).map(toConversation),
+        hasMore: rows.length > input.limit,
+      };
+    },
+
+    async getConversation(id) {
+      const [row] = await getDb()
+        .select(conversationColumns)
+        .from(conversations)
+        .where(eq(conversations.id, id))
+        .limit(1);
+      return row ? toConversation(row) : null;
+    },
+
+    async listMessagesBefore(input) {
+      const filters: SQL[] = [eq(messages.conversationId, input.conversationId)];
+      if (input.before) {
+        filters.push(
+          or(
+            lt(messages.providerTimestamp, input.before.at),
+            and(eq(messages.providerTimestamp, input.before.at), lt(messages.id, input.before.id)),
+          ) as SQL,
+        );
+      }
+      const rows = await getDb()
+        .select(messageColumns)
+        .from(messages)
+        .where(and(...filters))
+        .orderBy(desc(messages.providerTimestamp), desc(messages.id))
+        .limit(input.limit + 1);
+      return {
+        items: rows.slice(0, input.limit).map(toMessage).reverse(),
+        hasMore: rows.length > input.limit,
+      };
+    },
+
+    async listMessagesAfterRevision(input) {
+      const rows = await getDb()
+        .select(messageColumns)
+        .from(messages)
+        .where(
+          and(eq(messages.conversationId, input.conversationId), gt(messages.revision, input.afterRevision)),
+        )
+        .orderBy(asc(messages.revision))
+        .limit(input.limit + 1);
+      return {
+        items: rows.slice(0, input.limit).map(toMessage),
+        hasMore: rows.length > input.limit,
+      };
+    },
+  };
+}

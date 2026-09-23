@@ -9,6 +9,11 @@ import {
   type QuotationDeliveryModule,
 } from './quotation-delivery-outbox.js';
 import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
+import {
+  ingestWhatsappUpserts,
+  type WhatsappUpsertIngestionItem,
+} from './whatsapp-attendance-ingestion.js';
+import type { WhatsappAttendanceRepository } from '../_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 import type { EvolutionReceiptStatus } from './quotation-delivery-state.js';
 export const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
@@ -42,6 +47,7 @@ export interface EvolutionWebhookDependencies {
     'recordActivity' | 'getHealth' | 'blockIngestion' | 'unblockIngestionIfEvent' | 'markIngestion'
   >;
   followUpRepository?: FollowUpConversationRepository;
+  attendanceRepository?: Pick<WhatsappAttendanceRepository, 'ingestConversation'>;
   environment?: {
     EVOLUTION_WEBHOOK_SECRET?: string;
     EVOLUTION_INSTANCE?: string;
@@ -144,6 +150,7 @@ interface ParsedUpsert {
   occurredAt: Date;
   identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
   canonicalPhone: string;
+  item: Record<string, unknown>;
 }
 
 function parseReceipt(
@@ -214,6 +221,7 @@ function parseUpsertItems(
       occurredAt: parseMessageTimestamp(item.messageTimestamp, fallbackNow),
       identityStatus: identity.identityStatus,
       canonicalPhone: identity.canonicalPhone,
+      item,
     });
   }
   return { parsed, failureEventKey: null };
@@ -262,6 +270,32 @@ export async function handler(
       });
     }
 
+    // Durable history first; the existing follow-up/activity effects still run
+    // when it fails, but the provider only gets an acknowledgement after the
+    // messages are stored (or already were).
+    let historyStored = true;
+    if (upsert.parsed.length > 0) {
+      try {
+        await ingestWhatsappUpserts({
+          instance: configuredInstance,
+          origin: 'live',
+          items: upsert.parsed.map(
+            (item): WhatsappUpsertIngestionItem => ({
+              item: item.item,
+              providerMessageId: item.providerMessageId,
+              remoteJid: item.remoteJid,
+              fromMe: item.fromMe,
+              occurredAt: item.occurredAt,
+            }),
+          ),
+          repository: dependencies.attendanceRepository,
+        });
+      } catch (error) {
+        historyStored = false;
+        console.error('[evolution-webhook] history', error instanceof Error ? error.name : typeof error);
+      }
+    }
+
     for (const item of upsert.parsed) {
       const conversation: FollowUpConversationInput = {
         instance: configuredInstance,
@@ -296,6 +330,11 @@ export async function handler(
           eventKey: item.eventKey,
         });
       }
+    }
+    if (!historyStored) {
+      return json(503, {
+        error: 'Não foi possível registrar a mensagem recebida da Evolution. Tente novamente.',
+      });
     }
     return json(200, { received: true });
   }

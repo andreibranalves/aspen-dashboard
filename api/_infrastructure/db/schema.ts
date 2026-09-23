@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   check,
   date,
@@ -1757,6 +1758,132 @@ export const quotationFollowUpAttemptHistory = pgTable(
     check(
       'quotation_follow_up_attempt_history_provider_message_check',
       sql`(${table.confirmationSource} = 'worker' AND char_length(btrim(${table.providerMessageId})) > 0) OR (${table.confirmationSource} = 'manual' AND ${table.providerMessageId} IS NULL)`,
+    ),
+  ],
+);
+
+
+/**
+ * Attendance history (M1a). PostgreSQL is the source of truth for WhatsApp
+ * conversations; `revision` is a per-conversation monotonic counter bumped
+ * under the conversation row lock, so incremental reads never skip a commit.
+ */
+export const whatsappConversations = pgTable(
+  'whatsapp_conversations',
+  {
+    id: uuid('id').primaryKey(),
+    instance: varchar('instance', { length: 120 }).notNull(),
+    providerConversationId: varchar('provider_conversation_id', { length: 255 }).notNull(),
+    canonicalPhone: varchar('canonical_phone', { length: 15 }),
+    identityStatus: varchar('identity_status', { length: 16 }).notNull(),
+    identitySource: varchar('identity_source', { length: 40 }),
+    identityConfidence: varchar('identity_confidence', { length: 8 }),
+    identityVersion: integer('identity_version').notNull().default(1),
+    displayName: varchar('display_name', { length: 255 }),
+    status: varchar('status', { length: 24 }).notNull().default('open'),
+    revision: bigint('revision', { mode: 'number' }).notNull().default(0),
+    readRevision: bigint('read_revision', { mode: 'number' }).notNull().default(0),
+    unreadCount: integer('unread_count').notNull().default(0),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+    lastMessagePreview: varchar('last_message_preview', { length: 280 }),
+    lastMessageDirection: varchar('last_message_direction', { length: 8 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_conversations_provider_unique').on(
+      table.instance,
+      table.providerConversationId,
+    ),
+    index('whatsapp_conversations_activity_idx').on(
+      sql`${table.lastMessageAt} DESC NULLS LAST`,
+      sql`${table.id} DESC`,
+    ),
+    check(
+      'whatsapp_conversations_instance_not_blank_check',
+      sql`char_length(btrim(${table.instance})) > 0`,
+    ),
+    check(
+      'whatsapp_conversations_provider_not_blank_check',
+      sql`char_length(btrim(${table.providerConversationId})) > 0`,
+    ),
+    check(
+      'whatsapp_conversations_phone_check',
+      sql`${table.canonicalPhone} IS NULL OR ${table.canonicalPhone} ~ '^[0-9]{10,15}$'`,
+    ),
+    check(
+      'whatsapp_conversations_identity_status_check',
+      sql`${table.identityStatus} IN ('verified', 'derived', 'unresolved', 'conflict')`,
+    ),
+    check(
+      'whatsapp_conversations_identity_confidence_check',
+      sql`${table.identityConfidence} IS NULL OR ${table.identityConfidence} IN ('high', 'medium', 'low')`,
+    ),
+    check('whatsapp_conversations_identity_version_check', sql`${table.identityVersion} > 0`),
+    check(
+      'whatsapp_conversations_status_check',
+      sql`${table.status} IN ('open', 'waiting_customer', 'closed', 'ignored')`,
+    ),
+    check(
+      'whatsapp_conversations_revision_check',
+      sql`${table.revision} >= 0 AND ${table.readRevision} >= 0 AND ${table.readRevision} <= ${table.revision}`,
+    ),
+    check('whatsapp_conversations_unread_check', sql`${table.unreadCount} >= 0`),
+    check(
+      'whatsapp_conversations_direction_check',
+      sql`${table.lastMessageDirection} IS NULL OR ${table.lastMessageDirection} IN ('inbound', 'outbound')`,
+    ),
+  ],
+);
+
+export const whatsappMessages = pgTable(
+  'whatsapp_messages',
+  {
+    id: uuid('id').primaryKey(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => whatsappConversations.id, { onDelete: 'restrict' }),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    direction: varchar('direction', { length: 8 }).notNull(),
+    messageType: varchar('message_type', { length: 16 }).notNull(),
+    body: text('body'),
+    origin: varchar('origin', { length: 16 }).notNull(),
+    providerTimestamp: timestamp('provider_timestamp', { withTimezone: true }).notNull(),
+    ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
+    createdRevision: bigint('created_revision', { mode: 'number' }).notNull(),
+    revision: bigint('revision', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('whatsapp_messages_provider_unique').on(
+      table.conversationId,
+      table.providerMessageId,
+    ),
+    index('whatsapp_messages_timeline_idx').on(
+      table.conversationId,
+      sql`${table.providerTimestamp} DESC`,
+      sql`${table.id} DESC`,
+    ),
+    index('whatsapp_messages_revision_idx').on(table.conversationId, table.revision),
+    check(
+      'whatsapp_messages_provider_not_blank_check',
+      sql`${table.providerMessageId} IS NULL OR char_length(btrim(${table.providerMessageId})) > 0`,
+    ),
+    check('whatsapp_messages_direction_check', sql`${table.direction} IN ('inbound', 'outbound')`),
+    check(
+      'whatsapp_messages_type_check',
+      sql`${table.messageType} IN ('text', 'image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'unsupported')`,
+    ),
+    check(
+      'whatsapp_messages_origin_check',
+      sql`${table.origin} IN ('live', 'backfill', 'operator', 'quotation')`,
+    ),
+    check(
+      'whatsapp_messages_body_length_check',
+      sql`${table.body} IS NULL OR char_length(${table.body}) <= 65536`,
+    ),
+    check(
+      'whatsapp_messages_revision_check',
+      sql`${table.createdRevision} > 0 AND ${table.revision} >= ${table.createdRevision}`,
     ),
   ],
 );

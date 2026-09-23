@@ -358,6 +358,13 @@
       "when": 1789842458240,
       "tag": "0050_delivery_failure_kind_and_worker_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790190000000,
+      "tag": "0051_whatsapp_attendance",
+      "breakpoints": true
     }
   ]
 }

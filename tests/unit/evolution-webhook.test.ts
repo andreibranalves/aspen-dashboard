@@ -7,6 +7,7 @@ import {
   handler as webhook,
   MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
 } from '../../api/_modules/evolution-webhook.js';
+import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 
 const webhookSecret = 'w'.repeat(32);
 const instance = 'instance-test';
@@ -39,7 +40,7 @@ function upsertItem(overrides: Record<string, unknown> = {}): Record<string, unk
       fromMe: false,
     },
     messageTimestamp: 1_700_000_000,
-    message: { conversation: 'não deve ser persistida' },
+    message: { conversation: 'Olá' },
     ...overrides,
   };
 }
@@ -63,7 +64,9 @@ function dependencies() {
   const followUpCalls: unknown[] = [];
   const operationOrder: string[] = [];
   const healthCalls: unknown[] = [];
+  const historyCalls: IngestWhatsappConversationInput[] = [];
   return {
+    historyCalls,
     calls,
     activityCalls,
     followUpCalls,
@@ -98,6 +101,13 @@ function dependencies() {
         followUpCalls.push(value);
       },
     },
+    attendanceRepository: {
+      ingestConversation: async (value: IngestWhatsappConversationInput) => {
+        operationOrder.push('history');
+        historyCalls.push(value);
+        return { conversationId: 'conversation-test', inserted: value.messages.length, duplicates: 0 };
+      },
+    },
     environment: {
       EVOLUTION_WEBHOOK_SECRET: webhookSecret,
       EVOLUTION_INSTANCE: instance,
@@ -129,7 +139,7 @@ test('webhook projects UPSERT activity after recording it', async () => {
   const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
 
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(deps.operationOrder, ['activity', 'follow-up']);
+  assert.deepEqual(deps.operationOrder, ['history', 'activity', 'follow-up']);
   assert.deepEqual(deps.followUpCalls, [
     {
       instance,
@@ -449,4 +459,76 @@ test('webhook ignores groups and MESSAGES_SET', async () => {
   assert.equal(group.statusCode, 200);
   assert.equal(set.statusCode, 200);
   assert.deepEqual(deps.activityCalls, []);
+});
+
+test('webhook stores the message body verbatim as live history before other effects', async () => {
+  const deps = dependencies();
+  const body = 'Olá!\n\nPreciso de 200 canecas\n  - azul';
+  const result = await webhook(
+    event(authorization, upsertPayload(upsertItem({ pushName: 'Maria  Souza', message: { conversation: body } }))),
+    deps,
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(deps.historyCalls.length, 1);
+  const [call] = deps.historyCalls;
+  assert.equal(call.origin, 'live');
+  assert.equal(call.providerConversationId, '5511999990000@s.whatsapp.net');
+  assert.equal(call.contactName, 'Maria Souza');
+  assert.deepEqual(
+    call.messages.map(({ providerMessageId, direction, messageType, body: text }) => ({
+      providerMessageId,
+      direction,
+      messageType,
+      body: text,
+    })),
+    [{ providerMessageId: 'inbound-message-1', direction: 'inbound', messageType: 'text', body }],
+  );
+  assert.equal(call.resolveIdentity(null).canonicalPhone, '5511999990000');
+});
+
+test('webhook stores an outgoing message from another device without a contact name', async () => {
+  const deps = dependencies();
+  await webhook(
+    event(
+      authorization,
+      upsertPayload(
+        upsertItem({
+          key: { id: 'outbound-1', remoteJid: '5511999990000@s.whatsapp.net', fromMe: true },
+          pushName: 'Operador',
+          message: { extendedTextMessage: { text: 'Bom dia' } },
+        }),
+      ),
+    ),
+    deps,
+  );
+
+  const [call] = deps.historyCalls;
+  assert.equal(call.contactName, null);
+  assert.equal(call.messages[0].direction, 'outbound');
+  assert.equal(call.origin, 'live');
+});
+
+test('webhook keeps protocol events out of the history but still records activity', async () => {
+  const deps = dependencies();
+  const result = await webhook(
+    event(authorization, upsertPayload(upsertItem({ message: { reactionMessage: { text: '👍' } } }))),
+    deps,
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(deps.historyCalls.length, 0);
+  assert.equal(deps.activityCalls.length, 1);
+});
+
+test('webhook runs existing effects but withholds the acknowledgement when history fails', async () => {
+  const deps = dependencies();
+  deps.attendanceRepository.ingestConversation = async () => {
+    throw new Error('database unavailable');
+  };
+  const result = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
+
+  assert.equal(result.statusCode, 503);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.equal(deps.followUpCalls.length, 1);
 });

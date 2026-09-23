@@ -42,7 +42,7 @@ import { handler as quotationDeliveryWorker } from '../_modules/quotation-delive
 import { handler as whatsappDeliveryDiagnostics } from '../_modules/whatsapp-delivery-diagnostics.js';
 import { handler as sendWhatsappFlow } from '../_modules/send-whatsapp-flow.js';
 import { handler as settings } from '../_modules/settings.js';
-import { handler as whatsappConversations } from '../_modules/whatsapp-conversations.js';
+import { whatsappConversations, whatsappMessages } from '../_modules/whatsapp-attendance.js';
 import { handler as whatsappContext } from '../_modules/whatsapp-context.js';
 import { handler as whatsappLeads } from '../_modules/whatsapp-leads.js';
 import { handler as communicationFlowPreview } from '../_modules/communication-flow-preview.js';
@@ -99,6 +99,7 @@ export const routes: Record<string, LegacyHandler> = {
   'send-whatsapp-flow': sendWhatsappFlow,
   settings,
   'whatsapp-conversations': whatsappConversations,
+  'whatsapp-messages': whatsappMessages,
   'whatsapp-context': whatsappContext,
   'whatsapp-leads': whatsappLeads,
   'communication-flow-preview': communicationFlowPreview,
