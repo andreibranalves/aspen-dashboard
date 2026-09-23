@@ -488,7 +488,7 @@ export default function SplitResultCard({
   useEffect(() => {
     if (activeSearchIdx === null) return;
     const handler = (e: MouseEvent) => {
-      if (!(e.target as Element).closest('.item-search-cell')) {
+      if (!(e.target as Element).closest('[data-item-search-cell]')) {
         setActiveSearchIdx(null);
       }
     };
@@ -884,7 +884,7 @@ export default function SplitResultCard({
                   >
                     <TableCell className="py-2 pl-4 pr-2">
                       {editing ? (
-                        <div className="relative item-search-cell">
+                        <div className="relative" data-item-search-cell>
                           <Input
                             className="h-7 text-xs pr-6"
                             placeholder="Buscar SKU ou nome…"
@@ -983,7 +983,7 @@ export default function SplitResultCard({
                             }, 600);
                           }}
                           disabled={editingBlocked}
-                          className="h-7 w-full appearance-textfield text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+                          className="h-7 w-full [appearance:textfield] text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       ) : hasCode ? (
                         Number(item.qty)
@@ -1003,7 +1003,7 @@ export default function SplitResultCard({
                           }
                           disabled={editingBlocked}
                           data-conflict-sku={item.item_code || undefined}
-                          className="h-7 w-full appearance-textfield text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
+                          className="h-7 w-full [appearance:textfield] text-center text-xs [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       ) : item.rate ? (
                         formatBRL(item.rate)

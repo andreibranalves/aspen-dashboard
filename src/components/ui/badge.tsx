@@ -24,16 +24,24 @@ const badgeVariants: Record<string, string> = {
   Archived: 'tone-neutral-soft',
 };
 
+export type StatusTone =
+  | 'tone-primary-soft'
+  | 'tone-success-soft'
+  | 'tone-warning-soft'
+  | 'tone-destructive-soft'
+  | 'tone-info-soft'
+  | 'tone-neutral-soft'
+  | 'tone-neutral-muted';
+
 export interface StatusBadgeProps {
   status: string;
   label?: string;
+  tone?: StatusTone;
   className?: string;
 }
 
-export function StatusBadge({ status, label, className }: StatusBadgeProps) {
-  // Quando className já define um tone-*, pular o fallback (a cascata CSS favoreceria tone-neutral-soft).
-  const hasCustomTone = Boolean(className?.includes('tone-'));
-  const variant = badgeVariants[status] || (hasCustomTone ? '' : badgeVariants.Draft);
+export function StatusBadge({ status, label, tone, className }: StatusBadgeProps) {
+  const variant = tone || badgeVariants[status] || badgeVariants.Draft;
   return (
     <span
       title={label || status}

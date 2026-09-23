@@ -29,7 +29,7 @@ import EmptyState from '@/components/shared/EmptyState';
 import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { StatusBadge } from '@/components/ui/badge';
+import { StatusBadge, type StatusTone } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import PageHeader from '@/components/shared/PageHeader';
@@ -684,11 +684,11 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const hasTiers = Boolean(product?.precos && product.precos.length > 0);
   const tierPrices = product?.precos?.map((tier) => tier.unit_price ?? tier.rate).filter((price) => price != null && String(price).trim() !== '').map(Number).filter((price) => Number.isFinite(price) && price >= 0) || [];
   const previewPrice = hasBasePrice ? Number(basePrice) : tierPrices.length ? Math.min(...tierPrices) : null;
-  const status = isNewProduct
-    ? { value: 'Draft', label: 'Rascunho', className: 'tone-warning-soft' }
+  const status: { value: string; label: string; tone?: StatusTone } = isNewProduct
+    ? { value: 'Draft', label: 'Rascunho', tone: 'tone-warning-soft' }
     : produto.ativo
-      ? { value: 'Active', label: 'Ativo', className: '' }
-      : { value: 'Archived', label: 'Arquivado', className: '' };
+      ? { value: 'Active', label: 'Ativo' }
+      : { value: 'Archived', label: 'Arquivado' };
   const pageActions = (
     <>
       {!isNewProduct && (
@@ -753,7 +753,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         }
         eyebrow={<span className="font-mono">{produto.sku || 'SKU não informado'}</span>}
         title={isNewProduct ? 'Novo produto' : displayName}
-        meta={<StatusBadge status={status.value} label={status.label} className={status.className} />}
+        meta={<StatusBadge status={status.value} label={status.label} tone={status.tone} />}
         actions={pageActions}
       />
 

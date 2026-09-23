@@ -105,6 +105,10 @@ export default [
       'no-undef': 'error',
       'no-empty': ['warn', { allowEmptyCatch: true }],
       'react-hooks/exhaustive-deps': 'off',
+      'shadcn/no-unknown-classes': 'error',
+      'shadcn/no-raw-colors': 'error',
+      'shadcn/no-inline-styles': 'error',
+      'shadcn/require-static-classes': 'error',
     },
   },
   // ── TypeScript (frontend + backend futuro) ──

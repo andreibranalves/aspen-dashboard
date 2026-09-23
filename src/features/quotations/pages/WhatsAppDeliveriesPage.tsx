@@ -15,7 +15,7 @@ import PageToolbar from '@/components/shared/PageToolbar';
 import { SearchField } from '@/components/ui/search-field';
 import ListPagination from '@/components/shared/ListPagination';
 import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
-import { StatusBadge } from '@/components/ui/badge';
+import { StatusBadge, type StatusTone } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import EntityIdentity from '@/components/shared/EntityIdentity';
@@ -88,7 +88,7 @@ const STEP_STATE_LABELS: Record<DeliveryView['steps'][number]['state'], string> 
   failed: 'Falhou',
 };
 
-function stepStateTone(state: DeliveryView['steps'][number]['state']): string {
+function stepStateTone(state: DeliveryView['steps'][number]['state']): StatusTone {
   if (state === 'delivered' || state === 'read') return 'tone-success-soft';
   if (state === 'failed' || state === 'needs_review') return 'tone-destructive-soft';
   if (state === 'retry_scheduled' || state === 'reconciling') return 'tone-warning-soft';
@@ -157,7 +157,7 @@ const ACTIVE_STATES: DeliveryState[] = [
   'retry_scheduled',
 ];
 
-function stateTone(state: DeliveryState): string {
+function stateTone(state: DeliveryState): StatusTone {
   if (state === 'delivered') return 'tone-success-soft';
   if (state === 'failed' || state === 'needs_review') return 'tone-destructive-soft';
   if (state === 'retry_scheduled') return 'tone-warning-soft';
@@ -267,7 +267,7 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
             <StatusBadge
               status={delivery.state}
               label={projectDelivery(delivery).label}
-              className={stateTone(delivery.state)}
+              tone={stateTone(delivery.state)}
             />
             <p className="mt-2 text-xs text-fg-muted">
               Fonte de conclusão: {completionSourceLabel(delivery)}
@@ -316,7 +316,7 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
                     <StatusBadge
                       status={step.state}
                       label={STEP_STATE_LABELS[step.state]}
-                      className={stepStateTone(step.state)}
+                      tone={stepStateTone(step.state)}
                     />
                   </div>
                   <p className="mt-1 text-fg-muted">
@@ -833,7 +833,7 @@ export default function WhatsAppDeliveriesPage() {
                           <StatusBadge
                             status={delivery.state}
                             label={projection.label}
-                            className={stateTone(delivery.state)}
+                            tone={stateTone(delivery.state)}
                           />
                         </span>
                       </TableCell>

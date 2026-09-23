@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import Skeleton from '@/components/shared/Skeleton';
 
 export interface SkeletonTableProps {
@@ -12,7 +13,8 @@ export default function SkeletonTable({ rows = 8, size = 'md' }: SkeletonTablePr
 
   return (
     <div role="status" aria-busy="true" aria-label="Carregando lista" className="w-full">
-      <Skeleton className="w-full rounded-card" style={{ height: 40 + rows * rowHeight }} />
+      <Skeleton className="h-(--skeleton-h) w-full rounded-card"
+        style={{ '--skeleton-h': `${40 + rows * rowHeight}px` } as CSSProperties} />
     </div>
   );
 }

@@ -43,6 +43,10 @@
   --color-avatar-two: rgb(var(--avatar-two));
   --color-avatar-three: rgb(var(--avatar-three));
   --color-bar-one: rgb(var(--bar-one));
+  --color-chart-one: rgb(var(--chart-one));
+  --color-chart-two: rgb(var(--chart-two));
+  --color-chart-three: rgb(var(--chart-three));
+  --color-chart-four: rgb(var(--chart-four));
   --color-finance-one: rgb(var(--finance-one));
   --color-finance-two: rgb(var(--finance-two));
   --color-finance-three: rgb(var(--finance-three));

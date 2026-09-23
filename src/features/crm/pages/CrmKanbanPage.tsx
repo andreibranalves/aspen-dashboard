@@ -95,7 +95,7 @@ const CRM_VIEW_TABS = [
   { value: 'board', label: 'Quadro', icon: Columns3 },
 ] as const;
 type StageFilter = string;
-const BOARD_STAGE_SWATCHES = ['rgb(var(--light-sage))', 'rgb(var(--orange))', 'rgb(var(--taupe))', 'rgb(var(--cream))'] as const;
+const BOARD_STAGE_SWATCHES = ['bg-light-sage', 'bg-orange', 'bg-taupe', 'bg-cream'] as const;
 const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
   raw?.trim() || fallback;
 
@@ -600,8 +600,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                   <h2 className="flex min-w-0 items-center gap-2.5">
                     <span
                       aria-hidden="true"
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: BOARD_STAGE_SWATCHES[columnIndex % BOARD_STAGE_SWATCHES.length] }}
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${BOARD_STAGE_SWATCHES[columnIndex % BOARD_STAGE_SWATCHES.length]}`}
                     />
                     <span className="truncate">{col.name}</span>
                   </h2>

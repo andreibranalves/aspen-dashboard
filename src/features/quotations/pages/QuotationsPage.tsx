@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent, type CSSProperties } from 'react';
 import {
   Pencil,
   FileText,
@@ -348,8 +348,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           id={menuId}
           popover="auto"
           aria-label={`Ações do orçamento ${label}`}
-          className="fixed inset-auto m-0 w-48 rounded-control border border-line bg-surface py-1 shadow-lg"
-          style={{ top: `${actionMenuPosition.top}px`, left: `${actionMenuPosition.left}px` }}
+          className="fixed inset-auto top-(--menu-top) left-(--menu-left) m-0 w-48 rounded-control border border-line bg-surface py-1 shadow-lg"
+          style={{ '--menu-top': `${actionMenuPosition.top}px`, '--menu-left': `${actionMenuPosition.left}px` } as CSSProperties}
           onToggle={(event) => {
             setOpenActionRow(event.nativeEvent.newState === 'open' ? row.id : null);
           }}

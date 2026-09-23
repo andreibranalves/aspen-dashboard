@@ -1,3 +1,4 @@
+import type { StatusTone } from '@/components/ui/badge';
 import type {
   AttendanceMessage,
   AttendanceMessageType,
@@ -21,11 +22,11 @@ export const STATUS_FILTERS: Array<{ value: AttendanceStatusFilter; label: strin
 ];
 
 /** StatusBadge key or tone class per attendance status. */
-export const STATUS_BADGE: Record<AttendanceStatus, { status: string; className?: string }> = {
+export const STATUS_BADGE: Record<AttendanceStatus, { status: string; tone?: StatusTone }> = {
   open: { status: 'Open' },
-  waiting_customer: { status: 'waiting_customer', className: 'tone-warning-soft' },
+  waiting_customer: { status: 'waiting_customer', tone: 'tone-warning-soft' },
   closed: { status: 'Closed' },
-  ignored: { status: 'ignored', className: 'tone-neutral-soft' },
+  ignored: { status: 'ignored', tone: 'tone-neutral-soft' },
 };
 
 export const MESSAGE_TYPE_LABELS: Record<Exclude<AttendanceMessageType, 'text'>, string> = {
