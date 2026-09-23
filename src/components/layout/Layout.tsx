@@ -174,24 +174,26 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         currentRoute={route}
         onNavigate={onNavigate}
       />
-      <div className="aspen-workspace min-h-0 min-w-0 flex-1 overflow-y-auto bg-page p-4 text-fg md:rounded-shell md:p-workspace">
-        <div key={routePath(route)} className="relative min-h-full motion-safe:animate-page-enter">
-          <TopBar
-            route={route}
-            onMenuClick={toggleSidebar}
-            sidebarOpen={!sidebarCollapsed}
-            isMobile={isMobile}
-            breadcrumbItems={breadcrumbItems}
-            onNavigate={onNavigate}
-          />
-          <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
-            <main
-              className={isDetailRoute ? 'xl:pt-5' : undefined}
-              inert={isMobile && !sidebarCollapsed ? true : undefined}
-            >
-              {children}
-            </main>
-          </BreadcrumbLabelProvider>
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
+        <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">
+          <div key={routePath(route)} className="relative min-h-full motion-safe:animate-page-enter">
+            <TopBar
+              route={route}
+              onMenuClick={toggleSidebar}
+              sidebarOpen={!sidebarCollapsed}
+              isMobile={isMobile}
+              breadcrumbItems={breadcrumbItems}
+              onNavigate={onNavigate}
+            />
+            <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
+              <main
+                className={isDetailRoute ? 'xl:pt-5' : undefined}
+                inert={isMobile && !sidebarCollapsed ? true : undefined}
+              >
+                {children}
+              </main>
+            </BreadcrumbLabelProvider>
+          </div>
         </div>
       </div>
     </div>

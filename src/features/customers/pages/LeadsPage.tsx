@@ -48,6 +48,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import Skeleton from '@/components/shared/Skeleton';
 import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
 import { QualityBadges, type QualityBadge } from '@/features/customers/components/QualityBadges';
 import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
@@ -1048,8 +1049,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         }
       >
         {detailLoading && (
-          <div className="py-12 text-center text-sm text-fg-muted" role="status">
-            Carregando detalhes…
+          <div className="space-y-4" role="status" aria-busy="true" aria-label="Carregando detalhes">
+            <Skeleton className="h-24 rounded-card" />
+            <Skeleton className="h-48 rounded-card" />
+            <Skeleton className="h-32 rounded-card" />
           </div>
         )}
         {detailError && !detailLoading && (

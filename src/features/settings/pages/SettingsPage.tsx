@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
+import Skeleton from '@/components/shared/Skeleton';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -314,10 +315,15 @@ export default function SettingsPage() {
         className="!mt-4 min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-sage focus-visible:ring-offset-4 focus-visible:ring-offset-page"
       >
         {loading && (activeTab === 'patterns' || activeTab === 'company') && (
-          <div className="space-y-3" aria-label="Carregando configurações">
-            <div className="skeleton h-10" />
-            <div className="skeleton h-10" />
-            <div className="skeleton h-24" />
+          <div className="space-y-5" role="status" aria-busy="true" aria-label="Carregando configurações">
+            <Skeleton className="h-10 rounded-control" />
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
+              <div className="space-y-5">
+                <Skeleton className="h-[280px] rounded-card" />
+                <Skeleton className="h-[360px] rounded-card" />
+              </div>
+              <Skeleton className="h-[260px] rounded-card" />
+            </div>
           </div>
         )}
 

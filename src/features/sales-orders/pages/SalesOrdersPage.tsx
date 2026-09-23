@@ -16,6 +16,7 @@ import PageToolbar from '@/components/shared/PageToolbar';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import Skeleton from '@/components/shared/Skeleton';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
@@ -52,14 +53,15 @@ const STATUS_LABELS: Record<string, string> = {
 interface PeriodOption {
   value: string;
   label: string;
+  summaryLabel: string;
 }
 
 const PERIODS: PeriodOption[] = [
-  { value: 'today', label: 'Hoje' },
-  { value: '7d', label: '7d' },
-  { value: '30d', label: '30d' },
-  { value: '90d', label: '90d' },
-  { value: 'month', label: 'Mês atual' },
+  { value: 'today', label: 'Hoje', summaryLabel: 'Hoje' },
+  { value: '7d', label: '7d', summaryLabel: 'Últimos 7 dias' },
+  { value: '30d', label: '30d', summaryLabel: 'Últimos 30 dias' },
+  { value: '90d', label: '90d', summaryLabel: 'Últimos 90 dias' },
+  { value: 'month', label: 'Mês atual', summaryLabel: 'Mês atual' },
 ];
 
 const STATUSES = [
@@ -278,7 +280,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     setSummary(null);
     setSummaryError(null);
     try {
-      const response = await apiGet<unknown>('/sales-dashboard?period=30d');
+      const response = await apiGet<unknown>(`/sales-dashboard?period=${encodeURIComponent(period)}`);
       if (requestGeneration !== summaryRequestGenerationRef.current) return;
       const projected = projectDashboardSummary(response);
       if (!projected) throw new Error('Resposta inválida ao carregar métricas de vendas.');
@@ -287,9 +289,9 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       if (requestGeneration !== summaryRequestGenerationRef.current) return;
       setSummaryError('Não foi possível carregar as métricas de vendas. Tente novamente.');
     }
-  }, []);
+  }, [period]);
 
-  // ── Fetch summary on mount ──────────────────────────────────────────────────
+  // ── Fetch summary when the period changes ──────────────────────────────────
   useEffect(() => {
     void fetchSummary();
   }, [fetchSummary]);
@@ -349,6 +351,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
   // ── Period change ───────────────────────────────────────────────────────────
   const onPeriodChange = useCallback((p: string) => {
+    setSummary(null);
+    setSummaryError(null);
     setPeriod(p);
     setPage(1);
   }, []);
@@ -399,11 +403,15 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     setSearch('');
     setSearchDraft('');
     setStatus('');
+    setSummary(null);
+    setSummaryError(null);
     setPeriod('30d');
     setPage(1);
   }, []);
   const hasListFilters = Boolean(search || status || period !== '30d');
   const summaryData = summary;
+  const summaryLoading = !summaryData && !summaryError;
+  const summaryPeriodLabel = PERIODS.find((option) => option.value === period)?.summaryLabel ?? 'Últimos 30 dias';
 
   return (
     <PageShell>
@@ -411,50 +419,52 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       <PageHeader
         title="Pedidos"
         description="Da aprovação à entrega."
-        actions={<><span className="mr-auto hidden text-xs text-fg-muted xl:inline">Acompanhe o que foi aprovado e o que precisa ser entregue.</span><SalesOrderExportMenu period={period} status={status} search={search} /></>}
+        actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
       />
 
-      {summaryData && (
-        <section aria-label="Resumo comercial dos últimos 30 dias" className="space-y-3">
+      {(summaryData || summaryLoading) && (
+        <section aria-label={`Resumo comercial: ${summaryPeriodLabel.toLowerCase()}`} aria-busy={summaryLoading} className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-fg-muted">
-            Últimos 30 dias
+            {summaryPeriodLabel}
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              icon={ShoppingCart}
-              label="Pedidos"
-              value={String(summaryData.orders_count)}
-              metadata={
-                summaryData.orders_count === 0 ? undefined : `${summaryData.orders_count} no período`
-              }
-              className="border-border-subtle bg-surface"
-            />
-            <StatCard
-              icon={DollarSign}
-              label="Receita"
-              value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-              metadata={formatSummaryDelta(
-                summaryData.revenue_delta,
-                summaryData.total_revenue
-              )}
-              className="border-border-subtle bg-surface"
-            />
-            <StatCard
-              icon={Package}
-              label="Em aberto"
-              value={String(summaryData.open_orders)}
-              className="border-border-subtle bg-surface"
-            />
-            <StatCard
-              icon={TrendingUp}
-              label="Ticket médio"
-              value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-              metadata={formatSummaryDelta(
-                summaryData.avg_ticket_delta,
-                summaryData.avg_ticket
-              )}
-              className="border-border-subtle bg-surface"
-            />
+            {summaryLoading
+              ? Array.from({ length: 4 }, (_, index) => (
+                  <Skeleton key={index} className="h-[145px] rounded-card" />
+                ))
+              : summaryData && (
+                  <>
+                    <StatCard
+                      icon={ShoppingCart}
+                      label="Pedidos"
+                      value={String(summaryData.orders_count)}
+                      metadata={
+                        summaryData.orders_count === 0 ? undefined : `${summaryData.orders_count} no período`
+                      }
+                      className="border-border-subtle bg-surface"
+                    />
+                    <StatCard
+                      icon={DollarSign}
+                      label="Receita"
+                      value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+                      metadata={formatSummaryDelta(summaryData.revenue_delta, summaryData.total_revenue)}
+                      className="border-border-subtle bg-surface"
+                    />
+                    <StatCard
+                      icon={Package}
+                      label="Em aberto"
+                      value={String(summaryData.open_orders)}
+                      className="border-border-subtle bg-surface"
+                    />
+                    <StatCard
+                      icon={TrendingUp}
+                      label="Ticket médio"
+                      value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+                      metadata={formatSummaryDelta(summaryData.avg_ticket_delta, summaryData.avg_ticket)}
+                      className="border-border-subtle bg-surface"
+                    />
+                  </>
+                )}
           </div>
         </section>
       )}
@@ -521,7 +531,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       </PageToolbar>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={5} rows={8} />}
+      {loading && <SkeletonTable cols={5} rows={8} size="lg" />}
 
       {/* Error */}
       {!loading && error && (

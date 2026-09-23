@@ -26,7 +26,7 @@ import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/EmptyState';
-import SkeletonTable from '@/components/shared/SkeletonTable';
+import Skeleton from '@/components/shared/Skeleton';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -474,7 +474,13 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         )}
       </div>}
 
-      {loading && <SkeletonTable cols={5} rows={6} size="sm" />}
+      {loading && (
+        <div role="status" aria-busy="true" aria-label="Carregando produtos" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: Math.min(limit, 10) }, (_, index) => (
+            <Skeleton key={index} className="h-[230px] rounded-card" />
+          ))}
+        </div>
+      )}
 
       {!loading && error && (
         <div

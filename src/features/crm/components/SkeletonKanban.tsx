@@ -1,42 +1,13 @@
 import Skeleton from '@/components/shared/Skeleton';
 import { PIPELINE } from '@/lib/constants';
 
-/** SkeletonKanban mirrors the dense, horizontally scrollable board while data loads. */
+/** The loading board keeps the same column width and spacing as the populated board. */
 export default function SkeletonKanban() {
-  const cardsPerColumn = [3, 2, 4, 2, 3, 2, 1];
-
   return (
-    <div
-      role="status"
-      className="max-h-[calc(100vh-9.5rem)] overflow-x-auto overflow-y-hidden rounded-card border border-line bg-surface-subtle md:max-h-[calc(100vh-10rem)]"
-      aria-busy="true"
-      aria-label="Carregando pipeline CRM"
-    >
-      <div className="flex min-h-[55vh] w-max min-w-full gap-3 p-3">
-        {PIPELINE.map((status, columnIndex) => (
-          <div
-            key={status}
-            className="flex w-[17.5rem] flex-shrink-0 flex-col rounded-card border border-line bg-surface"
-          >
-            <div className="flex items-center justify-between px-4 py-3">
-              <Skeleton className="h-5 w-28" />
-              <Skeleton className="h-5 w-8 rounded-full" />
-            </div>
-            <div className="min-h-[120px] flex-1 space-y-2 px-2 pb-2">
-              {Array.from({ length: cardsPerColumn[columnIndex] }, (_, cardIndex) => (
-                <div
-                  key={cardIndex}
-                  className="space-y-2 rounded-xl border border-line bg-surface-subtle p-4"
-                >
-                  <Skeleton className={`h-4 ${cardIndex % 2 === 0 ? 'w-28' : 'w-36'}`} />
-                  <Skeleton className="h-3 w-44 opacity-60" />
-                  <div className="flex items-center gap-2 pt-1">
-                    <Skeleton className="h-4 w-20 rounded" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+    <div role="status" className="overflow-x-auto rounded-card" aria-busy="true" aria-label="Carregando pipeline CRM">
+      <div className="flex w-max min-w-full gap-3">
+        {PIPELINE.map((status) => (
+          <Skeleton key={status} className="h-[55vh] w-[13.5rem] shrink-0 rounded-card" />
         ))}
       </div>
     </div>

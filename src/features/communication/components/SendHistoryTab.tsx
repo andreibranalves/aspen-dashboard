@@ -225,7 +225,7 @@ export default function SendHistoryTab({
     );
   });
 
-  if (loading) return <SkeletonComunicacao />;
+  if (loading) return <SkeletonComunicacao variant="list" />;
 
   return (
     <section

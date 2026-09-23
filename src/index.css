@@ -262,3 +262,16 @@ select {
 ::-webkit-scrollbar-thumb:hover {
   background: #4a4a47;
 }
+
+.aspen-workspace::-webkit-scrollbar {
+  width: 12px;
+}
+
+.aspen-workspace::-webkit-scrollbar-button {
+  display: none;
+}
+
+.aspen-workspace::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  background-clip: content-box;
+}

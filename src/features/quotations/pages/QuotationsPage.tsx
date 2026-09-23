@@ -469,7 +469,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         description="Propostas organizadas, do começo ao fim."
         actions={
           <>
-            <span className="mr-auto hidden text-xs text-fg-muted xl:inline">Da primeira conversa à proposta aprovada.</span>
             <Button onClick={() => navigate('/novo-orcamento')} variant="default">
               <PlusCircle />
               Novo orçamento

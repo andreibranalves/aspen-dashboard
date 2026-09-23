@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import DealProposals from '@/features/crm/components/DealProposals';
 import PipelineStagesDialog from '@/features/crm/components/PipelineStagesDialog';
 import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
@@ -396,7 +397,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonKanban />}
+      {loading && (view === 'board' ? <SkeletonKanban /> : <SkeletonTable cols={6} rows={7} size="lg" />)}
 
       {/* Error */}
       {!loading && error && (

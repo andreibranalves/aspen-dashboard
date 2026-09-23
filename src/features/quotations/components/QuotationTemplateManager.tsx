@@ -3,6 +3,7 @@ import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import Skeleton from '@/components/shared/Skeleton';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -210,8 +211,13 @@ export function QuotationTemplateManager({
   return (
     <div className="space-y-5">
       {loading && !templates.length && (
-        <div aria-label="Carregando modelos" className="text-sm text-fg-muted">
-          Carregando modelos...
+        <div role="status" aria-busy="true" aria-label="Carregando modelos" className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
+          <div className="space-y-3">
+            <Skeleton className="h-9 w-36 rounded-control" />
+            <Skeleton className="h-28 rounded-card" />
+            <Skeleton className="h-28 rounded-card" />
+          </div>
+          <Skeleton className="h-[440px] rounded-card" />
         </div>
       )}
       {listError && (
@@ -233,7 +239,7 @@ export function QuotationTemplateManager({
           </div>
         </div>
       )}
-      {!listError && (
+      {!listError && !(loading && !templates.length) && (
         <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
           <div className="space-y-2">
             <Button type="button" variant="outline" size="sm" onClick={resetNew}>
@@ -266,8 +272,8 @@ export function QuotationTemplateManager({
           </div>
           <div className="space-y-4">
             {detailLoading && (
-              <div aria-label="Carregando detalhes do modelo" className="text-sm text-fg-muted">
-                Carregando detalhes...
+              <div role="status" aria-busy="true" aria-label="Carregando detalhes do modelo">
+                <Skeleton className="h-[440px] rounded-card" />
               </div>
             )}
             {detailError && selectedId && (

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Boxes, Image as ImageIcon, PlusCircle, RefreshCw, X } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
+import Skeleton from '@/components/shared/Skeleton';
 import { Button } from '@/components/ui/button';
 import { useHashQueryState, parseHashOption, parseHashString } from '@/hooks/useHashQueryState';
 import { useHashRoute } from '@/hooks/useHashRoute';
@@ -159,12 +160,11 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             <h2 id="catalog-sets-title" className="sr-only">Conjuntos de produtos</h2>
 
             {templatesLoading && (
-              <p
-                className="rounded-card bg-surface px-5 py-10 text-center text-xs text-fg-muted"
-                role="status"
-              >
-                Carregando conjuntos…
-              </p>
+              <div role="status" aria-busy="true" aria-label="Carregando conjuntos" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <Skeleton key={index} className="min-h-72 rounded-card" />
+                ))}
+              </div>
             )}
             {!templatesLoading && templatesError && (
               <div

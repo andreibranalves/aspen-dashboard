@@ -377,7 +377,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
     );
   }, [selectedFlow]);
 
-  if (loading) return <SkeletonComunicacao />;
+  if (loading) return <SkeletonComunicacao variant="editor" />;
 
   return (
     <div className="space-y-5">

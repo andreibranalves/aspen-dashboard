@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ArrowUpRight, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AspenBrand from '@/components/shared/AspenBrand';
 import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
@@ -40,8 +40,9 @@ export default function Sidebar({
     ? '/catalog'
     : activeAffinity[currentPath] ?? currentPath;
   const sidebarOpen = !collapsed;
+  const navItems = NAV_ACTION ? [NAV_ACTION, ...NAV_DESTINATIONS] : NAV_DESTINATIONS;
 
-  const renderItem = (item: NavItem, action = false) => {
+  const renderItem = (item: NavItem) => {
     const isActive = effectivePath === item.hash || effectivePath.startsWith(`${item.hash}/`);
     const Icon = item.icon;
     return (
@@ -53,22 +54,15 @@ export default function Sidebar({
           'mx-3 flex min-h-[45px] w-[calc(100%-1.5rem)] items-center gap-3 rounded-nav px-4 py-2 text-sm font-medium transition-colors',
           collapsed && 'justify-center gap-0 px-0',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sage',
-          action
-            ? isActive ? 'bg-shell-active font-semibold text-white' : 'bg-primary font-semibold text-on-solid hover:bg-sage/90'
-            : isActive
-              ? 'bg-shell-active text-white'
-              : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
+          isActive ? 'bg-shell-active text-white' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
-        title={collapsed ? (action ? `+ ${item.label}` : item.label) : undefined}
-        aria-label={action ? item.label : undefined}
+        title={collapsed ? item.label : undefined}
+        aria-label={collapsed ? item.label : undefined}
         aria-current={isActive ? 'page' : undefined}
       >
         <Icon
           size={20}
-          className={cn(
-            'shrink-0',
-            action ? isActive ? 'text-white' : 'text-on-solid' : isActive ? 'text-white' : 'text-shell-muted'
-          )}
+          className={cn('shrink-0', isActive ? 'text-white' : 'text-shell-muted')}
           aria-hidden="true"
         />
         {!collapsed && <span className="truncate">{item.label}</span>}
@@ -155,25 +149,10 @@ export default function Sidebar({
         </div>
 
         <nav className="flex-1 pt-2" aria-label="Operação">
-          {NAV_ACTION && <div className="mb-4">{renderItem(NAV_ACTION, true)}</div>}
-          <div className="space-y-1">{NAV_DESTINATIONS.map((item) => renderItem(item))}</div>
+          <div className="space-y-1">{navItems.map((item) => renderItem(item))}</div>
         </nav>
         <div className="shrink-0 pb-3 pt-2">
           {NAV_FOOTER.map((item) => renderItem(item))}
-          {!collapsed && (
-            <button
-              type="button"
-              onClick={() => onNavigate('/crm?tab=queue')}
-              className="mx-4 mt-3 flex w-[calc(100%-2rem)] flex-col items-start gap-2 rounded-card bg-sage p-3.5 text-left text-on-solid transition-colors hover:bg-sage/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage"
-            >
-              <span className="text-xs font-semibold uppercase tracking-wide">Próximos passos</span>
-              <span className="text-lg font-bold leading-tight">Seu dia, organizado.</span>
-              <span className="text-xs leading-5">Ações pendentes na fila comercial.</span>
-              <span className="flex items-center gap-1 text-xs font-bold">
-                Abrir minha fila <ArrowUpRight size={15} aria-hidden="true" />
-              </span>
-            </button>
-          )}
         </div>
       </aside>
     </>

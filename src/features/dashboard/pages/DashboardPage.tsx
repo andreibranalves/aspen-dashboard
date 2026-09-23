@@ -11,6 +11,8 @@ import { apiGet, apiPut } from '@/lib/api/api';
 import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
+import Skeleton from '@/components/shared/Skeleton';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -376,9 +378,7 @@ function RecentQuotationsPanel({
         </Button>
       </div>
       {data.status === 'loading' ? (
-        <p className="py-6 text-sm text-fg-muted" role="status">
-          Carregando orçamentos…
-        </p>
+        <SkeletonTable cols={5} rows={5} />
       ) : data.status === 'error' ? (
         <p className="py-6 text-sm text-fg-muted">
           Não foi possível carregar os últimos orçamentos.
@@ -735,31 +735,59 @@ function FinancePanel({
   );
 }
 
-function LoadingResults() {
+function DashboardPeriodAction({ period, onChange }: { period: string; onChange: (period: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 xl:absolute xl:right-workspace xl:top-[80px]">
+      <span className="text-xs text-fg-muted">Período</span>
+      <Select
+        aria-label="Período dos resultados"
+        value={period}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {PERIODS.map((option) => (
+          <option key={option.key} value={option.key}>{option.label}</option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+function LoadingResults({
+  period,
+  tab,
+  onPeriodChange,
+  onTabChange,
+}: {
+  period: string;
+  tab: DashboardTab;
+  onPeriodChange: (period: string) => void;
+  onTabChange: (tab: DashboardTab) => void;
+}) {
   return (
     <PageShell>
-      <PageHeader title="Resultados" description="Uma visão clara do seu comercial." />
-      <div className="flex gap-2" aria-hidden="true">
-        {TABS.map((tab) => (
-          <div key={tab.key} className="h-8 w-24 animate-pulse rounded-sm bg-surface-muted" />
-        ))}
-      </div>
-      <div
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
-        aria-busy="true"
-        aria-label="Carregando resultados"
-      >
-        {TABS.map((tab) => (
-          <div
-            key={tab.key}
-            className="h-28 animate-pulse rounded-lg border border-line bg-surface-muted"
-          />
-        ))}
-      </div>
-      <div
-        className="h-80 animate-pulse rounded-lg border border-line bg-surface-muted"
-        aria-hidden="true"
-      />
+      <PageHeader title="Resultados" description="Uma visão clara do seu comercial." actions={<DashboardPeriodAction period={period} onChange={onPeriodChange} />} />
+      <DashboardTabs tab={tab} onChange={onTabChange} />
+      {tab === 'overview' ? (
+        <div id="results-panel-overview" role="tabpanel" aria-labelledby="results-tab-overview" aria-busy="true" className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.97fr)_repeat(3,minmax(0,1fr))]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:row-span-2 xl:grid-cols-1">
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px] rounded-card" />)}
+          </div>
+          <Skeleton className="h-[340px] rounded-card" />
+          <Skeleton className="h-[340px] rounded-card" />
+          <Skeleton className="h-[340px] rounded-card" />
+          <Skeleton className="h-[340px] rounded-card xl:col-span-3 xl:col-start-2" />
+        </div>
+      ) : (
+        <div id={`results-panel-${tab}`} role="tabpanel" aria-labelledby={`results-tab-${tab}`} aria-busy="true" className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px] rounded-card" />)}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Skeleton className="h-[360px] rounded-card" />
+            <Skeleton className="h-[360px] rounded-card" />
+          </div>
+        </div>
+      )}
     </PageShell>
   );
 }
@@ -953,7 +981,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     [metaDraft, period]
   );
 
-  if (loading) return <LoadingResults />;
+  if (loading) return <LoadingResults period={period} tab={tab} onPeriodChange={setPeriod} onTabChange={setTab} />;
   if (error || !data)
     return (
       <UnavailableResults
@@ -970,21 +998,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       <PageHeader
         title="Resultados"
         description="Uma visão clara do seu comercial."
-        actions={
-          <div className="flex items-center gap-2 xl:absolute xl:right-workspace xl:top-[80px]"><span className="text-xs text-fg-muted">Período</span>
-            <Select
-              aria-label="Período dos resultados"
-              value={period}
-              onChange={(event) => setPeriod(event.target.value)}
-            >
-              {PERIODS.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-        }
+        actions={<DashboardPeriodAction period={period} onChange={setPeriod} />}
       />
       <DashboardTabs tab={tab} onChange={setTab} />
       {tab === 'overview' ? (
