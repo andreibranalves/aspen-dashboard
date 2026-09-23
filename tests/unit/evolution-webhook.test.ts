@@ -97,6 +97,7 @@ function dependencies() {
   const operationOrder: string[] = [];
   const healthCalls: unknown[] = [];
   const historyCalls: IngestWhatsappConversationInput[] = [];
+  const receiptCalls: string[] = [];
   return {
     historyCalls,
     calls,
@@ -134,6 +135,14 @@ function dependencies() {
       },
     },
     effectsRepository: memoryEffects(),
+    receiptCalls,
+    outboxRepository: {
+      applyReceipts: async (providerMessageId: string) => {
+        operationOrder.push('receipt-projection');
+        receiptCalls.push(providerMessageId);
+        return 1;
+      },
+    },
     attendanceRepository: {
       ingestConversation: async (value: IngestWhatsappConversationInput) => {
         operationOrder.push('history');
@@ -642,4 +651,27 @@ test('webhook history resolves a LID chat phone from remoteJidAlt while follow-u
   );
   assert.equal(deps.historyCalls[0].resolveIdentity(null).canonicalPhone, '5511999990000');
   assert.equal((deps.followUpCalls[0] as { identityStatus: string }).identityStatus, 'unresolved');
+});
+
+test('webhook folds a stored receipt into the attendance message after the durable inbox', async () => {
+  const deps = dependencies();
+  const originalApply = deps.deliveryModule.applyEvolutionEvent;
+  deps.deliveryModule.applyEvolutionEvent = async (value: unknown) => {
+    deps.operationOrder.push('inbox');
+    return originalApply(value);
+  };
+  const result = await webhook(event(authorization), deps);
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(deps.receiptCalls, ['provider-message-1']);
+  assert.deepEqual(deps.operationOrder, ['inbox', 'receipt-projection']);
+});
+
+test('a failed receipt projection never withholds the receipt acknowledgement', async () => {
+  const deps = dependencies();
+  deps.outboxRepository.applyReceipts = async () => {
+    throw new Error('database unavailable');
+  };
+  const result = await webhook(event(authorization), deps);
+  assert.equal(result.statusCode, 200);
+  assert.equal(deps.calls.length, 1);
 });

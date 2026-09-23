@@ -8,6 +8,7 @@ import { createPostgresQuotationFollowUpRepository } from '../_infrastructure/db
 import { createPostgresWhatsappContactActivityRepository } from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import { createWebhookEffectRunners, drainWebhookEffects } from './whatsapp-webhook-effects.js';
+import { sweepOperatorMessages, type SweepResult } from './whatsapp-message-dispatch.js';
 import {
   recordQuotationDeliveryWorkerRun,
   type QuotationDeliveryWorkerRunResult,
@@ -27,6 +28,7 @@ export interface QuotationDeliveryWorkerDependencies {
   processDue?: (limit: number) => Promise<{ processed: number; remaining: boolean }>;
   recordRun?: (result: QuotationDeliveryWorkerRunResult) => Promise<void>;
   drainEffects?: (deadlineAt: number) => Promise<{ applied: number; failed: number }>;
+  sweepMessages?: (deadlineAt: number) => Promise<SweepResult>;
   clock?: () => number;
   environment?: {
     CRON_SECRET?: string;
@@ -73,6 +75,20 @@ async function liveDrainEffects(deadlineAt: number) {
   return drainWebhookEffects({ instance, runners, limit: WEBHOOK_EFFECTS_DRAIN_LIMIT, deadlineAt });
 }
 
+async function sweepAfterBatch(
+  sweep: (deadlineAt: number) => Promise<SweepResult>,
+  startedAt: number,
+): Promise<void> {
+  try {
+    const result = await sweep(startedAt + FUNCTION_BUDGET_MS);
+    if (result.requeued || result.toReview || result.dispatched) {
+      console.info('[quotation-delivery-worker] operator messages', result.requeued, result.toReview, result.dispatched);
+    }
+  } catch (error) {
+    console.error('[quotation-delivery-worker] operator messages', error instanceof Error ? error.name : typeof error);
+  }
+}
+
 async function drainAfterBatch(
   drain: (deadlineAt: number) => Promise<{ applied: number; failed: number }>,
   startedAt: number,
@@ -113,8 +129,13 @@ export async function handler(
       : createQuotationDeliveryModule().processDue);
   const recordRun = dependencies.recordRun || recordQuotationDeliveryWorkerRun;
   const drainEffects = dependencies.drainEffects || liveDrainEffects;
+  const sweepMessages =
+    dependencies.sweepMessages || ((deadlineAt: number) => sweepOperatorMessages({ deadlineAt, clock }));
   try {
     const result = await processDue(QUOTATION_DELIVERY_WORKER_BATCH_SIZE);
+    // The quotation batch always runs first and unchanged; the message sweep
+    // only transports while a full timeout still fits in the remaining budget.
+    await sweepAfterBatch(sweepMessages, startedAt);
     await drainAfterBatch(drainEffects, startedAt, clock);
     if (!validResult(result)) {
       await recordResult(recordRun, { result: 'failure' });

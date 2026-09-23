@@ -20,6 +20,10 @@ import {
   type WhatsappWebhookEffectsRepository,
 } from '../_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
 import { applyWebhookEffects, createWebhookEffectRunners } from './whatsapp-webhook-effects.js';
+import {
+  createPostgresWhatsappMessageOutboxRepository,
+  type WhatsappMessageOutboxRepository,
+} from '../_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import type { EvolutionReceiptStatus } from './quotation-delivery-state.js';
 export const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
@@ -55,6 +59,7 @@ export interface EvolutionWebhookDependencies {
   followUpRepository?: FollowUpConversationRepository;
   attendanceRepository?: Pick<WhatsappAttendanceRepository, 'ingestConversation'>;
   effectsRepository?: Pick<WhatsappWebhookEffectsRepository, 'register' | 'markDone' | 'markFailed'>;
+  outboxRepository?: Pick<WhatsappMessageOutboxRepository, 'applyReceipts'>;
   environment?: {
     EVOLUTION_WEBHOOK_SECRET?: string;
     EVOLUTION_INSTANCE?: string;
@@ -385,6 +390,15 @@ export async function handler(
     // provider id (or matches no step at all). Losing an acknowledgement is
     // therefore not a risk, and no provider replay is required.
     await deliveryModule.applyEvolutionEvent(evolutionEvent);
+    // The receipt is already durable in the inbox; folding it into the
+    // attendance message is best effort and recomputed on the next receipt or
+    // on acceptance, so its failure never withholds the acknowledgement.
+    try {
+      const outbox = dependencies.outboxRepository || createPostgresWhatsappMessageOutboxRepository();
+      await outbox.applyReceipts(evolutionEvent.providerMessageId);
+    } catch (error) {
+      console.error('[evolution-webhook] receipt', error instanceof Error ? error.name : typeof error);
+    }
     return json(200, { received: true });
   } catch (error) {
     if (error instanceof QuotationDeliveryModuleInputError) {

@@ -365,6 +365,13 @@
       "when": 1790190000000,
       "tag": "0051_whatsapp_attendance",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790210000000,
+      "tag": "0052_whatsapp_message_outbox",
+      "breakpoints": true
     }
   ]
 }
