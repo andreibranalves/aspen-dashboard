@@ -9,6 +9,7 @@ import QuotationDeliveryStatus from '@/features/quotations/components/QuotationD
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import PageToolbar from '@/components/shared/PageToolbar';
 import { SearchField } from '@/components/ui/search-field';
@@ -758,24 +759,15 @@ export default function WhatsAppDeliveriesPage() {
         )}
 
         {activeTab === 'pending' && error && (
-          <div
-            className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
-            role="alert"
+          <InlineAlert
+            action={
+              <Button variant="outline" size="sm" onClick={() => setReloadVersion((value) => value + 1)}>
+                Tentar novamente
+              </Button>
+            }
           >
-            <span className="flex items-center gap-2">
-              <AlertTriangle size={16} />
-              {error}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setReloadVersion((value) => value + 1)}
-              disabled={loading}
-            >
-              Tentar novamente
-            </Button>
-          </div>
+            {error}
+          </InlineAlert>
         )}
 
         {activeTab === 'history' ? (

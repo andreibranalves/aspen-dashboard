@@ -8,9 +8,9 @@ import {
   Clock,
   Loader2,
   MinusCircle,
-  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { StatusBadge } from '@/components/ui/badge';
 import EmptyState from '@/components/shared/EmptyState';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
@@ -222,19 +222,15 @@ export default function SendHistoryTab({
   return (
     <section className="space-y-4" aria-label="Histórico de envios">
       {error && (
-        <div
-          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="font-medium">Não foi possível carregar o histórico.</p>
-            <p className="mt-1 text-fg-muted">{error}</p>
-            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadEvents()}>
-              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+        <InlineAlert title="Não foi possível carregar o histórico."
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadEvents()}>
+              Tentar novamente
             </Button>
-          </div>
-        </div>
+          }
+        >
+          {error}
+        </InlineAlert>
       )}
 
       {!error && visibleEvents.length === 0 && (

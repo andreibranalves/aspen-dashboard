@@ -9,7 +9,6 @@ import {
 } from 'react';
 import {
   Search,
-  AlertTriangle,
   Columns3,
   PlusCircle,
   Rows3,
@@ -22,6 +21,7 @@ import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
 import PageToolbar from '@/components/shared/PageToolbar';
 import { SearchField } from '@/components/ui/search-field';
 import { TabBar } from '@/components/ui/tabs';
@@ -362,19 +362,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
 
       {/* Error */}
       {!loading && error && (
-        <div
-          role="alert"
-          className="flex flex-col items-center gap-3 py-16 text-center text-fg-muted"
-        >
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar pipeline CRM</p>
-          <p className="max-w-md text-sm">
-            Não foi possível carregar os negócios agora. Tente novamente.
-          </p>
-          <Button variant="outline" onClick={() => fetchData(search)}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os negócios" onRetry={() => fetchData(search)} />
       )}
 
       {/* Empty and filtered-empty states stay distinct so search never becomes a dead end. */}

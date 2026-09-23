@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { apiGet, apiPut } from '@/lib/api/api';
 import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
+import ErrorState from '@/components/shared/ErrorState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
@@ -765,81 +766,11 @@ function UnavailableResults({
 }) {
   return (
     <PageShell>
-      <PageHeader
-        title="Resultados"
-        actions={
-          <Select
-            aria-label="Período dos resultados"
-            value={period}
-            onChange={(event) => onPeriodChange(event.target.value)}
-          >
-            {PERIODS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-        }
-      />
+      <PageHeader title="Resultados" actions={<DashboardPeriodAction period={period} onChange={onPeriodChange} />} />
       <DashboardTabs tab={tab} onChange={onTabChange} />
-      {tab !== 'overview' ? (
-        <section
-          id={`results-panel-${tab}`}
-          role="tabpanel"
-          aria-label={`${TABS.find((option) => option.key === tab)?.label} indisponível`}
-          className="rounded-card border border-line bg-surface p-5"
-        >
-          <p className="mt-4 text-sm text-fg-muted">Não foi possível carregar os resultados.</p>
-          <Button type="button" variant="outline" size="sm" className="mt-4" onClick={onRetry}>
-            Tentar novamente
-          </Button>
-        </section>
-      ) : (
-        <div
-          id="results-panel-overview"
-          role="tabpanel"
-          aria-label="Resultados indisponíveis"
-          className="space-y-4"
-        >
-          <div className="grid grid-cols-2 gap-3 md:gap-4 xl:grid-cols-4">
-            {['Pedidos', 'Conversão', 'Receita', 'Ticket médio'].map((label) => (
-              <MetricCard key={label} label={label} value="—" detail="Dados indisponíveis" />
-            ))}
-          </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(260px,1fr)]">
-            <section
-              className="rounded-card border border-line bg-surface p-5"
-              aria-labelledby="unavailable-chart-title"
-            >
-              <h2 id="unavailable-chart-title" className="text-base font-semibold text-fg">
-                Receita por dia · R$ mil
-              </h2>
-              <div className="mt-4 min-h-56 bg-surface-muted px-5 py-6">
-                <p className="text-sm text-fg-muted">Não foi possível carregar os resultados.</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={onRetry}
-                >
-                  Tentar novamente
-                </Button>
-              </div>
-            </section>
-            <section
-              className="rounded-card border border-line bg-surface p-5"
-              aria-labelledby="unavailable-acquisition-title"
-            >
-              <h2 id="unavailable-acquisition-title" className="text-base font-semibold text-fg">
-                Aquisição
-              </h2>
-              <p className="mt-4 text-2xl font-semibold text-fg">—</p>
-              <p className="mt-6 text-sm text-fg-muted">Pendências indisponíveis</p>
-            </section>
-          </div>
-        </div>
-      )}
+      <div id={`results-panel-${tab}`} role="tabpanel" aria-labelledby={`results-tab-${tab}`}>
+        <ErrorState title="Não foi possível carregar os resultados" onRetry={onRetry} />
+      </div>
     </PageShell>
   );
 }

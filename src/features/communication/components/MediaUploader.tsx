@@ -9,9 +9,10 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Upload } from 'lucide-react';
+import { CheckCircle2, Loader2, Upload } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { Select } from '@/components/ui/select';
 import {
   createMedia,
@@ -195,18 +196,15 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
       </label>
 
       {categoryError && (
-        <div
-          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <div className="min-w-0">
-            <p>{categoryError}</p>
-            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadGroups()}>
-              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadGroups()}>
+              Tentar novamente
             </Button>
-          </div>
-        </div>
+          }
+        >
+          {categoryError}
+        </InlineAlert>
       )}
 
       <div
@@ -256,13 +254,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
       </div>
 
       {error && (
-        <div
-          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <p>{error}</p>
-        </div>
+        <InlineAlert>{error}</InlineAlert>
       )}
 
       {successMessage && (

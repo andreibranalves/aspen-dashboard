@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { Eye, Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import Skeleton from '@/components/shared/Skeleton';
@@ -221,23 +222,15 @@ export function QuotationTemplateManager({
         </div>
       )}
       {listError && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
-          <div className="flex-1">
-            <p>{listError}</p>
-            <Button
-              className="mt-3"
-              size="sm"
-              variant="outline"
-              onClick={() => void loadTemplates()}
-            >
-              <RefreshCw size={14} /> Recarregar modelos
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadTemplates()}>
+              Recarregar modelos
             </Button>
-          </div>
-        </div>
+          }
+        >
+          {listError}
+        </InlineAlert>
       )}
       {!listError && !(loading && !templates.length) && (
         <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
@@ -277,20 +270,15 @@ export function QuotationTemplateManager({
               </div>
             )}
             {detailError && selectedId && (
-              <div
-                role="alert"
-                className="rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm"
+              <InlineAlert
+                action={
+                  <Button variant="outline" size="sm" onClick={() => void loadDetail(selectedId)}>
+                    Tentar novamente
+                  </Button>
+                }
               >
-                <p>{detailError}</p>
-                <Button
-                  className="mt-3"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void loadDetail(selectedId)}
-                >
-                  <RefreshCw size={14} /> Tentar novamente
-                </Button>
-              </div>
+                {detailError}
+              </InlineAlert>
             )}
             {!detailLoading && !detailError && (
               <>

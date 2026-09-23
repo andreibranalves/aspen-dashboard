@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AlertTriangle, Check, DollarSign, FileText, Truck } from 'lucide-react';
+import { Check, DollarSign, FileText, Truck } from 'lucide-react';
 import { apiGet, apiPatch } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
 import {
   Table,
@@ -155,17 +156,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
     return (
       <PageShell>
         <PageHeader title="Pedido" />
-        <div
-          className="flex flex-col items-center gap-3 rounded-control border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
-          role="alert"
-        >
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p className="text-sm text-destructive">Erro ao carregar pedido</p>
-          <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => void fetchDetail()}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar o pedido" onRetry={() => void fetchDetail()} />
       </PageShell>
     );
   }

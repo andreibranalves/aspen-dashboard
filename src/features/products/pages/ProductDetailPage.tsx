@@ -13,7 +13,6 @@ import {
   Edit3,
   Save,
   X,
-  AlertTriangle,
   Search,
   Copy,
   Trash2,
@@ -25,6 +24,9 @@ import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from '@/lib/api/api';
 import { clearProductCache } from '@/lib/api/productCache';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import EmptyState from '@/components/shared/EmptyState';
+import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
@@ -643,19 +645,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (error === 'not_found') {
     return (
       <PageShell>
-        <div
-          className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center text-fg-muted"
-          role="status"
-        >
-          <Search size={40} className="text-fg-muted/40" aria-hidden="true" />
-          <h1 className="text-lg font-semibold text-fg">Produto não encontrado</h1>
-          <p className="max-w-md break-words text-sm">
-            O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.
-          </p>
-          <Button variant="outline" onClick={returnToCatalog}>
-            Voltar ao catálogo
-          </Button>
-        </div>
+        <EmptyState
+          icon={Search}
+          title="Produto não encontrado"
+          description={<span className="break-words">O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.</span>}
+          actions={<Button variant="outline" onClick={returnToCatalog}>Voltar ao catálogo</Button>}
+        />
       </PageShell>
     );
   }
@@ -663,19 +658,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (error) {
     return (
       <PageShell>
-        <div
-          className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-card border border-destructive/30 bg-destructive/5 px-5 py-12 text-center text-fg-muted"
-          role="alert"
-        >
-          <AlertTriangle size={40} className="text-destructive" aria-hidden="true" />
-          <h1 className="text-lg font-semibold text-fg">Erro ao carregar produto</h1>
-          <p className="max-w-md text-sm">
-            Não foi possível carregar este produto. Tente novamente.
-          </p>
-          <Button variant="outline" onClick={() => void fetchProduct({ force: true })}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar o produto" onRetry={() => void fetchProduct({ force: true })} />
       </PageShell>
     );
   }
@@ -684,14 +667,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   if (!produto) {
     return (
       <PageShell>
-        <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center text-fg-muted">
-          <Package size={40} className="text-fg-muted/40" aria-hidden="true" />
-          <h1 className="text-lg font-semibold text-fg">Dados do produto indisponíveis</h1>
-          <p className="max-w-md text-sm">Não há conteúdo suficiente para exibir este cadastro.</p>
-          <Button variant="outline" onClick={returnToCatalog}>
-            Voltar ao catálogo
-          </Button>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="Dados do produto indisponíveis"
+          description="Não há conteúdo suficiente para exibir este cadastro."
+          actions={<Button variant="outline" onClick={returnToCatalog}>Voltar ao catálogo</Button>}
+        />
       </PageShell>
     );
   }
@@ -777,13 +758,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       />
 
       {isDuplicateDraft && (
-        <div
-          className="rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-          role="note"
-        >
-          <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o
-          produto.
-        </div>
+        <InlineAlert tone="warning">
+          <strong>Rascunho de duplicação.</strong> Dados copiados; preencha o SKU antes de criar o produto.
+        </InlineAlert>
       )}
 
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
@@ -951,12 +928,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           {editing ? (
             <div className="space-y-4">
               {!edited.precoBase?.trim() && (edited.tiers || []).length === 0 && (
-                <p
-                  className="rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-                  role="note"
-                >
-                  Preço indisponível para este produto.
-                </p>
+                <InlineAlert tone="warning">Preço indisponível para este produto.</InlineAlert>
               )}
               <div className="max-w-xs">
                 <label htmlFor="product-base-price" className="text-xs font-medium text-fg-muted">Preço base (opcional)</label>
@@ -1115,12 +1087,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   </Table>
                 </div>
               ) : !hasBasePrice ? (
-                <p
-                  className="rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg"
-                  role="note"
-                >
-                  Preço indisponível para este produto.
-                </p>
+                <InlineAlert tone="warning">Preço indisponível para este produto.</InlineAlert>
               ) : null}
             </div>
           )}

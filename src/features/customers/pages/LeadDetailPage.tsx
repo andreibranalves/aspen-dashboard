@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  AlertTriangle,
   Edit3,
   Mail,
   MapPin,
@@ -20,6 +19,8 @@ import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
+import EmptyState from '@/components/shared/EmptyState';
+import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/badge';
@@ -396,24 +397,20 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
   if (loading) return <SkeletonDetail />;
   if (error === 'not_found')
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-fg-muted">
-        <UserRound size={40} className="text-fg-muted/40" aria-hidden="true" />
-        <p className="text-lg font-medium">Registro não encontrado</p>
-        <Button variant="outline" onClick={() => void loadDetail()}>
-          Tentar novamente
-        </Button>
-      </div>
+      <PageShell>
+        <EmptyState
+          icon={UserRound}
+          title="Cliente não encontrado"
+          description="O registro pode ter sido removido ou consolidado com outro cliente."
+          actions={<Button variant="outline" onClick={() => navigate('/leads')}>Voltar para clientes</Button>}
+        />
+      </PageShell>
     );
   if (error)
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-fg-muted" role="alert">
-        <AlertTriangle size={40} className="text-destructive" aria-hidden="true" />
-        <p className="text-lg font-medium">Erro ao carregar cliente</p>
-        <p className="text-sm">{error}</p>
-        <Button variant="outline" onClick={() => void loadDetail()}>
-          Tentar novamente
-        </Button>
-      </div>
+      <PageShell>
+        <ErrorState title="Não foi possível carregar o cliente" onRetry={() => void loadDetail()} />
+      </PageShell>
     );
 
   const current: Partial<ClientDetail> = detail || {};

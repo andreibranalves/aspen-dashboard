@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  AlertCircle,
   Building2,
   CheckCircle2,
   FileCode2,
   Loader2,
   MessageSquare,
-  RefreshCw,
   Save,
   Settings2,
   SlidersHorizontal,
@@ -17,6 +15,7 @@ import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { QuotationSectionsEditor } from '@/features/quotations/components/QuotationSectionsEditor';
@@ -279,30 +278,15 @@ export default function SettingsPage() {
           )}
 
           {!loading && loadError && (activeTab === 'patterns' || activeTab === 'company') && (
-            <div
-              className="rounded-card border border-destructive/25 bg-destructive/5 p-4 text-sm text-fg"
-              role="alert"
+            <InlineAlert title="Não foi possível carregar as configurações."
+              action={
+                <Button variant="outline" size="sm" onClick={() => void loadSettings()}>
+                  Tentar novamente
+                </Button>
+              }
             >
-              <div className="flex items-start gap-2">
-                <AlertCircle
-                  size={18}
-                  className="mt-0.5 shrink-0 text-destructive"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="font-medium">Não foi possível carregar as configurações.</p>
-                  <p className="mt-1 text-fg-muted">{loadError}</p>
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void loadSettings()}
-                  >
-                    <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
-                  </Button>
-                </div>
-              </div>
-            </div>
+              {loadError}
+            </InlineAlert>
           )}
 
           {!loading && !loadError && activeTab === 'patterns' && (
@@ -700,13 +684,7 @@ function SettingsFeedback({ error, success }: { error: string | null; success: s
   return (
     <>
       {error && (
-        <div
-          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <span>{error}</span>
-        </div>
+        <InlineAlert>{error}</InlineAlert>
       )}
       {success && (
         <div

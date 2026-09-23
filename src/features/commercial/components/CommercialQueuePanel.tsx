@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import {
-  AlertTriangle,
   Ban,
   ChevronRight,
   ExternalLink,
@@ -15,6 +14,7 @@ import SkeletonTable from '@/components/shared/SkeletonTable';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import FollowUpReviewDrawer from '@/features/follow-ups/components/FollowUpReviewDrawer';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { Dialog } from '@/components/ui/dialog';
 import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -1265,11 +1265,15 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       </PageToolbar>
 
       {error && (
-        <div role="alert" className="flex items-center gap-2 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
-          <span>{error}</span>
-          <Button type="button" variant="outline" size="sm" className="ml-auto" onClick={() => void load(page, filter)}>Tentar novamente</Button>
-        </div>
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void load(page, filter)}>
+              Tentar novamente
+            </Button>
+          }
+        >
+          {error}
+        </InlineAlert>
       )}
 
       {loading ? (

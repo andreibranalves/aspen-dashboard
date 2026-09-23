@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Archive, ChevronDown, ChevronUp, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
@@ -213,9 +214,7 @@ export default function OrderTemplateManager({
         description="Conjuntos de produtos reutilizáveis, sem quantidades."
       >
             {error && (
-              <div className="mb-4 rounded-control border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
-                {error}
-              </div>
+              <InlineAlert className="mb-4">{error}</InlineAlert>
             )}
 
             {!editing ? (

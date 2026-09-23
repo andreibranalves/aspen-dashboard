@@ -16,7 +16,6 @@ import {
   X,
   Plus,
   Phone,
-  AlertTriangle,
   Loader2,
   Mail,
   Search,
@@ -36,6 +35,8 @@ import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import ErrorState from '@/components/shared/ErrorState';
 import { Dialog } from '@/components/ui/dialog';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
@@ -1727,15 +1728,15 @@ function CoreQuotationDetail({
           </p>
         )}
         {conflict && (
-          <div
-            role="alert"
-            className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          <InlineAlert className="mt-4"
+            action={
+              <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
+                Recarregar
+              </Button>
+            }
           >
-            <span className="min-w-0 break-words">{conflict}</span>
-            <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
-              Recarregar
-            </Button>
-          </div>
+            <span className="break-words">{conflict}</span>
+          </InlineAlert>
         )}
 
         {issuedDetail}
@@ -2564,26 +2565,17 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
     const returnRoute = fromCommercial ? '/crm' : fromDeliveries ? previousRoute : '/quotations';
     const returnLabel = fromCommercial ? 'Comercial' : fromDeliveries ? 'Envios' : 'Orçamentos';
     return (
-      <PageShell className="space-y-4">
-        <button
-          onClick={() => navigate(returnRoute)}
-          className="text-sm text-primary hover:underline"
-        >
-          ← Voltar para {returnLabel}
-        </button>
-        <div
-          role="alert"
-          className="flex flex-col items-center gap-3 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
-        >
-          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
-          <p className="font-medium">Erro ao carregar orçamento</p>
-          <p className="max-w-md text-sm text-fg-muted">
-            Verifique sua conexão e tente novamente. Nenhuma alteração foi realizada.
-          </p>
-          <Button variant="outline" onClick={() => void loadDetail()}>
-            Tentar novamente
-          </Button>
-        </div>
+      <PageShell>
+        <ErrorState
+          title="Não foi possível carregar o orçamento"
+          description="Nenhuma alteração foi realizada."
+          onRetry={() => void loadDetail()}
+          actions={
+            <Button variant="ghost" onClick={() => navigate(returnRoute)}>
+              Voltar para {returnLabel}
+            </Button>
+          }
+        />
       </PageShell>
     );
   }
@@ -2591,15 +2583,16 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   return (
     <PageShell className="space-y-3">
       {reloadWarning && (
-        <div
-          role="status"
-          className="flex items-center justify-between gap-3 rounded-control border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg-muted"
+        <InlineAlert
+          tone="warning"
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadDetail()}>
+              Tentar novamente
+            </Button>
+          }
         >
-          <span>Não foi possível atualizar o orçamento. Exibindo os dados anteriores.</span>
-          <Button variant="outline" size="sm" onClick={() => void loadDetail()}>
-            Tentar novamente
-          </Button>
-        </div>
+          Não foi possível atualizar o orçamento. Exibindo os dados anteriores.
+        </InlineAlert>
       )}
       <CoreQuotationDetail
         data={data}

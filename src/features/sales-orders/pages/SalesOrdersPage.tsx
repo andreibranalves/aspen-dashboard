@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
-import { ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle, ChevronRight } from 'lucide-react';
+import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
@@ -17,9 +17,10 @@ import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
-import Skeleton from '@/components/shared/Skeleton';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import ErrorState from '@/components/shared/ErrorState';
 import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
@@ -457,17 +458,15 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </section>
       )}
       {!summaryData && summaryError && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-destructive/30 bg-surface px-4 py-3"
-          role="alert"
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
+              Tentar novamente
+            </Button>
+          }
         >
-          <p className="text-sm text-destructive">
-            Não foi possível carregar o resumo comercial.
-          </p>
-          <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
-            Tentar novamente
-          </Button>
-        </div>
+          Não foi possível carregar o resumo comercial.
+        </InlineAlert>
       )}
 
       <section className="rounded-card bg-surface p-5" aria-label="Lista de pedidos">
@@ -518,14 +517,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar pedidos</p>
-          <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={fetchOrders}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os pedidos" onRetry={() => void fetchOrders()} />
       )}
 
       {/* Empty */}

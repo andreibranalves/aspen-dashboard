@@ -2,8 +2,9 @@
 // Delete confirmation and the existing media API calls are preserved.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AlertCircle, Image as ImageIcon, PlusCircle, RefreshCw, Search } from 'lucide-react';
+import { Image as ImageIcon, PlusCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
 import MediaGridItem from '@/features/communication/components/MediaGridItem';
@@ -92,29 +93,19 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
       {loading && <SkeletonComunicacao />}
 
       {!loading && error && (
-        <div
-          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="font-medium">Não foi possível carregar a biblioteca.</p>
-            <p className="mt-1 text-fg-muted">{error}</p>
-            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadMedia()}>
-              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+        <InlineAlert title="Não foi possível carregar a biblioteca."
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadMedia()}>
+              Tentar novamente
             </Button>
-          </div>
-        </div>
+          }
+        >
+          {error}
+        </InlineAlert>
       )}
 
       {!loading && mutationError && (
-        <div
-          className="flex items-center gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="shrink-0 text-destructive" aria-hidden="true" />
-          <span>{mutationError}</span>
-        </div>
+        <InlineAlert>{mutationError}</InlineAlert>
       )}
 
       {!loading && !error && filtered.length === 0 && (

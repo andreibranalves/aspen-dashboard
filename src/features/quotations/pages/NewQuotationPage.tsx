@@ -8,7 +8,6 @@ import {
   type ClipboardEvent,
 } from 'react';
 import {
-  AlertTriangle,
   Image as ImageIcon,
   Loader2,
   MapPin,
@@ -74,6 +73,7 @@ import type {
 } from '@/types/domain';
 import { formatBRL, formatPhoneInput, normalizePhoneDigits, fmtPhone } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { TabBar } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -2024,37 +2024,43 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {extractError && mode === 'conversation' && (
-        <div className="flex items-start gap-2 rounded-control border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-          <span>{extractError}</span>
-        </div>
+        <InlineAlert>{extractError}</InlineAlert>
       )}
       {templateError && mode === 'conversation' && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          <span>{templateError}</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => void loadTemplates()}>Tentar novamente</Button>
-        </div>
+        <InlineAlert
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadTemplates()}>
+              Tentar novamente
+            </Button>
+          }
+        >
+          {templateError}
+        </InlineAlert>
       )}
 
       {mode === 'manual' && manualRecoveryDraft && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-control border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
-          <span>{manualRecoveryDraft.result?.error || 'Recuperando a emissão pendente…'}</span>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={recoveryInFlight.current.has(manualRecoveryDraft.index)
-              || (officialIssuePending && !manualRecoveryDraft.result?.error)}
-            onClick={() => manualRecoveryDraft.issueRecoveryRequired
-              ? releaseUnconfirmedIssue(manualRecoveryDraft.index)
-              : manualRecoveryDraft.status === 'processing'
-                ? retryQuotationIssueRecovery(manualRecoveryDraft.index)
-                : handleManualIssue()}
-          >
-            {manualRecoveryDraft.issueRecoveryRequired
-              ? PRE_SAVE_RECOVERY_ACTION
-              : manualRecoveryDraft.status === 'processing' ? 'Consultar novamente' : 'Emitir novamente'}
-          </Button>
-        </div>
+        <InlineAlert
+          tone="warning"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              disabled={recoveryInFlight.current.has(manualRecoveryDraft.index)
+                || (officialIssuePending && !manualRecoveryDraft.result?.error)}
+              onClick={() => manualRecoveryDraft.issueRecoveryRequired
+                ? releaseUnconfirmedIssue(manualRecoveryDraft.index)
+                : manualRecoveryDraft.status === 'processing'
+                  ? retryQuotationIssueRecovery(manualRecoveryDraft.index)
+                  : handleManualIssue()}
+            >
+              {manualRecoveryDraft.issueRecoveryRequired
+                ? PRE_SAVE_RECOVERY_ACTION
+                : manualRecoveryDraft.status === 'processing' ? 'Consultar novamente' : 'Emitir novamente'}
+            </Button>
+          }
+        >
+          {manualRecoveryDraft.result?.error || 'Recuperando a emissão pendente…'}
+        </InlineAlert>
       )}
 
       {mode === 'conversation' ? (
@@ -2292,7 +2298,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             <h2 className="text-base font-semibold text-fg">Resumo da proposta</h2>
             <p className="mt-5 text-sm text-fg-muted">{manualToEdited(manual).nome || 'Cliente não selecionado'}</p>
             <dl className="mt-7 space-y-3 text-sm tabular-nums"><div className="flex justify-between gap-3"><dt className="text-fg-muted">Subtotal</dt><dd>{formatBRL(subtotal)}</dd></div><div className="flex justify-between gap-3"><dt className="text-fg-muted">Frete</dt><dd>{formatBRL(Number(manual.frete) || 0)}</dd></div><div className="flex justify-between gap-3 border-t border-line pt-4 text-xl font-semibold"><dt>Total</dt><dd>{formatBRL(subtotal + (Number(manual.frete) || 0))}</dd></div></dl>
-            {issueErrorByDraft[manualActionDraftIndex] && <p role="alert" className="mt-4 rounded-control border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">{issueErrorByDraft[manualActionDraftIndex]}</p>}
+            {issueErrorByDraft[manualActionDraftIndex] && <InlineAlert className="mt-4">{issueErrorByDraft[manualActionDraftIndex]}</InlineAlert>}
             <div className="mt-7 space-y-2"><Button type="button" variant="outline" className="w-full" disabled={!manualCanSubmit || manualIssuing || liveDraftOperation || Boolean(savingDraft[manualActionDraftIndex])} onClick={() => void handleManualSave()}>{savingDraft[manualActionDraftIndex] ? 'Salvando…' : 'Salvar rascunho'}</Button><Button type="button" variant="success" className="w-full" disabled={!manualCanSubmit || manualIssuing || liveDraftOperation} onClick={handleManualReview}>Revisar emissão</Button><Button type="button" variant="ghost" aria-label="Emitir orçamento" className="w-full" disabled={!manualCanSubmit || manualIssueBlocked} onClick={handleManualIssue}>{manualIssuing ? 'Emitindo…' : 'Emitir orçamento'}</Button></div>
           </aside>
         </div>

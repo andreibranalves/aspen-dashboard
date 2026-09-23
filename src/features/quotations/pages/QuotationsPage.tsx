@@ -3,7 +3,6 @@ import {
   Pencil,
   FileText,
   Trash2,
-  AlertTriangle,
   Clipboard,
   PlusCircle,
   Copy,
@@ -19,6 +18,7 @@ import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
 import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
@@ -489,19 +489,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
       {/* Error */}
       {!loading && error && (
-        <div
-          role="alert"
-          className="m-4 flex flex-col items-center gap-3 rounded-control border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
-        >
-          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
-          <p className="font-medium">Não foi possível carregar os orçamentos.</p>
-          <p className="max-w-md text-sm text-fg-muted">
-            Verifique sua conexão e tente novamente. Os filtros atuais serão mantidos.
-          </p>
-          <Button variant="outline" onClick={() => fetchData(search, status, page, limit)}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os orçamentos" description="Os filtros atuais serão mantidos." onRetry={() => fetchData(search, status, page, limit)} />
       )}
 
       {/* Empty */}

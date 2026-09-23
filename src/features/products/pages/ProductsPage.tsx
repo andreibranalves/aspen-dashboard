@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } from 'react';
 import {
-  AlertTriangle,
   Tag,
   PlusCircle,
   Archive,
@@ -20,6 +19,7 @@ import { apiGet, apiDelete, apiPatch } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { clearProductCache } from '@/lib/api/productCache';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
 import { SearchField } from '@/components/ui/search-field';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
@@ -446,20 +446,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
       )}
 
       {!loading && error && (
-        <div
-          className="flex flex-col items-center gap-3 rounded-card border border-destructive/30 bg-destructive/5 px-5 py-12 text-center text-fg-muted"
-          role="alert"
-        >
-          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
-          <h2 className="text-base font-semibold text-fg">Erro ao carregar produtos</h2>
-          <p className="max-w-md text-sm">Não foi possível carregar o catálogo. Tente novamente.</p>
-          <Button
-            variant="outline"
-            onClick={() => void fetchData(search, page, limit, sort, status)}
-          >
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os produtos" onRetry={() => void fetchData(search, page, limit, sort, status)} />
       )}
 
       {!loading && !error && data.length === 0 && (

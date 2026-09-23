@@ -27,10 +27,12 @@ export function EmptyState({
       aria-label={title}
       className={cn('flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center text-fg-muted', className)}
     >
-      <Icon size={30} className="text-fg-muted/60" aria-hidden="true" />
+      <span className="grid size-12 place-items-center rounded-full bg-raised text-fg-muted">
+        <Icon size={22} aria-hidden="true" />
+      </span>
       <h2 className="text-base font-bold text-fg">{title}</h2>
-      {description && <p className="max-w-md text-xs">{description}</p>}
-      {actions && <div className="flex flex-wrap items-center justify-center gap-2">{actions}</div>}
+      {description && <p className="max-w-md text-sm">{description}</p>}
+      {actions && <div className="mt-1 flex flex-wrap items-center justify-center gap-2">{actions}</div>}
     </section>
   );
 }

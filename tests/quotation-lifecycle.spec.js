@@ -1462,7 +1462,7 @@ test('empty local CRM and leads retain loading/error/retry states @quotations @c
     });
   });
   await page.goto('/#/leads');
-  await expect(page.getByText('Erro ao carregar clientes', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível carregar os clientes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
 });

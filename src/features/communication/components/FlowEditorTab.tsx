@@ -16,11 +16,11 @@ import {
   Loader2,
   MessageSquare,
   Plus,
-  RefreshCw,
   Save,
   Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
@@ -479,28 +479,17 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       </div>
 
       {loadError && (
-        <div
-          className="flex items-start gap-3 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="font-medium">Não foi possível carregar os fluxos.</p>
-            <Button className="mt-3" variant="outline" size="sm" onClick={() => void loadFlows()}>
-              <RefreshCw size={14} aria-hidden="true" /> Tentar novamente
+        <InlineAlert title="Não foi possível carregar os fluxos."
+          action={
+            <Button variant="outline" size="sm" onClick={() => void loadFlows()}>
+              Tentar novamente
             </Button>
-          </div>
-        </div>
+          }
+         />
       )}
 
       {actionError && (
-        <div
-          className="flex items-start gap-2 rounded-control border border-destructive/25 bg-destructive/5 p-3 text-sm text-fg"
-          role="alert"
-        >
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
-          <span>{actionError}</span>
-        </div>
+        <InlineAlert>{actionError}</InlineAlert>
       )}
 
       {selectedFlow && <h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2>}

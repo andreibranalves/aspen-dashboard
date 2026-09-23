@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
-  AlertTriangle,
   Archive,
   ArchiveRestore,
   Check,
@@ -18,6 +17,8 @@ import { apiDelete, apiGet, apiPatch, apiPut } from '@/lib/api/api';
 import { fmtPhone, formatBRL, formatDate, whatsappContactUrl } from '@/lib/formatting/formatters';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import { Button } from '@/components/ui/button';
+import InlineAlert from '@/components/shared/InlineAlert';
+import ErrorState from '@/components/shared/ErrorState';
 import { SearchField } from '@/components/ui/search-field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -652,14 +653,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
       {loading && <SkeletonTable cols={6} rows={8} />}
       {!loading && error && (
-        <div className="flex flex-col items-center gap-3 py-16 text-fg-muted" role="alert">
-          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar clientes</p>
-          <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => void fetchData()}>
-            Tentar novamente
-          </Button>
-        </div>
+        <ErrorState title="Não foi possível carregar os clientes" onRetry={() => void fetchData()} />
       )}
       {!loading && !error && data.length === 0 && (
         <EmptyState
@@ -988,20 +982,15 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           </div>
         )}
         {detailError && !detailLoading && (
-          <div
-            className="flex flex-col items-center gap-3 py-12 text-sm text-fg-muted"
-            role="alert"
+          <InlineAlert
+            action={
+              <Button variant="outline" size="sm" onClick={() => selectedId && void loadDrawerDetail(selectedId)}>
+                Tentar novamente
+              </Button>
+            }
           >
-            <AlertTriangle size={24} className="text-destructive/60" aria-hidden="true" />
-            <p>{detailError}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => selectedId && void loadDrawerDetail(selectedId)}
-            >
-              Tentar novamente
-            </Button>
-          </div>
+            {detailError}
+          </InlineAlert>
         )}
         {detail && !detailLoading && !editMode && (
           <div className="space-y-4 text-sm">

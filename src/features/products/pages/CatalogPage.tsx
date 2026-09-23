@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Boxes, Image as ImageIcon, Package, PlusCircle, RefreshCw, X } from 'lucide-react';
+import { Boxes, Image as ImageIcon, Package, PlusCircle, X } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
 import { Button } from '@/components/ui/button';
+import ErrorState from '@/components/shared/ErrorState';
 import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
 import { useHashQueryState, parseHashOption, parseHashString } from '@/hooks/useHashQueryState';
 import { useHashRoute } from '@/hooks/useHashRoute';
@@ -116,16 +117,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
               </div>
             )}
             {!templatesLoading && templatesError && (
-              <div
-                className="flex flex-col items-center gap-3 rounded-card border border-destructive/30 bg-destructive/5 px-5 py-12 text-center"
-                role="alert"
-              >
-                <AlertTriangle size={28} className="text-destructive" aria-hidden="true" />
-                <p className="text-sm text-fg">{templatesError}</p>
-                <Button variant="outline" onClick={() => void loadTemplates()}>
-                  <RefreshCw size={15} /> Tentar novamente
-                </Button>
-              </div>
+              <ErrorState title="Não foi possível carregar os conjuntos" onRetry={() => void loadTemplates()} />
             )}
             {!templatesLoading && !templatesError && templates.length === 0 && (
               <EmptyState
