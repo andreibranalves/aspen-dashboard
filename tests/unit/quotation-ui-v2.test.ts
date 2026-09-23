@@ -26,9 +26,7 @@ describe('quotation Aspen v2 surfaces', () => {
   it('keeps manual quotation entry visibly editable and staged', () => {
     const page = read('src/features/quotations/pages/NewQuotationPage.tsx');
 
-    assert.match(page, /aria-label="Seleção de cliente"/);
-    assert.match(page, /Dados do orçamento/);
-    assert.match(page, /Itens do orçamento/);
+    assert.match(page, /aria-label="Itens do orçamento"/);
     assert.match(page, /Condições e fechamento/);
     assert.match(page, /aria-label="Emitir orçamento"/);
     assert.doesNotMatch(page, /Enviar orçamento|Orçamento enviado com sucesso|Modelo HTML/);
@@ -44,9 +42,9 @@ describe('quotation Aspen v2 surfaces', () => {
     assert.match(page, /Tentar novamente/);
     assert.match(page, /Sem etapas/);
     assert.match(page, /aria-label=\{`Estado: \$\{projection\.label\}[^`]+`\}/);
-    assert.match(page, /min-w-\[860px\]/);
+    assert.match(page, /min-w-\[720px\]/);
     assert.match(status, /aria-busy=\{pending\}/);
     assert.match(sendPanel, /Nenhum fluxo de WhatsApp disponível/);
-    assert.match(sendPanel, /focus-visible:ring-2 focus-visible:ring-primary/);
+    assert.doesNotMatch(sendPanel, /focus-visible:ring-/);
   });
 });

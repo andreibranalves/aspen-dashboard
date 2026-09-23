@@ -22,7 +22,7 @@ export interface PageHeaderProps {
 
 export default function PageHeader({ title, leading, eyebrow, description, meta, actions, className }: PageHeaderProps) {
   return (
-    <header className={cn('flex flex-wrap items-end justify-between gap-x-6 gap-y-4', className)}>
+    <header className={cn('flex flex-wrap items-start justify-between gap-x-6 gap-y-4', className)}>
       <div className="flex min-w-0 flex-1 basis-80 items-center gap-4">
         {leading && <div className="shrink-0">{leading}</div>}
         <div className="min-w-0 flex-1">
