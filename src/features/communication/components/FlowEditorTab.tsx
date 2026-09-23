@@ -504,7 +504,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
         </div>
       )}
 
-      {selectedFlow && <div><h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2><p className="mt-1 text-xs text-fg-muted">Sequência e prévia do fluxo selecionado.</p></div>}
+      {selectedFlow && <h2 className="text-base font-semibold text-fg">{displayName(selectedFlow)}</h2>}
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
 
 
@@ -615,9 +615,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                       <h3 id="flow-steps-title" className="text-sm font-semibold text-fg">
                         Etapas do fluxo
                       </h3>
-                      <p className="mt-1 text-xs text-fg-muted">
-                        A ordem abaixo é a ordem usada no envio.
-                      </p>
                     </div>
                     <Button
                       type="button"
