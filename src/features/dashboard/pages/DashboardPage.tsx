@@ -700,7 +700,7 @@ function FinancePanel({
 
 function DashboardPeriodAction({ period, onChange }: { period: string; onChange: (period: string) => void }) {
   return (
-    <div className="flex items-center gap-2 xl:absolute xl:right-workspace xl:top-[80px]">
+    <div className="flex items-center gap-2">
       <span className="text-xs text-fg-muted">Período</span>
       <Select
         aria-label="Período dos resultados"
@@ -728,7 +728,7 @@ function LoadingResults({
 }) {
   return (
     <PageShell>
-      <PageHeader title="Resultados" description="Uma visão clara do seu comercial." actions={<DashboardPeriodAction period={period} onChange={onPeriodChange} />} />
+      <PageHeader title="Resultados" actions={<DashboardPeriodAction period={period} onChange={onPeriodChange} />} />
       <DashboardTabs tab={tab} onChange={onTabChange} />
       {tab === 'overview' ? (
         <div id="results-panel-overview" role="tabpanel" aria-labelledby="results-tab-overview" aria-busy="true" className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.97fr)_repeat(3,minmax(0,1fr))]">
@@ -772,7 +772,6 @@ function UnavailableResults({
     <PageShell>
       <PageHeader
         title="Resultados"
-        description="Uma visão clara do seu comercial."
         actions={
           <Select
             aria-label="Período dos resultados"
@@ -960,7 +959,6 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     <PageShell>
       <PageHeader
         title="Resultados"
-        description="Uma visão clara do seu comercial."
         actions={<DashboardPeriodAction period={period} onChange={setPeriod} />}
       />
       <DashboardTabs tab={tab} onChange={setTab} />

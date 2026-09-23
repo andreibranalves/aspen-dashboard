@@ -14,8 +14,8 @@ const PAGE_LABELS: Record<string, string> = {
   '/dashboard': 'Resultados',
   '/quotations': 'Orçamentos',
   '/novo-orcamento': 'Novo orçamento',
-  '/auto': 'Auto',
-  '/manual': 'Novo Orçamento',
+  '/auto': 'Novo orçamento',
+  '/manual': 'Novo orçamento',
   '/sales-orders': 'Pedidos',
   '/crm': 'Comercial',
   '/products': 'Produtos',
@@ -137,7 +137,6 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   );
   const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
   const breadcrumbItems = getBreadcrumb(route, detailLabel);
-  const isDetailRoute = breadcrumbItems.length > 2;
 
   useEffect(() => {
     if (!window.matchMedia) return undefined;
@@ -180,7 +179,6 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
             />
             <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
               <main
-                className={isDetailRoute ? 'xl:pt-5' : undefined}
                 inert={isMobile && !sidebarCollapsed ? true : undefined}
               >
                 {children}

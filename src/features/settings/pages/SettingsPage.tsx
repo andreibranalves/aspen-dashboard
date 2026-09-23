@@ -258,7 +258,7 @@ export default function SettingsPage() {
 
   return (
     <PageShell className="space-y-6 pb-24">
-      <PageHeader title="Configurações" description="Padrões que acompanham o jeito Aspen de trabalhar." />
+      <PageHeader title="Configurações" />
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabList
           label="Seções de configurações"

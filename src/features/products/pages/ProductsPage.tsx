@@ -373,7 +373,6 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
     <PageShell className="pb-28">
       {showHeader && (
         <PageHeader
-          className="[&_h1]:text-[28px] [&_h1]:tracking-[-0.035em]"
           title="Produtos"
           actions={
             <>

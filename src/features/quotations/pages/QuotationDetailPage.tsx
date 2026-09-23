@@ -55,6 +55,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
+import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
 import { type QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
@@ -1562,187 +1563,159 @@ function CoreQuotationDetail({
   return (
     <div ref={detailTopRef} className="space-y-5">
       <fieldset disabled={saving} className="contents">
-        <header className={issuedView ? 'flex flex-wrap items-center justify-between gap-3 bg-page pt-5' : 'flex flex-col gap-4 rounded-card border border-line bg-surface p-5 md:flex-row md:items-start md:justify-between md:p-6'}>
-          <div className={issuedView ? 'min-w-0 xl:absolute xl:left-0 xl:top-0' : 'min-w-0'}>
-            {draftEditable && !editing && (
-              <p className="mb-1 text-sm font-medium text-fg-muted">Revisar antes de emitir</p>
-            )}
-            <h1 className={issuedView ? 'text-[28px] font-bold leading-9 tracking-tight text-fg' : 'text-2xl font-semibold leading-8 tracking-[-0.2px] text-fg'}>
-              {issuedView ? displayTitle : data.businessNumber || displayTitle}
-            </h1>
-            {issuedView && <p className="mt-1 text-[13px] text-fg-muted">Detalhe do orçamento · da demanda à decisão.</p>}
-            {!issuedView && <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-muted">
-              <span className="font-medium text-fg">{data.cliente || 'Cliente não informado'}</span>
-              <span aria-hidden="true">·</span>
+        <PageHeader
+          eyebrow={draftEditable && !editing ? 'Revisar antes de emitir' : undefined}
+          title={data.businessNumber || displayTitle}
+          meta={
+            <>
+              <StatusBadge {...statusBadgeProps(data.status)} />
+              {data.cliente && <span className="font-medium text-fg">{data.cliente}</span>}
               <span>Revisão {data.revision}</span>
-              {issuedView ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>Válido até {formatDate(data.validade) || '—'}</span>
-                </>
-              ) : currentRevision?.createdAt ? (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span>{formatDate(currentRevision.createdAt) || '—'}</span>
-                </>
-              ) : null}
-            </div>}
-            {!issuedView && (
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
-                <StatusBadge {...statusBadgeProps(data.status)} />
-                <span>Validade: {formatDate(data.validade) || '—'}</span>
-                {data.expired && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-medium text-warning">Expirado</span>
-                  </>
-                )}
-              </div>
-            )}
-            {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && (
-              <div
-                className="mt-2 flex flex-wrap items-center gap-2 text-sm"
-                aria-label="Origem do orçamento"
-              >
-                <span
-                  className={
-                    data.quotationOrigin.status === 'conflict'
-                      ? 'text-destructive'
-                      : 'text-fg-muted'
-                  }
+              {currentRevision?.createdAt && <span>{formatDate(currentRevision.createdAt)}</span>}
+              <span>Validade {formatDate(data.validade) || '—'}</span>
+              {data.expired && <span className="font-medium text-warning">Expirado</span>}
+              {data.quotationOrigin && data.quotationOrigin.status !== 'missing' && (
+                <div
+                  className="flex flex-wrap items-center gap-2"
+                  aria-label="Origem do orçamento"
                 >
-                  Origem: {data.quotationOrigin.sourceLabel}
-                </span>
-                {data.quotationOrigin.salesOrderNumber && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      navigate(
-                        `/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`
-                      )
+                  <span
+                    className={
+                      data.quotationOrigin.status === 'conflict'
+                        ? 'text-destructive'
+                        : 'text-fg-muted'
                     }
                   >
-                    <ShoppingCart size={14} /> Abrir pedido
-                  </Button>
-                )}
-              </div>
-            )}
-            {editing && (
-              <p
-                role="status"
-                aria-live="polite"
-                className={
-                  isDirty ? 'mt-2 text-xs font-medium text-warning' : 'mt-2 text-xs text-fg-muted'
-                }
-              >
-                {saving
-                  ? 'Salvando…'
-                  : isDirty
-                    ? 'Alterações não salvas'
-                    : 'Nenhuma alteração pendente'}
-              </p>
-            )}
-          </div>
-
-          {issuedView && <div className="mr-auto flex flex-wrap items-center gap-2 text-xs text-fg-muted"><StatusBadge {...statusBadgeProps(data.status)} /><span>Revisão {data.revision}</span><span>{formatDate(currentRevision?.createdAt || '') || '—'}</span></div>}
-          <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-            {editing ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={saving}
-                  onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}
-                >
-                  Cancelar
-                </Button>
-                <Button variant="outline" size="sm" disabled={saving} onClick={openPreview}>
-                  Pré-visualizar
-                </Button>
-                <Button size="sm" disabled={saving} onClick={save}>
-                  <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
-                </Button>
-              </>
-            ) : (
-              <>
-                {draftEditable ? (
-                  <>
+                    Origem: {data.quotationOrigin.sourceLabel}
+                  </span>
+                  {data.quotationOrigin.salesOrderNumber && (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        showMessage('');
-                        setEditing(true);
-                      }}
+                      onClick={() =>
+                        navigate(
+                          `/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`
+                        )
+                      }
                     >
-                      <Pencil size={14} /> Editar
+                      <ShoppingCart size={14} /> Abrir pedido
                     </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" size="lg" onClick={openIssuedDocument}>
-                    <FileText size={14} /> Prévia do documento
-                  </Button>
-                )}
-
-                {issuedView && data.revisionId && <Button variant="outline" size="lg" disabled={lifecycleAction !== null} onClick={() => createRevision(data.revisionId!)}><Pencil size={14} />{lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Nova revisão'}</Button>}
-                {issuedView && <Button size="lg" onClick={() => document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Send size={14} />Preparar envio</Button>}
-
-                <div className="relative">
-                  <button
-                    ref={moreActionsButtonRef}
-                    type="button"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    aria-label="Mais ações"
-                    className={`flex items-center justify-center rounded-control border border-line text-fg-muted hover:bg-surface-subtle hover:text-fg ${issuedView ? 'h-10 gap-2 px-4 text-sm font-medium' : 'h-8 w-8'}`}
-                    onClick={() => setMenuOpen((current) => !current)}
-                  >
-                    <MoreHorizontal size={18} />
-                    {issuedView && <span>Mais ações</span>}
-                  </button>
-                  {menuOpen && (
-                    <div
-                      role="menu"
-                      aria-label="Ações do orçamento"
-                      className="absolute right-0 top-9 z-40 w-52 rounded-control border border-line bg-surface py-1 shadow-lg"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-subtle"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setTechDetailsOpen(true);
-                        }}
-                      >
-                        Detalhes técnicos
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="block w-full px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setConfirmDeleteOpen(true);
-                        }}
-                      >
-                        <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
-                      </button>
-                    </div>
-                  )}
-                  {menuOpen && (
-                    <div
-                      aria-hidden="true"
-                      className="fixed inset-0 z-30"
-                      onClick={() => setMenuOpen(false)}
-                    />
                   )}
                 </div>
-              </>
-            )}
-          </div>
-        </header>
+              )}
+              {editing && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={
+                    isDirty ? 'font-medium text-warning' : undefined
+                  }
+                >
+                  {saving
+                    ? 'Salvando…'
+                    : isDirty
+                      ? 'Alterações não salvas'
+                      : 'Nenhuma alteração pendente'}
+                </p>
+              )}
+            </>
+          }
+          actions={
+            <>
+              {editing ? (
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button variant="outline" disabled={saving} onClick={openPreview}>
+                    Pré-visualizar
+                  </Button>
+                  <Button disabled={saving} onClick={save}>
+                    <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {draftEditable ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          showMessage('');
+                          setEditing(true);
+                        }}
+                      >
+                        <Pencil size={14} /> Editar
+                      </Button>
+                    </>
+                  ) : (
+                    <Button variant="outline" onClick={openIssuedDocument}>
+                      <FileText size={14} /> Prévia do documento
+                    </Button>
+                  )}
+
+                  {issuedView && data.revisionId && <Button variant="outline" disabled={lifecycleAction !== null} onClick={() => createRevision(data.revisionId!)}><Pencil size={14} />{lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Nova revisão'}</Button>}
+                  {issuedView && <Button onClick={() => document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Send size={14} />Preparar envio</Button>}
+
+                  <div className="relative">
+                    <Button
+                      ref={moreActionsButtonRef}
+                      type="button"
+                      variant="outline"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      onClick={() => setMenuOpen((current) => !current)}
+                    >
+                      <MoreHorizontal aria-hidden="true" />
+                      Mais ações
+                    </Button>
+                    {menuOpen && (
+                      <div
+                        role="menu"
+                        aria-label="Ações do orçamento"
+                        className="absolute right-0 top-12 z-40 w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full rounded-badge px-3 py-2 text-left text-sm hover:bg-surface-subtle"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setTechDetailsOpen(true);
+                          }}
+                        >
+                          Detalhes técnicos
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="block w-full rounded-badge px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setConfirmDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 size={14} className="mr-2 inline" /> Excluir orçamento
+                        </button>
+                      </div>
+                    )}
+                    {menuOpen && (
+                      <div
+                        aria-hidden="true"
+                        className="fixed inset-0 z-30"
+                        onClick={() => setMenuOpen(false)}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          }
+        />
 
         {(message || emailSuccess) && (
           <p

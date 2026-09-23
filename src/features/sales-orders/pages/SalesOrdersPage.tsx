@@ -417,7 +417,6 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
-        description="Da aprovação à entrega."
         actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
       />
 
@@ -561,7 +560,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 </Button>
               )}
               <Button asChild>
-                <a href="#/manual">Novo orçamento</a>
+                <a href="#/novo-orcamento">Novo orçamento</a>
               </Button>
               <Button variant="outline" onClick={() => navigate('/quotations')}>
                 Ver orçamentos

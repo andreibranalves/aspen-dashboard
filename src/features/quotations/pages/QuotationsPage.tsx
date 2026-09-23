@@ -453,7 +453,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     <PageShell className={selectedCount > 0 ? 'space-y-6 pb-48 sm:pb-28' : 'space-y-6 pb-4'}>
       <PageHeader
         title="Orçamentos"
-        description="Propostas organizadas, do começo ao fim."
         actions={
           <>
             <Button onClick={() => navigate('/novo-orcamento')} variant="default">
@@ -529,7 +528,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 Limpar filtros
               </Button>
             ) : (
-              <Button onClick={() => navigate('/manual')}>
+              <Button onClick={() => navigate('/novo-orcamento')}>
                 <PlusCircle />
                 Novo orçamento
               </Button>

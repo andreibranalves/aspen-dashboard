@@ -85,7 +85,7 @@ export default function TopBar({
           </button>
         )}
         <nav
-          className={`flex min-w-0 items-center gap-2 overflow-hidden text-xs text-fg-muted ${breadcrumbItems.length > 2 ? 'xl:absolute xl:left-0 xl:top-[96px]' : 'xl:sr-only'}`}
+          className="flex min-w-0 items-center gap-2 overflow-hidden text-[13px] text-fg-muted"
           aria-label="Trilha de navegação"
         >
           {breadcrumbItems.map((item, index) => (

@@ -30,6 +30,7 @@ import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
+import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { getHashHistoryPreviousRoute, useRouteGuardContext } from '@/hooks/useHashRoute';
@@ -708,7 +709,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       ? { value: 'Active', label: 'Ativo', className: '' }
       : { value: 'Archived', label: 'Arquivado', className: '' };
   const pageActions = (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <>
       {!isNewProduct && (
         <Button
           variant="outline"
@@ -747,46 +748,33 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <Edit3 size={14} /> Editar
         </Button>
       )}
-      {!isNewProduct && <details className="relative text-xs"><summary className="cursor-pointer rounded-control px-2 py-2 text-fg-muted hover:bg-raised">Mais</summary><div className="absolute right-0 top-full z-20 rounded-control border border-line bg-surface p-2 shadow-lg"><Button variant="outline" size="sm" onClick={requestArchive} disabled={saving || deleting} aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'} className="border-destructive/20 text-destructive hover:bg-destructive/10">{produto.ativo === false ? <ArchiveRestore size={14} /> : <Archive size={14} />}{deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}</Button></div></details>}
-    </div>
+      {!isNewProduct && (
+        <Button variant="ghost" onClick={requestArchive} disabled={saving || deleting} aria-label={produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'} className="text-destructive hover:bg-destructive/10">
+          {produto.ativo === false ? <ArchiveRestore aria-hidden="true" /> : <Archive aria-hidden="true" />}
+          {deleting ? 'Atualizando…' : produto.ativo === false ? 'Restaurar' : 'Arquivar'}
+        </Button>
+      )}
+    </>
   );
 
   return (
     <PageShell className="space-y-6">
       <fieldset disabled={saving} className="space-y-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between xl:pt-5">
-        <div className="flex min-w-0 items-start gap-4">
-          {hasImage ? (
-            <img
-              src={produto.imagem ?? undefined}
-              alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-card object-cover xl:hidden"
-            />
+      <PageHeader
+        leading={
+          hasImage ? (
+            <img src={produto.imagem ?? undefined} alt={displayName} className="size-14 rounded-control object-cover" />
           ) : (
-            <div
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-card bg-sage text-sage-ink xl:hidden"
-              aria-label="Imagem não cadastrada"
-            >
+            <div className="grid size-14 place-items-center rounded-control bg-sage text-sage-ink" aria-label="Imagem não cadastrada">
               <Package size={20} aria-hidden="true" />
             </div>
-          )}
-          <div className="min-w-0">
-            <p className="font-mono text-xs text-fg-muted">{produto.sku || 'SKU não informado'}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h1 className="max-w-full break-words text-[28px] font-bold leading-tight tracking-[-0.035em] text-fg max-[767px]:text-[22px] xl:absolute xl:left-0 xl:top-0 xl:line-clamp-2 xl:max-w-[calc(100%-430px)]">
-                {isNewProduct ? 'Novo produto' : displayName}
-              </h1>
-              <StatusBadge
-                status={status.value}
-                label={status.label}
-                className={status.className}
-              />
-            </div>
-            {displayName.length < 43 && <p className="mt-1 max-w-2xl break-words text-sm text-fg-muted xl:absolute xl:left-0 xl:top-[42px]">Produto · ficha e faixas de preço.</p>}
-          </div>
-        </div>
-        {pageActions}
-      </header>
+          )
+        }
+        eyebrow={<span className="font-mono">{produto.sku || 'SKU não informado'}</span>}
+        title={isNewProduct ? 'Novo produto' : displayName}
+        meta={<StatusBadge status={status.value} label={status.label} className={status.className} />}
+        actions={pageActions}
+      />
 
       {isDuplicateDraft && (
         <div

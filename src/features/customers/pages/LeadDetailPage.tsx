@@ -481,25 +481,20 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       <fieldset disabled={saving} className="space-y-2">
         <PageHeader
           title={editing && !isNewClient ? 'Editar cliente' : title}
-          description={
-            editing && !isNewClient
-              ? title
-              : isNewClient
-                ? 'Comece um novo relacionamento'
-                : 'Cliente · histórico e contexto comercial'
+          description={editing && !isNewClient ? title : undefined}
+          meta={
+            !isNewClient && !editing ? (
+              <>
+                <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
+                {qualityBadges(current as ClientDetail).length > 0 && (
+                  <QualityBadges badges={qualityBadges(current as ClientDetail)} />
+                )}
+                {contextActions.length > 0 && <ContextActions actions={contextActions} />}
+              </>
+            ) : undefined
           }
           actions={confirmDiscardEdits || pendingRoute !== null || isNewClient ? undefined : headerActions}
         />
-
-        {!isNewClient && !editing && (
-          <div className="!-mt-4 flex flex-wrap items-center gap-2 py-1">
-            <StatusBadge status={archived ? 'Archived' : 'Active'} label={archived ? 'Arquivado' : 'Ativo'} />
-            {qualityBadges(current as ClientDetail).length > 0 && (
-              <QualityBadges badges={qualityBadges(current as ClientDetail)} />
-            )}
-            {contextActions.length > 0 && <ContextActions actions={contextActions} />}
-          </div>
-        )}
 
         {editing ? (
           <div className={isNewClient ? '!mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]' : 'grid items-start gap-5'}>

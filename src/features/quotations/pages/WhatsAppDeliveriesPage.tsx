@@ -591,7 +591,7 @@ export default function WhatsAppDeliveriesPage() {
 
   return (
     <PageShell className="space-y-5 pb-10">
-      <PageHeader title="Envios" description="Visibilidade sobre cada envio de WhatsApp." />
+      <PageHeader title="Envios" />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
       <div className="flex flex-wrap items-center justify-between gap-3">

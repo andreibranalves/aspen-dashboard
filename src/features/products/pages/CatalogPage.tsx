@@ -80,7 +80,6 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
     <PageShell className="space-y-4 pb-28">
       <PageHeader
         title={legacy ? 'Produtos' : 'Catálogo'}
-        description="Produtos, conjuntos e materiais da Aspen."
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

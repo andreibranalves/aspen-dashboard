@@ -196,11 +196,23 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
 
   return (
     <PageShell className="space-y-4">
-      <PageHeader title={data.id} description="Pedido de venda · acompanhamento operacional" />
-      <div className="!mt-7 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><StatusBadge status={data.status} label={statusLabel} />{orderDate && <span className="text-xs text-fg-muted">{formatSalesOrderDate(orderDate)}</span>}</div>
-        {data.source_quotation && <Button variant="outline" size="sm" onClick={() => navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)}><FileText size={14} aria-hidden="true" /> Ver orçamento de origem</Button>}
-      </div>
+      <PageHeader
+        title={data.id}
+        meta={
+          <>
+            <StatusBadge status={data.status} label={statusLabel} />
+            {data.customer_name && <span className="font-medium text-fg">{data.customer_name}</span>}
+            {orderDate && <span>{formatSalesOrderDate(orderDate)}</span>}
+          </>
+        }
+        actions={
+          data.source_quotation ? (
+            <Button variant="outline" onClick={() => navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)}>
+              <FileText aria-hidden="true" /> Ver orçamento de origem
+            </Button>
+          ) : undefined
+        }
+      />
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 space-y-4">
           <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">

@@ -1975,9 +1975,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       ? deliveryErrorsByKey[activeDeliveryKey] || enqueueErrorByKey[activeDeliveryKey]
       : undefined);
 
-  const headlineDescription = mode === 'conversation'
-    ? activeDraft ? `Da conversa · ${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}` : 'Transforme a demanda em uma proposta.'
-    : 'Monte a proposta, com os detalhes à vista.';
+  const headlineDescription = mode === 'conversation' && activeDraft
+    ? `${draftCountLabel} · ativo: ${activeDraft.edited.nome || 'cliente não informado'}`
+    : undefined;
 
   return (
     <PageShell className="min-w-0 space-y-6 overflow-x-hidden pb-10">

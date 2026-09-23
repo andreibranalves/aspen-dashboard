@@ -611,7 +611,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     <PageShell className="space-y-5 pb-28">
       <PageHeader
         title="Clientes"
-        description="Relacionamentos que fazem o negócio crescer."
         actions={
           <>
             <span className="mr-auto hidden text-xs text-fg-muted xl:inline">O contexto do relacionamento, em um só lugar.</span>
