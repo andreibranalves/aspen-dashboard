@@ -78,6 +78,11 @@ limpar a branch PostgreSQL associada quando o PR fecha. O workflow não prova
 que houve deployment, criação da branch ou remoção efetiva, e falha não bloqueia
 o PR.
 
+O plano Free do Neon aceita 10 branches por projeto; acima disso, todo Preview
+novo falha com `Resource provisioning failed`. Por isso branches `dependabot/**`
+não geram deployment (`git.deploymentEnabled` em `vercel.json`); o CI valida
+essas atualizações.
+
 Para uma limpeza manual, o operador lista as branches sem alterar recursos,
 compara-as aos PRs abertos, preserva `main` e releases em validação, apresenta
 as candidatas e obtém aprovação humana explícita. Remover uma branch é
