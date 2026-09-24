@@ -379,6 +379,13 @@
       "when": 1790230000000,
       "tag": "0053_whatsapp_message_sweep_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1790240000000,
+      "tag": "0054_whatsapp_message_attachments",
+      "breakpoints": true
     }
   ]
 }

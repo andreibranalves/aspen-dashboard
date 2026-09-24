@@ -14,6 +14,8 @@ import {
   getOperatorMessageByRequest,
   postOperatorMessage,
 } from '../../api/_modules/whatsapp-message-send.js';
+import { dispatchOutboxMessage } from '../../api/_modules/whatsapp-message-dispatch.js';
+import { validateOperatorMedia } from '../../api/_modules/whatsapp-media-validation.js';
 
 const conversationId = '0b9f1e52-7c1f-4d0e-9a51-3f7d3c1a2b40';
 
@@ -46,7 +48,7 @@ function fakeRepository(overrides: Partial<WhatsappMessageOutboxRepository> = {}
         if (existing.body !== input.body) throw new OutboxIntentRefused('idempotency_conflict');
         return { record: existing, created: false };
       }
-      const created = record({ clientRequestId: input.clientRequestId, body: input.body });
+      const created = record({ clientRequestId: input.clientRequestId, body: input.body, attachmentId: input.attachmentId });
       intents.set(input.clientRequestId, created);
       return { record: created, created: true };
     },
@@ -98,6 +100,43 @@ function fakeRepository(overrides: Partial<WhatsappMessageOutboxRepository> = {}
 function post(body: unknown) {
   return { httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: JSON.stringify(body) };
 }
+
+it('validates a scoped private attachment before starting media transport', async () => {
+  const attachmentId = randomUUID();
+  const repository = fakeRepository();
+  const { record: intent } = await repository.createIntent({
+    clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'Imagem', attachmentId,
+  });
+  const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==';
+  const checked = validateOperatorMedia({ base64, mimeType: 'image/png', fileName: 'anexo.png' });
+  const attachment = {
+    id: attachmentId, conversationId, messageId: intent.messageId, mediaType: checked.mediaType,
+    mimeType: checked.mimeType, fileName: checked.fileName, sizeBytes: checked.sizeBytes,
+    checksum: checked.checksum, contentBase64: base64,
+  };
+  let sends = 0;
+  const accepted = await dispatchOutboxMessage(intent.id, {
+    repository, loadAttachment: async () => attachment,
+    send: async ({ attachment: media }) => {
+      assert.equal(media?.id, attachmentId);
+      sends += 1;
+      return { providerMessageId: 'provider-media' };
+    },
+  });
+  assert.equal(accepted?.state, 'provider_accepted');
+  assert.equal(sends, 1);
+
+  const other = await repository.createIntent({
+    clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'Outra', attachmentId,
+  });
+  const refused = await dispatchOutboxMessage(other.record.id, {
+    repository, loadAttachment: async () => ({ ...attachment, conversationId: randomUUID() }),
+    send: async () => { sends += 1; return { providerMessageId: 'bad' }; },
+  });
+  assert.equal(refused?.state, 'failed');
+  assert.equal(refused?.failureCode, 'MEDIA_INVALID');
+  assert.equal(sends, 1);
+});
 
 describe('operator message send', () => {
   it('records, dispatches once and answers 202 with the persisted state; a repeat never transports again', async () => {

@@ -1,7 +1,7 @@
-import { forwardRef, Fragment, type UIEvent } from 'react';
+import { forwardRef, Fragment, useState, type UIEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { AttendanceMessage } from '@/lib/api/attendanceApi';
+import { openReceivedMedia, type AttendanceMessage } from '@/lib/api/attendanceApi';
 import type { ContextDelivery } from '@/lib/api/attendanceContextApi';
 import { deliveryLabel, MESSAGE_TYPE_LABELS } from '@/features/attendance/attendanceLabels';
 
@@ -58,6 +58,16 @@ function MessageBubble({
   const cancellable = message.outboxState === 'queued' || message.outboxState === 'retry_scheduled';
   const reviewable = message.outboxState === 'needs_review';
   const resendable = message.outboxState === 'failed' || message.outboxState === 'cancelled';
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const receivableMedia = !outbound && ['image', 'document', 'audio'].includes(message.type);
+  const openMedia = async () => {
+    setLoadingMedia(true);
+    setMediaError(null);
+    try { await openReceivedMedia(message.id); }
+    catch (error) { setMediaError(error instanceof Error ? error.message : 'Mídia indisponível na origem.'); }
+    finally { setLoadingMedia(false); }
+  };
   return (
     <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
       {message.type === 'text' && message.body && (
@@ -74,6 +84,12 @@ function MessageBubble({
       >
         {typeLabel && <p className="text-xs font-semibold italic opacity-80">{typeLabel}</p>}
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+        {receivableMedia && (
+          <Button variant="outline" size="xs" disabled={loadingMedia} onClick={() => void openMedia()}>
+            {loadingMedia ? 'Abrindo…' : message.type === 'audio' ? 'Reproduzir áudio' : message.type === 'document' ? 'Baixar PDF' : 'Abrir imagem'}
+          </Button>
+        )}
+        {mediaError && <p role="status" className="text-xs text-destructive">{mediaError}</p>}
         <p className="mt-1 text-right text-xs opacity-70">
           <span className="sr-only">{outbound ? 'Enviada às ' : 'Recebida às '}</span>
           {timeFormat.format(new Date(message.timestamp))}

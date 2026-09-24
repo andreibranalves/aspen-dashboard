@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -114,6 +114,32 @@ test('same key and content recovers the same intent; a changed body is an idempo
   assert.equal(bubbles.length, 1);
   assert.equal(bubbles[0].body, body, 'multi-line body kept verbatim');
   assert.equal(bubbles[0].outboxState, 'queued');
+});
+
+test('attachment is scoped to one conversation and consumed by one idempotent intent', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const first = await conversation();
+  const second = await conversation();
+  const attachmentId = randomUUID();
+  const content = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==', 'base64');
+  const checksum = createHash('sha256').update(content).digest('hex');
+  await sql`INSERT INTO whatsapp_message_attachments
+    (id, conversation_id, media_type, mime_type, file_name, size_bytes, checksum, content_base64)
+    VALUES (${attachmentId}, ${first.conversationId}, 'image', 'image/png', 'anexo.png', ${content.length}, ${checksum}, ${content.toString('base64')})`;
+  await assert.rejects(
+    repository.createIntent({ clientRequestId: randomUUID(), conversationId: second.conversationId, expectedIdentityVersion: 1, body: '', attachmentId }),
+    (error: unknown) => error instanceof OutboxIntentRefused && error.reason === 'attachment_not_found',
+  );
+  const clientRequestId = randomUUID();
+  const created = await repository.createIntent({ clientRequestId, conversationId: first.conversationId, expectedIdentityVersion: 1, body: '', attachmentId });
+  assert.equal(created.record.body, 'anexo.png');
+  assert.equal(created.record.attachmentId, attachmentId);
+  const recovered = await repository.createIntent({ clientRequestId, conversationId: first.conversationId, expectedIdentityVersion: 1, body: '', attachmentId });
+  assert.equal(recovered.record.messageId, created.record.messageId);
+  await assert.rejects(
+    repository.createIntent({ clientRequestId: randomUUID(), conversationId: first.conversationId, expectedIdentityVersion: 1, body: '', attachmentId }),
+    (error: unknown) => error instanceof OutboxIntentRefused && error.reason === 'attachment_not_found',
+  );
 });
 
 test('identity conflict, unresolved phone and a stale identity version refuse the send', { skip: databaseSkip }, async () => {
