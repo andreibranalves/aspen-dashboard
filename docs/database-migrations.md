@@ -2,7 +2,7 @@
 
 ## Regra principal
 
-Migrations seguem a classificação de `docs/release-lanes.md`: uma migration genuinamente aditiva pode ser SAFE; migration destrutiva é CRITICAL. Criar e testar uma migration genuinamente aditiva em PostgreSQL local descartável faz parte da implementação autorizada. Migration destrutiva, alteração histórica ou mudança da estratégia exige decisão explícita; aplicar em staging ou produção exige autorização operacional separada. Migrations nunca executam implicitamente no startup, build ou CI padrão.
+Migrations seguem a classificação de `docs/release-lanes.md`: uma migration genuinamente aditiva pode ser SAFE; migration destrutiva é CRITICAL. O que exige decisão ou autorização está na seção Autorizações de `AGENTS.md`. Migrations nunca executam implicitamente no startup, build ou CI padrão.
 
 Exceção explícita: o job `postgres` do CI de pull request invoca o apply raw (`npm run db:migrate`)
 contra um PostgreSQL service container descartável, nunca contra staging ou produção.
@@ -79,7 +79,7 @@ Quando uma jornada mutável precisar de ensaio, siga o E2E controlado de
 continua sendo o contrato existente; não crie alias Preview, dual-read ou
 dual-write para migrations.
 
-`cutover-env-status` é um gate de release/cutover, não um pré-requisito geral de migration de banco. Execute-o quando a operação também envolver canário Production, deploy/promoção, rollback, cleanup, cutover de e-mail ou outra etapa de cutover explicitamente declarada.
+`node scripts/cutover-env-status.mjs migration` (ou `migration-production`) confere os nomes exigidos sem mostrar valores; `migrate:apply` repete essa checagem no preflight.
 
 Nunca execute o apply usando somente `DATABASE_URL`.
 

@@ -40,8 +40,7 @@ de isolamento, além de E2E focado quando pertinente. Merge/deploy e operações
 sensíveis continuam sujeitos às aprovações abaixo.
 
 Migrations seguem o [runbook PostgreSQL](./database-migrations.md), inclusive
-alvo, preflight, backup e aprovação. Não se aplicam migrations em staging ou
-produção sem autorização operacional separada.
+alvo, preflight e backup.
 
 ## Revisão e correção
 
@@ -69,12 +68,10 @@ checks executados e código avaliado, correções aplicadas, blockers e próximo
 passo. Evidência de outro agente é reutilizável quando corresponde ao código
 atual; perda de contexto não autoriza repetir efeitos externos.
 
-As operações Git e de tracker de um fluxo solicitado seguem as autorizações
-de `AGENTS.md`. Preserve trabalho não integrado ao limpar worktrees.
-Deploy manual, migrations remotas, env operacional e efeitos sobre dados ou comunicação
-reais exigem autorização separada. A criação automática de Preview pelo push
-da branch só é aceitável com o [isolamento do Preview](./preview-isolation.md); não é autorização
-de produção. Recursos globais de outros projetos não são pré-requisitos do Aspen.
+Operações Git, de tracker, deploy, migrations remotas, env operacional e efeitos
+sobre dados ou comunicação reais seguem a seção Autorizações de `AGENTS.md`.
+Preserve trabalho não integrado ao limpar worktrees. Recursos globais de outros
+projetos não são pré-requisitos do Aspen.
 
 Backup ajuda a recuperar CRUD comum, mas não desfaz envio duplicado, orçamento
 oficialmente emitido errado, pedido real ou corrupção comercial. Esses efeitos
@@ -83,11 +80,9 @@ continuam sendo critérios de `CRITICAL` mesmo quando há backup.
 ## Ambientes
 
 PR/branch usa CI e Vercel Preview isolado; merge em `master` usa Vercel
-Production, com banco e integrações reais. Preview é a única homologação.
-Preflight, E2E controlado e ciclo de vida das branches Neon estão em
-[Preview isolado](./preview-isolation.md).
+Production, com banco e integrações reais (ADR 0011). Preflight, E2E controlado
+e ciclo de vida das branches Neon estão em [Preview isolado](./preview-isolation.md).
 
-A publicação passa por PR e CI; push direto em `master` não é caminho de entrega.
 Proteção de branch e vínculo entre CI e promoção precisam de confirmação no
 provedor; um workflow configurado não comprova que o merge está tecnicamente bloqueado.
 
