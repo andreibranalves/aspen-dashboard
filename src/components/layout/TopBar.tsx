@@ -5,6 +5,7 @@ import { applyTheme, readTheme } from '@/lib/theme';
 import type { BreadcrumbItem } from './Layout';
 import { Button } from '@/components/ui/button';
 import { MenuItem } from '@/components/ui/menu-item';
+import QuickTaskLauncher from '@/features/tasks/components/QuickTaskLauncher';
 
 export interface TopBarProps {
   route?: string;
@@ -20,6 +21,7 @@ const SEARCH_DESTINATIONS = [NAV_ACTION, ...NAV_DESTINATIONS, ...NAV_FOOTER].fil
 );
 
 export default function TopBar({
+  route = '',
   onMenuClick,
   sidebarOpen = false,
   isMobile = false,
@@ -154,6 +156,7 @@ export default function TopBar({
             </div>
           )}
         </div>
+        <QuickTaskLauncher route={route} />
         <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
         <Button type="button" variant="ghost-muted" size="icon" onClick={() => onNavigate('/crm?tab=queue')} aria-label="Abrir fila comercial"><Bell aria-hidden="true" /></Button>
         <Button
