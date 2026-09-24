@@ -527,7 +527,7 @@ Caminhos de `andreibranalves/aspen-dashboard` na branch `codex/design-ui-ux-refa
 | Fonte | Arquivos e pontos relevantes |
 |---|---|
 | S01 | `PRODUCT.md`: Users, Positioning, Operating Context e Product Principles. |
-| S02 | `AGENTS.md` e `ARCHITECTURE.md`: arquitetura, identidade no salvamento, transporte e autorizações; `vercel.json` (limite de 60 s). |
+| S02 | `AGENTS.md`, `ARCHITECTURE.md` e ADRs 0007 e 0010: arquitetura, identidade no salvamento, transporte e autorizações; `vercel.json` (limite de 60 s). |
 | S03 | `docs/release-lanes.md`: lanes, isolamento, Complexidade, evidência e RELEASE. |
 | S04 | `api/_modules/whatsapp-conversations-store.ts`: `MAX_STORED_CONVERSATIONS`, `MAX_STORED_MESSAGES_PER_CONVERSATION`, operações CAS, `cleanText`, `normalizeWhatsappPhone`. |
 | S05 | `api/_modules/whatsapp-conversations.ts`: `send-message`, `extract-quote`, `create-quote-lead`, `buildConversationText`, `findAdmittedWhatsappLead`. |

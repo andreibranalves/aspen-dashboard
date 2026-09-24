@@ -2,6 +2,8 @@
 
 Guia curto das boundaries do Aspen Orçamento para desenvolvedores e coding agents.
 
+Stack: React 19 e Vite 6 no frontend; Node.js ESM numa única Function da Vercel (ADR 0009); PostgreSQL via Drizzle; Evolution API para WhatsApp e OpenRouter para extração.
+
 ## Mapa
 
 ```text
