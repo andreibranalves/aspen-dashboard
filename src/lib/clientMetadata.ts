@@ -9,6 +9,7 @@ export const LEAD_SOURCES: LeadSource[] = [
   { value: 'Google Ads', label: 'Google Ads' },
   { value: 'Bríndice', label: 'Bríndice' },
   { value: 'Cliente recorrente', label: 'Cliente recorrente' },
+  { value: 'WhatsApp', label: 'WhatsApp' },
 ];
 
 const accInsensitive = (s: string): string =>

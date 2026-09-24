@@ -10,7 +10,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/whatsapp-client-links.js';
 import type { WhatsappConversationScope } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 import { createAtendimentoContextHandlers } from '../../api/_modules/atendimento-context.js';
-import { createWhatsappContextHandler } from '../../api/_modules/whatsapp-context.js';
+import { createWhatsappContextHandler, type WhatsappContextHistoryRepository } from '../../api/_modules/whatsapp-context.js';
 
 const ACCOUNT = '5511988881234@s.whatsapp.net';
 const LID = '123456789012345@lid';
@@ -48,13 +48,13 @@ function memoryLinks() {
   return { rows, links };
 }
 
-function setup(scope: Partial<WhatsappConversationScope> = {}, options: { account?: string; instance?: string } = {}) {
+function setup(scope: Partial<WhatsappConversationScope> = {}, options: { account?: string; instance?: string; history?: WhatsappContextHistoryRepository } = {}) {
   const { rows, links } = memoryLinks();
   const context = {
     links,
     getClient: async () => client,
     findCandidatesByPhone: async (phone: string) => (phone === '5541999701234' ? [{ ...client, tipo: 'cliente' as const }] : []),
-    history: {},
+    history: options.history || {},
   };
   const conversation: WhatsappConversationScope = {
     instance: 'aspen',
@@ -146,6 +146,30 @@ test('a verified phone shows the matched context without creating a link', async
   assert.equal(result.context.match, 'matched');
   assert.equal(result.context.matchSource, 'phone');
   assert.equal(panel.rows.size, 0);
+});
+
+test('existing quotation deliveries retain their revision and flow in the conversation context', async () => {
+  const quotationId = randomUUID();
+  const revisionId = randomUUID();
+  const deliveryId = randomUUID();
+  const panel = setup({ identityStatus: 'verified' }, { history: {
+    listQuotationsByClientId: async () => [{
+      id: quotationId, businessNumber: '1042', status: 'Enviado', date: '2026-09-23',
+      total: '150.00', url: `/#/quotations/${quotationId}`,
+    }],
+    listDeliveriesByQuotationIds: async () => [{
+      id: deliveryId, quotationId, revisionId, flowId: 'flow-1', businessNumber: '1042',
+      status: 'pendente', date: '2026-09-23', occurredAt: '2026-09-23T15:00:00.000Z',
+      url: `/#/quotations/${quotationId}`, canSend: true,
+    }],
+  } });
+  const result = await panel.read();
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.context.deliveries, [{
+    id: deliveryId, quotationId, revisionId, flowId: 'flow-1', businessNumber: '1042',
+    status: 'pendente', date: '2026-09-23', occurredAt: '2026-09-23T15:00:00.000Z',
+    url: `/#/quotations/${quotationId}`, canSend: true,
+  }]);
 });
 
 test('without a proven account scope nothing is linked', async () => {

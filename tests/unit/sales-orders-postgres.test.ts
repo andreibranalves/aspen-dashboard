@@ -943,7 +943,7 @@ test(
       const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
         entries: Array<{ tag: string }>;
       };
-      const cut = journal.entries.findIndex((entry) => entry.tag === '0054_sales_order_production');
+      const cut = journal.entries.findIndex((entry) => entry.tag === '0055_sales_order_production');
       assert.ok(cut > 0);
       journal.entries = journal.entries.slice(0, cut);
       writeFileSync(journalPath, JSON.stringify(journal));

@@ -1,13 +1,19 @@
-import { forwardRef, Fragment, type UIEvent } from 'react';
+import { forwardRef, Fragment, useState, type UIEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { AttendanceMessage } from '@/lib/api/attendanceApi';
+import { openReceivedMedia, type AttendanceMessage } from '@/lib/api/attendanceApi';
+import type { ContextDelivery } from '@/lib/api/attendanceContextApi';
 import { deliveryLabel, MESSAGE_TYPE_LABELS } from '@/features/attendance/attendanceLabels';
 
 export type MessageActionName = 'cancel' | 'confirm_sent' | 'confirm_not_sent' | 'resend' | 'resend_uncertain';
 
 interface MessageTimelineProps {
   messages: AttendanceMessage[];
+  selectedMessageIds: string[];
+  onToggleMessage: (messageId: string) => void;
+  deliveries: ContextDelivery[];
+  deliveryPending: string | null;
+  onSendDelivery: (delivery: ContextDelivery) => void;
   actionPending: string | null;
   onAction: (messageId: string, action: MessageActionName) => void;
   hasOlder: boolean;
@@ -19,12 +25,30 @@ interface MessageTimelineProps {
 const timeFormat = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 const dayFormat = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeZone: 'America/Sao_Paulo' });
 
+function DeliveryCard({ delivery, pending, onSend }: { delivery: ContextDelivery; pending: boolean; onSend: (delivery: ContextDelivery) => void }) {
+  return (
+    <article className="mx-auto max-w-sm space-y-1 rounded-card border border-border-subtle bg-surface p-3 text-sm shadow-xs">
+      <a href={delivery.url} className="font-semibold text-link hover:underline">Orçamento {delivery.businessNumber}</a>
+      <p className="text-xs text-fg-muted">WhatsApp: {delivery.status}</p>
+      {delivery.canSend && (
+        <Button variant="outline" size="xs" disabled={pending} onClick={() => onSend(delivery)}>
+          {pending ? 'Enviando…' : 'Enviar orçamento'}
+        </Button>
+      )}
+    </article>
+  );
+}
+
 function MessageBubble({
   message,
+  selected,
+  onToggle,
   actionPending,
   onAction,
 }: {
   message: AttendanceMessage;
+  selected: boolean;
+  onToggle: (messageId: string) => void;
   actionPending: boolean;
   onAction: (messageId: string, action: MessageActionName) => void;
 }) {
@@ -34,8 +58,23 @@ function MessageBubble({
   const cancellable = message.outboxState === 'queued' || message.outboxState === 'retry_scheduled';
   const reviewable = message.outboxState === 'needs_review';
   const resendable = message.outboxState === 'failed' || message.outboxState === 'cancelled';
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const receivableMedia = !outbound && ['image', 'document', 'audio'].includes(message.type);
+  const openMedia = async () => {
+    setLoadingMedia(true);
+    setMediaError(null);
+    try { await openReceivedMedia(message.id); }
+    catch (error) { setMediaError(error instanceof Error ? error.message : 'Mídia indisponível na origem.'); }
+    finally { setLoadingMedia(false); }
+  };
   return (
     <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
+      {message.type === 'text' && message.body && (
+        <Button variant="ghost" size="xs" aria-pressed={selected} onClick={() => onToggle(message.id)}>
+          {selected ? 'Selecionada' : 'Selecionar para orçamento'}
+        </Button>
+      )}
       <div
         className={cn(
           'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-xs',
@@ -45,6 +84,12 @@ function MessageBubble({
       >
         {typeLabel && <p className="text-xs font-semibold italic opacity-80">{typeLabel}</p>}
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+        {receivableMedia && (
+          <Button variant="outline" size="xs" disabled={loadingMedia} onClick={() => void openMedia()}>
+            {loadingMedia ? 'Abrindo…' : message.type === 'audio' ? 'Reproduzir áudio' : message.type === 'document' ? 'Baixar PDF' : 'Abrir imagem'}
+          </Button>
+        )}
+        {mediaError && <p role="status" className="text-xs text-destructive">{mediaError}</p>}
         <p className="mt-1 text-right text-xs opacity-70">
           <span className="sr-only">{outbound ? 'Enviada às ' : 'Recebida às '}</span>
           {timeFormat.format(new Date(message.timestamp))}
@@ -83,8 +128,12 @@ function MessageBubble({
 }
 
 const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
-  ({ messages, actionPending, onAction, hasOlder, loadingOlder, onLoadOlder, onScroll }, ref) => {
+  ({ messages, selectedMessageIds, onToggleMessage, deliveries, deliveryPending, onSendDelivery, actionPending, onAction, hasOlder, loadingOlder, onLoadOlder, onScroll }, ref) => {
     let previousDay = '';
+    const entries = [
+      ...messages.map((message) => ({ id: message.id, timestamp: message.timestamp, message, delivery: null as ContextDelivery | null })),
+      ...deliveries.map((delivery) => ({ id: delivery.id, timestamp: delivery.occurredAt, message: null as AttendanceMessage | null, delivery })),
+    ].sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.id.localeCompare(right.id));
     return (
       <div
         ref={ref}
@@ -100,16 +149,20 @@ const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
             </Button>
           </div>
         )}
-        {messages.map((message) => {
-          const day = dayFormat.format(new Date(message.timestamp));
+        {entries.map((entry) => {
+          const day = dayFormat.format(new Date(entry.timestamp));
           const separator = day !== previousDay;
           previousDay = day;
           return (
-            <Fragment key={message.id}>
+            <Fragment key={`${entry.message ? 'message' : 'delivery'}:${entry.id}`}>
               {separator && (
                 <p className="py-1 text-center text-2xs font-medium text-fg-muted">{day}</p>
               )}
-              <MessageBubble message={message} actionPending={actionPending === message.id} onAction={onAction} />
+              {entry.message ? (
+                <MessageBubble message={entry.message} selected={selectedMessageIds.includes(entry.id)} onToggle={onToggleMessage} actionPending={actionPending === entry.id} onAction={onAction} />
+              ) : entry.delivery ? (
+                <DeliveryCard delivery={entry.delivery} pending={deliveryPending === entry.id} onSend={onSendDelivery} />
+              ) : null}
             </Fragment>
           );
         })}

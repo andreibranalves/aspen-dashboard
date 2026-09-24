@@ -65,10 +65,15 @@ export interface LocalQuotationHistoryRecord {
 
 export interface LocalDeliveryHistoryRecord {
   id: string;
+  quotationId: string;
   revisionId: string;
+  flowId: string;
   businessNumber: string;
   status: 'pendente' | 'enviado' | 'entregue' | 'falhou' | 'sem entrega registrada';
   date: string;
+  occurredAt: string;
+  url: string;
+  canSend: boolean;
 }
 
 export interface LocalCrmCandidate {
@@ -457,14 +462,18 @@ export function createPostgresWhatsappCrmRepository(
         .from(quoteRevisions)
         .where(inArray(quoteRevisions.quotationId, quotationIds))
         .orderBy(desc(quoteRevisions.version), asc(quoteRevisions.id));
-      const latestRevisionIds = [...new Set(revisionRows.map((row) => row.quotationId))]
-        .map((quotationId) => revisionRows.find((row) => row.quotationId === quotationId)?.id)
-        .filter((id): id is string => Boolean(id));
-      if (latestRevisionIds.length === 0) return [];
+      const latestRevisionIds = new Set(
+        [...new Set(revisionRows.map((row) => row.quotationId))]
+          .map((quotationId) => revisionRows.find((row) => row.quotationId === quotationId)?.id)
+          .filter((id): id is string => Boolean(id)),
+      );
+      if (revisionRows.length === 0) return [];
       const rows = await database
         .select({
           id: quotationDeliveries.id,
+          quotationId: quotations.id,
           revisionId: quotationDeliveries.revisionId,
+          flowId: quotationDeliveries.flowId,
           state: quotationDeliveries.state,
           updatedAt: quotationDeliveries.updatedAt,
           businessNumber: quotations.businessNumber,
@@ -472,15 +481,20 @@ export function createPostgresWhatsappCrmRepository(
         .from(quotationDeliveries)
         .innerJoin(quoteRevisions, eq(quotationDeliveries.revisionId, quoteRevisions.id))
         .innerJoin(quotations, eq(quoteRevisions.quotationId, quotations.id))
-        .where(inArray(quotationDeliveries.revisionId, latestRevisionIds))
+        .where(inArray(quotationDeliveries.revisionId, revisionRows.map((row) => row.id)))
         .orderBy(desc(quotationDeliveries.updatedAt), asc(quotationDeliveries.id))
         .limit(safeLimit);
       return rows.map((row) => ({
         id: row.id,
+        quotationId: row.quotationId,
         revisionId: row.revisionId,
+        flowId: row.flowId,
         businessNumber: cleanText(row.businessNumber),
         status: historyDeliveryStatus(row.state),
         date: historyDate(row.updatedAt),
+        occurredAt: row.updatedAt.toISOString(),
+        url: historyQuotationUrl(row.quotationId),
+        canSend: latestRevisionIds.has(row.revisionId) && row.state === 'queued',
       }));
     } catch (error) {
       return repositoryFailure(error, 'Não foi possível acessar o histórico de entregas.');

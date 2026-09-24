@@ -44,6 +44,33 @@ export interface AttendanceMessage {
   supersededBy: string | null;
 }
 
+export async function openReceivedMedia(messageId: string): Promise<void> {
+  const response = await fetch(`/api/whatsapp-message-media?id=${encodeURIComponent(messageId)}`, { credentials: 'same-origin' });
+  if (response.status === 401) {
+    window.location.hash = '#/login';
+    throw new Error('Sessão expirada.');
+  }
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(failure?.error || 'Mídia indisponível na origem.');
+  }
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (!contentType || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'audio/ogg'].includes(contentType)) {
+    throw new Error('Formato da mídia inválido.');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  if (blob.type === 'application/pdf') link.download = 'mensagem.pdf';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export type OutboxState =
   | 'queued'
   | 'dispatching'
@@ -132,9 +159,27 @@ export async function sendOperatorMessage(input: {
   conversationId: string;
   expectedIdentityVersion: number;
   body: string;
+  attachmentId?: string | null;
 }): Promise<SendResult> {
-  const body = await apiPost<{ message: SendResult }>('/whatsapp-messages', { ...input, attachmentIds: [] });
+  const body = await apiPost<{ message: SendResult }>('/whatsapp-messages', {
+    ...input, attachmentIds: input.attachmentId ? [input.attachmentId] : [],
+  });
   return body.message;
+}
+
+export async function uploadWhatsappAttachment(conversationId: string, file: File): Promise<{ id: string; fileName: string }> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Não foi possível ler o anexo.'));
+    reader.readAsDataURL(file);
+  });
+  const base64 = dataUrl.split(',', 2)[1] || '';
+  const extension = file.name.split('.').at(-1)?.toLowerCase();
+  const mimeType = file.type || ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf' } as Record<string, string>)[extension || ''] || '';
+  return apiPost<{ id: string; fileName: string }>('/whatsapp-attachments', {
+    conversationId, base64, mimeType, fileName: file.name,
+  });
 }
 
 export async function fetchSendByRequest(conversationId: string, clientRequestId: string): Promise<SendResult> {

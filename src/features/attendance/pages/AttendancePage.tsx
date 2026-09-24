@@ -27,6 +27,9 @@ import {
   type AttendanceStatusFilter,
 } from '@/lib/api/attendanceApi';
 import type { ApiError } from '@/lib/api/api';
+import { fetchAttendanceContext, type ContextDelivery } from '@/lib/api/attendanceContextApi';
+import { enqueueDelivery } from '@/lib/api/quotationDeliveryApi';
+import { prepareAtendimentoQuoteDraft } from '@/lib/api/atendimentoQuoteDraftApi';
 import ContextPanel from '@/features/attendance/components/ContextPanel';
 import ConversationList, { conversationName } from '@/features/attendance/components/ConversationList';
 import MessageComposer from '@/features/attendance/components/MessageComposer';
@@ -117,6 +120,8 @@ interface AttendancePageProps {
 
 export default function AttendancePage({ navigate }: AttendancePageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(selectedFromHash);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>('active');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -145,6 +150,52 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const readRequestRef = useRef(0);
   const wide = useWideLayout();
   const [contextOpen, setContextOpen] = useState(false);
+  const [deliveryView, setDeliveryView] = useState<{ conversationId: string; items: ContextDelivery[] } | null>(null);
+  const [deliveryPending, setDeliveryPending] = useState<string | null>(null);
+  const [selectedForQuote, setSelectedForQuote] = useState<string[]>([]);
+  const [preparingQuote, setPreparingQuote] = useState(false);
+
+  const loadDeliveries = useCallback(async () => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId) return;
+    try {
+      const context = await fetchAttendanceContext(conversationId);
+      if (selectedIdRef.current !== conversationId) return;
+      setDeliveryView({ conversationId, items: context.match === 'matched' ? context.deliveries || [] : [] });
+    } catch {
+      // The context panel displays its own error; messages remain usable.
+    }
+  }, []);
+
+  useEffect(() => {
+    setDeliveryView(null);
+    if (selectedId) void loadDeliveries();
+  }, [selectedId, loadDeliveries]);
+  useVisiblePolling(loadDeliveries, LIST_POLL_MS, Boolean(selectedId));
+
+  const sendDelivery = async (delivery: ContextDelivery) => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId || !delivery.canSend) return;
+    setDeliveryPending(delivery.id);
+    setStatusNotice(null);
+    try {
+      const current = await fetchAttendanceContext(conversationId);
+      const approved = current.match === 'matched' && current.deliveries?.some(
+        (item) => item.id === delivery.id && item.revisionId === delivery.revisionId && item.canSend,
+      );
+      if (!approved) {
+        if (selectedIdRef.current === conversationId) setStatusNotice('A entrega mudou. Atualize o contexto antes de enviar.');
+        return;
+      }
+      if (selectedIdRef.current !== conversationId) return;
+      await enqueueDelivery({ quotationId: delivery.quotationId, revisionId: delivery.revisionId, flowId: delivery.flowId });
+      if (selectedIdRef.current === conversationId) await loadDeliveries();
+    } catch (error) {
+      if (selectedIdRef.current === conversationId) setStatusNotice(errorMessage(error, 'Não foi possível enviar o orçamento.'));
+    } finally {
+      setDeliveryPending(null);
+    }
+  };
 
   useEffect(() => {
     const onHash = () => setSelectedId(selectedFromHash());
@@ -222,6 +273,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   // ── Selected conversation ──────────────────────────────────────────
   const loadThread = useCallback(async (conversationId: string) => {
     setThread(emptyThread(conversationId));
+    setSelectedForQuote([]);
     setPrefill(null);
     setHasUnseenBelow(false);
     setStatusNotice(null);
@@ -426,6 +478,37 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
     void pollThread();
   }, [pollThread]);
 
+  const useAiSuggestion = useCallback((conversationId: string, suggestion: string) => {
+    if (selectedIdRef.current !== conversationId) return;
+    setPrefill({ text: suggestion, token: Date.now() });
+  }, []);
+
+  const prepareQuote = async () => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId || selectedForQuote.length === 0 || preparingQuote) return;
+    const ids = [...selectedForQuote].sort();
+    const key = `aspen-attendance-quote-pending:${conversationId}`;
+    const selectionKey = ids.join(',');
+    let demandId: string = globalThis.crypto.randomUUID();
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem(key) || 'null') as { selectionKey?: string; demandId?: string } | null;
+      if (saved?.selectionKey === selectionKey && saved.demandId) demandId = saved.demandId;
+      window.sessionStorage.setItem(key, JSON.stringify({ selectionKey, demandId }));
+    } catch { /* A live request still uses one stable ID. */ }
+    setPreparingQuote(true);
+    setStatusNotice(null);
+    try {
+      const draft = await prepareAtendimentoQuoteDraft({ conversationId, demandId, messageIds: ids });
+      if (selectedIdRef.current !== conversationId) return;
+      try { window.sessionStorage.removeItem(key); } catch { /* unavailable */ }
+      navigate(draft.destination.split('#')[1] || '/novo-orcamento');
+    } catch (error) {
+      if (selectedIdRef.current === conversationId) setStatusNotice(errorMessage(error, 'Não foi possível preparar o orçamento.'));
+    } finally {
+      setPreparingQuote(false);
+    }
+  };
+
   const selectConversation = (id: string) => navigate(`/atendimento?conversationId=${encodeURIComponent(id)}`);
   const filtered = statusFilter !== 'active' || Boolean(debouncedSearch);
   const conversation = thread?.conversation || null;
@@ -540,12 +623,25 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                   {statusNotice}
                 </InlineAlert>
               )}
-              {thread.messages.length === 0 ? (
+              {selectedForQuote.length > 0 && (
+                <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2 text-xs">
+                  <span>{selectedForQuote.length} mensagens selecionadas</span>
+                  <Button size="sm" disabled={preparingQuote} onClick={() => void prepareQuote()}>
+                    {preparingQuote ? 'Preparando…' : 'Preparar orçamento'}
+                  </Button>
+                </div>
+              )}
+              {thread.messages.length === 0 && (deliveryView?.conversationId !== conversation.id || deliveryView.items.length === 0) ? (
                 <EmptyState icon={MessagesSquare} title="Sem mensagens registradas" className="flex-1 rounded-none" />
               ) : (
                 <MessageTimeline
                   ref={timelineRef}
                   messages={thread.messages}
+                  selectedMessageIds={selectedForQuote}
+                  onToggleMessage={(messageId) => setSelectedForQuote((current) => current.includes(messageId) ? current.filter((id) => id !== messageId) : [...current, messageId])}
+                  deliveries={deliveryView?.conversationId === conversation.id ? deliveryView.items : []}
+                  deliveryPending={deliveryPending}
+                  onSendDelivery={(delivery) => void sendDelivery(delivery)}
                   actionPending={actionPending}
                   onAction={(messageId, action) => void runAction(messageId, action)}
                   hasOlder={thread.hasOlder}
@@ -581,6 +677,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                     key={conversation.id}
                     conversationId={conversation.id}
                     identityVersion={conversation.identityVersion}
+                    onUseSuggestion={(text) => useAiSuggestion(conversation.id, text)}
                   />
                 </DetailDrawer>
               )}
@@ -594,6 +691,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 key={conversation.id}
                 conversationId={conversation.id}
                 identityVersion={conversation.identityVersion}
+                onUseSuggestion={(text) => useAiSuggestion(conversation.id, text)}
               />
             ) : null}
           </aside>

@@ -115,6 +115,7 @@ import {
   ensureCreationRequestId,
 } from '@/features/quotations/creationRequest';
 import { Heading } from '@/components/ui/heading';
+import { fetchAtendimentoQuoteDraft, type AtendimentoQuoteDraft } from '@/lib/api/atendimentoQuoteDraftApi';
 
 export type NewQuotationMode = 'conversation' | 'manual';
 
@@ -503,6 +504,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [manualIssuing, setManualIssuing] = useState(false);
   const [pendingExtraction, setPendingExtraction] = useState<Draft[]>([]);
   const [text, setText] = useState('');
+  const [incomingQuoteDraft, setIncomingQuoteDraft] = useState<AtendimentoQuoteDraft | null>(null);
+  const [activeQuoteDraft, setActiveQuoteDraft] = useState<AtendimentoQuoteDraft | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
@@ -759,6 +762,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   }, [mode]);
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.hash.split('?')[1] || '').has('demandId')) return;
     let raw: string | null;
     try {
       raw = window.sessionStorage.getItem('aspen_quote_prefill');
@@ -784,6 +788,27 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       // Prefill malformado é ignorado sem bloquear a entrada.
     }
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'conversation') return;
+    const demandId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('demandId');
+    if (!demandId) return;
+    let cancelled = false;
+    void fetchAtendimentoQuoteDraft(demandId).then((draft) => {
+      if (cancelled) return;
+      if (draft.demandId !== demandId) return;
+      if (draftsRef.current.some(draftHasWork) || text.trim()) {
+        setIncomingQuoteDraft(draft);
+      } else {
+        setText(draft.text);
+        setActiveQuoteDraft(draft);
+      }
+    }).catch(() => {
+      if (!cancelled) setExtractError('Não foi possível carregar a demanda da conversa.');
+    });
+    return () => { cancelled = true; };
+    // The demand is loaded once on arrival; edits to the text never trigger a refetch.
+  }, [mode]);
 
   useEffect(() => {
     if (!manualStorageHydrated || mode !== 'manual') return;
@@ -1280,7 +1305,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         setExtractError('Nenhum pedido identificado no texto.');
         return;
       }
-      const extracted = buildDraftsFromOrders(response.orders, '', templateKey);
+      const extracted = buildDraftsFromOrders(response.orders, '', templateKey).map((draft) => activeQuoteDraft ? {
+        ...draft,
+        edited: {
+          ...draft.edited,
+          nome: draft.edited.nome || activeQuoteDraft.name || '',
+          telefone: draft.edited.telefone || activeQuoteDraft.phone || '',
+          origem: 'WhatsApp',
+          quote_lead_id: activeQuoteDraft.quoteLeadId,
+          crm_deal_id: activeQuoteDraft.crmDealId || undefined,
+          client_id: activeQuoteDraft.clientId || undefined,
+        },
+      } : draft);
       const nonUrgent = extracted.filter((draft) => !draft.edited.urgente);
       const urgent = extracted.filter((draft) => draft.edited.urgente);
       if (nonUrgent.length || urgent.length) {
@@ -1307,7 +1343,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     } finally {
       if (isCurrent()) setExtracting(false);
     }
-  }, [appendOrQueueExtraction, buildDraftsFromOrders, fetchPricing, imageData, liveDraftOperation, orderTemplates, templateKey, text]);
+  }, [activeQuoteDraft, appendOrQueueExtraction, buildDraftsFromOrders, fetchPricing, imageData, liveDraftOperation, orderTemplates, templateKey, text]);
 
   const applyPending = useCallback((pending: Draft) => {
     if (liveDraftOperation) return;
@@ -2046,7 +2082,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
       {mode === 'conversation' ? (
         <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:flex-1 xl:grid-cols-2 xl:items-stretch">
-          <section aria-label="Conversa" className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
+          <section aria-label="Conversa" className="min-w-0 space-y-3 rounded-card border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
@@ -2056,6 +2092,19 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 <Settings size={14} /> Gerenciar modelos
               </Button>
             </div>
+            {incomingQuoteDraft && (
+              <InlineAlert tone="warning" action={
+                <Button type="button" variant="outline" size="sm" onClick={() => {
+                  setText(incomingQuoteDraft.text);
+                  setActiveQuoteDraft(incomingQuoteDraft);
+                  setIncomingQuoteDraft(null);
+                }}>
+                  {text.trim() ? 'Substituir texto' : 'Carregar seleção'}
+                </Button>
+              }>
+                Demanda da conversa pronta para revisão. Os rascunhos existentes foram preservados.
+              </InlineAlert>
+            )}
             <div className="relative mt-4 rounded-control border border-border-control bg-raised">
               <Textarea
                 ref={textareaRef}
@@ -2096,7 +2145,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <Button type="button" onClick={() => void handleExtract()} disabled={extracting || liveDraftOperation || (!text.trim() && !imageData)}>
                 {extracting ? <><Loader2 size={14} className="animate-spin" /> Extraindo…</> : <><PackagePlus size={14} /> Extrair dados</>}
               </Button>
-              {(text || imageData) && <Button type="button" variant="ghost" size="sm" disabled={liveDraftOperation} onClick={() => { extractionGeneration.current += 1; setText(''); clearImage(); setExtractError(null); }}>Limpar</Button>}
+              {(text || imageData) && <Button type="button" variant="ghost" size="sm" disabled={liveDraftOperation} onClick={() => { extractionGeneration.current += 1; setText(''); setActiveQuoteDraft(null); clearImage(); setExtractError(null); }}>Limpar</Button>}
             </div>
           </section>
 

@@ -80,6 +80,11 @@ const REFUSALS: Record<IntentRefusal, { status: number; code: string; error: str
     code: 'IDEMPOTENCY_CONFLICT',
     error: 'Esta tentativa de envio já foi registrada com outro conteúdo.',
   },
+  attachment_not_found: {
+    status: 409,
+    code: 'ATTACHMENT_UNAVAILABLE',
+    error: 'O anexo não pertence a esta conversa ou já foi usado.',
+  },
 };
 
 async function handle(run: () => Promise<FunctionResult>, failure: string): Promise<FunctionResult> {
@@ -110,11 +115,11 @@ export async function postOperatorMessage(
     if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) {
       throw new InputError('Versão de identidade inválida.');
     }
-    if (Array.isArray(body.attachmentIds) && body.attachmentIds.length > 0) {
-      throw new InputError('Envio de anexos ainda não está disponível.');
-    }
+    const attachmentIds = body.attachmentIds === undefined ? [] : body.attachmentIds;
+    if (!Array.isArray(attachmentIds) || attachmentIds.length > 1) throw new InputError('Informe no máximo um anexo.');
+    const attachmentId = attachmentIds.length ? uuid(attachmentIds[0], 'Anexo') : null;
     const text = typeof body.body === 'string' ? body.body.replace(/\r\n?/g, '\n') : '';
-    if (!text.trim()) throw new InputError('Escreva a mensagem antes de enviar.');
+    if (!text.trim() && !attachmentId) throw new InputError('Escreva uma mensagem ou selecione um anexo.');
     if (text.length > MAX_REPLY_CHARS) {
       return json(400, { code: 'MESSAGE_TOO_LARGE', error: `A mensagem passa de ${MAX_REPLY_CHARS} caracteres.` });
     }
@@ -125,6 +130,7 @@ export async function postOperatorMessage(
       conversationId,
       expectedIdentityVersion: version,
       body: text,
+      attachmentId,
     });
     // A repeated key returns the recorded operation and never transports again.
     const result =
