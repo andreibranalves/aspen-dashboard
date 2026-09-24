@@ -13,6 +13,12 @@ const designScaleSyntax = [
     selector: `JSXAttribute[name.name='size'] > JSXExpressionContainer > Literal${ICON_SIZES.map((n) => `[value!=${n}]`).join('')}`,
     message: `Tamanho de ícone fora da escala (${ICON_SIZES.join('/')}).`,
   },
+  {
+    selector:
+      "JSXOpeningElement[name.name=/^(div|span|p|li|ul|ol|section|article|header|footer|main|aside|nav|td|th|tr|img|label|form)$/]:has(> JSXAttribute[name.name='onClick']):not(:has(> JSXAttribute[name.name=/^(role|aria-hidden)$/])):not(:has(CallExpression[callee.property.name='stopPropagation']))",
+    message:
+      'onClick em elemento não interativo: use Button, MenuItem ou TableRow. Camada só de ponteiro (fechar ao clicar fora) declara aria-hidden="true"; stopPropagation é aceito.',
+  },
   { selector: String.raw`Literal[value=/(^|\s)-?z-\d/]`, message: Z_INDEX_MESSAGE },
   { selector: String.raw`TemplateElement[value.raw=/(^|\s)-?z-\d/]`, message: Z_INDEX_MESSAGE },
 ];

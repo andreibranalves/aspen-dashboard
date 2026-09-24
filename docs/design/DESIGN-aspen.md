@@ -126,6 +126,22 @@ positioned against the shell.
 a `meta` row (status, revision, dates), and `actions` on the right (secondary
 → primary). Descriptions are context (period, counts), never slogans.
 
+List pages (Clientes, Orçamentos, Pedidos, Produtos) use `ListPageLayout`
+(24px rhythm, bottom reserve for `BulkActionBar`) with an optional summary
+row, then `ListSection`: filters → content → pagination, 20px apart, on one
+surface card (`surface={false}` when the content is already a card grid).
+State, search and selection stay in the page.
+
+Vertical margins on children (`mt-*`, `mb-*`, `my-*`) are counted in
+`src/features` and `src/app` by `scripts/check-ui-ratchet.mjs` (in
+`verify:fast`). The count may only go down: prefer `gap`/`space-y` on the
+parent and lower the limit in the same change.
+
+`npm run test:visual` compares the main screens against
+`tests/visual/__screenshots__/` with mocked API data and a fixed clock, pixel
+for pixel. It runs locally, not in CI. After an intentional visual change,
+review the new images and run `npm run test:visual:update`.
+
 Intentional inner widths stay: Manual and Settings forms cap at 1060px, detail
 side panels are 280–336px from `xl`, Auto keeps its two-panel split.
 
@@ -154,6 +170,10 @@ global totals.
 ## Component and state rules
 
 Rows that open a record support keyboard activation and visible focus.
+`onClick` on a non-interactive element (`div`, `span`, `li`, `td`…) fails lint:
+use `Button`, `MenuItem` or `TableRow`. A pointer-only layer (click outside to
+close) declares `aria-hidden="true"`; a wrapper that only calls
+`stopPropagation` is allowed.
 Icon-only controls have accessible names (`Button size="icon|icon-sm"` without
 `aria-label` fails lint). Hover affordances have focus-visible
 or persistent keyboard and touch equivalents.

@@ -25,8 +25,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
-import PageShell from '@/components/shared/PageShell';
-import PageToolbar from '@/components/shared/PageToolbar';
+import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
 import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import BulkActionBar from '@/components/shared/BulkActionBar';
@@ -449,18 +448,22 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   );
 
   return (
-    <PageShell className={selectedCount > 0 ? 'space-y-6 pb-48 sm:pb-28' : 'space-y-6 pb-4'}>
-      <PageHeader
-        title="Orçamentos"
-        actions={
-          <>
-            <Button onClick={() => navigate('/novo-orcamento')} variant="default">
-              <PlusCircle />
-              Novo orçamento
-            </Button>
-          </>
+    <ListPageLayout
+      className={selectedCount > 0 ? 'max-sm:pb-48' : undefined}
+        header={
+  <PageHeader
+          title="Orçamentos"
+          actions={
+            <>
+              <Button onClick={() => navigate('/novo-orcamento')} variant="default">
+                <PlusCircle />
+                Novo orçamento
+              </Button>
+            </>
+          }
+        />
         }
-      />
+      >
 
       <StatGrid label="Resumo dos orçamentos">
         {[
@@ -473,17 +476,22 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         ))}
       </StatGrid>
 
-      <section aria-label="Lista de orçamentos" className="overflow-hidden rounded-card bg-surface p-5">
-        <PageToolbar className="mb-5">
+      <ListSection
+        label="Lista de orçamentos"
+        pagination={!loading && !error && data.length > 0 && (
+          <ListPagination label="Paginação de orçamentos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={onPageChange} onLimitChange={onLimitChange} />
+        )}
+        toolbar={<>
           <SearchField placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar orçamentos" />
           <Select value={status} onChange={(event) => onStatusClick(event.target.value)} aria-label="Filtrar por status">
             {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
           <Button type="button" variant="ghost" className="ml-auto" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
-        </PageToolbar>
+        </>}
+      >
 
       {/* Loading */}
-      {loading && <div className="p-4"><SkeletonTable cols={7} rows={8} /></div>}
+      {loading && <SkeletonTable cols={7} rows={8} />}
 
       {/* Error */}
       {!loading && error && (
@@ -599,8 +607,14 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           {data.map((row) => (
             <div
               key={row.id}
-              className={`cursor-pointer space-y-3 rounded-card border border-line bg-surface p-5 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              role="link"
+              tabIndex={0}
+              className={`cursor-pointer space-y-3 rounded-card border border-line bg-surface p-5 focus-inset ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.target !== event.currentTarget) return;
+                navigate(`/quotations/${encodeURIComponent(row.id)}`);
+              }}
             >
               <div className="flex items-start justify-between gap-3">
                 <div
@@ -655,10 +669,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         </div>
       )}
 
-      {!loading && !error && data.length > 0 && (
-        <div className="border-t border-line pt-4"><ListPagination label="Paginação de orçamentos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={onPageChange} onLimitChange={onLimitChange} /></div>
-      )}
-      </section>
+      </ListSection>
 
       <BulkActionBar visible={selectedCount > 0}>
         <div className="flex flex-wrap items-center gap-6">
@@ -735,6 +746,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         onConfirm={handleBulkDelete}
         onCancel={() => setBulkDeleteOpen(false)}
       />
-    </PageShell>
+    </ListPageLayout>
   );
 }

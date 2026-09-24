@@ -11,8 +11,7 @@ import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight } from 'luc
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
-import PageShell from '@/components/shared/PageShell';
-import PageToolbar from '@/components/shared/PageToolbar';
+import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
 import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
@@ -415,12 +414,14 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const summaryPeriodLabel = PERIODS.find((option) => option.value === period)?.summaryLabel ?? 'Últimos 30 dias';
 
   return (
-    <PageShell>
-      {/* PageHeader */}
-      <PageHeader
-        title="Pedidos"
-        actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
-      />
+    <ListPageLayout
+        header={
+  <PageHeader
+          title="Pedidos"
+          actions={<SalesOrderExportMenu period={period} status={status} search={search} />}
+        />
+        }
+      >
 
       {(summaryData || summaryLoading) && (
         <section aria-label={`Resumo comercial: ${summaryPeriodLabel.toLowerCase()}`} aria-busy={summaryLoading} className="space-y-3">
@@ -470,8 +471,12 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </InlineAlert>
       )}
 
-      <section className="rounded-card bg-surface p-5" aria-label="Lista de pedidos">
-      <PageToolbar className="mb-5">
+      <ListSection
+        label="Lista de pedidos"
+        pagination={!loading && !error && items.length > 0 && (
+          <ListPagination label="Paginação de pedidos" page={page} limit={limit} pageSizes={[10, 25, 50, 100]} hasNext={hasMore} onPageChange={setPage} onLimitChange={onLimitChange} />
+        )}
+        toolbar={<>
         <SearchField
           placeholder="Buscar pedido ou cliente"
           value={searchDraft}
@@ -511,7 +516,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             ))}
           </Select>
         </label>
-      </PageToolbar>
+      </>}
+      >
 
       {/* Loading */}
       {loading && <SkeletonTable cols={5} rows={8} size="lg" />}
@@ -663,13 +669,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </div>
       )}
 
-      {/* Pagination */}
-      {!loading && !error && items.length > 0 && (
-        <ListPagination label="Paginação de pedidos" page={page} limit={limit} pageSizes={[10, 25, 50, 100]} hasNext={hasMore} onPageChange={setPage} onLimitChange={onLimitChange} />
-      )}
-
-      </section>
-
-    </PageShell>
+      </ListSection>
+    </ListPageLayout>
   );
 }

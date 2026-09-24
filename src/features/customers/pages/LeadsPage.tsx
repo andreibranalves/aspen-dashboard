@@ -23,8 +23,7 @@ import { SearchField } from '@/components/ui/search-field';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import PageHeader from '@/components/shared/PageHeader';
-import PageShell from '@/components/shared/PageShell';
-import PageToolbar from '@/components/shared/PageToolbar';
+import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
 import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
@@ -609,24 +608,31 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   };
 
   return (
-    <PageShell className="space-y-5 pb-28">
-      <PageHeader
-        title="Clientes"
-        actions={
-          <>
-            <ExportCsvButton resource="clients" filters={{ search, status }}>
-              Exportar CSV
-            </ExportCsvButton>
-            <Button onClick={() => navigate?.('/leads/new')}>
-              <UserPlus />
-              Novo cliente
-            </Button>
-          </>
+    <ListPageLayout
+        header={
+  <PageHeader
+          title="Clientes"
+          actions={
+            <>
+              <ExportCsvButton resource="clients" filters={{ search, status }}>
+                Exportar CSV
+              </ExportCsvButton>
+              <Button onClick={() => navigate?.('/leads/new')}>
+                <UserPlus />
+                Novo cliente
+              </Button>
+            </>
+          }
+        />
         }
-      />
+      >
 
-      <section className="rounded-card bg-surface p-5" aria-label="Lista de clientes">
-      <PageToolbar className="mb-5">
+      <ListSection
+        label="Lista de clientes"
+        pagination={!loading && !error && data.length > 0 && (
+          <ListPagination label="Paginação de clientes" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={(nextPage) => { setPage(nextPage); void fetchData(search, nextPage, status, limit); }} onLimitChange={(value) => { setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} />
+        )}
+        toolbar={<>
         <SearchField
           placeholder="Buscar nome, empresa ou e-mail"
           value={search}
@@ -648,7 +654,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             Selecionar todos
           </label>
         )}
-      </PageToolbar>
+      </>}
+      >
 
       {loading && <SkeletonTable cols={6} rows={8} />}
       {!loading && error && (
@@ -896,11 +903,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           </div>
         </>
       )}
-      </section>
-
-      {!loading && !error && data.length > 0 && (
-        <ListPagination label="Paginação de clientes" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={(nextPage) => { setPage(nextPage); void fetchData(search, nextPage, status, limit); }} onLimitChange={(value) => { setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} />
-      )}
+      </ListSection>
 
       {selectedIds.length > 0 && (
         <BulkActionBar visible>
@@ -1143,6 +1146,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           setDrawerDiscardAction(null);
         }}
       />
-    </PageShell>
+    </ListPageLayout>
   );
 }
