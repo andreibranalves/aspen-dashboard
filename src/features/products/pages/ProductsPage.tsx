@@ -27,8 +27,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import Skeleton from '@/components/shared/Skeleton';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';
-import PageShell from '@/components/shared/PageShell';
-import PageToolbar from '@/components/shared/PageToolbar';
+import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
 import ListPagination from '@/components/shared/ListPagination';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
@@ -370,8 +369,8 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
   const hasFilters = Boolean(search.trim()) || status !== 'all';
 
   return (
-    <PageShell className="pb-28">
-      {showHeader && (
+    <ListPageLayout
+      header={showHeader && (
         <PageHeader
           title="Produtos"
           actions={
@@ -393,8 +392,14 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
           }
         />
       )}
-
-      <PageToolbar>
+    >
+      <ListSection
+        label="Lista de produtos"
+        surface={false}
+        pagination={!loading && !error && data.length > 0 && (
+          <ListPagination label="Paginação de produtos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={setPage} onLimitChange={onLimitChange} />
+        )}
+        toolbar={<>
         <SearchField
           id="product-search"
           placeholder="Buscar produto ou SKU"
@@ -421,7 +426,8 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         <Button type="button" variant="ghost" className="ml-auto" aria-pressed={selectionMode} onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }}>
           {selectionMode ? 'Cancelar seleção' : 'Selecionar'}
         </Button>
-      </PageToolbar>
+      </>}
+      >
 
       {showHeader && <div
         className="flex min-h-5 items-center justify-between gap-3 text-xs text-fg-muted"
@@ -561,9 +567,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         </section>
       )}
 
-      {!loading && !error && data.length > 0 && (
-        <ListPagination label="Paginação de produtos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={setPage} onLimitChange={onLimitChange} />
-      )}
+      </ListSection>
 
       <BulkActionBar visible={selectedCount > 0}>
         <div className="flex items-center gap-2 text-sm font-medium text-fg">
@@ -605,6 +609,6 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         }}
         onCancel={() => setPendingArchive(null)}
       />
-    </PageShell>
+    </ListPageLayout>
   );
 }

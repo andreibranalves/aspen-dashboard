@@ -100,6 +100,7 @@ const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
     };
 
     return (
+      // eslint-disable-next-line no-restricted-syntax -- primitivo que implementa a ativação por teclado da linha
       <tr
         ref={ref}
         tabIndex={isInteractive ? (tabIndex ?? 0) : tabIndex}
