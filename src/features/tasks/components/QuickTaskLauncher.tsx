@@ -27,7 +27,7 @@ export default function QuickTaskLauncher({ route }: { route: string }) {
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key.toLowerCase() !== SHORTCUT_KEY) return;
       if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
-      if (isEditableTarget(event.target) || document.querySelector('[role="dialog"]')) return;
+      if (isEditableTarget(event.target) || document.querySelector('[role=dialog]')) return;
       event.preventDefault();
       setOpen(true);
     };

@@ -12,6 +12,7 @@
   "tests/unit/duplicate-quotation-postgres.test.ts",
   "tests/unit/manual-contact-postgres.test.ts",
   "tests/unit/operator-deletion-postgres.test.ts",
+  "tests/unit/operator-tasks-postgres.test.ts",
   "tests/unit/opportunity-action-commands-postgres.test.ts",
   "tests/unit/opportunity-delivery-anchor-postgres.test.ts",
   "tests/unit/opportunity-inbound-response-transition-postgres.test.ts",
