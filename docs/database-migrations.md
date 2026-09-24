@@ -16,10 +16,6 @@ entrada manual. Ele só aceita alvo quando `migrate:apply` injeta
 sozinha não basta. Os consumidores técnicos existentes ficam preservados;
 remover esse entrypoint exige decisão explícita.
 
-O job `postgres` cria um fixture determinístico descartável antes de `verify:quotation-company`.
-O fixture exige ao menos uma revisão e uma linha de configurações, portanto a verificação
-agregada nunca passa com corpus vazio; ele só é usado no service container efêmero do CI.
-
 A migration de publicação dos templates oficiais é forward-only: ela mantém versões
 históricas e acrescenta as versões v2 de forma idempotente. Em caso de rollback de
 código, mantenha as colunas e versões aplicadas; restaure somente o código compatível

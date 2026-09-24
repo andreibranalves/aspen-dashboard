@@ -1,7 +1,7 @@
 # Runbook operacional do WhatsApp
 
-Readiness da aplicação, configuração do webhook Evolution e dos schedules QStash,
-prontidão de envio e canário Production. Nenhuma etapa executa deploy ou
+Readiness da aplicação, configuração do webhook Evolution e dos schedules QStash
+e prontidão de envio. Nenhuma etapa executa deploy ou
 migration; alterar webhook, schedule ou env é operação do responsável principal,
 com autorização própria (ver `AGENTS.md`).
 
@@ -113,19 +113,3 @@ Execute apenas um envio controlado para um destinatário designado e confirme o
 recebimento no dispositivo. Em seguida, verifique o estado persistido e os logs sem
 segredos, telefones ou texto da mensagem. Se houver qualquer divergência, desligue o
 kill switch e não repita o envio.
-
-## Canário Production
-
-O canário Production é somente leitura e não envia WhatsApp nem cria leads.
-Fluxos mutáveis são cobertos só pelo E2E controlado de
-[Preview isolado](./preview-isolation.md).
-
-Execute o canário depois de configurar os identificadores PostgreSQL existentes:
-
-```bash
-CANARY_BASE_URL="$PRODUCTION_BASE_URL" \
-CANARY_PASSWORD="$PRODUCTION_CANARY_PASSWORD" \
-CANARY_QUOTATION_ID="$KNOWN_PRODUCTION_POSTGRES_QUOTATION_ID" \
-CANARY_PUBLIC_QUOTATION_URL="$KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL" \
-node scripts/postgres-only-canary.mjs
-```

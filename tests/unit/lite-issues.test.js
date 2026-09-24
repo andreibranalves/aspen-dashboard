@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseBetaCleanupCandidates } from '../../api/_infrastructure/db/repositories/beta-cleanup-repository.js';
 import { createWhatsappContextHandler } from '../../api/_modules/whatsapp-context.js';
 import { sendQuotationEmailViaResend } from '../../api/_infrastructure/integrations/resend/client.js';
-import { assertCleanupRecoveryEvidence } from '../../scripts/beta-cleanup.mjs';
-import { parseBaselineArgs as parseLiteBaselineArgs } from '../../scripts/lite-baseline.mjs';
 import { runPreviewPreflight } from '../../scripts/preview-preflight.mjs';
 
 const id = '00000000-0000-4000-8000-000000000001';
@@ -39,20 +36,6 @@ test('Preview blocks external email writes before transport', async () => {
     /Integrações externas desativadas/,
   );
   assert.equal(calls, 0);
-});
-
-test('baseline and cleanup inputs require explicit typed stable IDs', () => {
-  assert.deepEqual(parseLiteBaselineArgs(['--tag', 'aspen-lite-baseline-20260821']), {
-    tag: 'aspen-lite-baseline-20260821', push: false, evidence: '', backup: '', restore: '',
-  });
-  const candidates = parseBetaCleanupCandidates({ candidates: [
-    { type: 'quotation', id },
-    { type: 'quotation', id },
-    { type: 'client', id: id2 },
-  ] });
-  assert.deepEqual(candidates, [{ type: 'quotation', id }, { type: 'client', id: id2 }]);
-  assert.throws(() => parseBetaCleanupCandidates({ ids: [id] }), /type e id/);
-  assert.throws(() => assertCleanupRecoveryEvidence({ LITE_BASELINE_TAG: 'aspen-lite-baseline-20260821', LITE_BASELINE_RESTORE_CONFIRMED: '1' }), /Baseline #41/);
 });
 
 test('WhatsApp context never matches by name and projects safe empty history', async () => {

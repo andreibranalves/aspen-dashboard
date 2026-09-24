@@ -89,7 +89,7 @@ test('CLI filtra por operação solicitada', () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /operacao: migration/);
-    assert.doesNotMatch(result.stdout, /operacao: canary/);
+    assert.doesNotMatch(result.stdout, /operacao: backup-restore/);
   });
 });
 
@@ -102,11 +102,11 @@ test('CLI falha fechada para operação desconhecida', () => {
 test('saída nunca contém valores das variáveis', () => {
   withTempDir((root) => {
     const filePath = join(root, 'external.env');
-    const contract = OPERATION_ENV_CONTRACTS.cleanup;
-    const lines = contract.keys.map((key) => `${key}=${secret}`);
+    const contract = OPERATION_ENV_CONTRACTS['backup-restore'];
+    const lines = [...contract.keys, ...contract.anyOf.flat()].map((key) => `${key}=${secret}`);
     writeFileSync(filePath, `${lines.join('\n')}\n`);
 
-    const result = runCli(['cleanup'], { CUTOVER_ENV_FILE: filePath });
+    const result = runCli(['backup-restore'], { CUTOVER_ENV_FILE: filePath });
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stdout, new RegExp(secret));
     assert.match(result.stdout, /DATABASE_URL: present/);

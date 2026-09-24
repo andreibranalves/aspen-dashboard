@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -99,25 +96,6 @@ test('materialization performs one idempotent insert and never copies provider m
   assert.match(text, /crm_eligible/);
   assert.match(text, /GROUP BY d\.delivery_id/);
   assert.doesNotMatch(text, /GROUP BY d\.id\b/);
-});
-
-test('companion SQL matches TS eligibility and is syntactically insertable', () => {
-  const sql = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), '../../scripts/materialize-quotation-follow-up-queue.sql'),
-    'utf8',
-  );
-  assert.match(sql, /has_accepted_step\s+OR l\.delivery_state = 'provider_accepted'/);
-  assert.match(sql, /THEN 'held'/);
-  assert.match(sql, /l\.phone ILIKE '%@lid'/);
-  assert.match(sql, /completion_source = 'provider_receipt'/);
-  assert.match(sql, /quotation_status IS DISTINCT FROM 'emitido'/);
-  assert.match(sql, /client_archived/);
-  assert.match(sql, /crm_eligible/);
-  assert.match(sql, /quotation-follow-up-commercial-facts/);
-  assert.match(sql, /GROUP BY d\.delivery_id/);
-  assert.doesNotMatch(sql, /GROUP BY d\.id\b/);
-  assert.match(sql, /transport_started_at, created_at, updated_at\s*\)\s*SELECT/s);
-  assert.doesNotMatch(sql, /markAccepted|delivered_at = now\(\)/i);
 });
 
 test('memory client archive hook projects the durable archive fact', async () => {

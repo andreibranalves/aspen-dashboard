@@ -14,10 +14,6 @@ import { createPostgresQuoteLeadRepository } from '../../api/_infrastructure/db/
 import { createPostgresOpportunityActionRepository } from '../../api/_infrastructure/db/repositories/opportunity-actions-repository.js';
 import { createPostgresCrmDealRepository } from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 import { createPostgresClientRepository } from '../../api/_infrastructure/db/repositories/client-repository.js';
-import {
-  BetaCleanupBlockedError,
-  createPostgresBetaCleanupRepository,
-} from '../../api/_infrastructure/db/repositories/beta-cleanup-repository.js';
 import { ClientDuplicateError } from '../../api/_modules/client-schema.js';
 import { createCoreHandler as createClientDetailHandler } from '../../api/_modules/client-detail.js';
 import * as schemaNamespace from '../../api/_infrastructure/db/schema.js';
@@ -338,40 +334,6 @@ test(
         WHERE opportunity_id = ${record.crmDealId!}::uuid
       `;
       assert.equal(total, '1', 'the action history is preserved');
-    } finally {
-      await clearIngestedLeads([record.id]);
-    }
-  }
-);
-
-test(
-  'beta cleanup fails closed for opportunities with action history',
-  { skip: databaseSkip, concurrency: false },
-  async () => {
-    const clock = { current: NOW };
-    const leads = leadRepository(clock);
-    const record = await leads.upsert(leadInput('conv-queue-cleanup-blocked'));
-    try {
-      const cleanup = createPostgresBetaCleanupRepository(() => db);
-      const plan = await cleanup.plan([{ type: 'deal', id: record.crmDealId! }]);
-      assert.equal(
-        plan.blockers.some(
-          (blocker) => blocker.type === 'commercial_history' && blocker.id === record.crmDealId
-        ),
-        true,
-        'the plan surfaces the durable history as a blocker'
-      );
-      await assert.rejects(
-        () => cleanup.apply([{ type: 'deal', id: record.crmDealId! }]),
-        (error: unknown) =>
-          error instanceof BetaCleanupBlockedError &&
-          /histórico/i.test(String((error as Error).message))
-      );
-      assert.equal(
-        await hasRow(crmDeals, record.crmDealId!),
-        true,
-        'nothing is removed when the cleanup is blocked'
-      );
     } finally {
       await clearIngestedLeads([record.id]);
     }
