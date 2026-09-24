@@ -9,6 +9,8 @@ export type MessageActionName = 'cancel' | 'confirm_sent' | 'confirm_not_sent' |
 
 interface MessageTimelineProps {
   messages: AttendanceMessage[];
+  selectedMessageIds: string[];
+  onToggleMessage: (messageId: string) => void;
   deliveries: ContextDelivery[];
   deliveryPending: string | null;
   onSendDelivery: (delivery: ContextDelivery) => void;
@@ -39,10 +41,14 @@ function DeliveryCard({ delivery, pending, onSend }: { delivery: ContextDelivery
 
 function MessageBubble({
   message,
+  selected,
+  onToggle,
   actionPending,
   onAction,
 }: {
   message: AttendanceMessage;
+  selected: boolean;
+  onToggle: (messageId: string) => void;
   actionPending: boolean;
   onAction: (messageId: string, action: MessageActionName) => void;
 }) {
@@ -54,6 +60,11 @@ function MessageBubble({
   const resendable = message.outboxState === 'failed' || message.outboxState === 'cancelled';
   return (
     <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
+      {message.type === 'text' && message.body && (
+        <Button variant="ghost" size="xs" aria-pressed={selected} onClick={() => onToggle(message.id)}>
+          {selected ? 'Selecionada' : 'Selecionar para orçamento'}
+        </Button>
+      )}
       <div
         className={cn(
           'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-xs',
@@ -101,7 +112,7 @@ function MessageBubble({
 }
 
 const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
-  ({ messages, deliveries, deliveryPending, onSendDelivery, actionPending, onAction, hasOlder, loadingOlder, onLoadOlder, onScroll }, ref) => {
+  ({ messages, selectedMessageIds, onToggleMessage, deliveries, deliveryPending, onSendDelivery, actionPending, onAction, hasOlder, loadingOlder, onLoadOlder, onScroll }, ref) => {
     let previousDay = '';
     const entries = [
       ...messages.map((message) => ({ id: message.id, timestamp: message.timestamp, message, delivery: null as ContextDelivery | null })),
@@ -132,7 +143,7 @@ const MessageTimeline = forwardRef<HTMLDivElement, MessageTimelineProps>(
                 <p className="py-1 text-center text-2xs font-medium text-fg-muted">{day}</p>
               )}
               {entry.message ? (
-                <MessageBubble message={entry.message} actionPending={actionPending === entry.id} onAction={onAction} />
+                <MessageBubble message={entry.message} selected={selectedMessageIds.includes(entry.id)} onToggle={onToggleMessage} actionPending={actionPending === entry.id} onAction={onAction} />
               ) : entry.delivery ? (
                 <DeliveryCard delivery={entry.delivery} pending={deliveryPending === entry.id} onSend={onSendDelivery} />
               ) : null}
