@@ -1,0 +1,43 @@
+{
+  "_meta": {
+    "source": "GET /instance/fetchInstances",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "version": "2.3.7",
+    "webhookEvents": [
+      "MESSAGES_UPSERT",
+      "MESSAGES_UPDATE"
+    ],
+    "webhookEnabled": true,
+    "webhookByEvents": false,
+    "webhookBase64": false,
+    "instanceKeys": [
+      "Chatwoot",
+      "Nats",
+      "Proxy",
+      "Rabbitmq",
+      "Setting",
+      "Sqs",
+      "Websocket",
+      "_count",
+      "businessId",
+      "clientName",
+      "connectionStatus",
+      "createdAt",
+      "disconnectionAt",
+      "disconnectionObject",
+      "disconnectionReasonCode",
+      "id",
+      "integration",
+      "name",
+      "number",
+      "ownerJid",
+      "profileName",
+      "profilePicUrl",
+      "token",
+      "updatedAt"
+    ]
+  }
+}

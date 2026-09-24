@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "source": "POST /chat/getBase64FromMediaMessage",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "status": 201,
+    "responseKeys": [
+      "base64",
+      "buffer",
+      "fileName",
+      "mediaType",
+      "mimetype",
+      "size"
+    ],
+    "response": {
+      "mediaType": "documentMessage",
+      "fileName": "arquivo-teste.pdf",
+      "size": {
+        "fileLength": {
+          "low": 49428,
+          "high": 0,
+          "unsigned": true
+        }
+      },
+      "mimetype": "application/pdf",
+      "base64": "[REMOVIDO]",
+      "buffer": null
+    },
+    "decodedBytes": 49428,
+    "magic": "25504446"
+  }
+}

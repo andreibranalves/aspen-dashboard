@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "source": "POST /chat/findMessages (registro armazenado; mesmo formato de data no webhook)",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "id": "FIXTURE0025ABCDEF",
+    "key": {
+      "id": "FIXTURE0002ABCDEF",
+      "fromMe": true,
+      "remoteJid": "100000000001@lid",
+      "participant": "",
+      "remoteJidAlt": "551100000023@s.whatsapp.net",
+      "addressingMode": "lid"
+    },
+    "pushName": "Texto sintético",
+    "messageType": "conversation",
+    "message": {
+      "conversation": "Texto sintético"
+    },
+    "messageTimestamp": 1790255730,
+    "instanceId": "00000000-0000-4000-8000-000000000024",
+    "source": "web",
+    "contextInfo": {
+      "mentionedJid": [],
+      "groupMentions": [],
+      "disappearingMode": {
+        "trigger": 1,
+        "initiator": 0,
+        "initiatedByMe": false
+      },
+      "statusAttributions": [],
+      "ephemeralSettingTimestamp": {
+        "low": 1790255700,
+        "high": 0,
+        "unsigned": false
+      }
+    },
+    "MessageUpdate": [
+      {
+        "status": "DELIVERY_ACK"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "source": "POST /chat/getBase64FromMediaMessage",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "status": 201,
+    "responseKeys": [
+      "base64",
+      "buffer",
+      "fileName",
+      "mediaType",
+      "mimetype",
+      "size"
+    ],
+    "response": {
+      "mediaType": "audioMessage",
+      "fileName": "arquivo-teste.oga",
+      "size": {
+        "fileLength": {
+          "low": 6679,
+          "high": 0,
+          "unsigned": true
+        }
+      },
+      "mimetype": "audio/ogg; codecs=opus",
+      "base64": "[REMOVIDO]",
+      "buffer": null
+    },
+    "decodedBytes": 6679,
+    "magic": "4f676753"
+  }
+}

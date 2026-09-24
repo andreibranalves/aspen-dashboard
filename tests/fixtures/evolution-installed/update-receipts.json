@@ -1,0 +1,64 @@
+{
+  "_meta": {
+    "source": "POST /chat/findStatusMessage",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": [
+    {
+      "id": "FIXTURE0029ABCDEF",
+      "keyId": "FIXTURE0030ABCDEF",
+      "remoteJid": "100000000001@lid",
+      "fromMe": true,
+      "participant": null,
+      "pollUpdates": null,
+      "status": "DELIVERY_ACK",
+      "messageId": "FIXTURE0031ABCDEF",
+      "instanceId": "00000000-0000-4000-8000-000000000024"
+    },
+    {
+      "id": "FIXTURE0032ABCDEF",
+      "keyId": "FIXTURE0033ABCDEF",
+      "remoteJid": "100000000001@lid",
+      "fromMe": true,
+      "participant": null,
+      "pollUpdates": null,
+      "status": "DELIVERY_ACK",
+      "messageId": "FIXTURE0034ABCDEF",
+      "instanceId": "00000000-0000-4000-8000-000000000024"
+    },
+    {
+      "id": "FIXTURE0035ABCDEF",
+      "keyId": "FIXTURE0030ABCDEF",
+      "remoteJid": "100000000001@lid",
+      "fromMe": true,
+      "participant": null,
+      "pollUpdates": null,
+      "status": "SERVER_ACK",
+      "messageId": "FIXTURE0031ABCDEF",
+      "instanceId": "00000000-0000-4000-8000-000000000024"
+    },
+    {
+      "id": "FIXTURE0036ABCDEF",
+      "keyId": "FIXTURE0037ABCDEF",
+      "remoteJid": "100000000001@lid",
+      "fromMe": true,
+      "participant": null,
+      "pollUpdates": null,
+      "status": "SERVER_ACK",
+      "messageId": "FIXTURE0038ABCDEF",
+      "instanceId": "00000000-0000-4000-8000-000000000024"
+    },
+    {
+      "id": "FIXTURE0039ABCDEF",
+      "keyId": "FIXTURE0040ABCDEF",
+      "remoteJid": "100000000001@lid",
+      "fromMe": true,
+      "participant": null,
+      "pollUpdates": null,
+      "status": "DELIVERY_ACK",
+      "messageId": "FIXTURE0041ABCDEF",
+      "instanceId": "00000000-0000-4000-8000-000000000024"
+    }
+  ]
+}

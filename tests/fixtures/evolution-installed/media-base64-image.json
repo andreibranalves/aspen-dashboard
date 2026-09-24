@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "source": "POST /chat/getBase64FromMediaMessage",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "status": 201,
+    "responseKeys": [
+      "base64",
+      "buffer",
+      "fileName",
+      "mediaType",
+      "mimetype",
+      "size"
+    ],
+    "response": {
+      "mediaType": "imageMessage",
+      "fileName": "arquivo-teste.jpeg",
+      "size": {
+        "fileLength": {
+          "low": 416000,
+          "high": 0,
+          "unsigned": true
+        },
+        "height": 1600,
+        "width": 900
+      },
+      "mimetype": "image/jpeg",
+      "base64": "[REMOVIDO]",
+      "buffer": null
+    },
+    "decodedBytes": 416000,
+    "magic": "ffd8ffe0"
+  }
+}

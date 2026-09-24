@@ -1,0 +1,78 @@
+{
+  "_meta": {
+    "source": "POST /message/sendMedia",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "request": {
+      "number": "551100000023",
+      "mediatype": "image",
+      "mimetype": "image/png",
+      "media": "[REMOVIDO]",
+      "fileName": "arquivo-teste.png",
+      "caption": "Texto sintético"
+    },
+    "status": 201,
+    "response": {
+      "key": {
+        "remoteJid": "551100000023@s.whatsapp.net",
+        "fromMe": true,
+        "id": "FIXTURE0042ABCDEF"
+      },
+      "pushName": "Texto sintético",
+      "status": "PENDING",
+      "message": {
+        "imageMessage": {
+          "interactiveAnnotations": [],
+          "scanLengths": [],
+          "annotations": [],
+          "url": "[REMOVIDO]",
+          "mimetype": "image/png",
+          "caption": "Texto sintético",
+          "fileSha256": "[REMOVIDO]",
+          "fileLength": {
+            "low": 270,
+            "high": 0,
+            "unsigned": true
+          },
+          "height": 1,
+          "width": 1,
+          "mediaKey": "[REMOVIDO]",
+          "fileEncSha256": "[REMOVIDO]",
+          "directPath": "[REMOVIDO]",
+          "mediaKeyTimestamp": "[REMOVIDO]",
+          "jpegThumbnail": "[REMOVIDO]",
+          "contextInfo": {
+            "mentionedJid": [],
+            "groupMentions": [],
+            "ephemeralSettingTimestamp": {
+              "low": 1790083297,
+              "high": 0,
+              "unsigned": false
+            },
+            "disappearingMode": {
+              "initiator": 0
+            }
+          }
+        }
+      },
+      "contextInfo": {
+        "mentionedJid": [],
+        "groupMentions": [],
+        "ephemeralSettingTimestamp": {
+          "low": 1790083297,
+          "high": 0,
+          "unsigned": false
+        },
+        "disappearingMode": {
+          "initiator": 0
+        }
+      },
+      "messageType": "imageMessage",
+      "messageTimestamp": 1790256097,
+      "instanceId": "00000000-0000-4000-8000-000000000024",
+      "source": "web"
+    }
+  }
+}
