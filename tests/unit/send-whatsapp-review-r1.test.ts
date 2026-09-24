@@ -289,6 +289,7 @@ test('snapshot path ignores obsolete caller/deal/name/items metadata', async () 
       repository: repository(),
       store: store(),
       token: () => publicToken,
+      renderPdf: async () => validPdf(),
     });
     assert.equal(response.statusCode, 200);
     const result = JSON.parse(response.body || '{}');
@@ -335,13 +336,14 @@ test('selected non-latest revision sends its recipient, name, and items instead 
       quotation_id: businessNumber,
       revision_id: selectedRevisionId,
       nome: 'Caller Name',
-      sequence: { steps: [{ type: 'text', template: '(nome) - (produto_resumo)' }, { type: 'document', source: 'quotation_pdf' }] },
+      sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'text', template: '(nome) - (produto_resumo)' }, { type: 'document', source: 'quotation_pdf' }] },
     }), {
       repository: {
         get: async (id: string) => id === selectedRevisionId ? selected : id === latestRevisionId ? latest : null,
       } as any,
       store: store(),
       token: () => publicToken,
+      renderPdf: async () => validPdf(),
     });
     assert.equal(response.statusCode, 200);
     const capturedBody: any = providerBodies[0];
@@ -398,6 +400,7 @@ test('media-store read failure fails closed before provider or text steps', asyn
       repository: repository(),
       store: store(),
       token: () => publicToken,
+      renderPdf: async () => validPdf(),
       readMediaRecords: async () => { throw new Error('KV down'); },
     });
     assert.equal(response.statusCode, 503);
@@ -724,6 +727,7 @@ test('direct PostgreSQL send delivers an owned MP4 as Evolution video', async ()
       repository: repository(),
       store: store(),
       token: () => publicToken,
+      renderPdf: async () => validPdf(),
       mediaRecords: [{
         id: 'direct-video',
         product_group: 'canga',
@@ -753,7 +757,7 @@ test('direct production path uses durable boundary and blocks replay', async () 
   let providerCalls = 0;
   globalThis.fetch = (async (_input, init) => { providerCalls += 1; return new Response(JSON.stringify({ accepted: true, message_id: `provider-${providerCalls}` }), { status: 200 }); }) as typeof fetch;
   try {
-    const dependencies = { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any;
+    const dependencies = { repository: repository(), store: store(), token: () => publicToken, renderPdf: async () => validPdf(), deliveryRepository: boundary } as any;
     const body = { quotation_id: businessNumber, revision_id: revisionId, sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] } };
     const first = await sendWhatsapp(event(body), dependencies);
     const second = await sendWhatsapp(event(body), dependencies);
@@ -772,7 +776,7 @@ test('business number plus quote revision alias constructs durable boundary', as
   globalThis.fetch = (async () => new Response(JSON.stringify({ accepted: true, message_id: 'provider-alias' }), { status: 200 })) as typeof fetch;
   try {
     const response = await sendWhatsapp(event({ business_number: businessNumber, quote_revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } }), {
-      repository: repository(), store: store(), token: () => publicToken,
+      repository: repository(), store: store(), token: () => publicToken, renderPdf: async () => validPdf(),
       deliveryRepositoryFactory: () => { factoryCalls += 1; return boundary; },
     } as any);
     assert.equal(response.statusCode, 200);
@@ -789,12 +793,12 @@ test('active and uncertain direct replays never call provider or overwrite state
   try {
     for (const state of ['transporting', 'accepted_partial']) {
       const boundary = deliveryBoundary(state);
-      const response = await sendWhatsapp(event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } }), { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any);
+      const response = await sendWhatsapp(event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } }), { repository: repository(), store: store(), token: () => publicToken, renderPdf: async () => validPdf(), deliveryRepository: boundary } as any);
       assert.equal(response.statusCode, 409);
       assert.equal(boundary.current.state, state);
     }
     const reconciling = deliveryBoundary('reconciling');
-    const response = await sendWhatsapp(event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [] } }), { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: reconciling } as any);
+    const response = await sendWhatsapp(event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [] } }), { repository: repository(), store: store(), token: () => publicToken, renderPdf: async () => validPdf(), deliveryRepository: reconciling } as any);
     assert.equal(response.statusCode, 400);
     assert.equal(reconciling.current.state, 'reconciling');
     assert.equal(providerCalls, 0);
@@ -817,7 +821,7 @@ test('retryable direct delivery is reclaimed once and overlapping replay cannot 
     return new Response(JSON.stringify({ accepted: true, message_id: 'provider-owned' }), { status: 200 });
   }) as typeof fetch;
   try {
-    const dependencies = { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any;
+    const dependencies = { repository: repository(), store: store(), token: () => publicToken, renderPdf: async () => validPdf(), deliveryRepository: boundary } as any;
     const request = event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } });
     const first = sendWhatsapp(request, dependencies);
     await providerStarted;
@@ -838,7 +842,7 @@ test('revision identifier aliases finish uncertain provider failures in reconcil
     globalThis.fetch = (async () => { throw new Error('network uncertain'); }) as typeof fetch;
     const boundary = deliveryBoundary();
     try {
-      const response = await sendWhatsapp(event({ quotation_id: businessNumber, [alias]: revisionId, sequence: { steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] } }), { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any);
+      const response = await sendWhatsapp(event({ quotation_id: businessNumber, [alias]: revisionId, sequence: { steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] } }), { repository: repository(), store: store(), token: () => publicToken, renderPdf: async () => validPdf(), deliveryRepository: boundary } as any);
       assert.equal(response.statusCode, 502);
       assert.equal(boundary.current.state, 'reconciling');
       assert.equal(boundary.states.at(-1), 'reconciling');
