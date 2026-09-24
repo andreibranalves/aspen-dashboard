@@ -9,14 +9,20 @@ import { cn } from '@/lib/utils';
 
 export type ToastTone = 'success' | 'error' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: number;
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  toast: (message: string, tone?: ToastTone) => void;
+  toast: (message: string, tone?: ToastTone, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -38,6 +44,7 @@ const AUTO_DISMISS_MS: Record<ToastTone, number> = {
   info: 5000,
   error: 8000,
 };
+const ACTION_DISMISS_MS = 8000;
 
 let nextToastId = 1;
 
@@ -54,10 +61,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const toast = useCallback((message: string, tone: ToastTone = 'success') => {
+  const toast = useCallback((message: string, tone: ToastTone = 'success', action?: ToastAction) => {
     const id = nextToastId++;
-    setToasts((prev) => [...prev.slice(-3), { id, tone, message }]);
-    const timer = setTimeout(() => dismiss(id), AUTO_DISMISS_MS[tone]);
+    setToasts((prev) => [...prev.slice(-3), { id, tone, message, action }]);
+    const timer = setTimeout(() => dismiss(id), action ? ACTION_DISMISS_MS : AUTO_DISMISS_MS[tone]);
     timersRef.current.set(id, timer);
   }, [dismiss]);
 
@@ -89,6 +96,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           >
             <Icon size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">{item.message}</span>
+            {item.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  dismiss(item.id);
+                  item.action?.onClick();
+                }}
+                className="-my-1 shrink-0 rounded-control px-2 py-1 font-semibold underline-offset-2 transition-colors hover:bg-fg/5 hover:underline"
+              >
+                {item.action.label}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => dismiss(item.id)}

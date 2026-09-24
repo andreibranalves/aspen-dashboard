@@ -101,6 +101,8 @@ export interface ProjectedSalesOrderListRow {
   delivery_date: string;
   per_delivered: number | string;
   source_quotation?: string;
+  /** Prazo final de produção; ausente até a arte ser aprovada. */
+  deadline?: string;
 }
 
 export interface ProjectedProductListRow {
@@ -834,6 +836,10 @@ export function projectSalesOrderListRow(value: unknown): ProjectedSalesOrderLis
     per_delivered: delivered,
   };
   if (sourceQuotation) result.source_quotation = sourceQuotation;
+  const production = asRecord(source.production);
+  if (typeof production?.deadline === 'string' && production.deadline) {
+    result.deadline = production.deadline;
+  }
   return result;
 }
 

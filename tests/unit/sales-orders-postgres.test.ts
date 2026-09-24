@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -24,6 +25,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/sales-orders-repository.js';
 import { createSalesOrderFromQuotationHandler } from '../../api/_modules/sales-order-from-quotation.js';
 import { createSalesOrdersHandler } from '../../api/_modules/sales-orders.js';
+import { productionDeadline } from '../../api/_modules/sales-order-production.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
@@ -169,94 +171,52 @@ test('sales handlers use local repository contracts and preserve response fields
   assert.equal(repository.calls.create, 'ORC-20980001');
 });
 
-test('sales order PATCH validates progress, derives status, and returns updated detail', async () => {
-  let detail = orderDetail();
-  const repository: SalesOrdersRepository = {
-    async list() {
-      return {
-        success: true,
-        items: [detail],
-        page: 1,
-        limit: 25,
-        total: 1,
-        has_more: false,
-      };
-    },
-    async get(id) {
-      return id === detail.id ? detail : null;
-    },
-    async update(id, input) {
+test('sales order PATCH parses production actions and GET exposes board and alerts', async () => {
+  const detail = orderDetail();
+  const applied: unknown[] = [];
+  const repository = {
+    ...memoryRepository(),
+    async apply(id: string, action: unknown) {
       if (id !== detail.id) {
         const error = new Error('Pedido de Venda não encontrado.') as Error & { statusCode: number };
         error.statusCode = 404;
         throw error;
       }
-      if (detail.status === 'Cancelled') {
-        const error = new Error('Pedidos cancelados não podem ser alterados.') as Error & {
-          statusCode: number;
-        };
+      applied.push(action);
+      if ((action as { expected_stage?: string }).expected_stage === 'pronto') {
+        const error = new Error('O pedido já está em outra etapa.') as Error & { statusCode: number };
         error.statusCode = 409;
         throw error;
       }
-      detail = {
-        ...detail,
-        per_billed: input.per_billed ?? detail.per_billed,
-        per_delivered: input.per_delivered ?? detail.per_delivered,
-        status:
-          (input.per_billed ?? detail.per_billed) === 100 &&
-          (input.per_delivered ?? detail.per_delivered) < 100
-            ? 'To Deliver'
-            : (input.per_delivered ?? detail.per_delivered) === 100 &&
-                (input.per_billed ?? detail.per_billed) < 100
-              ? 'To Bill'
-              : (input.per_billed ?? detail.per_billed) === 100 &&
-                  (input.per_delivered ?? detail.per_delivered) === 100
-                ? 'Completed'
-                : 'To Deliver and Bill',
-      };
       return detail;
     },
-  };
+    async board() {
+      return { success: true, items: [detail], attention_count: 3 };
+    },
+  } as unknown as SalesOrdersRepository;
   const handler = createSalesOrdersHandler({ repository });
 
-  const billed = await handler(event('PATCH', { per_billed: 100 }, { id: detail.id }));
-  assert.equal(billed.statusCode, 200);
-  assert.equal(JSON.parse(billed.body || '{}').per_billed, 100);
-  assert.equal(JSON.parse(billed.body || '{}').status, 'To Deliver');
+  const advance = { action: 'advance', expected_stage: 'aguardando_entrada', date: '2098-08-10' };
+  const ok = await handler(event('PATCH', advance, { id: detail.id }));
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual(applied.at(-1), advance);
 
-  const delivered = await handler(event('PATCH', { per_delivered: 100 }, { id: detail.id }));
-  assert.equal(delivered.statusCode, 200);
-  assert.equal(JSON.parse(delivered.body || '{}').status, 'Completed');
-
-  const getAfterPatch = await handler(event('GET', undefined, { id: detail.id }));
-  assert.equal(getAfterPatch.statusCode, 200);
-  assert.deepEqual(JSON.parse(getAfterPatch.body || '{}'), detail);
-
-  const cancelledRepository = {
-    ...repository,
-    async get() {
-      return { ...detail, status: 'Cancelled' };
-    },
-    async update() {
-      const error = new Error('Pedidos cancelados não podem ser alterados.') as Error & {
-        statusCode: number;
-      };
-      error.statusCode = 409;
-      throw error;
-    },
-  } as SalesOrdersRepository;
-  const cancelled = await createSalesOrdersHandler({ repository: cancelledRepository })(
-    event('PATCH', { per_billed: 100 }, { id: detail.id })
+  const conflict = await handler(
+    event('PATCH', { ...advance, expected_stage: 'pronto' }, { id: detail.id })
   );
-  assert.equal(cancelled.statusCode, 409);
-  assert.match(JSON.parse(cancelled.body || '{}').error, /cancelados/);
+  assert.equal(conflict.statusCode, 409);
 
-  const invalid = await handler(event('PATCH', { per_billed: 100.5 }, { id: detail.id }));
-  assert.equal(invalid.statusCode, 400);
-  assert.match(JSON.parse(invalid.body || '{}').error, /inteiro|percentual/i);
+  const legacy = await handler(event('PATCH', { per_billed: 100 }, { id: detail.id }));
+  assert.equal(legacy.statusCode, 400);
+  assert.match(JSON.parse(legacy.body || '{}').error, /Ação inválida/);
+  const invalidJson = await handler({ ...event('PATCH', undefined, { id: detail.id }), body: '{' });
+  assert.equal(invalidJson.statusCode, 400);
 
-  const empty = await handler(event('PATCH', {}, { id: detail.id }));
-  assert.equal(empty.statusCode, 400);
+  const board = await handler(event('GET', undefined, { view: 'production' }));
+  assert.equal(board.statusCode, 200);
+  assert.equal(JSON.parse(board.body || '{}').items.length, 1);
+  const alerts = await handler(event('GET', undefined, { view: 'alerts' }));
+  assert.deepEqual(JSON.parse(alerts.body || '{}'), { success: true, attention_count: 3 });
 });
 
 test('sales handlers keep Portuguese validation and not-found contracts', async () => {
@@ -608,6 +568,10 @@ test(
       const detail = await repository.get(first.id);
       assert.equal(detail?.items[0]?.item_name, 'Produto snapshot na revisão mais recente');
       assert.equal(detail?.items[0]?.rate, 63.49);
+      assert.equal(detail?.production_stage, 'aguardando_entrada');
+      assert.equal(detail?.production.state, 'sem_prazo');
+      assert.equal(detail?.delivery_date, '', 'prazo só começa com a arte aprovada');
+      assert.deepEqual(detail?.notes, []);
       const [deal] = await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.id, dealId));
       assert.equal(deal?.status, 'Pedido Fechado');
       assert.equal(await repository.itemCount(first.id), 1);
@@ -759,7 +723,7 @@ test(
   }
 );
 test(
-  'PostgreSQL sales order PATCH persists percentages and derives official statuses',
+  'PostgreSQL production actions advance, undo, edit dates and keep official statuses',
   { skip: !TEST_DATABASE_URL },
   async () => {
     const client = postgres(TEST_DATABASE_URL!, {
@@ -772,82 +736,266 @@ test(
     const db = drizzle(client, { schema });
     const clientId = randomUUID();
     const tag = randomUUID().slice(0, 8);
-    const orderIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
-    const orderNumbers = [0, 1, 2, 3].map(
-      (index) =>
-        `PED-2098-${String(1000 + Math.floor(Math.random() * 8000) + index).slice(-4)}`
+    const orderIds = [randomUUID(), randomUUID(), randomUUID()];
+    const orderNumbers = [0, 1, 2].map(
+      (index) => `PED-2098-${String(1000 + Math.floor(Math.random() * 8000) + index).slice(-4)}`
     );
-    const repository = createPostgresSalesOrdersRepository(() => db, { now: () => NOW });
+    let clock = NOW.getTime();
+    const repository = createPostgresSalesOrdersRepository(() => db, { now: () => new Date(clock) });
     const handler = createSalesOrdersHandler({ repository });
+    const patch = async (id: string, body: Record<string, unknown>) => {
+      const response = await handler(event('PATCH', body, { id }));
+      return { statusCode: response.statusCode, body: JSON.parse(response.body || '{}') };
+    };
+    const [order, overdue, cancelled] = orderNumbers as [string, string, string];
     try {
       await migrate(db, { migrationsFolder });
-      await db.insert(schema.clients).values({ id: clientId, nome: `PATCH ${tag}` });
-      await db.insert(schema.salesOrders).values(
-        orderIds.map((id, index) => ({
-          id,
-          orderNumber: orderNumbers[index]!,
+      await db.insert(schema.clients).values({ id: clientId, nome: `Produção ${tag}` });
+      await db.insert(schema.salesOrders).values([
+        {
+          id: orderIds[0]!,
+          orderNumber: order,
           quotationId: null,
           clientId,
-          status: index === 3 ? 'Cancelled' : 'To Deliver and Bill',
+          status: 'To Deliver and Bill',
           transactionDate: '2098-08-10',
           subtotal: '10.00',
           grandTotal: '10.00',
-        }))
-      );
+        },
+        {
+          id: orderIds[1]!,
+          orderNumber: overdue,
+          quotationId: null,
+          clientId,
+          status: 'To Deliver and Bill',
+          transactionDate: '2098-06-01',
+          subtotal: '10.00',
+          grandTotal: '10.00',
+          productionStage: 'em_producao',
+          artApprovedOn: '2098-06-01',
+          deliveryDate: '2098-06-29',
+        },
+        {
+          id: orderIds[2]!,
+          orderNumber: cancelled,
+          quotationId: null,
+          clientId,
+          status: 'Cancelled',
+          transactionDate: '2098-08-10',
+          subtotal: '10.00',
+          grandTotal: '10.00',
+        },
+      ]);
 
-      const billed = await handler(event('PATCH', { per_billed: 100 }, { id: orderNumbers[0]! }));
-      assert.equal(billed.statusCode, 200);
+      const skipped = await patch(order, {
+        action: 'advance',
+        expected_stage: 'aguardando_arte',
+        date: '2098-08-10',
+      });
+      assert.equal(skipped.statusCode, 409, 'etapa esperada diferente é recusada');
+
+      const deposit = await patch(order, {
+        action: 'advance',
+        expected_stage: 'aguardando_entrada',
+        date: '2098-08-10',
+      });
+      assert.equal(deposit.statusCode, 200);
+      assert.equal(deposit.body.production_stage, 'aguardando_arte');
+      assert.equal(deposit.body.deposit_amount, 5);
+      assert.equal(deposit.body.received_amount, 5);
+      assert.equal(deposit.body.per_billed, 50);
+      assert.equal(deposit.body.status, 'To Deliver and Bill');
+      assert.equal(deposit.body.notes.length, 1);
+      assert.equal(deposit.body.notes[0].kind, 'stage');
+      assert.equal(deposit.body.notes[0].undoable, true);
+
+      const undone = await patch(order, { action: 'undo', note_id: deposit.body.notes[0].id });
+      assert.equal(undone.statusCode, 200);
+      assert.equal(undone.body.production_stage, 'aguardando_entrada');
+      assert.equal(undone.body.deposit_amount, null);
+      assert.equal(undone.body.deposit_received_on, null);
+      assert.equal(undone.body.per_billed, 0);
+      assert.equal(undone.body.notes.length, 0);
+
+      const backwards = await patch(order, { action: 'update', art_approved_on: '2098-08-10' });
+      assert.equal(backwards.statusCode, 409, 'data de etapa futura não pode ser editada');
+
+      await patch(order, {
+        action: 'advance',
+        expected_stage: 'aguardando_entrada',
+        date: '2098-08-10',
+        deposit_amount: 4,
+      });
+      const art = await patch(order, {
+        action: 'advance',
+        expected_stage: 'aguardando_arte',
+        date: '2098-08-10',
+      });
+      assert.equal(art.statusCode, 200);
+      assert.equal(art.body.production_stage, 'em_producao');
+      assert.equal(art.body.art_approved_on, '2098-08-10');
+      assert.equal(art.body.production.deadline, productionDeadline('2098-08-10', 20));
+      assert.equal(art.body.delivery_date, art.body.production.deadline);
+      assert.equal(art.body.production.state, 'no_prazo');
+
+      clock += 3 * 60 * 1000;
+      const late = await patch(order, { action: 'undo', note_id: art.body.notes[0].id });
+      assert.equal(late.statusCode, 409, 'desfazer só vale logo após a mudança');
+
+      const manual = await patch(order, { action: 'update', deadline: '2098-09-30' });
+      assert.equal(manual.body.deadline_manual, true);
+      const moreDays = await patch(order, { action: 'update', production_days: 10 });
+      assert.equal(moreDays.body.production.deadline, '2098-09-30', 'prazo manual é mantido');
+      const automatic = await patch(order, { action: 'update', deadline: null });
+      assert.equal(automatic.body.production.deadline, productionDeadline('2098-08-10', 10));
+
+      await patch(order, { action: 'advance', expected_stage: 'em_producao', date: '2098-08-11' });
+      const delivered = await patch(order, {
+        action: 'advance',
+        expected_stage: 'pronto',
+        date: '2098-08-12',
+      });
+      assert.equal(delivered.body.production_stage, 'entregue');
+      assert.equal(delivered.body.per_delivered, 100);
+      assert.equal(delivered.body.status, 'To Bill', 'saldo aberto não bloqueia a entrega');
+      const done = await patch(order, { action: 'update', balance_received_on: '2098-08-12' });
+      assert.equal(done.body.status, 'Completed');
+      assert.equal(done.body.received_amount, 10);
+      assert.equal(done.body.per_billed, 100);
+      const forward = await patch(order, {
+        action: 'advance',
+        expected_stage: 'entregue',
+        date: '2098-08-12',
+      });
+      assert.equal(forward.statusCode, 409);
+
+      const noted = await patch(order, { action: 'add_note', body: '  Cliente pediu embalagem  ' });
+      const note = noted.body.notes.find((item: { kind: string }) => item.kind === 'note');
+      assert.equal(note.body, 'Cliente pediu embalagem');
       assert.deepEqual(
-        ((JSON.parse(billed.body || '{}') as Record<string, unknown>).status),
-        'To Deliver'
+        noted.body.notes.filter((item: { kind: string }) => item.kind === 'stage').length,
+        4,
+        'mudanças de etapa entram no histórico'
       );
-      assert.equal((JSON.parse(billed.body || '{}') as Record<string, unknown>).per_billed, 100);
+      const edited = await patch(order, { action: 'edit_note', note_id: note.id, body: 'Embalagem ok' });
+      assert.ok(edited.body.notes.some((item: { body: string }) => item.body === 'Embalagem ok'));
+      const stageNote = edited.body.notes.find((item: { kind: string }) => item.kind === 'stage');
+      const lockedNote = await patch(order, { action: 'delete_note', note_id: stageNote.id });
+      assert.equal(lockedNote.statusCode, 409);
+      const removed = await patch(order, { action: 'delete_note', note_id: note.id });
+      assert.equal(removed.body.notes.some((item: { id: string }) => item.id === note.id), false);
 
-      const delivered = await handler(
-        event('PATCH', { per_delivered: 100 }, { id: orderNumbers[1]! })
+      const blocked = await patch(cancelled, {
+        action: 'advance',
+        expected_stage: 'aguardando_entrada',
+        date: '2098-08-10',
+      });
+      assert.equal(blocked.statusCode, 409);
+
+      const board = await repository.board();
+      const onBoard = new Map(board.items.map((item) => [item.id, item]));
+      assert.equal(onBoard.get(order)?.production_stage, 'entregue');
+      assert.equal(onBoard.get(overdue)?.production.state, 'atrasado');
+      assert.equal(onBoard.has(cancelled), false);
+      assert.ok(board.attention_count >= 1);
+      assert.equal(
+        board.items.findIndex((item) => item.id === overdue) <
+          board.items.findIndex((item) => item.id === order),
+        true,
+        'atrasados vêm primeiro'
       );
-      assert.equal(delivered.statusCode, 200);
-      assert.equal((JSON.parse(delivered.body || '{}') as Record<string, unknown>).status, 'To Bill');
 
-      const both = await handler(
-        event('PATCH', { per_billed: 100, per_delivered: 100 }, { id: orderNumbers[2]! })
-      );
-      assert.equal(both.statusCode, 200);
-      assert.equal((JSON.parse(both.body || '{}') as Record<string, unknown>).status, 'Completed');
-
-      const cancelled = await handler(
-        event('PATCH', { per_billed: 100 }, { id: orderNumbers[3]! })
-      );
-      assert.equal(cancelled.statusCode, 409);
-      assert.match(JSON.parse(cancelled.body || '{}').error, /rascunho|cancelados|fechados/i);
-
-      const invalid = await handler(
-        event('PATCH', { per_billed: 101 }, { id: orderNumbers[0]! })
-      );
-      assert.equal(invalid.statusCode, 400);
-      const empty = await handler(event('PATCH', undefined, { id: orderNumbers[0]! }));
-      assert.equal(empty.statusCode, 400);
-      const unknown = await handler(
-        event('PATCH', { per_billed: 100 }, { id: 'PED-2098-0000' })
-      );
-      assert.equal(unknown.statusCode, 404);
-
-      const afterPatch = await handler(event('GET', undefined, { id: orderNumbers[0]! }));
-      assert.equal(afterPatch.statusCode, 200);
-      const persisted = JSON.parse(afterPatch.body || '{}') as Record<string, unknown>;
-      assert.equal(persisted.per_billed, 100);
-      assert.equal(persisted.per_delivered, 0);
-      assert.equal(persisted.status, 'To Deliver');
-
-      const listed = await repository.list({ search: tag, limit: 100 });
-      const statuses = new Map(listed.items.map((item) => [item.id, item.status]));
-      assert.equal(statuses.get(orderNumbers[0]!), 'To Deliver');
-      assert.equal(statuses.get(orderNumbers[1]!), 'To Bill');
-      assert.equal(statuses.get(orderNumbers[2]!), 'Completed');
+      clock = new Date('2098-08-25T12:00:00.000Z').getTime();
+      const later = await repository.board();
+      assert.equal(later.items.some((item) => item.id === order), false, 'entregue sai após 7 dias');
+      const listed = await repository.list({
+        search: tag,
+        limit: 100,
+        from: '2098-01-01',
+        to: '2098-12-31',
+      });
+      assert.ok(listed.items.some((item) => item.id === order), 'continua em Todos');
     } finally {
       await db.delete(schema.salesOrders).where(inArray(schema.salesOrders.id, orderIds));
       await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
       await client.end({ timeout: 5 });
+    }
+  }
+);
+
+test(
+  'migration 0054 backfills Completed as entregue and every other order as aguardando entrada',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const admin = postgres(TEST_DATABASE_URL!, { max: 1, prepare: false, onnotice: () => undefined });
+    const databaseName = `aspen_backfill_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const folder = mkdtempSync(path.join(tmpdir(), 'aspen-0054-'));
+    let scoped: ReturnType<typeof postgres> | undefined;
+    try {
+      await admin.unsafe(`CREATE DATABASE ${databaseName}`);
+      const url = new URL(TEST_DATABASE_URL!);
+      url.pathname = `/${databaseName}`;
+      scoped = postgres(url.toString(), { max: 1, prepare: false, onnotice: () => undefined });
+      const db = drizzle(scoped, { schema });
+
+      cpSync(migrationsFolder, folder, { recursive: true });
+      const journalPath = path.join(folder, 'meta', '_journal.json');
+      const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+        entries: Array<{ tag: string }>;
+      };
+      const cut = journal.entries.findIndex((entry) => entry.tag === '0054_sales_order_production');
+      assert.ok(cut > 0);
+      journal.entries = journal.entries.slice(0, cut);
+      writeFileSync(journalPath, JSON.stringify(journal));
+      await migrate(db, { migrationsFolder: folder });
+
+      const clientId = randomUUID();
+      await scoped`INSERT INTO clients (id, nome) VALUES (${clientId}, 'Backfill')`;
+      const rows = [
+        ['PED-2098-7001', 'Completed', '2098-08-01T15:00:00Z', '2098-08-05T02:00:00Z'],
+        ['PED-2098-7002', 'To Deliver and Bill', '2098-08-02T15:00:00Z', '2098-08-03T15:00:00Z'],
+        ['PED-2098-7003', 'To Bill', '2098-08-03T15:00:00Z', '2098-08-04T15:00:00Z'],
+      ];
+      for (const [number, status, createdAt, updatedAt] of rows) {
+        await scoped`
+          INSERT INTO sales_orders
+            (id, order_number, client_id, status, transaction_date, subtotal, grand_total,
+             delivery_date, created_at, updated_at)
+          VALUES
+            (${randomUUID()}, ${number!}, ${clientId}, ${status!}, '2098-08-01', 10, 10,
+             '2098-08-31', ${createdAt!}, ${updatedAt!})`;
+      }
+
+      await migrate(db, { migrationsFolder });
+      const migrated = await scoped<
+        Array<{
+          order_number: string;
+          status: string;
+          production_stage: string;
+          stage_changed: Date;
+          delivered_on: string | null;
+          art_approved_on: string | null;
+          production_days: number;
+        }>
+      >`
+        SELECT order_number, status, production_stage, production_stage_changed_at AS stage_changed,
+               delivered_on::text, art_approved_on::text, production_days
+        FROM sales_orders ORDER BY order_number`;
+      assert.deepEqual(
+        migrated.map((row) => [row.order_number, row.status, row.production_stage, row.delivered_on]),
+        [
+          ['PED-2098-7001', 'Completed', 'entregue', '2098-08-04'],
+          ['PED-2098-7002', 'To Deliver and Bill', 'aguardando_entrada', null],
+          ['PED-2098-7003', 'To Bill', 'aguardando_entrada', null],
+        ]
+      );
+      assert.equal(new Date(migrated[1]!.stage_changed).toISOString(), '2098-08-02T15:00:00.000Z');
+      assert.ok(migrated.every((row) => row.art_approved_on === null && row.production_days === 20));
+    } finally {
+      await scoped?.end({ timeout: 5 });
+      await admin.unsafe(`DROP DATABASE IF EXISTS ${databaseName}`);
+      await admin.end({ timeout: 5 });
+      rmSync(folder, { recursive: true, force: true });
     }
   }
 );

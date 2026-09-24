@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
@@ -25,6 +26,8 @@ import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { TabBar } from '@/components/ui/tabs';
+import ProductionBoard from '@/features/sales-orders/components/ProductionBoard';
 import {
   parseHashAllowedInteger,
   parseHashOption,
@@ -87,6 +90,20 @@ const STATUS_DISPLAY = [
 const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => option.value));
 const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
 const parseSalesOrderLimit = parseHashAllowedInteger([10, 25, 50, 100]);
+
+type SalesOrdersTab = 'producao' | 'todos';
+const SALES_ORDER_TABS = [
+  { value: 'producao', label: 'Produção' },
+  { value: 'todos', label: 'Todos' },
+] as const;
+const parseSalesOrdersTab = parseHashOption<SalesOrdersTab>(['producao', 'todos']);
+const LIST_QUERY_KEYS = ['page', 'limit', 'period', 'status', 'search'];
+
+/** Links com filtros da lista abrem em Todos, mesmo sem `tab`. */
+function initialSalesOrdersTab(): SalesOrdersTab {
+  const query = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+  return LIST_QUERY_KEYS.some((key) => query.has(key)) ? 'todos' : 'producao';
+}
 
 function formatSummaryDelta(value: number | null, amount: number): string | undefined {
   if (value === null) return undefined;
@@ -259,6 +276,29 @@ function SalesOrderExportMenu({
 }
 
 export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
+  const [defaultTab] = useState(initialSalesOrdersTab);
+  const [tab, setTab] = useHashQueryState<SalesOrdersTab>('tab', defaultTab, parseSalesOrdersTab);
+  const tabs = (
+    <TabBar
+      value={tab}
+      onValueChange={setTab}
+      label="Visão de pedidos"
+      items={SALES_ORDER_TABS}
+      idPrefix="sales-orders"
+    />
+  );
+  if (tab === 'todos') return <SalesOrdersList navigate={navigate} tabs={tabs} />;
+  return (
+    <ListPageLayout header={<PageHeader title="Pedidos" />}>
+      {tabs}
+      <div id="sales-orders-panel-producao" role="tabpanel" aria-labelledby="sales-orders-tab-producao">
+        <ProductionBoard navigate={navigate} />
+      </div>
+    </ListPageLayout>
+  );
+}
+
+function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: ReactNode }) {
   const [items, setItems] = useState<SalesOrderItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -371,7 +411,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
   // ── Format delivery info ────────────────────────────────────────────────────
   const formatDelivery = (item: SalesOrderItem) => {
-    if (item.delivery_date) return formatSalesOrderDate(item.delivery_date);
+    if (item.deadline) return `Prazo ${formatSalesOrderDate(item.deadline)}`;
     if (item.per_delivered !== undefined && item.per_delivered !== null) {
       return `${item.per_delivered}% entregue`;
     }
@@ -422,7 +462,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         />
         }
       >
-
+      {tabs}
+      <div
+        id="sales-orders-panel-todos"
+        role="tabpanel"
+        aria-labelledby="sales-orders-tab-todos"
+        className="space-y-6"
+      >
       {(summaryData || summaryLoading) && (
         <section aria-label={`Resumo comercial: ${summaryPeriodLabel.toLowerCase()}`} aria-busy={summaryLoading} className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-widest text-fg-muted">
@@ -670,6 +716,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       )}
 
       </ListSection>
+      </div>
     </ListPageLayout>
   );
 }

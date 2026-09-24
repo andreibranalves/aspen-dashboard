@@ -231,7 +231,7 @@ test('pedidos usa métricas canônicas, nomes neutros e somente status suportado
     });
   });
 
-  await page.goto('/#/sales-orders');
+  await page.goto('/#/sales-orders?tab=todos');
   await page.getByText('Resumo comercial · últimos 30 dias', { exact: true }).click();
   await expect(page.getByText('R$ 1.234,50').first()).toBeVisible();
   await expect(page.getByText('2', { exact: true }).first()).toBeVisible();
@@ -274,32 +274,46 @@ test('detalhe de pedido não expõe UUID quando customer_name falta @quotations 
   await expect(page.getByText(uuid, { exact: true })).toHaveCount(0);
 });
 
-test('detalhe de pedido bloqueia estados finais e reporta PATCH com sucesso ou falha', async ({
+test('detalhe de pedido avança etapa de produção, reporta falha e bloqueia estados finais', async ({
   page,
 }) => {
   const patchPayloads = [];
   let detail = {
     id: 'PED-2026-0006',
-    status: 'To Deliver',
+    order_number: 'PED-2026-0006',
+    status: 'To Deliver and Bill',
     customer_name: 'Cliente atualização',
     date: '2026-08-10',
-    delivery_date: '2026-08-20',
+    grand_total: 100,
     per_billed: 0,
     per_delivered: 0,
+    production_stage: 'aguardando_entrada',
+    production: { state: 'sem_prazo', deadline: null, total_days: null, elapsed_days: null, stalled_days: 2 },
+    production_days: 20,
+    received_amount: 0,
     items: [],
+    notes: [],
   };
   await page.route('**/api/sales-orders**', async (route) => {
     if (route.request().method() === 'PATCH') {
       const payload = route.request().postDataJSON();
       patchPayloads.push(payload);
-      if (payload.per_billed === 100) {
-        detail = { ...detail, per_billed: 100 };
+      if (payload.expected_stage === 'aguardando_entrada') {
+        detail = {
+          ...detail,
+          production_stage: 'aguardando_arte',
+          deposit_received_on: payload.date,
+          deposit_amount: payload.deposit_amount,
+          received_amount: payload.deposit_amount,
+          production: { ...detail.production, stalled_days: 0 },
+          notes: [{ id: 'note-1', kind: 'stage', body: 'Entrada recebida', created_at: '2026-08-10T12:00:00.000Z', undoable: true }],
+        };
         return json(route, detail);
       }
       await route.fulfill({
-        status: 500,
+        status: 409,
         contentType: 'application/json',
-        body: JSON.stringify({ error: 'Falha ao atualizar pedido.' }),
+        body: JSON.stringify({ error: 'O pedido já está em outra etapa. Atualize a página; etapas não voltam.' }),
       });
       return;
     }
@@ -307,25 +321,30 @@ test('detalhe de pedido bloqueia estados finais e reporta PATCH com sucesso ou f
   });
 
   await page.goto('/#/sales-orders/PED-2026-0006');
-  const billed = page.getByRole('button', { name: 'Marcar faturado' });
-  const delivered = page.getByRole('button', { name: 'Marcar entregue' });
-  await expect(billed).toBeEnabled();
-  await expect(delivered).toBeEnabled();
+  const production = page.getByRole('region', { name: 'Produção' });
+  await expect(production.getByText('Parado há 2 dias')).toBeVisible();
+  await production.getByRole('button', { name: 'Entrada recebida' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Valor da entrada')).toHaveValue('50.00');
+  await dialog.getByRole('button', { name: 'Mover para Aguardando arte' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(patchPayloads).toHaveLength(1);
+  expect(patchPayloads[0]).toMatchObject({
+    action: 'advance',
+    expected_stage: 'aguardando_entrada',
+    deposit_amount: 50,
+  });
+  await expect(production.getByText('Recebido R$ 50,00 de R$ 100,00')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Desfazer' })).toBeVisible();
 
-  await billed.click();
-  await expect(billed).toBeDisabled();
-  await expect.poll(() => patchPayloads).toEqual([{ per_billed: 100 }]);
-
-  await delivered.click();
-  await expect(page.getByRole('alert')).toContainText(
-    'Não foi possível atualizar o pedido. Tente novamente.'
-  );
-  await expect.poll(() => patchPayloads).toHaveLength(2);
+  await production.getByRole('button', { name: 'Arte aprovada' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Mover para Em produção' }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('etapas não voltam');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click();
 
   detail = { ...detail, status: 'Draft' };
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();
+  await expect(page.getByRole('region', { name: 'Produção' }).getByRole('button', { name: 'Arte aprovada' })).toHaveCount(0);
 });
 
 test('pedidos agrupa exportações e envia os filtros atuais', async ({ page }) => {
@@ -586,7 +605,7 @@ test('exportação pendente mantém a ação desabilitada', async ({ page }) => 
   );
   await page.route('**/api/commercial-exports**', () => new Promise(() => {}));
 
-  await page.goto('/#/sales-orders');
+  await page.goto('/#/sales-orders?tab=todos');
   await expect(page.getByText('PED-2026-0009', { exact: true }).first()).toBeVisible();
   const exportTrigger = page.getByRole('button', { name: 'Exportar', exact: true });
   await exportTrigger.click();
@@ -640,7 +659,7 @@ test('lista ignora resposta stale quando uma busca mais nova termina primeiro', 
     });
   });
 
-  await page.goto('/#/sales-orders');
+  await page.goto('/#/sales-orders?tab=todos');
   await page.getByLabel('Buscar pedidos').fill('novo');
   await expect(page.getByText('PED-2026-0010', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Cliente novo', { exact: true }).first()).toBeVisible();
@@ -929,7 +948,7 @@ test('métricas ausentes ou contagens inválidas exibem erro e não inventam zer
   await page.route('**/api/sales-orders**', (route) =>
     json(route, { success: true, items: [], has_more: false })
   );
-  await page.goto('/#/sales-orders');
+  await page.goto('/#/sales-orders?tab=todos');
   await page.getByText('Resumo comercial · últimos 30 dias', { exact: true }).click();
   // sem pedidos, valores monetários desconhecidos usam traço em vez de inventar zero
   await expect(page.getByText('Receita').locator('..')).toContainText('—');

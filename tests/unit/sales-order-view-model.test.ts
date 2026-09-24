@@ -39,3 +39,36 @@ test('sales order detail model preserves missing optional data instead of invent
   assert.equal(view.per_billed, undefined);
   assert.equal(projectSalesOrderDetail(null), null);
 });
+
+test('sales order detail model projects production and drops malformed notes', () => {
+  const view = projectSalesOrderDetail({
+    id: 'PED-2098-0003',
+    order_number: 'PED-2098-0003',
+    status: 'To Deliver and Bill',
+    grand_total: 100,
+    production_stage: 'em_producao',
+    production: { state: 'em_risco', deadline: '2098-09-09', total_days: 20, elapsed_days: 16, stalled_days: null },
+    production_days: 20,
+    deposit_received_on: '2098-08-05',
+    deposit_amount: 50,
+    art_approved_on: '2098-08-10',
+    received_amount: 50,
+    notes: [
+      { id: 'n1', kind: 'stage', body: 'Arte aprovada', created_at: '2098-08-10T12:00:00.000Z', undoable: true },
+      { id: 'n2', kind: 'other', body: 'x', created_at: '2098-08-10T12:00:00.000Z' },
+      { id: 'n3', kind: 'note', body: '', created_at: '2098-08-10T12:00:00.000Z' },
+    ],
+  });
+
+  assert.ok(view?.production);
+  assert.equal(view.production.production_stage, 'em_producao');
+  assert.equal(view.production.production.state, 'em_risco');
+  assert.equal(view.production.deposit_amount, 50);
+  assert.equal(view.production.ready_on, null);
+  assert.deepEqual(view.notes.map((note) => note.id), ['n1']);
+  assert.equal(view.notes[0]?.updated_at, '2098-08-10T12:00:00.000Z');
+
+  const legacy = projectSalesOrderDetail({ id: 'PED-2098-0004', status: 'Draft', grand_total: 10 });
+  assert.equal(legacy?.production, undefined);
+  assert.deepEqual(legacy?.notes, []);
+});

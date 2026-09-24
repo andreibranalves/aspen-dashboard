@@ -1086,11 +1086,38 @@ export const salesOrders = pgTable(
     perBilled: numeric('per_billed', { precision: 5, scale: 2 }).notNull().default('0.00'),
     subtotal: numeric('subtotal', { precision: 20, scale: 2 }).notNull(),
     grandTotal: numeric('grand_total', { precision: 20, scale: 2 }).notNull(),
+    productionStage: varchar('production_stage', { length: 32 })
+      .notNull()
+      .default('aguardando_entrada'),
+    productionStageChangedAt: timestamp('production_stage_changed_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    depositReceivedOn: date('deposit_received_on'),
+    depositAmount: numeric('deposit_amount', { precision: 20, scale: 2 }),
+    artApprovedOn: date('art_approved_on'),
+    productionDays: integer('production_days').notNull().default(20),
+    deadlineManual: boolean('deadline_manual').notNull().default(false),
+    readyOn: date('ready_on'),
+    deliveredOn: date('delivered_on'),
+    balanceReceivedOn: date('balance_received_on'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('sales_orders_order_number_unique').on(table.orderNumber),
+    index('sales_orders_production_stage_idx').on(
+      table.productionStage,
+      table.productionStageChangedAt
+    ),
+    check(
+      'sales_orders_production_stage_check',
+      sql`${table.productionStage} IN ('aguardando_entrada', 'aguardando_arte', 'em_producao', 'pronto', 'entregue')`
+    ),
+    check(
+      'sales_orders_deposit_amount_check',
+      sql`${table.depositAmount} IS NULL OR ${table.depositAmount} >= 0`
+    ),
+    check('sales_orders_production_days_check', sql`${table.productionDays} BETWEEN 1 AND 365`),
     uniqueIndex('sales_orders_active_quotation_unique')
       .on(table.quotationId)
       .where(sql`${table.quotationId} IS NOT NULL AND ${table.status} <> 'Cancelled'`),
@@ -1111,6 +1138,29 @@ export const salesOrders = pgTable(
     check('sales_orders_per_billed_check', sql`${table.perBilled} BETWEEN 0 AND 100`),
     check('sales_orders_subtotal_check', sql`${table.subtotal} >= 0`),
     check('sales_orders_grand_total_check', sql`${table.grandTotal} >= 0`),
+  ]
+);
+
+export const salesOrderNotes = pgTable(
+  'sales_order_notes',
+  {
+    id: uuid('id').primaryKey(),
+    salesOrderId: uuid('sales_order_id')
+      .notNull()
+      .references(() => salesOrders.id, { onDelete: 'cascade' }),
+    kind: varchar('kind', { length: 16 }).notNull(),
+    body: text('body').notNull(),
+    undoState: jsonb('undo_state'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('sales_order_notes_order_created_idx').on(table.salesOrderId, table.createdAt),
+    check('sales_order_notes_kind_check', sql`${table.kind} IN ('note', 'stage')`),
+    check(
+      'sales_order_notes_body_length_check',
+      sql`char_length(${table.body}) BETWEEN 1 AND 4000`
+    ),
   ]
 );
 

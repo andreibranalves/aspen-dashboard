@@ -52,6 +52,80 @@ export function addBusinessDays(isoDate: string, businessDays: number): string {
   return civilDateFromUtcMillis(millis);
 }
 
+const FIXED_NATIONAL_HOLIDAYS = new Set([
+  '01-01',
+  '04-21',
+  '05-01',
+  '09-07',
+  '10-12',
+  '11-02',
+  '11-15',
+  '11-20',
+  '12-25',
+]);
+
+function easterSundayMillis(year: number): number {
+  // Anonymous Gregorian algorithm (Meeus/Jones/Butcher).
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return Date.UTC(year, month - 1, day);
+}
+
+/**
+ * Production calendar: Monday to Friday, minus fixed national holidays and
+ * Good Friday. Carnival and Corpus Christi count as business days.
+ */
+export function isProductionBusinessDay(isoDate: string): boolean {
+  const millis = dateOnlyToUtcMillis(isoDate);
+  const weekday = new Date(millis).getUTCDay();
+  if (weekday === 0 || weekday === 6) return false;
+  if (FIXED_NATIONAL_HOLIDAYS.has(isoDate.slice(5))) return false;
+  const goodFriday = easterSundayMillis(Number(isoDate.slice(0, 4))) - 2 * 24 * 60 * 60 * 1000;
+  return millis !== goodFriday;
+}
+
+export function addProductionBusinessDays(isoDate: string, businessDays: number): string {
+  if (!Number.isSafeInteger(businessDays) || businessDays < 0) {
+    throw new Error('A quantidade de dias úteis é inválida.');
+  }
+  let current = civilDateFromUtcMillis(dateOnlyToUtcMillis(isoDate));
+  let remaining = businessDays;
+  while (remaining > 0) {
+    current = addCalendarDays(current, 1);
+    if (isProductionBusinessDay(current)) remaining -= 1;
+  }
+  return current;
+}
+
+/** Production business days in (start, end]; zero when end is not after start. */
+export function productionBusinessDaysBetween(start: string, end: string): number {
+  dateOnlyToUtcMillis(start);
+  dateOnlyToUtcMillis(end);
+  let count = 0;
+  let current = start;
+  while (current < end) {
+    current = addCalendarDays(current, 1);
+    if (isProductionBusinessDay(current)) count += 1;
+  }
+  return count;
+}
+
+export function calendarDaysBetween(start: string, end: string): number {
+  return Math.round((dateOnlyToUtcMillis(end) - dateOnlyToUtcMillis(start)) / (24 * 60 * 60 * 1000));
+}
+
 export function calendarDateInSaoPaulo(
   now: Date,
   timeZone = SAO_PAULO_TIMEZONE

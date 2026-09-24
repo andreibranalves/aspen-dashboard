@@ -7,7 +7,7 @@ const RATCHETS = [
   {
     name: 'margem vertical em filhos (prefira gap/space-y no pai)',
     pattern: /(?<![\w:-])-?m[tby]-(?!auto\b)[\d.]+(?![\w.-])/g,
-    limit: 274,
+    limit: 271,
   },
 ];
 

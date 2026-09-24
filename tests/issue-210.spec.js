@@ -100,7 +100,7 @@ test.describe('issue #210 — fundação e pedidos', () => {
       return json(route, listResponse);
     });
 
-    await page.goto('/#/sales-orders');
+    await page.goto('/#/sales-orders?tab=todos');
     await expect(page.getByRole('heading', { name: 'Pedidos' })).toBeVisible();
     await expect(page.getByText(order.customer_name, { exact: true }).first()).toBeVisible();
     await expect(page.getByText(order.customer, { exact: true })).toHaveCount(0);
@@ -141,61 +141,58 @@ test.describe('issue #210 — fundação e pedidos', () => {
     expect(blocked.external).toEqual([]);
   });
 
-  test('detalhe mantém progresso independente e bloqueia estados finais', async ({ page }) => {
+  test('detalhe avisa saldo em aberto ao entregar e desfaz a mudança de etapa', async ({ page }) => {
     const patches = [];
-    let releaseBilled;
-    let releaseDelivered;
-    const billedPending = new Promise((resolve) => {
-      releaseBilled = resolve;
-    });
-    const deliveredPending = new Promise((resolve) => {
-      releaseDelivered = resolve;
-    });
-    let detail = { ...order, status: 'To Deliver', per_billed: 0, per_delivered: 0, items: [] };
+    const ready = {
+      ...order,
+      status: 'To Deliver and Bill',
+      grand_total: 100,
+      per_billed: 50,
+      per_delivered: 0,
+      production_stage: 'pronto',
+      production: { state: 'concluido', deadline: '2026-09-08', total_days: 20, elapsed_days: 12, stalled_days: null },
+      production_days: 20,
+      deposit_received_on: '2026-08-05',
+      deposit_amount: 50,
+      art_approved_on: '2026-08-10',
+      ready_on: '2026-08-25',
+      received_amount: 50,
+      items: [],
+      notes: [],
+    };
+    let detail = ready;
     const blocked = await intercept(page, async (route, url) => {
       if (url.pathname !== '/api/sales-orders') return false;
       if (route.request().method() === 'PATCH') {
         const payload = route.request().postDataJSON();
         patches.push(payload);
-        if (payload.per_billed === 100) {
-          await billedPending;
-          detail = { ...detail, per_billed: 100 };
-          return json(route, detail);
-        }
-        await deliveredPending;
-        return json(route, { error: 'SQL_TEST_ONLY internal detail' }, 500);
+        detail =
+          payload.action === 'undo'
+            ? ready
+            : {
+                ...ready,
+                status: 'To Bill',
+                per_delivered: 100,
+                production_stage: 'entregue',
+                delivered_on: payload.date,
+                notes: [{ id: 'note-1', kind: 'stage', body: 'Entregue', created_at: '2026-08-26T12:00:00.000Z', undoable: true }],
+              };
+        return json(route, detail);
       }
       return json(route, detail);
     });
 
     await page.goto(`/#/sales-orders/${order.id}`);
-    const billed = page.getByRole('button', { name: 'Marcar faturado' });
-    const delivered = page.getByRole('button', { name: 'Marcar entregue' });
-    await expect(billed).toBeEnabled();
-    await expect(delivered).toBeEnabled();
-    await billed.click();
-    await expect(billed).toBeDisabled();
-    await expect(delivered).toBeDisabled();
-    await expect.poll(() => patches).toEqual([{ per_billed: 100 }]);
-    releaseBilled();
-    await expect(billed).toBeDisabled();
-    await expect(delivered).toBeEnabled();
-    await expect(page.getByText('100%', { exact: true })).toHaveCount(1);
-
-    await delivered.click();
-    await expect(delivered).toBeDisabled();
-    await expect.poll(() => patches).toEqual([{ per_billed: 100 }, { per_delivered: 100 }]);
-    releaseDelivered();
-    await expect(page.getByRole('alert')).toContainText(
-      'Não foi possível atualizar o pedido. Tente novamente.'
-    );
-    await expect(page.getByText('100%', { exact: true })).toHaveCount(1);
-    await expect(delivered).toBeEnabled();
-
-    detail = { ...detail, status: 'Draft' };
-    await page.reload();
-    await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
-    await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();
+    const production = page.getByRole('region', { name: 'Produção' });
+    await production.getByRole('button', { name: 'Entregue' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('status')).toContainText('Saldo em aberto: recebido R$ 50,00 de R$ 100,00.');
+    await dialog.getByRole('button', { name: 'Mover para Entregue' }).click();
+    await expect(production.getByLabel('Entregue')).toBeVisible();
+    await page.getByRole('button', { name: 'Desfazer' }).click();
+    await expect(production.getByRole('button', { name: 'Entregue' })).toBeVisible();
+    expect(patches.map((payload) => payload.action)).toEqual(['advance', 'undo']);
+    expect(patches[1]).toEqual({ action: 'undo', note_id: 'note-1' });
     expect(blocked.api).toEqual([]);
     expect(blocked.methods).toEqual([]);
     expect(blocked.external).toEqual([]);
@@ -241,6 +238,7 @@ test.describe('issue #210 — fundação e pedidos', () => {
     await page.getByRole('navigation', { name: 'Trilha de navegação' })
       .getByRole('button', { name: 'Pedidos' }).click();
     await expect(page).toHaveURL(/#\/sales-orders(?:\?|$)/);
+    await page.getByRole('tab', { name: 'Todos' }).click();
 
     await page.getByRole('button', { name: 'Exportar', exact: true }).click();
     const trigger = page.getByRole('button', { name: 'Exportar', exact: true });
@@ -282,7 +280,7 @@ test.describe('issue #210 — fundação e pedidos', () => {
       return true;
     });
 
-    await page.goto('/#/sales-orders');
+    await page.goto('/#/sales-orders?tab=todos');
     await expect(page.getByText(order.id, { exact: true }).first()).toBeVisible();
     const trigger = page.getByRole('button', { name: 'Exportar', exact: true });
     await trigger.click();
@@ -330,7 +328,7 @@ test.describe('issue #210 — fundação e pedidos', () => {
       });
     });
 
-    await page.goto('/#/sales-orders');
+    await page.goto('/#/sales-orders?tab=todos');
     await expect.poll(() => requests).toContain('old');
     await page.getByLabel('Buscar pedidos').fill('novo');
     await expect(page.getByText('Cliente novo', { exact: true }).first()).toBeVisible();

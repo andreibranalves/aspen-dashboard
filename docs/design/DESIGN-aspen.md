@@ -201,9 +201,10 @@ visual/structural decisions:
 - The existing commercial summary remains a secondary, initially closed
   section fixed to its own 30-day period and independent of list filters.
 - The detail keeps confirmed items, confirmed total, optional-field
-  semantics, source identifiers, and separate billing/delivery PATCH actions.
-  Billing and delivery progress stay together with those actions in the 320px
-  side panel. Progress styling does not infer new semantic dot states.
+  semantics and source identifiers. Billing and delivery percentages were
+  replaced by the Produção section (#325): stage, forward-only advance, stage
+  dates, entrada/saldo and "Recebido R$ X de R$ Y", plus an Anotações history.
+  Pedidos opens on the Produção board; the list lives in the Todos tab.
 - The detail has one contextual return through the existing shell/history
   behavior. No duplicate main-body progress section or invented item totals is
   added.
