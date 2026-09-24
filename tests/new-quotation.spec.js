@@ -58,6 +58,14 @@ async function mockSharedApis(page, extractHandler, {
     (url) => url.pathname === '/api/settings',
     (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   );
+  await page.route(
+    (url) => url.pathname === '/api/tasks' && url.searchParams.get('view') === 'alerts',
+    (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, overdue_count: 0 }),
+    })
+  );
   await page.route('**/api/order-templates**', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',

@@ -4,6 +4,7 @@ import {
   BarChart3,
   Columns3,
   FileText,
+  ListTodo,
   MessagesSquare,
   Package,
   Plus,
@@ -35,6 +36,7 @@ const WhatsAppDeliveriesPage = lazy(
   () => import('@/features/quotations/pages/WhatsAppDeliveriesPage')
 );
 const NewQuotationPage = lazy(() => import('@/features/quotations/pages/NewQuotationPage'));
+const TasksPage = lazy(() => import('@/features/tasks/pages/TasksPage'));
 const AttendancePage = lazy(() => import('@/features/attendance/pages/AttendancePage'));
 
 function communicationRedirect(hash: string): string {
@@ -161,6 +163,12 @@ export const routes: AppRoute[] = [
     suspense: true,
     render: ({ navigate }) => <SalesOrdersPage navigate={navigate} />,
     nav: { label: 'Pedidos', icon: ShoppingCart, placement: 'destination', order: 3 },
+  },
+  {
+    path: '/tarefas',
+    suspense: true,
+    render: ({ navigate }) => <TasksPage navigate={navigate} />,
+    nav: { label: 'Tarefas', icon: ListTodo, placement: 'destination', order: 3.5 },
   },
   {
     path: '/crm',

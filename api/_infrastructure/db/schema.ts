@@ -1176,6 +1176,34 @@ export const salesOrderNotes = pgTable(
   ]
 );
 
+// Tarefa do operador (#327): não pertence a uma oportunidade; vínculo opcional a pedido ou cliente.
+export const operatorTasks = pgTable(
+  'operator_tasks',
+  {
+    id: uuid('id').primaryKey(),
+    title: varchar('title', { length: 300 }).notNull(),
+    dueOn: date('due_on'),
+    salesOrderId: uuid('sales_order_id').references(() => salesOrders.id, { onDelete: 'set null' }),
+    clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('operator_tasks_open_due_idx')
+      .on(table.dueOn, table.createdAt)
+      .where(sql`${table.completedAt} IS NULL`),
+    check(
+      'operator_tasks_title_length_check',
+      sql`char_length(btrim(${table.title})) BETWEEN 1 AND 300`
+    ),
+    check(
+      'operator_tasks_single_link_check',
+      sql`${table.salesOrderId} IS NULL OR ${table.clientId} IS NULL`
+    ),
+  ]
+);
+
 export const salesOrderItems = pgTable(
   'sales_order_items',
   {

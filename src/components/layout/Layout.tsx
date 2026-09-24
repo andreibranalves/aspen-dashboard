@@ -5,6 +5,7 @@ import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
 import { useProductionAttentionCount } from '@/features/sales-orders/production';
+import { useOverdueTaskCount } from '@/features/tasks/tasks';
 
 export interface BreadcrumbItem {
   label: string;
@@ -19,6 +20,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/auto': 'Novo orçamento',
   '/manual': 'Novo orçamento',
   '/sales-orders': 'Pedidos',
+  '/tarefas': 'Tarefas',
   '/crm': 'Comercial',
   '/products': 'Produtos',
   '/catalog': 'Catálogo',
@@ -133,6 +135,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   }>({ route, label: null });
 
   const productionAttention = useProductionAttentionCount(route);
+  const overdueTasks = useOverdueTaskCount(route);
   const toggleSidebar = useCallback(() => setSidebarCollapsed((previous) => !previous), []);
   const setDetailBreadcrumbLabel = useCallback(
     (label: string | null) => setDetailBreadcrumb({ route, label }),
@@ -169,7 +172,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         onToggle={toggleSidebar}
         currentRoute={route}
         onNavigate={onNavigate}
-        badges={{ '/sales-orders': productionAttention }}
+        badges={{ '/sales-orders': productionAttention, '/tarefas': overdueTasks }}
       />
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
         <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">

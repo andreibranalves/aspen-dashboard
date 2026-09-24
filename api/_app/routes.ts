@@ -42,6 +42,7 @@ import { handler as quotationDeliveryWorker } from '../_modules/quotation-delive
 import { handler as whatsappDeliveryDiagnostics } from '../_modules/whatsapp-delivery-diagnostics.js';
 import { handler as sendWhatsappFlow } from '../_modules/send-whatsapp-flow.js';
 import { handler as settings } from '../_modules/settings.js';
+import { handler as tasks } from '../_modules/tasks.js';
 import { whatsappConversations, whatsappMessages } from '../_modules/whatsapp-attendance.js';
 import { whatsappBackfill } from '../_modules/whatsapp-backfill.js';
 import { whatsappMessageActions } from '../_modules/whatsapp-message-send.js';
@@ -104,6 +105,7 @@ export const routes: Record<string, LegacyHandler> = {
   'whatsapp-delivery-diagnostics': whatsappDeliveryDiagnostics,
   'send-whatsapp-flow': sendWhatsappFlow,
   settings,
+  tasks,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-messages': whatsappMessages,
   'whatsapp-backfill': whatsappBackfill,
