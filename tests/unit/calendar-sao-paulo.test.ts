@@ -25,9 +25,9 @@ describe('addBusinessDays', () => {
   });
 
   it('skips 20 November and Good Friday but counts Carnival weekdays', () => {
-    assert.equal(addBusinessDays('2026-11-10', 20), '2026-12-09');
+    assert.equal(addBusinessDays('2026-11-10', 20, true), '2026-12-09');
     assert.equal(addBusinessDays('2026-02-13', 2), '2026-02-17');
-    assert.equal(addBusinessDays('2026-04-02', 1), '2026-04-06');
+    assert.equal(addBusinessDays('2026-04-02', 1, true), '2026-04-06');
     assert.equal(countBusinessDays('2026-11-10', '2026-12-09'), 20);
   });
 });

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { STAGES, type ProductionOrder } from '../productionTypes';
 
-export default function ProductionBoard({ navigate, onAll }: { navigate: (path: string) => void; onAll: () => void }) {
+export default function ProductionBoard({ navigate }: { navigate: (path: string) => void }) {
   const [items, setItems] = useState<ProductionOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -28,10 +28,6 @@ export default function ProductionBoard({ navigate, onAll }: { navigate: (path: 
 
   return <PageShell className="space-y-5">
     <PageHeader title="Pedidos" />
-    <div role="tablist" aria-label="Visualização de pedidos" className="flex gap-2">
-      <Button role="tab" aria-selected="true" variant="default">Produção</Button>
-      <Button role="tab" aria-selected="false" variant="outline" onClick={onAll}>Todos</Button>
-    </div>
     {loading && <p className="text-sm text-fg-muted">Carregando produção…</p>}
     {!loading && error && <ErrorState title="Não foi possível carregar a produção" onRetry={() => void reload()} />}
     {!loading && !error && items.length === 0 && <p className="text-sm text-fg-muted">Nenhum pedido no quadro.</p>}

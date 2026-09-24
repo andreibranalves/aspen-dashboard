@@ -80,8 +80,8 @@ export function countBusinessDays(startExclusive: string, endInclusive: string):
   return count;
 }
 
-/** Adds Brazilian national business days, including Carnival and Corpus Christi. */
-export function addBusinessDays(isoDate: string, businessDays: number): string {
+/** Existing weekday calendar; pass true for national holidays in production deadlines. */
+export function addBusinessDays(isoDate: string, businessDays: number, skipNationalHolidays = false): string {
   if (!Number.isSafeInteger(businessDays) || businessDays < 0) {
     throw new Error('A quantidade de dias úteis é inválida.');
   }
@@ -89,7 +89,9 @@ export function addBusinessDays(isoDate: string, businessDays: number): string {
   let remaining = businessDays;
   while (remaining > 0) {
     millis += 24 * 60 * 60 * 1000;
-    if (isBusinessDay(civilDateFromUtcMillis(millis))) remaining -= 1;
+    const next = civilDateFromUtcMillis(millis);
+    const weekday = new Date(millis).getUTCDay();
+    if (skipNationalHolidays ? isBusinessDay(next) : weekday !== 0 && weekday !== 6) remaining -= 1;
   }
   return civilDateFromUtcMillis(millis);
 }

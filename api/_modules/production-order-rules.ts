@@ -6,7 +6,7 @@ export const PRODUCTION_STAGES = [
 export type ProductionStage = (typeof PRODUCTION_STAGES)[number];
 
 export function productionDueDate(artApprovedDate: string | null, days: number, override: string | null): string | null {
-  return override || (artApprovedDate ? addBusinessDays(artApprovedDate, days) : null);
+  return override || (artApprovedDate ? addBusinessDays(artApprovedDate, days, true) : null);
 }
 
 export function productionAlert(
