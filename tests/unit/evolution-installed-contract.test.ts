@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { handler as webhook } from '../../api/_modules/evolution-webhook.js';
 import { createReceivedMediaHandler } from '../../api/_modules/whatsapp-message-media.js';
+import { sendOperatorMedia } from '../../api/_modules/evolution-transport.js';
 import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 
 function fixture<T = Record<string, unknown>>(name: string): T {
@@ -138,5 +139,30 @@ for (const [type, name, expectedMime] of [
     assert.equal(result.statusCode, 200);
     assert.equal(result.headers?.['Content-Type'], expectedMime);
     assert.deepEqual(Buffer.from(result.body || '', 'base64'), samples[type]);
+  });
+}
+
+for (const [name, mediaType, mimeType, bytes] of [
+  ['send-media-image', 'image', 'image/png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')],
+  ['send-media-pdf', 'document', 'application/pdf', Buffer.from('%PDF-1.4\n%%EOF\n')],
+] as const) {
+  test(`installed sendMedia ${mediaType} request matches and its response yields key.id`, async () => {
+    const captured = fixture<{ request: Record<string, unknown>; status: number; response: { key: { id: string } } }>(name);
+    let sent: Record<string, unknown> | undefined;
+    const result = await sendOperatorMedia(
+      { phone: String(captured.request.number), mediaType, mimeType, base64: bytes.toString('base64'), fileName: String(captured.request.fileName), caption: 'Legenda' },
+      {
+        client: {
+          config: () => ({ instance: 'installed', baseUrl: 'https://example.test', apiKey: 'test' }),
+          request: async (_path, body) => {
+            sent = body;
+            return new Response(JSON.stringify(captured.response), { status: captured.status });
+          },
+        },
+      },
+    );
+    assert.deepEqual(Object.keys(sent || {}).sort(), Object.keys(captured.request).sort());
+    assert.equal(sent?.mediatype, captured.request.mediatype);
+    assert.equal(result.providerMessageId, captured.response.key.id);
   });
 }

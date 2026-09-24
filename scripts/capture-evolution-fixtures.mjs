@@ -92,6 +92,8 @@ function sanitizeString(value) {
 }
 
 function sanitize(value, key = '') {
+  // Buffers arrive serialized as byte-index objects; drop them like base64 strings.
+  if (BINARY_KEYS.test(key) && value !== null && value !== false && value !== '') return '[REMOVIDO]';
   if (Array.isArray(value)) return value.map((item) => sanitize(item, key));
   if (value && typeof value === 'object') {
     const output = {};
@@ -105,7 +107,8 @@ function sanitize(value, key = '') {
   if (BINARY_KEYS.test(key)) return '[REMOVIDO]';
   if (TEXT_KEYS.test(key)) return key === 'fileName' ? `arquivo-teste${value.match(/\.\w{2,5}$/)?.[0] || ''}` : 'Texto sintético';
   if (ID_KEYS.test(key) && !/@/.test(value) && !/^[0-9a-f-]{36}$/i.test(value)) return alias('id', value);
-  if (key === 'sender' || key === 'number' || key === 'wuid') return alias('pn', value.replace(/\D/g, ''));
+  if (key === 'sender' || key === 'wuid') return alias('pn', value.replace(/\D/g, ''));
+  if (key === 'number') return alias('phone', value.replace(/\D/g, ''));
   return sanitizeString(value);
 }
 
@@ -114,6 +117,7 @@ function assertClean(label, json) {
   const leaks = secrets.filter((secret) => text.includes(secret));
   if (/https?:\/\//.test(text)) leaks.push('url');
   if (/"[A-Za-z0-9+/]{200,}={0,2}"/.test(text)) leaks.push('base64');
+  if (/"(mediaKey|fileEncSha256|jpegThumbnail)":\s*\{/.test(text)) leaks.push('buffer');
   if (leaks.length) fail(`${label}: valor sensível ainda presente (${leaks.length}); nada foi gravado.`);
 }
 

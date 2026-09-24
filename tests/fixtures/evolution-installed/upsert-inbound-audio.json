@@ -41,11 +41,7 @@
         },
         "fileEncSha256": "[REMOVIDO]",
         "streamingSidecar": "[REMOVIDO]",
-        "mediaKeyTimestamp": {
-          "low": 1790255697,
-          "high": 0,
-          "unsigned": false
-        }
+        "mediaKeyTimestamp": "[REMOVIDO]"
       },
       "messageContextInfo": {
         "threadId": [],

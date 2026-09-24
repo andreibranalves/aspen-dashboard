@@ -52,11 +52,7 @@
         "firstScanLength": 22956,
         "imageSourceType": 0,
         "firstScanSidecar": "k4+uJg7rZk9BHg==",
-        "mediaKeyTimestamp": {
-          "low": 1790255695,
-          "high": 0,
-          "unsigned": false
-        },
+        "mediaKeyTimestamp": "[REMOVIDO]",
         "midQualityFileSha256": "iHfCnftSQiQddlHpUCFfJzppiRijknJBMhZiepuZ5Ns=",
         "interactiveAnnotations": []
       },

@@ -47,14 +47,10 @@
         "contactVcard": false,
         "fileEncSha256": "[REMOVIDO]",
         "jpegThumbnail": "[REMOVIDO]",
-        "thumbnailWidth": 336,
-        "thumbnailHeight": 480,
+        "thumbnailWidth": "[REMOVIDO]",
+        "thumbnailHeight": "[REMOVIDO]",
         "thumbnailSha256": "[REMOVIDO]",
-        "mediaKeyTimestamp": {
-          "low": 1790255717,
-          "high": 0,
-          "unsigned": false
-        },
+        "mediaKeyTimestamp": "[REMOVIDO]",
         "thumbnailEncSha256": "[REMOVIDO]",
         "thumbnailDirectPath": "[REMOVIDO]"
       },
