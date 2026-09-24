@@ -132,6 +132,71 @@ async function readRequest(db: QuotationIssueDatabase, key: string) {
   return row || null;
 }
 
+interface IssuableDraft {
+  quotation: typeof quotations.$inferSelect;
+  revision: typeof quoteRevisions.$inferSelect;
+  items: (typeof quoteRevisionItems.$inferSelect)[];
+  templateVersion: QuotationTemplateSnapshot['templateVersion'];
+}
+
+/** Load and validate the draft being issued. The unlocked read feeds the PDF
+ * render; the write transaction repeats it with `forUpdate`, because anything
+ * may have changed while the PDF was rendering. */
+async function readIssuableDraft(db: QuotationIssueDatabase, revisionId: string, concurrencyToken: string, forUpdate: boolean): Promise<IssuableDraft> {
+  const revisionRows = db.select().from(quoteRevisions).where(eq(quoteRevisions.id, revisionId)).limit(1).$dynamic();
+  const [revision] = await (forUpdate ? revisionRows.for('update') : revisionRows);
+  if (!revision) throw new QuotationIssueConflictError('Revisão do orçamento não encontrada.');
+  const quotationRows = db.select().from(quotations).where(eq(quotations.id, revision.quotationId)).limit(1).$dynamic();
+  const [quotation] = await (forUpdate ? quotationRows.for('update') : quotationRows);
+  if (!quotation) throw new QuotationIssueConflictError('Orçamento de origem não encontrado.');
+  if (revision.status !== 'rascunho') throw new QuotationIssueConflictError('Este orçamento não está mais em rascunho e não pode ser emitido novamente.');
+  // The concurrency token is the quotation's updatedAt. A stale token
+  // means another user changed the draft after this page was loaded.
+  if (quotationConcurrencyToken(quotation.updatedAt) !== concurrencyToken.trim()) {
+    throw new QuotationIssueConflictError('O orçamento foi alterado por outro usuário. Recarregue antes de emitir.');
+  }
+  // The demand can be closed between saving and issuing, including while the
+  // PDF renders. The locked read revalidates it before flipping status.
+  if (quotation.opportunityId) {
+    const opportunityRows = db.select().from(crmDeals).where(eq(crmDeals.id, quotation.opportunityId)).limit(1).$dynamic();
+    const [opportunity] = await (forUpdate ? opportunityRows.for('update') : opportunityRows);
+    if (!opportunity) {
+      throw new QuotationIssueConflictError(
+        'A oportunidade vinculada a este orçamento não foi encontrada.'
+      );
+    }
+    if (CLOSED_OPPORTUNITY_STATUSES.includes(opportunity.status as (typeof CLOSED_OPPORTUNITY_STATUSES)[number])) {
+      throw new QuotationIssueConflictError(
+        'Não é possível emitir um orçamento vinculado a uma oportunidade encerrada. Crie uma nova proposta para este cliente.'
+      );
+    }
+    if (opportunity.clientId && opportunity.clientId !== quotation.clientId) {
+      throw new QuotationIssueConflictError(
+        'A oportunidade vinculada não pertence ao cliente deste orçamento.'
+      );
+    }
+  }
+  const items = await db.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revision.id)).orderBy(asc(quoteRevisionItems.position));
+  if (items.length === 0) throw new QuotationIssueInputError('Informe o cliente e ao menos um item antes de emitir o orçamento.');
+  let templateVersion: QuotationTemplateSnapshot['templateVersion'] = null;
+  if (revision.templateVersionId) {
+    const rows = await db.select({ version: quotationTemplateVersions, model: quotationTemplates }).from(quotationTemplateVersions)
+      .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+      .where(eq(quotationTemplateVersions.id, revision.templateVersionId)).limit(1);
+    templateVersion = rows[0] ? { ...rows[0].version, template: rows[0].model } : null;
+  }
+  return { quotation, revision, items, templateVersion };
+}
+
+function issuedDocument(draft: IssuableDraft, issuedAt: Date) {
+  const quotation = { ...draft.quotation, status: 'emitido' as const, issuedAt, updatedAt: issuedAt };
+  const revision = { ...draft.revision, status: 'emitido' as const, issuedAt };
+  // Legacy revisions without a stored version render through their
+  // immutable key/hash pair, exactly like the persisted preview seam.
+  const html = renderQuotationDocument({ quotation, revision, companySnapshot: revision.companySnapshot, templateVersion: draft.templateVersion, sectionsSnapshot: revision.sectionsSnapshot, items: draft.items }).html;
+  return { quotation, revision, html };
+}
+
 export function createQuotationIssueRepository(getDb: DatabaseProvider = getDatabase, options: QuotationIssueRepositoryOptions = {}): { issue(input: QuotationIssueInput): Promise<QuotationIssueResult>; read(idempotencyKey: string): Promise<QuotationIssueStatus | null> } {
   const now = options.now || (() => new Date());
   const idFactory = options.idFactory || randomUUID;
@@ -193,6 +258,25 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
     }
 
     try {
+      // Rendering the PDF takes seconds. Do it from an unlocked, consistent
+      // read so no quotation lock, row lock or pooled connection is held
+      // meanwhile; the write transaction below repeats every check.
+      let prepared: { issuedAt: Date; html: string } | undefined;
+      if (claimedLeaseExpiresAt) {
+        const revisionId = requiredUuid(input.revisionId, 'Revisão do orçamento inválida.');
+        const draft = await database().transaction(
+          (tx) => readIssuableDraft(tx, revisionId, input.concurrencyToken, false),
+          { isolationLevel: 'repeatable read', accessMode: 'read only' }
+        );
+        const issuedAt = date(now(), started);
+        const { html } = issuedDocument(draft, issuedAt);
+        let pdf: Buffer;
+        try { pdf = await renderPdf(html); } catch {
+          throw new QuotationIssueRepositoryError('Não foi possível gerar o PDF do orçamento. Tente novamente.');
+        }
+        if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) throw new QuotationIssueRepositoryError('O gerador retornou um PDF inválido. Tente novamente.');
+        prepared = { issuedAt, html };
+      }
       const result = await database().transaction(async (tx) => {
         await acquireQuotationWriteLock(tx);
         const request = await readRequest(tx, key);
@@ -202,59 +286,15 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
           const [r] = await tx.select().from(quoteRevisions).where(eq(quoteRevisions.id, request.revisionId)).limit(1);
           if (q && r) return issueResult(q, r);
         }
-        if (request.state !== 'processing' || !claimedLeaseExpiresAt || !claimedUpdatedAt || date(request.leaseExpiresAt, started).getTime() !== claimedLeaseExpiresAt.getTime() || date(request.updatedAt, started).getTime() !== claimedUpdatedAt.getTime()) {
+        if (!prepared || request.state !== 'processing' || !claimedLeaseExpiresAt || !claimedUpdatedAt || date(request.leaseExpiresAt, started).getTime() !== claimedLeaseExpiresAt.getTime() || date(request.updatedAt, started).getTime() !== claimedUpdatedAt.getTime()) {
           throw new QuotationIssueConflictError('A emissão desta chave já foi retomada por outra tentativa. Consulte o estado da emissão.');
         }
-        const revisionId = requiredUuid(input.revisionId, 'Revisão do orçamento inválida.');
-        const [revision] = await tx.select().from(quoteRevisions).where(eq(quoteRevisions.id, revisionId)).for('update').limit(1);
-        if (!revision) throw new QuotationIssueConflictError('Revisão do orçamento não encontrada.');
-        const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, revision.quotationId)).for('update').limit(1);
-        if (!quotation) throw new QuotationIssueConflictError('Orçamento de origem não encontrado.');
-        if (revision.status !== 'rascunho') throw new QuotationIssueConflictError('Este orçamento não está mais em rascunho e não pode ser emitido novamente.');
-        // The concurrency token is the quotation's updatedAt. A stale token
-        // means another user changed the draft after this page was loaded.
-        if (quotationConcurrencyToken(quotation.updatedAt) !== input.concurrencyToken.trim()) {
-          throw new QuotationIssueConflictError('O orçamento foi alterado por outro usuário. Recarregue antes de emitir.');
-        }
-        // The demand can be closed between saving and issuing. Revalidate it
-        // under the same lock before flipping status or rendering the PDF.
-        if (quotation.opportunityId) {
-          const [opportunity] = await tx
-            .select()
-            .from(crmDeals)
-            .where(eq(crmDeals.id, quotation.opportunityId))
-            .for('update')
-            .limit(1);
-          if (!opportunity) {
-            throw new QuotationIssueConflictError(
-              'A oportunidade vinculada a este orçamento não foi encontrada.'
-            );
-          }
-          if (CLOSED_OPPORTUNITY_STATUSES.includes(opportunity.status as (typeof CLOSED_OPPORTUNITY_STATUSES)[number])) {
-            throw new QuotationIssueConflictError(
-              'Não é possível emitir um orçamento vinculado a uma oportunidade encerrada. Crie uma nova proposta para este cliente.'
-            );
-          }
-          if (opportunity.clientId && opportunity.clientId !== quotation.clientId) {
-            throw new QuotationIssueConflictError(
-              'A oportunidade vinculada não pertence ao cliente deste orçamento.'
-            );
-          }
-        }
-        const items = await tx.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revision.id)).orderBy(asc(quoteRevisionItems.position));
-        if (items.length === 0) throw new QuotationIssueInputError('Informe o cliente e ao menos um item antes de emitir o orçamento.');
-        let templateVersion: QuotationTemplateSnapshot['templateVersion'] = null;
-        if (revision.templateVersionId) {
-          const rows = await tx.select({ version: quotationTemplateVersions, model: quotationTemplates }).from(quotationTemplateVersions)
-            .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
-            .where(eq(quotationTemplateVersions.id, revision.templateVersionId)).limit(1);
-          templateVersion = rows[0] ? { ...rows[0].version, template: rows[0].model } : null;
-        }
-        // Legacy revisions without a stored version render through their
-        // immutable key/hash pair, exactly like the persisted preview seam.
-        const issuedAt = date(now(), started);
-        const issuedQuotation = { ...quotation, status: 'emitido' as const, issuedAt, updatedAt: issuedAt };
-        const issuedRevision = { ...revision, status: 'emitido' as const, issuedAt };
+        const draft = await readIssuableDraft(tx, requiredUuid(input.revisionId, 'Revisão do orçamento inválida.'), input.concurrencyToken, true);
+        const { quotation, revision, html } = issuedDocument(draft, prepared.issuedAt);
+        // The token matched, yet the document differs from the one whose PDF
+        // was validated: a write outside the draft flow changed it meanwhile.
+        if (html !== prepared.html) throw new QuotationIssueConflictError('O orçamento foi alterado por outro usuário. Recarregue antes de emitir.');
+        const { issuedAt } = prepared;
         await tx.update(quotations).set({ status: 'emitido', issuedAt, updatedAt: issuedAt }).where(eq(quotations.id, quotation.id));
         await tx.update(quoteRevisions).set({ status: 'emitido', issuedAt }).where(eq(quoteRevisions.id, revision.id));
         await upsertCrmDeal(tx, {
@@ -265,16 +305,10 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
           email: revision.clienteEmail,
           telefone: revision.clienteTelefone,
         }, { now: issuedAt, idFactory });
-        const html = renderQuotationDocument({ quotation: issuedQuotation, revision: issuedRevision, companySnapshot: revision.companySnapshot, templateVersion, sectionsSnapshot: revision.sectionsSnapshot, items }).html;
-        let pdf: Buffer;
-        try { pdf = await renderPdf(html); } catch {
-          throw new QuotationIssueRepositoryError('Não foi possível gerar o PDF do orçamento. Tente novamente.');
-        }
-        if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) throw new QuotationIssueRepositoryError('O gerador retornou um PDF inválido. Tente novamente.');
-        const skus = [...new Set(items.map((item) => item.productSku))];
-        await appendProductActivityEvents(tx, skus.map((sku) => ({ sku, tipo: 'orcamento' as const, texto: `Orçamento ${issuedQuotation.businessNumber} emitido`, reference_id: `orcamento:${quotation.id}:${sku}`, created_at: issuedAt })));
+        const skus = [...new Set(draft.items.map((item) => item.productSku))];
+        await appendProductActivityEvents(tx, skus.map((sku) => ({ sku, tipo: 'orcamento' as const, texto: `Orçamento ${quotation.businessNumber} emitido`, reference_id: `orcamento:${quotation.id}:${sku}`, created_at: issuedAt })));
         await tx.update(quotationIssueRequests).set({ state: 'completed', quotationId: quotation.id, revisionId: revision.id, leaseExpiresAt: null, publicError: null, updatedAt: issuedAt }).where(eq(quotationIssueRequests.id, request.id));
-        return issueResult(issuedQuotation, issuedRevision);
+        return issueResult(quotation, revision);
       });
       return result;
     } catch (error) {
