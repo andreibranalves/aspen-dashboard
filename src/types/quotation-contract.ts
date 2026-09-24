@@ -68,6 +68,8 @@ export interface CanonicalQuotationDetail extends CanonicalQuotationBase {
   entrega: string;
   observacoes: string;
   prazoProducao: string;
+  prazoProducaoDias: number;
+  acrescimoPercent: number;
   templateKey: string;
   templateHash: string;
   items: CanonicalQuotationItem[];

@@ -21,6 +21,11 @@ import {
   validateQuotationSections,
   type QuotationSectionsSettings,
 } from './quotation-content.js';
+import {
+  isProductionDays,
+  MAX_PRODUCTION_DAYS,
+  MAX_PRODUCTION_DEADLINE_COMPLEMENT_LENGTH,
+} from './production-deadline.js';
 
 const MAX_PAYMENT_LENGTH = 500;
 const MAX_DELIVERY_LENGTH = 500;
@@ -161,6 +166,20 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     fields.template_padrao = 'Informe a chave do template padrão.';
   }
 
+  const productionDays = payload.prazo_producao_dias;
+  if (productionDays !== undefined && !isProductionDays(productionDays)) {
+    fields.prazo_producao_dias = `Informe um prazo entre 1 e ${MAX_PRODUCTION_DAYS} dias úteis.`;
+  }
+  const productionComplement =
+    payload.prazo_producao_complemento === undefined
+      ? undefined
+      : validateText(
+          payload.prazo_producao_complemento,
+          'prazo_producao_complemento',
+          MAX_PRODUCTION_DEADLINE_COMPLEMENT_LENGTH,
+          fields
+        );
+
   let empresa: QuotationCompanyConfiguration | undefined;
   if (payload.empresa !== undefined) {
     try {
@@ -218,6 +237,10 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     ...(typeof templatePadrao === 'string' ? { template_padrao: templatePadrao.trim() } : {}),
     ...(settingsVersion === undefined ? {} : { settings_version: settingsVersion }),
     ...(aliquota === undefined ? {} : { aliquota }),
+    ...(isProductionDays(productionDays) ? { prazo_producao_dias: productionDays } : {}),
+    ...(typeof productionComplement === 'string'
+      ? { prazo_producao_complemento: productionComplement.trim() }
+      : {}),
   };
 }
 

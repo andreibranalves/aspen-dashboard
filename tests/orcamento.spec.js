@@ -136,7 +136,7 @@ const MOCK_LEAD_DETAIL = {
 // ── Helpers ──
 
 async function setupApiMocks(page, orderTemplates = []) {
-  await page.route('**/api/settings**', async (route) => {
+  await page.route(/\/api\/settings(\?|$)/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

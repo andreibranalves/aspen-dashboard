@@ -55,6 +55,10 @@ export const appSettings = pgTable(
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
     aliquota: numeric('aliquota', { precision: 5, scale: 2 }).notNull().default('4.00'),
     templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
+    productionDays: integer('production_days').notNull().default(20),
+    productionDeadlineComplement: varchar('production_deadline_complement', { length: 300 })
+      .notNull()
+      .default('após confirmação do pagamento e aprovação da arte.'),
     settingsVersion: integer('settings_version').notNull().default(1),
   },
   (table) => [
@@ -70,6 +74,7 @@ export const appSettings = pgTable(
       sql`char_length(btrim(${table.templatePadrao})) > 0`
     ),
     check('app_settings_settings_version_positive_check', sql`${table.settingsVersion} > 0`),
+    check('app_settings_production_days_check', sql`${table.productionDays} BETWEEN 1 AND 365`),
   ]
 );
 
@@ -381,6 +386,8 @@ export const quoteRevisions = pgTable(
     orderPending: boolean('order_pending').notNull().default(false),
     validadeDias: integer('validade_dias').notNull(),
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
+    productionDays: integer('production_days').notNull().default(20),
+    surchargePercent: integer('surcharge_percent').notNull().default(0),
     templateVersionId: uuid('template_version_id')
       .notNull()
       .references(() => quotationTemplateVersions.id),
@@ -419,6 +426,11 @@ export const quoteRevisions = pgTable(
     index('quote_revisions_quotation_idx').on(table.quotationId, table.version),
     check('quote_revisions_version_positive_check', sql`${table.version} > 0`),
     check('quote_revisions_validade_dias_check', sql`${table.validadeDias} BETWEEN 1 AND 365`),
+    check('quote_revisions_production_days_check', sql`${table.productionDays} BETWEEN 1 AND 365`),
+    check(
+      'quote_revisions_surcharge_percent_check',
+      sql`${table.surchargePercent} BETWEEN 0 AND 200`
+    ),
     check('quote_revisions_frete_padrao_check', sql`${table.fretePadrao} >= 0`),
     check('quote_revisions_frete_check', sql`${table.frete} >= 0`),
     check('quote_revisions_subtotal_check', sql`${table.subtotal} >= 0`),

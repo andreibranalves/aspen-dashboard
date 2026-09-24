@@ -6,6 +6,7 @@ import { appendProductActivityEvents } from './product-activity-repository.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import { prepareQuotationDeletion, QuotationDeletionConflictError } from './quotation-deletion.js';
 import {
+  appSettings,
   clients,
   crmDeals,
   products,
@@ -25,9 +26,16 @@ import {
   parseMoneyCents,
   parseQuantityScaled,
   parseScaledInteger,
+  parseSurchargePercent,
   resolveProductPrice,
   type PricingResolution,
 } from '../../../_modules/pricing-core.js';
+import {
+  DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT,
+  parseProductionDays,
+  ProductionDeadlineValidationError,
+  productionDeadlineText,
+} from '../../../_modules/production-deadline.js';
 import {
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
@@ -211,6 +219,8 @@ export interface QuoteDraftManagementDetail {
   frete: string;
   observacoes: string;
   prazo_producao: string;
+  prazo_producao_dias: number;
+  acrescimo_percent: number;
   template_padrao: string;
   template_key: string;
   template_hash: string;
@@ -286,7 +296,8 @@ export interface QuoteDraftManagementUpdateInput {
   frete_aplicado?: unknown;
   observacoes?: unknown;
   notes?: unknown;
-  prazo_producao?: unknown;
+  prazo_producao_dias?: unknown;
+  acrescimo_percent?: unknown;
   template_key?: unknown;
   template_padrao?: unknown;
   template_version_id?: unknown;
@@ -854,6 +865,8 @@ export async function readPostgresQuotationDetail(
     frete: formatDbMoney(revision.frete),
     observacoes: sectionsSnapshot.condicoes_gerais.current.body,
     prazo_producao: sectionsSnapshot.prazo_producao.current.value ?? '',
+    prazo_producao_dias: revision.productionDays,
+    acrescimo_percent: revision.surchargePercent,
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
@@ -1289,6 +1302,16 @@ export function createPostgresQuoteDraftManagementRepository(
       const expectedToken = readConcurrencyToken(input);
       const items = normalizeUpdateItems(input.items);
       const selectedClientId = readClientId(input);
+      let requestSurcharge: number | undefined;
+      try {
+        requestSurcharge =
+          input.acrescimo_percent === undefined
+            ? undefined
+            : parseSurchargePercent(input.acrescimo_percent);
+      } catch (error) {
+        if (error instanceof PricingValidationError) throw new QuoteManagementInputError(error.message);
+        throw error;
+      }
       try {
         const db = getDb();
         const detail = await db.transaction(async (tx) => {
@@ -1359,6 +1382,21 @@ export function createPostgresQuoteDraftManagementRepository(
             .where(or(...skus.map((sku) => eq(productPricingTiers.productSku, sku))))
             .orderBy(asc(productPricingTiers.productSku), asc(productPricingTiers.minimumQuantity));
           const tiersBySku = productPricingRowsBySku(tiers);
+          const surchargePercent = requestSurcharge ?? revision.surchargePercent;
+          let productionDays: number;
+          try {
+            productionDays = parseProductionDays(input.prazo_producao_dias, revision.productionDays);
+          } catch (error) {
+            if (error instanceof ProductionDeadlineValidationError) {
+              throw new QuoteManagementInputError(error.message);
+            }
+            throw error;
+          }
+          const [deadlineSettings] = await tx
+            .select({ complement: appSettings.productionDeadlineComplement })
+            .from(appSettings)
+            .where(eq(appSettings.singletonId, 1))
+            .limit(1);
 
           const resolvedItems: Array<{
             id: string;
@@ -1398,7 +1436,11 @@ export function createPostgresQuoteDraftManagementRepository(
             }
             let resolution: PricingResolution;
             try {
-              resolution = resolveProductPrice(pricing, item.quantity, false);
+              resolution = resolveProductPrice(
+                pricing,
+                item.quantity,
+                item.manualRate ? 0 : surchargePercent
+              );
             } catch (error) {
               if (
                 error instanceof PricingValidationError ||
@@ -1455,10 +1497,13 @@ export function createPostgresQuoteDraftManagementRepository(
           const revisionSections = structuredClone(
             sectionsSnapshot ?? revision.sectionsSnapshot
           );
-          if (!revisionSections.prazo_producao.current.enabled) {
-            // The deadline is cleared when the canonical section is hidden.
-            revisionSections.prazo_producao.current.value = '';
-          }
+          // O Prazo comunicado é sempre derivado do número; some quando a seção está oculta.
+          revisionSections.prazo_producao.current.value = revisionSections.prazo_producao.current.enabled
+            ? productionDeadlineText(
+                productionDays,
+                deadlineSettings?.complement ?? DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT
+              )
+            : '';
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
 
           await tx
@@ -1466,6 +1511,8 @@ export function createPostgresQuoteDraftManagementRepository(
             .set({
               validadeDias,
               entrega,
+              productionDays,
+              surchargePercent,
               // fretePadrao and templatePadrao are snapshots from Settings and
               // are deliberately never accepted from the edit payload.
               frete: formatMoneyCents(freightCents),

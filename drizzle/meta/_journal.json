@@ -393,6 +393,13 @@
       "when": 1790250000000,
       "tag": "0055_sales_order_production",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1790260000000,
+      "tag": "0056_quote_production_deadline",
+      "breakpoints": true
     }
   ]
 }

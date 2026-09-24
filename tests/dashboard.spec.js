@@ -97,7 +97,7 @@ for (const scenario of conversionScenarios) {
   test(`renders ${scenario.ratio} conversion ratio as ${scenario.expected} @smoke`, async ({
     page,
   }) => {
-    await page.route('**/api/settings**', async (route) => {
+    await page.route(/\/api\/settings(\?|$)/, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -147,7 +147,7 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
   /** @type {unknown[]} */
   const savedPayloads = [];
 
-  await page.route('**/api/settings**', (route) =>
+  await page.route(/\/api\/settings(\?|$)/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   );
   await page.route('**/api/sales-dashboard**', async (route) => {
@@ -222,7 +222,7 @@ test('edita o gasto Meta nos meses calendário e preserva retorno e períodos @s
 test('mantém as quatro abas de Resultados e os destinos finais da navegação @smoke', async ({
   page,
 }) => {
-  await page.route('**/api/settings**', (route) =>
+  await page.route(/\/api\/settings(\?|$)/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   );
   await page.route('**/api/sales-dashboard**', (route) =>
@@ -278,7 +278,7 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
 test('dados inválidos do dashboard produzem erro com retry, sem mascarar métricas como zero @smoke', async ({
   page,
 }) => {
-  await page.route('**/api/settings**', (route) =>
+  await page.route(/\/api\/settings(\?|$)/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   );
   let retried = false;

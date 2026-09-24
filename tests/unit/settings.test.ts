@@ -16,6 +16,8 @@ const DEFAULT_SETTINGS: Settings = {
   aliquota: '4.00',
   observacoes: '',
   template_padrao: 'padrao',
+  prazo_producao_dias: 20,
+  prazo_producao_complemento: 'após confirmação do pagamento e aprovação da arte.',
   secoes: {
     schema_version: 1,
     show_summary: true,
@@ -99,6 +101,8 @@ describe('settings handler', () => {
       aliquota: '4.00',
       observacoes: '',
       template_padrao: 'corporativo',
+      prazo_producao_dias: 20,
+      prazo_producao_complemento: 'após confirmação do pagamento e aprovação da arte.',
       secoes: payload.secoes,
       empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
       settings_version: 1,

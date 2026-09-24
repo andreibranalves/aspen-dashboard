@@ -12,6 +12,7 @@ import {
   PricingUnavailableError,
   PricingValidationError,
   parseQuantityScaled,
+  parseSurchargePercent,
   resolveProductPrice,
 } from './pricing-core.js';
 
@@ -64,10 +65,10 @@ export function createCoreHandler(
       return json(400, { error: 'Envie um payload válido.' });
     }
     const inputItems = (payload as { items?: unknown }).items;
-    const urgent = (payload as { urgent?: unknown }).urgent === true;
     if (!Array.isArray(inputItems)) return json(400, { error: 'Items deve ser um array.' });
 
     try {
+      const surchargePercent = parseSurchargePercent((payload as { acrescimo_percent?: unknown }).acrescimo_percent);
       const results = new Array<Record<string, unknown>>(inputItems.length);
       const unique = new Map<string, { sku: string; qty: string | number; indices: number[] }>();
       for (let index = 0; index < inputItems.length; index += 1) {
@@ -103,19 +104,22 @@ export function createCoreHandler(
       for (const entry of unique.values()) {
         const pricing = pricingRows.get(entry.sku);
         if (!pricing) throw new PricingUnavailableError(`Preço não disponível para "${entry.sku}".`);
-        const resolved = resolveProductPrice({
+        const normalized = {
           preco_base: pricing.preco_base,
           precos: pricing.precos.map((tier) => ({
             minimum_quantity: tier.minimum_quantity,
             unit_price: tier.unit_price,
           })),
-        }, entry.qty, urgent);
+        };
+        const resolved = resolveProductPrice(normalized, entry.qty, surchargePercent);
+        const base = surchargePercent ? resolveProductPrice(normalized, entry.qty) : resolved;
         for (const index of entry.indices) {
           results[index] = {
             item_code: entry.sku,
             item_name: names.get(entry.sku) || entry.sku,
             qty: entry.qty,
             rate: resolved.rate,
+            base_rate: base.rate,
           };
         }
       }

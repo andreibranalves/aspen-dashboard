@@ -54,6 +54,10 @@ async function mockSharedApis(page, extractHandler, {
       body: JSON.stringify({ success: true, attention_count: 0 }),
     })
   );
+  await page.route(
+    (url) => url.pathname === '/api/settings',
+    (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  );
   await page.route('**/api/order-templates**', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
@@ -121,7 +125,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await page.getByLabel(`Quantidade de ${PRODUCT.sku}`).fill('7');
     await page.getByLabel(`Preço unitário de ${PRODUCT.sku}`).fill('19.75');
-    await page.getByLabel('Prazo de produção').fill('10 dias');
+    await page.getByLabel('Prazo de produção (dias úteis)').fill('10');
     await page.getByLabel('Observações do orçamento').fill('Condição negociada');
 
     await page.getByRole('tab', { name: 'A partir de uma conversa' }).click();
@@ -132,7 +136,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page.getByLabel('Nome do cliente')).toHaveValue('Cliente alternância');
     await expect(page.getByLabel(`Quantidade de ${PRODUCT.sku}`)).toHaveValue('7');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('19.75');
-    await expect(page.getByLabel('Prazo de produção')).toHaveValue('10 dias');
+    await expect(page.getByLabel('Prazo de produção (dias úteis)')).toHaveValue('10');
     await expect(page.getByLabel('Observações do orçamento')).toHaveValue('Condição negociada');
   });
 
@@ -360,7 +364,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
           contentType: 'application/json',
           body: JSON.stringify({
             success: true,
-            items: body.items.map((item) => ({ item_code: item.item_code, rate: body.urgent ? 30 : item.qty === 50 ? 20 : 12 })),
+            items: body.items.map((item) => ({ item_code: item.item_code, rate: body.acrescimo_percent ? 30 : item.qty === 50 ? 20 : 12 })),
           }),
         });
       },
@@ -378,10 +382,10 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel(`Quantidade de ${PRODUCT.sku}`).fill('50');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('20');
     await page.getByLabel(`Preço unitário de ${PRODUCT_B.sku}`).fill('99');
-    await page.getByLabel('Pedido urgente').check();
+    await page.getByLabel('Acréscimo (%)').fill('50');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('30');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT_B.sku}`)).toHaveValue('99');
-    expect(pricingRequests.at(-1).urgent).toBe(true);
+    expect(pricingRequests.at(-1).acrescimo_percent).toBe(50);
     expect(pricingRequests.at(-1).items.map((item) => item.item_code)).toEqual([PRODUCT.sku]);
     expect(unexpectedApiRequests).toEqual([]);
   });

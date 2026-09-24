@@ -322,6 +322,8 @@ export function createPostgresQuotationLifecycleRepository(
             status: 'rascunho',
             validadeDias: source.validadeDias,
             entrega: source.entrega,
+            productionDays: source.productionDays,
+            surchargePercent: source.surchargePercent,
             fretePadrao: source.fretePadrao,
             frete: source.frete,
             templatePadrao: source.templatePadrao,

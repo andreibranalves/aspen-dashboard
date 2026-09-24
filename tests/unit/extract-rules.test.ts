@@ -113,9 +113,9 @@ describe('DEFAULT_RULES — cobertura de produtos', () => {
     );
   });
 
-  it('Urgência — prazo < 15 dias → urgente=true', () => {
-    assert.ok(DEFAULT_RULES.includes('urgente=true'), 'deve conter regra de urgência');
-    assert.ok(DEFAULT_RULES.includes('prazo < 15'), 'deve conter limite de 15 dias');
+  it('não aplica urgência automática no preço', () => {
+    assert.ok(!DEFAULT_RULES.includes('urgente'), 'não deve conter regra de urgência');
+    assert.ok(!DEFAULT_RULES.includes('+30%'), 'não deve conter acréscimo automático');
   });
 });
 
@@ -127,6 +127,13 @@ describe('buildSystemPrompt()', () => {
     assert.ok(prompt.includes('SKU Explícito'), 'deve conter Rule 0');
     assert.ok(prompt.includes('RETORNE APENAS JSON'), 'deve conter instrução JSON');
     assert.ok(prompt.includes('Bríndice'), 'deve conter regras de origem');
+  });
+
+  it('pede o trecho do Prazo pedido sem permitir que a IA defina prazo ou preço', () => {
+    const prompt = buildSystemPrompt('Regra custom.');
+    assert.ok(prompt.includes('"prazo_pedido"'));
+    assert.ok(prompt.includes('Não defina prazo nem preço'));
+    assert.ok(!prompt.includes('"urgente"'));
   });
 
   it('usa DEFAULT_RULES quando customRules é null/undefined', () => {
@@ -205,7 +212,7 @@ describe('applyOrderTemplate()', () => {
         nome: 'Andrei B.',
         email: 'andrei@gmail.com',
         telefone: '21999999999',
-        urgente: false,
+        prazo_pedido: null,
         origem: '',
         cnpj: null,
         endereco: {},

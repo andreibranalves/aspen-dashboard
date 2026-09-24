@@ -1,6 +1,7 @@
 import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import type { Product } from '@/types/domain';
 import { projectQuotationOrigin, type QuotationOriginView } from '../features/quotations/quotationOrigin.ts';
+import { DEFAULT_PRODUCTION_DAYS, isProductionDays, isSurchargePercent } from './productionDeadline.ts';
 import type {
   CanonicalQuotationDetail,
   CanonicalQuotationListRow,
@@ -739,6 +740,8 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
     entrega: canonical.entrega as string,
     observacoes: canonical.observacoes as string,
     prazoProducao: canonical.prazoProducao as string,
+    prazoProducaoDias: isProductionDays(canonical.prazoProducaoDias) ? canonical.prazoProducaoDias : DEFAULT_PRODUCTION_DAYS,
+    acrescimoPercent: isSurchargePercent(canonical.acrescimoPercent) ? canonical.acrescimoPercent : 0,
     templateKey,
     templateHash,
     ...(templateVersionId === undefined ? {} : { templateVersionId: templateVersionId }),

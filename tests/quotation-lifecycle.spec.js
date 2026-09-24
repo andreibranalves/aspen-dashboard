@@ -151,7 +151,7 @@ function deliveryView(state, publicError = null) {
 }
 
 async function routeTemplates(page) {
-  await page.route('**/api/settings**', async (route) => {
+  await page.route(/\/api\/settings(\?|$)/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -621,7 +621,7 @@ test('draft quotations do not expose the email action', async ({ page }) => {
 test('core quotation detail accepts JSON-string section snapshots from PostgreSQL @quotations @critical', async ({
   page,
 }) => {
-  await page.route('**/api/settings**', async (route) => {
+  await page.route(/\/api\/settings(\?|$)/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -742,7 +742,7 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
       body: JSON.stringify({ data: [] }),
     });
   });
-  await page.route('**/api/settings**', async (route) => fulfillJson(route, {}));
+  await page.route(/\/api\/settings(\?|$)/, async (route) => fulfillJson(route, {}));
   await page.route('**/api/quotation-templates**', async (route) =>
     fulfillJson(route, {
       templates: [
@@ -1117,8 +1117,8 @@ test('new revision prices a product selected from an added item row @quotations 
   await quantity.blur();
   await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('8.50');
   expect(pricingBodies).toEqual([
-    { items: [{ item_code: 'SKU-NEW', qty: '1.000' }], urgent: false },
-    { items: [{ item_code: 'SKU-NEW', qty: '100' }], urgent: false },
+    { items: [{ item_code: 'SKU-NEW', qty: '1.000' }], acrescimo_percent: 0 },
+    { items: [{ item_code: 'SKU-NEW', qty: '100' }], acrescimo_percent: 0 },
   ]);
 });
 

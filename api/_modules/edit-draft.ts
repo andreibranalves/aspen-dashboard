@@ -15,7 +15,6 @@ RETORNE APENAS JSON válido — um objeto com o rascunho editado:
   "nome": "string",
   "email": "string ou null",
   "telefone": "string ou null",
-  "urgente": false,
   "items": [{"item_code": "SKU", "qty": N}]
 }`;
 
@@ -67,9 +66,6 @@ function validateDraft(draft: Record<string, unknown>): void {
   }
   if (draft.telefone !== undefined && draft.telefone !== null && typeof draft.telefone !== 'string') {
     throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "telefone" deve ser string ou null');
-  }
-  if (draft.urgente !== undefined && typeof draft.urgente !== 'boolean') {
-    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "urgente" deve ser boolean');
   }
   if (draft.items !== undefined) {
     if (!Array.isArray(draft.items)) {

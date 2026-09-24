@@ -352,6 +352,7 @@ test(
           version: 2,
           status: 'aprovado',
           validadeDias: 30,
+          productionDays: 10,
           companySnapshot: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
           clienteNome: `Cliente pedido local ${fixtureTag}`,
           subtotal: '222.22',
@@ -532,6 +533,7 @@ test(
       assert.equal(storedOrder?.subtotal, '222.22');
       assert.equal(storedOrder?.grandTotal, '230.00');
       assert.equal(storedOrder?.status, 'To Deliver and Bill');
+      assert.equal(storedOrder?.productionDays, 10, 'pedido herda o prazo da revisão aprovada');
       assert.equal(first.quotation_revision_id, latestRevisionId);
       const items = await db
         .select()

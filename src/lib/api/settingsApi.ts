@@ -45,6 +45,8 @@ export interface DashboardSettings {
   aliquota: string;
   observacoes: string;
   template_padrao: string;
+  prazo_producao_dias: number;
+  prazo_producao_complemento: string;
   secoes: QuotationSectionsSettings;
   empresa: QuotationCompanyConfiguration;
   settings_version: number;

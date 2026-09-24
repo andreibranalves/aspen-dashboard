@@ -19,8 +19,8 @@ const validDraft: StoredAutoQuoteDraft = {
   index: 0,
   original: { nome: 'Cliente' },
   edited: {
-    nome: 'Cliente', email: 'cliente@example.com', telefone: '5511999999999', urgente: false,
-    origem: 'Google Ads', cnpj: '', prazo_producao: '',
+    nome: 'Cliente', email: 'cliente@example.com', telefone: '5511999999999', acrescimo_percent: 0,
+    origem: 'Google Ads', cnpj: '',
     endereco: { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
     items: [{ item_code: 'SKU-1', qty: 2, rate: 10 }],
   },

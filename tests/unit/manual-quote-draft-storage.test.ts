@@ -17,9 +17,8 @@ const valid = {
   address: { cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '' },
   showAddress: false,
   items: [{ _key: 'item-1', sku: 'SKU-1', nome: 'Produto', qty: 2, rate: 10, _rateManual: false }],
-  prazo: '',
   observacoes: 'ok',
-  urgente: false,
+  acrescimo: 0,
   templateKey: '',
 };
 

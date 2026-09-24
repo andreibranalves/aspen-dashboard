@@ -92,6 +92,8 @@ test(
         aliquota: '4.00',
         observacoes: '',
         template_padrao: 'padrao',
+        prazo_producao_dias: 20,
+        prazo_producao_complemento: 'após confirmação do pagamento e aprovação da arte.',
         empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         settings_version: 1,
 
@@ -136,6 +138,8 @@ test(
           frete_padrao: '000129.9',
           observacoes: 'Enviar prova digital para aprovação.',
           template_padrao: 'comercial-2026',
+          prazo_producao_dias: 12,
+          prazo_producao_complemento: '  após aprovação da arte.  ',
         })
       );
       assert.equal(saved.statusCode, 200);
@@ -147,6 +151,8 @@ test(
         aliquota: '4.00',
         observacoes: 'Prazo de entrega:\n15 dias úteis\n\nObservações:\nEnviar prova digital para aprovação.',
         template_padrao: 'comercial-2026',
+        prazo_producao_dias: 12,
+        prazo_producao_complemento: 'após aprovação da arte.',
         empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
         settings_version: 2,
         secoes: {

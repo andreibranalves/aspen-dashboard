@@ -1,6 +1,7 @@
 import type { QuotationOriginPrefill } from '../../features/crm/quotationOriginPrefill.ts';
 import type { OpportunitySelection } from '../../features/quotations/opportunitySelection.ts';
 import { EMPTY_ADDRESS, normalizeAddress, type Address } from '../clientMetadata.ts';
+import { isProductionDays, isSurchargePercent } from '../productionDeadline.ts';
 
 export const MANUAL_QUOTE_DRAFT_STORAGE_KEY = 'aspen_manual_draft';
 export const MANUAL_QUOTE_DRAFT_STORAGE_VERSION = 1;
@@ -33,9 +34,10 @@ export interface ManualQuoteDraft {
   address: Address;
   showAddress: boolean;
   items: ManualQuoteCartItem[];
-  prazo: string;
+  /** Ausente usa o padrão das Configurações. */
+  prazoDias?: number;
   observacoes: string;
-  urgente: boolean;
+  acrescimo: number;
   templateKey: string;
   originPrefill?: QuotationOriginPrefill;
   opportunity: OpportunitySelection;
@@ -138,9 +140,9 @@ export function sanitizeManualQuoteDraft(value: unknown): ManualQuoteDraft | nul
     address: address(value.address),
     showAddress: value.showAddress === true,
     items: sanitizedItems as ManualQuoteCartItem[],
-    prazo: stringValue(value.prazo),
+    ...(isProductionDays(value.prazoDias) ? { prazoDias: value.prazoDias } : {}),
     observacoes: stringValue(value.observacoes),
-    urgente: value.urgente === true,
+    acrescimo: isSurchargePercent(value.acrescimo) ? value.acrescimo : 0,
     templateKey: stringValue(value.templateKey),
     ...(validOrigin ? { originPrefill: validOrigin } : {}),
     opportunity: opportunity(value.opportunity),

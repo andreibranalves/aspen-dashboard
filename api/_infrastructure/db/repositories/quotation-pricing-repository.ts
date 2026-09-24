@@ -7,7 +7,7 @@ import type { PricingResolver } from '../../../_modules/quotation-draft-snapshot
 export function createPostgresQuotationPricingResolver(
   getDb: () => AppDatabase = getDatabase,
 ): PricingResolver {
-  return async (rawItem, quantity, urgent = false) => {
+  return async (rawItem, quantity, surchargePercent = 0) => {
     const item = rawItem && typeof rawItem === 'object' ? rawItem as Record<string, unknown> : {};
     const sku = String(item.item_code || item.sku || '').trim();
     if (!sku) throw new PricingUnavailableError('SKU do item é obrigatório.');
@@ -28,7 +28,7 @@ export function createPostgresQuotationPricingResolver(
         preco_base: product.precoBase,
         precos: tiers.map((tier) => ({ minimum_quantity: String(tier.minimumQuantity), unit_price: String(tier.unitPrice) })),
       });
-      return { rate: resolveProductPrice(pricing, quantity, urgent).rate };
+      return { rate: resolveProductPrice(pricing, quantity, surchargePercent).rate };
     } catch (error) {
       if (error instanceof PricingUnavailableError || error instanceof PricingValidationError) {
         throw new PricingUnavailableError(`Preço indisponível para o produto "${sku}".`);
