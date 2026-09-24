@@ -61,8 +61,6 @@ const OPERATIONS = operationNames();
 test('contratos existem para as operações e são distintos entre si', () => {
   assert.deepEqual([...OPERATIONS].sort(), [
     'backup-restore',
-    'canary',
-    'cleanup',
     'migration',
     'migration-production',
     'preview-e2e',
@@ -143,20 +141,17 @@ test('checkOperationEnv satisfaz anyOf de backup com um membro e falha sem nenhu
 
 test('operações não exigem credenciais de workflows não relacionados', () => {
   const separations = [
-    ['migration', ['CANARY_PASSWORD', 'RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
+    ['migration', ['RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
     [
       'preview-e2e',
       [
         'RESEND_API_KEY',
-        'CANARY_PASSWORD',
         'BLOB_READ_WRITE_TOKEN',
         'STAGING_DATABASE_URL',
         'STAGING_PG_SERVICE',
       ],
     ],
-    ['cleanup', ['STAGING_DATABASE_URL', 'CANARY_BASE_URL', 'E2E_PASSWORD', 'RESEND_API_KEY']],
-    ['backup-restore', ['RESEND_API_KEY', 'CANARY_PASSWORD', 'STAGING_DATABASE_URL']],
-    ['canary', ['DATABASE_URL', 'RESEND_API_KEY', 'BLOB_READ_WRITE_TOKEN']],
+    ['backup-restore', ['RESEND_API_KEY', 'E2E_PASSWORD', 'STAGING_DATABASE_URL']],
   ] as const;
 
   for (const [operation, unrelated] of separations) {
@@ -325,16 +320,16 @@ test('loadOperationEnv preenche ausentes da origem externa e falha fechada sem o
   withTempDir((root) => {
     const filePath = externalFileFixture(
       root,
-      contractValues('cleanup', root, { DATABASE_URL: secret })
+      contractValues('backup-restore', root, { DATABASE_URL: secret })
     );
     const env = { CUTOVER_ENV_FILE: filePath };
-    const result = loadOperationEnv('cleanup', { env });
+    const result = loadOperationEnv('backup-restore', { env });
     assert.equal(result.ok, true);
     assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
 
     assert.throws(
-      () => loadOperationEnv('cleanup', { env: { CUTOVER_ENV_FILE: '/nao/existe.env' } }),
-      /Ambiente incompleto para a operação cleanup: DATABASE_URL \(missing\)/
+      () => loadOperationEnv('backup-restore', { env: { CUTOVER_ENV_FILE: '/nao/existe.env' } }),
+      /Ambiente incompleto para a operação backup-restore: DATABASE_URL \(missing\)/
     );
   });
 });

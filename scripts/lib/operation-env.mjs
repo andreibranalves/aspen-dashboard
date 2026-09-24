@@ -4,8 +4,8 @@
 // Regras:
 // - Origem externa explícita e consistente: $HOME/.config/aspen-dashboard/.env.local
 //   (ou .env), sobrescrita por CUTOVER_ENV_FILE. Arquivos do checkout nunca são origem.
-// - Contratos separados por operação: uma migração não exige credenciais de canário/e-mail,
-//   um canário não exige variáveis de backup/restore, e assim por diante.
+// - Contratos separados por operação: uma migração não exige credenciais de e-mail,
+//   um Preview E2E não exige variáveis de backup/restore, e assim por diante.
 // - Saída e erros contêm apenas NOMES de variáveis e estados, nunca valores.
 // - Variáveis declaradas em `paths` referenciam arquivos que devem ser regulares com
 //   modo 0600; a permissão é verificada no valor resolvido (processo ou arquivo externo).
@@ -80,35 +80,11 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
     anyOf: [],
     paths: {},
   },
-  canary: {
-    description: 'Canário PostgreSQL somente leitura e evidências de cutover.',
-    keys: [
-      'CANARY_BASE_URL',
-      'CANARY_PASSWORD',
-      'CANARY_QUOTATION_ID',
-      'CANARY_PUBLIC_QUOTATION_URL',
-      'PRODUCTION_CANARY_PASSWORD',
-      'KNOWN_PRODUCTION_POSTGRES_QUOTATION_ID',
-      'KNOWN_PRODUCTION_PUBLIC_QUOTATION_URL',
-      'PREVIEW_DEPLOYMENT_URL',
-      'PREVIOUS_PRODUCTION_DEPLOYMENT_URL',
-      'POST_CLEANUP_PREVIEW_URL',
-    ],
-    anyOf: [],
-    paths: {},
-  },
   'backup-restore': {
     description:
       'Backup, restore validado e preflight de capacidade. A URL de produção é exigida no validate; serviços nomeados protegem alvos quando configurados (guardas do próprio comando).',
     keys: ['DATABASE_URL'],
     anyOf: [['BLOB_READ_WRITE_TOKEN', 'QUOTATION_BLOB_READ_WRITE_TOKEN']],
-    paths: {},
-  },
-  cleanup: {
-    description:
-      'Limpeza de dados; identidade positiva do alvo e evidências de recuperação permanecem gates do próprio comando.',
-    keys: ['DATABASE_URL', 'CLEANUP_TARGET_IDENTITY'],
-    anyOf: [],
     paths: {},
   },
 });

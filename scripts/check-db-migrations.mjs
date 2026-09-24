@@ -136,11 +136,26 @@ export function formatMigrationCheck(result) {
   return lines.join('\n');
 }
 
+// Localmente, compara o branch inteiro (commits e working tree) desde o ponto
+// em que saiu de origin/master; sem esse ref, só o working tree contra HEAD.
+function defaultBaseRef() {
+  try {
+    const mergeBase = execFileSync('git', ['merge-base', 'origin/master', 'HEAD'], {
+      cwd: PROJECT_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return mergeBase || 'HEAD';
+  } catch {
+    return 'HEAD';
+  }
+}
+
 function runCli() {
   try {
     const result = runMigrationCheck({
       projectRoot: PROJECT_ROOT,
-      baseRef: process.env.MIGRATION_BASE_REF?.trim() || 'HEAD',
+      baseRef: process.env.MIGRATION_BASE_REF?.trim() || defaultBaseRef(),
     });
     process.stdout.write(`${formatMigrationCheck(result)}\n`);
     process.exitCode = result.violations.length > 0 ? 1 : 0;

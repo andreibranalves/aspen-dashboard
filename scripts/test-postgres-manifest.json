@@ -1,10 +1,7 @@
 [
   "tests/unit/ad-consent-chain-postgres.test.ts",
   "tests/unit/backup.test.ts",
-  "tests/unit/beta-cleanup-postgres.test.ts",
-  "tests/unit/client-consolidation-postgres.test.ts",
   "tests/unit/client-matching-postgres.test.ts",
-  "tests/unit/commercial-record-transition-postgres.test.ts",
   "tests/unit/crm-deals-postgres.test.ts",
   "tests/unit/crm-stage-trigger-postgres.test.ts",
   "tests/unit/dashboard-conversion-cohort-postgres.test.ts",

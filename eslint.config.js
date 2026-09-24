@@ -49,7 +49,6 @@ export default [
       'dist/**',
       'node_modules/**',
       '.worktrees/**',
-      'scripts/playwright-*.mjs',
       'api/**/*.js',
       'api/**/*.js.map',
     ],
@@ -66,7 +65,6 @@ export default [
     files: [
       'api/**/*.{js,ts}',
       'scripts/**/*.{js,mjs}',
-      'test_local.mjs',
       '*.config.js',
     ],
     languageOptions: {
@@ -215,9 +213,9 @@ export default [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
-  // ── Playwright / browser test scripts (node env + browser globals) ──
+  // ── Scripts de teste (node + globals de browser) ──
   {
-    files: ['scripts/playwright-*.mjs', 'scripts/test-*.mjs'],
+    files: ['scripts/test-*.mjs'],
     languageOptions: {
       globals: {
         console: 'readonly',

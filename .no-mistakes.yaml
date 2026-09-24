@@ -21,6 +21,6 @@ test:
        instalado (`npx playwright install chromium`). O alvo HTTP é forçado para
        `http://localhost:${PLAYWRIGHT_PORT:-5173}` e a suíte integrada só carrega
        com a capability efêmera criada pelo próprio runner.
-    5. Lint, tipos e build: `npm run check`.
+    5. Lint, tipos, guards estruturais e build: `npm run verify:fast && npm run build`.
     6. Evidência: registre a saída real dos comandos executados e o desfecho do
        cenário de navegador. Teste pulado não é validação da área alterada.
