@@ -59,7 +59,9 @@ export class QuotationIssueRepositoryError extends Error {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const LEASE_MS = 30_000;
+/** Matches the Function's `maxDuration` (vercel.json): the PDF renders outside
+ * any lock, so only an attempt the platform already killed may lose its lease. */
+const LEASE_MS = 60_000;
 /** Commercial outcomes that close prospecting. An issued proposal must never
  * officialize into a demand that already lost or closed while it was edited. */
 const CLOSED_OPPORTUNITY_STATUSES = ['Pedido Fechado', 'Perdido'] as const;

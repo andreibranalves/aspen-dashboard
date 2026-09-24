@@ -269,6 +269,46 @@ gated('the PDF renders without holding the quotation write lock or the draft row
   assert.deepEqual(taken, { writeLock: false, revisionRow: false, quotationRow: false });
 }));
 
+gated('a same-key retry while the PDF renders up to the Function limit waits for the running attempt', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const key = randomUUID();
+  const retry = createQuotationIssueRepository(() => db, { now: () => new Date(NOW.getTime() + 59_000), renderPdf: async () => VALID_PDF });
+  const repository = createQuotationIssueRepository(() => db, {
+    now: () => NOW,
+    renderPdf: async () => {
+      await assert.rejects(retry.issue(issueInput(key, draft)), /processamento/i);
+      return VALID_PDF;
+    },
+  });
+  const result = await repository.issue(issueInput(key, draft));
+  assert.equal(result.status, 'emitido');
+  assert.equal((await repository.read(key))?.state, 'completed');
+}));
+
+gated('two keys racing through the PDF render issue the revision once', async () => withDatabase(async (db) => {
+  await seed(db);
+  const draft = await createPersistedDraft(db);
+  const [firstKey, secondKey] = [randomUUID(), randomUUID()];
+  const second = createQuotationIssueRepository(() => db, { now: () => NOW, renderPdf: async () => VALID_PDF });
+  const first = createQuotationIssueRepository(() => db, {
+    now: () => NOW,
+    renderPdf: async () => {
+      await second.issue(issueInput(secondKey, draft));
+      return VALID_PDF;
+    },
+  });
+  await assert.rejects(
+    first.issue(issueInput(firstKey, draft)),
+    (error: unknown) => error instanceof QuotationIssueConflictError && /não está mais em rascunho/i.test(error.message),
+  );
+  const [revision] = await db.select().from(schema.quoteRevisions).where(eq(schema.quoteRevisions.id, draft.revisionId));
+  assert.equal(revision?.status, 'emitido');
+  assert.equal((await db.select().from(schema.crmDeals).where(eq(schema.crmDeals.quotationId, draft.quotationUuid))).length, 1);
+  assert.equal((await first.read(secondKey))?.state, 'completed');
+  assert.equal((await first.read(firstKey))?.state, 'retryable');
+}));
+
 gated('a draft edit saved while the PDF renders turns the issuance into a conflict', async () => withDatabase(async (db) => {
   await seed(db);
   const draft = await createPersistedDraft(db);
