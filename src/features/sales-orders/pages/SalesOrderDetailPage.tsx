@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, type CSSProperties } from 'react';
-import { Check, DollarSign, FileText, Truck } from 'lucide-react';
-import { apiGet, apiPatch } from '@/lib/api/api';
+import { useState, useEffect, useCallback } from 'react';
+import { Check, FileText } from 'lucide-react';
+import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -22,6 +22,7 @@ import {
   type SalesOrderItemView,
 } from '@/features/sales-orders/salesOrderViewModel';
 import { Heading } from '@/components/ui/heading';
+import { NotesSection, ProductionSection } from '@/features/sales-orders/components/ProductionPanel';
 
 const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
@@ -43,36 +44,6 @@ interface SalesOrderDetailPageProps {
 function formatSalesOrderDate(value: string): string {
   const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
-}
-
-function ProgressMetric({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value?: number;
-  tone: 'primary' | 'success';
-}) {
-  const width = value === undefined ? 0 : Math.min(100, Math.max(0, value));
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span>{label}</span>
-        <span className="font-sans text-xs tabular-nums text-fg-muted">
-          {value === undefined ? '—' : `${value}%`}
-        </span>
-      </div>
-      {value !== undefined && (
-        <div className="h-1.5 overflow-hidden rounded-full bg-surface-muted" aria-hidden="true">
-          <div
-            className={`h-full w-(--progress-w) rounded-full transition-all ${tone === 'success' ? 'bg-success' : 'bg-primary'}`}
-            style={{ '--progress-w': `${width}%` } as CSSProperties}
-          />
-        </div>
-      )}
-    </div>
-  );
 }
 
 function ItemTable({ items }: { items: SalesOrderItemView[] }) {
@@ -111,8 +82,6 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
   const [data, setData] = useState<SalesOrderDetailView | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [updating, setUpdating] = useState<'billed' | 'delivered' | null>(null);
   const fetchDetail = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -127,25 +96,10 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
       setLoading(false);
     }
   }, [id]);
-  const markProgress = useCallback(
-    async (field: 'billed' | 'delivered') => {
-      setUpdating(field);
-      setActionError(null);
-      try {
-        const result = await apiPatch<unknown>(`/sales-orders?id=${encodeURIComponent(id)}`, {
-          [field === 'billed' ? 'per_billed' : 'per_delivered']: 100,
-        });
-        const projected = projectSalesOrderDetail(result);
-        if (!projected) throw new Error('Resposta inválida ao atualizar pedido.');
-        setData(projected);
-      } catch {
-        setActionError('Não foi possível atualizar o pedido. Tente novamente.');
-      } finally {
-        setUpdating(null);
-      }
-    },
-    [id]
-  );
+  const applyResult = useCallback((result: unknown) => {
+    const projected = projectSalesOrderDetail(result);
+    if (projected) setData(projected);
+  }, []);
 
   useEffect(() => {
     void fetchDetail();
@@ -175,16 +129,6 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
   const statusLabel = STATUS_LABELS[data.status] || data.status;
   const orderIsReadOnly =
     data.status === 'Draft' || data.status === 'Cancelled' || data.status === 'Closed';
-  const billedBlockedReason = orderIsReadOnly
-    ? 'Pedido não pode ser alterado neste status.'
-    : data.per_billed !== undefined && data.per_billed >= 100
-      ? 'Pedido já está faturado.'
-      : undefined;
-  const deliveredBlockedReason = orderIsReadOnly
-    ? 'Pedido não pode ser alterado neste status.'
-    : data.per_delivered !== undefined && data.per_delivered >= 100
-      ? 'Pedido já está entregue.'
-      : undefined;
 
   return (
     <PageShell className="space-y-4">
@@ -209,7 +153,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         <div className="min-w-0 space-y-4">
           <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">
             <Heading level="section" id="sales-order-customer-title">Cliente</Heading>
-            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-avatar-one text-xs font-semibold text-avatar-ink" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.delivery_date && <p className="text-xs text-fg-muted">Entrega prevista: {formatSalesOrderDate(data.delivery_date)}</p>}</div></div>
+            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-avatar-one text-xs font-semibold text-avatar-ink" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.production?.production.deadline && <p className="text-xs text-fg-muted">Prazo final: {formatSalesOrderDate(data.production.production.deadline)}</p>}</div></div>
           </section>
           <section
             className="min-w-0 rounded-card border border-line bg-surface p-5"
@@ -240,58 +184,10 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             </div>
 
           </section>
-          <section className="rounded-card border border-line bg-surface p-5">
-            <div>
-              <Heading level="section">Andamento operacional</Heading>
-              <div
-                role="region"
-                aria-label="Progresso do pedido"
-                className="mt-4 grid gap-4 sm:grid-cols-2"
-              >
-                <ProgressMetric label="Faturamento" value={data.per_billed} tone="success" />
-                <ProgressMetric label="Entrega" value={data.per_delivered} tone="primary" />
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {billedBlockedReason && (
-                  <span id="sales-order-billed-reason" className="sr-only">
-                    {billedBlockedReason}
-                  </span>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label="Marcar faturado"
-                  aria-describedby={billedBlockedReason ? 'sales-order-billed-reason' : undefined}
-                  title={billedBlockedReason}
-                  disabled={Boolean(billedBlockedReason) || updating !== null}
-                  onClick={() => void markProgress('billed')}
-                >
-                  <DollarSign size={14} aria-hidden="true" /> Marcar faturado
-                </Button>
-                {deliveredBlockedReason && (
-                  <span id="sales-order-delivered-reason" className="sr-only">
-                    {deliveredBlockedReason}
-                  </span>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  aria-label="Marcar entregue"
-                  aria-describedby={deliveredBlockedReason ? 'sales-order-delivered-reason' : undefined}
-                  title={deliveredBlockedReason}
-                  disabled={Boolean(deliveredBlockedReason) || updating !== null}
-                  onClick={() => void markProgress('delivered')}
-                >
-                  <Truck size={14} aria-hidden="true" /> Marcar entregue
-                </Button>
-              </div>
-              {actionError && (
-                <p className="mt-3 text-sm text-destructive" role="alert">
-                  {actionError}
-                </p>
-              )}
-            </div>
-          </section>
+          {data.production && (
+            <ProductionSection order={data.production} readOnly={orderIsReadOnly} onChanged={applyResult} />
+          )}
+          <NotesSection orderId={data.id} notes={data.notes} onChanged={applyResult} />
         </div>
         <div className="space-y-4">
           <aside

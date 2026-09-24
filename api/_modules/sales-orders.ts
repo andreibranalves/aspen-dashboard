@@ -1,11 +1,11 @@
-// GET /api/sales-orders - local sales order list and detail.
+// GET/PATCH /api/sales-orders - list, production board, detail and production actions.
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
   createPostgresSalesOrdersRepository,
   SALES_ORDER_STATUSES,
   type SalesOrderListOptions,
-  type SalesOrderProgressInput,
+  type SalesOrderAction,
   type SalesOrdersRepository,
 } from '../_infrastructure/db/repositories/sales-orders-repository.js';
 
@@ -64,7 +64,16 @@ function listOptions(query: Record<string, string | undefined>): SalesOrderListO
     to: (query.to || '').trim() || undefined,
   };
 }
-function parseProgressBody(body: string): SalesOrderProgressInput {
+const SALES_ORDER_ACTIONS = new Set([
+  'advance',
+  'undo',
+  'update',
+  'add_note',
+  'edit_note',
+  'delete_note',
+]);
+
+function parseActionBody(body: string): SalesOrderAction {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body || '');
@@ -74,31 +83,12 @@ function parseProgressBody(body: string): SalesOrderProgressInput {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw createHttpError(400, 'Envie um payload válido.');
   }
-  const input = parsed as Record<string, unknown>;
-  const keys = Object.keys(input);
-  if (
-    keys.length === 0 ||
-    keys.some((key) => key !== 'per_billed' && key !== 'per_delivered')
-  ) {
-    throw createHttpError(
-      400,
-      'Informe per_billed ou per_delivered com um percentual inteiro de 0 a 100.'
-    );
+  const action = (parsed as { action?: unknown }).action;
+  if (typeof action !== 'string' || !SALES_ORDER_ACTIONS.has(action)) {
+    throw createHttpError(400, 'Ação inválida para o pedido.');
   }
-  for (const key of ['per_billed', 'per_delivered'] as const) {
-    if (input[key] === undefined) continue;
-    if (!Number.isInteger(input[key]) || Number(input[key]) < 0 || Number(input[key]) > 100) {
-      throw createHttpError(400, `${key} deve ser um percentual inteiro entre 0 e 100.`);
-    }
-  }
-  return {
-    ...(input.per_billed === undefined ? {} : { per_billed: input.per_billed as number }),
-    ...(input.per_delivered === undefined
-      ? {}
-      : { per_delivered: input.per_delivered as number }),
-  };
+  return parsed as SalesOrderAction;
 }
-
 
 function logError(error: unknown): void {
   const value = error as { logMessage?: string; message?: string };
@@ -122,10 +112,15 @@ export function createSalesOrdersHandler(
         if (event.httpMethod === 'PATCH') {
           throw createHttpError(400, 'ID do pedido é obrigatório.');
         }
+        if (query.view === 'production') return json(200, await repository.board());
+        if (query.view === 'alerts') {
+          const board = await repository.board();
+          return json(200, { success: true, attention_count: board.attention_count });
+        }
         return json(200, await repository.list(listOptions(query)));
       }
       if (event.httpMethod === 'PATCH') {
-        return json(200, await repository.update(query.id, parseProgressBody(event.body)));
+        return json(200, await repository.apply(query.id, parseActionBody(event.body)));
       }
       const detail = await repository.get(query.id);
       if (!detail) throw createHttpError(404, 'Pedido de Venda não encontrado.');

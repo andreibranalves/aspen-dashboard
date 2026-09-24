@@ -386,6 +386,13 @@
       "when": 1790240000000,
       "tag": "0054_whatsapp_message_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1790250000000,
+      "tag": "0055_sales_order_production",
+      "breakpoints": true
     }
   ]
 }

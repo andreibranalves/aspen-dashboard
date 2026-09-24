@@ -1154,25 +1154,31 @@ test('frontend source guard rejects removed external files, tokens, and app URLs
   expect(violations).toEqual([]);
 });
 
-test('sales order detail presents one origin, one progress summary, and protected peer actions @quotations @critical', async ({
+test('sales order detail presents one origin, the production section, and protected final states @quotations @critical', async ({
   page,
 }) => {
+  const production = { state: 'sem_prazo', deadline: null, total_days: null, elapsed_days: null, stalled_days: 1 };
   const states = {
     'LOCAL-PENDING': {
       status: 'To Deliver and Bill',
-      per_delivered: 0,
-      per_billed: 0,
+      production_stage: 'aguardando_entrada',
+      production,
+      received_amount: 0,
     },
     'LOCAL-PARTIAL': {
       status: 'To Deliver and Bill',
-      per_delivered: 60,
-      per_billed: 40,
+      production_stage: 'aguardando_arte',
+      production,
+      deposit_received_on: '2026-07-02',
+      deposit_amount: 40,
+      received_amount: 40,
       source_quotation: 'ORC-LOCAL-1',
     },
     'LOCAL-COMPLETED': {
       status: 'Completed',
-      per_delivered: 100,
-      per_billed: 100,
+      production_stage: 'entregue',
+      production: { ...production, state: 'concluido', stalled_days: null },
+      received_amount: 100,
     },
   };
 
@@ -1185,6 +1191,8 @@ test('sales order detail presents one origin, one progress summary, and protecte
       customer_name: 'Cliente local',
       date: '2026-07-01',
       grand_total: 100,
+      production_days: 20,
+      notes: [],
       items: [
         {
           item_code: 'SKU-1',
@@ -1202,13 +1210,12 @@ test('sales order detail presents one origin, one progress summary, and protecte
   await page.goto('/#/sales-orders/LOCAL-PENDING');
   await expect(page.getByText('A entregar e faturar', { exact: true })).toBeVisible();
   await expect(page.getByText('Produto local', { exact: true })).toBeVisible();
-  await expect(
-    page.getByLabel('Atualizar pedido').getByText('R$ 100,00', { exact: true })
-  ).toBeVisible();
-  const pendingProgress = page.getByRole('region', { name: 'Progresso do pedido' });
-  await expect(pendingProgress.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(pendingProgress.getByText('Faturado', { exact: true })).toBeVisible();
-  await expect(pendingProgress.getByText('0%', { exact: true })).toHaveCount(2);
+  const pendingProduction = page.getByRole('region', { name: 'Produção' });
+  await expect(pendingProduction.getByText('Recebido R$ 0,00 de R$ 100,00')).toBeVisible();
+  await expect(pendingProduction.getByRole('button', { name: 'Entrada recebida' })).toHaveAttribute(
+    'data-variant',
+    'outline'
+  );
   await expect(page.getByRole('button', { name: 'Abrir orçamento de origem' })).toHaveCount(0);
   await expect(
     page
@@ -1216,31 +1223,19 @@ test('sales order detail presents one origin, one progress summary, and protecte
       .getByRole('button', { name: 'Pedidos', exact: true })
   ).toHaveCount(1);
 
-  const pendingActions = page.getByRole('complementary', { name: 'Atualizar pedido' });
-  const billButton = pendingActions.getByRole('button', { name: 'Marcar faturado' });
-  const deliverButton = pendingActions.getByRole('button', { name: 'Marcar entregue' });
-  await expect(billButton).toBeEnabled();
-  await expect(deliverButton).toBeEnabled();
-  await expect(billButton).toHaveAttribute('data-variant', 'outline');
-  await expect(deliverButton).toHaveAttribute('data-variant', 'outline');
-
   await page.goto('/#/sales-orders/LOCAL-PARTIAL');
-  const partialProgress = page.getByRole('region', { name: 'Progresso do pedido' });
-  await expect(partialProgress.getByText('60%', { exact: true })).toBeVisible();
-  await expect(partialProgress.getByText('40%', { exact: true })).toBeVisible();
-  const sourceButton = page.getByRole('button', { name: 'Abrir orçamento ORC-LOCAL-1' });
+  const partialProduction = page.getByRole('region', { name: 'Produção' });
+  await expect(partialProduction.getByText('Recebido R$ 40,00 de R$ 100,00')).toBeVisible();
+  await expect(partialProduction.getByLabel('Entrada recebida')).toHaveValue('2026-07-02');
+  const sourceButton = page.getByRole('button', { name: 'Ver orçamento de origem' });
   await expect(sourceButton).toHaveCount(1);
-  await expect(sourceButton).toHaveAttribute('data-variant', 'link');
   await sourceButton.click();
   await expect(page).toHaveURL(/\/#\/quotations\/ORC-LOCAL-1$/);
 
   await page.goto('/#/sales-orders/LOCAL-COMPLETED');
-  await expect(page.getByTitle('Concluído')).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'Progresso do pedido' }).getByText('100%', { exact: true })
-  ).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Marcar faturado' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Marcar entregue' })).toBeDisabled();
+  const doneProduction = page.getByRole('region', { name: 'Produção' });
+  await expect(doneProduction.getByText('Recebido R$ 100,00 de R$ 100,00')).toBeVisible();
+  await expect(doneProduction.getByRole('button', { name: /Entregue|Pronto/ })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
 });
 

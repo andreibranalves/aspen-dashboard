@@ -4,6 +4,7 @@ import TopBar from './TopBar';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
+import { useProductionAttentionCount } from '@/features/sales-orders/production';
 
 export interface BreadcrumbItem {
   label: string;
@@ -131,6 +132,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
     label: string | null;
   }>({ route, label: null });
 
+  const productionAttention = useProductionAttentionCount(route);
   const toggleSidebar = useCallback(() => setSidebarCollapsed((previous) => !previous), []);
   const setDetailBreadcrumbLabel = useCallback(
     (label: string | null) => setDetailBreadcrumb({ route, label }),
@@ -167,6 +169,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         onToggle={toggleSidebar}
         currentRoute={route}
         onNavigate={onNavigate}
+        badges={{ '/sales-orders': productionAttention }}
       />
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
         <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">

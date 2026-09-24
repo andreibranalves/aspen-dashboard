@@ -12,6 +12,8 @@ export interface SidebarProps {
   onToggle: () => void;
   currentRoute: string;
   onNavigate: (hash: string) => void;
+  /** Contadores por hash do item de menu. */
+  badges?: Record<string, number>;
   /** @deprecated Theme controls are rendered by TopBar. */
   darkMode?: boolean;
   /** @deprecated Theme controls are rendered by TopBar. */
@@ -27,6 +29,7 @@ export default function Sidebar({
   onToggle,
   currentRoute,
   onNavigate,
+  badges = {},
 }: SidebarProps) {
   const asideRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -45,6 +48,8 @@ export default function Sidebar({
   const renderItem = (item: NavItem) => {
     const isActive = effectivePath === item.hash || effectivePath.startsWith(`${item.hash}/`);
     const Icon = item.icon;
+    const count = badges[item.hash] ?? 0;
+    const label = count > 0 ? `${item.label} (${count})` : item.label;
     return (
       <button
         key={item.hash}
@@ -56,16 +61,29 @@ export default function Sidebar({
           'focus-inset',
           isActive ? 'bg-shell-active text-white' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
-        title={collapsed ? item.label : undefined}
-        aria-label={collapsed ? item.label : undefined}
+        title={collapsed ? label : undefined}
+        aria-label={collapsed || count > 0 ? label : undefined}
         aria-current={isActive ? 'page' : undefined}
       >
-        <Icon
-          size={20}
-          className={cn('shrink-0', isActive ? 'text-white' : 'text-shell-muted')}
-          aria-hidden="true"
-        />
+        <span className="relative shrink-0">
+          <Icon
+            size={20}
+            className={cn(isActive ? 'text-white' : 'text-shell-muted')}
+            aria-hidden="true"
+          />
+          {collapsed && count > 0 && (
+            <span className="absolute -right-1 -top-1 size-2 rounded-full bg-destructive" aria-hidden="true" />
+          )}
+        </span>
         {!collapsed && <span className="truncate">{item.label}</span>}
+        {!collapsed && count > 0 && (
+          <span
+            className="ml-auto min-w-5 rounded-full bg-destructive px-1.5 text-center text-2xs font-semibold leading-5 text-white"
+            aria-hidden="true"
+          >
+            {count}
+          </span>
+        )}
       </button>
     );
   };

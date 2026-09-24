@@ -8,6 +8,7 @@ import {
   inArray,
   lte,
   ne,
+  notInArray,
   or,
   sql,
   type SQL,
@@ -25,6 +26,7 @@ import {
   quotations,
   quoteLeads,
   salesOrderItems,
+  salesOrderNotes,
   salesOrderSequences,
   salesOrders,
   products,
@@ -36,6 +38,21 @@ import {
 } from '../../../_shared/calendar-sao-paulo.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 import { readQuotationOrigin, type QuotationOriginProjection } from './quotation-origin-repository.js';
+import {
+  DELIVERED_BOARD_DAYS,
+  PRODUCTION_STAGE_LABELS,
+  billedPercent,
+  defaultDepositAmount,
+  isProductionStage,
+  needsAttention,
+  nextProductionStage,
+  productionDeadline,
+  productionTimeline,
+  receivedAmount,
+  stageReached,
+  type ProductionStage,
+  type ProductionTimeline,
+} from '../../../_modules/sales-order-production.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -128,6 +145,26 @@ export interface SalesOrderListItem {
   per_delivered: SalesOrderMoney;
   per_billed: SalesOrderMoney;
   source_quotation: string | null;
+  production_stage: ProductionStage;
+  production: ProductionTimeline;
+  production_days: number;
+  deadline_manual: boolean;
+  deposit_received_on: string | null;
+  deposit_amount: SalesOrderMoney | null;
+  art_approved_on: string | null;
+  ready_on: string | null;
+  delivered_on: string | null;
+  balance_received_on: string | null;
+  received_amount: SalesOrderMoney;
+}
+
+export interface SalesOrderNoteDetail {
+  id: string;
+  kind: 'note' | 'stage';
+  body: string;
+  created_at: string;
+  updated_at: string;
+  undoable: boolean;
 }
 
 export interface SalesOrderItemDetail {
@@ -146,11 +183,32 @@ export interface SalesOrderDetail extends SalesOrderListItem {
   quotation_revision_id: string | null;
   items: SalesOrderItemDetail[];
   quotation_origin: QuotationOriginProjection;
+  notes: SalesOrderNoteDetail[];
 }
 
-export interface SalesOrderProgressInput {
-  per_billed?: number;
-  per_delivered?: number;
+export interface SalesOrderProductionUpdate {
+  deposit_received_on?: string;
+  deposit_amount?: number;
+  art_approved_on?: string;
+  production_days?: number;
+  deadline?: string | null;
+  ready_on?: string;
+  delivered_on?: string;
+  balance_received_on?: string | null;
+}
+
+export type SalesOrderAction =
+  | { action: 'advance'; expected_stage: ProductionStage; date: string; deposit_amount?: number }
+  | { action: 'undo'; note_id: string }
+  | ({ action: 'update' } & SalesOrderProductionUpdate)
+  | { action: 'add_note'; body: string }
+  | { action: 'edit_note'; note_id: string; body: string }
+  | { action: 'delete_note'; note_id: string };
+
+export interface SalesOrderBoardResult {
+  success: true;
+  items: SalesOrderListItem[];
+  attention_count: number;
 }
 
 export interface SalesOrderListResult {
@@ -235,7 +293,8 @@ export interface SalesDashboardResult {
 export interface SalesOrdersRepository {
   list(options?: SalesOrderListOptions): Promise<SalesOrderListResult>;
   get(id: string): Promise<SalesOrderDetail | null>;
-  update(id: string, input: SalesOrderProgressInput): Promise<SalesOrderDetail>;
+  apply(id: string, action: SalesOrderAction): Promise<SalesOrderDetail>;
+  board(): Promise<SalesOrderBoardResult>;
   createFromQuotation(quotationId: string): Promise<CreateSalesOrderResult>;
   dashboard(options?: DashboardPeriod): Promise<SalesDashboardResult>;
   itemCount?(id: string): Promise<number>;
@@ -251,6 +310,7 @@ type SalesOrderTransaction = Parameters<Parameters<AppDatabase['transaction']>[0
 type SalesOrderDatabase = AppDatabase | SalesOrderTransaction;
 type SalesOrderRow = typeof salesOrders.$inferSelect;
 type SalesOrderItemRow = typeof salesOrderItems.$inferSelect;
+type SalesOrderNoteRow = typeof salesOrderNotes.$inferSelect;
 
 type JoinedOrderRow = {
   internalId: string;
@@ -266,6 +326,42 @@ type JoinedOrderRow = {
   grandTotal: string | number;
   sourceQuotation: string | null;
   customerName: string;
+  productionStage: string;
+  productionStageChangedAt: Date | string;
+  depositReceivedOn: string | null;
+  depositAmount: string | number | null;
+  artApprovedOn: string | null;
+  productionDays: number;
+  deadlineManual: boolean;
+  readyOn: string | null;
+  deliveredOn: string | null;
+  balanceReceivedOn: string | null;
+};
+
+const joinedOrderSelection = {
+  internalId: salesOrders.id,
+  orderNumber: salesOrders.orderNumber,
+  quotationId: salesOrders.quotationId,
+  quotationRevisionId: salesOrders.quotationRevisionId,
+  clientId: salesOrders.clientId,
+  status: salesOrders.status,
+  transactionDate: salesOrders.transactionDate,
+  deliveryDate: salesOrders.deliveryDate,
+  perDelivered: salesOrders.perDelivered,
+  perBilled: salesOrders.perBilled,
+  grandTotal: salesOrders.grandTotal,
+  sourceQuotation: quotations.businessNumber,
+  customerName: clients.nome,
+  productionStage: salesOrders.productionStage,
+  productionStageChangedAt: salesOrders.productionStageChangedAt,
+  depositReceivedOn: salesOrders.depositReceivedOn,
+  depositAmount: salesOrders.depositAmount,
+  artApprovedOn: salesOrders.artApprovedOn,
+  productionDays: salesOrders.productionDays,
+  deadlineManual: salesOrders.deadlineManual,
+  readyOn: salesOrders.readyOn,
+  deliveredOn: salesOrders.deliveredOn,
+  balanceReceivedOn: salesOrders.balanceReceivedOn,
 };
 
 function isUuid(value: string): boolean {
@@ -293,10 +389,6 @@ function utcIsoDate(value: Date): string {
 
 function dateOnly(value: Date): string {
   return calendarDateInSaoPaulo(value);
-}
-
-function addDays(value: Date, days: number): string {
-  return addCalendarDays(calendarDateInSaoPaulo(value), days);
 }
 
 function asMoney(value: unknown): number {
@@ -697,10 +789,17 @@ export function deriveSalesOrderStatus(
   return 'To Deliver and Bill';
 }
 
-function mapListRow(row: JoinedOrderRow): SalesOrderListItem {
+function rowStage(row: { productionStage: string }): ProductionStage {
+  return isProductionStage(row.productionStage) ? row.productionStage : 'aguardando_entrada';
+}
+
+function mapListRow(row: JoinedOrderRow, today: string): SalesOrderListItem {
   const perDelivered = asMoney(row.perDelivered);
   const perBilled = asMoney(row.perBilled);
   const status = deriveSalesOrderStatus(row.status, perBilled, perDelivered);
+  const stage = rowStage(row);
+  const grandTotal = asMoney(row.grandTotal);
+  const depositAmount = row.depositAmount === null ? null : asMoney(row.depositAmount);
   return {
     id: row.orderNumber,
     order_number: row.orderNumber,
@@ -715,6 +814,26 @@ function mapListRow(row: JoinedOrderRow): SalesOrderListItem {
     per_delivered: perDelivered,
     per_billed: perBilled,
     source_quotation: row.sourceQuotation,
+    production_stage: stage,
+    production: productionTimeline(
+      {
+        stage,
+        artApprovedOn: row.artApprovedOn,
+        deadline: row.artApprovedOn ? row.deliveryDate : null,
+        readyOn: row.readyOn,
+        stageChangedOn: dateOnly(asDate(row.productionStageChangedAt)),
+      },
+      today
+    ),
+    production_days: row.productionDays,
+    deadline_manual: row.deadlineManual,
+    deposit_received_on: row.depositReceivedOn,
+    deposit_amount: depositAmount,
+    art_approved_on: row.artApprovedOn,
+    ready_on: row.readyOn,
+    delivered_on: row.deliveredOn,
+    balance_received_on: row.balanceReceivedOn,
+    received_amount: receivedAmount(grandTotal, depositAmount, row.balanceReceivedOn),
   };
 }
 
@@ -754,21 +873,7 @@ async function readJoinedOrder(
   predicate: ReturnType<typeof orderPredicate>
 ): Promise<JoinedOrderRow | null> {
   const [row] = await database
-    .select({
-      internalId: salesOrders.id,
-      orderNumber: salesOrders.orderNumber,
-      quotationId: salesOrders.quotationId,
-      quotationRevisionId: salesOrders.quotationRevisionId,
-      clientId: salesOrders.clientId,
-      status: salesOrders.status,
-      transactionDate: salesOrders.transactionDate,
-      deliveryDate: salesOrders.deliveryDate,
-      perDelivered: salesOrders.perDelivered,
-      perBilled: salesOrders.perBilled,
-      grandTotal: salesOrders.grandTotal,
-      sourceQuotation: quotations.businessNumber,
-      customerName: clients.nome,
-    })
+    .select(joinedOrderSelection)
     .from(salesOrders)
     .innerJoin(clients, eq(salesOrders.clientId, clients.id))
     .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
@@ -781,8 +886,11 @@ function detailFromJoined(
   row: JoinedOrderRow,
   items: SalesOrderItemRow[],
   quotationOrigin: QuotationOriginProjection,
+  notes: SalesOrderNoteRow[],
+  now: Date,
 ): SalesOrderDetail {
-  const base = mapListRow(row);
+  const base = mapListRow(row, dateOnly(now));
+  const latestStageNote = notes.find((note) => note.kind === 'stage');
   return {
     ...base,
     internal_id: row.internalId,
@@ -790,7 +898,36 @@ function detailFromJoined(
     quotation_revision_id: row.quotationRevisionId,
     items: items.map((item) => mapItemRow(item, row.sourceQuotation)),
     quotation_origin: quotationOrigin,
+    notes: notes.map((note) => ({
+      id: note.id,
+      kind: note.kind === 'stage' ? 'stage' : 'note',
+      body: note.body,
+      created_at: asDate(note.createdAt).toISOString(),
+      updated_at: asDate(note.updatedAt).toISOString(),
+      undoable: note === latestStageNote && canUndo(note, rowStage(row), now),
+    })),
   };
+}
+
+async function readOrderDetail(
+  database: SalesOrderDatabase,
+  predicate: ReturnType<typeof orderPredicate>,
+  now: Date,
+): Promise<SalesOrderDetail | null> {
+  const row = await readJoinedOrder(database, predicate);
+  if (!row) return null;
+  const items = await database
+    .select()
+    .from(salesOrderItems)
+    .where(eq(salesOrderItems.salesOrderId, row.internalId))
+    .orderBy(asc(salesOrderItems.position));
+  const notes = await database
+    .select()
+    .from(salesOrderNotes)
+    .where(eq(salesOrderNotes.salesOrderId, row.internalId))
+    .orderBy(desc(salesOrderNotes.createdAt), desc(salesOrderNotes.id));
+  const quotationOrigin = await originForJoinedOrder(database, row);
+  return detailFromJoined(row, items, quotationOrigin, notes, now);
 }
 
 async function originForJoinedOrder(
@@ -985,7 +1122,9 @@ async function insertSalesOrderFromApprovedQuotation(
       clientId: quotation.clientId,
       status: CREATED_ORDER_STATUS,
       transactionDate: businessDate,
-      deliveryDate: addDays(current, 30),
+      deliveryDate: null,
+      productionStage: 'aguardando_entrada',
+      productionStageChangedAt: createdAt,
       subtotal: revision.subtotal,
       grandTotal: revision.total,
       createdAt,
@@ -1111,34 +1250,421 @@ export async function listSalesOrderItemsForExport(
     .limit(limit);
 }
 
-function validateProgressInput(rawInput: SalesOrderProgressInput): SalesOrderProgressInput {
-  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
-    throw new SalesOrderInputError('Envie um payload válido.');
+const UNDO_WINDOW_MS = 2 * 60 * 1000;
+const MAX_NOTE_LENGTH = 4000;
+const BOARD_LIMIT = 500;
+const LOCKED_ORDER_STATUSES = new Set(['Draft', 'Cancelled', 'Closed']);
+
+interface StageUndoState {
+  to_stage: ProductionStage;
+  previous: {
+    productionStage: string;
+    productionStageChangedAt: string;
+    depositReceivedOn: string | null;
+    depositAmount: string | null;
+    artApprovedOn: string | null;
+    deliveryDate: string | null;
+    readyOn: string | null;
+    deliveredOn: string | null;
+    perBilled: string;
+    perDelivered: string;
+    status: string;
+  };
+}
+
+function isStageUndoState(value: unknown): value is StageUndoState {
+  const candidate = value as StageUndoState | null;
+  return Boolean(
+    candidate &&
+      typeof candidate === 'object' &&
+      isProductionStage(candidate.to_stage) &&
+      candidate.previous &&
+      typeof candidate.previous === 'object'
+  );
+}
+
+function canUndo(note: SalesOrderNoteRow, currentStage: ProductionStage, now: Date): boolean {
+  if (note.kind !== 'stage' || !isStageUndoState(note.undoState)) return false;
+  if (note.undoState.to_stage !== currentStage) return false;
+  return now.getTime() - asDate(note.createdAt).getTime() <= UNDO_WINDOW_MS;
+}
+
+function formatCivilDate(value: string): string {
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
+function requiredDate(value: unknown, label: string): string {
+  const date = validateDate(value, label);
+  if (!date) throw new SalesOrderInputError(`${label} é obrigatória.`);
+  return date;
+}
+
+function moneyInput(value: unknown, label: string, max: number): number {
+  const amount = typeof value === 'number' ? value : Number.NaN;
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new SalesOrderInputError(`${label} deve ser um valor maior ou igual a zero.`);
   }
-  const input = rawInput as Record<string, unknown>;
-  const keys = Object.keys(input);
-  if (
-    keys.length === 0 ||
-    keys.some((key) => key !== 'per_billed' && key !== 'per_delivered')
-  ) {
-    throw new SalesOrderInputError(
-      'Informe per_billed ou per_delivered com um percentual inteiro de 0 a 100.'
+  if (amount > max) {
+    throw new SalesOrderInputError(`${label} não pode passar do total do pedido.`);
+  }
+  return roundNumber(amount);
+}
+
+function noteBody(value: unknown): string {
+  const body = typeof value === 'string' ? value.trim() : '';
+  if (!body) throw new SalesOrderInputError('Escreva a anotação.');
+  if (body.length > MAX_NOTE_LENGTH) {
+    throw new SalesOrderInputError('A anotação pode ter até 4000 caracteres.');
+  }
+  return body;
+}
+
+function noteId(value: unknown): string {
+  const id = typeof value === 'string' ? value.trim() : '';
+  if (!isUuid(id)) throw new SalesOrderInputError('Anotação inválida.');
+  return id;
+}
+
+function stageNoteBody(
+  stage: ProductionStage,
+  date: string,
+  depositAmount: number | undefined
+): string {
+  const label = PRODUCTION_STAGE_LABELS[stage];
+  if (stage === 'aguardando_arte' && depositAmount !== undefined) {
+    return `${label} · entrada de ${formatMoney(depositAmount)} em ${formatCivilDate(date)}`;
+  }
+  if (stage === 'em_producao') return `${label} · arte aprovada em ${formatCivilDate(date)}`;
+  return `${label} em ${formatCivilDate(date)}`;
+}
+
+function paymentState(
+  current: SalesOrderRow,
+  depositAmount: number | null,
+  balanceReceivedOn: string | null,
+  perDelivered: number
+): { perBilled: string; perDelivered: string; status: string } {
+  const perBilled = billedPercent(asMoney(current.grandTotal), depositAmount, balanceReceivedOn);
+  return {
+    perBilled: String(perBilled),
+    perDelivered: String(perDelivered),
+    status: deriveSalesOrderStatus(current.status, perBilled, perDelivered),
+  };
+}
+
+async function lockOrder(
+  transaction: SalesOrderTransaction,
+  id: string
+): Promise<SalesOrderRow> {
+  const [current] = await transaction
+    .select()
+    .from(salesOrders)
+    .where(orderPredicate(id))
+    .for('update')
+    .limit(1);
+  if (!current) throw new SalesOrderNotFoundError();
+  return current;
+}
+
+function assertEditable(current: SalesOrderRow): void {
+  if (LOCKED_ORDER_STATUSES.has(current.status)) {
+    throw new SalesOrderConflictError(
+      'Pedidos em rascunho, cancelados ou fechados não podem ser alterados.'
     );
   }
-  for (const key of ['per_billed', 'per_delivered'] as const) {
-    if (input[key] === undefined) continue;
-    if (!Number.isInteger(input[key]) || Number(input[key]) < 0 || Number(input[key]) > 100) {
-      throw new SalesOrderInputError(
-        `${key} deve ser um percentual inteiro entre 0 e 100.`
-      );
-    }
+}
+
+async function advanceStage(
+  transaction: SalesOrderTransaction,
+  current: SalesOrderRow,
+  input: Extract<SalesOrderAction, { action: 'advance' }>,
+  now: Date,
+  idFactory: () => string
+): Promise<void> {
+  assertEditable(current);
+  const stage = rowStage(current);
+  if (input.expected_stage !== stage) {
+    throw new SalesOrderConflictError(
+      'O pedido já está em outra etapa. Atualize a página; etapas não voltam.'
+    );
   }
-  return {
-    ...(input.per_billed === undefined ? {} : { per_billed: input.per_billed as number }),
-    ...(input.per_delivered === undefined
-      ? {}
-      : { per_delivered: input.per_delivered as number }),
+  const target = nextProductionStage(stage);
+  if (!target) throw new SalesOrderConflictError('O pedido já foi entregue.');
+  const date = requiredDate(input.date, 'Data');
+  const grandTotal = asMoney(current.grandTotal);
+  const changes: Partial<typeof salesOrders.$inferInsert> = {
+    productionStage: target,
+    productionStageChangedAt: now,
+    updatedAt: now,
   };
+  let depositAmount: number | undefined;
+  if (target === 'aguardando_arte') {
+    depositAmount =
+      input.deposit_amount === undefined
+        ? defaultDepositAmount(grandTotal)
+        : moneyInput(input.deposit_amount, 'Valor da entrada', grandTotal);
+    changes.depositReceivedOn = date;
+    changes.depositAmount = depositAmount.toFixed(2);
+    Object.assign(
+      changes,
+      paymentState(current, depositAmount, current.balanceReceivedOn, asMoney(current.perDelivered))
+    );
+  } else if (target === 'em_producao') {
+    changes.artApprovedOn = date;
+    if (!current.deadlineManual) {
+      changes.deliveryDate = productionDeadline(date, current.productionDays);
+    }
+  } else if (target === 'pronto') {
+    changes.readyOn = date;
+  } else {
+    changes.deliveredOn = date;
+    const depositValue = current.depositAmount === null ? null : asMoney(current.depositAmount);
+    Object.assign(changes, paymentState(current, depositValue, current.balanceReceivedOn, 100));
+  }
+  const undoState: StageUndoState = {
+    to_stage: target,
+    previous: {
+      productionStage: current.productionStage,
+      productionStageChangedAt: asDate(current.productionStageChangedAt).toISOString(),
+      depositReceivedOn: current.depositReceivedOn,
+      depositAmount: current.depositAmount,
+      artApprovedOn: current.artApprovedOn,
+      deliveryDate: current.deliveryDate,
+      readyOn: current.readyOn,
+      deliveredOn: current.deliveredOn,
+      perBilled: String(current.perBilled),
+      perDelivered: String(current.perDelivered),
+      status: current.status,
+    },
+  };
+  await transaction.update(salesOrders).set(changes).where(eq(salesOrders.id, current.id));
+  await transaction.insert(salesOrderNotes).values({
+    id: idFactory(),
+    salesOrderId: current.id,
+    kind: 'stage',
+    body: stageNoteBody(target, date, depositAmount),
+    undoState,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+async function undoStage(
+  transaction: SalesOrderTransaction,
+  current: SalesOrderRow,
+  rawNoteId: unknown,
+  now: Date
+): Promise<void> {
+  const id = noteId(rawNoteId);
+  const [latest] = await transaction
+    .select()
+    .from(salesOrderNotes)
+    .where(and(eq(salesOrderNotes.salesOrderId, current.id), eq(salesOrderNotes.kind, 'stage')))
+    .orderBy(desc(salesOrderNotes.createdAt), desc(salesOrderNotes.id))
+    .limit(1);
+  if (!latest || latest.id !== id || !canUndo(latest, rowStage(current), now)) {
+    throw new SalesOrderConflictError('Esta mudança de etapa não pode mais ser desfeita.');
+  }
+  const { previous } = latest.undoState as StageUndoState;
+  await transaction
+    .update(salesOrders)
+    .set({
+      productionStage: previous.productionStage,
+      productionStageChangedAt: asDate(previous.productionStageChangedAt),
+      depositReceivedOn: previous.depositReceivedOn,
+      depositAmount: previous.depositAmount,
+      artApprovedOn: previous.artApprovedOn,
+      deliveryDate: previous.deliveryDate,
+      readyOn: previous.readyOn,
+      deliveredOn: previous.deliveredOn,
+      perBilled: previous.perBilled,
+      perDelivered: previous.perDelivered,
+      status: previous.status,
+      updatedAt: now,
+    })
+    .where(eq(salesOrders.id, current.id));
+  await transaction.delete(salesOrderNotes).where(eq(salesOrderNotes.id, latest.id));
+}
+
+const UPDATE_KEYS = new Set([
+  'deposit_received_on',
+  'deposit_amount',
+  'art_approved_on',
+  'production_days',
+  'deadline',
+  'ready_on',
+  'delivered_on',
+  'balance_received_on',
+]);
+
+async function updateProduction(
+  transaction: SalesOrderTransaction,
+  current: SalesOrderRow,
+  input: Record<string, unknown>,
+  now: Date
+): Promise<void> {
+  assertEditable(current);
+  const keys = Object.keys(input).filter((key) => key !== 'action');
+  if (keys.length === 0 || keys.some((key) => !UPDATE_KEYS.has(key))) {
+    throw new SalesOrderInputError('Informe os campos de produção que devem mudar.');
+  }
+  const stage = rowStage(current);
+  const grandTotal = asMoney(current.grandTotal);
+  const changes: Partial<typeof salesOrders.$inferInsert> = { updatedAt: now };
+  const requireStage = (target: ProductionStage, label: string) => {
+    if (!stageReached(stage, target)) {
+      throw new SalesOrderConflictError(`${label} só pode ser editada depois que o pedido chegar a essa etapa.`);
+    }
+  };
+
+  let depositAmount = current.depositAmount === null ? null : asMoney(current.depositAmount);
+  let balanceReceivedOn = current.balanceReceivedOn;
+  let artApprovedOn = current.artApprovedOn;
+  let productionDays = current.productionDays;
+  let deadlineManual = current.deadlineManual;
+  let deliveryDate = current.deliveryDate;
+
+  if ('deposit_received_on' in input) {
+    requireStage('aguardando_arte', 'A entrada');
+    changes.depositReceivedOn = requiredDate(input.deposit_received_on, 'Data da entrada');
+  }
+  if ('deposit_amount' in input) {
+    requireStage('aguardando_arte', 'A entrada');
+    depositAmount = moneyInput(input.deposit_amount, 'Valor da entrada', grandTotal);
+    changes.depositAmount = depositAmount.toFixed(2);
+  }
+  if ('balance_received_on' in input) {
+    balanceReceivedOn =
+      input.balance_received_on === null
+        ? null
+        : requiredDate(input.balance_received_on, 'Data do saldo');
+    changes.balanceReceivedOn = balanceReceivedOn;
+  }
+  if ('art_approved_on' in input) {
+    requireStage('em_producao', 'A arte aprovada');
+    artApprovedOn = requiredDate(input.art_approved_on, 'Data da arte aprovada');
+    changes.artApprovedOn = artApprovedOn;
+  }
+  if ('production_days' in input) {
+    const days = input.production_days;
+    if (!Number.isInteger(days) || Number(days) < 1 || Number(days) > 365) {
+      throw new SalesOrderInputError('O prazo de produção deve ter de 1 a 365 dias úteis.');
+    }
+    productionDays = Number(days);
+    changes.productionDays = productionDays;
+  }
+  if ('deadline' in input) {
+    if (!artApprovedOn) {
+      throw new SalesOrderConflictError('O prazo final só pode ser ajustado depois da arte aprovada.');
+    }
+    if (input.deadline === null) {
+      deadlineManual = false;
+    } else {
+      deliveryDate = requiredDate(input.deadline, 'Prazo final');
+      if (deliveryDate < artApprovedOn) {
+        throw new SalesOrderInputError('O prazo final não pode ser antes da arte aprovada.');
+      }
+      deadlineManual = true;
+    }
+    changes.deadlineManual = deadlineManual;
+  }
+  if (artApprovedOn && !deadlineManual) {
+    deliveryDate = productionDeadline(artApprovedOn, productionDays);
+  }
+  if (artApprovedOn) changes.deliveryDate = deliveryDate;
+  if ('ready_on' in input) {
+    requireStage('pronto', 'A data de pronto');
+    changes.readyOn = requiredDate(input.ready_on, 'Data de pronto');
+  }
+  if ('delivered_on' in input) {
+    requireStage('entregue', 'A data de entrega');
+    changes.deliveredOn = requiredDate(input.delivered_on, 'Data de entrega');
+  }
+  if ('deposit_amount' in input || 'balance_received_on' in input) {
+    Object.assign(
+      changes,
+      paymentState(current, depositAmount, balanceReceivedOn, asMoney(current.perDelivered))
+    );
+  }
+  await transaction.update(salesOrders).set(changes).where(eq(salesOrders.id, current.id));
+}
+
+async function lockedNote(
+  transaction: SalesOrderTransaction,
+  current: SalesOrderRow,
+  rawNoteId: unknown
+): Promise<SalesOrderNoteRow> {
+  const id = noteId(rawNoteId);
+  const [note] = await transaction
+    .select()
+    .from(salesOrderNotes)
+    .where(and(eq(salesOrderNotes.id, id), eq(salesOrderNotes.salesOrderId, current.id)))
+    .for('update')
+    .limit(1);
+  if (!note) throw new SalesOrderNotFoundError('Anotação não encontrada.');
+  if (note.kind !== 'note') {
+    throw new SalesOrderConflictError('Mudanças de etapa não podem ser editadas nem apagadas.');
+  }
+  return note;
+}
+
+async function applyOrderAction(
+  transaction: SalesOrderTransaction,
+  current: SalesOrderRow,
+  action: SalesOrderAction,
+  now: Date,
+  idFactory: () => string
+): Promise<void> {
+  switch (action.action) {
+    case 'advance':
+      return advanceStage(transaction, current, action, now, idFactory);
+    case 'undo':
+      return undoStage(transaction, current, action.note_id, now);
+    case 'update':
+      return updateProduction(transaction, current, action as unknown as Record<string, unknown>, now);
+    case 'add_note':
+      await transaction.insert(salesOrderNotes).values({
+        id: idFactory(),
+        salesOrderId: current.id,
+        kind: 'note',
+        body: noteBody(action.body),
+        createdAt: now,
+        updatedAt: now,
+      });
+      return;
+    case 'edit_note': {
+      const note = await lockedNote(transaction, current, action.note_id);
+      await transaction
+        .update(salesOrderNotes)
+        .set({ body: noteBody(action.body), updatedAt: now })
+        .where(eq(salesOrderNotes.id, note.id));
+      return;
+    }
+    case 'delete_note': {
+      const note = await lockedNote(transaction, current, action.note_id);
+      await transaction.delete(salesOrderNotes).where(eq(salesOrderNotes.id, note.id));
+      return;
+    }
+    default:
+      throw new SalesOrderInputError('Ação inválida para o pedido.');
+  }
+}
+
+const ATTENTION_ORDER: Record<string, number> = { atrasado: 0, em_risco: 1 };
+
+function boardOrder(a: SalesOrderListItem, b: SalesOrderListItem): number {
+  const attention =
+    (ATTENTION_ORDER[a.production.state] ?? 2) - (ATTENTION_ORDER[b.production.state] ?? 2);
+  if (attention !== 0) return attention;
+  const deadlineA = a.production.deadline || '9999-12-31';
+  const deadlineB = b.production.deadline || '9999-12-31';
+  if (deadlineA !== deadlineB) return deadlineA < deadlineB ? -1 : 1;
+  return a.date < b.date ? -1 : a.date > b.date ? 1 : a.order_number.localeCompare(b.order_number);
 }
 
 export function createPostgresSalesOrdersRepository(
@@ -1157,7 +1683,9 @@ export function createPostgresSalesOrdersRepository(
       if (limit > MAX_LIMIT) {
         throw new SalesOrderInputError('Limite máximo é 200 registros por página.');
       }
-      const where = salesOrderListWhere(rawOptions, asDate(nowFactory()));
+      const now = asDate(nowFactory());
+      const where = salesOrderListWhere(rawOptions, now);
+      const today = dateOnly(now);
       try {
         const database = getDb();
         const [{ total }] = await database
@@ -1168,21 +1696,7 @@ export function createPostgresSalesOrdersRepository(
           .where(where);
         const offset = (page - 1) * limit;
         const rows = await database
-          .select({
-            internalId: salesOrders.id,
-            orderNumber: salesOrders.orderNumber,
-            quotationId: salesOrders.quotationId,
-            quotationRevisionId: salesOrders.quotationRevisionId,
-            clientId: salesOrders.clientId,
-            status: salesOrders.status,
-            transactionDate: salesOrders.transactionDate,
-            deliveryDate: salesOrders.deliveryDate,
-            perDelivered: salesOrders.perDelivered,
-            perBilled: salesOrders.perBilled,
-            grandTotal: salesOrders.grandTotal,
-            sourceQuotation: quotations.businessNumber,
-            customerName: clients.nome,
-          })
+          .select(joinedOrderSelection)
           .from(salesOrders)
           .innerJoin(clients, eq(salesOrders.clientId, clients.id))
           .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
@@ -1194,7 +1708,7 @@ export function createPostgresSalesOrdersRepository(
         const numericTotal = Number(total) || 0;
         return {
           success: true,
-          items: rows.map(mapListRow),
+          items: rows.map((row) => mapListRow(row, today)),
           page,
           limit,
           total: numericTotal,
@@ -1208,68 +1722,58 @@ export function createPostgresSalesOrdersRepository(
     async get(id: string): Promise<SalesOrderDetail | null> {
       const normalized = cleanId(id, 'ID do pedido');
       try {
-        const database = getDb();
-        const row = await readJoinedOrder(database, orderPredicate(normalized));
-        if (!row) return null;
-        const items = await database
-          .select()
-          .from(salesOrderItems)
-          .where(eq(salesOrderItems.salesOrderId, row.internalId))
-          .orderBy(asc(salesOrderItems.position));
-        const quotationOrigin = await originForJoinedOrder(database, row);
-        return detailFromJoined(row, items, quotationOrigin);
+        return await readOrderDetail(getDb(), orderPredicate(normalized), asDate(nowFactory()));
       } catch (error) {
         return safeRepositoryError(error);
       }
     },
-    async update(id: string, rawInput: SalesOrderProgressInput): Promise<SalesOrderDetail> {
+
+    async apply(id: string, action: SalesOrderAction): Promise<SalesOrderDetail> {
       const normalized = cleanId(id, 'ID do pedido');
-      const input = validateProgressInput(rawInput);
+      if (!action || typeof action !== 'object' || Array.isArray(action)) {
+        throw new SalesOrderInputError('Envie um payload válido.');
+      }
       try {
         const database = getDb();
         return await database.transaction(async (transaction) => {
-          const [current] = await transaction
-            .select()
-            .from(salesOrders)
-            .where(orderPredicate(normalized))
-            .for('update')
-            .limit(1);
-          if (!current) throw new SalesOrderNotFoundError();
-          if (
-            current.status === 'Draft' ||
-            current.status === 'Cancelled' ||
-            current.status === 'Closed'
-          ) {
-            throw new SalesOrderConflictError(
-              'Pedidos em rascunho, cancelados ou fechados não podem ser alterados.'
-            );
-          }
-          const perBilled =
-            input.per_billed === undefined ? asMoney(current.perBilled) : input.per_billed;
-          const perDelivered =
-            input.per_delivered === undefined
-              ? asMoney(current.perDelivered)
-              : input.per_delivered;
-          const status = deriveSalesOrderStatus(current.status, perBilled, perDelivered);
-          await transaction
-            .update(salesOrders)
-            .set({
-              perBilled: String(perBilled),
-              perDelivered: String(perDelivered),
-              status,
-              updatedAt: asDate(nowFactory()),
-            })
-            .where(eq(salesOrders.id, current.id));
-          const row = await readJoinedOrder(transaction, eq(salesOrders.id, current.id));
-          if (!row) throw new SalesOrderRepositoryError('Não foi possível ler o pedido atualizado.');
-          const items = await transaction
-            .select()
-            .from(salesOrderItems)
-            .where(eq(salesOrderItems.salesOrderId, row.internalId))
-            .orderBy(asc(salesOrderItems.position));
-          const quotationOrigin = await originForJoinedOrder(transaction, row);
-          return detailFromJoined(row, items, quotationOrigin);
+          const now = asDate(nowFactory());
+          const current = await lockOrder(transaction, normalized);
+          await applyOrderAction(transaction, current, action, now, idFactory);
+          const detail = await readOrderDetail(transaction, eq(salesOrders.id, current.id), now);
+          if (!detail) throw new SalesOrderRepositoryError('Não foi possível ler o pedido atualizado.');
+          return detail;
         });
+      } catch (error) {
+        return safeRepositoryError(error);
+      }
+    },
+
+    async board(): Promise<SalesOrderBoardResult> {
+      try {
+        const now = asDate(nowFactory());
+        const today = dateOnly(now);
+        const rows = await getDb()
+          .select(joinedOrderSelection)
+          .from(salesOrders)
+          .innerJoin(clients, eq(salesOrders.clientId, clients.id))
+          .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
+          .where(
+            and(
+              notInArray(salesOrders.status, [...LOCKED_ORDER_STATUSES]),
+              or(
+                ne(salesOrders.productionStage, 'entregue'),
+                gte(salesOrders.deliveredOn, addCalendarDays(today, -DELIVERED_BOARD_DAYS))
+              )
+            )
+          )
+          .orderBy(asc(salesOrders.transactionDate), asc(salesOrders.orderNumber))
+          .limit(BOARD_LIMIT);
+        const items = rows.map((row) => mapListRow(row, today)).sort(boardOrder);
+        return {
+          success: true,
+          items,
+          attention_count: items.filter((item) => needsAttention(item.production.state)).length,
+        };
       } catch (error) {
         return safeRepositoryError(error);
       }
