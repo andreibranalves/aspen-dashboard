@@ -47,7 +47,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 ### 2.3 Decisões registradas
 
-**D1 — A tela de conversa volta ao Aspen.** Em 21/08/2026 (`1116b8b`) a Inbox foi retirada e o WhatsApp Web com a extensão passou a ser a superfície de conversa. [S17] Em 23/09/2026 o operador decidiu reverter: o Atendimento passa a ser a superfície de conversa do Aspen. A extensão continua funcionando sem mudança neste escopo, com o mesmo serviço de contexto e a mesma tabela de vínculos; aposentá-la é decisão posterior. O PR do M1a atualiza o primeiro parágrafo de `docs/whatsapp-context-extension.md`, marca `docs/whatsapp-inbox-backend-inventory.md` como superado por esta spec e corrige a lista de rotas do `PRODUCT.md`.
+**D1 — A tela de conversa volta ao Aspen.** Em 21/08/2026 (`1116b8b`) a Inbox foi retirada e o WhatsApp Web com a extensão passou a ser a superfície de conversa. [S17] Em 23/09/2026 o operador decidiu reverter: o Atendimento passa a ser a superfície de conversa do Aspen. A extensão continua funcionando sem mudança neste escopo, com o mesmo serviço de contexto e a mesma tabela de vínculos; aposentá-la é decisão posterior. O PR do M1a atualiza o primeiro parágrafo de `docs/whatsapp-context-extension.md` e corrige a lista de rotas do `PRODUCT.md`.
 
 **D2 — Envio despachado na própria requisição.** O POST de envio grava a intenção, faz commit e chama o transporte antes de responder. O agendamento QStash existente, a cada 2 minutos, ganha uma varredura de recuperação limitada depois do lote de orçamentos. Sem nova rota de worker, agendamento, segredo ou env. Detalhes em §10.
 
@@ -561,6 +561,6 @@ Caminhos de `andreibranalves/aspen-dashboard` na branch `codex/design-ui-ux-refa
 | S14 | `tests/unit/whatsapp-conversations.test.ts`; `tests/unit/whatsapp-identity-resolver.test.ts`; testes da extensão e do vínculo: `whatsapp-context-extension.test.js`, `whatsapp-context-provider.test.js`, `whatsapp-context-history-query.test.ts`, `whatsapp-client-links.test.ts`, `whatsapp-client-links-postgres.test.ts` (todos em `tests/unit/`). |
 | S15 | `docs/database-migrations.md`: aplicação operacional, ensaio isolado, backup e cutover. |
 | S16 | `api/_modules/client-matching.ts`; `api/_modules/client-matches.ts`; commit `1915c59`: identidade por dois sinais e revisão no Split Card. |
-| S17 | `docs/whatsapp-context-extension.md`; `docs/whatsapp-inbox-backend-inventory.md`; `extensions/whatsapp-context/README.md`; commit `1116b8b`: retirada da Inbox e extensão como superfície de conversa. |
-| S18 | `docs/operational-cutoff-procedure.md` (webhook `MESSAGES_UPDATE`, agendamento QStash a cada 2 minutos); `docs/research/free-whatsapp-outbox-schedulers.md` (limites do QStash gratuito). |
+| S17 | `docs/whatsapp-context-extension.md`; `extensions/whatsapp-context/README.md`; commit `1116b8b`: retirada da Inbox e extensão como superfície de conversa. |
+| S18 | `docs/operational-cutoff-procedure.md` (webhook `MESSAGES_UPDATE`, agendamento QStash a cada 2 minutos); pesquisa de limites do QStash gratuito (tag `archive/historico-2026-09`). |
 | S19 | `api/_modules/communication-media-upload.ts`; `src/features/communication/components/MediaUploader.tsx`: upload público no Vercel Blob. |

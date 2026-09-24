@@ -1,8 +1,6 @@
 # Aspen UI Design Contract
 
-Status: the only normative Aspen UI document. `DESIGN-supabase.md` is an
-aesthetic reference and cannot override Aspen behavior, tokens, routes,
-workflows, or accessibility requirements. Journey sections below record
+Status: the only normative Aspen UI document. Journey sections below record
 approved behavior; the foundation and component sections apply to every page.
 
 ## Product character
@@ -295,8 +293,7 @@ introduced by this visual slice.
 Responsive evidence covers both themes at `1280x800`, `1440x900`, `1024x800`,
 and `390x844`. The desktop profile uses a two-column cadastro/activity layout;
 the narrow layout places recent activity before cadastro and keeps the drawer
-full-width. The details and evidence are recorded in
-`docs/design/evidence/clientes/validacao.md`.
+full-width.
 
 ## Out of scope
 

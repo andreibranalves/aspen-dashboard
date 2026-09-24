@@ -150,7 +150,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
     await page.setViewportSize(viewport);
     await settleForEvidence(page);
     await page.screenshot({
-      path: `docs/design/evidence/configuracoes/padroes-light-${viewport.width}x${viewport.height}.png`,
+      path: `test-results/evidence/configuracoes/padroes-light-${viewport.width}x${viewport.height}.png`,
       fullPage: true,
     });
   }
@@ -167,7 +167,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
     await page.setViewportSize(viewport);
     await settleForEvidence(page);
     await page.screenshot({
-      path: `docs/design/evidence/configuracoes/padroes-dark-${viewport.width}x${viewport.height}.png`,
+      path: `test-results/evidence/configuracoes/padroes-dark-${viewport.width}x${viewport.height}.png`,
       fullPage: true,
     });
   }
@@ -193,7 +193,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
       .click();
     await settleForEvidence(page);
     await page.screenshot({
-      path: `docs/design/evidence/configuracoes/${name}-dark-1440x900.png`,
+      path: `test-results/evidence/configuracoes/${name}-dark-1440x900.png`,
       fullPage: true,
     });
   }
@@ -202,7 +202,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   await page.getByLabel('Validade padrão (dias)').focus();
   await settleForEvidence(page);
   await page.screenshot({
-    path: 'docs/design/evidence/configuracoes/foco-dark-1440x900.png',
+    path: 'test-results/evidence/configuracoes/foco-dark-1440x900.png',
     fullPage: true,
   });
 
@@ -213,7 +213,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   await expect(page.getByRole('dialog', { name: 'Sair sem salvar?' })).toBeVisible();
   await settleForEvidence(page);
   await page.screenshot({
-    path: 'docs/design/evidence/configuracoes/confirmacao-escape-dark-1440x900.png',
+    path: 'test-results/evidence/configuracoes/confirmacao-escape-dark-1440x900.png',
     fullPage: true,
   });
   await page.keyboard.press('Escape');
@@ -226,7 +226,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   await expect(page.getByText('Nenhum fluxo criado ainda')).toBeVisible();
   await settleForEvidence(page);
   await page.screenshot({
-    path: 'docs/design/evidence/configuracoes/vazio-fluxos-dark-1440x900.png',
+    path: 'test-results/evidence/configuracoes/vazio-fluxos-dark-1440x900.png',
     fullPage: true,
   });
 
@@ -238,7 +238,7 @@ test('captura Configurações nos temas e tamanhos principais', async ({ page })
   );
   await settleForEvidence(page);
   await page.screenshot({
-    path: 'docs/design/evidence/configuracoes/erro-configuracoes-dark-1440x900.png',
+    path: 'test-results/evidence/configuracoes/erro-configuracoes-dark-1440x900.png',
     fullPage: true,
   });
 });

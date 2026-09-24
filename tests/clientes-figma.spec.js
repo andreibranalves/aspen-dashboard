@@ -109,7 +109,7 @@ async function captureSketchV01(page, { route, viewport, filename, prepare }) {
       .toBeGreaterThan(0);
   }
   await page.waitForTimeout(500);
-  await page.screenshot({ path: `docs/design/evidence/clientes/${filename}-sketch-v01.png` });
+  await page.screenshot({ path: `test-results/evidence/clientes/${filename}-sketch-v01.png` });
 }
 
 test.describe('Evidência visual de Clientes', () => {
