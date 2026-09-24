@@ -23,16 +23,16 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 ## Operating Context
 
 - Uso diário em navegador desktop (não há uso mobile real hoje).
-- Fluxo típico: cliente manda mensagem/arte no WhatsApp → extração gera rascunho → revisão na tela Auto → emissão → envio WhatsApp/e-mail → follow-up no CRM/pedidos.
+- Fluxo típico: cliente manda mensagem/arte no WhatsApp → conversa no Atendimento → extração gera rascunho em Novo orçamento → revisão → emissão → envio WhatsApp/e-mail → retorno no Comercial, Tarefas e Pedidos.
 - Deploy na Vercel (Function única `api/[...path].ts`); lanes de release descritas em `docs/release-lanes.md`.
 - Valores de ambiente reais ficam em `~/.config/aspen-dashboard/` (fora do repo).
 
 ## Capabilities and Constraints
 
-- Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Atendimento, Novo orçamento (Auto e manual), Orçamentos, Comercial, Pedidos, Clientes, Catálogo, Envios, Resultados, Configurações e telas de detalhe.
+- Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Atendimento, Novo orçamento (conversa e manual), Orçamentos, Comercial, Pedidos, Tarefas, Clientes, Catálogo, Envios, Resultados, Configurações e telas de detalhe.
 - Evolution API é o único transporte de WhatsApp; sem fallbacks de provedor/transporte/persistência novos.
 - Sem biblioteca de estado global; preferência por estado local/contexto.
-- Interface do sketch V01: workspace escuro, navegação lateral clara e uma única aparência.
+- Tema claro por padrão, com alternância para escuro; contrato visual em `DESIGN.md`.
 - Prioridade declarada pelo dono: criação de orçamento é o trabalho central; a parte comercial (CRM, pedidos, follow-up) é a frente de evolução.
 - Telas pouco usadas podem ser removidas em prol de integrações e contexto comercial (decisão registrada pelo dono).
 
@@ -40,12 +40,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 
 - Nome: Aspen Orçamento (Aspen Estamparia).
 - Logos: `public/logo_marinho.svg` (claro) e `public/logo_branca.svg` (escuro); variantes de e-mail em `docs/` e `public/`.
-- Identidade visual do sketch V01: canvas cinza, sidebar branca, workspace quase preto, acentos sage/terracota/taupe e fonte Manrope. Tokens em `src/index.css`, UI em pt-BR.
-
-## Evidence on Hand
-
-- Suíte e2e Playwright cobrindo orçamentos, produtos, settings e entregas WhatsApp.
-- Templates de e-mail com as logos da marca; biblioteca de mídia no app.
+- Fonte Manrope, tokens em `src/index.css` e UI em pt-BR; o restante da identidade visual está em `DESIGN.md`.
 
 ## Product Principles
 

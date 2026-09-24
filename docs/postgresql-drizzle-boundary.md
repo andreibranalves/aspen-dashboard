@@ -55,15 +55,9 @@ Um novo binding direto em uma exceção existente também deve falhar.
 
 ## Check obrigatório
 
-Execute antes de enviar uma mudança:
+`npm run verify:fast` executa `check:db-boundary`, `check:db-migrations` e `check:vercel-functions`, entre outros.
 
-```bash
-npm run check:db-boundary
-npm run check:db-migrations
-npm run check:vercel-functions
-```
-
-O check procura imports diretos de Drizzle, `postgres`, schema e client em `.ts` e `.tsx` sob `api/_modules/`; não é um verificador geral de todas as camadas.
+O `check:db-boundary` procura imports diretos de Drizzle, `postgres`, schema e client em `.ts` e `.tsx` sob `api/_modules/`; não é um verificador geral de todas as camadas.
 
 Imports de repositories continuam permitidos.
 
@@ -79,7 +73,7 @@ O `check:db-migrations` lê `MIGRATION_BASE_REF` apenas para inspecionar o diff 
 
 `api/_modules/`, `api/_infrastructure/`, `api/_app/`, `api/_http/` e `api/_shared/` são diretórios privados para a descoberta file-based da Vercel.
 
-Valide o layout com `npm run check:vercel-functions`.
+O layout é validado por `check:vercel-functions`, parte de `verify:fast`.
 
 Não mova helpers para um caminho público sob `api/` e não use `.vercelignore` para remover uma dependência importada pelo catch-all.
 
