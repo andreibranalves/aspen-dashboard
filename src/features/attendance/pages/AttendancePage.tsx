@@ -27,6 +27,8 @@ import {
   type AttendanceStatusFilter,
 } from '@/lib/api/attendanceApi';
 import type { ApiError } from '@/lib/api/api';
+import { fetchAttendanceContext, type ContextDelivery } from '@/lib/api/attendanceContextApi';
+import { enqueueDelivery } from '@/lib/api/quotationDeliveryApi';
 import ContextPanel from '@/features/attendance/components/ContextPanel';
 import ConversationList, { conversationName } from '@/features/attendance/components/ConversationList';
 import MessageComposer from '@/features/attendance/components/MessageComposer';
@@ -117,6 +119,8 @@ interface AttendancePageProps {
 
 export default function AttendancePage({ navigate }: AttendancePageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(selectedFromHash);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>('active');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -145,6 +149,50 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const readRequestRef = useRef(0);
   const wide = useWideLayout();
   const [contextOpen, setContextOpen] = useState(false);
+  const [deliveryView, setDeliveryView] = useState<{ conversationId: string; items: ContextDelivery[] } | null>(null);
+  const [deliveryPending, setDeliveryPending] = useState<string | null>(null);
+
+  const loadDeliveries = useCallback(async () => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId) return;
+    try {
+      const context = await fetchAttendanceContext(conversationId);
+      if (selectedIdRef.current !== conversationId) return;
+      setDeliveryView({ conversationId, items: context.match === 'matched' ? context.deliveries || [] : [] });
+    } catch {
+      // The context panel displays its own error; messages remain usable.
+    }
+  }, []);
+
+  useEffect(() => {
+    setDeliveryView(null);
+    if (selectedId) void loadDeliveries();
+  }, [selectedId, loadDeliveries]);
+  useVisiblePolling(loadDeliveries, LIST_POLL_MS, Boolean(selectedId));
+
+  const sendDelivery = async (delivery: ContextDelivery) => {
+    const conversationId = selectedIdRef.current;
+    if (!conversationId || !delivery.canSend) return;
+    setDeliveryPending(delivery.id);
+    setStatusNotice(null);
+    try {
+      const current = await fetchAttendanceContext(conversationId);
+      const approved = current.match === 'matched' && current.deliveries?.some(
+        (item) => item.id === delivery.id && item.revisionId === delivery.revisionId && item.canSend,
+      );
+      if (!approved) {
+        if (selectedIdRef.current === conversationId) setStatusNotice('A entrega mudou. Atualize o contexto antes de enviar.');
+        return;
+      }
+      if (selectedIdRef.current !== conversationId) return;
+      await enqueueDelivery({ quotationId: delivery.quotationId, revisionId: delivery.revisionId, flowId: delivery.flowId });
+      if (selectedIdRef.current === conversationId) await loadDeliveries();
+    } catch (error) {
+      if (selectedIdRef.current === conversationId) setStatusNotice(errorMessage(error, 'Não foi possível enviar o orçamento.'));
+    } finally {
+      setDeliveryPending(null);
+    }
+  };
 
   useEffect(() => {
     const onHash = () => setSelectedId(selectedFromHash());
@@ -540,12 +588,15 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                   {statusNotice}
                 </InlineAlert>
               )}
-              {thread.messages.length === 0 ? (
+              {thread.messages.length === 0 && (deliveryView?.conversationId !== conversation.id || deliveryView.items.length === 0) ? (
                 <EmptyState icon={MessagesSquare} title="Sem mensagens registradas" className="flex-1 rounded-none" />
               ) : (
                 <MessageTimeline
                   ref={timelineRef}
                   messages={thread.messages}
+                  deliveries={deliveryView?.conversationId === conversation.id ? deliveryView.items : []}
+                  deliveryPending={deliveryPending}
+                  onSendDelivery={(delivery) => void sendDelivery(delivery)}
                   actionPending={actionPending}
                   onAction={(messageId, action) => void runAction(messageId, action)}
                   hasOlder={thread.hasOlder}
