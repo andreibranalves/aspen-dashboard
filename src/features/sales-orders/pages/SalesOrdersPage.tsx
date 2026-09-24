@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
+import ProductionBoard from '../components/ProductionBoard';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
 import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
@@ -258,7 +259,7 @@ function SalesOrderExportMenu({
   );
 }
 
-export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
+function AllSalesOrdersPage({ navigate, onProduction }: SalesOrdersPageProps & { onProduction: () => void }) {
   const [items, setItems] = useState<SalesOrderItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -423,6 +424,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         }
       >
 
+      <div role="tablist" aria-label="Visualização de pedidos" className="flex gap-2">
+        <Button role="tab" aria-selected="false" variant="outline" onClick={onProduction}>Produção</Button>
+        <Button role="tab" aria-selected="true" variant="default">Todos</Button>
+      </div>
       {(summaryData || summaryLoading) && (
         <section aria-label={`Resumo comercial: ${summaryPeriodLabel.toLowerCase()}`} aria-busy={summaryLoading} className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-widest text-fg-muted">
@@ -672,4 +677,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       </ListSection>
     </ListPageLayout>
   );
+}
+
+export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
+  const [tab, setTab] = useState<'production' | 'all'>('production');
+  return tab === 'production'
+    ? <ProductionBoard navigate={navigate} onAll={() => setTab('all')} />
+    : <AllSalesOrdersPage navigate={navigate} onProduction={() => setTab('production')} />;
 }

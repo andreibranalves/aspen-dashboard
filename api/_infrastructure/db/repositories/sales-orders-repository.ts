@@ -30,7 +30,6 @@ import {
   products,
 } from '../schema.js';
 import {
-  addCalendarDays,
   calendarDateInSaoPaulo,
   resolveNamedPeriod,
 } from '../../../_shared/calendar-sao-paulo.js';
@@ -293,10 +292,6 @@ function utcIsoDate(value: Date): string {
 
 function dateOnly(value: Date): string {
   return calendarDateInSaoPaulo(value);
-}
-
-function addDays(value: Date, days: number): string {
-  return addCalendarDays(calendarDateInSaoPaulo(value), days);
 }
 
 function asMoney(value: unknown): number {
@@ -690,6 +685,7 @@ export function deriveSalesOrderStatus(
   perBilled: number,
   perDelivered: number
 ): string {
+  if (status === 'Completed') return 'Completed';
   if (!PROGRESS_ORDER_STATUSES[status]) return status;
   if (perBilled === 100 && perDelivered < 100) return 'To Deliver';
   if (perDelivered === 100 && perBilled < 100) return 'To Bill';
@@ -985,7 +981,7 @@ async function insertSalesOrderFromApprovedQuotation(
       clientId: quotation.clientId,
       status: CREATED_ORDER_STATUS,
       transactionDate: businessDate,
-      deliveryDate: addDays(current, 30),
+      deliveryDate: null,
       subtotal: revision.subtotal,
       grandTotal: revision.total,
       createdAt,
@@ -1068,6 +1064,8 @@ export async function listSalesOrdersForExport(
       deliveryDate: salesOrders.deliveryDate,
       perDelivered: salesOrders.perDelivered,
       perBilled: salesOrders.perBilled,
+      entryReceivedAmount: salesOrders.entryReceivedAmount,
+      balanceReceivedDate: salesOrders.balanceReceivedDate,
       subtotal: salesOrders.subtotal,
       grandTotal: salesOrders.grandTotal,
       createdAt: salesOrders.createdAt,

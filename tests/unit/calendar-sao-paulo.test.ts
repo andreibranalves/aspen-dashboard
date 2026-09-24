@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   addBusinessDays,
+  countBusinessDays,
   calendarDateInSaoPaulo,
   isCalendarMonthPeriod,
   resolveNamedPeriod,
@@ -21,6 +22,13 @@ describe('addBusinessDays', () => {
   it('rejects malformed or impossible date-only input', () => {
     assert.throws(() => addBusinessDays('2026-9-11', 2));
     assert.throws(() => addBusinessDays('2026-02-31', 2));
+  });
+
+  it('skips 20 November and Good Friday but counts Carnival weekdays', () => {
+    assert.equal(addBusinessDays('2026-11-10', 20), '2026-12-09');
+    assert.equal(addBusinessDays('2026-02-13', 2), '2026-02-17');
+    assert.equal(addBusinessDays('2026-04-02', 1), '2026-04-06');
+    assert.equal(countBusinessDays('2026-11-10', '2026-12-09'), 20);
   });
 });
 

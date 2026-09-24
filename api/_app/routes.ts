@@ -32,6 +32,7 @@ import { handler as publicQuotation } from '../_modules/public-quotation.js';
 import { handler as salesDashboard } from '../_modules/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from '../_modules/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../_modules/sales-orders.js';
+import { productionOrders } from '../_modules/production-orders.js';
 import { handler as sendWhatsapp } from '../_modules/send-whatsapp.js';
 import { handler as sendQuotationEmail } from '../_modules/send-quotation-email.js';
 import { handler as quotationDeliveries } from '../_modules/quotation-deliveries.js';
@@ -93,6 +94,7 @@ export const routes: Record<string, LegacyHandler> = {
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
+  'production-orders': productionOrders,
   'site-quote-leads': siteQuoteLeads,
   'send-whatsapp': sendWhatsapp,
   'send-quotation-email': sendQuotationEmail,

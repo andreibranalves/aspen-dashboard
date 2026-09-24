@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { apiGet } from '@/lib/api/api';
 import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AspenBrand from '@/components/shared/AspenBrand';
@@ -29,6 +30,7 @@ export default function Sidebar({
   onNavigate,
 }: SidebarProps) {
   const asideRef = useRef<HTMLElement>(null);
+  const [productionAlerts, setProductionAlerts] = useState(0);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const currentPath = routePath(currentRoute);
   // Fluxos filhos destacam o item-pai correspondente (ex.: /manual pertence a Orçamentos).
@@ -41,6 +43,18 @@ export default function Sidebar({
     : activeAffinity[currentPath] ?? currentPath;
   const sidebarOpen = !collapsed;
   const navItems = NAV_ACTION ? [NAV_ACTION, ...NAV_DESTINATIONS] : NAV_DESTINATIONS;
+
+  useEffect(() => {
+    let active = true;
+    const reload = () => {
+      void apiGet<{ alert_count: number }>('/production-orders')
+        .then((value) => { if (active) setProductionAlerts(value.alert_count); })
+        .catch(() => { if (active) setProductionAlerts(0); });
+    };
+    reload();
+    window.addEventListener('production-orders-changed', reload);
+    return () => { active = false; window.removeEventListener('production-orders-changed', reload); };
+  }, [currentRoute]);
 
   const renderItem = (item: NavItem) => {
     const isActive = effectivePath === item.hash || effectivePath.startsWith(`${item.hash}/`);
@@ -66,6 +80,9 @@ export default function Sidebar({
           aria-hidden="true"
         />
         {!collapsed && <span className="truncate">{item.label}</span>}
+        {item.hash === '/sales-orders' && productionAlerts > 0 && (
+          <span className="ml-auto rounded-full bg-destructive px-1.5 text-xs text-white" aria-label={`${productionAlerts} pedidos em risco ou atrasados`}>{productionAlerts}</span>
+        )}
       </button>
     );
   };

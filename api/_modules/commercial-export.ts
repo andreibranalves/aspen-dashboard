@@ -176,7 +176,11 @@ const SALES_ORDER_COLUMNS: readonly CsvColumn<CommercialExportRow>[] = [
   { header: 'Data da venda', value: (row) => rowDate(row, 'transactionDate') },
   { header: 'Data da entrega', value: (row) => rowDate(row, 'deliveryDate') },
   { header: 'Percentual entregue', value: (row) => rowDecimal(row, 'perDelivered') },
-  { header: 'Percentual faturado', value: (row) => rowDecimal(row, 'perBilled') },
+  { header: 'Percentual faturado', value: (row) => {
+    const total = Number(row.grandTotal || 0);
+    const received = row.balanceReceivedDate ? total : Number(row.entryReceivedAmount || 0);
+    return total > 0 ? String(Math.round(received / total * 10000) / 100) : '0';
+  } },
   { header: 'Subtotal', value: (row) => rowDecimal(row, 'subtotal') },
   { header: 'Total', value: (row) => rowDecimal(row, 'grandTotal') },
   { header: 'Criado em', value: (row) => rowDateTime(row, 'createdAt') },

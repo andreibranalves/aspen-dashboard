@@ -1082,6 +1082,19 @@ export const salesOrders = pgTable(
     status: varchar('status', { length: 32 }).notNull().default('Draft'),
     transactionDate: date('transaction_date').notNull(),
     deliveryDate: date('delivery_date'),
+    dueDateOverride: date('due_date_override'),
+    productionStage: varchar('production_stage', { length: 32 }).notNull().default('aguardando entrada'),
+    stageChangedAt: timestamp('stage_changed_at', { withTimezone: true }).notNull().defaultNow(),
+    productionDays: integer('production_days').notNull().default(20),
+    artApprovedDate: date('art_approved_date'),
+    entryReceivedDate: date('entry_received_date'),
+    entryReceivedAmount: numeric('entry_received_amount', { precision: 20, scale: 2 }),
+    balanceReceivedDate: date('balance_received_date'),
+    readyAt: timestamp('ready_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    undoToken: uuid('undo_token'),
+    undoUntil: timestamp('undo_until', { withTimezone: true }),
+    undoSnapshot: jsonb('undo_snapshot').$type<Record<string, unknown>>(),
     perDelivered: numeric('per_delivered', { precision: 5, scale: 2 }).notNull().default('0.00'),
     perBilled: numeric('per_billed', { precision: 5, scale: 2 }).notNull().default('0.00'),
     subtotal: numeric('subtotal', { precision: 20, scale: 2 }).notNull(),
@@ -1111,8 +1124,23 @@ export const salesOrders = pgTable(
     check('sales_orders_per_billed_check', sql`${table.perBilled} BETWEEN 0 AND 100`),
     check('sales_orders_subtotal_check', sql`${table.subtotal} >= 0`),
     check('sales_orders_grand_total_check', sql`${table.grandTotal} >= 0`),
+    check('sales_orders_production_stage_check', sql`${table.productionStage} IN ('aguardando entrada', 'aguardando arte', 'em produção', 'pronto', 'entregue')`),
+    check('sales_orders_production_days_check', sql`${table.productionDays} BETWEEN 1 AND 365`),
+    check('sales_orders_entry_amount_check', sql`${table.entryReceivedAmount} IS NULL OR ${table.entryReceivedAmount} BETWEEN 0 AND ${table.grandTotal}`),
   ]
 );
+
+export const salesOrderNotes = pgTable('sales_order_notes', {
+  id: uuid('id').primaryKey(),
+  salesOrderId: uuid('sales_order_id').notNull().references(() => salesOrders.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 16 }).notNull(),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('sales_order_notes_order_created_idx').on(table.salesOrderId, table.createdAt),
+  check('sales_order_notes_kind_check', sql`${table.kind} IN ('note', 'stage')`),
+]);
 
 export const salesOrderItems = pgTable(
   'sales_order_items',

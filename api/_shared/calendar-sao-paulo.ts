@@ -37,7 +37,50 @@ export function addCalendarDays(isoDate: string, days: number): string {
   return civilDateFromUtcMillis(Date.UTC(year, month - 1, day + days));
 }
 
-/** Adds Monday-to-Friday calendar days without applying holiday rules. */
+function easterSunday(year: number): string {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+const NATIONAL_HOLIDAYS = new Set([
+  '01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25',
+]);
+
+export function isBusinessDay(isoDate: string): boolean {
+  const millis = dateOnlyToUtcMillis(isoDate);
+  const weekday = new Date(millis).getUTCDay();
+  if (weekday === 0 || weekday === 6) return false;
+  if (NATIONAL_HOLIDAYS.has(isoDate.slice(5))) return false;
+  return isoDate !== addCalendarDays(easterSunday(Number(isoDate.slice(0, 4))), -2);
+}
+
+export function countBusinessDays(startExclusive: string, endInclusive: string): number {
+  dateOnlyToUtcMillis(startExclusive);
+  dateOnlyToUtcMillis(endInclusive);
+  if (endInclusive <= startExclusive) return 0;
+  let date = startExclusive;
+  let count = 0;
+  while (date < endInclusive) {
+    date = addCalendarDays(date, 1);
+    if (isBusinessDay(date)) count += 1;
+  }
+  return count;
+}
+
+/** Adds Brazilian national business days, including Carnival and Corpus Christi. */
 export function addBusinessDays(isoDate: string, businessDays: number): string {
   if (!Number.isSafeInteger(businessDays) || businessDays < 0) {
     throw new Error('A quantidade de dias úteis é inválida.');
@@ -46,8 +89,7 @@ export function addBusinessDays(isoDate: string, businessDays: number): string {
   let remaining = businessDays;
   while (remaining > 0) {
     millis += 24 * 60 * 60 * 1000;
-    const weekday = new Date(millis).getUTCDay();
-    if (weekday !== 0 && weekday !== 6) remaining -= 1;
+    if (isBusinessDay(civilDateFromUtcMillis(millis))) remaining -= 1;
   }
   return civilDateFromUtcMillis(millis);
 }

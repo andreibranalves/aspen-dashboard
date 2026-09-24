@@ -24,6 +24,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/sales-orders-repository.js';
 import { createSalesOrderFromQuotationHandler } from '../../api/_modules/sales-order-from-quotation.js';
 import { createSalesOrdersHandler } from '../../api/_modules/sales-orders.js';
+import { createProductionOrdersRepository } from '../../api/_infrastructure/db/repositories/production-orders-repository.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
@@ -635,6 +636,30 @@ test(
         unknownPeriod.items.some((item) => item.id === outsidePeriodOrderNumber),
         false
       );
+
+      const production = createProductionOrdersRepository(() => db, () => NOW);
+      assert.equal((await production.get(first.id)).stage, 'aguardando entrada');
+      await production.change({ action: 'advance', id: first.id, stage: 'aguardando arte', date: '2098-08-10' });
+      const afterEntry = await production.get(first.id);
+      assert.equal(afterEntry.entry_received_amount, 115);
+      assert.equal(afterEntry.notes.length, 1);
+      await assert.rejects(
+        () => production.change({ action: 'advance', id: first.id, stage: 'aguardando entrada' }),
+        /etapa só pode avançar/
+      );
+      await production.change({ action: 'undo', id: first.id, token: afterEntry.undo_token! });
+      assert.equal((await production.get(first.id)).stage, 'aguardando entrada');
+      assert.equal((await production.get(first.id)).notes.length, 0);
+      await production.change({ action: 'advance', id: first.id, stage: 'aguardando arte' });
+      await production.change({ action: 'advance', id: first.id, stage: 'em produção', date: '2098-08-10' });
+      assert.equal((await production.get(first.id)).due_date, '2098-09-05');
+      await production.change({ action: 'advance', id: first.id, stage: 'pronto' });
+      await production.change({ action: 'advance', id: first.id, stage: 'entregue' });
+      const delivered = await production.get(first.id);
+      assert.equal(delivered.stage, 'entregue');
+      assert.equal(delivered.received_amount, 115);
+      assert.equal((await repository.get(first.id))?.status, 'Completed');
+      assert.equal(delivered.notes.filter((note) => note.kind === 'stage').length, 4);
     } finally {
       if (migrated) {
         const orders = await db
