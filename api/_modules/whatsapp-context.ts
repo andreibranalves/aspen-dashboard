@@ -36,10 +36,15 @@ export interface WhatsappContextQuotation {
 
 export interface WhatsappContextDelivery {
   id: string;
+  quotationId: string;
   revisionId: string;
+  flowId: string;
   businessNumber: string;
   status: 'pendente' | 'enviado' | 'entregue' | 'falhou' | 'sem entrega registrada';
   date: string;
+  occurredAt: string;
+  url: string;
+  canSend: boolean;
 }
 
 export type WhatsappContextProjection =

@@ -19,10 +19,15 @@ export interface ContextQuotation {
 
 export interface ContextDelivery {
   id: string;
+  quotationId: string;
   revisionId: string;
+  flowId: string;
   businessNumber: string;
   status: string;
   date: string;
+  occurredAt: string;
+  url: string;
+  canSend: boolean;
 }
 
 export interface AttendanceContext {

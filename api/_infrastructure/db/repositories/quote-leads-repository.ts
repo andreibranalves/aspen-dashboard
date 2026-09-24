@@ -48,6 +48,8 @@ export interface QuoteLeadRecord extends QuoteLead {
 
 export interface QuoteLeadRepository {
   upsert(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
+  /** Insert-only admission for a selected Atendimento demand. Replays never rewrite its text. */
+  admitWhatsappDraft(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
   ingestSiteSubmission(input: QuoteLeadInput): Promise<QuoteLeadRecord>;
   findByExternalId(externalId: string, source?: string): Promise<QuoteLeadRecord | null>;
   /**
@@ -434,6 +436,41 @@ export function createPostgresQuoteLeadRepository(
   const idFactory = options.idFactory || randomUUID;
 
   const repository: QuoteLeadRepository = {
+    async admitWhatsappDraft(input: QuoteLeadInput): Promise<QuoteLeadRecord> {
+      const timestamp = nowDate(now);
+      const incoming = normalizedInput(input, idFactory, timestamp);
+      if (incoming.source !== 'whatsapp' || !incoming.externalId || !incoming.demandId) {
+        throw createHttpError(400, 'Conversa e demanda são obrigatórias.');
+      }
+      const identityKey = quoteLeadIdentityKey(incoming);
+      try {
+        return await getDb().transaction(async (transaction) => {
+          const incomingRecord = { ...incoming, identityKey, crmDealId: null } as QuoteLeadRecord;
+          const [inserted] = await transaction
+            .insert(quoteLeads)
+            .values({ ...rowValues(incomingRecord, timestamp, timestamp), id: incoming.id } as never)
+            .onConflictDoNothing({ target: quoteLeads.identityKey })
+            .returning();
+          const row = await selectLeadForUpdate(transaction, identityKey);
+          if (!row) throw createHttpError(503, 'Não foi possível registrar a demanda.');
+          if (row.externalId !== incoming.externalId) {
+            throw createHttpError(409, 'Esta demanda já está vinculada a outra conversa.');
+          }
+          const lead = rowToRecord(row, Boolean(inserted));
+          const dealId = await ensureDeal(transaction, lead, timestamp, idFactory);
+          if (lead.crmDealId !== dealId) {
+            await transaction.update(quoteLeads)
+              .set({ crmDealId: dealId, updatedAt: normalizeTimestamp(lead.updatedAt) })
+              .where(eq(quoteLeads.id, lead.id));
+            lead.crmDealId = dealId;
+          }
+          return lead;
+        });
+      } catch (error) {
+        return safeError(error);
+      }
+    },
+
     async findByExternalId(externalId: string, source?: string): Promise<QuoteLeadRecord | null> {
       const normalizedExternalId = cleanText(externalId);
       const normalizedSource = source === undefined ? '' : cleanText(source);

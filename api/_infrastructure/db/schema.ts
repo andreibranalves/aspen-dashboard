@@ -2016,6 +2016,28 @@ export const whatsappBackfillProgress = pgTable(
  * lease plus `transport_started_at` decide whether a stuck send may be retried
  * (never started) or must go to review (possibly sent).
  */
+export const whatsappMessageAttachments = pgTable(
+  'whatsapp_message_attachments',
+  {
+    id: uuid('id').primaryKey(),
+    conversationId: uuid('conversation_id').notNull().references(() => whatsappConversations.id, { onDelete: 'restrict' }),
+    messageId: uuid('message_id').references(() => whatsappMessages.id, { onDelete: 'restrict' }),
+    mediaType: varchar('media_type', { length: 16 }).notNull(),
+    mimeType: varchar('mime_type', { length: 64 }).notNull(),
+    fileName: varchar('file_name', { length: 128 }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    checksum: varchar('checksum', { length: 64 }).notNull(),
+    contentBase64: text('content_base64').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('whatsapp_message_attachments_conversation_idx').on(table.conversationId),
+    uniqueIndex('whatsapp_message_attachments_message_unique').on(table.messageId),
+    check('whatsapp_message_attachments_type_check', sql`${table.mediaType} IN ('image', 'document')`),
+    check('whatsapp_message_attachments_size_check', sql`${table.sizeBytes} > 0 AND ${table.sizeBytes} <= 3145728`),
+  ],
+);
+
 export const whatsappMessageOutbox = pgTable(
   'whatsapp_message_outbox',
   {
@@ -2027,6 +2049,7 @@ export const whatsappMessageOutbox = pgTable(
       .notNull()
       .references(() => whatsappConversations.id, { onDelete: 'restrict' }),
     clientRequestId: uuid('client_request_id').notNull(),
+    attachmentId: uuid('attachment_id').references(() => whatsappMessageAttachments.id, { onDelete: 'restrict' }),
     fingerprint: varchar('fingerprint', { length: 64 }).notNull(),
     destinationPhone: varchar('destination_phone', { length: 15 }).notNull(),
     identityVersion: integer('identity_version').notNull(),

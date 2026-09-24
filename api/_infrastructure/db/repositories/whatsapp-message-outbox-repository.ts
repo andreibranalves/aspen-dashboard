@@ -7,6 +7,7 @@ import {
   evolutionReceiptInbox,
   whatsappConversations,
   whatsappMessageOutbox,
+  whatsappMessageAttachments,
   whatsappMessages,
 } from '../schema.js';
 
@@ -32,6 +33,7 @@ export interface OutboxRecord {
   destinationPhone: string;
   identityVersion: number;
   body: string;
+  attachmentId?: string | null;
   state: OutboxState;
   attempts: number;
   transportStartedAt: Date | null;
@@ -51,7 +53,8 @@ export type IntentRefusal =
   | 'identity_unresolved'
   | 'identity_conflict'
   | 'identity_changed'
-  | 'idempotency_conflict';
+  | 'idempotency_conflict'
+  | 'attachment_not_found';
 
 export class OutboxIntentRefused extends Error {
   constructor(readonly reason: IntentRefusal) {
@@ -75,6 +78,7 @@ export interface CreateIntentInput {
   conversationId: string;
   expectedIdentityVersion: number;
   body: string;
+  attachmentId?: string | null;
   now?: Date;
 }
 
@@ -125,9 +129,12 @@ export function outboxFingerprint(input: {
   destinationPhone: string;
   identityVersion: number;
   body: string;
+  attachmentId?: string | null;
 }): string {
   return createHash('sha256')
-    .update(JSON.stringify([input.conversationId, input.destinationPhone, input.identityVersion, input.body]))
+    .update(JSON.stringify(input.attachmentId
+      ? [input.conversationId, input.destinationPhone, input.identityVersion, input.body, input.attachmentId]
+      : [input.conversationId, input.destinationPhone, input.identityVersion, input.body]))
     .digest('hex');
 }
 
@@ -140,6 +147,7 @@ function toRecord(row: typeof outbox.$inferSelect): OutboxRecord {
     destinationPhone: row.destinationPhone,
     identityVersion: row.identityVersion,
     body: row.body,
+    attachmentId: row.attachmentId,
     state: row.state as OutboxState,
     attempts: row.attempts,
     transportStartedAt: row.transportStartedAt,
@@ -214,6 +222,7 @@ export function createPostgresWhatsappMessageOutboxRepository(
             destinationPhone: existing.destinationPhone,
             identityVersion: input.expectedIdentityVersion,
             body: input.body,
+            attachmentId: input.attachmentId,
           });
         if (!same) throw new OutboxIntentRefused('idempotency_conflict');
         return { record: toRecord(existing), created: false };
@@ -228,6 +237,17 @@ export function createPostgresWhatsappMessageOutboxRepository(
         throw new OutboxIntentRefused('identity_changed');
       }
 
+      const attachmentId = input.attachmentId || null;
+      const [attachment] = attachmentId
+        ? await tx.select().from(whatsappMessageAttachments)
+          .where(eq(whatsappMessageAttachments.id, attachmentId)).for('update')
+        : [];
+      if (attachmentId && (!attachment || attachment.conversationId !== conversation.id || attachment.messageId)) {
+        throw new OutboxIntentRefused('attachment_not_found');
+      }
+      const displayBody = input.body.trim() ? input.body : attachment?.fileName || '';
+      if (!displayBody) throw new OutboxIntentRefused('attachment_not_found');
+
       const revision = Number(conversation.revision) + 1;
       const messageId = randomUUID();
       await tx.insert(messages).values({
@@ -235,8 +255,8 @@ export function createPostgresWhatsappMessageOutboxRepository(
         conversationId: conversation.id,
         providerMessageId: null,
         direction: 'outbound',
-        messageType: 'text',
-        body: input.body,
+        messageType: attachment?.mediaType || 'text',
+        body: displayBody,
         origin: 'operator',
         providerTimestamp: now,
         ingestedAt: now,
@@ -250,15 +270,17 @@ export function createPostgresWhatsappMessageOutboxRepository(
           messageId,
           conversationId: conversation.id,
           clientRequestId: input.clientRequestId,
+          attachmentId,
           fingerprint: outboxFingerprint({
             conversationId: conversation.id,
             destinationPhone: phone,
             identityVersion: conversation.identityVersion,
             body: input.body,
+            attachmentId,
           }),
           destinationPhone: phone,
           identityVersion: conversation.identityVersion,
-          body: input.body,
+          body: displayBody,
           state: 'queued',
           nextAttemptAt: now,
           createdAt: now,
@@ -270,11 +292,14 @@ export function createPostgresWhatsappMessageOutboxRepository(
         .set({
           revision,
           lastMessageAt: now,
-          lastMessagePreview: preview(input.body),
+          lastMessagePreview: preview(displayBody),
           lastMessageDirection: 'outbound',
           updatedAt: now,
         })
         .where(eq(conversations.id, conversation.id));
+      if (attachmentId) {
+        await tx.update(whatsappMessageAttachments).set({ messageId }).where(eq(whatsappMessageAttachments.id, attachmentId));
+      }
       return { record: toRecord(created), created: true };
     });
   }

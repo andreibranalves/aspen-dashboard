@@ -7,6 +7,7 @@ import type { ApiError } from '@/lib/api/api';
 import {
   fetchSendByRequest,
   sendOperatorMessage,
+  uploadWhatsappAttachment,
   type AttendanceConversation,
   type SendResult,
 } from '@/lib/api/attendanceApi';
@@ -17,6 +18,7 @@ interface PendingSend {
   clientRequestId: string;
   body: string;
   identityVersion: number;
+  attachmentId?: string | null;
 }
 
 interface MessageComposerProps {
@@ -60,6 +62,8 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
   const [draft, setDraft] = useState(() => readSession<string>(draftKey(conversationId)) || '');
   const [pending, setPending] = useState<PendingSend | null>(() => readSession<PendingSend>(pendingKey(conversationId)));
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachment, setAttachment] = useState<{ id: string; fileName: string } | null>(null);
   const [notice, setNotice] = useState<{ tone: 'warning' | 'destructive'; text: string } | null>(null);
   const currentConversation = useRef(conversationId);
   currentConversation.current = conversationId;
@@ -69,6 +73,7 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
     (result: SendResult) => {
       writeSession(pendingKey(result.conversationId), null);
       if (currentConversation.current === result.conversationId) setPending(null);
+      if (currentConversation.current === result.conversationId) setAttachment(null);
       onSent(result);
     },
     [onSent]
@@ -85,6 +90,7 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
             conversationId,
             expectedIdentityVersion: intent.identityVersion,
             body: intent.body,
+            attachmentId: intent.attachmentId,
           })
         );
       } catch (error) {
@@ -152,7 +158,7 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
     });
   }, [prefill, conversationId]);
 
-  const canSend = !blocked && !sending && !pending && draft.trim().length > 0 && draft.length <= MAX_REPLY_CHARS;
+  const canSend = !blocked && !sending && !uploading && !pending && (draft.trim().length > 0 || Boolean(attachment)) && draft.length <= MAX_REPLY_CHARS;
 
   const send = () => {
     if (!canSend) return;
@@ -160,6 +166,7 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
       clientRequestId: globalThis.crypto.randomUUID(),
       body: draft,
       identityVersion: conversation.identityVersion,
+      attachmentId: attachment?.id || null,
     };
     writeSession(pendingKey(conversationId), intent);
     setPending(intent);
@@ -171,6 +178,24 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       send();
+    }
+  };
+
+  const chooseAttachment = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      setNotice({ tone: 'destructive', text: 'O anexo deve ter até 3 MB.' });
+      return;
+    }
+    setUploading(true);
+    setNotice(null);
+    try {
+      const uploaded = await uploadWhatsappAttachment(conversationId, file);
+      if (currentConversation.current === conversationId) setAttachment(uploaded);
+    } catch (error) {
+      setNotice({ tone: 'destructive', text: error instanceof Error ? error.message : 'Não foi possível guardar o anexo.' });
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -207,6 +232,15 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
         <Button onClick={send} disabled={!canSend} aria-label="Enviar resposta">
           <Send aria-hidden="true" /> Enviar
         </Button>
+      </div>
+      <div className="flex items-center gap-2 text-xs">
+        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" aria-label="Anexar imagem ou PDF"
+          disabled={sending || uploading || Boolean(pending)} onChange={(event) => { void chooseAttachment(event.target.files?.[0]); event.target.value = ''; }} />
+        {uploading && <span>Guardando anexo…</span>}
+        {attachment && <>
+          <span>{attachment.fileName}</span>
+          <Button variant="ghost" size="xs" onClick={() => setAttachment(null)} disabled={sending || Boolean(pending)}>Remover</Button>
+        </>}
       </div>
       {draft.length > MAX_REPLY_CHARS && (
         <p className="text-xs text-destructive" role="status">

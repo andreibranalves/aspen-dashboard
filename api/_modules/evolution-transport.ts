@@ -271,6 +271,36 @@ export async function sendFrozenStep(
   const client = transportClient(dependencies);
   const config = validConfiguration(client.config());
   const request = requestForStep(input, config.instance);
+  return performTransport(client, request, dependencies);
+}
+
+export async function sendOperatorMedia(
+  input: { phone: string; mediaType: 'image' | 'document'; mimeType: string; base64: string; fileName: string; caption: string },
+  dependencies: EvolutionTransportDependencies = defaultDependencies,
+): Promise<EvolutionAccepted> {
+  const client = transportClient(dependencies);
+  const config = validConfiguration(client.config());
+  const number = normalizeWhatsappPhone(input.phone);
+  if (!number || !input.base64 || !input.fileName || input.base64.length > 4_200_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.base64) || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(input.mimeType)) {
+    permanentInput('Anexo inválido.');
+  }
+  if ((input.mediaType === 'document') !== (input.mimeType === 'application/pdf')) permanentInput('Anexo inválido.');
+  const request = {
+    path: `/message/sendMedia/${encodeURIComponent(config.instance)}`,
+    body: {
+      number, mediatype: input.mediaType, mimetype: input.mimeType,
+      media: input.base64, fileName: text(input.fileName, 'Nome do arquivo'),
+      caption: text(input.caption, 'Legenda', false),
+    },
+  };
+  return performTransport(client, request, dependencies);
+}
+
+async function performTransport(
+  client: EvolutionClient,
+  request: { path: string; body: Record<string, unknown> },
+  dependencies: EvolutionTransportDependencies,
+): Promise<EvolutionAccepted> {
   const timeoutMs = dependencies.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : Number(dependencies.timeoutMs);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120_000) {
     permanentInput('Tempo limite do transporte inválido.');

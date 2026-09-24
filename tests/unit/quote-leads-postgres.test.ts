@@ -29,6 +29,55 @@ const migrationsFolder = path.resolve(
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 const PHONE = '5511987654321';
 
+test(
+  'Atendimento demand admission keeps the first selected text under concurrent retries',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, { max: 4, prepare: false, onnotice: () => undefined });
+    const db = drizzle(client, { schema });
+    const demandId = randomUUID();
+    const secondDemandId = randomUUID();
+    const conversationId = randomUUID();
+    const repository = createPostgresQuoteLeadRepository(() => db);
+    const input = (id: string, text: string, externalId = conversationId) => ({
+      source: 'whatsapp', externalId, demandId: id, nome: 'Contato', telefone: PHONE,
+      pedidoTexto: text, raw: { atendimentoDraft: { text, messageIds: [randomUUID()] } },
+    });
+    try {
+      await migrate(db, { migrationsFolder });
+      const [first, replay] = await Promise.all([
+        repository.admitWhatsappDraft(input(demandId, 'Primeira seleção')),
+        repository.admitWhatsappDraft(input(demandId, 'Outra seleção')),
+      ]);
+      assert.equal(first.id, replay.id);
+      assert.equal(first.crmDealId, replay.crmDealId);
+      assert.deepEqual(first.raw, replay.raw, 'the winner is never rewritten by the other request');
+      const persisted = await repository.findByDemandId(demandId, 'whatsapp');
+      assert.equal(persisted?.id, first.id);
+      assert.deepEqual(persisted?.raw, first.raw);
+      const second = await repository.admitWhatsappDraft(input(secondDemandId, 'Nova demanda'));
+      assert.notEqual(second.id, first.id);
+      await assert.rejects(
+        () => repository.admitWhatsappDraft(input(demandId, 'Conflito', randomUUID())),
+        (error: unknown) => (error as { statusCode?: number }).statusCode === 409,
+      );
+    } finally {
+      const leads = await db.select({ id: schema.quoteLeads.id }).from(schema.quoteLeads)
+        .where(inArray(schema.quoteLeads.demandId, [demandId, secondDemandId]));
+      const ids = leads.map((row) => row.id);
+      if (ids.length) {
+        const deals = await db.select({ id: schema.crmDeals.id }).from(schema.crmDeals)
+          .where(inArray(schema.crmDeals.quoteLeadId, ids));
+        if (deals.length) await db.delete(schema.opportunityNextActions)
+          .where(inArray(schema.opportunityNextActions.opportunityId, deals.map((row) => row.id)));
+        await db.update(schema.quoteLeads).set({ crmDealId: null }).where(inArray(schema.quoteLeads.id, ids));
+        await db.delete(schema.crmDeals).where(inArray(schema.crmDeals.quoteLeadId, ids));
+        await db.delete(schema.quoteLeads).where(inArray(schema.quoteLeads.id, ids));
+      }
+      await client.end({ timeout: 5 });
+    }
+  },
+);
 test('active lead paths depend on KV-free pure logic only', () => {
   const repositorySource = readFileSync(
     path.resolve(

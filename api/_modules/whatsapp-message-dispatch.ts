@@ -8,7 +8,9 @@ import {
   type OutboxRecord,
   type WhatsappMessageOutboxRepository,
 } from '../_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
-import { EvolutionTransportError, sendFrozenStep } from './evolution-transport.js';
+import { EvolutionTransportError, sendFrozenStep, sendOperatorMedia } from './evolution-transport.js';
+import { loadWhatsappAttachment, type WhatsappAttachment } from '../_infrastructure/db/repositories/whatsapp-attachments-repository.js';
+import { validateOperatorMedia } from './whatsapp-media-validation.js';
 
 // Longer than one full transport timeout (15 s) so a live dispatch never loses
 // its lease; an expired lease therefore means the function died.
@@ -20,7 +22,7 @@ const SWEEP_MARGIN_MS = 5_000;
 // Fresh intents belong to the request that recorded them.
 const SWEEP_MIN_AGE_MS = 60_000;
 
-export type SendText = (input: { phone: string; text: string }) => Promise<{ providerMessageId: string }>;
+export type SendText = (input: { phone: string; text: string; attachment?: WhatsappAttachment | null }) => Promise<{ providerMessageId: string }>;
 
 export interface DispatchDependencies {
   repository?: Pick<
@@ -28,10 +30,18 @@ export interface DispatchDependencies {
     'claim' | 'markTransportStarted' | 'markAccepted' | 'markFailed' | 'applyReceipts'
   >;
   send?: SendText;
+  loadAttachment?: (id: string) => Promise<WhatsappAttachment | null>;
   now?: () => Date;
 }
 
-export const liveSendText: SendText = async ({ phone, text }) => {
+export const liveSendText: SendText = async ({ phone, text, attachment }) => {
+  if (attachment) {
+    const accepted = await sendOperatorMedia({
+      phone, mediaType: attachment.mediaType, mimeType: attachment.mimeType,
+      base64: attachment.contentBase64, fileName: attachment.fileName, caption: text,
+    });
+    return { providerMessageId: accepted.providerMessageId };
+  }
   const accepted = await sendFrozenStep({
     phone,
     step: { position: 0, type: 'text', payload: { text }, delayMs: 0 },
@@ -68,11 +78,34 @@ export async function dispatchOutboxMessage(
 
   const claimed = await repository.claim(outboxId, { leaseMs: MESSAGE_LEASE_MS, now: now() });
   if (!claimed) return null;
+  let attachment: WhatsappAttachment | null = null;
+  if (claimed.attachmentId) {
+    try {
+      attachment = await (dependencies.loadAttachment || loadWhatsappAttachment)(claimed.attachmentId);
+    } catch {
+      const at = now();
+      return repository.markFailed(claimed.id, claimed.leaseToken, {
+        ...failureFor(new EvolutionTransportError('Anexo indisponível.', 'transient_pre_transport', 'MEDIA_STORE_UNAVAILABLE'), claimed, at),
+        now: at,
+      });
+    }
+    if (!attachment || attachment.conversationId !== claimed.conversationId || attachment.messageId !== claimed.messageId) {
+      return repository.markFailed(claimed.id, claimed.leaseToken, { state: 'failed', failureCode: 'MEDIA_INVALID', now: now() });
+    }
+    try {
+      const checked = validateOperatorMedia({ base64: attachment.contentBase64, mimeType: attachment.mimeType, fileName: attachment.fileName });
+      if (checked.checksum !== attachment.checksum || checked.sizeBytes !== attachment.sizeBytes || checked.fileName !== attachment.fileName) {
+        throw new Error('INVALID_MEDIA');
+      }
+    } catch {
+      return repository.markFailed(claimed.id, claimed.leaseToken, { state: 'failed', failureCode: 'MEDIA_INVALID', now: now() });
+    }
+  }
   if (!(await repository.markTransportStarted(claimed.id, claimed.leaseToken, now()))) return null;
 
   let providerMessageId: string;
   try {
-    ({ providerMessageId } = await send({ phone: claimed.destinationPhone, text: claimed.body }));
+    ({ providerMessageId } = await send({ phone: claimed.destinationPhone, text: claimed.body, attachment }));
   } catch (error) {
     return repository.markFailed(claimed.id, claimed.leaseToken, { ...failureFor(error, claimed, now()), now: now() });
   }
