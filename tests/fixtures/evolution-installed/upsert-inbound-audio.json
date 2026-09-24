@@ -1,0 +1,89 @@
+{
+  "_meta": {
+    "source": "POST /chat/findMessages (registro armazenado; mesmo formato de data no webhook)",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "id": "FIXTURE0028ABCDEF",
+    "key": {
+      "id": "FIXTURE0007ABCDEF",
+      "fromMe": false,
+      "remoteJid": "100000000001@lid",
+      "participant": "",
+      "remoteJidAlt": "551100000023@s.whatsapp.net",
+      "addressingMode": "lid"
+    },
+    "pushName": "Texto sintético",
+    "messageType": "audioMessage",
+    "message": {
+      "audioMessage": {
+        "ptt": true,
+        "url": "[REMOVIDO]",
+        "seconds": 2,
+        "mediaKey": "[REMOVIDO]",
+        "mimetype": "audio/ogg; codecs=opus",
+        "waveform": "[REMOVIDO]",
+        "directPath": "[REMOVIDO]",
+        "fileLength": {
+          "low": 6679,
+          "high": 0,
+          "unsigned": true
+        },
+        "fileSha256": "[REMOVIDO]",
+        "contextInfo": {
+          "mentionedJid": [],
+          "groupMentions": [],
+          "disappearingMode": {
+            "initiator": 0
+          },
+          "statusAttributions": []
+        },
+        "fileEncSha256": "[REMOVIDO]",
+        "streamingSidecar": "[REMOVIDO]",
+        "mediaKeyTimestamp": {
+          "low": 1790255697,
+          "high": 0,
+          "unsigned": false
+        }
+      },
+      "messageContextInfo": {
+        "threadId": [],
+        "messageSecret": "[REMOVIDO]",
+        "deviceListMetadata": {
+          "senderKeyHash": "[REMOVIDO]",
+          "senderTimestamp": {
+            "low": 1790200960,
+            "high": 0,
+            "unsigned": true
+          },
+          "recipientKeyHash": "[REMOVIDO]",
+          "senderKeyIndexes": [],
+          "recipientTimestamp": {
+            "low": 1789740730,
+            "high": 0,
+            "unsigned": true
+          },
+          "recipientKeyIndexes": []
+        },
+        "deviceListMetadataVersion": 2
+      }
+    },
+    "messageTimestamp": 1790255701,
+    "instanceId": "00000000-0000-4000-8000-000000000024",
+    "source": "ios",
+    "contextInfo": {
+      "mentionedJid": [],
+      "groupMentions": [],
+      "disappearingMode": {
+        "initiator": 0
+      },
+      "statusAttributions": []
+    },
+    "MessageUpdate": [
+      {
+        "status": "READ"
+      }
+    ]
+  }
+}

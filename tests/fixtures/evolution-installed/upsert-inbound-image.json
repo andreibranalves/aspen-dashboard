@@ -1,0 +1,103 @@
+{
+  "_meta": {
+    "source": "POST /chat/findMessages (registro armazenado; mesmo formato de data no webhook)",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "id": "FIXTURE0026ABCDEF",
+    "key": {
+      "id": "FIXTURE0008ABCDEF",
+      "fromMe": false,
+      "remoteJid": "100000000001@lid",
+      "participant": "",
+      "remoteJidAlt": "551100000023@s.whatsapp.net",
+      "addressingMode": "lid"
+    },
+    "pushName": "Texto sintético",
+    "messageType": "imageMessage",
+    "message": {
+      "imageMessage": {
+        "url": "[REMOVIDO]",
+        "width": 900,
+        "height": 1600,
+        "mediaKey": "[REMOVIDO]",
+        "mimetype": "image/jpeg",
+        "directPath": "[REMOVIDO]",
+        "fileLength": {
+          "low": 416000,
+          "high": 0,
+          "unsigned": true
+        },
+        "fileSha256": "[REMOVIDO]",
+        "annotations": [],
+        "contextInfo": {
+          "mentionedJid": [],
+          "groupMentions": [],
+          "disappearingMode": {
+            "initiator": 0
+          },
+          "statusSourceType": 0,
+          "statusAttributions": []
+        },
+        "scanLengths": [
+          22956,
+          154746,
+          114911,
+          123385
+        ],
+        "scansSidecar": "k4+uJg7rZk9BHpIqUQsfLoJaNAQPMZ0HbAxyVGECMdokhGU5SVBK9g==",
+        "fileEncSha256": "[REMOVIDO]",
+        "jpegThumbnail": "[REMOVIDO]",
+        "firstScanLength": 22956,
+        "imageSourceType": 0,
+        "firstScanSidecar": "k4+uJg7rZk9BHg==",
+        "mediaKeyTimestamp": {
+          "low": 1790255695,
+          "high": 0,
+          "unsigned": false
+        },
+        "midQualityFileSha256": "iHfCnftSQiQddlHpUCFfJzppiRijknJBMhZiepuZ5Ns=",
+        "interactiveAnnotations": []
+      },
+      "messageContextInfo": {
+        "threadId": [],
+        "messageSecret": "[REMOVIDO]",
+        "deviceListMetadata": {
+          "senderKeyHash": "[REMOVIDO]",
+          "senderTimestamp": {
+            "low": 1790200960,
+            "high": 0,
+            "unsigned": true
+          },
+          "recipientKeyHash": "[REMOVIDO]",
+          "senderKeyIndexes": [],
+          "recipientTimestamp": {
+            "low": 1789740730,
+            "high": 0,
+            "unsigned": true
+          },
+          "recipientKeyIndexes": []
+        },
+        "deviceListMetadataVersion": 2
+      }
+    },
+    "messageTimestamp": 1790255696,
+    "instanceId": "00000000-0000-4000-8000-000000000024",
+    "source": "ios",
+    "contextInfo": {
+      "mentionedJid": [],
+      "groupMentions": [],
+      "disappearingMode": {
+        "initiator": 0
+      },
+      "statusSourceType": 0,
+      "statusAttributions": []
+    },
+    "MessageUpdate": [
+      {
+        "status": "READ"
+      }
+    ]
+  }
+}

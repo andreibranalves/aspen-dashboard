@@ -1,0 +1,108 @@
+{
+  "_meta": {
+    "source": "POST /chat/findMessages (páginas 1 e 2, offset 10)",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "request": {
+      "where": {
+        "key": {
+          "remoteJid": "100000000001@lid"
+        }
+      },
+      "page": 2,
+      "offset": 10
+    },
+    "total": 236,
+    "pages": 24,
+    "page1": [
+      {
+        "id": "FIXTURE0002ABCDEF",
+        "messageTimestamp": 1790255730
+      },
+      {
+        "id": "FIXTURE0003ABCDEF",
+        "messageTimestamp": 1790255726
+      },
+      {
+        "id": "FIXTURE0004ABCDEF",
+        "messageTimestamp": 1790255724
+      },
+      {
+        "id": "FIXTURE0005ABCDEF",
+        "messageTimestamp": 1790255718
+      },
+      {
+        "id": "FIXTURE0006ABCDEF",
+        "messageTimestamp": 1790255716
+      },
+      {
+        "id": "FIXTURE0007ABCDEF",
+        "messageTimestamp": 1790255701
+      },
+      {
+        "id": "FIXTURE0008ABCDEF",
+        "messageTimestamp": 1790255696
+      },
+      {
+        "id": "FIXTURE0009ABCDEF",
+        "messageTimestamp": 1790255688
+      },
+      {
+        "id": "FIXTURE0010ABCDEF",
+        "messageTimestamp": 1790195511
+      },
+      {
+        "id": "FIXTURE0011ABCDEF",
+        "messageTimestamp": 1790195374
+      }
+    ],
+    "page2": [
+      {
+        "id": "FIXTURE0012ABCDEF",
+        "messageTimestamp": 1790195356
+      },
+      {
+        "id": "FIXTURE0013ABCDEF",
+        "messageTimestamp": 1790195174
+      },
+      {
+        "id": "FIXTURE0014ABCDEF",
+        "messageTimestamp": 1790195160
+      },
+      {
+        "id": "FIXTURE0015ABCDEF",
+        "messageTimestamp": 1790192536
+      },
+      {
+        "id": "FIXTURE0016ABCDEF",
+        "messageTimestamp": 1790192535
+      },
+      {
+        "id": "FIXTURE0017ABCDEF",
+        "messageTimestamp": 1790192521
+      },
+      {
+        "id": "FIXTURE0018ABCDEF",
+        "messageTimestamp": 1790175847
+      },
+      {
+        "id": "FIXTURE0019ABCDEF",
+        "messageTimestamp": 1790175636
+      },
+      {
+        "id": "FIXTURE0020ABCDEF",
+        "messageTimestamp": 1790175597
+      },
+      {
+        "id": "FIXTURE0021ABCDEF",
+        "messageTimestamp": 1790175596
+      }
+    ],
+    "currentPage": [
+      1,
+      2
+    ]
+  }
+}

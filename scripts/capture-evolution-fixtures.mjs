@@ -77,7 +77,7 @@ function alias(kind, value) {
 }
 
 const DROP_KEYS = /^(apikey|api_key|token|authorization|secret|password|cookie)$/i;
-const BINARY_KEYS = /^(base64|media|url|directPath|mediaKey|fileSha256|fileEncSha256|jpegThumbnail|thumbnail\w*|streamingSidecar|waveform|mediaKeyTimestamp|messageSecret|contactVcard|vcard|profilePicUrl|serverUrl|server_url)$/;
+const BINARY_KEYS = /^(base64|media|url|directPath|mediaKey|fileSha256|fileEncSha256|jpegThumbnail|thumbnail\w*|streamingSidecar|waveform|mediaKeyTimestamp|messageSecret|contactVcard|vcard|profilePicUrl|serverUrl|server_url|senderKeyHash|recipientKeyHash)$/;
 const TEXT_KEYS = /^(conversation|text|caption|fileName|title|pushName|name|verifiedBizName|body|description|displayName)$/;
 const ID_KEYS = /^(id|keyId|messageId|stanzaId|_id|owner|instanceId|chatId|contactId|labelId|sessionId)$/;
 
@@ -173,8 +173,8 @@ keep('find-messages-pagination', 'POST /chat/findMessages (páginas 1 e 2, offse
   request: { where: { key: { remoteJid } }, page: 2, offset: 10 },
   total: firstPage?.total ?? null,
   pages: firstPage?.pages ?? null,
-  page1Ids: (pages[0].json?.messages?.records || []).map((record) => record?.key?.id),
-  page2Ids: (pages[1].json?.messages?.records || []).map((record) => record?.key?.id),
+  page1: (pages[0].json?.messages?.records || []).map((record) => ({ id: record?.key?.id, messageTimestamp: record?.messageTimestamp })),
+  page2: (pages[1].json?.messages?.records || []).map((record) => ({ id: record?.key?.id, messageTimestamp: record?.messageTimestamp })),
   currentPage: pages.map((page) => page.json?.messages?.currentPage ?? null),
 });
 

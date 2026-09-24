@@ -1,0 +1,79 @@
+{
+  "_meta": {
+    "source": "POST /chat/findMessages (registro armazenado; mesmo formato de data no webhook)",
+    "evolution": "2.3.7",
+    "capturedOn": "2026-09-24"
+  },
+  "payload": {
+    "id": "FIXTURE0022ABCDEF",
+    "key": {
+      "id": "FIXTURE0003ABCDEF",
+      "fromMe": false,
+      "remoteJid": "100000000001@lid",
+      "participant": "",
+      "remoteJidAlt": "551100000023@s.whatsapp.net",
+      "addressingMode": "lid"
+    },
+    "pushName": "Texto sintético",
+    "messageType": "conversation",
+    "message": {
+      "conversation": "Texto sintético",
+      "messageContextInfo": {
+        "threadId": [],
+        "messageSecret": "[REMOVIDO]",
+        "limitSharingV2": {
+          "trigger": 0,
+          "initiatedByMe": false,
+          "sharingLimited": false,
+          "limitSharingSettingTimestamp": {
+            "low": 0,
+            "high": 0,
+            "unsigned": false
+          }
+        },
+        "deviceListMetadata": {
+          "senderKeyHash": "[REMOVIDO]",
+          "senderTimestamp": {
+            "low": 1790200960,
+            "high": 0,
+            "unsigned": true
+          },
+          "recipientKeyHash": "[REMOVIDO]",
+          "senderKeyIndexes": [],
+          "senderAccountType": 0,
+          "recipientTimestamp": {
+            "low": 1789740730,
+            "high": 0,
+            "unsigned": true
+          },
+          "receiverAccountType": 0,
+          "recipientKeyIndexes": []
+        },
+        "deviceListMetadataVersion": 2
+      }
+    },
+    "messageTimestamp": 1790255726,
+    "instanceId": "00000000-0000-4000-8000-000000000024",
+    "source": "web",
+    "contextInfo": {
+      "mentionedJid": [],
+      "groupMentions": [],
+      "disappearingMode": {
+        "trigger": 1,
+        "initiator": 0,
+        "initiatedByMe": true
+      },
+      "statusAttributions": [],
+      "ephemeralSettingTimestamp": {
+        "low": 1790255700,
+        "high": 0,
+        "unsigned": false
+      }
+    },
+    "MessageUpdate": [
+      {
+        "status": "READ"
+      }
+    ]
+  }
+}
