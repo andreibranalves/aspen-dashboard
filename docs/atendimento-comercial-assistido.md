@@ -4,9 +4,9 @@
 
 | Metadado | Valor |
 |---|---|
-| Status | Decisões D1–D4 tomadas; pronta para E0 e quebra em tickets. Não representa feature implementada ou homologada. |
+| Status | Implementado. M1a, M1b, M2 e M3 entregues (#294, PRs #312, #316, #318–#320 e #328). O código é a fonte de verdade de schema e contratos; §8 e §14 registram a proposta original. |
 | Repositório | `andreibranalves/aspen-dashboard` |
-| Base examinada | branch `codex/design-ui-ux-refactor` em `58967de` (29 commits sobre `master` em `846520a`), a ser integrada antes da implementação |
+| Base examinada | branch `codex/design-ui-ux-refactor` em `58967de`; as referências da §21 apontam para essa base |
 | Usuário | Operador único, experiente, em navegador desktop |
 | Canal | WhatsApp, exclusivamente pelo transporte Evolution já adotado |
 | Entregas | M1a: histórico confiável (leitura); M1b: resposta de texto; M2: contexto, mídia e orçamento; M3: assistência de IA |
@@ -47,7 +47,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 ### 2.3 Decisões registradas
 
-**D1 — A tela de conversa volta ao Aspen.** Em 21/08/2026 (`1116b8b`) a Inbox foi retirada e o WhatsApp Web com a extensão passou a ser a superfície de conversa. [S17] Em 23/09/2026 o operador decidiu reverter: o Atendimento passa a ser a superfície de conversa do Aspen. A extensão continua funcionando sem mudança neste escopo, com o mesmo serviço de contexto e a mesma tabela de vínculos; aposentá-la é decisão posterior. O PR do M1a atualiza o primeiro parágrafo de `docs/whatsapp-context-extension.md` e corrige a lista de rotas do `PRODUCT.md`.
+**D1 — A tela de conversa volta ao Aspen.** Em 21/08/2026 (`1116b8b`) a Inbox foi retirada e o WhatsApp Web com a extensão passou a ser a superfície de conversa. [S17] Em 23/09/2026 o operador decidiu reverter: o Atendimento passa a ser a superfície de conversa do Aspen. A extensão continua funcionando sem mudança neste escopo, com o mesmo serviço de contexto e a mesma tabela de vínculos; aposentá-la é decisão posterior.
 
 **D2 — Envio despachado na própria requisição.** O POST de envio grava a intenção, faz commit e chama o transporte antes de responder. O agendamento QStash existente, a cada 2 minutos, ganha uma varredura de recuperação limitada depois do lote de orçamentos. Sem nova rota de worker, agendamento, segredo ou env. Detalhes em §10.
 
@@ -57,26 +57,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 ## 3. Base existente e decisão de reaproveitamento
 
-As observações abaixo vêm da leitura do código na base examinada, não de uma homologação da instância operacional. Esta elaboração não executou a suíte nem realizou envios de teste.
-
-| Componente | Situação observada | Decisão |
-|---|---|---|
-| `whatsapp-conversations-store.ts` | KV com teto de 200 conversas e 100 mensagens por conversa (`:130`). `cleanText` troca toda sequência de espaços e quebras de linha por um espaço (`:412`). Sem leitor na interface desde 21/08. [S04] | Não importar (D3). Mover `normalizeWhatsappPhone` e `normalizeWhatsappPhoneFromRemoteJid`, usados por módulos de entrega e identidade, para um helper neutro em `api/_shared/`. Remover o restante no M1a. |
-| `whatsapp-conversations.ts` | Ações `sync`, `sync-messages`, `send-message`, `extract-quote`, `create-quote-lead` e PATCH. `send-message` envia antes de gravar, passa o texto por `cleanText` e inventa `out-${Date.now()}` quando falta ID (`:495`). `extract-quote` fixa confiança 0.8 (`:407`). Rota sem consumidor no frontend ou na extensão. [S05] | Substituir o handler pelos contratos do §14. Preservar a regra de admissão por `demandId` (`findAdmittedWhatsappLead`). |
-| `whatsapp-conversations-sync.ts` | `findChats`/`findMessages` com timeout de 15 s, resposta até 4 MB e até 1.000 itens; anexos não ingeridos. [S06] | Reutilizar acesso ao provedor e normalização revisada no backfill (§9.2). Paginação além da primeira página precisa ser comprovada no E0. |
-| `whatsapp-identity-resolver.ts` | `shouldKeepStored` mantém o telefone guardado de confiança alta quando a evidência nova tem confiança menor, inclusive quando ela é um conflito (`:166`). [S07] | Corrigir a precedência (§7) e ler o estado anterior do PostgreSQL. |
-| `whatsapp-context.ts` e `whatsapp-client-links.ts` | Serviço de contexto da extensão, com CORS próprio; vínculo versionado com chave `(accountId, conversationId)` vinda do modelo do WhatsApp Web. [S08] | Reutilizar o serviço; o painel ganha adapter próprio, sem CORS. Contrato da extensão inalterado. |
-| `whatsapp-crm-match.ts` | Candidatos e correspondência automática por telefone confiável (`e9ce1cb`). [S09] | Reutilizar para exibir contexto. Não é a regra de identidade do orçamento (§7). |
-| `client-matching.ts` e `POST /api/client-matches` | Regra oficial de identidade: mesmo cliente só com documento válido ou dois de {nome ou empresa, e-mail, telefone} (`1915c59`). Decisão no salvamento de `/api/orcamento`. [S16] | Usar sem alteração. O Atendimento não decide identidade de cliente. |
-| `evolution-webhook.ts` | Autenticação de máquina, corpo até 64 KB, instância validada; `messages.upsert` alimenta atividades e follow-ups; `messages.update` alimenta recibos de orçamento. Não grava corpo de mensagem. [S10] | Acrescentar persistência de mensagens sem retirar efeitos existentes. |
-| `quotation-delivery-outbox.ts`, `evolution-transport.ts`, `quotation-delivery-worker.ts` | Outbox de orçamento com reconciliação; transporte com validação de texto (4.000 caracteres e controles proibidos, `evolution-transport.ts:70`) e timeout de 15 s. Worker acionado só pelo QStash, lote de 3 × 15 s dentro dos 60 s da Function. [S11, S18] | Reutilizar transporte, validação e padrões de lease. Varredura de mensagens no mesmo tick (D2), sem revisões fictícias de orçamento. |
-| `send-whatsapp.ts` | Depois de enviar o PDF de orçamento, projeta a mensagem no KV quando a conversa existe lá (`:963`). [S11] | Remover a projeção no M1a. Em M2, o card de orçamento vem da entrega real (RF-12). |
-| `whatsapp-leads.ts` e `whatsapp-identity-audit.ts` | Leem conversas do KV. `whatsapp-leads` não tem consumidor no frontend; há mock em `tests/orcamento.spec.js:250`. | Confirmar no E0; remover ou migrar para PostgreSQL junto com o KV. |
-| `extract.ts` | Extrator com templates e validações; texto até 12.000 caracteres (`:155`). [S12] | Continua chamado pelo Novo orçamento (D4). |
-| Novo orçamento (`#/novo-orcamento`, modo conversa) | Extração, Split Card com itens e identidade, rascunho Auto em `sessionStorage` versionado, prefill de origem por `quoteLeadId`/`crmDealId`. [S13] | Destino de "Preparar orçamento"; passa a aceitar `demandId` para carregar a seleção registrada. |
-| UI Órbita | Tokens e temas em `src/index.css`; contrato em `DESIGN.md` e `docs/design/DESIGN-aspen.md`; `tests/unit/ui-contract.test.ts` trava o contrato. Comunicação aposentada; `#/comunicacao` só redireciona. [S13] | Compor a página com os componentes compartilhados (§4.1). |
-| Upload de mídia | `communication-media-upload.ts` e `MediaUploader.tsx` gravam no Vercel Blob com `access: 'public'`, em caminho por grupo de produto. [S19] | Não reaproveitar para anexos de cliente (§11). |
-| Extensão `extensions/whatsapp-context/` (0.2.3) | Contexto somente leitura no WhatsApp Web; não lê corpo de mensagens. [S17] | Continua como está (D1). |
+O M1a substituiu a base anterior: o KV de conversas, o handler `whatsapp-conversations` e a projeção de envios no KV saíram do código. O transporte Evolution, o outbox de orçamentos, a regra de identidade de `client-matching.ts`, o serviço de contexto da extensão e o extrator do Novo orçamento foram reaproveitados sem mudança de contrato. O inventário arquivo a arquivo da base examinada está no histórico do git (`git show 91376fa:docs/atendimento-comercial-assistido.md`).
 
 **Regra de implementação:** reaproveitar não significa manter o contrato antigo. Antes de mudar um endpoint ou remover uma função, confirmar seus consumidores reais. Não manter compatibilidade para consumidores hipotéticos. [S03]
 
@@ -557,10 +538,10 @@ Caminhos de `andreibranalves/aspen-dashboard` na branch `codex/design-ui-ux-refa
 | S10 | `api/_modules/evolution-webhook.ts`: limite de corpo, `messages.upsert`, `messages.update`, atividades, follow-ups e recibos. |
 | S11 | `api/_modules/quotation-delivery-outbox.ts`; `api/_modules/evolution-transport.ts`; `api/_modules/quotation-delivery-worker.ts`; `api/_modules/send-whatsapp.ts`; `api/_infrastructure/integrations/evolution/evolution-delivery.ts`: transporte, validação de texto, reconciliação, lote do worker e projeção no KV. |
 | S12 | `api/_modules/extract.ts`: prompt, templates, validação e limites de extração. |
-| S13 | `src/app/routes.tsx`; `src/features/quotations/pages/NewQuotationPage.tsx`; `src/features/crm/quotationOriginPrefill.ts`; `src/features/quotations/automaticClientResolution.ts`; `src/features/quotations/components/SplitResultCard.tsx`; `DESIGN.md`; `docs/design/DESIGN-aspen.md`; `src/index.css`; `tests/unit/ui-contract.test.ts`. |
+| S13 | `src/app/routes.tsx`; `src/features/quotations/pages/NewQuotationPage.tsx`; `src/features/crm/quotationOriginPrefill.ts`; `src/features/quotations/automaticClientResolution.ts`; `src/features/quotations/components/SplitResultCard.tsx`; `DESIGN.md`; `src/index.css`; `tests/unit/ui-contract.test.ts`. |
 | S14 | `tests/unit/whatsapp-conversations.test.ts`; `tests/unit/whatsapp-identity-resolver.test.ts`; testes da extensão e do vínculo: `whatsapp-context-extension.test.js`, `whatsapp-context-provider.test.js`, `whatsapp-context-history-query.test.ts`, `whatsapp-client-links.test.ts`, `whatsapp-client-links-postgres.test.ts` (todos em `tests/unit/`). |
 | S15 | `docs/database-migrations.md`: aplicação operacional, ensaio isolado, backup e cutover. |
 | S16 | `api/_modules/client-matching.ts`; `api/_modules/client-matches.ts`; commit `1915c59`: identidade por dois sinais e revisão no Split Card. |
-| S17 | `docs/whatsapp-context-extension.md`; `extensions/whatsapp-context/README.md`; commit `1116b8b`: retirada da Inbox e extensão como superfície de conversa. |
-| S18 | `docs/operational-cutoff-procedure.md` (webhook `MESSAGES_UPDATE`, agendamento QStash a cada 2 minutos); pesquisa de limites do QStash gratuito (tag `archive/historico-2026-09`). |
+| S17 | `extensions/whatsapp-context/README.md`; commit `1116b8b`: retirada da Inbox e extensão como superfície de conversa. |
+| S18 | `docs/whatsapp-operational-runbook.md` (webhook, agendamento QStash a cada 2 minutos); pesquisa de limites do QStash gratuito (tag `archive/historico-2026-09`). |
 | S19 | `api/_modules/communication-media-upload.ts`; `src/features/communication/components/MediaUploader.tsx`: upload público no Vercel Blob. |

@@ -26,6 +26,15 @@ código, mantenha as colunas e versões aplicadas; restaure somente o código co
 e valide novamente em um alvo descartável antes de qualquer novo apply. Não há down
 migration destrutiva.
 
+## Migrations escritas à mão
+
+Toda migration é SQL escrito à mão em `drizzle/NNNN_<nome>.sql`, com a entrada
+correspondente em `drizzle/meta/_journal.json` (próximo `idx`, `tag` igual ao
+nome do arquivo e `when` maior que o anterior). Os snapshots em `drizzle/meta/`
+param no `0046`; não use `drizzle-kit generate`, porque ele compara contra o
+último snapshot e recriaria as tabelas das migrations 0047 em diante. O schema
+TypeScript (`api/_infrastructure/db/schema.ts`) é atualizado na mesma mudança.
+
 ## Classificação
 
 Toda migration nova começa com `-- migration-risk: additive` ou `-- migration-risk: destructive`.
@@ -50,6 +59,8 @@ O gate recusa alteração de migration histórica e classificação inválida.
 
 ## Gate do alvo não-produtivo de migration
 
+O nome `staging` é histórico: ele identifica o alvo técnico não-produtivo de migration, não um ambiente de homologação (ver [Preview isolado](./preview-isolation.md)).
+
 O shell operacional aprovado fornece `STAGING_DATABASE_URL`, `STAGING_PG_SERVICE`, `PRODUCTION_DATABASE_URL`, `PGSERVICEFILE` e `PGPASSFILE`. Esses nomes são contratos técnicos preexistentes do alvo não-produtivo de migration; não representam uma homologação permanente nem uma VPS de staging.
 
 `PGSERVICEFILE` e `PGPASSFILE` devem ter modo `0600`.
@@ -63,25 +74,10 @@ npm run migrate:apply
 
 Pare na primeira falha.
 
-Quando uma jornada mutável precisar de ensaio, o operador seleciona o banco
-isolado correspondente no contrato aprovado e executa o E2E do deployment
-Preview separadamente, conforme [Preview isolado](./preview-isolation.md):
-
-```bash
-PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview
-```
-
-O executor protegido pré-configura `DATABASE_URL`,
-`PRODUCTION_DATABASE_URL` e as credenciais/atestações E2E; não coloque URLs de
-banco ou segredos no comando. `DATABASE_URL` deve ser verificada pelo operador
-como a URL efetiva do deployment do PR. O preflight local compara identidades e o endpoint
-`/api/operational-status`, junto da fixture atestada, comprova ambiente,
-writes-off, conectividade e persistência servida; nenhuma dessas etapas prova
-sozinha a identidade única da branch. `PRODUCTION_DATABASE_URL` é exigida no
-executor protegido apenas para a comparação e não é passada ao Playwright.
-
-O alvo de migration selecionado continua sendo o contrato existente; não crie
-alias Preview, dual-read ou dual-write para migrations.
+Quando uma jornada mutável precisar de ensaio, siga o E2E controlado de
+[Preview isolado](./preview-isolation.md). O alvo de migration selecionado
+continua sendo o contrato existente; não crie alias Preview, dual-read ou
+dual-write para migrations.
 
 `cutover-env-status` é um gate de release/cutover, não um pré-requisito geral de migration de banco. Execute-o quando a operação também envolver canário Production, deploy/promoção, rollback, cleanup, cutover de e-mail ou outra etapa de cutover explicitamente declarada.
 

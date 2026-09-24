@@ -1,9 +1,14 @@
 # Preview isolado
 
-Cada PR/branch implantado em Vercel Preview tem sua própria URL e deve usar o
-PostgreSQL isolado correspondente. `DATABASE_URL` deve ser a URL efetiva desse
-deployment e distinta de `PRODUCTION_DATABASE_URL`; o Preview não envia efeitos
-externos. Production é reservado ao `master`.
+Fonte única do gate de Preview. Cada PR/branch implantado em Vercel Preview tem
+sua própria URL e usa o PostgreSQL isolado correspondente (branch Neon).
+`DATABASE_URL` deve ser a URL efetiva desse deployment e distinta de
+`PRODUCTION_DATABASE_URL`; o Preview não envia efeitos externos. Production é
+reservado ao `master`.
+
+Preview é a única homologação. Não há VPS de staging, target permanente de
+migration nem branch permanente como ambiente de homologação. `npm run preview`
+do Vite e a prévia de um orçamento são recursos locais, não homologação.
 
 ## Preflight obrigatório
 
@@ -14,51 +19,67 @@ APP_ENV=preview EXTERNAL_WRITES_ENABLED=0 npm run preview:preflight
 O executor protegido injeta `DATABASE_URL` e `PRODUCTION_DATABASE_URL` para o
 preflight; não coloque valores no checkout nem em comandos. Esse preflight
 valida somente o modo Preview, as escritas externas e a identidade distinta do
-PostgreSQL de produção. Para o E2E, o contrato `preview-e2e` também exige
-`VERCEL_AUTOMATION_BYPASS_SECRET` na origem externa protegida. O contrato falha
-fechado quando uma variável exigida está ausente; o preflight também falha
-quando as URLs são inválidas ou apontam para a mesma identidade PostgreSQL.
+PostgreSQL de produção. O contrato falha fechado quando uma variável exigida
+está ausente; o preflight também falha quando as URLs são inválidas ou apontam
+para a mesma identidade PostgreSQL.
 
-Para a jornada E2E controlada, o operador fornece a URL do deployment do PR e
-as identidades PostgreSQL no executor protegido:
+## E2E controlado
+
+O executor protegido pré-configura `DATABASE_URL`, `PRODUCTION_DATABASE_URL`,
+`E2E_USERNAME`, `E2E_PASSWORD`, `PREVIEW_E2E_USERNAME`,
+`VERCEL_AUTOMATION_BYPASS_SECRET`, os IDs `KNOWN_POSTGRES_*` e as atestações
+`PREVIEW_EGRESS_BLOCKED=1` e `PREVIEW_FIXTURE_RESET=1`. O operador verifica que
+`DATABASE_URL` é a URL efetiva do deployment do PR. Não coloque URLs de banco ou
+credenciais inline.
 
 ```bash
+node scripts/cutover-env-status.mjs preview-e2e
 PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview -- --list
+PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview
 ```
 
 O runner valida a origem, executa o preflight antes do Playwright, passa o
-segredo somente ao filho autorizado e não passa as URLs de banco. O bootstrap
-faz uma única requisição por `APIRequestContext` à origem exata, com os headers
-oficiais do bypass, e recebe o cookie nesse contexto; a config não usa header
-global e desliga traces em Preview. O valor nunca é exibido. A prova remota
-ocorre por `/api/operational-status` e pela fixture atestada; isso não é prova
-única da identidade da branch.
+segredo de bypass somente ao filho autorizado e não passa as URLs de banco. O
+bootstrap faz uma única requisição por `APIRequestContext` à origem exata, com
+os headers oficiais do bypass, e recebe o cookie nesse contexto; a config não
+usa header global e desliga traces em Preview. O valor nunca é exibido.
 
-Migração manual futura do arquivo operacional (sem alias):
+O preflight local compara identidades; `/api/operational-status` prova
+ambiente, writes-off, conectividade e persistência servida; a fixture atestada
+prova que o deployment atende ao alvo atestado. Nenhuma dessas provas, sozinha,
+comprova a identidade única da branch.
 
-- `STAGING_BASE_URL` → `PREVIEW_BASE_URL`
-- `STAGING_E2E_USERNAME` → `PREVIEW_E2E_USERNAME`
-- `STAGING_EGRESS_BLOCKED` → `PREVIEW_EGRESS_BLOCKED`
-- `STAGING_FIXTURE_RESET` → `PREVIEW_FIXTURE_RESET`
+Use somente o orçamento e a fixture descartável identificados pelo ambiente do
+operador; não crie cotação nem fixture novos. Confirme o estado da página, o
+banco isolado, o egress atestado e a ausência de mensagem duplicada. O listener
+de requests do browser é atestação independente, não prova de egress da Vercel.
+`DELIVERY_ACK` não é gate do Preview: envio real só ocorre em Production, com
+autorização.
 
-`STAGING_DATABASE_URL` e `STAGING_PG_SERVICE` permanecem somente no contrato
-técnico de migrations. `DATABASE_URL` precisa ser verificada pelo operador
-contra o deployment do PR. O arquivo externo não é alterado nesta tarefa.
-
-O arquivo operacional protegido pode ainda conter chaves antigas do E2E
-prefixadas por `STAGING_`. Ele
-não é alterado por esta mudança: a migração manual futura desses consumidores é
-responsabilidade de Andrei, sem alias ou dual-read neste checkout. Se houver
-Deployment Protection configurada na Vercel, o operador usa a credencial já
-aprovada; este fluxo não cria outro mecanismo de autenticação.
+## Bloqueios no Preview
 
 Evolution, Resend, mutações de Blob e emissão de tokens de upload são bloqueados
 no Preview. `VERCEL_ENV=preview` também veta flags de produção contraditórias;
 o banco exige `APP_ENV=preview` nesse deployment. Persistência PostgreSQL pode
-ser exercitada somente no banco isolado. Não há dual-write, banco fallback ou coluna `is_test`.
+ser exercitada somente no banco isolado. Não há dual-write, banco fallback ou
+coluna `is_test`.
 
-O provisionamento e a remoção das branches PostgreSQL de Preview seguem a
-política de [ciclo de vida das branches de Preview](./release-lanes.md#ciclo-de-vida-das-branches-de-preview).
-O prune existente é best-effort; verifique URL, banco e limpeza conforme o
-runbook operacional. `npm run preview` do Vite e a prévia de um orçamento são
-recursos locais/documentais, não ambientes de homologação.
+O código só lê as chaves `PREVIEW_*`. As antigas `STAGING_BASE_URL`,
+`STAGING_E2E_USERNAME`, `STAGING_EGRESS_BLOCKED` e `STAGING_FIXTURE_RESET` que
+ainda existirem no arquivo operacional estão sem uso. `STAGING_DATABASE_URL` e
+`STAGING_PG_SERVICE` continuam no contrato de migrations
+([runbook](./database-migrations.md)).
+
+## Ciclo de vida das branches de Preview
+
+A integração Vercel + Neon e o workflow
+`.github/workflows/neon-preview-prune.yml` fazem a tentativa best-effort de
+limpar a branch PostgreSQL associada quando o PR fecha. O workflow não prova
+que houve deployment, criação da branch ou remoção efetiva, e falha não bloqueia
+o PR.
+
+Para uma limpeza manual, o operador lista as branches sem alterar recursos,
+compara-as aos PRs abertos, preserva `main` e releases em validação, apresenta
+as candidatas e obtém aprovação humana explícita. Remover uma branch é
+destrutivo para seu banco; `main` nunca é removida e `backup-*` exige aprovação
+específica.

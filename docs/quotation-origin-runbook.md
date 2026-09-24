@@ -30,10 +30,4 @@ Analise `reason`, a quantidade de candidatos por orçamento e a distância tempo
 
 A migração `0032_quotation_origin.sql` adiciona a coluna anulável com `ON DELETE RESTRICT` e um índice parcial não único. Linhas anteriores permanecem `NULL`.
 
-```bash
-npm run check:db-migrations
-npm run test:postgres
-npm run verify:fast
-```
-
-Não há nova configuração operacional. A aplicação de migração em Preview ou Production, backfill e ativação externa não fazem parte desta entrega. Em rollback de aplicação, preserve a coluna e os vínculos já gravados; não remova a coluna nem tente reconstruir a origem por contato.
+Mudanças nessa área são validadas com `npm run verify:fast` e `npm run test:postgres`. Não há backfill. Em rollback de aplicação, preserve a coluna e os vínculos já gravados; não remova a coluna nem tente reconstruir a origem por contato.

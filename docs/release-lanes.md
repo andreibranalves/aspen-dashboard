@@ -73,7 +73,7 @@ As operações Git e de tracker de um fluxo solicitado seguem as autorizações
 de `AGENTS.md`. Preserve trabalho não integrado ao limpar worktrees.
 Deploy manual, migrations remotas, env operacional e efeitos sobre dados ou comunicação
 reais exigem autorização separada. A criação automática de Preview pelo push
-da branch só é aceitável com o isolamento descrito abaixo; não é autorização
+da branch só é aceitável com o [isolamento do Preview](./preview-isolation.md); não é autorização
 de produção. Recursos globais de outros projetos não são pré-requisitos do Aspen.
 
 Backup ajuda a recuperar CRUD comum, mas não desfaz envio duplicado, orçamento
@@ -82,27 +82,14 @@ continuam sendo critérios de `CRITICAL` mesmo quando há backup.
 
 ## Ambientes
 
-PR/branch usa CI e Vercel Preview, com URL própria, `APP_ENV=preview`,
-`EXTERNAL_WRITES_ENABLED=0` e PostgreSQL isolado por branch. O prune existente
-no fechamento do PR é best-effort; não há claim de remoção garantida sem
-evidência operacional.
+PR/branch usa CI e Vercel Preview isolado; merge em `master` usa Vercel
+Production, com banco e integrações reais. Preview é a única homologação.
+Preflight, E2E controlado e ciclo de vida das branches Neon estão em
+[Preview isolado](./preview-isolation.md).
 
 A publicação passa por PR e CI; push direto em `master` não é caminho de entrega.
 Proteção de branch e vínculo entre CI e promoção precisam de confirmação no
 provedor; um workflow configurado não comprova que o merge está tecnicamente bloqueado.
-
-Merge em `master` usa Vercel Production, banco e integrações reais conforme a
-configuração operacional. Preview é a única homologação. VPS de staging,
-target permanente de migration e branch permanente não são ambientes de
-homologação. `npm run preview` do Vite e a prévia de orçamento são recursos
-locais/documentais, não homologação.
-
-A URL `DATABASE_URL` usada no E2E deve ser a URL efetiva do deployment do PR,
-verificada pelo operador. Preflight local, `/api/operational-status` e fixture
-atestada são provas independentes de configuração, writes-off, conectividade e
-persistência; não provam sozinhas a identidade única da branch. Deploy manual,
-migration remota, envio e outros efeitos sobre dados reais exigem autorização
-separada. O Preview automático isolado segue a autorização do push da branch.
 
 ## RELEASE
 
@@ -115,20 +102,6 @@ O comando exige `TEST_DATABASE_URL` de PostgreSQL local descartável já
 disponível; o preflight inicial falha antes da suíte se o alvo estiver ausente
 ou for remoto. O E2E deriva `DATABASE_URL` desse alvo e recusa um valor herdado
 diferente. Não carrega `.env` operacional. Veja [E2E seguro](./safe-e2e.md).
-
-## Ciclo de vida das branches de Preview
-
-A integração Vercel + Neon e o workflow
-`.github/workflows/neon-preview-prune.yml` fazem a tentativa best-effort de
-limpar a branch PostgreSQL associada quando o PR fecha. O workflow não prova
-que houve deployment, criação da branch ou remoção efetiva, e falha não bloqueia
-o PR.
-
-Para uma limpeza manual, o operador lista as branches sem alterar recursos,
-compara-as aos PRs abertos, preserva `main` e releases em validação, apresenta
-as candidatas e obtém aprovação humana explícita. Remover uma branch é
-destrutivo para seu banco; `main` nunca é removida e `backup-*` exige aprovação
-específica.
 
 ## Complexidade
 

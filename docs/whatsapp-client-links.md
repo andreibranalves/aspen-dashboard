@@ -8,8 +8,6 @@ Uma correspondência única mostra o contexto automaticamente quando o telefone 
 
 A extensão lê a conversa ativa e a conta conectada no modelo do WhatsApp Web. Para conversas LID, usa apenas o mapeamento exato fornecido pelo próprio modelo. O bridge não lê mensagens nem faz chamadas de rede. Estes são detalhes internos, sem contrato público estável: se não estiverem disponíveis, o vínculo fica indisponível, com ações para tentar novamente e pesquisar no Aspen, sem varrer registros arbitrários ou converter LID em telefone. PN e LID distintos não são unidos automaticamente. A integração Evolution e os destinatários de mensagens não são alterados.
 
-## Implantação
+## Testes
 
-Aplicar a migration aditiva `0034_whatsapp_client_links` pelo fluxo operacional autorizado antes de disponibilizar a extensão 0.2.0. Não há backfill, alteração de telefones nem limpeza automática. Atualizar/recarregar a extensão e a página do WhatsApp após o deploy. A migration de produção não faz parte dos testes temporários.
-
-Validação: testes focados da API, parser e extração; invariantes PostgreSQL com a DDL da migration em tabelas temporárias; Chromium com DOM e dados fictícios para sugestão, confirmação e desvinculação. O teste em Chromium não comprova compatibilidade com toda versão futura do DOM do WhatsApp.
+Extensão atual: 0.2.3 (`extensions/whatsapp-context/`). Cobertura: testes focados da API, parser e extração; invariantes PostgreSQL com a DDL da migration em tabelas temporárias; Chromium com DOM e dados fictícios para sugestão, confirmação e desvinculação. O teste em Chromium não comprova compatibilidade com toda versão futura do DOM do WhatsApp.

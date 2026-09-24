@@ -129,7 +129,7 @@ describe('Aspen UI contract', () => {
       'src/components/shared/InlineAlert.tsx',
       'src/components/ui/stat-card.tsx',
       'src/components/ui/search-field.tsx',
-      'docs/design/DESIGN-aspen.md',
+      'DESIGN.md',
     ]) {
       assert.equal(existsSync(path.join(root, file)), true, file);
     }
