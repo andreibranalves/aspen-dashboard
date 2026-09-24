@@ -478,6 +478,11 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
     void pollThread();
   }, [pollThread]);
 
+  const useAiSuggestion = useCallback((conversationId: string, suggestion: string) => {
+    if (selectedIdRef.current !== conversationId) return;
+    setPrefill({ text: suggestion, token: Date.now() });
+  }, []);
+
   const prepareQuote = async () => {
     const conversationId = selectedIdRef.current;
     if (!conversationId || selectedForQuote.length === 0 || preparingQuote) return;
@@ -672,6 +677,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                     key={conversation.id}
                     conversationId={conversation.id}
                     identityVersion={conversation.identityVersion}
+                    onUseSuggestion={(text) => useAiSuggestion(conversation.id, text)}
                   />
                 </DetailDrawer>
               )}
@@ -685,6 +691,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 key={conversation.id}
                 conversationId={conversation.id}
                 identityVersion={conversation.identityVersion}
+                onUseSuggestion={(text) => useAiSuggestion(conversation.id, text)}
               />
             ) : null}
           </aside>

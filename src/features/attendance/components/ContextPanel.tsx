@@ -14,6 +14,7 @@ import {
   type ContextContact,
 } from '@/lib/api/attendanceContextApi';
 import { Heading } from '@/components/ui/heading';
+import AiAssistantPanel from '@/features/attendance/components/AiAssistantPanel';
 
 const SOURCE_LABELS: Record<NonNullable<AttendanceContext['matchSource']>, string> = {
   operator: 'Vinculado',
@@ -25,13 +26,14 @@ interface ContextPanelProps {
   conversationId: string;
   /** A new identity version re-reads the context. */
   identityVersion: number;
+  onUseSuggestion: (text: string) => void;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export default function ContextPanel({ conversationId, identityVersion }: ContextPanelProps) {
+export default function ContextPanel({ conversationId, identityVersion, onUseSuggestion }: ContextPanelProps) {
   const [context, setContext] = useState<AttendanceContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -245,6 +247,7 @@ export default function ContextPanel({ conversationId, identityVersion }: Contex
           </ul>
         </section>
       )}
+      <AiAssistantPanel conversationId={conversationId} onUseSuggestion={onUseSuggestion} />
     </div>
   );
 }
