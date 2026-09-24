@@ -9,9 +9,9 @@ const DOCUMENTATION_FILES = new Set([
   'ARCHITECTURE.md',
   'CLAUDE.md',
   'CONTEXT.md',
+  'DESIGN.md',
   'PRODUCT.md',
   'README.md',
-  'aspen-dashboard-plano-refatoracao.md',
   '.github/issue_template.md',
   '.github/pull_request_template.md',
 ]);

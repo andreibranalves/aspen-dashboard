@@ -124,7 +124,7 @@ Use [`mattpocock/skills`](https://github.com/mattpocock/skills) sem modificaçõ
 
 - Instale as skills desejadas com `npx skills add mattpocock/skills` e versione os arquivos instalados e `skills-lock.json`. Revise o diff nas atualizações.
 - As skills definem os procedimentos; este projeto define arquitetura, segurança, comandos e autorizações operacionais.
-- O glossário `CONTEXT.md` e a base `.out-of-scope/` são criados quando houver conteúdo. O tracker ativo é GitHub, conforme `docs/agents/issue-tracker.md`; `.scratch/` contém material histórico.
+- O glossário `CONTEXT.md` e a base `.out-of-scope/` são criados quando houver conteúdo. O tracker ativo é GitHub, conforme `docs/agents/issue-tracker.md`; material histórico fica na tag `archive/historico-2026-09`.
 - Use o mecanismo de skills do agente em execução. No OMP, `Call the Skill tool with "x"` corresponde a ler `skill://x`.
 - Instalar uma skill não autoriza instalar suas dependências ou alterar hooks, credenciais e recursos externos. Solicite as aprovações específicas quando forem necessárias.
 
