@@ -114,7 +114,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   const tokens = new Set();
   page.on('request', (request) => requests.push(request.url()));
 
-  await page.context().route('**/api/settings**', async (route) => {
+  await page.context().route(/\/api\/settings(\?|$)/, async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
   });
   await page.context().route('**/api/quotation-templates**', async (route) => {

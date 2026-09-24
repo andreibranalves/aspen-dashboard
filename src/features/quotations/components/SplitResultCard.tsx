@@ -14,6 +14,7 @@ import {
   FileText,
   Phone,
   ChevronDown,
+  CalendarClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { capitalize, fmtPhone, formatBRL } from '@/lib/formatting/formatters';
@@ -42,6 +43,8 @@ import type {
   ClientResolutionView,
 } from '@/features/quotations/automaticClientResolution';
 import { Heading } from '@/components/ui/heading';
+import ProductionTermsFields from '@/features/quotations/components/ProductionTermsFields';
+import { DEFAULT_PRODUCTION_DAYS } from '@/lib/productionDeadline';
 
 export interface SplitResultCardProps {
   draft: Draft;
@@ -95,6 +98,8 @@ export interface SplitResultCardProps {
   onClearClientSelection?: (draftIdx: number) => void;
   /** Portuguese, user-facing reason the client identity blocks persistence. */
   clientBlockMessage?: string | null;
+  /** Prazo padrão das Configurações, exibido enquanto o card não define outro. */
+  defaultProductionDays?: number;
 }
 
 function clientResolutionAnnouncement(view: ClientResolutionView): string {
@@ -396,6 +401,7 @@ export default function SplitResultCard({
   waSelectedFlowId = '',
   waFlowSelectionDisabled = false,
   templates = [],
+  defaultProductionDays = DEFAULT_PRODUCTION_DAYS,
   templateLoading = false,
   templateError = null,
   onRetryTemplates,
@@ -581,6 +587,11 @@ export default function SplitResultCard({
     : draft.edited.items || [];
   const calculatedTotal = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
   const total = isDone ? snapshot?.total : calculatedTotal;
+  // Total sem o acréscimo: itens automáticos voltam ao preço de tabela.
+  const baseTotal = draft.edited.items.reduce((sum, it) => {
+    const rate = !it._rateManual && it._baseRate !== undefined ? it._baseRate : Number(it.rate) || 0;
+    return sum + (Number(it.qty) || 0) * rate;
+  }, 0);
   const totalDisplay = total === undefined ? '—' : formatBRL(total);
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const hasClient = Boolean(draft.edited.nome?.trim());
@@ -649,9 +660,13 @@ export default function SplitResultCard({
               Pedido {displayIdx + 1} de {totalDrafts}
             </span>
 
-            {draft.edited.urgente && (
-              <span className="inline-flex items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-2xs font-semibold text-warning">
-                <AlertTriangle size={12} /> Urgente
+            {draft.edited.prazo_pedido && (
+              <span
+                className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-badge bg-warning/10 px-2 py-0.5 text-2xs font-semibold text-warning"
+                title={draft.edited.prazo_pedido}
+              >
+                <CalendarClock size={12} className="shrink-0" aria-hidden="true" />
+                <span className="truncate">Prazo pedido: {draft.edited.prazo_pedido}</span>
               </span>
             )}
             {isDone && (
@@ -756,8 +771,8 @@ export default function SplitResultCard({
           <p className="text-3xs font-medium text-fg-muted uppercase">Total</p>
           <p className="text-lg font-bold text-fg">{totalDisplay}</p>
           {isDone && snapshot && <p className="text-3xs text-fg-muted">Frete: {formatBRL(snapshot.frete)}</p>}
-          {draft.edited.urgente && (
-            <p className="text-3xs text-fg-muted">Base: {totalDisplay}</p>
+          {!isDone && draft.edited.acrescimo_percent > 0 && (
+            <p className="text-3xs text-fg-muted">Base: {formatBRL(baseTotal)}</p>
           )}
         </div>
       </div>
@@ -843,6 +858,30 @@ export default function SplitResultCard({
             </div>
           )}
         </div>
+      )}
+
+      {!isDone && (
+        <ProductionTermsFields
+          className="border-b border-border-subtle px-4 py-3"
+          size="sm"
+          productionDays={draft.edited.prazo_producao_dias ?? defaultProductionDays}
+          surchargePercent={draft.edited.acrescimo_percent}
+          disabled={editingBlocked}
+          onProductionDaysChange={(days) => onUpdateField(draft.index, 'prazo_producao_dias', days)}
+          onSurchargePercentChange={(percent) => {
+            if (editingBlocked) return;
+            onUpdateField(draft.index, 'acrescimo_percent', percent);
+            const pricingGeneration = beginPricing();
+            qtyPricingTimer.current = setTimeout(async () => {
+              qtyPricingTimer.current = null;
+              try {
+                await onRefetchPricing(draft.index);
+              } finally {
+                settlePricing(pricingGeneration);
+              }
+            }, 600);
+          }}
+        />
       )}
 
       {/* ── Items table ── */}

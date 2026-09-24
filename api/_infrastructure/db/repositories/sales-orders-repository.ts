@@ -1125,6 +1125,7 @@ async function insertSalesOrderFromApprovedQuotation(
       deliveryDate: null,
       productionStage: 'aguardando_entrada',
       productionStageChangedAt: createdAt,
+      productionDays: revision.productionDays,
       subtotal: revision.subtotal,
       grandTotal: revision.total,
       createdAt,

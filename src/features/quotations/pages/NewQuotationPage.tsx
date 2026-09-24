@@ -28,6 +28,9 @@ import { fetchFlows, isQuotationDeliveryFlow, type CommunicationFlow } from '@/l
 import { inlineTemplateSelections } from '@/features/quotations/orderTemplateSelections';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
+import ProductionTermsFields from '@/features/quotations/components/ProductionTermsFields';
+import { getSettings } from '@/lib/api/settingsApi';
+import { DEFAULT_PRODUCTION_DAYS, isProductionDays } from '@/lib/productionDeadline';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
 import {
@@ -146,13 +149,14 @@ interface ManualForm {
   address: Address;
   showAddress: boolean;
   items: CartItem[];
-  prazo: string;
+  /** Ausente usa o padrão das Configurações. */
+  prazoDias?: number;
   pagamento?: string;
   entrega?: string;
   frete?: string;
   validadeDias?: number;
   observacoes: string;
-  urgente: boolean;
+  acrescimo: number;
   templateKey: string;
   originPrefill: QuotationOriginPrefill | null;
   opportunity: OpportunitySelection;
@@ -173,13 +177,13 @@ function emptyManual(): ManualForm {
     address: { ...EMPTY_ADDRESS },
     showAddress: false,
     items: [],
-    prazo: '',
+    prazoDias: undefined,
     pagamento: '',
     entrega: '',
     frete: '',
     validadeDias: undefined,
     observacoes: '',
-    urgente: false,
+    acrescimo: 0,
     templateKey: '',
     originPrefill: null,
     opportunity: { ...NEW_DEMAND_SELECTION },
@@ -207,7 +211,7 @@ function draftHasWork(draft: Draft | null | undefined): boolean {
       draft.edited.telefone.trim() ||
       draft.edited.items.some((item) => item.item_code || item.item_name || item.qty > 0) ||
       draft.edited.origem ||
-      draft.edited.prazo_producao ||
+      draft.edited.prazo_producao_dias ||
       draft.edited.observacoes,
   );
 }
@@ -262,7 +266,8 @@ function manualHasWork(form: ManualForm): boolean {
       form.leadSource ||
       form.cnpj ||
       hasAnyAddressField(form.address) ||
-      form.prazo ||
+      form.prazoDias ||
+      form.acrescimo ||
       form.observacoes.trim(),
   );
 }
@@ -303,13 +308,13 @@ function draftToManual(draft: Draft): ManualForm {
       rate: Number(item.rate) || 0,
       _rateManual: item._rateManual === true,
     })),
-    prazo: edited.prazo_producao,
+    prazoDias: edited.prazo_producao_dias,
     pagamento: edited.pagamento || '',
     entrega: edited.entrega || '',
     frete: edited.frete || '',
     validadeDias: edited.validade_dias,
     observacoes: edited.observacoes || '',
-    urgente: edited.urgente,
+    acrescimo: edited.acrescimo_percent,
     templateKey: edited.template_key || '',
     originPrefill: edited.quote_lead_id && edited.crm_deal_id
       ? {
@@ -337,7 +342,7 @@ function sameEditableDraft(left: DraftEdited, right: DraftEdited): boolean {
     empresa: edited.empresa || '',
     email: edited.email,
     telefone: edited.telefone,
-    urgente: edited.urgente,
+    acrescimo_percent: edited.acrescimo_percent,
     origem: edited.origem,
     cnpj: edited.cnpj,
     endereco: edited.endereco,
@@ -348,7 +353,7 @@ function sameEditableDraft(left: DraftEdited, right: DraftEdited): boolean {
       rate: item.rate,
       _rateManual: item._rateManual === true,
     })),
-    prazo_producao: edited.prazo_producao,
+    prazo_producao_dias: edited.prazo_producao_dias ?? null,
     pagamento: edited.pagamento || '',
     entrega: edited.entrega || '',
     observacoes: edited.observacoes || '',
@@ -426,7 +431,7 @@ function manualToEdited(form: ManualForm): DraftEdited {
     nome: client.nome.trim(),
     email: client.email || '',
     telefone: client.telefone || '',
-    urgente: form.urgente,
+    acrescimo_percent: form.acrescimo,
     origem: form.leadSource,
     cnpj: form.cnpj,
     endereco: { ...form.address },
@@ -445,7 +450,7 @@ function manualToEdited(form: ManualForm): DraftEdited {
       rate: item.rate,
       _rateManual: item._rateManual,
     })),
-    prazo_producao: form.prazo,
+    prazo_producao_dias: form.prazoDias,
     pagamento: form.pagamento || undefined,
     entrega: form.entrega || undefined,
     observacoes: form.observacoes.trim() || undefined,
@@ -510,6 +515,18 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [extractError, setExtractError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [templateKey, setTemplateKey] = useState('');
+  const [defaultProductionDays, setDefaultProductionDays] = useState(DEFAULT_PRODUCTION_DAYS);
+  useEffect(() => {
+    let active = true;
+    getSettings()
+      .then((settings) => {
+        if (active && isProductionDays(settings.prazo_producao_dias)) setDefaultProductionDays(settings.prazo_producao_dias);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const [templateLoading, setTemplateLoading] = useState(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [waFlows, setWaFlows] = useState<CommunicationFlow[]>([]);
@@ -826,9 +843,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       address: manual.address,
       showAddress: manual.showAddress,
       items: manual.items,
-      prazo: manual.prazo,
+      prazoDias: manual.prazoDias,
       observacoes: manual.observacoes,
-      urgente: manual.urgente,
+      acrescimo: manual.acrescimo,
       templateKey: manual.templateKey,
       originPrefill: manual.originPrefill || undefined,
       opportunity: manual.opportunity,
@@ -1097,10 +1114,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const repriceManualAutomatic = useCallback(async (requested: ManualForm) => {
     const version = beginManualPricing();
     try {
-      const priced = await fetchPricing([draftFromManual(requested, -1)], requested.urgente);
+      const priced = await fetchPricing([draftFromManual(requested, -1)], requested.acrescimo);
       if (manualPricingVersion.current !== version || !priced[0] || !mountedRef.current) return;
       setManual((current) => {
-        if (current.urgente !== requested.urgente || current.items.length !== requested.items.length) return current;
+        if (current.acrescimo !== requested.acrescimo || current.items.length !== requested.items.length) return current;
         const items = current.items.map((item, index) => {
           const requestedItem = requested.items[index];
           const pricedItem = priced[0].edited.items[index];
@@ -1128,9 +1145,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     });
   }, []);
 
-  const setManualUrgente = useCallback((urgent: boolean) => {
+  const setManualAcrescimo = useCallback((percent: number) => {
     if (liveDraftOperation) return;
-    const next = { ...manual, urgente: urgent };
+    const next = { ...manual, acrescimo: percent };
     setManual(next);
     void repriceManualAutomatic(next);
   }, [liveDraftOperation, manual, repriceManualAutomatic]);
@@ -1232,10 +1249,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     setPendingExtraction((all) => all.map((draft) => draft.index === draftIdx ? updated : draft));
     const version = (pendingPricingVersions.current[draftIdx] || 0) + 1;
     pendingPricingVersions.current[draftIdx] = version;
-    const priced = await fetchPricing([updated], updated.edited.urgente);
+    const priced = await fetchPricing([updated], updated.edited.acrescimo_percent);
     if (pendingPricingVersions.current[draftIdx] !== version || !priced[0]) return;
     setPendingExtraction((all) => all.map((draft) => {
-      if (draft.index !== draftIdx || draft.edited.urgente !== updated.edited.urgente) return draft;
+      if (draft.index !== draftIdx || draft.edited.acrescimo_percent !== updated.edited.acrescimo_percent) return draft;
       const items = draft.edited.items.map((item, index) => {
         const requested = updated.edited.items[index];
         const pricedItem = priced[0].edited.items[index];
@@ -1253,10 +1270,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     const requested = { ...current, edited: { ...current.edited, items: current.edited.items.map((item) => ({ ...item })) } };
     const version = (pendingPricingVersions.current[draftIdx] || 0) + 1;
     pendingPricingVersions.current[draftIdx] = version;
-    const priced = await fetchPricing([requested], requested.edited.urgente);
+    const priced = await fetchPricing([requested], requested.edited.acrescimo_percent);
     if (pendingPricingVersions.current[draftIdx] !== version || !priced[0]) return priced[0];
     setPendingExtraction((all) => all.map((draft) => {
-      if (draft.index !== draftIdx || draft.edited.urgente !== requested.edited.urgente) return draft;
+      if (draft.index !== draftIdx || draft.edited.acrescimo_percent !== requested.edited.acrescimo_percent) return draft;
       const items = draft.edited.items.map((item, index) => {
         const requestedItem = requested.edited.items[index];
         const pricedItem = priced[0].edited.items[index];
@@ -1305,7 +1322,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         setExtractError('Nenhum pedido identificado no texto.');
         return;
       }
-      const extracted = buildDraftsFromOrders(response.orders, '', templateKey).map((draft) => activeQuoteDraft ? {
+      const extracted = buildDraftsFromOrders(response.orders, templateKey).map((draft) => activeQuoteDraft ? {
         ...draft,
         edited: {
           ...draft.edited,
@@ -1317,17 +1334,14 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           client_id: activeQuoteDraft.clientId || undefined,
         },
       } : draft);
-      const nonUrgent = extracted.filter((draft) => !draft.edited.urgente);
-      const urgent = extracted.filter((draft) => draft.edited.urgente);
-      if (nonUrgent.length || urgent.length) {
+      if (extracted.length) {
         setConversationPricingPending((current) => ({ ...current, [CONVERSATION_EXTRACTION_PRICING]: true }));
       }
       try {
-        const pricedNonUrgent = nonUrgent.length ? await fetchPricing(nonUrgent, false) : [];
+        // Resultados extraídos começam sem acréscimo.
+        const pricedDrafts = extracted.length ? await fetchPricing(extracted, 0) : [];
         if (!isCurrent()) return;
-        const pricedUrgent = urgent.length ? await fetchPricing(urgent, true) : [];
-        if (!isCurrent()) return;
-        const priced = new Map([...pricedNonUrgent, ...pricedUrgent].map((draft) => [draft.index, draft]));
+        const priced = new Map(pricedDrafts.map((draft) => [draft.index, draft]));
         appendOrQueueExtraction(extracted.map((draft) => priced.get(draft.index) || draft));
       } finally {
         if (isCurrent()) {
@@ -1725,7 +1739,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     setAddingSku(product.sku);
     const pricingVersion = beginManualPricing();
     try {
-      const result = await apiPost<{ items?: Array<{ rate?: number | string }> }>('/pricing-lookup', { items: [{ item_code: product.sku, qty: DEFAULT_QTY }], urgent: manual.urgente });
+      const result = await apiPost<{ items?: Array<{ rate?: number | string }> }>('/pricing-lookup', { items: [{ item_code: product.sku, qty: DEFAULT_QTY }], acrescimo_percent: manual.acrescimo });
       const rate = Number(result.items?.[0]?.rate);
       if (!Number.isFinite(rate) || rate <= 0) throw new Error('Preço indisponível');
       setManual((current) => ({
@@ -1740,7 +1754,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       setAddingSku(null);
       settleManualPricing(pricingVersion);
     }
-  }, [addingSku, beginManualPricing, liveDraftOperation, manual.urgente, settleManualPricing, toast]);
+  }, [addingSku, beginManualPricing, liveDraftOperation, manual.acrescimo, settleManualPricing, toast]);
 
   const updateManualItem = useCallback((key: string, field: 'qty' | 'rate', value: string) => {
     if (liveDraftOperation) return;
@@ -1765,7 +1779,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     if (!item) return;
     const version = beginManualPricing();
     try {
-      const result = await apiPost<{ items?: Array<{ rate?: number | string }> }>('/pricing-lookup', { items: [{ item_code: item.sku, qty: item.qty }], urgent: manual.urgente });
+      const result = await apiPost<{ items?: Array<{ rate?: number | string }> }>('/pricing-lookup', { items: [{ item_code: item.sku, qty: item.qty }], acrescimo_percent: manual.acrescimo });
       const rate = Number(result.items?.[0]?.rate);
       if (!Number.isFinite(rate) || rate <= 0 || !mountedRef.current) return;
       setManual((current) => ({ ...current, items: current.items.map((candidate) => candidate._key === key && version === manualPricingVersion.current && candidate.sku === item.sku && candidate.qty === item.qty ? { ...candidate, rate, _rateManual: false } : candidate) }));
@@ -1774,7 +1788,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     } finally {
       settleManualPricing(version);
     }
-  }, [beginManualPricing, liveDraftOperation, manual.items, manual.urgente, settleManualPricing]);
+  }, [beginManualPricing, liveDraftOperation, manual.items, manual.acrescimo, settleManualPricing]);
 
   useEffect(() => {
     if (!clientPanel) return;
@@ -2192,6 +2206,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onAddItem={addDraftItem}
                 selectProduct={selectProduct}
                 onRefetchPricing={refetchDraftPricing}
+                defaultProductionDays={defaultProductionDays}
                 onCreateQuote={handleAutoIssue}
                 onRecoverIssue={retryQuotationIssueRecovery}
                 onClearIssueRecovery={releaseUnconfirmedIssue}
@@ -2273,6 +2288,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                   onAddItem={(draftIndex) => setPendingExtraction((current) => current.map((draft) => draft.index === draftIndex ? { ...draft, edited: { ...draft.edited, items: [...draft.edited.items, { item_code: '', qty: DEFAULT_QTY, rate: null, _rateManual: true }] } } : draft))}
                   selectProduct={updatePendingProduct}
                   onRefetchPricing={refetchPendingPricing}
+                  defaultProductionDays={defaultProductionDays}
                   issueBlocked={liveDraftOperation}
                   editingBlocked={liveDraftOperation}
                   onPricingPendingChange={reportConversationPricing}
@@ -2328,8 +2344,15 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             <section aria-label="Condições do orçamento" className="rounded-card border border-line bg-surface p-5 md:p-6">
               <Heading level="section">Condições e fechamento</Heading>
               {templateError && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-destructive"><p role="alert">{templateError}</p><Button type="button" variant="outline" size="sm" onClick={() => void loadTemplates()}>Tentar novamente</Button></div>}
-              <div className="mt-4 grid gap-3 md:grid-cols-2"><label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Prazo de produção<Input aria-label="Prazo de produção" value={manual.prazo} disabled={manualActionsBlocked} onChange={(event) => setManualValue('prazo', event.target.value)} /></label><label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Modelo de orçamento<Select aria-label="Modelo de orçamento" value={manual.templateKey} disabled={manualActionsBlocked || templateLoading || !templates.length} onChange={(event) => { setTemplateKey(event.target.value); setManualValue('templateKey', event.target.value); }} className="w-full">{templates.map((template) => <option key={template.key} value={template.key}>{template.name}</option>)}</Select></label></div>
-              <label className="mt-4 flex items-center justify-between gap-3 rounded-control border border-line p-3 text-sm"><span><span className="block font-medium text-fg">Pedido urgente</span><span className="block text-xs text-fg-muted">Itens com preço automático recebem +30%.</span></span><input type="checkbox" aria-label="Pedido urgente" checked={manual.urgente} disabled={manualActionsBlocked} onChange={(event) => setManualUrgente(event.target.checked)} className="h-4 w-4 accent-primary" /></label>
+              <div className="mt-4 grid gap-3 md:grid-cols-2"><label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Modelo de orçamento<Select aria-label="Modelo de orçamento" value={manual.templateKey} disabled={manualActionsBlocked || templateLoading || !templates.length} onChange={(event) => { setTemplateKey(event.target.value); setManualValue('templateKey', event.target.value); }} className="w-full">{templates.map((template) => <option key={template.key} value={template.key}>{template.name}</option>)}</Select></label>
+                <ProductionTermsFields
+                  productionDays={manual.prazoDias ?? defaultProductionDays}
+                  surchargePercent={manual.acrescimo}
+                  disabled={manualActionsBlocked}
+                  onProductionDaysChange={(days) => setManualValue('prazoDias', days)}
+                  onSurchargePercentChange={setManualAcrescimo}
+                />
+              </div>
               <label className="mt-4 flex flex-col gap-1 text-xs font-medium text-fg-muted">Observações<Textarea aria-label="Observações do orçamento" value={manual.observacoes} disabled={manualActionsBlocked} onChange={(event) => setManualValue('observacoes', event.target.value)} /></label>
               {manualBlockMessage && <p id="manual-quotation-action-status" className="mt-3 rounded-control border border-line bg-surface-subtle p-3 text-xs text-fg-muted">{manualBlockMessage}</p>}
             </section>

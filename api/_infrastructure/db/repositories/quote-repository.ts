@@ -38,12 +38,18 @@ import {
   formatMoneyCents,
   normalizeProductPricing,
   parseMoneyCents,
+  parseSurchargePercent,
   parseQuantityScaled,
   parseScaledInteger,
   resolveProductPrice,
   type PricingResolution,
 } from '../../../_modules/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
+import {
+  parseProductionDays,
+  ProductionDeadlineValidationError,
+  productionDeadlineText,
+} from '../../../_modules/production-deadline.js';
 import { normalizeQuotationCompanyConfiguration } from '../../../_modules/quotation-company.js';
 import {
   normalizeQuotationSections,
@@ -182,8 +188,8 @@ export interface QuoteDraftCreateInput {
   notes?: unknown;
   client_notes?: unknown;
   items?: unknown;
-  urgente?: unknown;
-  prazo_producao?: unknown;
+  prazo_producao_dias?: unknown;
+  acrescimo_percent?: unknown;
   frete?: unknown;
   frete_aplicado?: unknown;
   frete_padrao?: unknown;
@@ -250,6 +256,8 @@ export interface QuoteDraftResult {
   entrega: string;
   observacoes: string;
   prazo_producao: string;
+  prazo_producao_dias: number;
+  acrescimo_percent: number;
   template_padrao: string;
   template_key: string;
   template_hash: string;
@@ -282,6 +290,8 @@ export interface QuoteDuplicateResult {
   entrega: string;
   observacoes: string;
   prazo_producao: string;
+  prazo_producao_dias: number;
+  acrescimo_percent: number;
   template_padrao: string;
   template_key: string;
   template_hash: string;
@@ -636,11 +646,11 @@ interface CreationFingerprintParts {
   origin: QuoteOriginInput | null;
   link: OpportunityLinkInput;
   items: NormalizedItem[];
-  urgente: boolean;
   observacoes: unknown;
   pagamento: unknown;
   entrega: unknown;
-  prazoProducao: unknown;
+  prazoProducaoDias: unknown;
+  acrescimoPercent: unknown;
   frete: unknown;
   validadeDias: unknown;
   templateKey: unknown;
@@ -705,11 +715,11 @@ function quotationCreationFingerprint(parts: CreationFingerprintParts): string {
         rate: item.rate ?? null,
         manual_rate: item.manualRate,
       })),
-      urgente: parts.urgente,
       observacoes: parts.observacoes ?? null,
       pagamento: parts.pagamento ?? null,
       entrega: parts.entrega ?? null,
-      prazo_producao: parts.prazoProducao ?? null,
+      prazo_producao_dias: parts.prazoProducaoDias ?? null,
+      acrescimo_percent: parts.acrescimoPercent ?? null,
       frete: parts.frete ?? null,
       validade_dias: parts.validadeDias ?? null,
       template_key: templateKey,
@@ -767,6 +777,8 @@ async function loadReplayedDraft(
     entrega: revision.entrega,
     observacoes: sections.condicoes_gerais.current.body,
     prazo_producao: sections.prazo_producao.current.value ?? '',
+    prazo_producao_dias: revision.productionDays,
+    acrescimo_percent: revision.surchargePercent,
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
@@ -1133,6 +1145,8 @@ async function readSettings(tx: QuoteTransaction): Promise<Settings> {
     template_padrao: row.templatePadrao,
     secoes,
     empresa: normalizeQuotationCompanyConfiguration(row.companyConfiguration),
+    prazo_producao_dias: row.productionDays,
+    prazo_producao_complemento: row.productionDeadlineComplement,
     settings_version: row.settingsVersion,
   };
 }
@@ -1457,14 +1471,20 @@ export function createPostgresQuoteDraftRepository(
         'Iniciar uma nova demanda não combina com uma origem de lead existente.'
       );
     }
-    const requestUrgent = input.urgente === true;
+    let requestSurcharge: number;
+    try {
+      requestSurcharge = parseSurchargePercent(input.acrescimo_percent);
+    } catch (error) {
+      if (error instanceof PricingValidationError) throw new QuoteDraftInputError(error.message);
+      throw error;
+    }
     const requestObservations = hasOwn(input as unknown as Record<string, unknown>, 'observacoes') && input.observacoes !== undefined
       ? input.observacoes
       : undefined;
     const requestPayment = hasOwn(input as unknown as Record<string, unknown>, 'pagamento') && input.pagamento !== undefined
       ? input.pagamento
       : undefined;
-    const requestDeadline = input.prazo_producao;
+    const requestProductionDays = input.prazo_producao_dias;
     const requestFreight = firstDefined(input as unknown as Record<string, unknown>, [
       'frete',
       'frete_aplicado',
@@ -1483,11 +1503,11 @@ export function createPostgresQuoteDraftRepository(
           origin: originInput,
           link: linkInput,
           items,
-          urgente: requestUrgent,
           observacoes: requestObservations,
           pagamento: requestPayment,
           entrega: input.entrega,
-          prazoProducao: requestDeadline,
+          prazoProducaoDias: requestProductionDays,
+          acrescimoPercent: requestSurcharge,
           frete: requestFreight,
           validadeDias: input.validade_dias,
           templateKey: input.template_key,
@@ -1596,7 +1616,16 @@ export function createPostgresQuoteDraftRepository(
         const template = await readSelectedTemplate(tx, settings, input);
         if (!template) throw new QuoteDraftInputError('Template do orçamento inválido.');
         const baseSections = normalizeQuotationSections(settings.secoes);
-        const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
+        let productionDays: number;
+        try {
+          productionDays = parseProductionDays(requestProductionDays, settings.prazo_producao_dias);
+        } catch (error) {
+          if (error instanceof ProductionDeadlineValidationError) {
+            throw new QuoteDraftInputError(error.message);
+          }
+          throw error;
+        }
+        const deadline = productionDeadlineText(productionDays, settings.prazo_producao_complemento);
         let currentSections = baseSections;
         if (input.secoes !== undefined || requestObservations !== undefined || requestPayment !== undefined) {
           try {
@@ -1646,10 +1675,7 @@ export function createPostgresQuoteDraftRepository(
             throw new QuoteDraftInputError(error instanceof Error ? error.message : 'Seções inválidas.');
           }
         }
-        const canonicalDeadline =
-          currentSections.prazo_producao.value === undefined
-            ? deadline
-            : currentSections.prazo_producao.value;
+        const canonicalDeadline = deadline;
         const baseSectionsWithDeadline = withQuotationProductionDeadline(
           baseSections,
           canonicalDeadline
@@ -1698,7 +1724,11 @@ export function createPostgresQuoteDraftRepository(
           const priced = pricingBySku.get(item.sku)!;
           let resolution: PricingResolution;
           try {
-            resolution = resolveProductPrice(priced.pricing, item.quantity, requestUrgent);
+            resolution = resolveProductPrice(
+              priced.pricing,
+              item.quantity,
+              item.manualRate ? 0 : requestSurcharge
+            );
           } catch (error) {
             if (
               error instanceof PricingValidationError ||
@@ -1791,6 +1821,8 @@ export function createPostgresQuoteDraftRepository(
             input.entrega !== undefined
               ? inputText(input.entrega, 'Entrega', 500)
               : settings.entrega,
+          productionDays,
+          surchargePercent: requestSurcharge,
           fretePadrao: settings.frete_padrao,
           frete: formatMoneyCents(freightCents),
           templatePadrao: template.model.key,
@@ -1893,6 +1925,8 @@ export function createPostgresQuoteDraftRepository(
             : settings.entrega,
           observacoes: sectionsSnapshot.condicoes_gerais.current.body,
           prazo_producao: canonicalDeadline,
+          prazo_producao_dias: productionDays,
+          acrescimo_percent: requestSurcharge,
           template_padrao: template.model.key,
           template_key: template.model.key,
           template_hash: template.version.sourceHash,
@@ -1998,6 +2032,8 @@ export function createPostgresQuoteDraftRepository(
           status: 'rascunho',
           validadeDias: sourceRevision.validadeDias,
           entrega: sourceRevision.entrega,
+          productionDays: sourceRevision.productionDays,
+          surchargePercent: sourceRevision.surchargePercent,
           fretePadrao: sourceRevision.fretePadrao,
           frete: sourceRevision.frete,
           templatePadrao: sourceRevision.templatePadrao,
@@ -2138,6 +2174,8 @@ export function createPostgresQuoteDraftRepository(
           entrega: sourceRevision.entrega,
           observacoes: sourceRevision.sectionsSnapshot.condicoes_gerais.current.body,
           prazo_producao: sourceRevision.sectionsSnapshot.prazo_producao.current.value ?? '',
+          prazo_producao_dias: sourceRevision.productionDays,
+          acrescimo_percent: sourceRevision.surchargePercent,
           template_padrao: sourceRevision.templatePadrao,
           template_key: sourceRevision.templatePadrao,
           template_hash: sourceRevision.templateHash,

@@ -5,6 +5,7 @@ import {
   PricingUnavailableError,
   PricingValidationError,
   parseMoneyCents,
+  parseSurchargePercent,
   normalizeProductPricing,
   resolveProductPrice,
 } from '../../api/_modules/pricing-core.js';
@@ -35,9 +36,20 @@ describe('core pricing exact resolver', () => {
     assert.throws(() => parseMoneyCents('0.00', 'Preço'), PricingValidationError);
   });
 
-  it('applies urgent markup with integer-cents rounding', () => {
-    assert.equal(resolveProductPrice({ preco_base: '10.01', precos: [] }, 30, true).rate, '13.01');
-    assert.equal(resolveProductPrice({ preco_base: '0.01', precos: [] }, 30, true).rate, '0.01');
+  it('applies the manual surcharge with half-up integer-cents rounding', () => {
+    assert.equal(resolveProductPrice({ preco_base: '10.00', precos: [] }, 30, 30).rate, '13.00');
+    assert.equal(resolveProductPrice({ preco_base: '10.01', precos: [] }, 30, 30).rate, '13.01');
+    assert.equal(resolveProductPrice({ preco_base: '0.01', precos: [] }, 30, 30).rate, '0.01');
+    assert.equal(resolveProductPrice({ preco_base: '10.00', precos: [] }, 30).rate, '10.00');
+  });
+
+  it('accepts only integer surcharge percentages within bounds', () => {
+    assert.equal(parseSurchargePercent(undefined), 0);
+    assert.equal(parseSurchargePercent('15'), 15);
+    assert.throws(() => parseSurchargePercent(true), PricingValidationError);
+    assert.throws(() => parseSurchargePercent(-1), PricingValidationError);
+    assert.throws(() => parseSurchargePercent(12.5), PricingValidationError);
+    assert.throws(() => parseSurchargePercent(201), PricingValidationError);
   });
 
   it('rejects invalid, non-finite, over-scale and duplicate quantities', () => {

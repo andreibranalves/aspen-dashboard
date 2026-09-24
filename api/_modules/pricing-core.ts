@@ -9,8 +9,7 @@
 
 export const MONEY_SCALE = 2;
 export const QUANTITY_SCALE = 3;
-export const URGENT_NUMERATOR = 130n;
-export const URGENT_DENOMINATOR = 100n;
+export const MAX_SURCHARGE_PERCENT = 200;
 
 export class PricingValidationError extends Error {
   readonly statusCode = 400;
@@ -74,7 +73,7 @@ export interface PricingResolution {
   rate_cents: bigint;
   source: 'base' | 'tier';
   minimum_quantity: string | null;
-  urgent: boolean;
+  surcharge_percent: number;
 }
 
 function decimalParts(value: unknown, label: string): { integer: string; fraction: string } {
@@ -95,6 +94,22 @@ function decimalParts(value: unknown, label: string): { integer: string; fractio
   const match = /^(?:\+)?(\d+)(?:\.(\d+))?$/.exec(normalized);
   if (!match) throw new PricingValidationError(`${label} deve ser um número decimal válido.`);
   return { integer: match[1], fraction: match[2] || '' };
+}
+
+/** Acréscimo manual em pontos percentuais inteiros; ausente vale 0. */
+export function parseSurchargePercent(value: unknown, label = 'Acréscimo'): number {
+  if (value === undefined || value === null || value === '') return 0;
+  const parsed = typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value.trim()) : value;
+  if (typeof parsed !== 'number' || !Number.isInteger(parsed) || parsed < 0 || parsed > MAX_SURCHARGE_PERCENT) {
+    throw new PricingValidationError(`${label} deve ser um percentual inteiro entre 0 e ${MAX_SURCHARGE_PERCENT}.`);
+  }
+  return parsed;
+}
+
+/** Aplica o acréscimo com arredondamento half-up em centavos. */
+export function applySurchargeCents(cents: bigint, surchargePercent: number): bigint {
+  if (!surchargePercent) return cents;
+  return (cents * BigInt(100 + surchargePercent) + 50n) / 100n;
 }
 
 export function parseScaledInteger(value: unknown, scale: number, label: string): bigint {
@@ -193,7 +208,7 @@ export function normalizeProductPricing(input: ProductPricingInput): NormalizedP
 export function resolveProductPrice(
   pricing: ProductPricingInput | NormalizedProductPricing,
   quantity: string | number,
-  urgent = false,
+  surchargePercent = 0,
 ): PricingResolution {
   const normalized = 'base_price_cents' in pricing
     ? pricing as NormalizedProductPricing
@@ -211,15 +226,13 @@ export function resolveProductPrice(
   if (cents === null || cents === undefined || cents <= 0n) {
     throw new PricingUnavailableError();
   }
-  const resolvedCents = urgent
-    ? (cents * URGENT_NUMERATOR + URGENT_DENOMINATOR / 2n) / URGENT_DENOMINATOR
-    : cents;
+  const resolvedCents = applySurchargeCents(cents, surchargePercent);
   return {
     rate: formatMoneyCents(resolvedCents),
     rate_cents: resolvedCents,
     source: selected ? 'tier' : 'base',
     minimum_quantity: selected?.minimum_quantity ?? null,
-    urgent,
+    surcharge_percent: surchargePercent,
   };
 }
 

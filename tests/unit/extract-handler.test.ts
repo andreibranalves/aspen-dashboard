@@ -224,7 +224,7 @@ test('extract normalizes provider fields and applies the minimum quantity', asyn
       choices: [
         {
           message: {
-            content: '[{"nome":"Cliente","empresa":"  Silva Eventos  ","urgente":"false","items":[{"item_code":" SKU-1 ","qty":"10"}]}]',
+            content: '[{"nome":"Cliente","empresa":"  Silva Eventos  ","prazo_pedido":"  preciso para 12/12  ","items":[{"item_code":" SKU-1 ","qty":"10"}]}]',
           },
         },
       ],
@@ -237,7 +237,7 @@ test('extract normalizes provider fields and applies the minimum quantity', asyn
 
     assert.equal(result.statusCode, 200);
     assert.deepEqual(JSON.parse(result.body || ''), {
-      orders: [{ nome: 'Cliente', empresa: 'Silva Eventos', urgente: false, items: [{ item_code: 'SKU-1', qty: 30 }] }],
+      orders: [{ nome: 'Cliente', empresa: 'Silva Eventos', prazo_pedido: 'preciso para 12/12', items: [{ item_code: 'SKU-1', qty: 30 }] }],
     });
   } finally {
     globalThis.fetch = previousFetch;

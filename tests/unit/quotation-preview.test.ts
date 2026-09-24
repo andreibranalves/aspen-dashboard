@@ -190,40 +190,56 @@ test('accepts a form body parsed by the Vercel adapter', async () => {
   assert.equal(response.headers?.['Content-Type'], 'application/pdf');
 });
 
-test('applies urgent markup to non-manual item prices', async () => {
+test('applies the manual surcharge only to automatic prices', async () => {
+  const calls: Array<{ sku: string; surcharge: number | undefined }> = [];
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
-    renderPdf: pdfRender,
-  });
-  const response = await handler(
-    post({ extracted: { ...extracted, urgente: true, items: [{ ...extracted.items[0], qty: 1, rate: 10 }] } })
-  );
-
-  assert.equal(response.statusCode, 200);
-  assert.match(rendered(response), /R\$ 13,00/);
-  assert.match(rendered(response), /Total<\/span><span>R\$ 13,00/);
-});
-
-test('leaves urgent manual item prices unchanged', async () => {
-  const handler = createQuotationPreviewHandler({
-    repository: { get: async () => null },
-    resolveDraftTemplate: async () => template,
+    resolvePricing: async (item: any, _qty, surcharge) => {
+      calls.push({ sku: item.item_code, surcharge });
+      return { rate: item.item_code === 'SKU-AUTO' ? (surcharge === 30 ? '13.00' : '10.00') : '10.00' };
+    },
     renderPdf: pdfRender,
   });
   const response = await handler(
     post({
       extracted: {
         ...extracted,
-        urgente: true,
-        items: [{ ...extracted.items[0], qty: 1, rate: 10, manual_rate: true }],
+        acrescimo_percent: 30,
+        items: [
+          { ...extracted.items[0], item_code: 'SKU-AUTO', qty: 1, rate: 13 },
+          { ...extracted.items[0], item_code: 'SKU-MANUAL', qty: 1, rate: 10, manual_rate: true },
+        ],
       },
     })
   );
 
   assert.equal(response.statusCode, 200);
-  assert.match(rendered(response), /Total<\/span><span>R\$ 10,00/);
-  assert.doesNotMatch(rendered(response), /Total<\/span><span>R\$ 13,00/);
+  assert.deepEqual(calls, [
+    { sku: 'SKU-AUTO', surcharge: 30 },
+    { sku: 'SKU-MANUAL', surcharge: 0 },
+  ]);
+  assert.match(rendered(response), /Total<\/span><span>R\$ 23,00/);
+});
+
+test('generates the communicated deadline from the numeric production deadline', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+    resolveSettings: async () => ({
+      validade_dias: 15,
+      prazo_producao_dias: 20,
+      prazo_producao_complemento: 'após aprovação.',
+    }),
+    renderPdf: pdfRender,
+  });
+  const custom = await handler(post({ extracted: { ...extracted, prazo_producao_dias: 7 } }, { format: 'html' }));
+  const fallback = await handler(post({ extracted }, { format: 'html' }));
+
+  assert.equal(custom.statusCode, 200);
+  assert.match(custom.body || '', /até 7 dias úteis após aprovação\./);
+  assert.doesNotMatch(custom.body || '', /15 dias úteis/);
+  assert.match(fallback.body || '', /15 a 20 dias úteis após aprovação\./);
 });
 
 test('aggregates multi-line totals in exact cents', async () => {

@@ -157,7 +157,7 @@ function issuedQuotationDetail() {
 }
 
 async function setupAuto(page) {
-  await page.route('**/api/settings**', (route) => json(route, {}));
+  await page.route(/\/api\/settings(\?|$)/, (route) => json(route, {}));
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true }],
     default_key: 'padrao',
@@ -502,7 +502,7 @@ async function setupTwoIssuedDrafts(page, { heldB }) {
     resolveCount: 0,
     resolvedIds: new Set(),
   };
-  await page.route('**/api/settings**', (route) => json(route, {}));
+  await page.route(/\/api\/settings(\?|$)/, (route) => json(route, {}));
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash: 'a'.repeat(64) }],
   }));

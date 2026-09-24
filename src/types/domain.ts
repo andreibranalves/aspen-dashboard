@@ -80,6 +80,8 @@ export interface DraftItem {
   rate: number | null;
   item_name?: string;
   _rateManual?: boolean;
+  /** Preço automático sem acréscimo, para mostrar a base no card. */
+  _baseRate?: number;
 }
 
 export interface DraftEdited {
@@ -87,12 +89,15 @@ export interface DraftEdited {
   empresa?: string;
   email: string;
   telefone: string;
-  urgente: boolean;
+  acrescimo_percent: number;
   origem: string;
   cnpj: string;
   endereco: Address;
   items: DraftItem[];
-  prazo_producao: string;
+  /** Ausente usa o padrão das Configurações no servidor. */
+  prazo_producao_dias?: number;
+  /** Trecho em que o cliente mencionou prazo; não altera preço nem prazo. */
+  prazo_pedido?: string;
   pagamento?: string;
   entrega?: string;
   observacoes?: string;

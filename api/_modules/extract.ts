@@ -58,9 +58,7 @@ Rule 3 — Regras por Produto:
 
 Rule 4 — Múltiplas quantidades: Se o mesmo produto aparecer em qtds diferentes, incluir TODAS as combinações como linhas separadas no MESMO objeto. Ex: LNC-SED-70 qty:80 + LNC-CSD-70 qty:80 + LNC-SED-70 qty:100 + LNC-CSD-70 qty:100.
 
-Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
-
-Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
+Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.`;
 
 export interface ExtractionOrderTemplate {
   id: string;
@@ -105,6 +103,8 @@ REGRAS DE NEGÓCIO:
 
 ${rules}${mergeInstruction}${orderTemplateInstruction}
 
+Prazo pedido: se o cliente mencionar prazo ou data de entrega, copie em "prazo_pedido" o trecho exato da mensagem (ex.: "preciso para 12/12"); caso contrário, null. Não defina prazo nem preço.
+
 RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 [
   {
@@ -112,7 +112,7 @@ RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
     "empresa": "string ou null",
     "email": "string ou null",
     "telefone": "string ou null",
-    "urgente": false,
+    "prazo_pedido": "string ou null",
     "origem": "string ou null",
     "cnpj": "string ou null",
     "endereco": {
@@ -270,7 +270,7 @@ interface Order {
   empresa: string | null;
   email: string | null;
   telefone: string | null;
-  urgente: boolean;
+  prazo_pedido: string | null;
   origem: string | null;
   cnpj: string | null;
   endereco: Record<string, string | null>;
@@ -339,17 +339,6 @@ function normalizeProviderString(
   return normalized;
 }
 
-function normalizeProviderBoolean(value: unknown, field: string): boolean | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (normalized === 'true') return true;
-    if (normalized === 'false') return false;
-  }
-  providerResponseError(`${field} deve ser booleano`);
-}
-
 function normalizeProviderAddress(value: unknown): Record<string, string | null> | undefined {
   if (value === undefined) return undefined;
   if (value === null) return {};
@@ -396,7 +385,9 @@ function normalizeProviderOrder(value: unknown, orderIndex: number): ExtractedOr
   const telefone = normalizeProviderString(value.telefone, 'telefone', 64);
   const origem = normalizeProviderString(value.origem, 'origem', 120);
   const cnpj = normalizeProviderString(value.cnpj, 'cnpj', 32);
-  const urgente = normalizeProviderBoolean(value.urgente, 'urgente');
+  // Trecho livre do cliente: truncado em vez de invalidar a extração inteira.
+  const prazoPedidoRaw = normalizeProviderString(value.prazo_pedido, 'prazo_pedido', Infinity);
+  const prazoPedido = typeof prazoPedidoRaw === 'string' ? prazoPedidoRaw.slice(0, 300) || null : prazoPedidoRaw;
   const endereco = normalizeProviderAddress(value.endereco);
 
   if (nome !== undefined && nome !== null) order.nome = nome;
@@ -405,7 +396,7 @@ function normalizeProviderOrder(value: unknown, orderIndex: number): ExtractedOr
   if (telefone !== undefined) order.telefone = telefone;
   if (origem !== undefined) order.origem = origem;
   if (cnpj !== undefined) order.cnpj = cnpj;
-  if (urgente !== undefined) order.urgente = urgente;
+  if (prazoPedido !== undefined) order.prazo_pedido = prazoPedido;
   if (endereco !== undefined) order.endereco = endereco;
   return order;
 }

@@ -12,6 +12,10 @@ import {
   normalizeQuotationSections,
   type QuotationSectionsSettings,
 } from '../../../_modules/quotation-content.js';
+import {
+  DEFAULT_PRODUCTION_DAYS,
+  DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT,
+} from '../../../_modules/production-deadline.js';
 
 export interface Settings {
   validade_dias: number;
@@ -23,13 +27,23 @@ export interface Settings {
   template_padrao: string;
   secoes: QuotationSectionsSettings;
   empresa: QuotationCompanyConfiguration;
+  prazo_producao_dias: number;
+  prazo_producao_complemento: string;
   settings_version: number;
 }
 
 export type SettingsInput = Omit<
   Settings,
-  'template_padrao' | 'entrega' | 'empresa' | 'settings_version' | 'aliquota'
+  | 'template_padrao'
+  | 'entrega'
+  | 'empresa'
+  | 'settings_version'
+  | 'aliquota'
+  | 'prazo_producao_dias'
+  | 'prazo_producao_complemento'
 > & {
+  prazo_producao_dias?: number;
+  prazo_producao_complemento?: string;
   entrega?: string;
   template_padrao?: string;
   empresa?: QuotationCompanyConfiguration;
@@ -47,6 +61,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   template_padrao: 'padrao',
   secoes: DEFAULT_QUOTATION_SECTIONS,
   empresa: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  prazo_producao_dias: DEFAULT_PRODUCTION_DAYS,
+  prazo_producao_complemento: DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT,
   settings_version: 1,
 });
 
@@ -86,6 +102,8 @@ function toSettings(row: typeof appSettings.$inferSelect): Settings {
     template_padrao: row.templatePadrao,
     secoes,
     empresa,
+    prazo_producao_dias: row.productionDays,
+    prazo_producao_complemento: row.productionDeadlineComplement,
     settings_version: row.settingsVersion,
   };
 }
@@ -159,6 +177,12 @@ export function createPostgresSettingsRepository(
             : DEFAULT_QUOTATION_COMPANY_CONFIGURATION
         );
         const settingsVersion = isInitialRow ? 2 : (currentForMerge?.settingsVersion || 0) + 1;
+        const productionDays =
+          settings.prazo_producao_dias ?? currentForMerge?.productionDays ?? DEFAULT_PRODUCTION_DAYS;
+        const productionDeadlineComplement =
+          settings.prazo_producao_complemento ??
+          currentForMerge?.productionDeadlineComplement ??
+          DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT;
         const [row] = await tx
           .insert(appSettings)
           .values({
@@ -169,6 +193,8 @@ export function createPostgresSettingsRepository(
             aliquota: settings.aliquota ?? currentForMerge?.aliquota ?? '4.00',
             quotationSections: secoes,
             companyConfiguration: empresa,
+            productionDays,
+            productionDeadlineComplement,
             templatePadrao: settings.template_padrao ?? currentForMerge?.templatePadrao ?? 'padrao',
             settingsVersion,
           })
@@ -181,6 +207,8 @@ export function createPostgresSettingsRepository(
               aliquota: settings.aliquota ?? currentForMerge?.aliquota ?? '4.00',
               quotationSections: secoes,
               companyConfiguration: empresa,
+              productionDays,
+              productionDeadlineComplement,
               settingsVersion,
               ...(settings.template_padrao === undefined
                 ? {}

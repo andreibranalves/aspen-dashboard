@@ -60,6 +60,7 @@ import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
 import { type QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
+import ProductionTermsFields from '@/features/quotations/components/ProductionTermsFields';
 import { QuotationSectionsDocument } from '@/features/quotations/components/QuotationSectionsDocument';
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -298,6 +299,8 @@ function CoreQuotationDetail({
   const [validadeDias, setValidadeDias] = useState(String(data.validadeDias ?? ''));
   const [entrega, setEntrega] = useState(data.entrega || '');
   const [frete, setFrete] = useState(String(data.frete));
+  const [productionDays, setProductionDays] = useState(data.prazoProducaoDias);
+  const [surchargePercent, setSurchargePercent] = useState(data.acrescimoPercent);
   const [sections, setSections] = useState<QuotationSectionsSnapshot>(() =>
     normalizeSections(data)
   );
@@ -358,6 +361,8 @@ function CoreQuotationDetail({
     setValidadeDias(String(initialData.validadeDias ?? ''));
     setEntrega(initialData.entrega || '');
     setFrete(String(initialData.frete));
+    setProductionDays(initialData.prazoProducaoDias);
+    setSurchargePercent(initialData.acrescimoPercent);
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.templateKey || 'padrao');
     setSelectedVersionId(initialData.templateVersionId || '');
@@ -561,12 +566,12 @@ function CoreQuotationDetail({
     [searchItemProducts, updateItem]
   );
 
-  const lookupProductPrice = useCallback(async (sku: string, qty: string) => {
+  const lookupProductPrice = useCallback(async (sku: string, qty: string, percent = surchargePercent) => {
     const response = await apiPost<{ items?: Array<{ rate?: string | number }> }>(
       '/pricing-lookup',
       {
         items: [{ item_code: sku, qty }],
-        urgent: false,
+        acrescimo_percent: percent,
       }
     );
     const rawRate = response.items?.[0]?.rate;
@@ -575,10 +580,10 @@ function CoreQuotationDetail({
       throw new Error('Preço indisponível para este produto.');
     }
     return String(rawRate);
-  }, []);
+  }, [surchargePercent]);
 
   const repriceItem = useCallback(
-    async (key: string) => {
+    async (key: string, percent?: number) => {
       const item = items.find((candidate) => candidate._key === key);
       if (!item || !item.sku || item.manual_rate) return;
       const quantity = item.qty;
@@ -586,7 +591,7 @@ function CoreQuotationDetail({
       const requestVersion = nextPricingVersion(key);
       if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) return;
       try {
-        const rate = await lookupProductPrice(sku, quantity);
+        const rate = await lookupProductPrice(sku, quantity, percent);
         setItems((previous) =>
           previous.map((current) =>
             current._key === key &&
@@ -609,6 +614,14 @@ function CoreQuotationDetail({
       }
     },
     [items, lookupProductPrice, nextPricingVersion]
+  );
+
+  const changeSurchargePercent = useCallback(
+    (percent: number) => {
+      setSurchargePercent(percent);
+      items.forEach((item) => void repriceItem(item._key, percent));
+    },
+    [items, repriceItem]
   );
 
   const selectProduct = useCallback(
@@ -702,6 +715,8 @@ function CoreQuotationDetail({
       setValidadeDias(String(authoritative.validadeDias ?? ''));
       setEntrega(authoritative.entrega || '');
       setFrete(String(authoritative.frete));
+      setProductionDays(authoritative.prazoProducaoDias);
+      setSurchargePercent(authoritative.acrescimoPercent);
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.templateKey || 'padrao');
       setSelectedVersionId(authoritative.templateVersionId || '');
@@ -728,6 +743,8 @@ function CoreQuotationDetail({
     if (validadeDias !== String(data.validadeDias ?? '')) return true;
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
+    if (productionDays !== data.prazoProducaoDias) return true;
+    if (surchargePercent !== data.acrescimoPercent) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
     if (selectedTemplate !== templateBaselineRef.current.key) return true;
     if (selectedVersionId !== templateBaselineRef.current.versionId) return true;
@@ -740,6 +757,8 @@ function CoreQuotationDetail({
     validadeDias,
     entrega,
     frete,
+    productionDays,
+    surchargePercent,
     sections,
     selectedTemplate,
     selectedVersionId,
@@ -785,9 +804,8 @@ function CoreQuotationDetail({
         validade_dias: Number(validadeDias),
         entrega,
         frete,
-        prazo_producao: sections.prazo_producao.current.enabled
-          ? sections.prazo_producao.current.value
-          : '',
+        prazo_producao_dias: productionDays,
+        acrescimo_percent: surchargePercent,
         template_key: selectedTemplate,
         template_version_id: selectedVersionId || undefined,
         secoes: sections,
@@ -820,10 +838,12 @@ function CoreQuotationDetail({
     entrega,
     frete,
     items,
+    productionDays,
     resetEditor,
     selectedTemplate,
     selectedVersionId,
     sections,
+    surchargePercent,
     validadeDias,
   ]);
 
@@ -877,7 +897,7 @@ function CoreQuotationDetail({
           email: clientSnapshot.email,
           telefone: clientSnapshot.telefone,
           cliente_snapshot: clientSnapshot,
-          urgente: false,
+          acrescimo_percent: surchargePercent,
           items: items.map((item) => ({
             item_code: item.sku || item.item_code,
             item_name: item.item_name,
@@ -885,7 +905,7 @@ function CoreQuotationDetail({
             rate: Number(item.applied_unit_price),
             manual_rate: item.manual_rate,
           })),
-          prazo_producao: sections.prazo_producao.current.value || undefined,
+          prazo_producao_dias: productionDays,
           entrega: entrega || undefined,
           frete: frete || undefined,
           validade_dias: validadeDias ? Number(validadeDias) : undefined,
@@ -912,9 +932,11 @@ function CoreQuotationDetail({
     frete,
     isDirty,
     items,
+    productionDays,
     sections,
     selectedTemplate,
     selectedVersionId,
+    surchargePercent,
     validadeDias,
   ]);
   const runIssue = useCallback(async () => {
@@ -1950,6 +1972,26 @@ function CoreQuotationDetail({
                         <p className="mt-1 whitespace-nowrap tabular-nums">
                           {formatBRL(data.frete)}
                         </p>
+                      )}
+                    </div>
+                    <div className="min-w-0 sm:col-span-2">
+                      {editing && draftEditable ? (
+                        <ProductionTermsFields
+                          productionDays={productionDays}
+                          surchargePercent={surchargePercent}
+                          onProductionDaysChange={setProductionDays}
+                          onSurchargePercentChange={changeSurchargePercent}
+                        />
+                      ) : (
+                        <>
+                          <span className="text-xs font-medium text-fg-muted">
+                            Prazo de produção
+                          </span>
+                          <p className="mt-1 break-words">
+                            {data.prazoProducaoDias} dias úteis
+                            {data.acrescimoPercent > 0 && ` · acréscimo de ${data.acrescimoPercent}%`}
+                          </p>
+                        </>
                       )}
                     </div>
                     {(editing || entrega) && (

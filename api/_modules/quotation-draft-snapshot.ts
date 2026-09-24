@@ -13,10 +13,17 @@ import {
 import {
   formatMoneyCents,
   parseScaledInteger,
+  parseSurchargePercent,
+  PricingValidationError,
   QUANTITY_SCALE,
-  URGENT_DENOMINATOR,
-  URGENT_NUMERATOR,
 } from './pricing-core.js';
+import {
+  DEFAULT_PRODUCTION_DAYS,
+  DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT,
+  parseProductionDays,
+  ProductionDeadlineValidationError,
+  productionDeadlineText,
+} from './production-deadline.js';
 import { applyQuotationSectionPolicy } from './quotation-document.js';
 import {
   normalizeQuotationSections,
@@ -29,7 +36,7 @@ export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (
   pricing: unknown,
   quantity: string | number,
-  urgent?: boolean,
+  surchargePercent?: number,
 ) => { rate: string | number } | Promise<{ rate: string | number }>;
 
 export interface DraftSnapshotSettings {
@@ -41,6 +48,8 @@ export interface DraftSnapshotSettings {
   template_padrao?: string;
   secoes?: QuotationSectionsSettings;
   empresa?: QuotationCompanyConfiguration;
+  prazo_producao_dias?: number;
+  prazo_producao_complemento?: string;
 }
 
 export interface DraftSnapshotDependencies {
@@ -83,7 +92,8 @@ export interface DraftPreviewInput {
   frete?: string;
   validade_dias?: number;
   secoes?: unknown;
-  urgente: boolean;
+  prazo_producao_dias?: number;
+  acrescimo_percent: number;
   items: DraftPreviewItem[];
 }
 
@@ -167,6 +177,20 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
   if (validityDays !== undefined && (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > 365)) {
     throw new DraftPreviewInputError('Validade deve ser um número inteiro entre 1 e 365 dias.');
   }
+  let productionDays: number | undefined;
+  let surchargePercent: number;
+  try {
+    productionDays =
+      extracted.prazo_producao_dias == null
+        ? undefined
+        : parseProductionDays(extracted.prazo_producao_dias, DEFAULT_PRODUCTION_DAYS);
+    surchargePercent = parseSurchargePercent(extracted.acrescimo_percent);
+  } catch (error) {
+    if (error instanceof ProductionDeadlineValidationError || error instanceof PricingValidationError) {
+      throw new DraftPreviewInputError(error.message);
+    }
+    throw error;
+  }
   let freight: string | undefined;
   if (extracted.frete != null && String(extracted.frete).trim()) {
     try { freight = formatMoneyCents(parseScaledInteger(extracted.frete, 2, 'Frete')); }
@@ -187,15 +211,14 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
         : undefined,
     business_number:
       extracted.business_number == null ? undefined : String(extracted.business_number).trim(),
-    prazo_producao:
-      extracted.prazo_producao == null ? undefined : String(extracted.prazo_producao).trim(),
     pagamento: optionalText('pagamento'),
     entrega: optionalText('entrega'),
     observacoes: optionalText('observacoes'),
     frete: freight,
     validade_dias: validityDays,
     secoes: extracted.secoes,
-    urgente: extracted.urgente === true,
+    prazo_producao_dias: productionDays,
+    acrescimo_percent: surchargePercent,
     items,
   };
 }
@@ -209,10 +232,7 @@ function addressValue(address: Record<string, unknown> | undefined, ...keys: str
   return '';
 }
 
-function normalizeDraftSections(
-  source: unknown,
-  payloadDeadline?: string
-): QuotationSectionsSettings {
+function normalizeDraftSections(source: unknown, deadline: string): QuotationSectionsSettings {
   let settings = source;
   if (isRecord(source)) {
     const keys = ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const;
@@ -239,10 +259,7 @@ function normalizeDraftSections(
     }
   }
   try {
-    const normalized = normalizeQuotationSections(settings);
-    return normalized.prazo_producao.value === undefined
-      ? withQuotationProductionDeadline(normalized, payloadDeadline)
-      : normalized;
+    return withQuotationProductionDeadline(normalizeQuotationSections(settings), deadline);
   } catch (error) {
     throw new DraftPreviewInputError(
       error instanceof Error ? error.message : 'Seções do orçamento inválidas.'
@@ -292,11 +309,7 @@ function draftPreviewViewModel(
   const quantityBase = 10n ** BigInt(QUANTITY_SCALE);
   let totalCents = 0n;
   const items = extracted.items.map((item, position) => {
-    const appliedRateCents =
-      extracted.urgente && !item.manual_rate
-        ? (item.rate_cents * URGENT_NUMERATOR + URGENT_DENOMINATOR / 2n) /
-          URGENT_DENOMINATOR
-        : item.rate_cents;
+    const appliedRateCents = item.rate_cents;
     const lineTotalCents =
       (item.quantity_scaled * appliedRateCents + quantityBase / 2n) / quantityBase;
     totalCents += lineTotalCents;
@@ -393,12 +406,21 @@ export async function buildDraftQuotationSnapshot(
     extracted.frete ||= settings.frete_padrao || undefined;
     extracted.validade_dias ||= settings.validade_dias;
   }
+  extracted.prazo_producao_dias ??= settings?.prazo_producao_dias ?? DEFAULT_PRODUCTION_DAYS;
+  extracted.prazo_producao = productionDeadlineText(
+    extracted.prazo_producao_dias,
+    settings?.prazo_producao_complemento ?? DEFAULT_PRODUCTION_DEADLINE_COMPLEMENT,
+  );
   const pricingDifferences: DraftQuotationSnapshot['pricingDifferences'] = [];
   if (dependencies.resolvePricing) {
     for (const item of extracted.items) {
       let resolved: { rate: string | number };
       try {
-        resolved = await dependencies.resolvePricing(item, item.qty, extracted.urgente && !item.manual_rate);
+        resolved = await dependencies.resolvePricing(
+          item,
+          item.qty,
+          item.manual_rate ? 0 : extracted.acrescimo_percent,
+        );
       } catch (error) {
         if (error instanceof DraftPreviewInputError) throw error;
         throw new DraftPreviewInputError(`Preço indisponível para o produto "${item.item_code}".`);
@@ -418,6 +440,7 @@ export async function buildDraftQuotationSnapshot(
       }
       if (item.manual_rate) continue;
       item.rate = Number(expected) / 100;
+      item.rate_cents = expected;
     }
   }
   const template = await dependencies.resolveTemplate(
@@ -455,7 +478,7 @@ export async function buildDraftQuotationSnapshot(
                 body: extracted.observacoes || '',
               },
             },
-    extracted.prazo_producao
+    extracted.prazo_producao || ''
   );
   const now = dependencies.now || (() => new Date());
   const viewModel = applyQuotationSectionPolicy(

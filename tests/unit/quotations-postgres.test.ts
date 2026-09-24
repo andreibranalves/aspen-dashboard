@@ -97,7 +97,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const createLater = createPostgresQuoteDraftRepository(() => db, { now: () => new Date('2026-07-02T12:00:00.000Z') });
     const laterDraft = await createLater.createDraft({
       client_id: clientId,
-      prazo_producao: '5 dias',
+      prazo_producao_dias: 7,
       items: [{ item_code: sku, qty: '30.000' }],
     });
     const terminalDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
@@ -139,22 +139,35 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.deepEqual(overrideDraft.secoes.condicoes_gerais.current, explicitSettings.quotationSections.condicoes_gerais);
     assert.deepEqual(overrideDraft.secoes.prazo_producao.current, {
       ...explicitSettings.quotationSections.prazo_producao,
-      value: '',
+      value: '15 a 20 dias úteis após confirmação do pagamento e aprovação da arte.',
     });
+    // O texto comunicado sempre deriva do número; texto livre do cliente é ignorado.
     const conflictingDeadlineDraft = await create.createDraft({
       client_id: clientId,
-      prazo_producao: '5 dias',
+      prazo_producao_dias: 10,
+      acrescimo_percent: 30,
       secoes: { prazo_producao: { value: '7 dias' } },
       items: [{ item_code: sku, qty: '30.000' }],
     });
-    assert.equal(conflictingDeadlineDraft.prazo_producao, '7 dias');
-    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.base.value, '7 dias');
-    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.current.value, '7 dias');
+    const expectedTenDays = '5 a 10 dias úteis após confirmação do pagamento e aprovação da arte.';
+    assert.equal(conflictingDeadlineDraft.prazo_producao, expectedTenDays);
+    assert.equal(conflictingDeadlineDraft.prazo_producao_dias, 10);
+    assert.equal(conflictingDeadlineDraft.acrescimo_percent, 30);
+    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.base.value, expectedTenDays);
+    assert.equal(conflictingDeadlineDraft.secoes.prazo_producao.current.value, expectedTenDays);
+    // 9,00 com 30% de acréscimo.
+    assert.equal(conflictingDeadlineDraft.items[0].applied_unit_price, '11.70');
     const [conflictingDeadlineRevision] = await db
-      .select({ sectionsSnapshot: quoteRevisions.sectionsSnapshot })
+      .select({
+        sectionsSnapshot: quoteRevisions.sectionsSnapshot,
+        productionDays: quoteRevisions.productionDays,
+        surchargePercent: quoteRevisions.surchargePercent,
+      })
       .from(quoteRevisions)
       .where(eq(quoteRevisions.id, conflictingDeadlineDraft.revision_id));
-    assert.equal(conflictingDeadlineRevision?.sectionsSnapshot?.prazo_producao.current.value, '7 dias');
+    assert.equal(conflictingDeadlineRevision?.sectionsSnapshot?.prazo_producao.current.value, expectedTenDays);
+    assert.equal(conflictingDeadlineRevision?.productionDays, 10);
+    assert.equal(conflictingDeadlineRevision?.surchargePercent, 30);
     overrideDraft.secoes.pagamento.current.body = 'Mutado';
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
@@ -298,8 +311,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       },
     });
     assert.ok(reenabled.secoes);
-    assert.equal(reenabled.secoes.prazo_producao.current.value, '5 dias');
-    assert.equal(reenabled.prazo_producao, '5 dias');
+    assert.equal(reenabled.secoes.prazo_producao.current.value, 'até 7 dias úteis após confirmação do pagamento e aprovação da arte.');
+    assert.equal(reenabled.prazo_producao, 'até 7 dias úteis após confirmação do pagamento e aprovação da arte.');
     const restored = await managementUpdate(laterDraft.quotation_name, {
       concurrency_token: reenabled.concurrency_token,
       items: [{ item_code: sku, qty: '30.000' }],
@@ -314,7 +327,22 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(restored.secoes);
     assert.deepEqual(restored.secoes.pagamento.current, restored.secoes.pagamento.base);
     assert.deepEqual(restored.secoes.condicoes_gerais.current, restored.secoes.condicoes_gerais.base);
-    assert.equal(restored.secoes.prazo_producao.current.value, '5 dias');
+    assert.equal(restored.secoes.prazo_producao.current.value, 'até 7 dias úteis após confirmação do pagamento e aprovação da arte.');
+    const surchargedBefore = await managementGet(conflictingDeadlineDraft.quotation_name);
+    assert.ok(surchargedBefore);
+    assert.equal(surchargedBefore.acrescimo_percent, 30);
+    const surchargedEdit = await managementUpdate(conflictingDeadlineDraft.quotation_name, {
+      concurrency_token: surchargedBefore.concurrency_token,
+      items: [
+        { item_code: sku, qty: '30.000' },
+        { item_code: sku, qty: '30.000', rate: '10.00', manual_rate: true },
+      ],
+    });
+    assert.equal(surchargedEdit.acrescimo_percent, 30);
+    assert.equal(surchargedEdit.prazo_producao_dias, 10);
+    assert.equal(surchargedEdit.items[0].applied_unit_price, '11.70');
+    assert.equal(surchargedEdit.items[1].applied_unit_price, '10.00');
+    assert.equal(surchargedEdit.items[1].suggested_unit_price, '9.00');
     const currentBeforeUpdate = await managementGet(draft.quotation_name);
     assert.ok(currentBeforeUpdate);
     const customItemName = 'Lenço 100 x 100 cm';

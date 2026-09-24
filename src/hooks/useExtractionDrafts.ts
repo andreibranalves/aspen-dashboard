@@ -58,7 +58,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
   const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Pricing lookup ──
-  const fetchPricing = useCallback(async (draftsList: Draft[], urgent: boolean): Promise<Draft[]> => {
+  const fetchPricing = useCallback(async (draftsList: Draft[], surchargePercent: number): Promise<Draft[]> => {
     const allItems: PricingItem[] = [];
     const refs: PricingRef[] = [];
     for (let di = 0; di < draftsList.length; di++) {
@@ -74,9 +74,9 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     if (allItems.length === 0) return draftsList;
 
     try {
-      const res = await apiPost<{ success?: boolean; items?: { rate: number; item_name?: string }[] }>(
+      const res = await apiPost<{ success?: boolean; items?: { rate: number; base_rate?: number; item_name?: string }[] }>(
         '/pricing-lookup',
-        { items: allItems, urgent },
+        { items: allItems, acrescimo_percent: surchargePercent },
       );
       if (res.success === false || !Array.isArray(res.items)) return draftsList;
 
@@ -88,8 +88,10 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       for (let i = 0; i < res.items.length && i < refs.length; i++) {
         const { di, ii } = refs[i];
         const rate = Number(res.items[i].rate);
+        const baseRate = Number(res.items[i].base_rate);
         if (!next[di].edited.items[ii]._rateManual && Number.isFinite(rate) && rate > 0) {
           next[di].edited.items[ii].rate = rate;
+          next[di].edited.items[ii]._baseRate = Number.isFinite(baseRate) && baseRate > 0 ? baseRate : rate;
         }
         if (!next[di].edited.items[ii].item_name && res.items[i].item_name) {
           next[di].edited.items[ii].item_name = res.items[i].item_name;
@@ -115,7 +117,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         const currentIndex = prev.findIndex((draft) => draft.index === draftIdx);
         if (currentIndex < 0) return prev;
         const current = prev[currentIndex];
-        if (current.edited.urgente !== requested.edited.urgente) return prev;
+        if (current.edited.acrescimo_percent !== requested.edited.acrescimo_percent) return prev;
         const items = current.edited.items.map((item, itemIndex) => {
           const requestedItem = requested.edited.items[itemIndex];
           const pricedItem = priced.edited.items[itemIndex];
@@ -128,6 +130,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
           return {
             ...item,
             rate: pricedItem.rate,
+            _baseRate: pricedItem._baseRate,
             item_name: item.item_name || pricedItem.item_name,
           };
         });
@@ -243,23 +246,6 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     [],
   );
 
-  // ── Urgente toggle (updates flag then re-prices) ──
-  const handleUrgenteToggle = useCallback(
-    async (draftIdx: number, checked: boolean) => {
-      const current = draftsRef.current.find((draft) => draft.index === draftIdx);
-      if (!current) return;
-      const draft = invalidateSavedDraft(current);
-      const updated = { ...draft, edited: { ...draft.edited, urgente: checked } };
-      const requestVersion = nextPricingVersion(draftIdx);
-      setDrafts(prev => prev.map((draft) => (
-        draft.index === draftIdx ? updated : draft
-      )));
-      const priced = await fetchPricing([updated], checked);
-      applyPricingResult(draftIdx, updated, priced[0], requestVersion);
-    },
-    [applyPricingResult, fetchPricing, nextPricingVersion],
-  );
-
   // ── Draft approval / discard ──
   const approveDraft = useCallback((draftIdx: number) => {
     setDrafts(prev => {
@@ -367,7 +353,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
         ...prev,
         [draftIdx]: { term: product.sku, results: [], loading: false, open: false },
       }));
-      const priced = await fetchPricing([updated], updated.edited.urgente);
+      const priced = await fetchPricing([updated], updated.edited.acrescimo_percent);
       applyPricingResult(draftIdx, updated, priced[0], requestVersion);
     },
     [applyPricingResult, fetchPricing, nextPricingVersion],
@@ -384,7 +370,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
       if (!current) return undefined;
       const requestVersion = nextPricingVersion(draftIdx);
       const requested = { ...current, edited: { ...current.edited, items: current.edited.items.map((item) => ({ ...item })) } };
-      const priced = await fetchPricing([requested], requested.edited.urgente);
+      const priced = await fetchPricing([requested], requested.edited.acrescimo_percent);
       applyPricingResult(draftIdx, requested, priced[0], requestVersion);
       return priced[0];
     },
@@ -393,7 +379,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
 
   // ── Helper: build draft objects from extracted orders ──
   const buildDraftsFromOrders = useCallback(
-    (orders: Record<string, unknown>[], prazoVal: string, templateKey = ''): Draft[] => {
+    (orders: Record<string, unknown>[], templateKey = ''): Draft[] => {
       return orders.map((order, i) => ({
         index: i,
         original: { ...order },
@@ -402,7 +388,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
           empresa: String(order.empresa || order.company || ''),
           email: String(order.email || ''),
           telefone: String(order.telefone || ''),
-          urgente: Boolean(order.urgente || false),
+          acrescimo_percent: 0,
           origem: normalizeLeadSource(order.origem) || DEFAULT_LEAD_SOURCE,
           cnpj: normalizeCnpj(order.cnpj || ''),
           endereco: normalizeAddress(order.endereco),
@@ -417,7 +403,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
               ? (it as Record<string, unknown>).item_name as string
               : undefined,
           })),
-          prazo_producao: prazoVal || String(order.prazo_producao || order.prazo || ''),
+          prazo_pedido: typeof order.prazo_pedido === 'string' && order.prazo_pedido.trim() ? order.prazo_pedido.trim() : undefined,
           pagamento: typeof order.pagamento === 'string' ? order.pagamento : undefined,
           entrega: typeof order.entrega === 'string' ? order.entrega : undefined,
           observacoes: typeof order.observacoes === 'string' ? order.observacoes : undefined,
@@ -451,7 +437,6 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
     updateDraftField,
     updateDraftSystemField,
     updateDraftAddressField,
-    handleUrgenteToggle,
     // Approval
     approveDraft,
     discardDraft,

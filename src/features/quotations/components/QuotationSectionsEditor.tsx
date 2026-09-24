@@ -125,20 +125,6 @@ export function QuotationSectionsEditor<T extends EditorSections>({
                 />
               </label>
             )}
-            {key === 'prazo_producao' && (
-              <label className="flex flex-col gap-1.5 text-sm text-fg">
-                <span className="font-medium">
-                  {mode === 'revision' ? 'Prazo desta revisão' : 'Conteúdo padrão'}
-                </span>
-                <RichTextEditor
-                  ariaLabel="Prazo de produção do orçamento"
-                  value={'value' in section ? String(section.value || '') : ''}
-                  onChange={(value) => update(key, 'value', value)}
-                  disabled={!editable}
-                  placeholder="Ex.: 15 a 20 dias úteis após a aprovação"
-                />
-              </label>
-            )}
             {mode === 'revision' && onRestore && (
               <Button
                 type="button"

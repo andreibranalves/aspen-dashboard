@@ -23,6 +23,12 @@ import { QuotationTemplateManager } from '@/features/quotations/components/Quota
 import FlowEditorTab from '@/features/communication/components/FlowEditorTab';
 import ChannelsTab from '@/features/communication/components/ChannelsTab';
 import { getSettings, saveSettings, type DashboardSettings } from '@/lib/api/settingsApi';
+import {
+  DEFAULT_PRODUCTION_DAYS,
+  MAX_PRODUCTION_DAYS,
+  isProductionDays,
+  productionDeadlineText,
+} from '@/lib/productionDeadline';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
 import { Heading } from '@/components/ui/heading';
@@ -52,6 +58,8 @@ const parseSettingsTab = parseHashOption<SettingsTab>(TABS.map((tab) => tab.id))
 
 interface SettingsForm {
   validade_dias: string;
+  prazo_producao_dias: string;
+  prazo_producao_complemento: string;
   pagamento: string;
   entrega: string;
   frete_padrao: string;
@@ -73,6 +81,8 @@ const EMPTY_SECTIONS: DashboardSettings['secoes'] = {
 
 const EMPTY_FORM: SettingsForm = {
   validade_dias: '',
+  prazo_producao_dias: '',
+  prazo_producao_complemento: '',
   pagamento: '',
   entrega: '',
   frete_padrao: '0.00',
@@ -91,6 +101,8 @@ const EMPTY_FORM: SettingsForm = {
 function toForm(settings: DashboardSettings): SettingsForm {
   return {
     validade_dias: String(settings.validade_dias),
+    prazo_producao_dias: String(settings.prazo_producao_dias ?? DEFAULT_PRODUCTION_DAYS),
+    prazo_producao_complemento: settings.prazo_producao_complemento ?? '',
     pagamento: settings.secoes.pagamento.body,
     entrega: settings.entrega,
     frete_padrao: settings.frete_padrao,
@@ -191,7 +203,12 @@ export default function SettingsPage() {
   }, [isDirty]);
 
   function updateField(
-    field: 'validade_dias' | 'entrega' | 'frete_padrao' | 'aliquota',
+    field:
+      | 'validade_dias'
+      | 'prazo_producao_dias'
+      | 'prazo_producao_complemento'
+      | 'frete_padrao'
+      | 'aliquota',
     value: string
   ) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -230,12 +247,19 @@ export default function SettingsPage() {
       setSaveError('Informe uma validade em dias entre 1 e 365.');
       return;
     }
+    const productionDays = Number(form.prazo_producao_dias);
+    if (!isProductionDays(productionDays)) {
+      setSaveError(`Informe um prazo de produção entre 1 e ${MAX_PRODUCTION_DAYS} dias úteis.`);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     setSavedMessage(null);
     try {
       const saved = await saveSettings({
         validade_dias: validadeDias,
+        prazo_producao_dias: productionDays,
+        prazo_producao_complemento: form.prazo_producao_complemento,
         entrega: form.entrega,
         frete_padrao: form.frete_padrao,
         aliquota: form.aliquota,
@@ -335,8 +359,34 @@ export default function SettingsPage() {
                           />
                         </label>
                         <label className="flex flex-col gap-1.5 text-sm text-fg">
-                          <span className="text-xs font-medium text-fg-muted">Prazo de produção</span>
-                          <Input value={form.entrega} onChange={(event) => updateField('entrega', event.target.value)} disabled={saving} aria-label="Prazo de produção padrão" />
+                          <span className="text-xs font-medium text-fg-muted">Prazo de produção (dias úteis)</span>
+                          <Input
+                            type="number"
+                            min="1"
+                            max={MAX_PRODUCTION_DAYS}
+                            step="1"
+                            value={form.prazo_producao_dias}
+                            onChange={(event) => updateField('prazo_producao_dias', event.target.value)}
+                            disabled={saving}
+                            required
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1.5 text-sm text-fg md:col-span-2">
+                          <span className="text-xs font-medium text-fg-muted">Complemento do prazo</span>
+                          <Input
+                            maxLength={300}
+                            value={form.prazo_producao_complemento}
+                            onChange={(event) => updateField('prazo_producao_complemento', event.target.value)}
+                            disabled={saving}
+                          />
+                          <span className="text-2xs text-fg-muted">
+                            {productionDeadlineText(
+                              isProductionDays(Number(form.prazo_producao_dias))
+                                ? Number(form.prazo_producao_dias)
+                                : DEFAULT_PRODUCTION_DAYS,
+                              form.prazo_producao_complemento
+                            )}
+                          </span>
                         </label>
                         <label className="flex flex-col gap-1.5 text-sm text-fg">
                           <span className="text-xs font-medium text-fg-muted">Frete padrão (R$)</span>

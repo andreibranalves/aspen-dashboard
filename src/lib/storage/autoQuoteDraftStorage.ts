@@ -5,6 +5,7 @@ import type {
   StoredAutoQuoteDraft,
 } from '../../types/domain.ts';
 import { EMPTY_ADDRESS, normalizeAddress } from '../clientMetadata.ts';
+import { isProductionDays, isSurchargePercent } from '../productionDeadline.ts';
 
 export const AUTO_QUOTE_DRAFTS_STORAGE_KEY = 'aspen_drafts';
 export const AUTO_QUOTE_DRAFTS_STORAGE_VERSION = 1;
@@ -116,8 +117,8 @@ function isStoredAutoQuoteDraft(value: unknown): value is StoredAutoQuoteDraft {
   if (!isRecord(value) || !Number.isInteger(value.index) || (value.index as number) < 0 || !isRecord(value.original)) return false;
   const edited = value.edited;
   if (!isRecord(edited) || typeof edited.nome !== 'string' || !edited.nome.trim() ||
-    typeof edited.email !== 'string' || typeof edited.telefone !== 'string' || typeof edited.urgente !== 'boolean' ||
-    typeof edited.origem !== 'string' || typeof edited.cnpj !== 'string' || typeof edited.prazo_producao !== 'string' ||
+    typeof edited.email !== 'string' || typeof edited.telefone !== 'string' ||
+    typeof edited.origem !== 'string' || typeof edited.cnpj !== 'string' ||
     !isRecord(edited.endereco) || !Array.isArray(edited.items) || edited.items.length === 0 || !edited.items.every(isDraftItem) ||
     (edited.empresa !== undefined && typeof edited.empresa !== 'string') ||
     (edited._showAddr !== undefined && typeof edited._showAddr !== 'boolean') ||
@@ -160,7 +161,7 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
     ...(typeof edited.empresa === 'string' ? { empresa: edited.empresa } : {}),
     email: edited.email as string,
     telefone: edited.telefone as string,
-    urgente: edited.urgente as boolean,
+    acrescimo_percent: isSurchargePercent(edited.acrescimo_percent) ? edited.acrescimo_percent : 0,
     origem: edited.origem as string,
     cnpj: edited.cnpj as string,
     endereco: sanitizeAddress(edited.endereco),
@@ -170,8 +171,10 @@ function sanitizeStoredAutoQuoteDraft(value: unknown): StoredAutoQuoteDraft | nu
       rate: item.rate,
       ...(typeof item.item_name === 'string' ? { item_name: item.item_name } : {}),
       ...(typeof item._rateManual === 'boolean' ? { _rateManual: item._rateManual } : {}),
+      ...(isFiniteNumber(item._baseRate) && item._baseRate > 0 ? { _baseRate: item._baseRate } : {}),
     })),
-    prazo_producao: edited.prazo_producao as string,
+    ...(isProductionDays(edited.prazo_producao_dias) ? { prazo_producao_dias: edited.prazo_producao_dias } : {}),
+    ...(optionalBoundedString(edited.prazo_pedido, 300) ? { prazo_pedido: optionalBoundedString(edited.prazo_pedido, 300) } : {}),
     ...(optionalString(edited.pagamento) ? { pagamento: edited.pagamento as string } : {}),
     ...(optionalString(edited.entrega) ? { entrega: edited.entrega as string } : {}),
     ...(optionalString(edited.observacoes) ? { observacoes: edited.observacoes as string } : {}),

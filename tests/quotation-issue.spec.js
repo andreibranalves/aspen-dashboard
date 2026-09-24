@@ -525,7 +525,7 @@ test('bloqueia save, revisão e emissão manual enquanto o repricing de quantida
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
 });
 
-test('mantém somente o repricing mais novo em alterações manuais sobrepostas com mesma urgência @quotations @critical', async ({ page }) => {
+test('mantém somente o repricing mais novo em alterações manuais sobrepostas com mesmo acréscimo @quotations @critical', async ({ page }) => {
   let releaseFirst;
   let releaseSecond;
   const first = new Promise((resolve) => { releaseFirst = resolve; });
@@ -544,7 +544,7 @@ test('mantém somente o repricing mais novo em alterações manuais sobrepostas 
   await page.getByLabel('Quantidade de SKU-1').fill('3.000');
   await expect.poll(() => pricingRequests.length).toBe(2);
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeDisabled();
-  expect(pricingRequests.map((request) => request.postDataJSON().urgent)).toEqual([false, false]);
+  expect(pricingRequests.map((request) => request.postDataJSON().acrescimo_percent)).toEqual([0, 0]);
   expect(pricingRequests.map((request) => request.postDataJSON().items[0].qty)).toEqual([3, 3]);
   const firstResponse = page.waitForResponse((response) => response.url().includes('/api/pricing-lookup') && response.request().method() === 'POST');
   releaseFirst();
@@ -558,10 +558,10 @@ test('mantém somente o repricing mais novo em alterações manuais sobrepostas 
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await expect(page).toHaveURL(/#\/quotations\/q-1$/);
-  expect(pricingRequests[1].postDataJSON().urgent).toBe(false);
+  expect(pricingRequests[1].postDataJSON().acrescimo_percent).toBe(0);
 });
 
-test('ignora o repricing antigo quando o mais novo termina primeiro com mesma urgência @quotations @critical', async ({ page }) => {
+test('ignora o repricing antigo quando o mais novo termina primeiro com mesmo acréscimo @quotations @critical', async ({ page }) => {
   let releaseFirst;
   let releaseSecond;
   const first = new Promise((resolve) => { releaseFirst = resolve; });
@@ -579,7 +579,7 @@ test('ignora o repricing antigo quando o mais novo termina primeiro com mesma ur
   await expect.poll(() => pricingRequests.length).toBe(1);
   await page.getByLabel('Quantidade de SKU-1').fill('3.000');
   await expect.poll(() => pricingRequests.length).toBe(2);
-  expect(pricingRequests.map((request) => request.postDataJSON().urgent)).toEqual([false, false]);
+  expect(pricingRequests.map((request) => request.postDataJSON().acrescimo_percent)).toEqual([0, 0]);
   expect(pricingRequests.map((request) => request.postDataJSON().items[0].qty)).toEqual([3, 3]);
   const secondResponse = page.waitForResponse((response) => response.url().includes('/api/pricing-lookup') && response.request().method() === 'POST');
   releaseSecond();
