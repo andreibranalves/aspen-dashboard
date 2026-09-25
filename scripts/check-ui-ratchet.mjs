@@ -17,17 +17,22 @@ const RATCHETS = [
   {
     name: '<label> cru (use Field)',
     pattern: /<label\b/g,
-    limit: 123,
+    limit: 121,
   },
   {
     name: 'valor arbitrário do Tailwind (use tokens de layout)',
     pattern: /(?<![\w:-])[\w:-]*[a-z]-\[[^\]\s]+\](?!:)/g,
-    limit: 93,
+    limit: 90,
+  },
+  {
+    name: 'eyebrow à mão (use Heading level="eyebrow")',
+    pattern: /(?<![\w:-])uppercase(?![\w-])/g,
+    limit: 14,
   },
   {
     name: 'text-xs solto (use Text ou Field)',
     pattern: /(?<![\w:-])text-xs(?![\w-])/g,
-    limit: 262,
+    limit: 260,
   },
 ];
 
