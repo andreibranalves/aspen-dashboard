@@ -87,9 +87,11 @@ test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page 
 test('shell do sketch mantém contraste na navegação da sidebar', async ({ page }) => {
   await openDashboard(page, { width: 1440, height: 900 });
 
-  await expect(page.locator('html')).toHaveClass(/dark/);
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(221, 221, 221)');
-  await expect(page.locator('.aspen-workspace')).toHaveCSS('background-color', 'rgb(13, 13, 13)');
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  await expect(html).not.toHaveClass(/dark/);
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(229, 230, 236)');
+  await expect(page.locator('.aspen-workspace').locator('..')).toHaveCSS('background-color', 'rgb(243, 244, 247)');
   await expect(page.locator('#aspen-sidebar')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expectSidebarNavigationContrast(page);
 });
@@ -106,6 +108,7 @@ test('TopBar e busca permanecem visíveis ao rolar o conteúdo da página', asyn
     element.scrollTop = element.scrollHeight;
   });
 
-  await expect(page.locator('header')).toBeInViewport();
-  await expect(page.getByRole('searchbox', { name: 'Buscar uma tela' })).toBeInViewport();
+  const search = page.getByRole('searchbox', { name: 'Buscar uma tela' });
+  await expect(page.locator('header').filter({ has: search })).toBeInViewport();
+  await expect(search).toBeInViewport();
 });
