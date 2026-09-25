@@ -283,12 +283,20 @@ slice.
 ## Approved Novo orçamento entry slice
 
 The new-entry journey uses one page at `#/novo-orcamento` with the existing
-`#/auto` and `#/manual` aliases. A segmented mode control under the header
-switches between `A partir de uma conversa` and `Preencher manualmente`; both modes share client identity, origin, address,
-items, terms, review, and summary state. Desktop uses a main column with a
-320px summary/action column for Manual and a two-panel input/result layout for
-conversation. Client and address editing use a right-side dialog with Escape,
+`#/auto` and `#/manual` aliases. A segmented mode control in the header
+switches between `Conversa` and `Manual`; both modes share client identity,
+origin, address, items, terms, review, and summary state. Manual uses a main
+column with the summary/action column (`grid-cols-main-aside` from `xl`);
+conversation uses a two-panel input/result layout from `lg`, each panel as tall
+as its content. Client and address editing use a right-side dialog with Escape,
 focus placement, and focus restoration.
+
+Below `md` both modes are fully operable: the conversation result follows the
+order (the page scrolls to it when a new draft arrives), result and manual items
+render as stacked rows with their inputs (quantity and price side by side), and
+Manual carries its total with Revisar emissão in `MobileActionBar`. Components
+that must mount only one layout use `useMediaQuery(MOBILE_MEDIA_QUERY)` instead
+of rendering both and hiding one.
 
 Auto drafts remain in the versioned `sessionStorage` envelope and Manual drafts
 remain in versioned `localStorage`; existing legacy reads and TTL behavior are
@@ -356,7 +364,7 @@ then, the sections above describe the running app.
   components; no palette cycled by index.
 - Lists adopt `StatusFilterBar` and `DataList`; details and Novo orçamento adopt
   `MobileActionBar`; long forms adopt `StickySaveBar`. Orçamentos (list and
-  detail) is the pilot and already follows this.
+  detail) and Novo orçamento already follow this.
 
 ### Content rules
 

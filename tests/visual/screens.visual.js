@@ -1,6 +1,6 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
-import { respond } from './fixtures.js';
+import { respond, respondReadOnlyPost } from './fixtures.js';
 
 const DESKTOP = { width: 1440, height: 900 };
 const MOBILE = { width: 390, height: 844 };
@@ -15,6 +15,39 @@ const SCREENS = [
   { name: 'crm', route: '/crm', mobile: true },
   { name: 'orcamento-detalhe', route: '/quotations/ORC-20260101', viewport: TALL, mobile: true },
   { name: 'novo-orcamento', route: '/novo-orcamento', viewport: TALL, mobile: true },
+  { name: 'novo-orcamento-manual', route: '/manual', heading: 'Novo orçamento', viewport: TALL, mobile: true },
+  {
+    name: 'novo-orcamento-resultado',
+    route: '/novo-orcamento',
+    heading: 'Novo orçamento',
+    viewport: TALL,
+    mobile: true,
+    region: 'Resultado da conversa',
+    // Rascunho já extraído: o card de resultado com itens.
+    session: {
+      aspen_drafts: JSON.stringify({
+        version: 1,
+        drafts: [{
+          index: 0,
+          original: {},
+          approved: false,
+          discarded: false,
+          edited: {
+            nome: 'Confecções Horizonte Ltda',
+            email: 'compras@horizonte.example',
+            telefone: '11999990001',
+            origem: 'WhatsApp',
+            cnpj: '',
+            endereco: {},
+            items: [
+              { item_code: 'CAN-100', item_name: 'Canga estampada 100x160', qty: 100, rate: 9.5 },
+              { item_code: 'LEN-040', item_name: 'Lenço de seda 40x40', qty: 30, rate: 10 },
+            ],
+          },
+        }],
+      }),
+    },
+  },
 ];
 
 /** @param {import('@playwright/test').Page} page */
@@ -22,7 +55,9 @@ async function install(page, unmocked) {
   await page.clock.setFixedTime(new Date('2026-09-15T12:00:00-03:00'));
   await page.route((url) => url.pathname.startsWith('/api/'), (route) => {
     const url = new globalThis.URL(route.request().url());
-    const response = route.request().method() === 'GET' ? respond(url) : null;
+    // Consultas POST só de leitura também têm fixture; escritas nunca.
+    const response = route.request().method() === 'GET' ? respond(url)
+      : route.request().method() === 'POST' ? respondReadOnlyPost(url) : null;
     if (response === null) unmocked.push(`${route.request().method()} ${url.pathname}`);
     const { status, body } = response === null ? { status: 404, body: {} }
       : 'status' in response && 'body' in response ? response : { status: 200, body: response };
@@ -49,11 +84,17 @@ for (const variant of variants) {
     const unmocked = [];
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript((theme) => globalThis.localStorage.setItem('aspen-theme', theme), variant.scheme);
+    if (variant.session) {
+      await page.addInitScript((entries) => {
+        for (const [key, value] of Object.entries(entries)) globalThis.sessionStorage.setItem(key, value);
+      }, variant.session);
+    }
     await page.setViewportSize(variant.viewport);
     await install(page, unmocked);
     await page.goto(`/#${variant.route}`);
     await settle(page, variant.heading);
-    await expect(page).toHaveScreenshot(`${variant.name}-${variant.suffix}.png`, { fullPage: true });
+    const target = variant.region ? page.getByRole('region', { name: variant.region }) : page;
+    await expect(target).toHaveScreenshot(`${variant.name}-${variant.suffix}.png`, variant.region ? {} : { fullPage: true });
     expect(unmocked, 'toda chamada GET da tela precisa de fixture').toEqual([]);
   });
 }

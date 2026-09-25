@@ -49,6 +49,7 @@ export default [
       'dist/**',
       'node_modules/**',
       '.worktrees/**',
+      '.claude/**',
       'api/**/*.js',
       'api/**/*.js.map',
     ],

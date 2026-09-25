@@ -228,3 +228,11 @@ export function respond(url) {
   }
   return null;
 }
+
+/** @param {URL} url Consultas POST só de leitura; `null` marca a chamada como sem fixture. */
+export function respondReadOnlyPost(url) {
+  if (url.pathname === '/api/client-matches') {
+    return { status: 'not_found', matched_client_id: null, candidates: [], total_candidates: 0, page: 1, has_more: false };
+  }
+  return null;
+}

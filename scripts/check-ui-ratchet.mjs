@@ -22,7 +22,7 @@ const RATCHETS = [
   {
     name: 'valor arbitrário do Tailwind (use tokens de layout)',
     pattern: /(?<![\w:-])[\w:-]*[a-z]-\[[^\]\s]+\](?!:)/g,
-    limit: 106,
+    limit: 105,
   },
   {
     name: 'text-xs solto (use Text ou Field)',
