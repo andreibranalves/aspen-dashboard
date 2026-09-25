@@ -1415,42 +1415,11 @@ export const VERIFY_CONVERSATION_REASON = 'Verificar conversa';
 export async function applyInboundResponseTransition(
   input: ApplyInboundResponseTransitionInput,
 ): Promise<OpportunityActionCommandResult> {
-  const { database, opportunityId, occurredAt } = input;
-  const actor = input.actor || 'system';
-  const action = await activeAction(database, opportunityId);
-  if (action?.reasonCode === INBOUND_NEEDS_RESPONSE_REASON_CODE) {
-    return {
-      actionId: action.id,
-      opportunityId,
-      state: 'active',
-      version: action.version,
-      action: rowRecord(action),
-      successor: null,
-      closed: false,
-    };
-  }
-  if (!action) {
-    throw new ActionNotFoundError('Nenhuma ação ativa para substituir pela resposta do cliente.');
-  }
-  const dueDate = calendarDateInSaoPaulo(occurredAt);
-  return completeWithSuccessor(
-    database,
-    action,
-    {
-      kind: 'review',
-      dueDate,
-      dueTime: null,
-      scheduleType: 'date_only',
-      dueAt: new Date(`${dueDate}T00:00:00-03:00`),
-      reason: 'Preciso responder',
-      reasonCode: INBOUND_NEEDS_RESPONSE_REASON_CODE,
-      origin: 'event',
-    },
-    actor,
-    'event',
+  return applyReviewReasonTransition(
+    input,
+    'Preciso responder',
+    INBOUND_NEEDS_RESPONSE_REASON_CODE,
     'Cliente respondeu',
-    occurredAt,
-    input.idFactory,
   );
 }
 
@@ -1469,6 +1438,67 @@ function reviewSchedule(
     reason,
     reasonCode,
     origin: 'event',
+  };
+}
+
+/**
+ * Oportunidade sem ação ativa: negócios anteriores às próximas ações (#239)
+ * nunca tiveram uma. O evento do cliente vira a primeira ação em vez de falhar,
+ * o que devolveria 503 ao webhook a cada nova tentativa. Uma ação suspensa
+ * ("Não contatar" ou associação pendente) continua valendo e nada é criado.
+ */
+async function startFromEvent(
+  database: ActionDatabase,
+  opportunityId: string,
+  schedule: NormalizedSchedule,
+  actor: string,
+  occurredAt: Date,
+  idFactory: () => string,
+): Promise<OpportunityActionCommandResult> {
+  const [suspended] = await database
+    .select()
+    .from(opportunityNextActions)
+    .where(
+      and(
+        eq(opportunityNextActions.opportunityId, opportunityId),
+        eq(opportunityNextActions.state, 'suspended'),
+      ),
+    )
+    .limit(1);
+  if (suspended) {
+    return {
+      actionId: suspended.id,
+      opportunityId,
+      state: 'suspended',
+      version: suspended.version,
+      action: rowRecord(suspended),
+      successor: null,
+      closed: false,
+    };
+  }
+  const [latest] = await database
+    .select({ version: opportunityNextActions.version })
+    .from(opportunityNextActions)
+    .where(eq(opportunityNextActions.opportunityId, opportunityId))
+    .orderBy(sql`${opportunityNextActions.version} DESC`)
+    .limit(1);
+  const created = await insertAction(
+    database,
+    opportunityId,
+    idFactory(),
+    schedule,
+    actor,
+    occurredAt,
+    (latest?.version || 0) + 1,
+  );
+  return {
+    actionId: created.actionId,
+    opportunityId,
+    state: 'active',
+    version: created.version,
+    action: null,
+    successor: created,
+    closed: false,
   };
 }
 
@@ -1493,8 +1523,13 @@ async function applyReviewReasonTransition(
     };
   }
   if (!action) {
-    throw new ActionNotFoundError(
-      'Nenhuma ação ativa para substituir pela revisão comercial.',
+    return startFromEvent(
+      database,
+      opportunityId,
+      reviewSchedule(occurredAt, reason, reasonCode),
+      actor,
+      occurredAt,
+      input.idFactory,
     );
   }
   return completeWithSuccessor(
