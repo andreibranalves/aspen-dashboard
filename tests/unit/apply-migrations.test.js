@@ -151,6 +151,7 @@ test('target parsing keeps no-arg as staging and rejects unknown targets', () =>
   assert.deepEqual(parseApplyArgs([]), { target: 'staging' });
   assert.deepEqual(parseApplyArgs(['--target', 'staging']), { target: 'staging' });
   assert.deepEqual(parseApplyArgs(['--target', 'production']), { target: 'production' });
+  assert.deepEqual(parseApplyArgs(['--target', 'preview']), { target: 'preview' });
   assert.equal(normalizeMigrationApplyTarget('production'), 'production');
   assert.throws(() => parseApplyArgs(['--target', 'prod']), /Alvo de apply inválido/);
   assert.throws(() => parseApplyArgs(['--target', 'PRODUCTION']), /Alvo de apply inválido/);
@@ -500,4 +501,67 @@ test('production requires the backup destination to already be a regular 0700 di
       rmSync(linkPath, { force: true });
     }
   });
+});
+
+function previewEnv() {
+  return {
+    NEON_API_KEY: 'neon-test-key',
+    PRODUCTION_DATABASE_URL: `postgresql://operator:${secret}@ep-prod-1.sa-east-1.aws.neon.tech/aspen_prod`,
+    CUTOVER_ENV_FILE: '/nonexistent/aspen-tests-cutover-env',
+  };
+}
+
+test('preview applies only to the resolved Neon branch URL, with redacted output', () => {
+  const previewUrl = `postgresql://operator:${secret}@ep-preview-2.sa-east-1.aws.neon.tech/aspen_prod?sslmode=require`;
+  let seenChildEnv;
+  const result = runMigrationApplyPipeline({
+    env: previewEnv(),
+    target: 'preview',
+    previewDatabaseUrl: previewUrl,
+    executePreflightProbe: () => { throw new Error('preview não usa serviço nomeado'); },
+    executeApply: (_cmd, _args, opts) => { seenChildEnv = opts.env; return `applied ${previewUrl}`; },
+    executeBackup: () => { throw new Error('preview não faz backup'); },
+    now: fixedNow,
+  });
+  assert.equal(result.applySucceeded, true, String(result.error));
+  assert.equal(result.backupAttempted, false);
+  assert.equal(seenChildEnv.MIGRATION_TARGET_DATABASE_URL, previewUrl);
+  assert.ok(!result.output.includes(secret));
+});
+
+test('preview refuses production, including its -pooler host, and a missing URL before apply', () => {
+  for (const previewDatabaseUrl of [
+    `postgresql://operator:${secret}@ep-prod-1.sa-east-1.aws.neon.tech/aspen_prod`,
+    `postgresql://operator:${secret}@ep-prod-1-pooler.sa-east-1.aws.neon.tech/aspen_prod`,
+    undefined,
+  ]) {
+    let applyCalls = 0;
+    const result = runMigrationApplyPipeline({
+      env: previewEnv(),
+      target: 'preview',
+      previewDatabaseUrl,
+      executeApply: () => { applyCalls += 1; return ''; },
+      now: fixedNow,
+    });
+    assert.equal(applyCalls, 0, String(previewDatabaseUrl));
+    assert.equal(result.applySucceeded, false);
+    assert.ok(!String(result.error).includes(secret));
+  }
+});
+
+test('preview requires NEON_API_KEY and PRODUCTION_DATABASE_URL before apply', () => {
+  for (const missing of ['NEON_API_KEY', 'PRODUCTION_DATABASE_URL']) {
+    const env = previewEnv();
+    delete env[missing];
+    let applyCalls = 0;
+    const result = runMigrationApplyPipeline({
+      env,
+      target: 'preview',
+      previewDatabaseUrl: `postgresql://operator:${secret}@ep-preview-2.sa-east-1.aws.neon.tech/aspen_prod`,
+      executeApply: () => { applyCalls += 1; return ''; },
+      now: fixedNow,
+    });
+    assert.equal(applyCalls, 0, missing);
+    assert.match(String(result.error), new RegExp(missing));
+  }
 });

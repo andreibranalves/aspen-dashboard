@@ -62,6 +62,7 @@ test('contratos existem para as operações e são distintos entre si', () => {
   assert.deepEqual([...OPERATIONS].sort(), [
     'backup-restore',
     'migration',
+    'migration-preview',
     'migration-production',
     'preview-e2e',
     'runtime',

@@ -21,6 +21,21 @@ test('database refuses Vercel Preview disguised as production before opening a p
   }
 });
 
+test('database refuses a Preview pointed at production through the Neon pooler host', () => {
+  const saved = { ...process.env };
+  try {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.APP_ENV = 'preview';
+    process.env.EXTERNAL_WRITES_ENABLED = '0';
+    process.env.PRODUCTION_DATABASE_URL = 'postgresql://owner:x@ep-prod-1.sa-east-1.aws.neon.tech/neondb';
+    process.env.DATABASE_URL = 'postgresql://owner:x@ep-prod-1-pooler.sa-east-1.aws.neon.tech/neondb';
+    assert.throws(() => getDatabase(), /Preview não pode usar o banco de produção/);
+  } finally {
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, saved);
+  }
+});
+
 test('HTTP errors require the explicit public marker, not just a vendor status', () => {
   assert.equal(isPublicHttpError(createHttpError(409, 'Conflito.')), true);
   assert.equal(isPublicHttpError(Object.assign(new Error('secret'), { statusCode: 400 })), false);

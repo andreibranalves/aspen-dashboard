@@ -70,14 +70,28 @@ npm run migrate:apply
 
 Pare na primeira falha.
 
-Quando uma jornada mutável precisar de ensaio, siga o E2E controlado de
-[Preview isolado](./preview-isolation.md). O alvo de migration selecionado
-continua sendo o contrato existente; não crie alias Preview, dual-read ou
-dual-write para migrations.
-
-`node scripts/cutover-env-status.mjs migration` (ou `migration-production`) confere os nomes exigidos sem mostrar valores; `migrate:apply` repete essa checagem no preflight.
+`node scripts/cutover-env-status.mjs migration` (ou `migration-preview`, `migration-production`) confere os nomes exigidos sem mostrar valores; `migrate:apply` repete essa checagem no preflight.
 
 Nunca execute o apply usando somente `DATABASE_URL`.
+
+## Gate preview
+
+O alvo `preview` é a branch Neon `preview/<branch-git>` que a integração Vercel
++ Neon cria para o Preview do PR: uma cópia descartável da produção. A
+autorização para aplicar segue a seção Autorizações de `AGENTS.md`. O shell
+operacional fornece `NEON_API_KEY` e `PRODUCTION_DATABASE_URL`.
+
+Na branch Git do PR, com o Preview já criado:
+
+```bash
+npm run check:db-migrations
+npm run migrate:apply -- --target preview
+```
+
+O comando busca a branch pela API do Neon e recusa branch padrão, primária ou
+protegida. Pede uma URL direta (sem pooler) com o database e a role de
+produção, recusa essa URL se ela identificar produção e só então aplica. Não há
+backup: a branch é recriável a partir de `main`.
 
 ## Gate produção
 
@@ -100,7 +114,7 @@ npm run migrate:apply -- --target production
 O comando prova a identidade do alvo e então executa o backup existente (`npm run db:backup`) antes de abrir o apply. Se a prova de identidade ou o backup falhar, o apply não é chamado. A migration permanece forward-only; não existe rollback automático.
 
 Sem argumento, `npm run migrate:apply` mantém exatamente o fluxo técnico de
-`staging`. Alvos diferentes de `staging` ou `production` são recusados.
+`staging`. Alvos diferentes de `staging`, `preview` ou `production` são recusados.
 
 ## Evidência
 

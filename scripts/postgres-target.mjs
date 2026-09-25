@@ -26,8 +26,13 @@ export function parsePostgresUrl(raw, name = 'DATABASE_URL') {
   };
 }
 
+// No Neon, `ep-x` (direto) e `ep-x-pooler` são o mesmo banco.
+function canonicalPostgresHost(host) {
+  return host.toLowerCase().replace(/^([^.]+)-pooler\./, '$1.');
+}
+
 export function postgresIdentity(connection) {
-  return [connection.host.toLowerCase(), connection.port, connection.database].join('|');
+  return [canonicalPostgresHost(connection.host), connection.port, connection.database].join('|');
 }
 
 export function assertProtectedFile(filepath, label) {

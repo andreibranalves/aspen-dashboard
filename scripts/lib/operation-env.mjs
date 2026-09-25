@@ -62,6 +62,12 @@ export const OPERATION_ENV_CONTRACTS = Object.freeze({
     anyOf: [['CUTOVER_BACKUP_DIR', 'BACKUP_DIR']],
     paths: { PGSERVICEFILE: true, PGPASSFILE: true },
   },
+  'migration-preview': {
+    description: 'Apply operacional de migrations na branch Neon de Preview do próprio PR.',
+    keys: ['NEON_API_KEY', 'PRODUCTION_DATABASE_URL'],
+    anyOf: [],
+    paths: {},
+  },
   'preview-e2e': {
     description: 'E2E controlado contra um deployment Preview.',
     keys: [
