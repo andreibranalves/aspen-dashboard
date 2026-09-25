@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { apiGet, apiPut } from '@/lib/api/api';
-import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
+import { formatBRL, formatDate, capitalize, formatPercent } from '@/lib/formatting/formatters';
 import ErrorState from '@/components/shared/ErrorState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -123,7 +123,7 @@ function formatCompactBRL(value: number): string {
 function formatComparison(value: number | null, noOrders = false): string {
   if (noOrders || value === null) return 'Comparação indisponível';
   if (value === 0) return 'Sem variação';
-  return `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}% vs. período anterior`;
+  return `${formatPercent(value, { signed: true })} vs. período anterior`;
 }
 
 function formatExpense(value: number): string {
@@ -174,13 +174,13 @@ function RevenueChart({
   return (
     <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
       <div
-        className="relative flex h-56 min-w-(--chart-min-w) items-end justify-around gap-2 border-b border-orange-ink/20 px-3 pb-5 pl-9 pt-7"
+        className="relative flex h-56 min-w-(--chart-min-w) items-end justify-around gap-2 border-b border-line px-3 pb-5 pl-9 pt-7"
         style={{ '--chart-min-w': `${Math.max(180, series.items.length * 42 + 40)}px` } as CSSProperties}
       >
-        <span className="pointer-events-none absolute left-1 top-3 text-xs text-orange-ink/70">
+        <span className="pointer-events-none absolute left-1 top-3 text-xs text-fg-muted">
           {formatCompactBRL(maxRevenue)}
         </span>
-        <span className="pointer-events-none absolute bottom-5 left-1 text-xs text-orange-ink/70">
+        <span className="pointer-events-none absolute bottom-5 left-1 text-xs text-fg-muted">
           R$ 0
         </span>
         {series.items.map((day) => {
@@ -190,7 +190,7 @@ function RevenueChart({
               key={day.date}
               className="flex min-w-6 max-w-16 flex-1 flex-col items-center justify-end gap-1"
             >
-              <span className="text-xs tabular-nums text-orange-ink/75">
+              <span className="text-xs tabular-nums text-fg-muted">
                 {formatCompactBRL(day.revenue)}
               </span>
               <div className="flex h-36 w-full items-end">
@@ -200,7 +200,7 @@ function RevenueChart({
                   aria-hidden="true"
                 />
               </div>
-              <span className="whitespace-nowrap text-xs text-orange-ink/75">
+              <span className="whitespace-nowrap text-xs text-fg-muted">
                 {formatChartDate(day.date)}
               </span>
             </div>
@@ -223,7 +223,7 @@ function RevenueChart({
 function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
   const noOrders = summary.orders_count === 0;
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <MetricCard
         label="Receita"
         value={formatCompactBRL(summary.total_revenue)}
@@ -262,13 +262,18 @@ function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
     return stop;
   });
   return (
-    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-sage p-5 text-sage-ink" aria-label="Origem dos pedidos">
+    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-surface p-5" aria-label="Origem dos pedidos">
       <Heading as="h2" level="subsection">Origem dos pedidos</Heading>
-      <div className={`mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full ${total > 0 ? 'bg-(image:--pie)' : 'bg-light-sage'}`} style={total > 0 ? { '--pie': `conic-gradient(${stops.join(', ')})` } as CSSProperties : undefined} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
-        <span className="grid size-24 place-content-center rounded-full bg-sage text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
-      </div>
-      <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-2xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${swatches[index % swatches.length]}`} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
-      {data.ordersBySource === null && <p className="mt-auto text-xs">Origem indisponível.</p>}
+      {/* Sem dados de origem não há anel: um "0 pedidos" contradiria o total ao lado. */}
+      {data.ordersBySource !== null && (
+        <>
+        <div className={`mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full ${total > 0 ? 'bg-(image:--pie)' : 'bg-surface-subtle'}`} style={total > 0 ? { '--pie': `conic-gradient(${stops.join(', ')})` } as CSSProperties : undefined} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
+          <span className="grid size-24 place-content-center rounded-full bg-surface text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
+        </div>
+        <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-2xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${swatches[index % swatches.length]}`} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
+        </>
+      )}
+      {data.ordersBySource === null && <p className="pt-4 text-sm text-fg-muted">Origem indisponível.</p>}
     </section>
   );
 }
@@ -293,13 +298,11 @@ function OverviewPanel({
       aria-labelledby="results-tab-overview"
       className="space-y-4"
     >
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.97fr)_repeat(3,minmax(0,1fr))]">
-        <div className="xl:row-span-2">
-          <SummaryMetrics summary={summary} />
-        </div>
+      <SummaryMetrics summary={summary} />
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <OrderSourcesPanel data={data} />
         <section
-          className="min-h-[340px] min-w-0 rounded-card border border-border-subtle bg-orange p-5 text-orange-ink"
+          className="min-h-[340px] min-w-0 rounded-card bg-surface p-5"
           aria-labelledby="revenue-chart-title"
         >
           <Heading level="section" id="revenue-chart-title">
@@ -310,10 +313,8 @@ function OverviewPanel({
           </div>
         </section>
         <FeaturedCustomersPanel data={data} onCustomers={onCustomers} />
-        <div className="min-w-0 xl:col-span-3 xl:col-start-2">
-          <RecentQuotationsPanel data={recentQuotations} onNavigate={onNavigate} />
-        </div>
       </div>
+      <RecentQuotationsPanel data={recentQuotations} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -402,7 +403,7 @@ function FeaturedCustomersPanel({
   const customers = data.topCustomers;
   return (
     <section
-      className="min-h-[340px] rounded-card border border-border-subtle bg-taupe p-5 text-taupe-ink [&_p]:text-taupe-ink/75"
+      className="min-h-[340px] rounded-card bg-surface p-5"
       aria-labelledby="featured-customers-title"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -484,10 +485,10 @@ function RankingPanel({ kind, rows, omitted, summary }: {
             <Heading level="section">Receita por {title}</Heading>
             <p className="mt-1 text-xs text-fg-muted">Distribuição da receita dos pedidos</p>
             <div className="mt-8 space-y-6">
-              {rows.slice(0, 6).map((row, index) => (
+              {rows.slice(0, 6).map((row) => (
                 <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-2xs">
                   <span className="truncate text-fg-muted" title={row.name}>{row.name}</span>
-                  <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={`h-full w-(--bar-w) ${['bg-sage', 'bg-orange', 'bg-taupe'][index % 3]}`} style={{ '--bar-w': `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%` } as CSSProperties} /></div>
+                  <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={`h-full w-(--bar-w) bg-chart-one`} style={{ '--bar-w': `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%` } as CSSProperties} /></div>
                   <span className="tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
                 </div>
               ))}
@@ -497,7 +498,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
             <Heading level="section">{product ? 'Participação no catálogo' : 'Clientes por receita'}</Heading>
             <Table className="mt-6 min-w-[390px]">
               <TableHeader><TableRow><TableHead>{product ? 'Produto' : 'Cliente'}</TableHead><TableHead className="text-right">Receita</TableHead><TableHead className="text-right">Participação</TableHead></TableRow></TableHeader>
-              <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? `${(row.revenue / revenue * 100).toFixed(1).replace('.', ',')}%` : '—'}</TableCell></TableRow>)}</TableBody>
+              <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? formatPercent((row.revenue / revenue) * 100) : '—'}</TableCell></TableRow>)}</TableBody>
             </Table>
             <OmittedRowsNote omitted={omitted} />
           </section>
@@ -729,23 +730,25 @@ function LoadingResults({
       <PageHeader title="Resultados" actions={<DashboardPeriodAction period={period} onChange={onPeriodChange} />} />
       <DashboardTabs tab={tab} onChange={onTabChange} />
       {tab === 'overview' ? (
-        <div id="results-panel-overview" role="tabpanel" aria-labelledby="results-tab-overview" aria-busy="true" className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.97fr)_repeat(3,minmax(0,1fr))]">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:row-span-2 xl:grid-cols-1">
-            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px] rounded-card" />)}
+        <div id="results-panel-overview" role="tabpanel" aria-labelledby="results-tab-overview" aria-busy="true" className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px]" variant="card" />)}
           </div>
-          <Skeleton className="h-[340px] rounded-card" />
-          <Skeleton className="h-[340px] rounded-card" />
-          <Skeleton className="h-[340px] rounded-card" />
-          <Skeleton className="h-[340px] rounded-card xl:col-span-3 xl:col-start-2" />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Skeleton className="h-[340px]" variant="card" />
+            <Skeleton className="h-[340px]" variant="card" />
+            <Skeleton className="h-[340px]" variant="card" />
+          </div>
+          <Skeleton className="h-[340px]" variant="card" />
         </div>
       ) : (
         <div id={`results-panel-${tab}`} role="tabpanel" aria-labelledby={`results-tab-${tab}`} aria-busy="true" className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px] rounded-card" />)}
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px]" variant="card" />)}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Skeleton className="h-[360px] rounded-card" />
-            <Skeleton className="h-[360px] rounded-card" />
+            <Skeleton className="h-[360px]" variant="card" />
+            <Skeleton className="h-[360px]" variant="card" />
           </div>
         </div>
       )}

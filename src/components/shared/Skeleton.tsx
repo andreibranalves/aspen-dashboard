@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils';
 export interface SkeletonProps extends HTMLAttributes<HTMLElement> {
   /** Elemento HTML a ser renderizado. */
   as?: ElementType;
-  /** Forma do skeleton. */
-  variant?: 'rect' | 'circle' | 'text';
+  /** Forma do skeleton: rect imita controles; card, cards e painéis. */
+  variant?: 'rect' | 'card' | 'circle' | 'text';
 }
 
 export default function Skeleton({
@@ -22,7 +22,9 @@ export default function Skeleton({
       ? 'rounded-full'
       : variant === 'text'
         ? 'skeleton-text'
-        : 'rounded-control';
+        : variant === 'card'
+          ? 'rounded-card'
+          : 'rounded-control';
 
   return (
     <Component

@@ -8,6 +8,7 @@ import {
   type ClipboardEvent,
 } from 'react';
 import {
+  ChevronDown,
   Loader2,
   ClipboardList,
   MapPin,
@@ -119,6 +120,10 @@ import {
 } from '@/features/quotations/creationRequest';
 import { Heading } from '@/components/ui/heading';
 import { fetchAtendimentoQuoteDraft, type AtendimentoQuoteDraft } from '@/lib/api/atendimentoQuoteDraftApi';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
+import { Field } from '@/components/ui/field';
+import { Text } from '@/components/ui/text';
+import MobileActionBar from '@/components/shared/MobileActionBar';
 
 export type NewQuotationMode = 'conversation' | 'manual';
 
@@ -639,6 +644,16 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
   const activeDrafts = useMemo(() => drafts.filter((draft) => !draft.discarded), [drafts]);
   const activeDraft = activeDrafts.find((draft) => draft.index === activeDraftIndex) || null;
+  // No celular o Resultado fica abaixo do pedido: ao chegar um novo rascunho, a tela desce até ele.
+  const compactLayout = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const resultSectionRef = useRef<HTMLElement>(null);
+  const previousDraftCount = useRef(activeDrafts.length);
+  useEffect(() => {
+    if (compactLayout && activeDrafts.length > previousDraftCount.current) {
+      resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    previousDraftCount.current = activeDrafts.length;
+  }, [activeDrafts.length, compactLayout]);
   // Identity resolution for every unsaved automatic card. Frozen while a save
   // or issue is in flight so a pending response cannot change the payload that
   // was already dispatched.
@@ -2041,8 +2056,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             variant="segmented"
             className="!mt-0"
             items={[
-              { value: 'conversation', label: 'A partir de uma conversa', icon: MessagesSquare, disabled: pricingPending },
-              { value: 'manual', label: 'Preencher manualmente', icon: PencilLine, disabled: pricingPending },
+              { value: 'conversation', label: 'Conversa', icon: MessagesSquare, disabled: pricingPending },
+              { value: 'manual', label: 'Manual', icon: PencilLine, disabled: pricingPending },
             ]}
           />
         }
@@ -2095,7 +2110,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 xl:flex-1 xl:grid-cols-2 xl:items-stretch">
+        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 lg:grid-cols-2">
           <section aria-label="Conversa" className="min-w-0 space-y-3 rounded-card border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -2103,7 +2118,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 <Heading level="section">Pedido do cliente</Heading>
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
-                <Settings size={14} /> Gerenciar modelos
+                <Settings size={14} /> <span className="max-sm:sr-only">Gerenciar modelos</span>
               </Button>
             </div>
             {incomingQuoteDraft && (
@@ -2163,7 +2178,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             </div>
           </section>
 
-          <section aria-label="Resultado da conversa" className="flex min-h-0 min-w-0 flex-col rounded-card border border-line bg-surface p-5 md:p-6 xl:col-start-2 xl:row-start-1">
+          <section ref={resultSectionRef} aria-label="Resultado da conversa" className="flex min-h-0 min-w-0 scroll-mt-4 flex-col rounded-card border border-line bg-surface p-5 md:p-6 lg:col-start-2 lg:row-start-1">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="grid size-7 shrink-0 place-items-center rounded-control bg-raised text-xs text-fg-muted">02</span>
@@ -2189,7 +2204,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 icon={ClipboardList}
                 title="Nenhum orçamento na fila"
                 description="Cole um pedido e extraia os dados para preencher a fila."
-                className="min-h-0 flex-1 rounded-none bg-transparent py-6"
+                variant="bare"
+                className="min-h-48 flex-1"
               />
             )}
             {activeDraft && (
@@ -2300,7 +2316,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
           </section>
         </div>
       ) : (
-        <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="!mt-3 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="!mt-3 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-main-aside">
           <div className="min-w-0 space-y-5">
             <section aria-label="Cliente e demanda" className="rounded-card border border-line bg-surface p-5 md:p-6">
               <Heading level="section">Cliente e demanda</Heading>
@@ -2308,7 +2324,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Cliente
                   <Button type="button" variant="outline" className="flex w-full justify-between text-left font-normal" onClick={() => openClientPanel('existing')} disabled={manualActionsBlocked} aria-label="Selecionar cliente">
-                    <span className="truncate">{manual.clientType === 'existing' && manual.selectedClient ? manual.selectedClient.nome : manual.newClient.nome || 'Selecionar cliente…'}</span><span aria-hidden="true">⌄</span>
+                    <span className="truncate">{manual.clientType === 'existing' && manual.selectedClient ? manual.selectedClient.nome : manual.newClient.nome || 'Selecionar cliente…'}</span><ChevronDown size={14} className="shrink-0 text-fg-muted" aria-hidden="true" />
                   </Button>
                 </div>
                 <label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Oportunidade / demanda
@@ -2338,7 +2354,27 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <Heading level="subsection" className="mt-5 flex items-center gap-2"><span className="rounded-control bg-surface-subtle px-2 py-1 text-xs text-fg-muted">02</span> Monte a proposta</Heading>
               <div className="relative mt-4"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" /><Input aria-label="Buscar produto para adicionar ao orçamento" className="pl-9" value={productSearch} disabled={manualActionsBlocked} onChange={onProductSearch} placeholder="Buscar SKU ou nome…" />{productSearching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />}</div>
               {productResults.length > 0 && <div className="mt-2 divide-y divide-border overflow-hidden rounded-control border border-line">{productResults.map((product) => <div key={product.sku} className="flex items-center justify-between gap-3 p-3"><span className="min-w-0 truncate text-sm"><span className="font-mono text-primary">{product.sku}</span> · {product.nome}</span><div className="flex shrink-0 items-center gap-2">{isUnpricedProduct(product) && <span className="text-xs text-fg-muted">Preço indisponível</span>}<Button type="button" size="sm" aria-label={`Adicionar ${product.sku} ao orçamento`} onClick={() => void addProduct(product)} disabled={manualActionsBlocked || Boolean(addingSku) || isUnpricedProduct(product)}>{addingSku === product.sku ? 'Adicionando…' : 'Adicionar'}</Button></div></div>)}</div>}
-              {manual.items.length === 0 ? <div className="mt-4 rounded-control border border-dashed border-line px-4 py-10 text-center text-sm text-fg-muted">Nenhum produto na tabela</div> : <div className="mt-4"><Table className="min-w-[620px] text-sm"><TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-28 text-right">Quantidade</TableHead><TableHead className="w-40 text-right">Unitário</TableHead><TableHead className="w-32 text-right">Total</TableHead><TableHead className="w-10" /></TableRow></TableHeader><TableBody>{manual.items.map((item) => <TableRow key={item._key}><TableCell><span className="font-mono text-xs text-primary">{item.sku}</span><p className="text-sm font-medium text-fg">{item.nome}</p>{item._rateManual && <span className="text-2xs text-warning">preço manual</span>}</TableCell><TableCell className="text-right"><Input type="number" min="0.001" step="0.001" className="ml-auto w-24 text-right" aria-label={`Quantidade de ${item.sku}`} value={item.qty} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'qty', event.target.value)} /></TableCell><TableCell className="text-right"><div className="flex items-center justify-end gap-1"><Input type="number" min="0" step="0.01" className="w-32 text-right" aria-label={`Preço unitário de ${item.sku}`} value={item.rate} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'rate', event.target.value)} />{item._rateManual && <Button type="button" variant="ghost-muted" size="icon" aria-label={`Recalcular preço de ${item.sku}`} onClick={() => void resetManualRate(item._key)} disabled={manualActionsBlocked}><RotateCcw size={14} /></Button>}</div></TableCell><TableCell className="text-right font-medium tabular-nums">{formatBRL(item.qty * item.rate)}</TableCell><TableCell className="text-right"><Button type="button" variant="ghost-muted-destructive" size="icon" aria-label={`Remover ${item.sku}`} disabled={manualActionsBlocked} onClick={() => { if (!manualActionsBlocked) setManual((current) => ({ ...current, items: current.items.filter((candidate) => candidate._key !== item._key) })); }}><Trash2 size={14} /></Button></TableCell></TableRow>)}</TableBody></Table></div>}
+              {manual.items.length === 0 ? <div className="mt-4 rounded-control border border-dashed border-line px-4 py-10 text-center text-sm text-fg-muted">Nenhum produto na tabela</div> : <div className="mt-4">{compactLayout ? <ul aria-label="Produtos do orçamento" className="divide-y divide-line">{manual.items.map((item) => (
+                <li key={item._key} className="flex flex-col gap-2 py-3">
+                  <div className="flex items-start gap-2">
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <Text variant="title">{item.nome}</Text>
+                      <Text variant="meta"><span className="font-mono">{item.sku}</span>{item._rateManual && ' · preço manual'}</Text>
+                    </div>
+                    <Button type="button" variant="ghost-muted-destructive" size="icon" aria-label={`Remover ${item.sku}`} disabled={manualActionsBlocked} onClick={() => { if (!manualActionsBlocked) setManual((current) => ({ ...current, items: current.items.filter((candidate) => candidate._key !== item._key) })); }}><Trash2 size={14} /></Button>
+                  </div>
+                  <div className="grid grid-cols-2 items-end gap-2">
+                    <Field label="Quantidade"><Input type="number" min="0.001" step="0.001" inputMode="decimal" aria-label={`Quantidade de ${item.sku}`} value={item.qty} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'qty', event.target.value)} /></Field>
+                    <Field label="Unitário">
+                      <div className="flex items-center gap-1">
+                        <Input type="number" min="0" step="0.01" inputMode="decimal" aria-label={`Preço unitário de ${item.sku}`} value={item.rate} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'rate', event.target.value)} />
+                        {item._rateManual && <Button type="button" variant="ghost-muted" size="icon" aria-label={`Recalcular preço de ${item.sku}`} onClick={() => void resetManualRate(item._key)} disabled={manualActionsBlocked}><RotateCcw size={14} /></Button>}
+                      </div>
+                    </Field>
+                  </div>
+                  <div className="flex justify-between gap-3"><Text variant="meta">Total do item</Text><Text variant="value">{formatBRL(item.qty * item.rate)}</Text></div>
+                </li>
+              ))}</ul> : <Table className="min-w-[620px] text-sm"><TableHeader><TableRow><TableHead>Produto</TableHead><TableHead className="w-28 text-right">Quantidade</TableHead><TableHead className="w-40 text-right">Unitário</TableHead><TableHead className="w-32 text-right">Total</TableHead><TableHead className="w-10" /></TableRow></TableHeader><TableBody>{manual.items.map((item) => <TableRow key={item._key}><TableCell><span className="font-mono text-xs text-primary">{item.sku}</span><p className="text-sm font-medium text-fg">{item.nome}</p>{item._rateManual && <span className="text-2xs text-warning">preço manual</span>}</TableCell><TableCell className="text-right"><Input type="number" min="0.001" step="0.001" className="ml-auto w-24 text-right" aria-label={`Quantidade de ${item.sku}`} value={item.qty} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'qty', event.target.value)} /></TableCell><TableCell className="text-right"><div className="flex items-center justify-end gap-1"><Input type="number" min="0" step="0.01" className="w-32 text-right" aria-label={`Preço unitário de ${item.sku}`} value={item.rate} disabled={manualActionsBlocked} onChange={(event) => updateManualItem(item._key, 'rate', event.target.value)} />{item._rateManual && <Button type="button" variant="ghost-muted" size="icon" aria-label={`Recalcular preço de ${item.sku}`} onClick={() => void resetManualRate(item._key)} disabled={manualActionsBlocked}><RotateCcw size={14} /></Button>}</div></TableCell><TableCell className="text-right font-medium tabular-nums">{formatBRL(item.qty * item.rate)}</TableCell><TableCell className="text-right"><Button type="button" variant="ghost-muted-destructive" size="icon" aria-label={`Remover ${item.sku}`} disabled={manualActionsBlocked} onClick={() => { if (!manualActionsBlocked) setManual((current) => ({ ...current, items: current.items.filter((candidate) => candidate._key !== item._key) })); }}><Trash2 size={14} /></Button></TableCell></TableRow>)}</TableBody></Table>}</div>}
             </section>
 
             <section aria-label="Condições do orçamento" className="rounded-card border border-line bg-surface p-5 md:p-6">
@@ -2364,6 +2400,13 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
             {issueErrorByDraft[manualActionDraftIndex] && <InlineAlert className="mt-4">{issueErrorByDraft[manualActionDraftIndex]}</InlineAlert>}
             <div className="mt-7 space-y-2"><Button type="button" variant="outline" className="w-full" disabled={!manualCanSubmit || manualIssuing || liveDraftOperation || Boolean(savingDraft[manualActionDraftIndex])} onClick={() => void handleManualSave()}>{savingDraft[manualActionDraftIndex] ? 'Salvando…' : 'Salvar rascunho'}</Button><Button type="button" variant="success" className="w-full" disabled={!manualCanSubmit || manualIssuing || liveDraftOperation} onClick={handleManualReview}>Revisar emissão</Button><Button type="button" variant="ghost" aria-label="Emitir orçamento" className="w-full" disabled={!manualCanSubmit || manualIssueBlocked} onClick={handleManualIssue}>{manualIssuing ? 'Emitindo…' : 'Emitir orçamento'}</Button></div>
           </aside>
+          <MobileActionBar label="Emissão do orçamento">
+            <div className="flex flex-col">
+              <Text variant="caption">Total</Text>
+              <Text variant="value">{formatBRL(subtotal + (Number(manual.frete) || 0))}</Text>
+            </div>
+            <Button type="button" variant="success" disabled={!manualCanSubmit || manualIssuing || liveDraftOperation} onClick={handleManualReview}>Revisar emissão</Button>
+          </MobileActionBar>
         </div>
       )}
 

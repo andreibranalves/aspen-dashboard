@@ -7,7 +7,7 @@ export default function SkeletonKanban() {
     <div role="status" className="overflow-x-auto rounded-card" aria-busy="true" aria-label="Carregando pipeline CRM">
       <div className="flex w-max min-w-full gap-3">
         {PIPELINE.map((status) => (
-          <Skeleton key={status} className="h-[55vh] w-[13.5rem] shrink-0 rounded-card" />
+          <Skeleton key={status} className="h-[55vh] w-[13.5rem] shrink-0" variant="card" />
         ))}
       </div>
     </div>

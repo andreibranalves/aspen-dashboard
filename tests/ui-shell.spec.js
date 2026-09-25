@@ -61,10 +61,11 @@ async function expectSidebarNavigationContrast(page) {
   }
 }
 
-test('sidebar mobile fecha com Escape e restaura o foco do menu', async ({ page }) => {
+test('Mais abre a sidebar no celular, fecha com Escape e restaura o foco', async ({ page }) => {
   await openDashboard(page, { width: 390, height: 844 });
 
-  const menu = page.getByRole('button', { name: 'Abrir menu' });
+  const menu = page.getByRole('navigation', { name: 'Navegação principal' }).getByRole('button', { name: 'Mais' });
+  await expect(menu).toHaveAttribute('aria-current', 'page');
   await menu.focus();
   await menu.click();
   await expect(page.locator('#aspen-sidebar')).toBeVisible();

@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import BottomNav from './BottomNav';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
@@ -120,15 +122,12 @@ export interface LayoutProps {
   children: ReactNode;
 }
 
-const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') return window.innerWidth < 768;
     return false;
   });
-  const [isMobile, setIsMobile] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < 768
-  );
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const [detailBreadcrumb, setDetailBreadcrumb] = useState<{
     route: string;
     label: string | null;
@@ -146,17 +145,6 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const isQuotationComposer = ['/auto', '/novo-orcamento', '/manual'].includes(routePath(route));
 
   useEffect(() => {
-    if (!window.matchMedia) return undefined;
-    const mobileMedia = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const updateMobile = () => setIsMobile(mobileMedia.matches);
-    updateMobile();
-    mobileMedia.addEventListener?.('change', updateMobile);
-    return () => {
-      mobileMedia.removeEventListener?.('change', updateMobile);
-    };
-  }, []);
-
-  useEffect(() => {
     setSidebarCollapsed(isMobile);
   }, [isMobile]);
 
@@ -165,7 +153,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   }, [isMobile, route]);
 
   return (
-    <div className="flex h-dvh min-h-0 gap-frame overflow-hidden bg-canvas md:p-frame">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-canvas md:flex-row md:gap-frame md:p-frame">
       <Sidebar
         collapsed={sidebarCollapsed}
         mobile={isMobile}
@@ -179,8 +167,6 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           <div key={routePath(route)} className={`relative min-h-full motion-safe:animate-page-enter ${isQuotationComposer ? 'flex flex-col' : ''}`}>
             <TopBar
               route={route}
-              onMenuClick={toggleSidebar}
-              sidebarOpen={!sidebarCollapsed}
               isMobile={isMobile}
               breadcrumbItems={breadcrumbItems}
               onNavigate={onNavigate}
@@ -196,6 +182,15 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           </div>
         </div>
       </div>
+      {isMobile && (
+        <BottomNav
+          currentPath={routePath(route)}
+          onNavigate={onNavigate}
+          onMore={toggleSidebar}
+          moreOpen={!sidebarCollapsed}
+          badges={{ '/sales-orders': productionAttention, '/tarefas': overdueTasks }}
+        />
+      )}
     </div>
   );
 }

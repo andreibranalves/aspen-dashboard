@@ -1,4 +1,5 @@
 import { forwardRef, type TextareaHTMLAttributes } from 'react';
+import { useFieldControl } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 const variants = {
@@ -16,19 +17,22 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 }
 
 const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, variant = 'default', ...props }, ref) => (
-    <textarea
-      ref={ref}
-      className={cn(
-        'min-h-20 w-full resize-y text-fg',
-        variants[variant],
-        'placeholder:text-fg-muted',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    />
-  ),
+  ({ className, variant = 'default', ...rest }, ref) => {
+    const props = useFieldControl(rest);
+    return (
+      <textarea
+        ref={ref}
+        className={cn(
+          'min-h-20 w-full resize-y text-fg',
+          variants[variant],
+          'placeholder:text-fg-muted',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          className
+        )}
+        {...props}
+      />
+    );
+  }
 );
 Textarea.displayName = 'Textarea';
 

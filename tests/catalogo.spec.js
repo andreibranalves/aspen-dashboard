@@ -121,6 +121,7 @@ test.describe('Catálogo — abas e superfícies @catalog @smoke', () => {
     await expect(page.getByRole('heading', { name: 'Catálogo' })).toBeVisible();
     await expect(page.getByText('CAT-001').first()).toBeVisible();
     await page.getByRole('combobox', { name: 'Filtrar produtos por status' }).selectOption('archived');
+    await page.getByRole('button', { name: 'Exportar', exact: true }).click();
     await page.getByRole('button', { name: 'Exportar produtos' }).click();
     await expect.poll(() => exportUrl).toContain('status=archived');
 

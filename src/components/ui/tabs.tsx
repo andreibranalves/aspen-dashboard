@@ -40,8 +40,8 @@ export function Tabs<T extends string>({ value, onValueChange, children, classNa
 }
 
 const listVariants = {
-  page: 'flex max-w-full gap-1 overflow-x-auto p-0.5',
-  segmented: 'inline-flex max-w-full gap-0.5 overflow-x-auto rounded-control bg-surface-subtle p-1',
+  page: 'scrollbar-none flex max-w-full gap-1 overflow-x-auto p-0.5',
+  segmented: 'scrollbar-none inline-flex max-w-full gap-0.5 overflow-x-auto rounded-control bg-surface-subtle p-1',
 } as const;
 
 const triggerVariants = {

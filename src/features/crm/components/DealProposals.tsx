@@ -40,13 +40,13 @@ export default function DealProposals({ opportunityId }: DealProposalsProps) {
     <div className="mt-2">
       <Button
         type="button"
-        variant="outline"
-        size="sm"
+        variant="link"
+        size="inline"
         aria-expanded={expanded}
         onClick={() => void load()}
       >
         {loading ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-        Propostas
+        Ver propostas
       </Button>
       {expanded && (
         <ul className="mt-2 space-y-1 rounded-control border border-line bg-surface-subtle p-3 text-xs text-fg-muted">

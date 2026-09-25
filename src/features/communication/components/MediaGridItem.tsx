@@ -3,12 +3,13 @@ import { ArrowUpRight, FileText, Image, Trash2, Video } from 'lucide-react';
 import type { MediaItem } from '@/lib/api/communicationApi';
 import { Button } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
+import { formatDecimalBR } from '@/lib/formatting/formatters';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '';
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${formatDecimalBR(bytes / 1024, 1)} KB`;
+  return `${formatDecimalBR(bytes / (1024 * 1024), 1)} MB`;
 }
 
 export interface MediaGridItemProps {

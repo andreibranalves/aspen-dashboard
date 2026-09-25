@@ -6,9 +6,44 @@
 export function formatBRL(value: string | number | null | undefined): string {
   const num = Number(value);
   if (Number.isNaN(num)) return 'R$\u00a00,00';
-  const [int, dec] = Math.abs(num).toFixed(2).split('.');
+  return `${num < 0 ? '-' : ''}R$\u00a0${formatDecimalBR(Math.abs(num))}`;
+}
+
+/** 1.234,56 \u2014 n\u00famero pt-BR sem s\u00edmbolo, para campos e tabelas. */
+export function formatDecimalBR(value: number, fractionDigits = 2): string {
+  const [int, dec] = Math.abs(value).toFixed(fractionDigits).split('.');
   const intFormatted = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${num < 0 ? '-' : ''}R$\u00a0${intFormatted},${dec}`;
+  return `${value < 0 ? '-' : ''}${intFormatted}${dec ? `,${dec}` : ''}`;
+}
+
+/**
+ * L\u00ea um n\u00famero digitado em pt-BR ("1.234,56", "1234,5") e aceita o ponto
+ * decimal quando n\u00e3o h\u00e1 v\u00edrgula e ele n\u00e3o separa milhares ("0.5", "12.90").
+ */
+export function parseDecimalBR(text: string): number | null {
+  const raw = text.replace(/[R$\s\u00a0]/g, '');
+  if (!raw) return null;
+  const thousandsOnly = !raw.includes(',') && /^-?\d{1,3}(\.\d{3})+$/.test(raw);
+  const normalized = raw.includes(',') || thousandsOnly ? raw.replace(/\./g, '').replace(',', '.') : raw;
+  if (!/^-?\d*\.?\d*$/.test(normalized) || !/\d/.test(normalized)) return null;
+  return Number(normalized);
+}
+
+/** Decimal no formato da API ("12.50"), a partir do número editado na tela. */
+export function toApiDecimal(value: number, fractionDigits = 2): string {
+  return value.toFixed(fractionDigits);
+}
+
+/** Lê o decimal da API ("12.5", "4.00"); vazio ou inválido vira null. */
+export function fromApiDecimal(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** 12,5% \u2014 com `signed`, +12,5% para varia\u00e7\u00f5es. */
+export function formatPercent(value: number, { digits = 1, signed = false } = {}): string {
+  return `${signed && value > 0 ? '+' : ''}${formatDecimalBR(value, digits)}%`;
 }
 
 export function normalizePhoneDigits(phone: unknown, maxDigits = 15): string {

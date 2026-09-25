@@ -318,7 +318,8 @@ test('lista oferece recuperação sem expor erro bruto @quotations @smoke', asyn
   await expect(page.getByRole('heading', { name: 'Não foi possível carregar os orçamentos' })).toBeVisible();
   await expect(page.getByText('internal database details')).toHaveCount(0);
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.getByRole('button', { name: 'ORC-RETRY-1', exact: true })).toBeVisible();
+  // A linha é um link de verdade para o detalhe.
+  await expect(page.getByRole('link', { name: 'Abrir orçamento ORC-RETRY-1', exact: true })).toBeVisible();
   expect(attempts).toBeGreaterThanOrEqual(3);
 });
 
@@ -356,7 +357,7 @@ test('lista distingue filtro sem resultado, preserva paginação e destaca o or�
   await page.goto('/#/quotations?search=sem-resultado&status=aprovado&page=2&limit=25');
   await expect(page.getByText('Nenhum orçamento encontrado')).toBeVisible();
   await page.getByRole('button', { name: 'Limpar filtros' }).click();
-  await expect(page.getByRole('button', { name: row.id, exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: `Abrir orçamento ${row.id}`, exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Aprovado', exact: true })).toBeVisible();
 
   const hash = new globalThis.URL(page.url().replace(/^.*#/, 'http://local/'));
@@ -908,7 +909,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await expect(page.getByText(id).first()).toBeVisible();
   await page.getByLabel('Buscar orçamentos').fill('Cliente');
   await expect(page.getByText(id).first()).toBeVisible();
-  await page.getByRole('button', { name: id, exact: true }).click();
+  await page.getByRole('link', { name: `Abrir orçamento ${id}`, exact: true }).click();
   await expect(page.getByText('Produto local')).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByLabel('Condição de pagamento').fill('Não persistir');

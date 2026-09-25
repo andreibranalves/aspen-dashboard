@@ -79,6 +79,9 @@ import {
 } from '@/lib/localProjections';
 import { MenuItem } from '@/components/ui/menu-item';
 import { Heading } from '@/components/ui/heading';
+import { Text } from '@/components/ui/text';
+import MobileActionBar from '@/components/shared/MobileActionBar';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
 const LEGACY_CONVERSATION_STATUS: Record<string, { label: string; badge: string }> = {
@@ -1116,6 +1119,11 @@ function CoreQuotationDetail({
     const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
   }, [data.id, data.revisionId]);
+  // No celular os itens viram linhas; só uma versão fica montada.
+  const compactItems = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const scrollToCommunication = useCallback(() => {
+    document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
   const sendIssuedQuotation = useCallback(async () => {
     if (
       !data.revisionId ||
@@ -1194,9 +1202,6 @@ function CoreQuotationDetail({
   }, []);
 
   const emailSent = data.emailSent || confirmedEmailAcceptedKey === `${data.id}:${data.revisionId}`;
-  const currentRevision = (data.revisionHistory || []).find(
-    (entry) => entry.revision === data.revision
-  );
   const displayTitle = quotationDisplayTitle(data.businessNumber);
   const issuedView = !draftEditable && !editing;
   const totalUnits = displayItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
@@ -1217,7 +1222,7 @@ function CoreQuotationDetail({
               : '';
 
   const issuedDetail = issuedView ? (
-    <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid min-w-0 gap-5 xl:grid-cols-main-aside">
       <div id="quotation-panel" className="min-w-0 space-y-5">
         <section
           aria-labelledby="issued-client-title"
@@ -1256,6 +1261,26 @@ function CoreQuotationDetail({
           </div>
           {displayItems.length > 0 ? (
             <div className="px-5 md:px-6">
+              {compactItems ? (
+              <ul aria-label="Itens do orçamento" className="divide-y divide-line pb-2">
+                {displayItems.map((item) => (
+                  <li key={item._key} className="flex flex-col gap-1 py-3">
+                    <Text variant="title">
+                      {item.nome || item.item_name || item.sku || 'Produto não informado'}
+                    </Text>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <Text variant="meta">
+                        {Number(item.qty)} × {formatBRL(item.applied_unit_price)}
+                        {item.sku && <span className="font-mono"> · {item.sku}</span>}
+                      </Text>
+                      <Text variant="value" className="shrink-0">
+                        {formatBRL(item.line_total || Number(item.qty) * Number(item.applied_unit_price))}
+                      </Text>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              ) : (
               <Table
                 density="compact"
                 edges="flush"
@@ -1296,6 +1321,7 @@ function CoreQuotationDetail({
                   ))}
                 </TableBody>
               </Table>
+              )}
             </div>
           ) : (
             <div className="px-5 pb-5 md:px-6">
@@ -1591,7 +1617,7 @@ function CoreQuotationDetail({
 
   return (
     <div ref={detailTopRef} className="space-y-5">
-      <fieldset disabled={saving} className="contents">
+      <fieldset disabled={saving} className="flex min-w-0 flex-col gap-5">
         <PageHeader
           eyebrow={draftEditable && !editing ? 'Revisar antes de emitir' : undefined}
           title={data.businessNumber || displayTitle}
@@ -1600,8 +1626,8 @@ function CoreQuotationDetail({
               <StatusBadge {...statusBadgeProps(data.status)} />
               {data.cliente && <span className="font-medium text-fg">{data.cliente}</span>}
               <span>Revisão {data.revision}</span>
-              {currentRevision?.createdAt && <span>{formatDate(currentRevision.createdAt)}</span>}
-              <span>Validade {formatDate(data.validade) || '—'}</span>
+              <span>Data {formatDate(data.data) || '—'}</span>
+              <span>Válido até {formatDate(data.validade) || '—'}</span>
               {data.expired && <span className="font-medium text-warning">Expirado</span>}
               {issuedView && (
                 <span role="status" className="text-xs font-medium text-fg-muted">
@@ -1660,6 +1686,7 @@ function CoreQuotationDetail({
                 <>
                   <Button
                     variant="outline"
+                    className="max-md:hidden"
                     disabled={saving}
                     onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}
                   >
@@ -1668,7 +1695,7 @@ function CoreQuotationDetail({
                   <Button variant="outline" disabled={saving} onClick={openPreview}>
                     Pré-visualizar
                   </Button>
-                  <Button disabled={saving} onClick={save}>
+                  <Button className="max-md:hidden" disabled={saving} onClick={save}>
                     <Save size={14} /> {saving ? 'Salvando…' : 'Salvar alterações'}
                   </Button>
                 </>
@@ -1678,6 +1705,7 @@ function CoreQuotationDetail({
                     <>
                       <Button
                         variant="outline"
+                        className="max-md:hidden"
                         onClick={() => {
                           showMessage('');
                           setEditing(true);
@@ -1687,13 +1715,14 @@ function CoreQuotationDetail({
                       </Button>
                     </>
                   ) : (
-                    <Button variant="outline" onClick={openIssuedDocument}>
+                    <Button variant="outline" className="max-md:hidden" onClick={openIssuedDocument}>
                       <FileText size={14} /> Prévia do documento
                     </Button>
                   )}
 
-                  {issuedView && data.revisionId && <Button variant="outline" disabled={lifecycleAction !== null} onClick={() => createRevision(data.revisionId!)}><Pencil size={14} />{lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Nova revisão'}</Button>}
-                  {issuedView && <Button onClick={() => document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}><Send size={14} />Preparar envio</Button>}
+                  {issuedView && data.revisionId && <Button variant="outline" className="max-md:hidden" disabled={lifecycleAction !== null} onClick={() => createRevision(data.revisionId!)}><Pencil size={14} />{lifecycleAction === 'create_revision' ? 'Criando revisão…' : 'Nova revisão'}</Button>}
+                  {/* A partir de xl o painel Comunicação fica ao lado; abaixo de md a ação vai para a barra inferior. */}
+                  {issuedView && <Button className="max-md:hidden xl:hidden" onClick={scrollToCommunication}><Send size={14} />Preparar envio</Button>}
 
                   <div className="relative">
                     <Button
@@ -1720,6 +1749,19 @@ function CoreQuotationDetail({
                         aria-label="Ações do orçamento"
                         className="absolute right-0 top-12 z-floating w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
                       >
+                        {issuedView && data.revisionId && (
+                          <MenuItem
+                            role="menuitem"
+                            className="md:hidden"
+                            disabled={lifecycleAction !== null}
+                            onClick={() => {
+                              setMenuOpen(false);
+                              createRevision(data.revisionId!);
+                            }}
+                          >
+                            <Pencil aria-hidden="true" /> Nova revisão
+                          </MenuItem>
+                        )}
                         <MenuItem
                           role="menuitem"
                           onClick={() => {
@@ -1776,7 +1818,7 @@ function CoreQuotationDetail({
             className={
               editing
                 ? 'min-w-0 space-y-5'
-                : 'grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]'
+                : 'grid min-w-0 gap-5 xl:grid-cols-main-aside'
             }
           >
             <div className="min-w-0 rounded-card border border-line bg-surface p-5 md:p-6">
@@ -2412,6 +2454,43 @@ function CoreQuotationDetail({
             )}
           </div>
         )}
+
+        <MobileActionBar label="Ações do orçamento">
+          {editing ? (
+            <>
+              <Button variant="outline" disabled={saving} onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}>
+                Cancelar
+              </Button>
+              <Button disabled={saving} onClick={save}>
+                <Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}
+              </Button>
+            </>
+          ) : draftEditable ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  showMessage('');
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={14} /> Editar
+              </Button>
+              <Button disabled={issuing || lifecycleAction !== null} onClick={() => setConfirmIssueOpen(true)}>
+                <FileText size={14} /> {issuing ? 'Emitindo…' : 'Emitir'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={openIssuedDocument}>
+                <FileText size={14} /> Prévia
+              </Button>
+              <Button onClick={scrollToCommunication}>
+                <Send size={14} /> Preparar envio
+              </Button>
+            </>
+          )}
+        </MobileActionBar>
       </fieldset>
 
       <QuotationEmailDialog

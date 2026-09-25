@@ -19,8 +19,8 @@
   --radius-badge: 6px;
   --radius-control: 11px;
   --radius-nav: 14px;
-  --radius-card: 25px;
-  --radius-shell: 31px;
+  --radius-card: 16px;
+  --radius-shell: 20px;
   --radius-full: 9999px;
   --z-index-sticky: 10;
   --z-index-nav: 30;
@@ -126,6 +126,8 @@
   --shadow-overlay: 0 24px 64px rgb(0 0 0 / 0.4);
   --shadow-floating: 0 8px 30px rgb(0 0 0 / 0.33);
   --shadow-bar: 0 -12px 24px rgb(0 0 0 / 0.08);
+  --container-aside: 21rem;
+  --container-form: 66.25rem;
   --spacing-frame: 18px;
   --spacing-workspace: 24px;
   --animate-accordion-down: accordion-down 0.2s ease-out;
@@ -175,6 +177,12 @@
   :root {
     /* Órbita dark palette. Light mode overrides only colors below. */
     color-scheme: dark;
+    /* Altura da navegação inferior do celular; barras fixas no rodapé ficam acima dela. */
+    --mobile-nav-h: 0px;
+
+    @media (max-width: 47.9375rem) {
+      --mobile-nav-h: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+    }
     --canvas: 229 229 229;
     --page: 13 13 13;
     --surface: 22 22 22;
@@ -389,6 +397,29 @@
     .skeleton-text::after {
       animation: none;
     }
+  }
+}
+
+/* Conteúdo principal + painel lateral de detalhe. */
+@utility grid-cols-main-aside {
+  grid-template-columns: minmax(0, 1fr) var(--container-aside);
+}
+
+/* Elemento encostado no rodapé do celular respeita a área segura do sistema. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Altura útil da área de trabalho no celular: tela menos TopBar, navegação inferior e respiros. */
+@utility h-workarea {
+  height: calc(100dvh - var(--mobile-nav-h) - 6.75rem);
+}
+
+/* Faixas roláveis (abas, filtros) rolam sem barra visível. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 

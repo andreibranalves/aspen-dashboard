@@ -23,7 +23,19 @@ const designScaleSyntax = [
   { selector: String.raw`TemplateElement[value.raw=/(^|\s)-?z-\d/]`, message: Z_INDEX_MESSAGE },
 ];
 
+const DECORATIVE_COLOR = String.raw`(^|\s)(bg|text|border)-(sage|orange|taupe)(-ink)?(\/\d+)?(\s|$)`;
+const DECORATIVE_COLOR_MESSAGE =
+  'Cor decorativa: use tokens semânticos (primary, success, warning…) ou chart-* em marcas de gráfico.';
+
 const featureSyntax = [
+  { selector: `Literal[value=/${DECORATIVE_COLOR}/]`, message: DECORATIVE_COLOR_MESSAGE },
+  { selector: `TemplateElement[value.raw=/${DECORATIVE_COLOR}/]`, message: DECORATIVE_COLOR_MESSAGE },
+  {
+    selector: "CallExpression[callee.property.name='toFixed']",
+    message: 'Use formatBRL, formatDecimalBR, formatPercent ou toApiDecimal de @/lib/formatting/formatters.',
+  },
+  { selector: "JSXOpeningElement[name.name='textarea']", message: 'Use Textarea de @/components/ui/textarea.' },
+  { selector: String.raw`JSXText[value=/[⌄▾▼▲►◄˅]/]`, message: 'Glifo de texto como ícone: use o ícone do lucide-react.' },
   {
     selector:
       "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(role|aria-expanded|aria-pressed|aria-selected|aria-current)$/]))",
@@ -49,6 +61,7 @@ export default [
       'dist/**',
       'node_modules/**',
       '.worktrees/**',
+      '.claude/**',
       'api/**/*.js',
       'api/**/*.js.map',
     ],
@@ -135,6 +148,8 @@ export default [
     plugins: {
       shadcn,
     },
+    // Composições de components/shared seguem o mesmo contrato dos primitivos.
+    settings: { shadcn: { ui: ['@/components/ui', '@/components/shared'] } },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-undef': 'error',
@@ -159,6 +174,8 @@ export default [
             { pattern: '^Input$', allow: ['layout', 'font-mono', 'font-medium', 'tracking-widest', 'pl-*', 'pr-*'] },
             { pattern: '^Textarea$', allow: ['layout', 'font-mono', 'pt-*'] },
             { pattern: '^Heading$', allow: ['layout', 'truncate', 'gap-*'] },
+            // Contêineres de página definem o ritmo vertical do conteúdo.
+            { pattern: '^(PageShell|ListPageLayout)$', allow: ['layout', 'spacing'] },
           ],
         },
       ],

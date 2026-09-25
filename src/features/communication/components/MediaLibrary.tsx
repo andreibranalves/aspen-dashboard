@@ -132,7 +132,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
               </Button>
             ) : undefined
           }
-          className="rounded-card border border-dashed border-line bg-raised py-12"
+          variant="dashed"
         />
       )}
 

@@ -16,6 +16,7 @@ import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout'
 import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
+import ExportMenu from '@/components/shared/ExportMenu';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
@@ -43,16 +44,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-
-const STATUS_LABELS: Record<string, string> = {
-  Draft: 'Rascunho',
-  'To Deliver and Bill': 'A entregar e faturar',
-  'To Bill': 'A faturar',
-  'To Deliver': 'A entregar',
-  Completed: 'Concluído',
-  Cancelled: 'Cancelado',
-  Closed: 'Fechado',
-};
+import { salesOrderStatusLabel } from '@/lib/statusLabels';
 
 interface PeriodOption {
   value: string;
@@ -76,16 +68,6 @@ const STATUSES = [
   'Completed',
   'Cancelled',
   'Closed',
-];
-const STATUS_DISPLAY = [
-  'Todos',
-  'Rascunho',
-  'A entregar e faturar',
-  'A faturar',
-  'A entregar',
-  'Concluído',
-  'Cancelado',
-  'Fechado',
 ];
 const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => option.value));
 const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
@@ -199,79 +181,23 @@ function SalesOrderExportMenu({
   status: string;
   search: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  const dismiss = useCallback((restoreFocus: boolean) => {
-    setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const frame = window.requestAnimationFrame(() => {
-      menuRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
-    });
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
-        dismiss(false);
-      }
-    };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      dismiss(true);
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [dismiss, open]);
-
   return (
-    <div className="relative w-full sm:w-auto">
-      <Button
-        ref={triggerRef}
-        type="button"
-        variant="outline"
-        className="w-full sm:w-auto"
-        aria-expanded={open}
-        aria-controls="sales-order-export-menu"
-        onClick={() => setOpen((current) => !current)}
+    <ExportMenu id="sales-order-export-menu">
+      <ExportCsvButton
+        resource="sales-orders"
+        filters={{ period, status, search }}
+        className="w-full justify-start"
       >
-        Exportar <span aria-hidden="true">▾</span>
-      </Button>
-      <div
-        ref={menuRef}
-        id="sales-order-export-menu"
-        hidden={!open}
-        aria-label="Exportar dados"
-        className={`absolute left-0 top-full z-floating mt-2 w-60 max-w-[calc(100vw-2rem)] flex-col gap-1 rounded-control border border-line bg-surface p-2 shadow-lg sm:left-auto sm:right-0 ${open ? 'flex' : 'hidden'}`}
+        Exportar pedidos
+      </ExportCsvButton>
+      <ExportCsvButton
+        resource="sales-order-items"
+        filters={{ period, status, search }}
+        className="w-full justify-start"
       >
-        <ExportCsvButton
-          resource="sales-orders"
-          filters={{ period, status, search }}
-          className="w-full justify-start"
-        >
-          Exportar pedidos
-        </ExportCsvButton>
-        <ExportCsvButton
-          resource="sales-order-items"
-          filters={{ period, status, search }}
-          className="w-full justify-start"
-        >
-          Exportar itens
-        </ExportCsvButton>
-      </div>
-    </div>
+        Exportar itens
+      </ExportCsvButton>
+    </ExportMenu>
   );
 }
 
@@ -539,9 +465,10 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
             title="Status do pedido"
             className="w-full sm:min-w-40"
           >
-            {STATUSES.map((s, i) => (
+            <option value="">Todos</option>
+            {STATUSES.map((s) => (
               <option key={s} value={s}>
-                {STATUS_DISPLAY[i]}
+                {salesOrderStatusLabel(s)}
               </option>
             ))}
           </Select>
@@ -638,7 +565,7 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
                   <TableCell >
                     <StatusBadge
                       status={row.status || ''}
-                      label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
+                      label={salesOrderStatusLabel(row.status)}
                     />
                   </TableCell>
                   <TableCell className="text-right font-sans tabular-nums">
@@ -675,7 +602,7 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
                 <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
                 <StatusBadge
                   status={row.status || ''}
-                  label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
+                  label={salesOrderStatusLabel(row.status)}
                 />
               </div>
               <div className="flex items-center justify-between text-sm">
