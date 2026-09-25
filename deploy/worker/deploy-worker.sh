@@ -101,7 +101,8 @@ esac
 [ -f "$DIR/docker-compose.yml" ] || fail "$DIR/docker-compose.yml não existe"
 
 exec 9>"$LOCK"
-flock -w 600 9 || fail "outro deploy segurou a trava por 10 min"
+# Um deploy por vez; o seguinte espera (o GitHub também serializa o workflow).
+flock 9
 
 case $1 in
   deploy) deploy "$2" ;;
