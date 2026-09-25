@@ -126,10 +126,19 @@ disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this i
 
 ## Layout
 
-`Layout` owns the frame: sidebar, workspace scroll, and the TopBar with the
-breadcrumb and global utilities at every width. Pages render inside
-`PageShell` (fluid width, 16px rhythm). Nothing in the page is absolutely
-positioned against the shell.
+`Layout` owns the frame: sidebar, workspace scroll, TopBar and, below `md`,
+`BottomNav`. Pages render inside `PageShell` (fluid width, 16px rhythm).
+Nothing in the page is absolutely positioned against the shell.
+
+Navigation comes from `nav` in `src/app/routes.tsx`: `group` places a
+destination in the sidebar (**Operação**, **Cadastros**, **Acompanhamento**;
+Configurações in the footer) and `bottom` places it in the mobile bottom bar
+(Atendimento, Orçamentos, Comercial, Pedidos; `Mais` opens the sidebar with the
+rest). `Novo orçamento` is the single global primary action, in the TopBar at
+every width next to `Tarefa` (T); page headers do not repeat it, while empty
+states and client-prefilled entries keep their contextual version. Desktop
+shows the breadcrumb; below `md` the TopBar shows back to the parent (or the
+brand on top-level pages) and the canvas/shell double frame is dropped.
 
 `PageHeader` is the first element of every page, in normal flow: optional
 `leading` visual, `eyebrow`, the `h1`, optional operational `description`,
@@ -171,7 +180,7 @@ their fixed widths to them as they land. Auto keeps its two-panel split. Horizon
 | Pagination | `ListPagination` | shows `de X` only when the endpoint returns a total |
 | Status filter with counts | `StatusFilterBar` | above lists, instead of StatCards + status select; `count: null` while loading |
 | List on both widths | `DataList` | table from `md`, stacked rows below; `getHref` makes rows real links |
-| Primary action on mobile | `MobileActionBar` | fixed bottom below `lg`, one primary action |
+| Primary action on mobile | `MobileActionBar` | fixed above `BottomNav` below `md`, one primary action |
 | Long form save | `StickySaveBar` | only while dirty |
 | Metrics row | `StatCard` in `StatGrid` | pass `loading`; never show 0 before data |
 | Grouped content | `Card` | never a hand-built `rounded-card` surface |
@@ -322,24 +331,15 @@ full-width.
 
 Mobile is a first-class target: every journey, including creating, reviewing,
 issuing, and sending a quotation, must be operable at `390x844`. This section
-is the target for the revamp; it lands in slices (foundation, shell, then one
-journey per PR). When a slice lands, it moves the affected rules into the
+lists what is still to land; foundation and shell are already in the sections
+above, and the rest lands one journey per PR. When a slice lands, it moves the affected rules into the
 foundation, layout, and component sections above and removes them here. Until
 then, the sections above describe the running app.
 
-### Shell and navigation
+### Still to land: breakpoints
 
-- Desktop sidebar groups destinations: **Operação** (Atendimento, Orçamentos,
-  Comercial, Pedidos, Tarefas), **Cadastros** (Clientes, Catálogo) and
-  **Acompanhamento** (Envios, Resultados); Configurações stays in the footer.
-- `Novo orçamento` is the single global primary action, in the TopBar at every
-  width, next to `Tarefa` (shortcut T). Sidebar and page headers do not repeat
-  it.
-- Below `lg`, a bottom bar holds Atendimento, Orçamentos, Comercial, Pedidos and
-  `Mais` (a sheet with the other destinations). The header shows back + page
-  title instead of the breadcrumb. The canvas/shell double frame is dropped.
 - Desktop layouts start at `lg` (1024) wherever they fit; `xl` is reserved for
-  the 336px side panel.
+  the 336px side panel. Journeys move their `xl:` layouts as they land.
 
 ### Still to land
 

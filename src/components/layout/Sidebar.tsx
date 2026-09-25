@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AspenBrand from '@/components/shared/AspenBrand';
-import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, type NavItem } from '@/app/navigation';
+import { NAV_FOOTER, NAV_GROUPS, isNavActive, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
 
 export interface SidebarProps {
@@ -34,19 +34,10 @@ export default function Sidebar({
   const asideRef = useRef<HTMLElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const currentPath = routePath(currentRoute);
-  // Fluxos filhos destacam o item-pai correspondente (ex.: /manual pertence a Orçamentos).
-  const activeAffinity: Record<string, string> = {
-    '/auto': '/novo-orcamento',
-    '/manual': '/novo-orcamento',
-  };
-  const effectivePath = currentPath.startsWith('/products')
-    ? '/catalog'
-    : activeAffinity[currentPath] ?? currentPath;
   const sidebarOpen = !collapsed;
-  const navItems = NAV_ACTION ? [NAV_ACTION, ...NAV_DESTINATIONS] : NAV_DESTINATIONS;
 
   const renderItem = (item: NavItem) => {
-    const isActive = effectivePath === item.hash || effectivePath.startsWith(`${item.hash}/`);
+    const isActive = isNavActive(item, currentPath);
     const Icon = item.icon;
     const count = badges[item.hash] ?? 0;
     const label = count > 0 ? `${item.label} (${count})` : item.label;
@@ -179,8 +170,19 @@ export default function Sidebar({
           )}
         </div>
 
-        <nav className="flex-1 pt-2" aria-label="Operação">
-          <div className="space-y-1">{navItems.map((item) => renderItem(item))}</div>
+        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto pt-2" aria-label="Destinos">
+          {NAV_GROUPS.map((group) => (
+            <section key={group.id} aria-label={group.label} className="flex flex-col gap-1">
+              {collapsed ? (
+                group.id !== NAV_GROUPS[0].id && <span className="mx-5 h-px bg-shell-hover" aria-hidden="true" />
+              ) : (
+                <span className="px-7 pb-1 text-2xs font-semibold uppercase tracking-wider text-shell-muted" aria-hidden="true">
+                  {group.label}
+                </span>
+              )}
+              {group.items.map((item) => renderItem(item))}
+            </section>
+          ))}
         </nav>
         <div className="shrink-0 pb-3 pt-2">
           {NAV_FOOTER.map((item) => renderItem(item))}

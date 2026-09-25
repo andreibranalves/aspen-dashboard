@@ -179,6 +179,10 @@
     color-scheme: dark;
     /* Altura da navegação inferior do celular; barras fixas no rodapé ficam acima dela. */
     --mobile-nav-h: 0px;
+
+    @media (max-width: 47.9375rem) {
+      --mobile-nav-h: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+    }
     --canvas: 229 229 229;
     --page: 13 13 13;
     --surface: 22 22 22;
@@ -401,9 +405,9 @@
   grid-template-columns: minmax(0, 1fr) var(--container-aside);
 }
 
-/* Barras fixas no rodapé do celular ficam acima da área segura do sistema. */
+/* Elemento encostado no rodapé do celular respeita a área segura do sistema. */
 @utility pb-safe {
-  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Faixas roláveis (abas, filtros) rolam sem barra visível. */

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import BottomNav from './BottomNav';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
@@ -165,7 +166,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   }, [isMobile, route]);
 
   return (
-    <div className="flex h-dvh min-h-0 gap-frame overflow-hidden bg-canvas md:p-frame">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-canvas md:flex-row md:gap-frame md:p-frame">
       <Sidebar
         collapsed={sidebarCollapsed}
         mobile={isMobile}
@@ -179,8 +180,6 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           <div key={routePath(route)} className={`relative min-h-full motion-safe:animate-page-enter ${isQuotationComposer ? 'flex flex-col' : ''}`}>
             <TopBar
               route={route}
-              onMenuClick={toggleSidebar}
-              sidebarOpen={!sidebarCollapsed}
               isMobile={isMobile}
               breadcrumbItems={breadcrumbItems}
               onNavigate={onNavigate}
@@ -196,6 +195,15 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
           </div>
         </div>
       </div>
+      {isMobile && (
+        <BottomNav
+          currentPath={routePath(route)}
+          onNavigate={onNavigate}
+          onMore={toggleSidebar}
+          moreOpen={!sidebarCollapsed}
+          badges={{ '/sales-orders': productionAttention, '/tarefas': overdueTasks }}
+        />
+      )}
     </div>
   );
 }

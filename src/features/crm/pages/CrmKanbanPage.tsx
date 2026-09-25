@@ -319,19 +319,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   return (
     <PageShell className="space-y-9">
       {!embedded && (
-        <PageHeader
-          title="CRM"
-          actions={
-            <Button
-              onClick={(): void => {
-                window.location.hash = '#/novo-orcamento';
-              }}
-            >
-              <PlusCircle />
-              Novo orçamento
-            </Button>
-          }
-        />
+        <PageHeader title="CRM" />
       )}
       <PageToolbar>
         <SearchField placeholder="Buscar negócio ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar negócios" />

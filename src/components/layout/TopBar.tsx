@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Bell, ChevronRight, Menu, Moon, Search, Sun } from 'lucide-react';
-import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER } from '@/app/navigation';
+import { Bell, ChevronLeft, ChevronRight, Moon, PlusCircle, Search, Sun } from 'lucide-react';
+import { NAV_ACTION, NAV_DESTINATIONS, NAV_FOOTER, activeNavHash } from '@/app/navigation';
+import { routePath } from '@/app/match-route';
+import AspenBrand from '@/components/shared/AspenBrand';
 import { applyTheme, readTheme } from '@/lib/theme';
 import type { BreadcrumbItem } from './Layout';
 import { Button } from '@/components/ui/button';
@@ -9,8 +11,6 @@ import QuickTaskLauncher from '@/features/tasks/components/QuickTaskLauncher';
 
 export interface TopBarProps {
   route?: string;
-  onMenuClick: () => void;
-  sidebarOpen?: boolean;
   isMobile?: boolean;
   breadcrumbItems: BreadcrumbItem[];
   onNavigate: (hash: string) => void;
@@ -22,8 +22,6 @@ const SEARCH_DESTINATIONS = [NAV_ACTION, ...NAV_DESTINATIONS, ...NAV_FOOTER].fil
 
 export default function TopBar({
   route = '',
-  onMenuClick,
-  sidebarOpen = false,
   isMobile = false,
   breadcrumbItems,
   onNavigate,
@@ -57,6 +55,10 @@ export default function TopBar({
     searchRef.current?.blur();
   };
 
+  // No celular o breadcrumb vira um "voltar" para o item-pai.
+  const parent = breadcrumbItems.length > 2 ? breadcrumbItems[breadcrumbItems.length - 2] : null;
+  const onComposer = NAV_ACTION !== null && activeNavHash(routePath(route)) === NAV_ACTION.hash;
+
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     applyTheme(nextTheme);
@@ -76,45 +78,43 @@ export default function TopBar({
   return (
     <header className="mb-5 flex min-h-14 shrink-0 items-center justify-between gap-4 bg-page">
       <div className="flex min-w-0 items-center gap-3">
-        {isMobile && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onMenuClick}
-            aria-label="Abrir menu"
-            aria-expanded={sidebarOpen}
-            aria-controls="aspen-sidebar"
+        {isMobile ? (
+          parent?.hash ? (
+            <Button type="button" variant="ghost-muted" size="sm" onClick={() => onNavigate(parent.hash!)}>
+              <ChevronLeft aria-hidden="true" />
+              <span className="truncate">{parent.label}</span>
+            </Button>
+          ) : (
+            <AspenBrand className="h-7" />
+          )
+        ) : (
+          <nav
+            className="flex min-w-0 items-center gap-2 overflow-hidden text-compact text-fg-muted"
+            aria-label="Trilha de navegação"
           >
-            <Menu aria-hidden="true" />
-          </Button>
+            {breadcrumbItems.map((item, index) => (
+              <Fragment key={`${item.label}-${index}`}>
+                {index > 0 && <ChevronRight size={14} className="shrink-0" aria-hidden="true" />}
+                {item.hash ? (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(item.hash!)}
+                    className="truncate rounded-control py-1 transition-colors hover:text-fg"
+                  >
+                    {item.label}
+                  </button>
+                ) : (
+                  <span className="truncate font-semibold text-fg" aria-current="page">
+                    {item.label}
+                  </span>
+                )}
+              </Fragment>
+            ))}
+          </nav>
         )}
-        <nav
-          className="flex min-w-0 items-center gap-2 overflow-hidden text-compact text-fg-muted"
-          aria-label="Trilha de navegação"
-        >
-          {breadcrumbItems.map((item, index) => (
-            <Fragment key={`${item.label}-${index}`}>
-              {index > 0 && <ChevronRight size={14} className="shrink-0" aria-hidden="true" />}
-              {item.hash ? (
-                <button
-                  type="button"
-                  onClick={() => onNavigate(item.hash!)}
-                  className="truncate rounded-control py-1 transition-colors hover:text-fg"
-                >
-                  {item.label}
-                </button>
-              ) : (
-                <span className="truncate font-semibold text-fg" aria-current="page">
-                  {item.label}
-                </span>
-              )}
-            </Fragment>
-          ))}
-        </nav>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 md:gap-3">
         <div
           ref={searchContainerRef}
           className="relative hidden lg:block"
@@ -156,7 +156,18 @@ export default function TopBar({
             </div>
           )}
         </div>
-        <QuickTaskLauncher route={route} />
+        {NAV_ACTION && !onComposer && (
+          <Button
+            type="button"
+            size={isMobile ? 'icon' : 'sm'}
+            onClick={() => onNavigate(NAV_ACTION.hash)}
+            aria-label={isMobile ? NAV_ACTION.label : undefined}
+          >
+            <PlusCircle aria-hidden="true" />
+            {!isMobile && NAV_ACTION.label}
+          </Button>
+        )}
+        <QuickTaskLauncher route={route} compact={isMobile} />
         <span className="hidden h-6 w-px bg-line lg:block" aria-hidden="true" />
         <Button type="button" variant="ghost-muted" size="icon" onClick={() => onNavigate('/crm?tab=queue')} aria-label="Abrir fila comercial"><Bell aria-hidden="true" /></Button>
         <Button

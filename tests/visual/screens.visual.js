@@ -11,10 +11,10 @@ const SCREENS = [
   { name: 'orcamentos', route: '/quotations', heading: 'Orçamentos', mobile: true, dark: true },
   { name: 'pedidos', route: '/sales-orders', heading: 'Pedidos', mobile: true },
   { name: 'produtos', route: '/products', heading: 'Produtos', mobile: true },
-  { name: 'painel', route: '/dashboard' },
-  { name: 'crm', route: '/crm' },
-  { name: 'orcamento-detalhe', route: '/quotations/ORC-20260101', viewport: TALL },
-  { name: 'novo-orcamento', route: '/novo-orcamento', viewport: TALL },
+  { name: 'painel', route: '/dashboard', mobile: true },
+  { name: 'crm', route: '/crm', mobile: true },
+  { name: 'orcamento-detalhe', route: '/quotations/ORC-20260101', viewport: TALL, mobile: true },
+  { name: 'novo-orcamento', route: '/novo-orcamento', viewport: TALL, mobile: true },
 ];
 
 /** @param {import('@playwright/test').Page} page */

@@ -73,6 +73,10 @@ export interface AppRoute {
     icon: LucideIcon;
     placement: 'action' | 'destination' | 'footer';
     order: number;
+    /** Grupo da sidebar para destinos. */
+    group?: 'operacao' | 'cadastros' | 'acompanhamento';
+    /** Posição na barra inferior do celular; ausente vai para "Mais". */
+    bottom?: number;
   };
 }
 
@@ -144,49 +148,49 @@ export const routes: AppRoute[] = [
     path: '/atendimento',
     suspense: true,
     render: ({ navigate }) => <AttendancePage navigate={navigate} />,
-    nav: { label: 'Atendimento', icon: MessagesSquare, placement: 'destination', order: 0 },
+    nav: { label: 'Atendimento', icon: MessagesSquare, placement: 'destination', order: 0, group: 'operacao', bottom: 0 },
   },
   {
     path: '/whatsapp-deliveries',
     suspense: true,
     render: () => <WhatsAppDeliveriesPage />,
-    nav: { label: 'Envios', icon: Send, placement: 'destination', order: 6 },
+    nav: { label: 'Envios', icon: Send, placement: 'destination', order: 6, group: 'acompanhamento' },
   },
   {
     path: '/dashboard',
     suspense: true,
     render: ({ navigate }) => <DashboardPage navigate={navigate} />,
-    nav: { label: 'Resultados', icon: BarChart3, placement: 'destination', order: 7 },
+    nav: { label: 'Resultados', icon: BarChart3, placement: 'destination', order: 7, group: 'acompanhamento' },
   },
   {
     path: '/sales-orders',
     suspense: true,
     render: ({ navigate }) => <SalesOrdersPage navigate={navigate} />,
-    nav: { label: 'Pedidos', icon: ShoppingCart, placement: 'destination', order: 3 },
+    nav: { label: 'Pedidos', icon: ShoppingCart, placement: 'destination', order: 3, group: 'operacao', bottom: 3 },
   },
   {
     path: '/tarefas',
     suspense: true,
     render: ({ navigate }) => <TasksPage navigate={navigate} />,
-    nav: { label: 'Tarefas', icon: ListTodo, placement: 'destination', order: 3.5 },
+    nav: { label: 'Tarefas', icon: ListTodo, placement: 'destination', order: 3.5, group: 'operacao' },
   },
   {
     path: '/crm',
     suspense: true,
     render: ({ navigate }) => <CommercialPage navigate={navigate} />,
-    nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2 },
+    nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2, group: 'operacao', bottom: 2 },
   },
   {
     path: '/quotations',
     suspense: true,
     render: ({ navigate }) => <QuotationsPage navigate={navigate} />,
-    nav: { label: 'Orçamentos', icon: FileText, placement: 'destination', order: 1 },
+    nav: { label: 'Orçamentos', icon: FileText, placement: 'destination', order: 1, group: 'operacao', bottom: 1 },
   },
   {
     path: '/catalog',
     suspense: true,
     render: () => <CatalogPage />,
-    nav: { label: 'Catálogo', icon: Package, placement: 'destination', order: 5 },
+    nav: { label: 'Catálogo', icon: Package, placement: 'destination', order: 5, group: 'cadastros' },
   },
   {
     path: '/products',
@@ -197,7 +201,7 @@ export const routes: AppRoute[] = [
     path: '/leads',
     suspense: true,
     render: ({ navigate }) => <LeadsPage navigate={navigate} />,
-    nav: { label: 'Clientes', icon: Users, placement: 'destination', order: 4 },
+    nav: { label: 'Clientes', icon: Users, placement: 'destination', order: 4, group: 'cadastros' },
   },
   {
     // Retired: each section now lives where it is used.
