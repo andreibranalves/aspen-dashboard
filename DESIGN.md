@@ -188,6 +188,7 @@ the `--spacing-workspace` token).
 | Grouped content | `Card` | never a hand-built `rounded-card` surface |
 | Form field | `Field` + control | label, hint and error wired to the control |
 | Money field | `MoneyInput` in `Field` | never `toFixed` in UI |
+| Exports of a page | `ExportMenu` with `ExportCsvButton` items | one Exportar button |
 | Nothing to show | `EmptyState` | distinguish empty base vs no results for filters |
 | Failed load | `ErrorState` | same geometry as `EmptyState`, `role="alert"`, retry |
 | Message in context | `InlineAlert` | tone in icon/border, text in body color, one action |
@@ -391,6 +392,13 @@ then, the sections above describe the running app.
   shows pipeline stages through `pipelineLabel`. `DataList` mounts only the
   layout for the current width. `EntityIdentity` names are 14px over a 12px
   secondary line.
+- Catálogo already follows this: products are a dense `DataList` (product,
+  SKU, category from `lg`, unit, base price, status, archive) instead of
+  colored cards; exports sit in one `ExportMenu`; sets show their item count as
+  text. The product detail keeps its direct edit mode (Salvar/Cancelar in the
+  header, in `MobileActionBar` below `md`); a missing image is a neutral block.
+- Placeholders never repeat the label; they only show a format (`LNC-SED-70`,
+  `0,00`).
 
 ### Content rules
 

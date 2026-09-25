@@ -16,6 +16,7 @@ const SCREENS = [
   { name: 'pedidos', route: '/sales-orders', heading: 'Pedidos', mobile: true },
   { name: 'pedido-detalhe', route: '/sales-orders/PED-2026-0101', heading: 'PED-2026-0101', viewport: TALL, mobile: true },
   { name: 'produtos', route: '/products', heading: 'Produtos', mobile: true },
+  { name: 'produto-detalhe', route: '/products/CAN-100', heading: 'Canga estampada 100x160', viewport: TALL, mobile: true },
   { name: 'painel', route: '/dashboard', mobile: true },
   { name: 'crm', route: '/crm', mobile: true },
   { name: 'negocios', route: '/crm?tab=deals', heading: 'Comercial', mobile: true },

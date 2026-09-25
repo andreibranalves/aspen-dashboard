@@ -294,9 +294,22 @@ const clientDetail = {
   modified: '2026-09-10T10:00:00-03:00',
 };
 
+const productDetail = {
+  produto: {
+    sku: 'CAN-100', nome: 'Canga estampada 100x160', descricao: 'Canga em viscose com estampa digital.',
+    categoria: 'Cangas', marca: null, unidade: 'Und', ativo: true, imagem: null,
+    modificado_em: '2026-09-10T10:00:00-03:00', preco_base: '9.50', custo_unitario: '4.20',
+  },
+  precos: [{ faixa: 1, qty: 100, rate: '9.50' }, { faixa: 2, qty: 300, rate: '8.90' }],
+  preco_base: '9.50',
+  pricing_available: true,
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
+  if (pathname === '/api/product-detail') return productDetail;
+  if (pathname === '/api/product-activity') return { atividades: [] };
   if (pathname === '/api/client-detail') return clientDetail;
   if (pathname === '/api/quotations') return searchParams.has('id') ? quotationDetail : quotationsList;
   if (pathname === '/api/products') {

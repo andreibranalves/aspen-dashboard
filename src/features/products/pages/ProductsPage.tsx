@@ -5,7 +5,6 @@ import {
   Archive,
   ArchiveRestore,
   X,
-  PackageOpen,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import {
@@ -24,11 +23,13 @@ import { SearchField } from '@/components/ui/search-field';
 import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/EmptyState';
-import Skeleton from '@/components/shared/Skeleton';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';
 import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
 import ListPagination from '@/components/shared/ListPagination';
+import DataList, { type DataListColumn } from '@/components/shared/DataList';
+import SkeletonTable from '@/components/shared/SkeletonTable';
+import { Text } from '@/components/ui/text';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import { useToast } from '@/components/shared/toast';
@@ -368,6 +369,72 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
   const selectedCount = selectedIds.length;
   const hasFilters = Boolean(search.trim()) || status !== 'all';
 
+  const productSku = (product: (typeof data)[number]) => product.sku || product.item_code || '';
+  const productName = (product: (typeof data)[number]) => product.nome || product.item_name || 'Produto sem nome';
+  const priceLabel = (product: (typeof data)[number]) =>
+    product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Sem preço';
+
+  const selectBox = (product: (typeof data)[number]) => (
+    <input
+      type="checkbox"
+      checked={selectedIds.includes(productSku(product))}
+      onChange={() => toggleSelected(productSku(product))}
+      aria-label={`Selecionar produto ${productSku(product)}`}
+      className="size-4 rounded-xs border-line accent-light-sage"
+    />
+  );
+
+  const archiveButton = (product: (typeof data)[number]) => {
+    const sku = productSku(product);
+    const archived = isArchivedProduct(product);
+    return (
+      <Button
+        variant="ghost-muted-destructive"
+        size="icon-sm"
+        aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
+        title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
+        onClick={() => requestArchive(sku, archived)}
+      >
+        {archived ? <ArchiveRestore /> : <Archive />}
+      </Button>
+    );
+  };
+
+  const columns: DataListColumn<(typeof data)[number]>[] = [
+    ...(selectionMode
+      ? [{
+          key: 'select',
+          interactive: true,
+          header: (
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => toggleSelectAll(event.target.checked)}
+              aria-label="Selecionar todos os produtos desta página"
+              className="size-4 rounded-xs border-line accent-light-sage"
+            />
+          ),
+          cell: selectBox,
+        }]
+      : []),
+    {
+      key: 'product',
+      header: 'Produto',
+      cell: (product) => (
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <Text variant="title" truncate>{productName(product)}</Text>
+          <Text variant="id">{productSku(product) || '—'}</Text>
+        </div>
+      ),
+    },
+    { key: 'category', header: 'Categoria', hideBelow: 'lg', cell: (product) => <Text variant="meta">{product.categoria?.trim() || '—'}</Text> },
+    { key: 'uom', header: 'Unidade', cell: (product) => <Text variant="meta">{normalizeUom(product.unidade || product.stock_uom)}</Text> },
+    { key: 'price', header: 'Preço-base', align: 'right', cell: (product) => <Text variant="value">{priceLabel(product)}</Text> },
+    { key: 'status', header: 'Status', cell: (product) => { const state = productStatus(product); return <StatusBadge status={state.status} label={state.label} />; } },
+    { key: 'actions', header: <span className="sr-only">Ações</span>, interactive: true, align: 'right', cell: archiveButton },
+  ];
+
   return (
     <ListPageLayout
       header={showHeader && (
@@ -395,7 +462,6 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
     >
       <ListSection
         label="Lista de produtos"
-        surface={false}
         pagination={!loading && !error && data.length > 0 && (
           <ListPagination label="Paginação de produtos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={setPage} onLimitChange={onLimitChange} />
         )}
@@ -443,13 +509,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
         )}
       </div>}
 
-      {loading && (
-        <div role="status" aria-busy="true" aria-label="Carregando produtos" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: Math.min(limit, 10) }, (_, index) => (
-            <Skeleton key={index} className="h-[230px]" variant="card" />
-          ))}
-        </div>
-      )}
+      {loading && <SkeletonTable cols={5} rows={Math.min(limit, 10)} />}
 
       {!loading && error && (
         <ErrorState title="Não foi possível carregar os produtos" onRetry={() => void fetchData(search, page, limit, sort, status)} />
@@ -485,86 +545,35 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
       )}
 
       {!loading && !error && data.length > 0 && (
-        <section aria-label="Produtos do catálogo" className="space-y-3">
-          {selectionMode && <label className="flex w-fit items-center gap-2 text-xs font-medium text-fg-muted">
-            <input
-              ref={selectAllRef}
-              type="checkbox"
-              checked={allSelected}
-              onChange={(event) => toggleSelectAll(event.target.checked)}
-              aria-label="Selecionar todos os produtos desta página"
-              className="h-4 w-4 rounded-xs border-line accent-light-sage"
-            />
-            Selecionar página
-          </label>}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {data.map((product, index) => {
-              const sku = product.sku || product.item_code || '';
-              const isSelected = selectedIds.includes(sku);
-              const archived = isArchivedProduct(product);
-              const state = productStatus(product);
-              const name = product.nome || product.item_name || 'Produto sem nome';
-              const category = product.categoria?.trim();
-              const visualTone = ['bg-sage text-sage-ink', 'bg-orange text-orange-ink', 'bg-taupe text-taupe-ink'][index % 3];
-              return (
-                <article
-                  key={sku}
-                  data-state={isSelected ? 'selected' : undefined}
-                  className="group rounded-card bg-surface p-4 transition-colors hover:bg-surface-hover data-[state=selected]:ring-2 data-[state=selected]:ring-light-sage"
-                >
-                  <div className={`relative flex h-[110px] items-end justify-between rounded-card p-4 ${visualTone}`}>
-                    <strong className="text-stat font-semibold tracking-tight tabular-nums">{product.pricing_available && product.preco_minimo != null ? formatBRL(product.preco_minimo) : 'Preço indisponível'}</strong>
-                    <PackageOpen size={48} strokeWidth={1.25} className="opacity-35" aria-hidden="true" />
-                    {selectionMode && <label className="absolute left-3 top-3 grid h-8 w-8 place-items-center rounded-control bg-page/80">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelected(sku)}
-                        aria-label={`Selecionar produto ${sku}`}
-                        className="h-4 w-4 rounded-xs border-line accent-light-sage"
-                      />
-                    </label>}
-                  </div>
-                  <div className="space-y-3 px-1 pt-4">
-                    {/* eslint-disable-next-line no-restricted-syntax -- o card inteiro abre o produto */}
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
-                      className="block w-full min-w-0 text-left"
-                      aria-label={`Abrir produto ${sku}: ${name}`}
-                    >
-                      <span className="block truncate text-sm font-semibold text-fg" title={name}>
-                        {name}
-                      </span>
-                      <span className="mt-1 block truncate text-xs text-fg-muted">
-                        <span className="font-mono">{sku || 'SKU não informado'}</span>
-                        <span aria-hidden="true"> · </span>
-                        {category || 'Sem categoria'}
-                      </span>
-                    </button>
-                    <div className="flex items-center justify-between gap-3 pt-2">
-                      <span className="truncate text-xs text-fg-muted">
-                        Preço-base / {normalizeUom(product.unidade || product.stock_uom)}
-                      </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <StatusBadge status={state.status} label={state.label} />
-                        <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
-                          variant="ghost-muted-destructive"
-                          size="icon"
-                          aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                          title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
-                          onClick={() => requestArchive(sku, archived)}
-                        >
-                          {archived ? <ArchiveRestore /> : <Archive />}
-                        </Button></span>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+        <DataList
+          label="Produtos do catálogo"
+          items={data}
+          getKey={(product) => productSku(product)}
+          columns={columns}
+          getHref={(product) => `#/products/${encodeURIComponent(productSku(product))}`}
+          getRowLabel={(product) => `Abrir produto ${productSku(product)}: ${productName(product)}`}
+          isSelected={(product) => selectedIds.includes(productSku(product))}
+          mobileLead={selectionMode ? selectBox : undefined}
+          mobileAside={archiveButton}
+          mobileRow={(product) => {
+            const state = productStatus(product);
+            return (
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <Text variant="title" truncate>{productName(product)}</Text>
+                  <Text variant="value" className="shrink-0">{priceLabel(product)}</Text>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Text variant="meta" truncate>
+                    <span className="font-mono">{productSku(product) || '—'}</span>
+                    {product.categoria?.trim() && ` · ${product.categoria.trim()}`}
+                  </Text>
+                  <StatusBadge status={state.status} label={state.label} className="shrink-0" />
+                </div>
+              </div>
+            );
+          }}
+        />
       )}
 
       </ListSection>
