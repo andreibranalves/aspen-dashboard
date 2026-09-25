@@ -10,6 +10,7 @@ import {
   whatsappMessageAttachments,
   whatsappMessages,
 } from '../schema.js';
+import { SEND_WINDOW_MS } from '../../../_modules/quotation-delivery-state.js';
 
 type DatabaseProvider = () => AppDatabase;
 type Transaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -360,6 +361,15 @@ export function createPostgresWhatsappMessageOutboxRepository(
           .where(and(eq(outbox.id, id), inArray(outbox.state, ['queued', 'retry_scheduled'])))
           .for('update', { skipLocked: true });
         if (!row) return null;
+        if (row.createdAt.getTime() + SEND_WINDOW_MS <= now.getTime()) {
+          // ADR 0013: a reply only leaves until 30 min after the operator wrote it.
+          await tx
+            .update(outbox)
+            .set({ state: 'failed', failureCode: 'SEND_WINDOW_EXPIRED', updatedAt: now })
+            .where(eq(outbox.id, row.id));
+          await touchMessages(tx, row.conversationId, [row.messageId], now);
+          return null;
+        }
         const [conversation] = await tx
           .select({
             canonicalPhone: conversations.canonicalPhone,

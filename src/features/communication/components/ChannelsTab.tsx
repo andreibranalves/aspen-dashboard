@@ -6,6 +6,7 @@ import {
 } from '@/lib/api/whatsappDeliveryDiagnosticsApi';
 import { formatDateTime } from '@/lib/formatting/formatters';
 import { Heading } from '@/components/ui/heading';
+import DeliveryAlarm from '@/components/shared/DeliveryAlarm';
 
 
 function messageSweepSummary(sweep: DeliveryDiagnostics['messageSweep']): string {
@@ -35,6 +36,7 @@ export default function ChannelsTab() {
 
   return (
     <section aria-label="Canais de comunicação" className="space-y-6">
+      <DeliveryAlarm diagnostics={diagnostics} failed={diagnosticsError} />
       <div className="grid gap-5 lg:grid-cols-2">
         <article className="rounded-card bg-surface p-5">
           <Heading level="section">WhatsApp operacional</Heading>

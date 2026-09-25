@@ -43,6 +43,7 @@ export const MESSAGE_TYPE_LABELS: Record<Exclude<AttendanceMessageType, 'text'>,
 const FAILURE_LABELS: Record<string, string> = {
   DESTINATION_CHANGED: 'Não enviada: o destinatário mudou.',
   EXTERNAL_WRITES_DISABLED: 'Não enviada: envio desativado neste ambiente.',
+  SEND_WINDOW_EXPIRED: 'Não enviada: passou de 30 min na fila.',
 };
 
 /** Sending state shown under an outbound bubble; never promises delivery. */

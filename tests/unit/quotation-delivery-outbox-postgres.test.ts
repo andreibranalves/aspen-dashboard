@@ -44,6 +44,10 @@ import {
   DELIVERY_LEASE_MS,
   FOLLOW_UP_RECONCILIATION_BATCH,
 } from '../../api/_modules/quotation-delivery-outbox.js';
+import {
+  DELIVERY_INTERRUPTED_PUBLIC_ERROR,
+  SEND_WINDOW_MS,
+} from '../../api/_modules/quotation-delivery-state.js';
 import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { createPostgresWhatsappContactActivityRepository } from '../../api/_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 import { createDbDeadline } from '../../api/_infrastructure/db/deadline.js';
@@ -540,6 +544,122 @@ databaseTest('two claims produce one lease and accepted steps never reclaim', as
     providerMessageId: 'provider-one-claim',
   });
   assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
+});
+
+function repositoryAt(at: Date) {
+  return createPostgresQuotationDeliveryOutboxRepository(() => db, { now: () => new Date(at) });
+}
+
+async function acceptFirstStep(deliveryId: string) {
+  const first = await repository.claim({ deliveryId });
+  assert.ok(first);
+  await repository.markAccepted({
+    deliveryId,
+    stepId: first.step.id,
+    leaseToken: first.leaseToken,
+    providerMessageId: `provider-window-${randomUUID()}`,
+  });
+  return first.step.id;
+}
+
+databaseTest('a step that comes due after the send window is interrupted instead of sent', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'window-expired', steps: [textStep(0), textStep(1), textStep(2)] })
+  );
+  const acceptedStepId = await acceptFirstStep(delivery.id);
+
+  const late = repositoryAt(new Date(now.getTime() + SEND_WINDOW_MS + 1_000));
+  const pendingFilter = { search: 'window-expired', requiresAction: true, page: 1, pageSize: 10 };
+  const before = await late.list(pendingFilter);
+  assert.equal(await late.claim({ deliveryId: delivery.id }), null);
+  assert.equal(await late.claim(), null);
+
+  // An interrupted envio waits for the operator in Pendências, not only in Histórico.
+  const pending = await late.list(pendingFilter);
+  assert.deepEqual(pending.data.map((item) => item.id), [delivery.id]);
+  assert.equal(pending.summary.requiresAction, before.summary.requiresAction + 1);
+
+  const interrupted = await late.get(delivery.id);
+  assert.equal(interrupted?.state, 'failed');
+  assert.equal(interrupted?.publicError, DELIVERY_INTERRUPTED_PUBLIC_ERROR);
+  assert.equal(interrupted?.completionSource, null);
+  const [accepted, second, third] = interrupted!.steps;
+  assert.equal(accepted?.id, acceptedStepId);
+  assert.equal(accepted?.state, 'server_ack');
+  for (const step of [second, third]) {
+    assert.equal(step?.state, 'failed');
+    assert.equal(step?.failureKind, 'permanent_pre_transport');
+    assert.equal(step?.publicError, DELIVERY_INTERRUPTED_PUBLIC_ERROR);
+    assert.equal(step?.nextAttemptAt, null);
+  }
+});
+
+databaseTest('a step that comes due inside the send window is still sent', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'window-open', steps: [textStep(0), textStep(1)] })
+  );
+  await acceptFirstStep(delivery.id);
+
+  const inside = repositoryAt(new Date(now.getTime() + SEND_WINDOW_MS - 1_000));
+  const claimed = await inside.claim({ deliveryId: delivery.id });
+  assert.equal(claimed?.step.position, 1);
+});
+
+databaseTest('re-sending an interrupted delivery opens a new send window', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'window-retry', steps: [textStep(0), textStep(1)] })
+  );
+  await acceptFirstStep(delivery.id);
+  const retryAt = new Date(now.getTime() + 2 * SEND_WINDOW_MS);
+  const late = repositoryAt(retryAt);
+  assert.equal(await late.claim({ deliveryId: delivery.id }), null);
+
+  const resent = await late.resolve({
+    deliveryId: delivery.id,
+    decision: 'retry_same_revision',
+    note: 'Cliente ainda aguarda o orçamento.',
+    resolvedBy: 'authenticated-operator',
+  });
+  assert.equal(resent.state, 'queued');
+  const pending = await late.list({ search: 'window-retry', requiresAction: true, page: 1, pageSize: 10 });
+  assert.deepEqual(pending.data, []);
+  const claimed = await repositoryAt(new Date(retryAt.getTime() + SEND_WINDOW_MS - 1_000)).claim({
+    deliveryId: delivery.id,
+  });
+  assert.equal(claimed?.step.position, 1);
+});
+
+databaseTest('an envio re-sent before the window existed counts its window from the re-send', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'window-legacy-resend', steps: [textStep(0)] })
+  );
+  const resentAt = new Date(now.getTime() + 3 * SEND_WINDOW_MS);
+  await setDelivery(delivery.id, { resumableUntil: null, resolvedAt: resentAt });
+
+  const claimed = await repositoryAt(new Date(resentAt.getTime() + SEND_WINDOW_MS - 1_000)).claim({
+    deliveryId: delivery.id,
+  });
+  assert.equal(claimed?.step.position, 0);
+});
+
+databaseTest('confirming a stale delivery was not received opens a new send window', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'window-not-received', steps: [textStep(0)] })
+  );
+  const [step] = delivery.steps;
+  await setStep(step!.id, { state: 'needs_review' });
+  await setDelivery(delivery.id, { state: 'needs_review' });
+  const reviewAt = new Date(now.getTime() + 2 * SEND_WINDOW_MS);
+  const late = repositoryAt(reviewAt);
+
+  await late.resolve({
+    deliveryId: delivery.id,
+    decision: 'confirmed_not_received',
+    note: 'Cliente não recebeu.',
+    resolvedBy: 'authenticated-operator',
+  });
+  const claimed = await late.claim({ deliveryId: delivery.id });
+  assert.equal(claimed?.step.id, step!.id);
 });
 
 databaseTest('two independent workers claim one due step and make one transport call', async () => {
@@ -3021,6 +3141,7 @@ databaseTest('an immediate PLAYED receipt projects a follow-up from the inbox cl
 });
 
 databaseTest('51+ poison acceptance candidates cannot starve candidate 51 and outbound claims still run', async () => {
+  integrationClock = new Date(now);
   process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
     now.getTime() - 86_400_000,
   ).toISOString();

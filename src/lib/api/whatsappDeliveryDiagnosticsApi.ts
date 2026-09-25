@@ -22,6 +22,10 @@ export interface DeliveryDiagnostics {
   } | null;
   reconcilingSteps: number;
   pendingReceipts: number;
+  /** Work due for more than 10 min that nothing picked up, per source. */
+  overdue: { steps: number; followUps: number; replies: number; webhookEffects: number };
+  /** The worker never ran or its last run is older than 2 h. */
+  workerStale: boolean;
 }
 
 function count(value: unknown): number {
@@ -36,6 +40,8 @@ export async function fetchDeliveryDiagnostics(): Promise<DeliveryDiagnostics> {
   const body = await apiGet<Record<string, unknown>>('/whatsapp-delivery-diagnostics');
   const worker = body.worker;
   const source = worker && typeof worker === 'object' ? (worker as Record<string, unknown>) : null;
+  const overdue =
+    body.overdue && typeof body.overdue === 'object' ? (body.overdue as Record<string, unknown>) : {};
   const sweep =
     body.message_sweep && typeof body.message_sweep === 'object' ? (body.message_sweep as Record<string, unknown>) : null;
   return {
@@ -59,5 +65,12 @@ export async function fetchDeliveryDiagnostics(): Promise<DeliveryDiagnostics> {
       : null,
     reconcilingSteps: count(body.reconciling_steps),
     pendingReceipts: count(body.pending_receipts),
+    overdue: {
+      steps: count(overdue.steps),
+      followUps: count(overdue.follow_ups),
+      replies: count(overdue.replies),
+      webhookEffects: count(overdue.webhook_effects),
+    },
+    workerStale: body.worker_stale === true,
   };
 }

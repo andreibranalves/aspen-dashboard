@@ -1,16 +1,22 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, lte, or, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import {
   evolutionReceiptInbox,
   quotationDeliverySteps,
   quotationDeliveryWorkerRuns,
+  quotationFollowUps,
+  whatsappMessageOutbox,
   whatsappMessageSweepRuns,
+  whatsappWebhookEffects,
 } from '../schema.js';
 
 /** Stable identity of the scheduled worker that drains the delivery outbox. */
 export const QUOTATION_DELIVERY_WORKER_NAME = 'quotation-delivery-worker';
 const FAILED_WORKER_RUN_PROCESSED = -1;
+
+/** ADR 0013: due work still waiting after this long means nothing is running it. */
+export const OVERDUE_AFTER_MS = 10 * 60_000;
 
 type DatabaseProvider = () => AppDatabase;
 
@@ -51,6 +57,19 @@ export interface QuotationDeliveryDiagnostics {
   messageSweep: MessageSweepRun | null;
   reconcilingSteps: number;
   pendingReceipts: number;
+  overdue: OverdueWork;
+}
+
+/**
+ * Work that became due more than `OVERDUE_AFTER_MS` ago and was not picked up,
+ * per source: envios (counted once per envio), approved retornos, Atendimento
+ * replies and webhook effects. Work that waits on the operator is not counted.
+ */
+export interface OverdueWork {
+  steps: number;
+  followUps: number;
+  replies: number;
+  webhookEffects: number;
 }
 
 function asDate(value: unknown): Date | null {
@@ -107,8 +126,72 @@ export async function recordMessageSweepRun(
     .onConflictDoUpdate({ target: whatsappMessageSweepRuns.worker, set: values });
 }
 
+async function readOverdueWork(db: AppDatabase, now: Date): Promise<OverdueWork> {
+  const nowIso = now.toISOString();
+  const before = new Date(now.getTime() - OVERDUE_AFTER_MS);
+  const beforeIso = before.toISOString();
+  // Same eligibility as the claim: due, not leased, and every earlier step of
+  // the envio already accepted by the provider.
+  const [steps] = (await db.execute(sql`
+    SELECT count(DISTINCT s.delivery_id)::int AS overdue
+    FROM quotation_delivery_steps s
+    JOIN quotation_deliveries d ON d.id = s.delivery_id
+    WHERE s.state IN ('queued', 'retry_scheduled')
+      AND s.next_attempt_at <= ${beforeIso}::timestamptz
+      AND (d.lease_until IS NULL OR d.lease_until <= ${nowIso}::timestamptz)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM quotation_delivery_steps prior
+        WHERE prior.delivery_id = s.delivery_id
+          AND prior.position < s.position
+          AND (
+            prior.state NOT IN ('server_ack', 'delivered', 'read')
+            OR prior.provider_message_id IS NULL
+          )
+      )
+  `)) as Array<{ overdue: unknown }>;
+  const [followUps] = await db
+    .select({ overdue: sql<number>`count(*)::int` })
+    .from(quotationFollowUps)
+    .where(
+      and(
+        eq(quotationFollowUps.state, 'approved'),
+        lte(quotationFollowUps.approvedAt, before),
+        or(isNull(quotationFollowUps.leaseUntil), lt(quotationFollowUps.leaseUntil, now))
+      )
+    );
+  const [replies] = await db
+    .select({ overdue: sql<number>`count(*)::int` })
+    .from(whatsappMessageOutbox)
+    .where(
+      or(
+        and(eq(whatsappMessageOutbox.state, 'queued'), lte(whatsappMessageOutbox.createdAt, before)),
+        and(
+          eq(whatsappMessageOutbox.state, 'retry_scheduled'),
+          lte(whatsappMessageOutbox.nextAttemptAt, before)
+        )
+      )
+    );
+  const [effects] = await db
+    .select({ overdue: sql<number>`count(*)::int` })
+    .from(whatsappWebhookEffects)
+    .where(
+      and(
+        or(isNull(whatsappWebhookEffects.activityDoneAt), isNull(whatsappWebhookEffects.followUpDoneAt)),
+        sql`COALESCE(${whatsappWebhookEffects.nextAttemptAt}, ${whatsappWebhookEffects.createdAt}) <= ${beforeIso}::timestamptz`
+      )
+    );
+  return {
+    steps: count(steps?.overdue),
+    followUps: count(followUps?.overdue),
+    replies: count(replies?.overdue),
+    webhookEffects: count(effects?.overdue),
+  };
+}
+
 export async function readQuotationDeliveryDiagnostics(
-  getDb: DatabaseProvider = getDatabase
+  getDb: DatabaseProvider = getDatabase,
+  now: Date = new Date()
 ): Promise<QuotationDeliveryDiagnostics> {
   const db = getDb();
   const [worker] = await db
@@ -152,5 +235,6 @@ export async function readQuotationDeliveryDiagnostics(
       : null,
     reconcilingSteps: count(steps?.reconciling),
     pendingReceipts: count(receipts?.pending),
+    overdue: await readOverdueWork(db, now),
   };
 }

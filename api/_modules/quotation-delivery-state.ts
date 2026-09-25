@@ -43,6 +43,14 @@ export type TransportFailureKind =
 export const REVISION_UNAVAILABLE_PUBLIC_ERROR =
   'A revisão do orçamento não está disponível para envio.';
 
+// ADR 0013: a message only leaves until 30 min after the operator asked for it.
+// Past that, the unsent remainder of an envio is interrupted and never resumed
+// on its own; re-sending is an operator decision that opens a new window.
+export const SEND_WINDOW_MS = 30 * 60_000;
+
+export const DELIVERY_INTERRUPTED_PUBLIC_ERROR =
+  'Envio interrompido: o restante não saiu em 30 min.';
+
 export function isRevisionUnavailableFailure(step: { publicError?: string | null }): boolean {
   return (step.publicError ?? '') === REVISION_UNAVAILABLE_PUBLIC_ERROR;
 }

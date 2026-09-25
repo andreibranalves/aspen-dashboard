@@ -17,6 +17,7 @@ import {
 } from '../../api/_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
+import { SEND_WINDOW_MS } from '../../api/_modules/quotation-delivery-state.js';
 import {
   dispatchOutboxMessage,
   sweepOperatorMessages,
@@ -377,6 +378,21 @@ test('the sweep dispatches only old intents and stops before the budget runs out
   await sweepOperatorMessages({ repository, deadlineAt: Date.now() + 60_000, send: accepting(`p-${randomUUID()}`, calls) });
   assert.ok(calls.includes('velha'));
   assert.equal((await repository.findByMessageId(old.record.messageId))?.state, 'provider_accepted');
+});
+
+test('a reply written before the send window is never sent', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
+  const { conversationId } = await conversation();
+  const writtenAt = new Date(Date.now() - SEND_WINDOW_MS - 60_000);
+  const stale = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'fora da janela', now: writtenAt });
+  const calls: string[] = [];
+
+  await sweepOperatorMessages({ repository, deadlineAt: Date.now() + 60_000, send: accepting(`p-${randomUUID()}`, calls) });
+
+  assert.ok(!calls.includes('fora da janela'));
+  const expired = await repository.findByMessageId(stale.record.messageId);
+  assert.equal(expired?.state, 'failed');
+  assert.equal(expired?.failureCode, 'SEND_WINDOW_EXPIRED');
 });
 
 test('the same key raced by two requests yields one intent and an idempotent answer', { skip: databaseSkip }, async () => {
