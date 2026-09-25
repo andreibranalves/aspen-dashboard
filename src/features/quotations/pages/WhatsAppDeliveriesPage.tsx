@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, Clock3, RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import SendHistoryTab, { type SendEvent } from '@/features/communication/components/SendHistoryTab';
 import PageHeader from '@/components/shared/PageHeader';
@@ -10,7 +10,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
 import InlineAlert from '@/components/shared/InlineAlert';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
+import StatusFilterBar from '@/components/shared/StatusFilterBar';
 import PageToolbar from '@/components/shared/PageToolbar';
 import { SearchField } from '@/components/ui/search-field';
 import ListPagination from '@/components/shared/ListPagination';
@@ -342,6 +342,8 @@ function DeliveryDetails({ delivery, pending, readOnly = false, onResolve }: Del
   );
 }
 
+type PendingView = 'all' | 'review' | 'active' | 'retry' | 'delivered';
+
 export default function WhatsAppDeliveriesPage() {
   const [activeTab, setActiveTab] = useHashQueryState<DeliveryTab>(
     'tab',
@@ -592,6 +594,12 @@ export default function WhatsAppDeliveriesPage() {
     setHistoryDetailError('');
   };
 
+  // Situação da fila de pendências, derivada dos filtros e aplicada de volta a eles.
+  const pendingView: PendingView = filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all';
+  const setPendingView = (value: PendingView) => updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false }));
+  // Contagem ainda não carregada fica em skeleton; nunca vira zero.
+  const summaryCount = (value: number | undefined) => (loading && !result ? null : value);
+
   return (
     <PageShell className="space-y-5 pb-10">
       <PageHeader title="Envios" />
@@ -607,21 +615,24 @@ export default function WhatsAppDeliveriesPage() {
         />
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading || clearing}><RefreshCw className={loading ? 'animate-spin' : undefined} />Atualizar</Button>
-          {activeTab === 'pending' && <Button type="button" variant="ghost-destructive" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing} ><Trash2 />{clearing ? 'Limpando…' : 'Limpar fila'}</Button>}
+          {/* Ação destrutiva e rara: discreta, sempre com confirmação. */}
+          {activeTab === 'pending' && <Button type="button" variant="ghost-muted-destructive" size="icon" aria-label="Limpar fila" title="Limpar fila" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing}><Trash2 /></Button>}
         </div>
       </div>
 
       {activeTab === 'pending' && (
-        <StatGrid label="Resumo dos envios">
-          {[
-            { label: 'Requer ação', value: result?.summary.requiresAction, note: 'Revisão operacional', Icon: AlertTriangle },
-            { label: 'Em andamento', value: result?.summary.active, note: 'Ainda não entregue', Icon: Clock3 },
-            { label: 'Reagendados', value: result?.summary.retryScheduled, note: 'Próxima tentativa', Icon: RefreshCw },
-            { label: 'Entregues', value: result?.summary.deliveredLast24Hours, note: 'Últimas 24 horas', Icon: Check },
-          ].map(({ label, value, note, Icon }) => (
-            <StatCard key={label} icon={Icon} label={label} value={value ?? '—'} metadata={note} loading={loading && !result} />
-          ))}
-        </StatGrid>
+        <StatusFilterBar
+          label="Filtrar envios por situação"
+          value={pendingView}
+          onValueChange={setPendingView}
+          options={[
+            { value: 'all', label: 'Todos' },
+            { value: 'review', label: 'Requer ação', count: summaryCount(result?.summary.requiresAction) },
+            { value: 'active', label: 'Em andamento', count: summaryCount(result?.summary.active) },
+            { value: 'retry', label: 'Reagendados', count: summaryCount(result?.summary.retryScheduled) },
+            { value: 'delivered', label: 'Entregues' },
+          ]}
+        />
       )}
 
       <TabPanel value={activeTab}>
@@ -651,7 +662,7 @@ export default function WhatsAppDeliveriesPage() {
         {activeTab === 'pending' && (
           <PageToolbar className="mb-4">
             <SearchField value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" />
-            <Select aria-label="Filtrar envios por situação" value={filters.states.includes('delivered') ? 'delivered' : filters.states.includes('retry_scheduled') ? 'retry' : filters.requiresAction && !filters.includeActive ? 'review' : !filters.requiresAction && filters.includeActive ? 'active' : 'all'} onChange={(event) => { const value = event.target.value; updateFilters((current) => ({ ...current, requiresAction: value === 'all' || value === 'review', includeActive: value === 'all' || value === 'active', states: value === 'retry' ? ['retry_scheduled'] : value === 'delivered' ? ['delivered'] : [], delayed: false })); }}><option value="all">Todos os status</option><option value="review">Requer ação</option><option value="active">Em andamento</option><option value="retry">Reagendados</option><option value="delivered">Entregues</option></Select>
+
             <details className="relative ml-auto text-sm text-fg-muted"><summary className="flex h-10 cursor-pointer list-none items-center rounded-control px-3 font-semibold hover:bg-raised hover:text-fg">Filtros avançados</summary>
             <section className="absolute right-10 z-floating mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">

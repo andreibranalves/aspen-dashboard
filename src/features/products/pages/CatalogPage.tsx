@@ -11,6 +11,8 @@ import { useHashRoute } from '@/hooks/useHashRoute';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
 import { EmptyState } from '@/components/shared/EmptyState';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
+import ExportMenu from '@/components/shared/ExportMenu';
+import { Text } from '@/components/ui/text';
 import ProductsPage from './ProductsPage';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import MediaLibrary from '@/features/communication/components/MediaLibrary';
@@ -93,8 +95,10 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
           <div className="flex flex-wrap items-center gap-2">
             {activeTab === 'products' && (
               <>
-                <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar produtos</ExportCsvButton>
-                <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }}>Exportar preços</ExportCsvButton>
+                <ExportMenu id="catalog-export-menu">
+                  <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar produtos</ExportCsvButton>
+                  <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar preços</ExportCsvButton>
+                </ExportMenu>
                 <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
               </>
             )}
@@ -134,15 +138,14 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             )}
             {!templatesLoading && !templatesError && templates.length > 0 && (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {templates.map((template, index) => (
+                {templates.map((template) => (
                   <article
                     key={template.id}
                     className="flex min-h-72 flex-col rounded-card bg-surface p-5 transition-colors hover:bg-surface-hover"
                   >
-                    <Heading level="subsection" className="truncate" title={template.name}>{template.name}</Heading>
-                    <div className={["mt-5 flex h-24 items-end justify-between rounded-control p-5", ['bg-sage text-sage-ink', 'bg-orange text-orange-ink', 'bg-taupe text-taupe-ink'][index % 3]].join(' ')}>
-                      <Boxes size={32} strokeWidth={1.4} aria-hidden="true" />
-                      <span className="text-lg font-semibold">{template.items.length} {template.items.length === 1 ? 'item' : 'itens'}</span>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <Heading level="subsection" className="truncate" title={template.name}>{template.name}</Heading>
+                      <Text variant="meta" className="shrink-0">{template.items.length} {template.items.length === 1 ? 'item' : 'itens'}</Text>
                     </div>
                     <div className="mt-4 flex-1">
                       {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-3xs text-fg-muted">{item.sku}</span></div>)}

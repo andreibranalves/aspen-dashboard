@@ -96,7 +96,8 @@ const CRM_VIEW_TABS = [
   { value: 'board', label: 'Quadro', icon: Columns3 },
 ] as const;
 type StageFilter = string;
-const BOARD_STAGE_SWATCHES = ['bg-light-sage', 'bg-orange', 'bg-taupe', 'bg-cream'] as const;
+// Marcador de etapa é marca de gráfico: usa os tokens chart-*.
+const BOARD_STAGE_SWATCHES = ['bg-chart-one', 'bg-chart-two', 'bg-chart-three', 'bg-chart-four'] as const;
 const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
   raw?.trim() || fallback;
 

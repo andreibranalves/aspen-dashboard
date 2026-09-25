@@ -28,6 +28,8 @@ import InlineAlert from '@/components/shared/InlineAlert';
 import EmptyState from '@/components/shared/EmptyState';
 import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import MobileActionBar from '@/components/shared/MobileActionBar';
 import { Select } from '@/components/ui/select';
 import { StatusBadge, type StatusTone } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -710,6 +712,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             onClick={saveProduct}
             disabled={saving || deleting}
             size="sm"
+            className="max-md:hidden"
             aria-label={isNewProduct ? 'Criar produto' : 'Salvar produto'}
           >
             <Save size={14} />
@@ -718,6 +721,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <Button
             variant="outline"
             size="sm"
+            className="max-md:hidden"
             onClick={cancelEditing}
             disabled={saving || deleting}
             aria-label="Cancelar edição"
@@ -747,7 +751,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           hasImage ? (
             <img src={produto.imagem ?? undefined} alt={displayName} className="size-14 rounded-control object-cover" />
           ) : (
-            <div className="grid size-14 place-items-center rounded-control bg-sage text-sage-ink" aria-label="Imagem não cadastrada">
+            <div className="grid size-14 place-items-center rounded-control bg-surface-subtle text-fg-muted" aria-label="Imagem não cadastrada">
               <Package size={20} aria-hidden="true" />
             </div>
           )
@@ -786,13 +790,13 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                 <label htmlFor="product-description" className="text-2xs font-medium text-fg-muted">
                   Descrição
                 </label>
-                <textarea
+                <Textarea
                   id="product-description"
                   value={edited.descricao || ''}
                   onChange={(event) =>
                     setEdited((previous) => ({ ...previous, descricao: event.target.value }))
                   }
-                  className="mt-1.5 min-h-[112px] w-full resize-y rounded-control border border-border-control bg-raised px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted"
+                  className="mt-1.5 min-h-28"
                   placeholder="Descrição do produto"
                   maxLength={4000}
                 />
@@ -850,7 +854,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   value={edited.categoria || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, categoria: e.target.value }))}
                   className="mt-1"
-                  placeholder="Categoria"
                   maxLength={255}
                 />
               </div>
@@ -866,7 +869,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   value={edited.marca || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, marca: e.target.value }))}
                   className="mt-1"
-                  placeholder="Marca"
                   maxLength={255}
                 />
               </div>
@@ -906,7 +908,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   value={edited.unidade || ''}
                   onChange={(e) => setEdited((prev) => ({ ...prev, unidade: e.target.value }))}
                   className="mt-1"
-                  placeholder="Und"
                   maxLength={32}
                 />
               </div>
@@ -1095,7 +1096,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </div>
         <aside className="rounded-card bg-surface p-5 xl:col-start-2 xl:row-start-1" aria-label="Prévia do cadastro">
           <Heading level="section">Prévia do cadastro</Heading>
-          <div className="mt-5 flex h-44 items-end justify-between rounded-control bg-sage p-5 text-sage-ink"><Package size={32} strokeWidth={1.5} aria-hidden="true" /><span className="text-xl font-semibold">{previewPrice === null ? '—' : formatBRL(previewPrice)}</span></div>
+          <div className="mt-5 flex h-44 items-end justify-between rounded-control bg-surface-subtle p-5 text-fg"><Package size={32} strokeWidth={1.5} aria-hidden="true" /><span className="text-xl font-semibold">{previewPrice === null ? '—' : formatBRL(previewPrice)}</span></div>
           {!hasBasePrice && tierPrices.length > 0 && <p className="mt-2 text-xs text-fg-muted">A partir de, conforme a quantidade.</p>}
           <p className="mt-4 text-xs leading-5 text-fg-muted">{produto.categoria || 'Sem categoria'} · {produto.unidade || 'Unidade não informada'}</p>
         </aside>
@@ -1144,6 +1145,17 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </SectionCard>
       )}
 
+      {editing && (
+        <MobileActionBar label="Edição do produto">
+          <Button variant="outline" onClick={cancelEditing} disabled={saving || deleting}>
+            <X size={14} /> Cancelar
+          </Button>
+          <Button onClick={saveProduct} disabled={saving || deleting}>
+            <Save size={14} />
+            {saving ? (isNewProduct ? 'Criando…' : 'Salvando…') : isNewProduct ? 'Criar produto' : 'Salvar'}
+          </Button>
+        </MobileActionBar>
+      )}
       </fieldset>
       <ConfirmDialog
         open={confirmArchiveOpen}

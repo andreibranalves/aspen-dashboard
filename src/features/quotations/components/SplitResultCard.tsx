@@ -934,7 +934,7 @@ export default function SplitResultCard({
               <Heading level="subsection" className="mt-1 flex min-w-0 items-center gap-2">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
-                  <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-2xs font-medium leading-3 text-primary">
+                  <span className="shrink-0 rounded-badge bg-primary/10 px-1.5 py-0.5 text-2xs font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}
