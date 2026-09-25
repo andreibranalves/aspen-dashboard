@@ -410,6 +410,11 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Altura útil da área de trabalho no celular: tela menos TopBar, navegação inferior e respiros. */
+@utility h-workarea {
+  height: calc(100dvh - var(--mobile-nav-h) - 6.75rem);
+}
+
 /* Faixas roláveis (abas, filtros) rolam sem barra visível. */
 @utility scrollbar-none {
   scrollbar-width: none;

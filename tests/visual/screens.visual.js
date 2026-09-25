@@ -1,18 +1,28 @@
 // @ts-check
 import { expect, test } from '@playwright/test';
-import { respond, respondReadOnlyPost } from './fixtures.js';
+import { conversations, respond, respondReadOnlyPost, savedSettings } from './fixtures.js';
 
 const DESKTOP = { width: 1440, height: 900 };
 const MOBILE = { width: 390, height: 844 };
 const TALL = { width: 1440, height: 1600 };
 
 const SCREENS = [
+  { name: 'atendimento', route: '/atendimento', heading: 'Atendimento', mobile: true },
+  // Abrir a conversa marca como lida (PATCH simulado em `writes`).
+  { name: 'atendimento-conversa', route: '/atendimento?conversationId=c1000000-0000-4000-8000-000000000001', mobile: true, writes: { 'PATCH /api/whatsapp-conversations': { conversation: { ...conversations.items[0], unreadCount: 0, readRevision: 1 } } } },
   { name: 'clientes', route: '/leads', heading: 'Clientes', mobile: true },
+  { name: 'cliente-detalhe', route: '/leads/cliente/00000000-0000-4000-8000-000000000001', heading: 'Confecções Horizonte Ltda', mobile: true },
   { name: 'orcamentos', route: '/quotations', heading: 'Orçamentos', mobile: true, dark: true },
   { name: 'pedidos', route: '/sales-orders', heading: 'Pedidos', mobile: true },
+  { name: 'pedido-detalhe', route: '/sales-orders/PED-2026-0101', heading: 'PED-2026-0101', viewport: TALL, mobile: true },
   { name: 'produtos', route: '/products', heading: 'Produtos', mobile: true },
+  { name: 'produto-detalhe', route: '/products/CAN-100', heading: 'Canga estampada 100x160', viewport: TALL, mobile: true },
   { name: 'painel', route: '/dashboard', mobile: true },
+  { name: 'envios', route: '/whatsapp-deliveries', heading: 'Envios', mobile: true },
+  { name: 'tarefas', route: '/tarefas', heading: 'Tarefas', mobile: true },
+  { name: 'configuracoes', route: '/settings', heading: 'Configurações', viewport: TALL, mobile: true, responses: { '/api/settings': savedSettings } },
   { name: 'crm', route: '/crm', mobile: true },
+  { name: 'negocios', route: '/crm?tab=deals', heading: 'Comercial', mobile: true },
   { name: 'orcamento-detalhe', route: '/quotations/ORC-20260101', viewport: TALL, mobile: true },
   { name: 'novo-orcamento', route: '/novo-orcamento', viewport: TALL, mobile: true },
   { name: 'novo-orcamento-manual', route: '/manual', heading: 'Novo orçamento', viewport: TALL, mobile: true },
@@ -51,12 +61,13 @@ const SCREENS = [
 ];
 
 /** @param {import('@playwright/test').Page} page */
-async function install(page, unmocked) {
+async function install(page, unmocked, writes = {}, responses = {}) {
   await page.clock.setFixedTime(new Date('2026-09-15T12:00:00-03:00'));
   await page.route((url) => url.pathname.startsWith('/api/'), (route) => {
     const url = new globalThis.URL(route.request().url());
     // Consultas POST só de leitura também têm fixture; escritas nunca.
-    const response = route.request().method() === 'GET' ? respond(url)
+    const response = route.request().method() === 'GET' ? (responses[url.pathname] ?? respond(url))
+      : `${route.request().method()} ${url.pathname}` in writes ? writes[`${route.request().method()} ${url.pathname}`]
       : route.request().method() === 'POST' ? respondReadOnlyPost(url) : null;
     if (response === null) unmocked.push(`${route.request().method()} ${url.pathname}`);
     const { status, body } = response === null ? { status: 404, body: {} }
@@ -90,7 +101,7 @@ for (const variant of variants) {
       }, variant.session);
     }
     await page.setViewportSize(variant.viewport);
-    await install(page, unmocked);
+    await install(page, unmocked, variant.writes, variant.responses);
     await page.goto(`/#${variant.route}`);
     await settle(page, variant.heading);
     const target = variant.region ? page.getByRole('region', { name: variant.region }) : page;

@@ -29,11 +29,11 @@ export default function StickySaveBar({
       <span className="text-sm text-fg-muted">Alterações não salvas</span>
       <div className="flex items-center gap-2">
         {onDiscard && (
-          <Button variant="ghost" size="md" onClick={onDiscard} disabled={saving}>
+          <Button type="button" variant="ghost" size="md" onClick={onDiscard} disabled={saving}>
             Descartar
           </Button>
         )}
-        <Button size="md" onClick={onSave} disabled={saving}>
+        <Button type="button" size="md" onClick={onSave} disabled={saving}>
           {saving ? 'Salvando…' : saveLabel}
         </Button>
       </div>
