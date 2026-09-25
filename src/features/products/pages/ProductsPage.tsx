@@ -423,7 +423,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
       header: 'Produto',
       cell: (product) => (
         <div className="flex min-w-0 flex-col gap-0.5">
-          <Text variant="title" truncate>{productName(product)}</Text>
+          <Text variant="title" truncate title={productName(product)}>{productName(product)}</Text>
           <Text variant="id">{productSku(product) || '—'}</Text>
         </div>
       ),

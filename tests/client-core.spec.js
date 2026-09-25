@@ -81,7 +81,8 @@ test.describe('Clientes locais @crm @smoke', () => {
     } }));
     await page.goto('/#/leads');
     const phoneLinks = page.locator('a[href^="https://wa.me/"]');
-    await expect(phoneLinks).toHaveCount(2);
+    // Só a versão da largura atual da lista é montada.
+    await expect(phoneLinks).toHaveCount(1);
     for (const link of await phoneLinks.all()) await expect(link).toHaveAttribute('href', expectedUrl);
     await page.locator('tbody tr').filter({ hasText: CLIENT.nome }).hover();
     await page.getByRole('button', { name: `Visualização rápida ${CLIENT.nome}`, exact: true }).click();
@@ -136,9 +137,10 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByRole('combobox', { name: 'Filtrar clientes por status' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
 
-    await page.getByText(CLIENT.nome, { exact: true }).first().click();
-    await expect(page.getByText('Cliente', { exact: true }).last()).toBeVisible();
-    await expect(page.getByText(CLIENT.nome, { exact: true }).last()).toBeVisible();
+    await page.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` }).press('Enter');
+    await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${CLIENT.id}$`));
+    await expect(page.getByRole('heading', { name: CLIENT.nome, exact: true })).toBeVisible();
+    await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
   });
 
   test('lista clientes preserva dados reais, seleção e ação para abrir o detalhe', async ({ page }) => {
@@ -163,26 +165,26 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(table.getByRole('columnheader')).toHaveText([
       'Cliente',
       'Contato',
-      'Localização',
-      'Orçamentos',
+      'Documento',
       'Status',
-      '',
+      'Ações',
     ]);
     const row = table.getByRole('row').nth(1);
-    await expect(row.getByRole('link', { name: CLIENT.nome })).toHaveAttribute(
+    await expect(row.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` })).toHaveAttribute(
       'href',
       `#/leads/cliente/${CLIENT.id}`
     );
     await expect(row.getByRole('cell').nth(0)).toContainText(CLIENT.nome);
     await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
-    await expect(row.getByRole('button', { name: `Abrir cliente ${CLIENT.nome}` })).toBeVisible();
+    await expect(row.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` })).toBeVisible();
     await expect(row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` })).toBeVisible();
     await expect(page.getByText('1 cliente selecionado')).toHaveCount(0);
     expect(detailRequests).toHaveLength(0);
     await row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` }).check();
     await expect(page.getByText('1 cliente selecionado')).toBeVisible();
     await page.route('**/api/client-detail**', (route) => route.fulfill({ json: DETAIL }));
-    await row.getByRole('button', { name: `Abrir cliente ${CLIENT.nome}` }).click();
+    // O link cobre a linha; a célula de contato tem os próprios links por cima, então abre pelo teclado.
+    await row.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` }).press('Enter');
     await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${CLIENT.id}$`));
   });
 
@@ -230,12 +232,10 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(
       page.getByRole('button', { name: 'Mais ações para Cliente com nome longo' })
     ).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Atividade recente' })).toBeVisible();
+    // Resumo comercial reúne pedidos e o orçamento recente num bloco só.
+    await expect(page.getByRole('heading', { name: 'Resumo comercial' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Atividade recente' })).toHaveCount(0);
     await expect(nextActionCard.getByText(COMPLETE_DETAIL.deal.next_step, { exact: true })).toBeVisible();
-    const mobileSections = await page.locator('main section h2').allTextContents();
-    expect(mobileSections.indexOf('Resumo comercial')).toBeLessThan(
-      mobileSections.indexOf('Atividade recente')
-    );
 
     await page.setViewportSize({ width: 768, height: 900 });
     await expect(page.locator('html')).not.toHaveClass(/dark/);
@@ -252,7 +252,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     );
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
 
-    await page.getByRole('button', { name: 'Abrir orçamento', exact: true }).click();
+    await page.getByRole('button', { name: 'Abrir orçamento ORC-20260001', exact: true }).click();
     await expect(page).toHaveURL(/#\/quotations\/ORC-20260001$/);
 
     await page.goto(detailUrl);

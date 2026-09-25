@@ -869,8 +869,9 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/#/products');
 
-    const productCard = page.getByRole('article').filter({ has: page.getByRole('button', { name: /Abrir produto A11Y-SKU/ }) });
-    const openButton = productCard.getByRole('button', { name: /Abrir produto A11Y-SKU/ });
+    // Cada produto é uma linha da tabela; o link da linha abre o produto.
+    const productCard = page.getByRole('row').filter({ has: page.getByRole('link', { name: /Abrir produto A11Y-SKU/ }) });
+    const openButton = productCard.getByRole('link', { name: /Abrir produto A11Y-SKU/ });
     const checkbox = page.getByRole('checkbox', { name: 'Selecionar produto A11Y-SKU' });
     const archiveButton = page.getByRole('button', { name: 'Arquivar produto A11Y-SKU' });
     const displayedName = page.getByText(longName, { exact: true }).first();
@@ -928,10 +929,10 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByRole('button', { name: 'Limpar filtros' }).last()).toBeVisible();
     await page.getByRole('button', { name: 'Limpar filtros' }).last().click();
     await expect(
-      page.locator('article').getByText('Produto acessível no celular', { exact: true })
+      page.getByRole('list', { name: 'Produtos do catálogo' }).getByText('Produto acessível no celular', { exact: true })
     ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Abrir produto MOBILE-SKU' }).click();
+    await page.getByRole('link', { name: /Abrir produto MOBILE-SKU/ }).click();
     await expect(page).toHaveURL(/#\/products\/MOBILE-SKU$/);
   });
 });

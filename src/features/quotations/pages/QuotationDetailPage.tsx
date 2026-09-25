@@ -81,6 +81,7 @@ import { MenuItem } from '@/components/ui/menu-item';
 import { Heading } from '@/components/ui/heading';
 import { Text } from '@/components/ui/text';
 import MobileActionBar from '@/components/shared/MobileActionBar';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
 const LEGACY_CONVERSATION_STATUS: Record<string, { label: string; badge: string }> = {
@@ -1118,6 +1119,8 @@ function CoreQuotationDetail({
     const params = new URLSearchParams({ id: data.revisionId || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
   }, [data.id, data.revisionId]);
+  // No celular os itens viram linhas; só uma versão fica montada.
+  const compactItems = useMediaQuery(MOBILE_MEDIA_QUERY);
   const scrollToCommunication = useCallback(() => {
     document.getElementById('issued-communication')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
@@ -1258,7 +1261,8 @@ function CoreQuotationDetail({
           </div>
           {displayItems.length > 0 ? (
             <div className="px-5 md:px-6">
-              <ul aria-label="Itens do orçamento" className="divide-y divide-line pb-2 md:hidden">
+              {compactItems ? (
+              <ul aria-label="Itens do orçamento" className="divide-y divide-line pb-2">
                 {displayItems.map((item) => (
                   <li key={item._key} className="flex flex-col gap-1 py-3">
                     <Text variant="title">
@@ -1276,11 +1280,12 @@ function CoreQuotationDetail({
                   </li>
                 ))}
               </ul>
+              ) : (
               <Table
                 density="compact"
                 edges="flush"
                 className="table-fixed text-sm"
-                containerClassName="overflow-hidden max-md:hidden"
+                containerClassName="overflow-hidden"
               >
                 <TableHeader>
                   <TableRow>
@@ -1316,6 +1321,7 @@ function CoreQuotationDetail({
                   ))}
                 </TableBody>
               </Table>
+              )}
             </div>
           ) : (
             <div className="px-5 pb-5 md:px-6">
