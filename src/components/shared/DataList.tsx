@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { cn } from '@/lib/utils';
 
 export interface DataListColumn<T> {
@@ -27,7 +28,9 @@ interface DataListProps<T> {
   columns: ReadonlyArray<DataListColumn<T>>;
   /** Linha empilhada abaixo de `md`: título, meta e valor. */
   mobileRow: (item: T) => ReactNode;
-  /** Controles da linha empilhada (checkbox, menu), fora do link. */
+  /** Controle à esquerda da linha empilhada (checkbox de seleção), fora do link. */
+  mobileLead?: (item: T) => ReactNode;
+  /** Controles à direita da linha empilhada (menu), fora do link. */
   mobileAside?: (item: T) => ReactNode;
   /** Destino da linha. Com href, a linha é um link de verdade: abre em nova aba e com o botão do meio. */
   getHref?: (item: T) => string | undefined;
@@ -44,7 +47,9 @@ function RowLink({ href, label }: { href: string; label?: string }) {
 
 /**
  * DataList — lista que funciona nas duas larguras: tabela a partir de `md`,
- * linhas empilhadas abaixo. Estado, busca, seleção e paginação ficam na página.
+ * linhas empilhadas abaixo. Só a versão da largura atual é montada, então
+ * controles e rótulos nunca aparecem duplicados. Estado, busca, seleção e
+ * paginação ficam na página.
  */
 export default function DataList<T>({
   label,
@@ -52,6 +57,7 @@ export default function DataList<T>({
   getKey,
   columns,
   mobileRow,
+  mobileLead,
   mobileAside,
   getHref,
   getRowLabel,
@@ -59,72 +65,74 @@ export default function DataList<T>({
 }: DataListProps<T>) {
   // O link cobre a linha a partir da primeira célula sem controles próprios.
   const linkColumn = columns.findIndex((column) => !column.interactive);
+  const compact = useMediaQuery(MOBILE_MEDIA_QUERY);
+  if (!compact) {
+    return (
+      <Table aria-label={label} edges="flush">
+        <TableHeader>
+          <TableRow>
+            {columns.map((column) => (
+              <TableHead
+                key={column.key}
+                className={cn(
+                  column.align === 'right' && 'text-right',
+                  column.hideBelow === 'lg' && 'hidden lg:table-cell',
+                  column.hideBelow === 'xl' && 'hidden xl:table-cell'
+                )}
+              >
+                {column.header}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((item) => {
+            const href = getHref?.(item);
+            return (
+              <TableRow key={getKey(item)} selected={isSelected?.(item)} className="relative">
+                {columns.map((column, index) => (
+                  <TableCell
+                    key={column.key}
+                    className={cn(
+                      column.align === 'right' && 'text-right',
+                      column.hideBelow === 'lg' && 'hidden lg:table-cell',
+                      column.hideBelow === 'xl' && 'hidden xl:table-cell'
+                    )}
+                  >
+                    {index === linkColumn && href && (
+                      <RowLink href={href} label={getRowLabel?.(item)} />
+                    )}
+                    {column.interactive ? (
+                      <div className="relative z-sticky">{column.cell(item)}</div>
+                    ) : (
+                      column.cell(item)
+                    )}
+                  </TableCell>
+                ))}
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
+  }
   return (
-    <>
-      <div className="hidden md:block">
-        <Table aria-label={label} edges="flush">
-          <TableHeader>
-            <TableRow>
-              {columns.map((column) => (
-                <TableHead
-                  key={column.key}
-                  className={cn(
-                    column.align === 'right' && 'text-right',
-                    column.hideBelow === 'lg' && 'hidden lg:table-cell',
-                    column.hideBelow === 'xl' && 'hidden xl:table-cell'
-                  )}
-                >
-                  {column.header}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => {
-              const href = getHref?.(item);
-              return (
-                <TableRow key={getKey(item)} selected={isSelected?.(item)} className="relative">
-                  {columns.map((column, index) => (
-                    <TableCell
-                      key={column.key}
-                      className={cn(
-                        column.align === 'right' && 'text-right',
-                        column.hideBelow === 'lg' && 'hidden lg:table-cell',
-                        column.hideBelow === 'xl' && 'hidden xl:table-cell'
-                      )}
-                    >
-                      {index === linkColumn && href && (
-                        <RowLink href={href} label={getRowLabel?.(item)} />
-                      )}
-                      {column.interactive ? (
-                        <div className="relative z-sticky">{column.cell(item)}</div>
-                      ) : (
-                        column.cell(item)
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
-      <ul aria-label={label} className="divide-y divide-line md:hidden">
-        {items.map((item) => {
-          const href = getHref?.(item);
-          return (
-            <li
-              key={getKey(item)}
-              data-state={isSelected?.(item) ? 'selected' : undefined}
-              className="relative flex min-h-14 items-center gap-3 py-3 data-[state=selected]:bg-surface-selected"
-            >
-              {href && <RowLink href={href} label={getRowLabel?.(item)} />}
-              <div className="min-w-0 flex-1">{mobileRow(item)}</div>
-              {mobileAside && <div className="relative z-sticky shrink-0">{mobileAside(item)}</div>}
-            </li>
-          );
-        })}
-      </ul>
-    </>
+    <ul aria-label={label} className="divide-y divide-line">
+      {items.map((item) => {
+        const href = getHref?.(item);
+        return (
+          <li
+            key={getKey(item)}
+            data-state={isSelected?.(item) ? 'selected' : undefined}
+            className="relative flex min-h-14 items-center gap-3 py-3 data-[state=selected]:bg-surface-selected"
+          >
+            {href && <RowLink href={href} label={getRowLabel?.(item)} />}
+            {mobileLead && <div className="relative z-sticky shrink-0">{mobileLead(item)}</div>}
+            <div className="min-w-0 flex-1">{mobileRow(item)}</div>
+            {mobileAside && <div className="relative z-sticky shrink-0">{mobileAside(item)}</div>}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

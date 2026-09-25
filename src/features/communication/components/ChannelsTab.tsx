@@ -39,7 +39,7 @@ export default function ChannelsTab() {
         <article className="rounded-card bg-surface p-5">
           <Heading level="section">WhatsApp operacional</Heading>
           <div className="mt-5 flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-sage"><MessageCircle size={20} aria-hidden="true" /></span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-primary"><MessageCircle size={20} aria-hidden="true" /></span>
             <div>
               <p className="pt-1 text-xs text-fg-muted">Conexão operacional usada pelos fluxos e envios.</p>
               <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-2xs text-fg-muted">Estado não consultado</span>
@@ -62,7 +62,7 @@ export default function ChannelsTab() {
         <article className="rounded-card bg-surface p-5">
           <Heading level="section">E-mail de propostas</Heading>
           <div className="mt-5 flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-sage"><Mail size={20} aria-hidden="true" /></span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-raised text-primary"><Mail size={20} aria-hidden="true" /></span>
             <div>
               <p className="pt-1 text-xs text-fg-muted">Canal usado no envio contextual dos orçamentos.</p>
               <span className="mt-3 inline-flex rounded-control bg-raised px-2 py-1 text-2xs text-fg-muted">Estado não consultado</span>

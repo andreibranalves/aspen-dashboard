@@ -25,8 +25,8 @@ export default function EntityIdentity({ name, primary, secondary, className }: 
         {initials(name)}
       </span>
       <div className="min-w-0">
-        <div className="truncate text-xs font-semibold text-fg">{primary ?? name}</div>
-        {secondary != null && <div className="mt-0.5 truncate text-2xs text-fg-muted">{secondary}</div>}
+        <div className="truncate text-sm font-semibold text-fg">{primary ?? name}</div>
+        {secondary != null && <div className="truncate text-xs text-fg-muted">{secondary}</div>}
       </div>
     </div>
   );

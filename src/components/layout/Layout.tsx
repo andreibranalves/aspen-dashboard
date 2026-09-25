@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import BottomNav from './BottomNav';
@@ -121,15 +122,12 @@ export interface LayoutProps {
   children: ReactNode;
 }
 
-const MOBILE_MEDIA_QUERY = '(max-width: 767px)';
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') return window.innerWidth < 768;
     return false;
   });
-  const [isMobile, setIsMobile] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < 768
-  );
+  const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
   const [detailBreadcrumb, setDetailBreadcrumb] = useState<{
     route: string;
     label: string | null;
@@ -145,17 +143,6 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const detailLabel = detailBreadcrumb.route === route ? detailBreadcrumb.label : null;
   const breadcrumbItems = getBreadcrumb(route, detailLabel);
   const isQuotationComposer = ['/auto', '/novo-orcamento', '/manual'].includes(routePath(route));
-
-  useEffect(() => {
-    if (!window.matchMedia) return undefined;
-    const mobileMedia = window.matchMedia(MOBILE_MEDIA_QUERY);
-    const updateMobile = () => setIsMobile(mobileMedia.matches);
-    updateMobile();
-    mobileMedia.addEventListener?.('change', updateMobile);
-    return () => {
-      mobileMedia.removeEventListener?.('change', updateMobile);
-    };
-  }, []);
 
   useEffect(() => {
     setSidebarCollapsed(isMobile);

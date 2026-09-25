@@ -26,6 +26,8 @@ import PageHeader from '@/components/shared/PageHeader';
 import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
 import ListPagination from '@/components/shared/ListPagination';
 import EntityIdentity from '@/components/shared/EntityIdentity';
+import DataList, { type DataListColumn } from '@/components/shared/DataList';
+import { Text } from '@/components/ui/text';
 import ExportCsvButton from '@/components/shared/ExportCsvButton';
 import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -40,14 +42,6 @@ import {
   parseHashString,
   useHashQueryState,
 } from '@/hooks/useHashQueryState';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import Skeleton from '@/components/shared/Skeleton';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
@@ -587,25 +581,81 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     void fetchData('', 1, 'all', limit);
   };
 
-  const selectRow = (row: DataRow) => {
+  const selectBox = (row: DataRow) => (
+    <input
+      type="checkbox"
+      checked={selectedIds.includes(row.id)}
+      onChange={() => toggleSelected(row.id)}
+      aria-label={`Selecionar ${rowLabel(row)}`}
+    />
+  );
+
+  const rowActions = (row: DataRow) => {
     const label = rowLabel(row);
     return (
-      <EntityIdentity name={label} secondary={row.empresa && row.nome && row.empresa !== row.nome ? row.nome : undefined} primary={
-        <a
-          href={`#/leads/cliente/${encodeURIComponent(row.id)}`}
-          onClick={(event) => {
-            if (!navigate) return;
-            event.preventDefault();
-            navigateToDetail(row.id);
-          }}
-          title={label}
-          className="block max-w-[240px] break-words font-medium text-fg underline-offset-4 hover:underline"
-        >
-          {label}
-        </a>
-      } />
+      <div className="flex items-center justify-end gap-1">
+        <Button variant="soft" size="icon-sm" title={`Novo orçamento para ${label}`} aria-label={`Novo orçamento para ${label}`} onClick={() => createQuoteForClient(row, navigate)}>
+          <ReceiptText />
+        </Button>
+        <Button variant="ghost-muted" size="icon-sm" onClick={() => void openDrawer(row)} aria-label={`Visualização rápida ${label}`} title="Visualização rápida">
+          <Eye />
+        </Button>
+        <CustomerActionMenu
+          archived={isArchivedRow(row)}
+          customerName={label}
+          onArchiveToggle={() => toggleArchive(row)}
+          onViewQuotations={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)}
+        />
+      </div>
     );
   };
+
+  const columns: DataListColumn<DataRow>[] = [
+    ...(selectionMode
+      ? [{
+          key: 'select',
+          interactive: true,
+          header: (
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => toggleAll(event.target.checked)}
+              aria-label="Selecionar todos os clientes"
+            />
+          ),
+          cell: selectBox,
+        }]
+      : []),
+    {
+      key: 'client',
+      header: 'Cliente',
+      cell: (row) => (
+        <EntityIdentity
+          name={rowLabel(row)}
+          secondary={[row.empresa && row.nome && row.empresa !== row.nome ? row.nome : null, [row.municipio, row.uf].filter(Boolean).join('/') || null].filter(Boolean).join(' · ') || undefined}
+        />
+      ),
+    },
+    {
+      key: 'contact',
+      header: 'Contato',
+      interactive: true,
+      cell: (row) => {
+        const phone = fmtPhone(row.telefone);
+        return (
+          <div className="flex min-w-0 flex-col gap-0.5">
+            {row.email && <a href={`mailto:${row.email}`} title={row.email} className="truncate text-sm text-fg hover:text-primary">{row.email}</a>}
+            {phone && <a href={whatsappContactUrl(row.telefone)} target="_blank" rel="noopener noreferrer" title="Abrir conversa no WhatsApp" className="text-xs text-fg-muted hover:text-primary">{phone}</a>}
+            {!row.email && !phone && <Text variant="meta">—</Text>}
+          </div>
+        );
+      },
+    },
+    { key: 'document', header: 'Documento', hideBelow: 'lg', cell: (row) => <Text variant="meta">{row.documento ? formatDocument(row.documento) : '—'}</Text> },
+    { key: 'status', header: 'Status', cell: (row) => <StatusBadge status={statusKey(row)} label={statusLabel(row)} /> },
+    { key: 'actions', header: <span className="sr-only">Ações</span>, interactive: true, align: 'right', cell: rowActions },
+  ];
 
   return (
     <ListPageLayout
@@ -688,220 +738,35 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         />
       )}
       {!loading && !error && data.length > 0 && (
-        <>
-          <div className="hidden md:block">
-            <Table className="min-w-[760px] [&_th]:h-12">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[220px]">
-                    <div className="flex items-center gap-3">
-                      {selectionMode && <input
-                        ref={selectAllRef}
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={(event) => toggleAll(event.target.checked)}
-                        aria-label="Selecionar todos os clientes"
-                      />}
-                      <span>Cliente</span>
-                    </div>
-                  </TableHead>
-                  <TableHead>Contato</TableHead>
-                  <TableHead>Localização</TableHead>
-                  <TableHead>Orçamentos</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-48" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.map((row) => {
-                  const label = rowLabel(row);
-                  const phone = fmtPhone(row.telefone);
-                  return (
-                    <TableRow
-                      key={row.id}
-                      interactive
-                      data-state={selectedIds.includes(row.id) ? 'selected' : undefined}
-                      className="group cursor-pointer"
-                      onClick={(event) => {
-                        const target = event.target as HTMLElement;
-                        if (target.closest('a,button,input,select,textarea,summary,details'))
-                          return;
-                        navigateToDetail(row.id);
-                      }}
-                    >
-                      <TableCell className="min-w-[220px]">
-                        <div className="flex items-start gap-3">
-                          {selectionMode && <input
-                            className="mt-1 shrink-0"
-                            type="checkbox"
-                            checked={selectedIds.includes(row.id)}
-                            onChange={() => toggleSelected(row.id)}
-                            aria-label={`Selecionar ${label}`}
-                          />}
-                          <div className="min-w-0 flex-1">{selectRow(row)}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[280px]">
-                        <div className="space-y-0.5 text-sm">
-                          {row.email ? (
-                            <a
-                              href={`mailto:${row.email}`}
-                              title={row.email}
-                              className="block max-w-[260px] truncate text-fg hover:text-primary"
-                            >
-                              {row.email}
-                            </a>
-                          ) : (
-                            <span className="text-fg-muted">E-mail não informado</span>
-                          )}
-                          {phone ? (
-                            <a
-                              href={whatsappContactUrl(row.telefone)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Abrir conversa no WhatsApp"
-                              className="block text-xs text-fg-muted hover:text-primary"
-                            >
-                              {phone}
-                            </a>
-                          ) : (
-                            <span className="block text-xs text-fg-muted">
-                              Telefone não informado
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-fg-muted">
-                        {[row.municipio, row.uf].filter(Boolean).join(', ') || '—'}
-                      </TableCell>
-                      <TableCell>
-                        <Button type="button" variant="link" size="inline" onClick={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)} aria-label={`Ver orçamentos de ${row.empresa || row.nome}`}>Ver</Button>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={statusKey(row)} label={statusLabel(row)} />
-                      </TableCell>
-                      <TableCell className="w-48 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Abrir cliente ${label}`}
-                            onClick={() => navigateToDetail(row.id)}
-                          >
-                            <ChevronRight />
-                          </Button></span>
-                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><Button
-                            variant="soft"
-                            size="icon"
-                            title={`Novo orçamento para ${label}`}
-                            aria-label={`Novo orçamento para ${label}`}
-                            onClick={() => createQuoteForClient(row, navigate)}
-                          >
-                            <ReceiptText />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => void openDrawer(row)}
-                            aria-label={`Visualização rápida ${label}`}
-                          >
-                            <Eye />
-                          </Button></span>
-                          <span className="pointer-events-none inline-flex shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"><CustomerActionMenu
-                            archived={isArchivedRow(row)}
-                            customerName={label}
-                            onArchiveToggle={() => toggleArchive(row)}
-                          /></span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <div className="space-y-3 md:hidden">
-            {data.map((row) => {
-              const label = rowLabel(row);
-              const phone = fmtPhone(row.telefone);
-              return (
-                <article key={row.id} className="rounded-card border border-line bg-surface p-5">
-                  <div className="flex items-start gap-3">
-                    {selectionMode && <input
-                      className="mt-1 shrink-0"
-                      type="checkbox"
-                      checked={selectedIds.includes(row.id)}
-                      onChange={() => toggleSelected(row.id)}
-                      aria-label={`Marcar cartão mobile de ${label}`}
-                    />}
-                    <div className="min-w-0 flex-1">
-                      {selectRow(row)}
-                      <StatusBadge
-                        status={statusKey(row)}
-                        label={statusLabel(row)}
-                        className="mt-2"
-                      />
-                    </div>
-                    <CustomerActionMenu
-                      archived={isArchivedRow(row)}
-                      customerName={label}
-                      onArchiveToggle={() => toggleArchive(row)}
-                    />
-                  </div>
-                  <div className="mt-3 space-y-1 border-t border-line pt-3 text-sm">
-                    {row.email ? (
-                      <a
-                        href={`mailto:${row.email}`}
-                        className="block break-words text-fg hover:text-primary"
-                      >
-                        {row.email}
-                      </a>
-                    ) : (
-                      <p className="text-fg-muted">E-mail não informado</p>
-                    )}
-                    {phone ? (
-                      <a
-                        href={whatsappContactUrl(row.telefone)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-xs text-fg-muted hover:text-primary"
-                      >
-                        {phone}
-                      </a>
-                    ) : (
-                      <p className="text-xs text-fg-muted">Telefone não informado</p>
-                    )}
-                    <p className="break-words text-xs text-fg-muted">
-                      {row.documento
-                        ? `Documento: ${formatDocument(row.documento)}`
-                        : 'Documento não informado'}
-                    </p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1 border-t border-line pt-3">
-                    <Button
-                      variant="soft"
-                      size="icon"
-                      aria-label={`Novo orçamento para ${label}`}
-                      title="Novo orçamento"
-                      onClick={() => createQuoteForClient(row, navigate)}
-                    >
-                      <ReceiptText />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void openDrawer(row)}
-                      aria-label={`Visualização rápida ${label}`}
-                    >
-                      <Eye />
-                    </Button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </>
+        <DataList
+          label="Clientes"
+          items={data}
+          getKey={(row) => row.id}
+          columns={columns}
+          getHref={(row) => `#/leads/cliente/${encodeURIComponent(row.id)}`}
+          getRowLabel={(row) => `Abrir cliente ${rowLabel(row)}`}
+          isSelected={(row) => selectedIds.includes(row.id)}
+          mobileLead={selectionMode ? selectBox : undefined}
+          mobileAside={(row) => (
+            <CustomerActionMenu
+              archived={isArchivedRow(row)}
+              customerName={rowLabel(row)}
+              onArchiveToggle={() => toggleArchive(row)}
+              onNewQuotation={() => createQuoteForClient(row, navigate)}
+              onQuickView={() => void openDrawer(row)}
+              onViewQuotations={() => navigate?.(`/quotations?search=${encodeURIComponent(row.empresa || row.nome || '')}`)}
+            />
+          )}
+          mobileRow={(row) => (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center justify-between gap-3">
+                <Text variant="title" truncate>{rowLabel(row)}</Text>
+                <StatusBadge status={statusKey(row)} label={statusLabel(row)} className="shrink-0" />
+              </div>
+              <Text variant="meta" truncate>{[fmtPhone(row.telefone), row.email].filter(Boolean).join(' · ') || 'Sem contato'}</Text>
+            </div>
+          )}
+        />
       )}
       </ListSection>
 

@@ -19,6 +19,8 @@ import PageShell from '@/components/shared/PageShell';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
+import { Text } from '@/components/ui/text';
+import { pipelineLabel } from '@/lib/statusLabels';
 import EmptyState from '@/components/shared/EmptyState';
 import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
@@ -607,50 +609,42 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         ) : (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-5 lg:order-2">
+              {/* Um bloco só: contagem de pedidos e o orçamento mais recente, sem repetir o número em outro card. */}
               <SectionCard title="Resumo comercial">
                 <dl className="space-y-3 text-sm">
                   <div className="flex justify-between gap-3"><dt className="text-fg-muted">Pedidos</dt><dd>{current.orders?.length ?? 0}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Orçamento recente</dt><dd className="max-w-[110px] truncate text-right">{current.latest_quotation?.name || '—'}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-fg-muted">Valor da proposta</dt><dd className="text-right tabular-nums">{current.latest_quotation?.grand_total != null ? formatBRL(current.latest_quotation.grand_total) : '—'}</dd></div>
+                  <div className="flex flex-col gap-1">
+                    <dt className="text-fg-muted">Orçamento recente</dt>
+                    <dd className="flex flex-col gap-0.5">
+                      {current.latest_quotation ? (
+                        <>
+                          <Button
+                            variant="link"
+                            size="inline"
+                            className="justify-start"
+                            onClick={() => navigate(`/quotations/${encodeURIComponent(current.latest_quotation!.name)}`)}
+                            aria-label={`Abrir orçamento ${current.latest_quotation.name}`}
+                          >
+                            {current.latest_quotation.name}
+                          </Button>
+                          <Text variant="meta">
+                            {[current.latest_quotation.status, current.latest_quotation.date ? formatDate(current.latest_quotation.date) : null, current.latest_quotation.grand_total != null ? formatBRL(current.latest_quotation.grand_total) : null].filter(Boolean).join(' · ') || '—'}
+                          </Text>
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                  </div>
                 </dl>
               </SectionCard>
-              {current.latest_quotation && (
-                <SectionCard title="Atividade recente">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">
-                      Orçamento recente
-                    </p>
-                    <p className="break-words font-medium">{current.latest_quotation.name}</p>
-                    <p className="text-xs text-fg-muted">
-                      {current.latest_quotation.status || '—'}
-                      {current.latest_quotation.date
-                        ? ` · ${formatDate(current.latest_quotation.date)}`
-                        : ''}
-                    </p>
-                    {current.latest_quotation.grand_total != null && (
-                      <p className="text-sm">{formatBRL(current.latest_quotation.grand_total)}</p>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        navigate(
-                          `/quotations/${encodeURIComponent(current.latest_quotation!.name)}`
-                        )
-                      }
-                    >
-                      Abrir orçamento
-                    </Button>
-                  </div>
-                </SectionCard>
-              )}
               {current.deal && (
                 <SectionCard title="Próxima ação">
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <p className="break-words font-medium">{current.deal.name}</p>
                       {current.deal.status && (
-                        <p className="text-xs text-fg-muted">{current.deal.status}</p>
+                        <p className="text-xs text-fg-muted">{pipelineLabel(current.deal.status)}</p>
                       )}
                       {current.deal.next_step && (
                         <p className="break-words text-sm">{current.deal.next_step}</p>
@@ -702,17 +696,11 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
               )}
             </div>
             <SectionCard title="Dados do relacionamento" className="lg:order-1">
-              <div className="flex items-center gap-3 pb-2">
-                <div className="grid size-14 shrink-0 place-items-center rounded-full bg-avatar-one text-sm font-semibold text-avatar-ink" aria-hidden="true">{title.trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div>
-                <div className="min-w-0"><p className="truncate text-sm font-semibold text-fg">{title}</p><p className="truncate text-xs text-fg-muted">{current.empresa && current.empresa !== title ? current.empresa : 'Cliente'}</p></div>
-              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <InfoField label="Contato principal" value={current.empresa && current.empresa !== title ? current.nome : title} />
-                <InfoField label="E-mail" value={current.email || 'E-mail não informado'} />
-                <InfoField
-                  label="Telefone"
-                  value={fmtPhone(current.telefone) || 'Telefone não informado'}
-                />
+                {/* O nome já é o título da página; o contato só aparece quando é outra pessoa. */}
+                {current.nome && current.nome !== title && <InfoField label="Contato principal" value={current.nome} />}
+                <InfoField label="E-mail" value={current.email || '—'} />
+                <InfoField label="Telefone" value={fmtPhone(current.telefone) || '—'} />
                 <InfoField
                   label="Documento"
                   value={formatDocument(current.tax_id || current.documento)}

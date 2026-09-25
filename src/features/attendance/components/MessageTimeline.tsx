@@ -1,4 +1,5 @@
 import { forwardRef, Fragment, useState, type UIEvent } from 'react';
+import { SquareCheck, SquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { openReceivedMedia, type AttendanceMessage } from '@/lib/api/attendanceApi';
@@ -70,31 +71,41 @@ function MessageBubble({
   };
   return (
     <div className={cn('flex flex-col', outbound ? 'items-end' : 'items-start')}>
-      {message.type === 'text' && message.body && (
-        <Button variant="ghost" size="xs" aria-pressed={selected} onClick={() => onToggle(message.id)}>
-          {selected ? 'Selecionada' : 'Selecionar para orçamento'}
-        </Button>
-      )}
-      <div
-        className={cn(
-          'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-xs',
-          outbound ? 'bg-primary-soft text-primary-soft-ink' : 'bg-surface text-fg',
-          (message.outboxState === 'failed' || message.outboxState === 'cancelled') && 'opacity-70'
-        )}
-      >
-        {typeLabel && <p className="text-xs font-semibold italic opacity-80">{typeLabel}</p>}
-        {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-        {receivableMedia && (
-          <Button variant="outline" size="xs" disabled={loadingMedia} onClick={() => void openMedia()}>
-            {loadingMedia ? 'Abrindo…' : message.type === 'audio' ? 'Reproduzir áudio' : message.type === 'document' ? 'Baixar PDF' : 'Abrir imagem'}
+      {/* A seleção para orçamento fica ao lado do balão, sem uma linha própria. */}
+      <div className={cn('flex w-full items-center gap-1', outbound && 'flex-row-reverse')}>
+        <div
+          className={cn(
+            'max-w-[75%] rounded-card px-3 py-2 text-sm shadow-xs',
+            outbound ? 'bg-primary-soft text-primary-soft-ink' : 'bg-surface text-fg',
+            (message.outboxState === 'failed' || message.outboxState === 'cancelled') && 'opacity-70'
+          )}
+        >
+          {typeLabel && <p className="text-xs font-semibold italic opacity-80">{typeLabel}</p>}
+          {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+          {receivableMedia && (
+            <Button variant="outline" size="xs" disabled={loadingMedia} onClick={() => void openMedia()}>
+              {loadingMedia ? 'Abrindo…' : message.type === 'audio' ? 'Reproduzir áudio' : message.type === 'document' ? 'Baixar PDF' : 'Abrir imagem'}
+            </Button>
+          )}
+          {mediaError && <p role="status" className="text-xs text-destructive">{mediaError}</p>}
+          <p className="mt-1 text-right text-xs opacity-70">
+            <span className="sr-only">{outbound ? 'Enviada às ' : 'Recebida às '}</span>
+            {timeFormat.format(new Date(message.timestamp))}
+            {delivery && <span> · {delivery}</span>}
+          </p>
+        </div>
+        {message.type === 'text' && message.body && (
+          <Button
+            variant={selected ? 'soft' : 'ghost-muted'}
+            size="icon-sm"
+            aria-pressed={selected}
+            aria-label="Selecionar para orçamento"
+            title={selected ? 'Selecionada para orçamento' : 'Selecionar para orçamento'}
+            onClick={() => onToggle(message.id)}
+          >
+            {selected ? <SquareCheck aria-hidden="true" /> : <SquarePlus aria-hidden="true" />}
           </Button>
         )}
-        {mediaError && <p role="status" className="text-xs text-destructive">{mediaError}</p>}
-        <p className="mt-1 text-right text-xs opacity-70">
-          <span className="sr-only">{outbound ? 'Enviada às ' : 'Recebida às '}</span>
-          {timeFormat.format(new Date(message.timestamp))}
-          {delivery && <span> · {delivery}</span>}
-        </p>
       </div>
       {(cancellable || reviewable || resendable) && (
         <div className="mt-1 flex flex-wrap justify-end gap-1">

@@ -127,7 +127,10 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           <>
             <StatusBadge status={data.status} label={statusLabel} />
             {data.customer_name && <span className="font-medium text-fg">{data.customer_name}</span>}
-            {orderDate && <span>{formatSalesOrderDate(orderDate)}</span>}
+            {orderDate && <span>Data {formatSalesOrderDate(orderDate)}</span>}
+            {data.production?.production.deadline && (
+              <span>Prazo final {formatSalesOrderDate(data.production.production.deadline)}</span>
+            )}
           </>
         }
         actions={
@@ -138,12 +141,8 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
           ) : undefined
         }
       />
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-main-aside">
         <div className="min-w-0 space-y-4">
-          <section className="rounded-card border border-line bg-surface p-5" aria-labelledby="sales-order-customer-title">
-            <Heading level="section" id="sales-order-customer-title">Cliente</Heading>
-            <div className="mt-5 flex items-center gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-full bg-avatar-one text-xs font-semibold text-avatar-ink" aria-hidden="true">{(data.customer_name || '?').trim().split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toLocaleUpperCase('pt-BR')}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{data.customer_name || 'Cliente não identificado'}</p>{data.production?.production.deadline && <p className="text-xs text-fg-muted">Prazo final: {formatSalesOrderDate(data.production.production.deadline)}</p>}</div></div>
-          </section>
           <section
             className="min-w-0 rounded-card border border-line bg-surface p-5"
             aria-labelledby="sales-order-items-title"

@@ -20,8 +20,11 @@ import {
   updateTaskDueOn,
   type OperatorTask,
 } from '../tasks';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export default function TasksPage({ navigate }: { navigate: (hash: string) => void }) {
+  // A dica do atalho T só vale com teclado e ponteiro fino.
+  const hasKeyboard = useMediaQuery('(pointer: fine)');
   const { toast } = useToast();
   const [tasks, setTasks] = useState<OperatorTask[]>([]);
   const [today, setToday] = useState('');
@@ -82,7 +85,7 @@ export default function TasksPage({ navigate }: { navigate: (hash: string) => vo
         <EmptyState
           icon={ListTodo}
           title="Nenhuma tarefa aberta."
-          description="Pressione T ou use + Tarefa para anotar."
+          description={hasKeyboard ? 'Pressione T ou use + Tarefa para anotar.' : 'Use o botão de tarefa no topo para anotar.'}
         />
       )}
       {!loading &&
