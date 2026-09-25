@@ -373,6 +373,10 @@ then, the sections above describe the running app.
   The context column exists only with an open conversation. Message selection
   for a quotation is an icon toggle beside the bubble; attachments use a
   paperclip button, never a raw file input.
+- Comercial already follows this: each queue action is one row from `md`
+  (time, contact, one due badge, chevron) and two lines below it; the whole
+  row opens the action. Negócios never shows internal ids or columns without
+  data; linked proposals open from a text link.
 
 ### Content rules
 

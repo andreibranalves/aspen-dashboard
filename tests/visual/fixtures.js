@@ -230,6 +230,24 @@ const threadMessages = {
   revision: 3,
 };
 
+const deal = (id, lead_name, status, quotation, modificado_em) => ({
+  id, lead_name, status, quotation, quotation_id: quotation ? `q-${id}` : null,
+  email: '', telefone: '11999990001', follow_up_stage: 1, modificado_em, criado_em: '2026-09-01T10:00:00-03:00',
+});
+
+const crmDeals = {
+  columns: [
+    { status: 'Novo Lead', name: 'Novo lead', count: 1, deals: [deal('d1', 'Lead Sintético', 'Novo Lead', null, '2026-09-14T10:00:00-03:00')] },
+    { status: 'Orcamento Enviado', name: 'Orçamento enviado', count: 2, deals: [
+      deal('d2', 'Confecções Horizonte Ltda', 'Orcamento Enviado', 'ORC-20260101', '2026-09-10T10:00:00-03:00'),
+      deal('d3', 'Estamparia Litoral Norte', 'Orcamento Enviado', 'ORC-20260103', '2026-09-05T10:00:00-03:00'),
+    ] },
+    { status: 'Em Negociacao', name: 'Em negociação', count: 0, deals: [] },
+    { status: 'Pedido Fechado', name: 'Pedido fechado', count: 1, deals: [deal('d4', 'Marina Albuquerque', 'Pedido Fechado', 'ORC-20260102', '2026-09-08T10:00:00-03:00')] },
+    { status: 'Perdido', name: 'Perdido', count: 0, deals: [] },
+  ],
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
@@ -246,6 +264,7 @@ export function respond(url) {
   if (pathname === '/api/tasks') return searchParams.get('view') === 'alerts' ? { overdue_count: 0 } : { tasks: [], today: '2026-09-15', overdue_count: 0 };
   if (pathname === '/api/sales-dashboard') return salesDashboard;
   if (pathname === '/api/commercial-queue') return commercialQueue;
+  if (pathname === '/api/crm-deals') return crmDeals;
   if (pathname === '/api/quotation-templates') {
     return { templates: [{ key: 'padrao', name: 'Padrão', is_default: true, current_version_id: null }], default_key: 'padrao' };
   }

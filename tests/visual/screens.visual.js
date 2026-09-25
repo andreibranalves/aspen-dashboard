@@ -16,6 +16,7 @@ const SCREENS = [
   { name: 'produtos', route: '/products', heading: 'Produtos', mobile: true },
   { name: 'painel', route: '/dashboard', mobile: true },
   { name: 'crm', route: '/crm', mobile: true },
+  { name: 'negocios', route: '/crm?tab=deals', heading: 'Comercial', mobile: true },
   { name: 'orcamento-detalhe', route: '/quotations/ORC-20260101', viewport: TALL, mobile: true },
   { name: 'novo-orcamento', route: '/novo-orcamento', viewport: TALL, mobile: true },
   { name: 'novo-orcamento-manual', route: '/manual', heading: 'Novo orçamento', viewport: TALL, mobile: true },

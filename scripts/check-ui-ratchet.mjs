@@ -27,7 +27,7 @@ const RATCHETS = [
   {
     name: 'text-xs solto (use Text ou Field)',
     pattern: /(?<![\w:-])text-xs(?![\w-])/g,
-    limit: 278,
+    limit: 276,
   },
 ];
 
