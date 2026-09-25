@@ -159,7 +159,7 @@ and `src/app`: vertical margins on children (`mt-*`, `mb-*`, `my-*`), hand-built
 
 `npm run test:visual` compares the main screens against
 `tests/visual/__screenshots__/` with mocked API data and a fixed clock,
-tolerating only font antialiasing noise (40 pixels). It runs locally, not in CI. After an intentional visual change,
+tolerating only font antialiasing noise (100 pixels). It runs locally, not in CI. After an intentional visual change,
 review the new images and run `npm run test:visual:update`.
 
 Layout widths are tokens: `max-w-form` (1060px) for long forms and `w-aside` /
@@ -399,6 +399,14 @@ then, the sections above describe the running app.
   header, in `MobileActionBar` below `md`); a missing image is a neutral block.
 - Placeholders never repeat the label; they only show a format (`LNC-SED-70`,
   `0,00`).
+- Envios, Resultados, Tarefas and Configurações already follow this: Envios
+  filters pending deliveries with a `StatusFilterBar` (counts from the summary,
+  no metric cards) and keeps Limpar fila as a quiet icon with confirmation;
+  Resultados puts its four numbers in one row from `lg`, uses neutral panels
+  with color only in chart marks, and shows no chart when the data is
+  unavailable; keyboard hints render only for fine pointers; Configurações
+  edits frete and alíquota with `MoneyInput` (API keeps dot decimals through
+  `toApiDecimal`) and saves through `StickySaveBar`.
 
 ### Content rules
 

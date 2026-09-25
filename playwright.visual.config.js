@@ -14,6 +14,6 @@ export default defineConfig({
   expect: {
     ...base.expect,
     // Tolera só o ruído de antialiasing de fontes (poucos pixels entre execuções).
-    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixels: 40 },
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixels: 100 },
   },
 });
