@@ -23,6 +23,7 @@ import {
 } from '../../../_modules/quotation-document-storage.js';
 import { normalizeWhatsappPhone } from '../../../_shared/whatsapp-phone.js';
 import type { TransportFailureKind } from '../../../_modules/quotation-delivery-state.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 type DatabaseProvider = () => AppDatabase;
 type DeliveryDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -83,7 +84,8 @@ export class QuotationDeliveryNotFoundError extends Error {
 
 export class QuotationDeliveryRepositoryError extends Error {
   readonly statusCode = 503;
-  constructor(message = 'Não foi possível preparar a entrega do orçamento. Tente novamente.') { super(message); this.name = 'QuotationDeliveryRepositoryError'; }
+  // `cause` guarda o erro do banco para o log seguro (safeErrorSummary); nunca vai à resposta.
+  constructor(message = 'Não foi possível preparar a entrega do orçamento. Tente novamente.', options?: ErrorOptions) { super(message, options); this.name = 'QuotationDeliveryRepositoryError'; }
 }
 
 export class QuotationDeliveryPdfError extends QuotationDeliveryRepositoryError {
@@ -353,8 +355,8 @@ export function createPostgresQuotationDeliveryRepository(
     try { return await getDb().transaction((tx) => reserveInDatabase(tx, input, asDate(now(), new Date()), randomId)); }
     catch (error) {
       if (isKnownError(error)) throw error;
-      console.error(`[quotation-delivery] reserve failed (${error instanceof Error ? error.name : typeof error})`);
-      throw new QuotationDeliveryRepositoryError();
+      console.error(`[quotation-delivery] reserve failed (${safeErrorSummary(error)})`);
+      throw new QuotationDeliveryRepositoryError(undefined, { cause: error });
     }
   }
 
@@ -400,8 +402,8 @@ export function createPostgresQuotationDeliveryRepository(
       });
     } catch (error) {
       if (isKnownError(error)) throw error;
-      console.error(`[quotation-delivery] state failed (${error instanceof Error ? error.name : typeof error})`);
-      throw new QuotationDeliveryRepositoryError();
+      console.error(`[quotation-delivery] state failed (${safeErrorSummary(error)})`);
+      throw new QuotationDeliveryRepositoryError(undefined, { cause: error });
     }
   }
 
@@ -426,7 +428,7 @@ export function createPostgresQuotationDeliveryRepository(
       });
     } catch (error) {
       if (isKnownError(error)) throw error;
-      throw new QuotationDeliveryRepositoryError();
+      throw new QuotationDeliveryRepositoryError(undefined, { cause: error });
     }
   }
 
@@ -450,8 +452,8 @@ export function createPostgresQuotationDeliveryRepository(
       });
     } catch (error) {
       if (isKnownError(error)) throw error;
-      console.error(`[quotation-delivery] read failed (${error instanceof Error ? error.name : typeof error})`);
-      throw new QuotationDeliveryRepositoryError();
+      console.error(`[quotation-delivery] read failed (${safeErrorSummary(error)})`);
+      throw new QuotationDeliveryRepositoryError(undefined, { cause: error });
     }
   }
 
@@ -481,7 +483,7 @@ export function createPostgresQuotationDeliveryRepository(
       return { revision, html: renderDocument(snapshot).html };
     } catch (error) {
       if (isKnownError(error)) throw error;
-      throw new QuotationDeliveryRepositoryError();
+      throw new QuotationDeliveryRepositoryError(undefined, { cause: error });
     }
   }
 
@@ -515,8 +517,8 @@ export function createPostgresQuotationDeliveryRepository(
       return await prepareDeliveryDocumentWithLimit(revisionId, maxPdfBytes, current);
     } catch (error) {
       if (isKnownError(error)) throw error;
-      console.error(`[quotation-delivery] document failed (${error instanceof Error ? error.name : typeof error})`);
-      throw new QuotationDeliveryRepositoryError();
+      console.error(`[quotation-delivery] document failed (${safeErrorSummary(error)})`);
+      throw new QuotationDeliveryRepositoryError(undefined, { cause: error });
     }
   }
 

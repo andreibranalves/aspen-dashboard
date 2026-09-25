@@ -17,6 +17,7 @@ import {
   normalizeProductPricing,
   type PricingTierInput,
 } from './pricing-core.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -39,7 +40,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function logError(error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[product-update-core] failed (${kind})`);
 }
 

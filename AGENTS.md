@@ -17,7 +17,7 @@ Preserve dados reais e contratos em uso. Não crie compatibilidade para consumid
 - As rotas do frontend são por hash, em `src/app/routes.tsx`; não adicione React Router.
 - Prefira estado local ou contexto; não adicione biblioteca de estado global sem aprovação.
 - PostgreSQL é a única fonte de verdade (ADR 0008) e Evolution API o único transporte de WhatsApp (ADR 0010). Não adicione fallbacks de provedor, transporte ou persistência, nem branches de rollout; fallbacks de leitura ou cache existentes no frontend não autorizam novos caminhos de persistência.
-- Não exponha erros de banco, erros brutos de integrações, stack traces, segredos ou dados pessoais em respostas e logs. Autenticação e rate limiting passam pelo pipeline compartilhado, local e implantado.
+- Respostas e logs não levam mensagem, `detail`, query ou parâmetros de erro de banco, corpo de erro de integração, stack trace, segredo ou dado pessoal: esses campos copiam valores das linhas. Para diagnosticar, registre `safeErrorSummary`/`safeLogMessage` (`api/_shared/safe-error.ts`: classes, SQLSTATE, constraint e tabela) e, ao trocar um erro por outro, guarde o original em `cause`. Autenticação e rate limiting passam pelo pipeline compartilhado, local e implantado.
 - Não edite arquivos gerados pelo Vite em `public/`.
 
 ## Comandos

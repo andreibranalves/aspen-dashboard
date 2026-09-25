@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { crmDeals, crmPipelineStages, type CrmPipelineStageRole } from '../schema.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 const MAX_STAGES = 20;
 const MAX_NAME_LENGTH = 80;
@@ -103,7 +104,7 @@ function safeRepositoryError(error: unknown): never {
   }
   console.error(
     '[crm-pipeline-stages-repository]',
-    error instanceof Error ? error.name : typeof error
+    safeErrorSummary(error)
   );
   throw new CrmPipelineStageRepositoryError();
 }

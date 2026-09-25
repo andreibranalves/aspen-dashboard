@@ -26,6 +26,7 @@ import {
   type CsvCell,
   type CsvColumn,
 } from './commercial-export-csv.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const MAX_EXPORT_ROWS = 10_000;
 const QUERY_LIMIT = MAX_EXPORT_ROWS + 1;
@@ -326,7 +327,7 @@ export function createCommercialExportHandler(
       if (error instanceof Error && candidate.statusCode === 400) {
         return errorResponse(400, error.message);
       }
-      console.error('[commercial-export]', error instanceof Error ? error.name : typeof error);
+      console.error('[commercial-export]', safeErrorSummary(error));
       return errorResponse(503, 'Não foi possível gerar a exportação. Tente novamente.');
     }
   };

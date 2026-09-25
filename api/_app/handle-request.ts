@@ -9,6 +9,7 @@ import { wrapFunctionHandler } from '../_http/function-adapter.js';
 import { routes } from './routes.js';
 import { requestOrigin, whatsappContextCorsHeaders } from '../_shared/whatsapp-context-cors.js';
 import { captureApiException } from '../_infrastructure/integrations/sentry/client.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
@@ -123,7 +124,7 @@ export async function handleApiRequest(
     }
     await wrapFunctionHandler(routeHandler)(req, res as unknown as ServerResponse);
   } catch (err) {
-    console.error(`[api/${routeName}]`, err instanceof Error ? err.name : typeof err);
+    console.error(`[api/${routeName}]`, safeErrorSummary(err));
     const { statusCode, message } = normalizeHandlerError(routeName, err);
     if (statusCode >= 500) {
       captureApiException(err, {

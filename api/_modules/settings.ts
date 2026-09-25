@@ -26,6 +26,7 @@ import {
   MAX_PRODUCTION_DAYS,
   MAX_PRODUCTION_DEADLINE_COMPLEMENT_LENGTH,
 } from './production-deadline.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const MAX_PAYMENT_LENGTH = 500;
 const MAX_DELIVERY_LENGTH = 500;
@@ -254,7 +255,7 @@ function logDatabaseError(operation: 'load' | 'save', error: unknown): void {
   // Keep diagnostics in server logs while returning a safe Portuguese message
   // to API consumers. Do not serialize database driver errors or connection
   // strings into HTTP responses or broad server logs.
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[settings] failed to ${operation} settings (${kind})`);
 }
 

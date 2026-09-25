@@ -43,6 +43,7 @@ import {
 import { canonicalQuotationStatus, type QuotationStatus } from '../../../_modules/quotation-status.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
 import { readQuotationOrigin, type QuotationOriginProjection } from './quotation-origin-repository.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -1260,7 +1261,7 @@ export function createPostgresQuoteDraftManagementRepository(
         )
           throw error;
         console.error(
-          `[quote-draft-management] list failed (${error instanceof Error ? error.name : typeof error})`
+          `[quote-draft-management] list failed (${safeErrorSummary(error)})`
         );
         throw new QuoteManagementRepositoryError(
           'Não foi possível consultar os orçamentos. Tente novamente.'
@@ -1282,7 +1283,7 @@ export function createPostgresQuoteDraftManagementRepository(
         )
           throw error;
         console.error(
-          `[quote-draft-management] detail failed (${error instanceof Error ? error.name : typeof error})`
+          `[quote-draft-management] detail failed (${safeErrorSummary(error)})`
         );
         throw new QuoteManagementRepositoryError(
           'Não foi possível consultar o orçamento. Tente novamente.'
@@ -1590,7 +1591,7 @@ export function createPostgresQuoteDraftManagementRepository(
         )
           throw error;
         console.error(
-          `[quote-draft-management] update failed (${error instanceof Error ? error.name : typeof error})`
+          `[quote-draft-management] update failed (${safeErrorSummary(error)})`
         );
         throw new QuoteManagementRepositoryError(
           'Não foi possível salvar as alterações do orçamento. Tente novamente.'
@@ -1624,7 +1625,7 @@ export function createPostgresQuoteDraftManagementRepository(
         )
           throw error;
         console.error(
-          `[quote-draft-management] delete failed (${error instanceof Error ? error.name : typeof error})`
+          `[quote-draft-management] delete failed (${safeErrorSummary(error)})`
         );
         throw new QuoteManagementRepositoryError(
           'Não foi possível excluir o orçamento. Tente novamente.'

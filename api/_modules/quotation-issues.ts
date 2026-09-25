@@ -6,6 +6,7 @@ import {
   QuotationIssueRepositoryError,
   type QuotationIssueRepositoryOptions,
 } from '../_infrastructure/db/repositories/quotation-issue-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 function json(statusCode: number, payload: unknown): FunctionResult {
   return { statusCode, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, body: JSON.stringify(payload) };
@@ -20,7 +21,7 @@ function header(event: FunctionEvent, key: string): string {
 function safe(error: unknown): FunctionResult {
   if (error instanceof QuotationIssueInputError || error instanceof QuotationIssueConflictError) return json(error.statusCode, { error: error.message });
   if (error instanceof QuotationIssueRepositoryError) return json(503, { error: error.message });
-  console.error(`[quotation-issues] failed (${error instanceof Error ? error.name : typeof error})`);
+  console.error(`[quotation-issues] failed (${safeErrorSummary(error)})`);
   return json(503, { error: 'Não foi possível emitir o orçamento. Tente novamente.' });
 }
 export interface QuotationIssuesHandlerDependencies extends QuotationIssueRepositoryOptions {

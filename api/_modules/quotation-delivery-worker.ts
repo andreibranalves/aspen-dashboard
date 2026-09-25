@@ -15,6 +15,7 @@ import {
   type MessageSweepRunResult,
   type QuotationDeliveryWorkerRunResult,
 } from '../_infrastructure/db/repositories/quotation-delivery-diagnostics-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 // Three 15-second transport timeouts leave room for function overhead within Vercel's 60-second limit.
 export const QUOTATION_DELIVERY_WORKER_BATCH_SIZE = 3;
@@ -88,7 +89,7 @@ async function sweepAfterBatch(
     const result = await sweep(startedAt + FUNCTION_BUDGET_MS);
     outcome = { result: 'success', ...result };
   } catch (error) {
-    console.error('[quotation-delivery-worker] operator messages', error instanceof Error ? error.name : typeof error);
+    console.error('[quotation-delivery-worker] operator messages', safeErrorSummary(error));
     outcome = { result: 'failure' };
   }
   try {
@@ -111,7 +112,7 @@ async function drainAfterBatch(
       console.info('[quotation-delivery-worker] webhook effects', result.applied, result.failed);
     }
   } catch (error) {
-    console.error('[quotation-delivery-worker] webhook effects', error instanceof Error ? error.name : typeof error);
+    console.error('[quotation-delivery-worker] webhook effects', safeErrorSummary(error));
   }
 }
 

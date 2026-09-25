@@ -29,6 +29,7 @@ import {
   yearMonthOf,
 } from '../_shared/calendar-sao-paulo.js';
 import { composeProfit, parseAliquotaPercent } from './profit.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export interface SalesDashboardHandlerDependencies {
   repository?: Pick<SalesOrdersRepository, 'dashboard'>;
@@ -70,8 +71,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function logError(error: unknown): void {
-  const value = error as { logMessage?: string; message?: string };
-  console.error('[sales-dashboard]', value.logMessage || value.message || error);
+  console.error('[sales-dashboard]', safeLogMessage(error));
 }
 
 async function withProfit(

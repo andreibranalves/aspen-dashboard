@@ -24,6 +24,7 @@ import { createPostgresQuotationPricingResolver } from '../_infrastructure/db/re
 import { createPostgresSettingsRepository } from '../_infrastructure/db/repositories/settings-repository.js';
 import { renderQuotationPdf } from './quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from './quotation-document-storage.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export interface QuotationPreviewDependencies {
   repository?: {
@@ -94,7 +95,7 @@ function safeError(error: unknown): FunctionResult {
     return json(error.statusCode, { error: error.message });
   }
   console.error(
-    `[quotation-preview] failed (${error instanceof Error ? error.name : typeof error})`
+    `[quotation-preview] failed (${safeErrorSummary(error)})`
   );
   return json(503, {
     error: 'Não foi possível gerar a visualização do orçamento. Tente novamente.',
@@ -184,7 +185,7 @@ export function createQuotationPreviewHandler(
           pdf = await renderPdf(html);
         } catch (error) {
           console.error(
-            `[quotation-preview] pdf render failed (${error instanceof Error ? error.name : typeof error})`
+            `[quotation-preview] pdf render failed (${safeErrorSummary(error)})`
           );
           return json(503, {
             error: 'Não foi possível gerar o PDF do orçamento. Tente novamente.',

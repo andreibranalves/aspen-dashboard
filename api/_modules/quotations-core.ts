@@ -18,6 +18,7 @@ import {
   type QuotationLifecycleRepository,
   type SetQuotationStatusInput,
 } from '../_infrastructure/db/repositories/quotation-lifecycle-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface QuotationsCoreDependencies {
@@ -110,7 +111,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number, maximum?: n
 }
 
 function logError(operation: string, error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[quotations-core] ${operation} failed (${kind})`);
 }
 

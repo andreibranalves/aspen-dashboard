@@ -25,6 +25,7 @@ import {
   type WhatsappMessageOutboxRepository,
 } from '../_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import type { EvolutionReceiptStatus } from './quotation-delivery-state.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 export const MAX_EVOLUTION_WEBHOOK_BODY_BYTES = 64 * 1024;
 
 const RECEIPT_STATUSES: readonly EvolutionReceiptStatus[] = [
@@ -304,7 +305,7 @@ export async function handler(
         });
       } catch (error) {
         historyStored = false;
-        console.error('[evolution-webhook] history', error instanceof Error ? error.name : typeof error);
+        console.error('[evolution-webhook] history', safeErrorSummary(error));
       }
     }
 
@@ -324,7 +325,7 @@ export async function handler(
       try {
         effectRecords = await effectsRepository.register(effectInputs);
       } catch (error) {
-        console.error('[evolution-webhook] effects', error instanceof Error ? error.name : typeof error);
+        console.error('[evolution-webhook] effects', safeErrorSummary(error));
       }
     }
     let effectsApplied = true;
@@ -336,7 +337,7 @@ export async function handler(
           await applyWebhookEffects(record, runners, effectsRepository, now);
         } catch (error) {
           effectsApplied = false;
-          console.error('[evolution-webhook] effect', error instanceof Error ? error.name : typeof error);
+          console.error('[evolution-webhook] effect', safeErrorSummary(error));
           break;
         }
       }
@@ -397,7 +398,7 @@ export async function handler(
       const outbox = dependencies.outboxRepository || createPostgresWhatsappMessageOutboxRepository();
       await outbox.applyReceipts(evolutionEvent.providerMessageId);
     } catch (error) {
-      console.error('[evolution-webhook] receipt', error instanceof Error ? error.name : typeof error);
+      console.error('[evolution-webhook] receipt', safeErrorSummary(error));
     }
     return json(200, { received: true });
   } catch (error) {

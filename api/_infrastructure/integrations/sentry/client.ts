@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/node';
+import { safeErrorFields, safeErrorForReport } from '../../../_shared/safe-error.js';
 
 const dsn = process.env.SENTRY_DSN?.trim();
 
@@ -41,6 +42,11 @@ export function captureApiException(
     scope.setTag('component', 'api');
     scope.setTag('route', context.routeName || 'unknown');
     scope.setTag('http.method', context.method || 'UNKNOWN');
-    Sentry.captureException(error);
+    // A mensagem e o `cause` de erros do banco carregam SQL e valores; vai só a cópia segura.
+    const { code, constraint, table } = safeErrorFields(error);
+    if (code) scope.setTag('error.code', code);
+    if (constraint) scope.setTag('db.constraint', constraint);
+    if (table) scope.setTag('db.table', table);
+    Sentry.captureException(safeErrorForReport(error));
   });
 }

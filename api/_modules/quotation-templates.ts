@@ -7,6 +7,7 @@ import {
   QuotationTemplateLibraryNotFoundError,
   QuotationTemplateLibraryRepositoryError,
 } from '../_infrastructure/db/repositories/quotation-template-library-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 function json(statusCode: number, payload: object): FunctionResult {
   return {
@@ -35,7 +36,7 @@ function errorResponse(error: unknown): FunctionResult {
   )
     return json(error.statusCode, { error: error.message });
   console.error(
-    `[quotation-templates] request failed (${error instanceof Error ? error.name : typeof error})`
+    `[quotation-templates] request failed (${safeErrorSummary(error)})`
   );
   return json(503, {
     error: 'Não foi possível processar o catálogo de templates. Tente novamente.',

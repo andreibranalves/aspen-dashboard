@@ -5,6 +5,7 @@ import {
   type PricingRepository,
 } from '../_infrastructure/db/repositories/pricing-repository.js';
 import { normalizeProductPricing, type PricingTierInput } from './pricing-core.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export const BRACKETS = [30, 100, 300, 500, 1000];
 
@@ -23,7 +24,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
 }
 
 function errorResponse(error: unknown): FunctionResult {
-  console.error('[product-pricing]', error instanceof Error ? error.name : typeof error);
+  console.error('[product-pricing]', safeErrorSummary(error));
   if (error instanceof PricingRepositoryError && error.expose) {
     return json(error.statusCode, { error: error.message });
   }

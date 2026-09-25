@@ -3,6 +3,7 @@ import {
   createOrderTemplateRepository,
   type OrderTemplateRepository,
 } from '../_infrastructure/db/repositories/order-template-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 function json(statusCode: number, payload: object): FunctionResult {
   return {
@@ -40,7 +41,7 @@ function errorResponse(error: unknown): FunctionResult {
 
   console.error(
     '[order-templates] request failed',
-    error instanceof Error ? error.name : typeof error
+    safeErrorSummary(error)
   );
   return json(503, {
     error: 'Não foi possível processar os templates de pedido. Tente novamente.',

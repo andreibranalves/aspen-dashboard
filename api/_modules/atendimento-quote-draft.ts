@@ -5,6 +5,7 @@ import { createWhatsappClientLinksRepository } from '../_infrastructure/db/repos
 import { readConnectedAccountId } from '../_infrastructure/integrations/evolution/account.js';
 import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import { conversationId as technicalConversationId } from '../_shared/contact-phone.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_QUOTE_MESSAGES = 50;
@@ -123,7 +124,7 @@ export function createAtendimentoQuoteDraftHandler(dependencies: QuoteDraftDepen
     } catch (error) {
       if (error instanceof InputError) return json(error.status, { error: error.message });
       if ((error as { statusCode?: number }).statusCode === 409) return json(409, { error: 'Esta demanda já está vinculada a outra conversa.' });
-      console.error('[atendimento-quote-draft]', error instanceof Error ? error.name : typeof error);
+      console.error('[atendimento-quote-draft]', safeErrorSummary(error));
       return json(503, { error: 'Não foi possível preparar a demanda. Tente novamente.' });
     }
   };

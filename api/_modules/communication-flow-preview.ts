@@ -26,6 +26,7 @@ import {
   detectProductCategories,
   normalizeProductCategory as normalizeCategory,
 } from './product-category.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 const kv = getKvClient();
 
@@ -434,8 +435,9 @@ export async function handler(
   } catch (err: unknown) {
     const details = errorDetails(err);
     const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
-    const message = typeof details.message === 'string' ? details.message : 'Erro ao gerar preview.';
-    console.error('[comm-flow-preview]', details.logMessage || details.message || err);
+    // Só erros escritos no código (com statusCode) chegam à resposta; os demais podem trazer SQL.
+    const message = Number.isInteger(details.statusCode) && typeof details.message === 'string' ? details.message : 'Erro ao gerar preview.';
+    console.error('[comm-flow-preview]', safeLogMessage(err));
     return jsonResponse(code, { error: message });
   }
 }

@@ -23,6 +23,7 @@ import {
   type QuotationDeliveryModule,
 } from './quotation-delivery-outbox.js';
 import { deliveryErrorResponse, toPublicDeliveryView } from './quotation-deliveries.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -225,7 +226,7 @@ export async function handler(
   } catch (error: unknown) {
     const httpErr = error as HttpError;
     const code = Number.isInteger(httpErr?.statusCode) ? httpErr.statusCode : 500;
-    console.error('[send-whatsapp-flow]', httpErr?.logMessage || httpErr?.name || 'Error');
+    console.error('[send-whatsapp-flow]', safeLogMessage(error));
     return jsonResponse(code, {
       error: code >= 400 && code < 500 && typeof httpErr?.message === 'string'
         ? httpErr.message

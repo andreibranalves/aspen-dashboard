@@ -8,6 +8,7 @@ import {
   type SalesOrderAction,
   type SalesOrdersRepository,
 } from '../_infrastructure/db/repositories/sales-orders-repository.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export interface SalesOrdersHandlerDependencies {
   repository?: SalesOrdersRepository;
@@ -91,8 +92,7 @@ function parseActionBody(body: string): SalesOrderAction {
 }
 
 function logError(error: unknown): void {
-  const value = error as { logMessage?: string; message?: string };
-  console.error('[sales-orders]', value.logMessage || value.message || error);
+  console.error('[sales-orders]', safeLogMessage(error));
 }
 
 export function createSalesOrdersHandler(

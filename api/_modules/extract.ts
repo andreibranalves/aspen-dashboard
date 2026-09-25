@@ -6,6 +6,7 @@ import {
   type OrderTemplateRecord,
   type OrderTemplateRepository,
 } from '../_infrastructure/db/repositories/order-template-repository.js';
+import { safeErrorSummary, safeLogMessage } from '../_shared/safe-error.js';
 
 // ── Regras de extração padrão ──
 export const DEFAULT_RULES = `Rule 0 — SKU Explícito (TEXTO): Se o cliente informar SKUs explícitos NO CORPO DO TEXTO (ex: alguém digitou "CNG-SAL-70"), use exatamente esses SKUs sem expandir.
@@ -532,7 +533,7 @@ async function extractWithOpenRouter(
         'OpenRouter timeout'
       );
     }
-    const kind = error instanceof Error ? error.name : typeof error;
+    const kind = safeErrorSummary(error);
     throw createHttpError(
       502,
       'Falha ao conectar ao provedor de IA. Tente novamente.',
@@ -561,8 +562,7 @@ function extractionErrorResponse(error: unknown): FunctionResult {
   const isPublic =
     Number.isInteger(typed.statusCode) &&
     (typed.expose === true || typeof typed.logMessage === 'string');
-  const logMessage = typeof typed.logMessage === 'string' ? typed.logMessage : typed.message;
-  console.error('[extract]', logMessage || 'unknown error');
+  console.error('[extract]', safeLogMessage(error));
   return json(isPublic ? typed.statusCode! : 500, {
     error: isPublic && typed.message ? typed.message : 'Erro interno na extração.',
   });
