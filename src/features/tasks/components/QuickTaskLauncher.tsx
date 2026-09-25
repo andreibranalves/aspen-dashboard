@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Plus } from 'lucide-react';
+import { ListPlus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
 }
 
-export default function QuickTaskLauncher({ route }: { route: string }) {
+/** `compact`: só o ícone, para a barra superior do celular. */
+export default function QuickTaskLauncher({ route, compact = false }: { route: string; compact?: boolean }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -67,12 +68,13 @@ export default function QuickTaskLauncher({ route }: { route: string }) {
       <Button
         type="button"
         variant="soft"
-        size="sm"
+        size={compact ? 'icon' : 'sm'}
         onClick={() => setOpen(true)}
-        title="Nova tarefa (T)"
+        title={compact ? undefined : 'Nova tarefa (T)'}
+        aria-label={compact ? 'Nova tarefa' : undefined}
       >
-        <Plus aria-hidden="true" />
-        Tarefa
+        {compact ? <ListPlus aria-hidden="true" /> : <Plus aria-hidden="true" />}
+        {!compact && 'Tarefa'}
       </Button>
       <Dialog
         open={open}

@@ -1,7 +1,6 @@
-import { BriefcaseBusiness, ListChecks, PlusCircle } from 'lucide-react';
+import { BriefcaseBusiness, ListChecks } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
-import { Button } from '@/components/ui/button';
 import { TabList, TabPanel, Tabs } from '@/components/ui/tabs';
 import CommercialQueuePanel from '@/features/commercial/components/CommercialQueuePanel';
 import CrmKanbanPage from '@/features/crm/pages/CrmKanbanPage';
@@ -24,15 +23,7 @@ export default function CommercialPage({ navigate }: CommercialPageProps) {
 
   return (
     <PageShell className="space-y-5">
-      <PageHeader
-        title="Comercial"
-        actions={
-          <Button type="button" onClick={() => navigate('/novo-orcamento')}>
-            <PlusCircle aria-hidden="true" />
-            Novo orçamento
-          </Button>
-        }
-      />
+      <PageHeader title="Comercial" />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabList label="Área comercial" items={TABS} />

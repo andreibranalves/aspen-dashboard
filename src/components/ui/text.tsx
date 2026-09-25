@@ -4,15 +4,18 @@ import { cn } from '@/lib/utils';
 /**
  * meta: dado secundário ao lado de um nome; caption: nota curta e contadores;
  * label: rótulo de um valor; value: valor em destaque em listas e resumos;
- * id: identificador ou SKU (única fonte mono).
+ * id: identificador ou SKU (única fonte mono); record: número do registro que
+ * a linha abre; title: nome principal de uma linha.
  */
 const variants = {
   body: 'text-sm text-fg',
+  title: 'text-sm font-semibold text-fg',
   meta: 'text-xs text-fg-muted',
   caption: 'text-2xs text-fg-muted',
   label: 'text-xs font-medium text-fg-muted',
   value: 'text-sm font-semibold tabular-nums text-fg',
   id: 'font-mono text-xs text-fg-muted',
+  record: 'font-mono text-xs font-semibold text-link',
 } as const;
 
 type TextVariant = keyof typeof variants;

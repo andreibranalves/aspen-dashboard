@@ -12,6 +12,7 @@ import {
   type FollowUpView,
 } from '@/lib/api/followUpApi';
 import { fmtPhone, formatBRL, formatDateTime } from '@/lib/formatting/formatters';
+import { Textarea } from '@/components/ui/textarea';
 
 interface FollowUpReviewDrawerProps {
   followUp: FollowUpView | null;
@@ -212,14 +213,13 @@ export default function FollowUpReviewDrawer({
             <label htmlFor="follow-up-message" className="text-sm font-medium text-fg">
               Mensagem
             </label>
-            <textarea
+            <Textarea
               id="follow-up-message"
               value={currentMessage}
               onChange={(event) => setMessage(event.target.value)}
               disabled={!canApprove || pending !== null}
               maxLength={4000}
               rows={7}
-              className="flex w-full min-w-0 resize-y rounded-control border border-line bg-surface-subtle px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
 

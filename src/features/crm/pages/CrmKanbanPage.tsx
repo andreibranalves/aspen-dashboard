@@ -96,7 +96,8 @@ const CRM_VIEW_TABS = [
   { value: 'board', label: 'Quadro', icon: Columns3 },
 ] as const;
 type StageFilter = string;
-const BOARD_STAGE_SWATCHES = ['bg-light-sage', 'bg-orange', 'bg-taupe', 'bg-cream'] as const;
+// Marcador de etapa é marca de gráfico: usa os tokens chart-*.
+const BOARD_STAGE_SWATCHES = ['bg-chart-one', 'bg-chart-two', 'bg-chart-three', 'bg-chart-four'] as const;
 const parseStageFilter = (raw: string | null, fallback: StageFilter): StageFilter =>
   raw?.trim() || fallback;
 
@@ -319,19 +320,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
   return (
     <PageShell className="space-y-9">
       {!embedded && (
-        <PageHeader
-          title="CRM"
-          actions={
-            <Button
-              onClick={(): void => {
-                window.location.hash = '#/novo-orcamento';
-              }}
-            >
-              <PlusCircle />
-              Novo orçamento
-            </Button>
-          }
-        />
+        <PageHeader title="CRM" />
       )}
       <PageToolbar>
         <SearchField placeholder="Buscar negócio ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar negócios" />
@@ -414,7 +403,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
             <div className="overflow-x-auto rounded-card border border-line bg-surface p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <Heading as="h2" level="subsection">Negócios em acompanhamento</Heading>
-                <span className="rounded-control border border-line px-3 py-1.5 text-2xs text-fg-muted">Etapas configuradas no Aspen</span>
               </div>
               <Table className="min-w-[760px]">
                 <TableHeader>
@@ -423,7 +411,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     <TableHead>Origem</TableHead>
                     <TableHead>Etapa</TableHead>
                     <TableHead>Proposta vinculada</TableHead>
-                    <TableHead>Valor</TableHead>
                     <TableHead className="text-right"><span className="sr-only">Abrir</span></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -435,7 +422,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                     return (
                       <TableRow key={deal.id} className="group">
                         <TableCell className="max-w-56">
-                          <EntityIdentity name={leadName} secondary={deal.id.slice(0, 8)} primary={href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} aria-label={`Abrir lead ${leadName}`} className="hover:underline">{leadName}</a> : leadName} />
+                          <EntityIdentity name={leadName} secondary={deal.telefone ? fmtPhone(deal.telefone) || deal.telefone : undefined} primary={href ? <a href={href} onClick={(event) => navigateFromLink(event, href)} aria-label={`Abrir lead ${leadName}`} className="hover:underline">{leadName}</a> : leadName} />
                         </TableCell>
                         <TableCell className="text-xs">{deal.lead_source || '—'}</TableCell>
                         <TableCell>
@@ -449,7 +436,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                           />
                         </TableCell>
                         <TableCell className="text-xs">{deal.quotation ? deal.quotation_id ? <a href={`#/quotations/${deal.quotation_id}`} onClick={(event) => navigateFromLink(event, `#/quotations/${deal.quotation_id}`)} className="font-medium hover:underline">{deal.quotation}</a> : deal.quotation : '—'}<DealProposals opportunityId={deal.id} /></TableCell>
-                        <TableCell className="text-xs text-fg-muted">—</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"><Select size="icon" ref={(element) => setMoveMenuRef(deal.id, element)} value={currentStatus} disabled={moving} aria-label={`Mover ${leadName} para outra etapa`} onChange={(event) => moveDeal(deal.id, event.target.value)}>

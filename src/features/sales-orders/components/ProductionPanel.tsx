@@ -3,6 +3,8 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
@@ -62,8 +64,7 @@ function EditableField({
     void onSave(draft).catch(() => setDraft(value));
   };
   return (
-    <label className="grid gap-1.5 text-sm">
-      <span className="text-fg-muted">{label}</span>
+    <Field label={label}>
       <Input
         type={type}
         size="sm"
@@ -78,7 +79,48 @@ function EditableField({
           if (event.key === 'Enter') event.currentTarget.blur();
         }}
       />
-    </label>
+    </Field>
+  );
+}
+
+/** Campo de dinheiro salvo ao sair do campo, em pt-BR (1.234,56). */
+function EditableMoneyField({
+  label,
+  value,
+  onSave,
+  disabled = false,
+}: {
+  label: string;
+  value: number | null;
+  onSave: (value: number) => Promise<void>;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [source, setSource] = useState(value);
+  if (source !== value) {
+    setSource(value);
+    setDraft(value);
+  }
+  const commit = () => {
+    if (draft === value || draft === null) {
+      setDraft(value);
+      return;
+    }
+    void onSave(Math.round(draft * 100) / 100).catch(() => setDraft(value));
+  };
+  return (
+    <Field label={label}>
+      <MoneyInput
+        size="sm"
+        value={draft}
+        disabled={disabled}
+        onValueChange={setDraft}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
+      />
+    </Field>
   );
 }
 
@@ -150,15 +192,11 @@ export function ProductionSection({
               disabled={readOnly}
               onSave={(value) => update({ deposit_received_on: value })}
             />
-            <EditableField
-              label="Valor da entrada"
-              type="number"
-              min={0}
-              max={order.grand_total}
-              step="0.01"
-              value={order.deposit_amount === null ? '' : order.deposit_amount.toFixed(2)}
+            <EditableMoneyField
+              label="Valor da entrada (R$)"
+              value={order.deposit_amount}
               disabled={readOnly}
-              onSave={(value) => update({ deposit_amount: Math.round(Number(value) * 100) / 100 })}
+              onSave={(value) => update({ deposit_amount: value })}
             />
           </>
         )}

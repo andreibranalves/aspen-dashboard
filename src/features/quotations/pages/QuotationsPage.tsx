@@ -8,21 +8,14 @@ import {
   Copy,
   MailCheck,
   MoreHorizontal,
-  FilePlus2,
-  Send,
-  BadgeCheck,
-  ChevronRight,
-  CircleX,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
 import ErrorState from '@/components/shared/ErrorState';
-import { StatCard, StatGrid } from '@/components/ui/stat-card';
 import { SearchField } from '@/components/ui/search-field';
 import { StatusBadge } from '@/components/ui/badge';
-import { Select } from '@/components/ui/select';
 import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
 import ListPageLayout, { ListSection } from '@/components/shared/ListPageLayout';
@@ -39,14 +32,9 @@ import {
   parseHashString,
   useHashQueryState,
 } from '@/hooks/useHashQueryState';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
+import DataList, { type DataListColumn } from '@/components/shared/DataList';
+import StatusFilterBar from '@/components/shared/StatusFilterBar';
+import { Text } from '@/components/ui/text';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
 import { MenuItem } from '@/components/ui/menu-item';
@@ -406,39 +394,78 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     );
   };
 
-  const EmailMarker = ({ row }: { row: QuotationRow }) => (
-    <div
-      className="flex items-center gap-1.5"
-      aria-label={
-        row.emailSent
-          ? `E-mail enviado${row.emailSentAt ? ` em ${formatDate(row.emailSentAt)}` : ''}`
-          : 'E-mail ainda não enviado'
-      }
-      title={
-        row.emailSent
-          ? `Último e-mail enviado em ${formatDate(row.emailSentAt)}`
-          : 'Nenhum e-mail enviado para este orçamento ainda'
-      }
-    >
-      {row.emailSent ? (
-        <>
-          <MailCheck size={14} className="shrink-0 text-success" aria-hidden="true" />
-          {row.emailSentAt && (
-            <span className="whitespace-nowrap text-2xs text-fg-muted">
-              {formatDate(row.emailSentAt)}
-            </span>
-          )}
-        </>
-      ) : (
-        <>
-          <span className="text-fg-muted/40" aria-hidden="true">
-            —
-          </span>
-          <span className="sr-only">E-mail ainda não enviado</span>
-        </>
-      )}
-    </div>
+  const emailSentMark = (row: QuotationRow) =>
+    row.emailSent ? (
+      <MailCheck
+        size={14}
+        className="shrink-0 text-success"
+        role="img"
+        aria-label={`E-mail enviado${row.emailSentAt ? ` em ${formatDate(row.emailSentAt)}` : ''}`}
+      />
+    ) : null;
+
+  const selectBox = (row: QuotationRow) => (
+    <input
+      type="checkbox"
+      checked={selectedIds.includes(row.id)}
+      onChange={() => toggleSelected(row.id)}
+      aria-label={`Selecionar orçamento ${row.businessNumber}`}
+      className="size-4 rounded-xs border-line text-primary"
+    />
   );
+
+  const columns: DataListColumn<QuotationRow>[] = [
+    ...(selectionMode
+      ? [{
+          key: 'select',
+          interactive: true,
+          header: (
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => toggleSelectAll(e.target.checked)}
+              aria-label="Selecionar todos os orçamentos desta página"
+              className="size-4 rounded-xs border-line text-primary"
+            />
+          ),
+          cell: selectBox,
+        }]
+      : []),
+    {
+      key: 'quotation',
+      header: 'Orçamento',
+      cell: (row) => (
+        <div className="flex flex-col">
+          <Text variant="record">{row.businessNumber}</Text>
+          {row.revision > 1 && <Text variant="caption">Revisão {row.revision}</Text>}
+        </div>
+      ),
+    },
+    {
+      key: 'client',
+      header: 'Cliente',
+      cell: (row) => (
+        <EntityIdentity
+          name={row.cliente || 'Cliente não informado'}
+          secondary={row.name && row.name !== row.cliente ? row.name : undefined}
+        />
+      ),
+    },
+    { key: 'date', header: 'Data', cell: (row) => <Text variant="meta">{formatDate(row.data) || '—'}</Text> },
+    {
+      key: 'status',
+      header: 'Status',
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          {statusBadge(row)}
+          {emailSentMark(row)}
+        </div>
+      ),
+    },
+    { key: 'total', header: 'Valor', align: 'right', cell: (row) => <Text variant="value">{formatBRL(row.total)}</Text> },
+    { key: 'actions', header: <span className="sr-only">Ações</span>, interactive: true, align: 'right', cell: (row) => actionButtons(row, 'desktop') },
+  ];
 
   const statusBadge = (row: QuotationRow) => (
     <StatusBadge
@@ -451,30 +478,9 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     <ListPageLayout
       className={selectedCount > 0 ? 'max-sm:pb-48' : undefined}
         header={
-  <PageHeader
-          title="Orçamentos"
-          actions={
-            <>
-              <Button onClick={() => navigate('/novo-orcamento')} variant="default">
-                <PlusCircle />
-                Novo orçamento
-              </Button>
-            </>
-          }
-        />
+  <PageHeader title="Orçamentos" />
         }
       >
-
-      <StatGrid label="Resumo dos orçamentos">
-        {[
-          { label: 'Rascunhos', value: statusSummary.Rascunho ?? 0, note: 'Ainda não emitidos', Icon: FilePlus2 },
-          { label: 'Emitidos', value: statusSummary.Enviado ?? 0, note: 'Aguardando decisão', Icon: Send },
-          { label: 'Aprovados', value: statusSummary.Aprovado ?? 0, note: 'Prontos para avançar', Icon: BadgeCheck },
-          { label: 'Perdidos', value: statusSummary.Perdido ?? 0, note: 'Com motivo registrado', Icon: CircleX },
-        ].map(({ label, value, note, Icon }) => (
-          <StatCard key={label} icon={Icon} label={label} value={String(value)} metadata={note} loading={summaryPending} />
-        ))}
-      </StatGrid>
 
       <ListSection
         label="Lista de orçamentos"
@@ -482,11 +488,21 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           <ListPagination label="Paginação de orçamentos" page={page} limit={limit} pageSizes={PAGE_SIZES} hasNext={page < totalPages} onPageChange={onPageChange} onLimitChange={onLimitChange} />
         )}
         toolbar={<>
-          <SearchField placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar orçamentos" />
-          <Select value={status} onChange={(event) => onStatusClick(event.target.value)} aria-label="Filtrar por status">
-            {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </Select>
-          <Button type="button" variant="ghost" className="ml-auto" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
+          <StatusFilterBar
+            label="Filtrar por status"
+            value={status}
+            onValueChange={onStatusClick}
+            options={STATUS_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+              count: option.summaryKey === null ? undefined : summaryPending ? null : (statusSummary[option.summaryKey] ?? 0),
+            }))}
+            className="w-full lg:w-auto"
+          />
+          <div className="flex w-full min-w-0 items-center gap-2 lg:w-auto lg:flex-1">
+            <SearchField placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar orçamentos" />
+            <Button type="button" variant="ghost" size="md" className="ml-auto shrink-0" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
+          </div>
         </>}
       >
 
@@ -526,147 +542,35 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       )}
 
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block">
-          <Table
-            className="[&_th]:h-12"
-            containerClassName="overflow-hidden"
-          >
-            <TableHeader>
-              <TableRow>
-                {selectionMode && <TableHead className="w-12">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                    aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded-xs border-line text-primary"
-                  />
-                </TableHead>}
-                <TableHead className="w-[190px]">Orçamento</TableHead>
-                <TableHead className="min-w-[220px]">Cliente / demanda</TableHead>
-                <TableHead className="whitespace-nowrap">Data</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((row) => (
-                <TableRow
-                  key={row.id}
-                  className="group"
-                  selected={selectedIds.includes(row.id)}
-                  onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
-                >
-                  {selectionMode && <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(row.id)}
-                      onChange={() => toggleSelected(row.id)}
-                      aria-label={`Selecionar orçamento ${row.businessNumber}`}
-                      className="h-4 w-4 rounded-xs border-line text-primary"
-                    />
-                  </TableCell>}
-                  <TableCell className="whitespace-nowrap text-sm tabular-nums">
-                    <Button
-                      variant="link"
-                      size="inline"
-                      className="max-w-[180px] justify-start truncate font-mono font-semibold"
-                      title={row.businessNumber}
-                      onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
-                    >
-                      {row.businessNumber}
-                    </Button>
-                    <span className="block text-2xs text-fg-muted">Revisão {row.revision}</span>
-                  </TableCell>
-                  <TableCell className="max-w-[300px]" title={row.cliente}>
-                    <EntityIdentity name={row.cliente || 'Cliente não informado'} secondary={row.name && row.name !== row.cliente ? row.name : undefined} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-fg-muted">
-                    <span className="block">
-                      {formatDate(row.data) || '—'}
-                    </span>
-                  </TableCell>
-                  <TableCell>{statusBadge(row)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
-                    {formatBRL(row.total)}
-                  </TableCell>
-                  <TableCell className="w-24 text-right text-fg-muted">
-                    <div className="flex items-center justify-end gap-1"><span className="pointer-events-none block shrink-0 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">{actionButtons(row, 'desktop')}</span><ChevronRight size={16} aria-hidden="true" /></div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {!loading && !error && data.length > 0 && (
-        <div className="space-y-3 md:hidden">
-          {data.map((row) => (
-            <div
-              key={row.id}
-              role="link"
-              tabIndex={0}
-              className={`cursor-pointer space-y-3 rounded-card border border-line bg-surface p-5 focus-inset ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
-              onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' || event.target !== event.currentTarget) return;
-                navigate(`/quotations/${encodeURIComponent(row.id)}`);
-              }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div
-                  className="flex min-w-0 items-center gap-2 text-sm"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(row.id)}
-                    onChange={() => toggleSelected(row.id)}
-                    aria-label={`Selecionar orçamento ${row.businessNumber}`}
-                    className="h-4 w-4 shrink-0 rounded-xs border-line text-primary"
-                  />
-                  <Button
-                    variant="link"
-                    size="inline"
-                    className="min-w-0 justify-start truncate font-mono font-semibold"
-                    title={row.businessNumber}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      navigate(`/quotations/${encodeURIComponent(row.id)}`);
-                    }}
-                  >
-                    {row.businessNumber}
-                  </Button>
-                  <span className="shrink-0 text-xs text-fg-muted">· Rev. {row.revision}</span>
+        <DataList
+          label="Orçamentos"
+          items={data}
+          getKey={(row) => row.id}
+          columns={columns}
+          getHref={(row) => `#/quotations/${encodeURIComponent(row.id)}`}
+          getRowLabel={(row) => `Abrir orçamento ${row.businessNumber}`}
+          isSelected={(row) => selectedIds.includes(row.id)}
+          mobileLead={selectionMode ? selectBox : undefined}
+          mobileAside={(row) => actionButtons(row, 'mobile')}
+          mobileRow={(row) => (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3">
+                <Text variant="title" truncate>{row.cliente || 'Cliente não informado'}</Text>
+                <Text variant="value" className="shrink-0">{formatBRL(row.total)}</Text>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <Text variant="meta" truncate>
+                  <span className="font-mono">{row.businessNumber}</span>
+                  {row.revision > 1 && ` · Rev. ${row.revision}`} · {formatDate(row.data) || '—'}
+                </Text>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {emailSentMark(row)}
+                  {statusBadge(row)}
                 </div>
-                {statusBadge(row)}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-fg-muted">Cliente</p>
-                <p className="break-words font-medium">{row.cliente || 'Cliente não informado'}</p>
-                <p className="mt-0.5 break-words text-xs text-fg-muted">{row.name}</p>
-              </div>
-              <div className="text-xs text-fg-muted">
-                <EmailMarker row={row} />
-              </div>
-              <div className="flex items-end justify-between gap-3 border-t border-line pt-3">
-                <div>
-                  <p className="text-xs text-fg-muted">Data · Valor</p>
-                  <p className="text-sm text-fg-muted">
-                    {formatDate(row.data) || '—'}
-                  </p>
-                  <p className="font-mono font-semibold tabular-nums">
-                    {formatBRL(row.total)}
-                  </p>
-                </div>
-                {actionButtons(row, 'mobile')}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        />
       )}
 
       </ListSection>

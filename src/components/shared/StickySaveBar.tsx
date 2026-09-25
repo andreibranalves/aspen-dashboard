@@ -24,16 +24,16 @@ export default function StickySaveBar({
     <div
       role="region"
       aria-label="Alterações não salvas"
-      className="sticky bottom-(--mobile-nav-h) z-floating flex items-center justify-between gap-3 rounded-card border border-line bg-surface/95 px-4 py-3 shadow-bar backdrop-blur lg:bottom-4"
+      className="sticky bottom-(--mobile-nav-h) z-floating flex items-center justify-between gap-3 rounded-card border border-line bg-surface/95 px-4 py-3 shadow-bar backdrop-blur md:bottom-4"
     >
       <span className="text-sm text-fg-muted">Alterações não salvas</span>
       <div className="flex items-center gap-2">
         {onDiscard && (
-          <Button variant="ghost" size="md" onClick={onDiscard} disabled={saving}>
+          <Button type="button" variant="ghost" size="md" onClick={onDiscard} disabled={saving}>
             Descartar
           </Button>
         )}
-        <Button size="md" onClick={onSave} disabled={saving}>
+        <Button type="button" size="md" onClick={onSave} disabled={saving}>
           {saving ? 'Salvando…' : saveLabel}
         </Button>
       </div>
