@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Send } from 'lucide-react';
+import { Paperclip, Send } from 'lucide-react';
 import InlineAlert from '@/components/shared/InlineAlert';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -59,6 +59,7 @@ function blockedReason(conversation: AttendanceConversation): string | null {
 
 export default function MessageComposer({ conversation, onSent, prefill }: MessageComposerProps) {
   const conversationId = conversation.id;
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(() => readSession<string>(draftKey(conversationId)) || '');
   const [pending, setPending] = useState<PendingSend | null>(() => readSession<PendingSend>(pendingKey(conversationId)));
   const [sending, setSending] = useState(false);
@@ -220,6 +221,25 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
         </InlineAlert>
       )}
       <div className="flex items-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => { void chooseAttachment(event.target.files?.[0]); event.target.value = ''; }}
+        />
+        <Button
+          variant="ghost-muted"
+          size="icon"
+          aria-label="Anexar imagem ou PDF"
+          title="Anexar imagem ou PDF"
+          disabled={sending || uploading || Boolean(pending)}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip aria-hidden="true" />
+        </Button>
         <Textarea
           value={draft}
           onChange={(event) => updateDraft(event.target.value)}
@@ -233,15 +253,16 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
           <Send aria-hidden="true" /> Enviar
         </Button>
       </div>
-      <div className="flex items-center gap-2 text-xs">
-        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" aria-label="Anexar imagem ou PDF"
-          disabled={sending || uploading || Boolean(pending)} onChange={(event) => { void chooseAttachment(event.target.files?.[0]); event.target.value = ''; }} />
-        {uploading && <span>Guardando anexo…</span>}
-        {attachment && <>
-          <span>{attachment.fileName}</span>
-          <Button variant="ghost" size="xs" onClick={() => setAttachment(null)} disabled={sending || Boolean(pending)}>Remover</Button>
-        </>}
-      </div>
+      {(uploading || attachment) && (
+        <div className="flex items-center gap-2 text-xs text-fg-muted">
+          {uploading && <span>Guardando anexo…</span>}
+          {attachment && <>
+            <Paperclip size={12} aria-hidden="true" />
+            <span className="min-w-0 truncate text-fg">{attachment.fileName}</span>
+            <Button variant="ghost" size="xs" onClick={() => setAttachment(null)} disabled={sending || Boolean(pending)}>Remover</Button>
+          </>}
+        </div>
+      )}
       {draft.length > MAX_REPLY_CHARS && (
         <p className="text-xs text-destructive" role="status">
           {draft.length}/{MAX_REPLY_CHARS} caracteres

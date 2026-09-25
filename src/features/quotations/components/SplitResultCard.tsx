@@ -45,6 +45,8 @@ import type {
 import { Heading } from '@/components/ui/heading';
 import ProductionTermsFields from '@/features/quotations/components/ProductionTermsFields';
 import { DEFAULT_PRODUCTION_DAYS } from '@/lib/productionDeadline';
+import { Text } from '@/components/ui/text';
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 
 export interface SplitResultCardProps {
   draft: Draft;
@@ -450,6 +452,8 @@ export default function SplitResultCard({
   const [activeSearchIdx, setActiveSearchIdx] = useState<number | null>(null);
   const searchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const qtyPricingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // No celular os itens viram lista empilhada; só uma versão fica montada.
+  const compactItems = useMediaQuery(MOBILE_MEDIA_QUERY);
   const pricingGenerationRef = useRef(0);
   const [pricingPending, setPricingPending] = useState(false);
   const beginPricing = useCallback(() => {
@@ -638,6 +642,182 @@ export default function SplitResultCard({
     setEditing((prev) => !prev);
   }
 
+  // Conteúdo de cada item, compartilhado pela tabela (desktop) e pela lista (celular).
+  const itemRows = displayItems.map((item, ii) => {
+    const hasCode = !!item.item_code;
+    const results = itemResults[ii] || [];
+    const searching = itemSearching[ii] || false;
+    const showDropdown = activeSearchIdx === ii && results.length > 0;
+    const searchValue =
+      itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : item.item_code || '';
+
+
+    return {
+      key: ii,
+      item,
+      hasCode,
+      conflict: pricingConflictItems.includes(item.item_code),
+      sku: (
+        <>
+                      {editing ? (
+                        <div className="relative" data-item-search-cell>
+                          <Input
+                            size="xs"
+                            className="pr-6"
+                            placeholder="Buscar SKU ou nome…"
+                            value={searchValue}
+                            onChange={(e) => onItemSkuChange(ii, e.target.value)}
+                            onFocus={() => setActiveSearchIdx(ii)}
+                            disabled={editingBlocked}
+                          />
+                          {searching && (
+                            <Loader2
+                              size={12}
+                              className="animate-spin absolute right-2 top-1.5 text-fg-muted"
+                            />
+                          )}
+                          {showDropdown && (
+                            <div className="absolute left-0 right-0 top-8 z-floating max-h-48 overflow-y-auto rounded-control border border-border-subtle bg-surface shadow-lg">
+                              {results.map((p) => (
+                                // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
+                                <button
+                                  key={p.sku || p.item_code}
+                                  type="button"
+                                  disabled={editingBlocked || isUnpricedProduct(p)}
+                                  title={
+                                    isUnpricedProduct(p)
+                                      ? 'Preço indisponível para este produto.'
+                                      : undefined
+                                  }
+                                  className={cn(
+                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 focus-inset',
+                                    isUnpricedProduct(p)
+                                      ? 'cursor-not-allowed opacity-50'
+                                      : 'hover:bg-surface-hover'
+                                  )}
+                                  onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void handleSelectProduct(ii, p)}
+                                >
+                                  <span className="font-mono text-3xs text-fg-muted shrink-0">
+                                    {p.sku || p.item_code}
+                                  </span>
+                                  <span className="truncate">
+                                    {String(p.nome || p.item_name || '—')}
+                                  </span>
+                                  {isUnpricedProduct(p) && (
+                                    <span className="ml-auto shrink-0 text-3xs text-destructive">
+                                      Preço indisponível
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="block truncate font-medium text-fg" title={item.item_code || undefined}>
+                          {item.item_code || '—'}
+                        </span>
+                      )}
+        </>
+      ),
+      name: (
+        <>
+                      {editing ? (
+                        <Input
+                          aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
+                          size="xs"
+                          value={item.item_name || ''}
+                          onChange={(event) =>
+                            onUpdateItem(draft.index, ii, 'item_name', event.target.value)
+                          }
+                          disabled={editingBlocked}
+                        />
+                      ) : (
+                        <span
+                          className="block truncate font-medium text-fg"
+                          title={item.item_name || item.item_code || undefined}
+                        >
+                          {item.item_name || item.item_code || '—'}
+                        </span>
+                      )}
+        </>
+      ),
+      qty: (
+        <>
+                      {editing ? (
+                        <Input
+                          type="number"
+                          aria-label={`Quantidade do item ${item.item_code || ii + 1}`}
+                          value={item.qty}
+                          onChange={(e) => {
+                            if (editingBlocked) return;
+                            const val = Math.max(1, Number(e.target.value));
+                            onUpdateItem(draft.index, ii, 'qty', val);
+                            const pricingGeneration = beginPricing();
+                            qtyPricingTimer.current = setTimeout(async () => {
+                              qtyPricingTimer.current = null;
+                              try {
+                                await onRefetchPricing(draft.index);
+                              } finally {
+                                settlePricing(pricingGeneration);
+                              }
+                            }, 600);
+                          }}
+                          disabled={editingBlocked}
+                          size="xs"
+                          hideSpinButtons
+                          className="w-full text-center"
+                        />
+                      ) : hasCode ? (
+                        Number(item.qty)
+                      ) : (
+                        '—'
+                      )}
+        </>
+      ),
+      price: (
+        <>
+                      {editing ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          aria-label={`Preço unitário do item ${item.item_code || ii + 1}`}
+                          value={item.rate || ''}
+                          onChange={(e) =>
+                            onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))
+                          }
+                          disabled={editingBlocked}
+                          data-conflict-sku={item.item_code || undefined}
+                          size="xs"
+                          hideSpinButtons
+                          className="w-full text-center"
+                        />
+                      ) : item.rate ? (
+                        formatBRL(item.rate)
+                      ) : (
+                        '—'
+                      )}
+        </>
+      ),
+      remove: (
+        <>
+                      <Button
+                        type="button"
+                        onClick={() => handleRemoveItem(ii)}
+                        disabled={editingBlocked}
+                        variant="ghost-muted-destructive"
+                        size="icon-sm"
+                        aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
+                        title="Excluir produto"
+                      >
+                        <X size={14} />
+                      </Button>
+        </>
+      ),
+    };
+  });
+
   return (
     <div
       ref={cardRef}
@@ -754,7 +934,7 @@ export default function SplitResultCard({
               <Heading level="subsection" className="mt-1 flex min-w-0 items-center gap-2">
                 <span className="truncate">{capitalize(displayName) || 'Cliente'}</span>
                 {draft.edited.origem && (
-                  <span className="shrink-0 rounded-badge bg-taupe/15 px-1.5 py-0.5 text-2xs font-medium leading-3 text-primary">
+                  <span className="shrink-0 rounded-badge bg-primary/10 px-1.5 py-0.5 text-2xs font-medium leading-3 text-primary">
                     {draft.edited.origem}
                   </span>
                 )}
@@ -885,7 +1065,56 @@ export default function SplitResultCard({
       )}
 
       {/* ── Items table ── */}
-      {!isDone && (
+      {!isDone && compactItems && (
+        <ul
+          aria-label={`Itens do pedido ${displayIdx + 1}`}
+          className="divide-y divide-border-subtle border-y border-border-subtle"
+        >
+          {itemRows.map((row) => (
+            <li
+              key={row.key}
+              className={cn('flex flex-col gap-2 px-4 py-3', row.conflict && 'bg-warning/10')}
+            >
+              {editing ? (
+                <>
+                  <div className="flex items-start gap-2">
+                    <div className="flex min-w-0 flex-1 flex-col gap-2">
+                      {row.sku}
+                      {row.name}
+                    </div>
+                    {row.remove}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Text variant="label" aria-hidden="true">Qtd.</Text>
+                      {row.qty}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Text variant="label" aria-hidden="true">Preço</Text>
+                      {row.price}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <Text variant="title">{row.item.item_name || row.item.item_code || '—'}</Text>
+                    <Text variant="meta">
+                      {row.hasCode ? `${Number(row.item.qty)} × ${row.item.rate ? formatBRL(row.item.rate) : '—'}` : 'Sem produto'}
+                      {row.item.item_code && <span className="font-mono"> · {row.item.item_code}</span>}
+                    </Text>
+                  </div>
+                  {row.remove}
+                </div>
+              )}
+            </li>
+          ))}
+          {itemRows.length === 0 && (
+            <li className="px-4 py-3 text-center text-sm text-fg-muted">Nenhum item adicionado</li>
+          )}
+        </ul>
+      )}
+      {!isDone && !compactItems && (
         <Table
           density="dense"
           edges="inset"
@@ -909,170 +1138,15 @@ export default function SplitResultCard({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {displayItems.map((item, ii) => {
-                const hasCode = !!item.item_code;
-                const results = itemResults[ii] || [];
-                const searching = itemSearching[ii] || false;
-                const showDropdown = activeSearchIdx === ii && results.length > 0;
-                const searchValue =
-                  itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : item.item_code || '';
-
-                return (
-                  <TableRow
-                    key={ii}
-                    tone={pricingConflictItems.includes(item.item_code) ? 'warning' : 'default'}
-                  >
-                    <TableCell>
-                      {editing ? (
-                        <div className="relative" data-item-search-cell>
-                          <Input
-                            size="xs"
-                            className="pr-6"
-                            placeholder="Buscar SKU ou nome…"
-                            value={searchValue}
-                            onChange={(e) => onItemSkuChange(ii, e.target.value)}
-                            onFocus={() => setActiveSearchIdx(ii)}
-                            disabled={editingBlocked}
-                          />
-                          {searching && (
-                            <Loader2
-                              size={12}
-                              className="animate-spin absolute right-2 top-1.5 text-fg-muted"
-                            />
-                          )}
-                          {showDropdown && (
-                            <div className="absolute left-0 right-0 top-8 z-floating max-h-48 overflow-y-auto rounded-control border border-border-subtle bg-surface shadow-lg">
-                              {results.map((p) => (
-                                // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
-                                <button
-                                  key={p.sku || p.item_code}
-                                  type="button"
-                                  disabled={editingBlocked || isUnpricedProduct(p)}
-                                  title={
-                                    isUnpricedProduct(p)
-                                      ? 'Preço indisponível para este produto.'
-                                      : undefined
-                                  }
-                                  className={cn(
-                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 focus-inset',
-                                    isUnpricedProduct(p)
-                                      ? 'cursor-not-allowed opacity-50'
-                                      : 'hover:bg-surface-hover'
-                                  )}
-                                  onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => void handleSelectProduct(ii, p)}
-                                >
-                                  <span className="font-mono text-3xs text-fg-muted shrink-0">
-                                    {p.sku || p.item_code}
-                                  </span>
-                                  <span className="truncate">
-                                    {String(p.nome || p.item_name || '—')}
-                                  </span>
-                                  {isUnpricedProduct(p) && (
-                                    <span className="ml-auto shrink-0 text-3xs text-destructive">
-                                      Preço indisponível
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="block truncate font-medium text-fg" title={item.item_code || undefined}>
-                          {item.item_code || '—'}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editing ? (
-                        <Input
-                          aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
-                          size="xs"
-                          value={item.item_name || ''}
-                          onChange={(event) =>
-                            onUpdateItem(draft.index, ii, 'item_name', event.target.value)
-                          }
-                          disabled={editingBlocked}
-                        />
-                      ) : (
-                        <span
-                          className="block truncate font-medium text-fg"
-                          title={item.item_name || item.item_code || undefined}
-                        >
-                          {item.item_name || item.item_code || '—'}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {editing ? (
-                        <Input
-                          type="number"
-                          aria-label={`Quantidade do item ${item.item_code || ii + 1}`}
-                          value={item.qty}
-                          onChange={(e) => {
-                            if (editingBlocked) return;
-                            const val = Math.max(1, Number(e.target.value));
-                            onUpdateItem(draft.index, ii, 'qty', val);
-                            const pricingGeneration = beginPricing();
-                            qtyPricingTimer.current = setTimeout(async () => {
-                              qtyPricingTimer.current = null;
-                              try {
-                                await onRefetchPricing(draft.index);
-                              } finally {
-                                settlePricing(pricingGeneration);
-                              }
-                            }, 600);
-                          }}
-                          disabled={editingBlocked}
-                          size="xs"
-                          hideSpinButtons
-                          className="w-full text-center"
-                        />
-                      ) : hasCode ? (
-                        Number(item.qty)
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {editing ? (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          aria-label={`Preço unitário do item ${item.item_code || ii + 1}`}
-                          value={item.rate || ''}
-                          onChange={(e) =>
-                            onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))
-                          }
-                          disabled={editingBlocked}
-                          data-conflict-sku={item.item_code || undefined}
-                          size="xs"
-                          hideSpinButtons
-                          className="w-full text-center"
-                        />
-                      ) : item.rate ? (
-                        formatBRL(item.rate)
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        type="button"
-                        onClick={() => handleRemoveItem(ii)}
-                        disabled={editingBlocked}
-                        variant="ghost-muted-destructive"
-                        size="icon-sm"
-                        aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
-                        title="Excluir produto"
-                      >
-                        <X size={14} />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {itemRows.map((row) => (
+                <TableRow key={row.key} tone={row.conflict ? 'warning' : 'default'}>
+                  <TableCell>{row.sku}</TableCell>
+                  <TableCell>{row.name}</TableCell>
+                  <TableCell className="text-center">{row.qty}</TableCell>
+                  <TableCell className="text-center">{row.price}</TableCell>
+                  <TableCell>{row.remove}</TableCell>
+                </TableRow>
+              ))}
               {displayItems.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="h-12 text-center text-fg-muted">

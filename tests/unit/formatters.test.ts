@@ -8,7 +8,9 @@ import {
   formatDateTime,
   formatDecimalBR,
   formatPercent,
+  fromApiDecimal,
   parseDecimalBR,
+  toApiDecimal,
   whatsappContactUrl,
 } from '../../src/lib/formatting/formatters.ts';
 
@@ -69,6 +71,15 @@ describe('parseDecimalBR', () => {
     assert.equal(parseDecimalBR(''), null);
     assert.equal(parseDecimalBR('abc'), null);
     assert.equal(parseDecimalBR(','), null);
+  });
+});
+
+describe('toApiDecimal / fromApiDecimal', () => {
+  it('round-trips the API decimal format', () => {
+    assert.equal(toApiDecimal(12.5), '12.50');
+    assert.equal(fromApiDecimal('4.00'), 4);
+    assert.equal(fromApiDecimal(''), null);
+    assert.equal(fromApiDecimal('abc'), null);
   });
 });
 

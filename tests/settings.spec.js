@@ -97,7 +97,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     await expect(page.getByRole('heading', { name: 'Condições padrão' })).toBeVisible();
 
     await page.getByLabel('Validade padrão (dias)').fill('30');
-    await page.getByLabel('Frete padrão (R$)').fill('12.5');
+    await page.getByLabel('Frete padrão (R$)').fill('12,5');
     await expect(page.getByText('Dados para pagamento', { exact: true })).toHaveCount(0);
     await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
     await page.getByLabel('Exibir resumo financeiro').uncheck();
@@ -117,7 +117,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     expect(receivedPayload).toMatchObject({
       validade_dias: 30,
       entrega: '',
-      frete_padrao: '12.5',
+      frete_padrao: '12.50',
       empresa: INITIAL_SETTINGS.empresa,
       settings_version: 1,
       secoes: {
@@ -136,7 +136,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     );
     expect(savedResponse.pagamento).toContain('Pagamento em duas parcelas');
     expect(savedResponse.observacoes).toContain('Aprovar arte antes da produção.');
-    await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
+    await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12,50');
   });
 
   test('gerencia modelos, preview, versões, padrão e arquivamento', async ({ page }) => {
@@ -453,6 +453,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.goto('/#/settings');
     await expect(page.getByText('Não foi possível carregar as configurações.')).toBeVisible();
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
-    await expect(page.getByRole('button', { name: 'Salvar configurações' })).toBeVisible();
+    // O salvar só aparece com alteração pendente; o formulário carregado basta.
+    await expect(page.getByRole('heading', { name: 'Condições padrão' })).toBeVisible();
   });
 });
