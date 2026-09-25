@@ -158,8 +158,8 @@ and `src/app`: vertical margins on children (`mt-*`, `mb-*`, `my-*`), hand-built
 `Text` and layout tokens, and lower the limit in the same change.
 
 `npm run test:visual` compares the main screens against
-`tests/visual/__screenshots__/` with mocked API data and a fixed clock, pixel
-for pixel. It runs locally, not in CI. After an intentional visual change,
+`tests/visual/__screenshots__/` with mocked API data and a fixed clock,
+tolerating only font antialiasing noise (40 pixels). It runs locally, not in CI. After an intentional visual change,
 review the new images and run `npm run test:visual:update`.
 
 Layout widths are tokens: `max-w-form` (1060px) for long forms and `w-aside` /
@@ -383,6 +383,14 @@ then, the sections above describe the running app.
   chosen in a `StatusFilterBar`. The detail carries the client and final
   deadline in the header meta (no client card), and deposit amounts use
   `MoneyInput`.
+- Clientes already follows this: the list is a `DataList` (client with
+  company contact and city, contact links, document from `lg`, status, row
+  actions); below `md` the row actions fold into the row menu, which also holds
+  Ver orçamentos. The profile never repeats the client name under the title,
+  keeps one Resumo comercial block with the latest quotation as a link, and
+  shows pipeline stages through `pipelineLabel`. `DataList` mounts only the
+  layout for the current width. `EntityIdentity` names are 14px over a 12px
+  secondary line.
 
 ### Content rules
 

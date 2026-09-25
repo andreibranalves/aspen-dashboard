@@ -281,9 +281,23 @@ const salesOrderDetail = {
   notes: [],
 };
 
+const clientDetail = {
+  ...leadsClients.data[0],
+  display_name: 'Confecções Horizonte Ltda',
+  person_type: 'company',
+  tax_id: null,
+  address: { municipio: 'São Paulo', uf: 'SP' },
+  latest_quotation: { name: 'ORC-20260101', status: 'Emitido', date: '2026-09-10', grand_total: 1250 },
+  deal: { name: 'Confecções Horizonte Ltda', status: 'Orcamento Enviado', next_step: 'Confirmar prazo de entrega' },
+  orders: [],
+  creation: '2026-09-01T10:00:00-03:00',
+  modified: '2026-09-10T10:00:00-03:00',
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
+  if (pathname === '/api/client-detail') return clientDetail;
   if (pathname === '/api/quotations') return searchParams.has('id') ? quotationDetail : quotationsList;
   if (pathname === '/api/products') {
     return searchParams.get('view') === 'categories' ? { categories: ['Bolsas', 'Cangas', 'Lenços'] } : products;

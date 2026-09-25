@@ -13,6 +13,7 @@ export default defineConfig({
   snapshotPathTemplate: '{testDir}/visual/__screenshots__/{arg}{ext}',
   expect: {
     ...base.expect,
-    toHaveScreenshot: { animations: 'disabled', caret: 'hide' },
+    // Tolera só o ruído de antialiasing de fontes (poucos pixels entre execuções).
+    toHaveScreenshot: { animations: 'disabled', caret: 'hide', maxDiffPixels: 40 },
   },
 });

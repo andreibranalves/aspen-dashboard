@@ -11,6 +11,7 @@ const SCREENS = [
   // Abrir a conversa marca como lida (PATCH simulado em `writes`).
   { name: 'atendimento-conversa', route: '/atendimento?conversationId=c1000000-0000-4000-8000-000000000001', mobile: true, writes: { 'PATCH /api/whatsapp-conversations': { conversation: { ...conversations.items[0], unreadCount: 0, readRevision: 1 } } } },
   { name: 'clientes', route: '/leads', heading: 'Clientes', mobile: true },
+  { name: 'cliente-detalhe', route: '/leads/cliente/00000000-0000-4000-8000-000000000001', heading: 'Confecções Horizonte Ltda', mobile: true },
   { name: 'orcamentos', route: '/quotations', heading: 'Orçamentos', mobile: true, dark: true },
   { name: 'pedidos', route: '/sales-orders', heading: 'Pedidos', mobile: true },
   { name: 'pedido-detalhe', route: '/sales-orders/PED-2026-0101', heading: 'PED-2026-0101', viewport: TALL, mobile: true },
