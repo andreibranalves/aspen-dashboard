@@ -197,6 +197,39 @@ export const commercialQueue = {
 };
 
 /** Respostas por caminho; `{ status, body }` troca o status e `null` indica fixture ausente. */
+const conversation = (id, displayName, phone, unreadCount, lastMessageAt, lastMessagePreview, lastMessageDirection) => ({
+  id, displayName, phone, identityStatus: 'verified', identityVersion: 1, status: 'open', unreadCount,
+  revision: 1, readRevision: unreadCount ? 0 : 1, lastMessageAt, lastMessagePreview, lastMessageDirection,
+});
+
+export const conversations = {
+  items: [
+    conversation('c1000000-0000-4000-8000-000000000001', 'Marina Albuquerque', '21988887777', 3, '2026-09-15T11:40:00-03:00', 'Consegue entregar até sexta?', 'inbound'),
+    conversation('c1000000-0000-4000-8000-000000000002', 'Confecções Horizonte Ltda', '11999990001', 0, '2026-09-15T10:12:00-03:00', 'Segue o orçamento solicitado.', 'outbound'),
+    conversation('c1000000-0000-4000-8000-000000000003', 'Estamparia Litoral Norte', '12977776666', 1, '2026-09-14T17:05:00-03:00', 'Qual o prazo para 200 unidades?', 'inbound'),
+  ],
+  hasMore: false,
+  nextCursor: null,
+};
+
+const message = (id, direction, body, timestamp) => ({
+  id, direction, type: 'text', body, origin: direction === 'inbound' ? 'live' : 'operator', timestamp,
+  createdRevision: 1, revision: 1, deliveryStatus: direction === 'outbound' ? 'read' : null,
+  outboxState: null, failureCode: null, resolution: null, supersededBy: null,
+});
+
+const threadMessages = {
+  conversation: conversations.items[0],
+  items: [
+    message('m1', 'inbound', 'Oi! Preciso de 300 lenços de seda 40x40 com a nossa logo.', '2026-09-15T11:20:00-03:00'),
+    message('m2', 'outbound', 'Olá, Marina! Consigo sim. Tem a arte em vetor?', '2026-09-15T11:25:00-03:00'),
+    message('m3', 'inbound', 'Tenho, envio agora. Consegue entregar até sexta?', '2026-09-15T11:40:00-03:00'),
+  ],
+  hasMore: false,
+  nextCursor: null,
+  revision: 3,
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
@@ -207,6 +240,9 @@ export function respond(url) {
   if (pathname === '/api/sales-orders') return salesOrders;
   // Sem configurações salvas: a tela usa os padrões locais.
   if (pathname === '/api/settings') return { status: 404, body: { error: 'Configurações não encontradas.' } };
+  if (pathname === '/api/whatsapp-conversations') return conversations;
+  if (pathname === '/api/whatsapp-messages') return threadMessages;
+  if (pathname === '/api/atendimento-context') return { context: { match: 'not_found', quotations: [], deliveries: [], linking: { available: true, version: null } } };
   if (pathname === '/api/tasks') return searchParams.get('view') === 'alerts' ? { overdue_count: 0 } : { tasks: [], today: '2026-09-15', overdue_count: 0 };
   if (pathname === '/api/sales-dashboard') return salesDashboard;
   if (pathname === '/api/commercial-queue') return commercialQueue;

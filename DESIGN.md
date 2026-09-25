@@ -166,7 +166,9 @@ Layout widths are tokens: `max-w-form` (1060px) for long forms and `w-aside` /
 `grid-cols-main-aside` (336px) for the detail side panel; journeys migrate
 their fixed widths to them as they land. Auto keeps its two-panel split. Horizontal strips that may overflow (tabs, filters) use
 `scrollbar-none`; fixed bottom bars use `pb-safe` and sit above
-`--mobile-nav-h`.
+`--mobile-nav-h`; a mobile view that must fill the screen uses `h-workarea`.
+Custom utilities never reuse a theme key name (`h-workspace` would resolve to
+the `--spacing-workspace` token).
 
 ## Components: use X for Y
 
@@ -365,6 +367,12 @@ then, the sections above describe the running app.
 - Lists adopt `StatusFilterBar` and `DataList`; details and Novo orçamento adopt
   `MobileActionBar`; long forms adopt `StickySaveBar`. Orçamentos (list and
   detail) and Novo orçamento already follow this.
+- Atendimento already follows the mobile rules: below `lg` the list and the
+  open conversation swap, the conversation fills the work area (`h-workarea`)
+  with the composer at the bottom, and the page title hides while it is open.
+  The context column exists only with an open conversation. Message selection
+  for a quotation is an icon toggle beside the bubble; attachments use a
+  paperclip button, never a raw file input.
 
 ### Content rules
 

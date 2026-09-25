@@ -35,11 +35,13 @@ import MessageComposer from '@/features/attendance/components/MessageComposer';
 import MessageTimeline, { type MessageActionName } from '@/features/attendance/components/MessageTimeline';
 import { STATUS_FILTERS, STATUS_LABELS } from '@/features/attendance/attendanceLabels';
 import { useVisiblePolling } from '@/features/attendance/useVisiblePolling';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 const CONVERSATION_POLL_MS = 5_000;
 const LIST_POLL_MS = 10_000;
 const NEAR_BOTTOM_PX = 80;
 const MAX_INCREMENTAL_PAGES = 5;
+// O painel de contexto é coluna em telas largas e gaveta nas demais; só um é montado.
 const WIDE_MEDIA_QUERY = '(min-width: 1280px)';
 
 interface Thread {
@@ -56,21 +58,6 @@ interface Thread {
 function selectedFromHash(): string | null {
   const query = window.location.hash.split('?')[1] || '';
   return new URLSearchParams(query).get('conversationId');
-}
-
-// The context panel is a column on wide screens and a drawer otherwise; only
-// one of them is mounted, so the context is read once.
-function useWideLayout(): boolean {
-  const [wide, setWide] = useState(() => Boolean(window.matchMedia?.(WIDE_MEDIA_QUERY).matches));
-  useEffect(() => {
-    if (!window.matchMedia) return undefined;
-    const media = window.matchMedia(WIDE_MEDIA_QUERY);
-    const update = () => setWide(media.matches);
-    update();
-    media.addEventListener?.('change', update);
-    return () => media.removeEventListener?.('change', update);
-  }, []);
-  return wide;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -147,7 +134,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const scrollAnchorRef = useRef<{ height: number; top: number } | null>(null);
   const stickToBottomRef = useRef(false);
   const readRequestRef = useRef(0);
-  const wide = useWideLayout();
+  const wide = useMediaQuery(WIDE_MEDIA_QUERY);
   const [contextOpen, setContextOpen] = useState(false);
   const [deliveryView, setDeliveryView] = useState<{ conversationId: string; items: ContextDelivery[] } | null>(null);
   const [deliveryPending, setDeliveryPending] = useState<string | null>(null);
@@ -512,10 +499,19 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const filtered = statusFilter !== 'active' || Boolean(debouncedSearch);
   const conversation = thread?.conversation || null;
 
+  const unread = conversations.filter((item) => item.unreadCount > 0);
+
   return (
     <PageShell>
-      <PageHeader title="Atendimento" />
-      <div className="grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-12rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]">
+      {/* No celular a conversa aberta ocupa a tela; o voltar fica no cabeçalho dela. */}
+      <PageHeader title="Atendimento" className={selectedId ? 'max-lg:hidden' : undefined} />
+      <div
+        className={cn(
+          'grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-12rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]',
+          // A coluna de contexto só existe com uma conversa aberta.
+          selectedId && 'max-lg:h-workarea max-lg:min-h-0 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]'
+        )}
+      >
         <section
           aria-label="Lista de conversas"
           className={cn('flex min-h-0 flex-col border-border-subtle lg:border-r', selectedId && 'max-lg:hidden')}
@@ -526,6 +522,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar por nome ou telefone"
               aria-label="Buscar conversas"
+              containerClassName="sm:max-w-none"
             />
             <Select
               value={statusFilter}
@@ -565,7 +562,18 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
           className={cn('relative flex min-h-0 flex-col', !selectedId && 'max-lg:hidden')}
         >
           {!thread ? (
-            <EmptyState icon={MessagesSquare} title="Selecione uma conversa" variant="bare" className="h-full" />
+            <EmptyState
+              icon={MessagesSquare}
+              title="Selecione uma conversa"
+              description={unread.length > 0 ? `${unread.length} ${unread.length === 1 ? 'conversa com mensagens não lidas' : 'conversas com mensagens não lidas'}` : undefined}
+              actions={unread.slice(0, 3).map((item) => (
+                <Button key={item.id} variant="outline" size="sm" onClick={() => selectConversation(item.id)}>
+                  {conversationName(item)} ({item.unreadCount})
+                </Button>
+              ))}
+              variant="bare"
+              className="h-full"
+            />
           ) : thread.error ? (
             <ErrorState
               title="Não foi possível abrir a conversa"
@@ -599,7 +607,8 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                   value={conversation.status}
                   onChange={(event) => void changeStatus(event.target.value as AttendanceStatus)}
                   aria-label="Situação do atendimento"
-                  className="h-9 w-36 sm:w-auto"
+                  size="sm"
+                  className="w-28 sm:w-auto"
                 >
                   {(Object.keys(STATUS_LABELS) as AttendanceStatus[]).map((status) => (
                     <option key={status} value={status}>
@@ -684,7 +693,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
             </>
           )}
         </section>
-        {wide && (
+        {wide && selectedId && (
           <aside aria-label="Contexto comercial" className="flex min-h-0 flex-col border-l border-border-subtle">
             {conversation && !thread?.error ? (
               <ContextPanel
