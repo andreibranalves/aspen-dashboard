@@ -1,0 +1,75 @@
+# Deploy do aspen-worker no VPS (ADR 0013; operação em docs/worker-runbook.md).
+# Push em master que toca o worker: builda o commit no VPS e sobe. Rollback
+# manual: "Run workflow" com o sha de uma imagem já buildada, sem rebuild.
+name: Worker deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'api/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'scripts/build-api.mjs'
+      - 'deploy/worker/**'
+      - '.github/workflows/worker-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit (40 caracteres) de uma imagem que já está no VPS'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: false
+
+env:
+  # IP do VPS na tailnet; a porta 2222 é o `tailscale serve` para o OpenSSH local.
+  WORKER_HOST: 100.125.165.20
+  WORKER_SSH_PORT: 2222
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Segredos só existem neste environment, restrito à branch master.
+    environment: aspen-worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: ${{ env.WORKER_HOST }}
+      - name: Chave de deploy
+        env:
+          DEPLOY_KEY: ${{ secrets.WORKER_DEPLOY_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/worker_deploy
+          chmod 600 ~/.ssh/worker_deploy
+      - name: Deploy
+        if: github.event_name == 'push'
+        run: |
+          git archive --format=tar "$GITHUB_SHA" |
+            ssh -i ~/.ssh/worker_deploy -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/worker/known_hosts \
+              -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+              -p "$WORKER_SSH_PORT" "root@$WORKER_HOST" "deploy $GITHUB_SHA"
+      - name: Rollback
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha inválido"; exit 1; }
+          ssh -i ~/.ssh/worker_deploy -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/worker/known_hosts \
+            -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+            -p "$WORKER_SSH_PORT" "root@$WORKER_HOST" "rollback $SHA" < /dev/null

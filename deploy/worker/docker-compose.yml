@@ -1,0 +1,42 @@
+# Projeto compose do aspen-worker no VPS (ADR 0013). O operador instala este
+# arquivo em /docker/aspen-worker/docker-compose.yml (docs/worker-runbook.md);
+# o deploy só troca a tag da imagem. Mudança aqui exige reinstalar no VPS.
+name: aspen-worker
+
+services:
+  worker:
+    image: aspen-worker:${ASPEN_WORKER_TAG:?tag do deploy em /docker/aspen-worker/current-tag}
+    container_name: aspen-worker
+    restart: unless-stopped
+    init: true
+    # Segredos do worker, escritos pelo operador (root, 0600).
+    env_file: .env
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    stop_grace_period: 30s
+    networks:
+      - evolution
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=evolution-api-zscx_default
+      - traefik.http.routers.aspen-worker.rule=Host(`aspen-worker.srv1892439.hstgr.cloud`) && (Path(`/health`) || Path(`/wake`))
+      - traefik.http.routers.aspen-worker.entrypoints=websecure
+      - traefik.http.routers.aspen-worker.tls.certresolver=letsencrypt
+      - traefik.http.services.aspen-worker.loadbalancer.server.port=8080
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '5'
+
+networks:
+  # Rede do projeto do Evolution, que pertence à Hostinger: só entramos nela.
+  evolution:
+    external: true
+    name: evolution-api-zscx_default

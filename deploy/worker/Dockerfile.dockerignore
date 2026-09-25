@@ -1,0 +1,8 @@
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!scripts/build-api.mjs
+!api
+api/**/*.js
+api/**/*.js.map

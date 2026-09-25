@@ -7,7 +7,7 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'development',
-    release: process.env.VERCEL_GIT_COMMIT_SHA,
+    release: process.env.VERCEL_GIT_COMMIT_SHA || process.env.ASPEN_WORKER_SHA,
     sampleRate: 1,
     defaultIntegrations: Sentry.getDefaultIntegrationsWithoutPerformance(),
     dataCollection: {
@@ -32,16 +32,11 @@ if (dsn) {
   });
 }
 
-export function captureApiException(
-  error: unknown,
-  context: { routeName: string; method: string }
-): void {
+function captureSafely(error: unknown, tags: Record<string, string>): void {
   if (!dsn) return;
 
   Sentry.withScope((scope) => {
-    scope.setTag('component', 'api');
-    scope.setTag('route', context.routeName || 'unknown');
-    scope.setTag('http.method', context.method || 'UNKNOWN');
+    for (const [name, value] of Object.entries(tags)) scope.setTag(name, value);
     // A mensagem e o `cause` de erros do banco carregam SQL e valores; vai só a cópia segura.
     const { code, constraint, table } = safeErrorFields(error);
     if (code) scope.setTag('error.code', code);
@@ -49,4 +44,26 @@ export function captureApiException(
     if (table) scope.setTag('db.table', table);
     Sentry.captureException(safeErrorForReport(error));
   });
+}
+
+export function captureApiException(
+  error: unknown,
+  context: { routeName: string; method: string }
+): void {
+  captureSafely(error, {
+    component: 'api',
+    route: context.routeName || 'unknown',
+    'http.method': context.method || 'UNKNOWN',
+  });
+}
+
+/** Erro do aspen-worker no VPS; `task` nomeia o trabalho (ex.: `startup`). */
+export function captureWorkerException(error: unknown, context: { task: string }): void {
+  captureSafely(error, { component: 'worker', task: context.task });
+}
+
+/** Espera o envio dos eventos pendentes antes de o processo sair. */
+export async function flushErrorReports(timeoutMs: number): Promise<void> {
+  if (!dsn) return;
+  await Sentry.flush(timeoutMs);
 }
