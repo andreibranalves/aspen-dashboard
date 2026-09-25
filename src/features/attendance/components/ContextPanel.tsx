@@ -121,7 +121,7 @@ export default function ContextPanel({ conversationId, identityVersion, onUseSug
         title="Contexto indisponível"
         description={error}
         onRetry={() => void load(searching)}
-        className="rounded-none"
+        variant="bare"
       />
     );
   }

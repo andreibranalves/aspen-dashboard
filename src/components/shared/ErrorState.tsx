@@ -1,6 +1,7 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { emptyStateSurfaces } from '@/components/shared/EmptyState';
 import { cn } from '@/lib/utils';
 
 export interface ErrorStateProps {
@@ -9,15 +10,16 @@ export interface ErrorStateProps {
   onRetry?: () => void;
   /** Extra actions after "Tentar novamente" (e.g. back to the list). */
   actions?: ReactNode;
+  variant?: keyof typeof emptyStateSurfaces;
   className?: string;
 }
 
 /** ErrorState — EmptyState's sibling for a failed load: same geometry, alert semantics. */
-export default function ErrorState({ title, description, onRetry, actions, className }: ErrorStateProps) {
+export default function ErrorState({ title, description, onRetry, actions, variant = 'card', className }: ErrorStateProps) {
   return (
     <section
       role="alert"
-      className={cn('flex min-h-64 flex-col items-center justify-center gap-3 rounded-card bg-surface px-5 py-12 text-center', className)}
+      className={cn('flex min-h-64 flex-col items-center justify-center gap-3 px-5 text-center', emptyStateSurfaces[variant], className)}
     >
       <span className="grid size-12 place-items-center rounded-full bg-destructive/10 text-destructive">
         <AlertTriangle size={24} aria-hidden="true" />

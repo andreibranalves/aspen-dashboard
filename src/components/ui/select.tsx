@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import { forwardRef, type SelectHTMLAttributes } from 'react';
+import { useFieldControl } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 const sizes = {
@@ -22,28 +23,31 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'siz
 }
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ className, containerClassName, size = 'default', children, ...props }, ref) => (
-    <div className={cn('relative inline-flex', containerClassName)}>
-      <select
-        ref={ref}
-        className={cn(
-          'min-w-0 appearance-none rounded-control border border-border-control bg-input-surface pl-3 pr-8 text-fg',
-          sizes[size],
-          'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </select>
-      <ChevronDown
-        size={14}
-        aria-hidden="true"
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted"
-      />
-    </div>
-  )
+  ({ className, containerClassName, size = 'default', children, ...rest }, ref) => {
+    const props = useFieldControl(rest);
+    return (
+      <div className={cn('relative inline-flex', containerClassName)}>
+        <select
+          ref={ref}
+          className={cn(
+            'min-w-0 appearance-none rounded-control border border-border-control bg-input-surface pl-3 pr-8 text-fg',
+            sizes[size],
+            'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            className
+          )}
+          {...props}
+        >
+          {children}
+        </select>
+        <ChevronDown
+          size={14}
+          aria-hidden="true"
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted"
+        />
+      </div>
+    );
+  }
 );
 Select.displayName = 'Select';
 

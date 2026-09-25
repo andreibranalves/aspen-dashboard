@@ -6,6 +6,9 @@ import {
   formatBRL,
   formatDate,
   formatDateTime,
+  formatDecimalBR,
+  formatPercent,
+  parseDecimalBR,
   whatsappContactUrl,
 } from '../../src/lib/formatting/formatters.ts';
 
@@ -35,6 +38,45 @@ describe('formatBRL', () => {
 
   it('returns zero for invalid input', () => {
     assert.equal(formatBRL('abc'), 'R$\u00a00,00');
+  });
+
+  it('keeps the sign before the symbol', () => {
+    assert.equal(formatBRL(-1234.5), '-R$\u00a01.234,50');
+  });
+});
+
+describe('formatDecimalBR', () => {
+  it('groups thousands with dots and uses a decimal comma', () => {
+    assert.equal(formatDecimalBR(1234567.891), '1.234.567,89');
+    assert.equal(formatDecimalBR(0), '0,00');
+    assert.equal(formatDecimalBR(4, 0), '4');
+  });
+});
+
+describe('parseDecimalBR', () => {
+  it('reads pt-BR input', () => {
+    assert.equal(parseDecimalBR('1.234,56'), 1234.56);
+    assert.equal(parseDecimalBR('R$ 45,9'), 45.9);
+    assert.equal(parseDecimalBR('1.000'), 1000);
+  });
+
+  it('accepts a dot decimal when there is no comma', () => {
+    assert.equal(parseDecimalBR('12.90'), 12.9);
+    assert.equal(parseDecimalBR('0.5'), 0.5);
+  });
+
+  it('returns null for empty or invalid input', () => {
+    assert.equal(parseDecimalBR(''), null);
+    assert.equal(parseDecimalBR('abc'), null);
+    assert.equal(parseDecimalBR(','), null);
+  });
+});
+
+describe('formatPercent', () => {
+  it('formats with a comma and an optional sign', () => {
+    assert.equal(formatPercent(12.345), '12,3%');
+    assert.equal(formatPercent(12.5, { signed: true }), '+12,5%');
+    assert.equal(formatPercent(-18.9, { signed: true }), '-18,9%');
   });
 });
 

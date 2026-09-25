@@ -9,6 +9,26 @@ const RATCHETS = [
     pattern: /(?<![\w:-])-?m[tby]-(?!auto\b)[\d.]+(?![\w.-])/g,
     limit: 271,
   },
+  {
+    name: 'superfície de card montada à mão (use Card)',
+    pattern: /(?<![\w-])rounded-card(?![\w-])/g,
+    limit: 73,
+  },
+  {
+    name: '<label> cru (use Field)',
+    pattern: /<label\b/g,
+    limit: 128,
+  },
+  {
+    name: 'valor arbitrário do Tailwind (use tokens de layout)',
+    pattern: /(?<![\w:-])[\w:-]*[a-z]-\[[^\]\s]+\](?!:)/g,
+    limit: 112,
+  },
+  {
+    name: 'text-xs solto (use Text ou Field)',
+    pattern: /(?<![\w:-])text-xs(?![\w-])/g,
+    limit: 283,
+  },
 ];
 
 function* files(dir) {

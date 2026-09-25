@@ -113,7 +113,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             {templatesLoading && (
               <div role="status" aria-busy="true" aria-label="Carregando conjuntos" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {Array.from({ length: 6 }, (_, index) => (
-                  <Skeleton key={index} className="min-h-72 rounded-card" />
+                  <Skeleton key={index} className="min-h-72" variant="card" />
                 ))}
               </div>
             )}

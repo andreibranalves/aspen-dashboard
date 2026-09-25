@@ -214,11 +214,11 @@ export function QuotationTemplateManager({
       {loading && !templates.length && (
         <div role="status" aria-busy="true" aria-label="Carregando modelos" className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
           <div className="space-y-3">
-            <Skeleton className="h-9 w-36 rounded-control" />
-            <Skeleton className="h-28 rounded-card" />
-            <Skeleton className="h-28 rounded-card" />
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-28" variant="card" />
+            <Skeleton className="h-28" variant="card" />
           </div>
-          <Skeleton className="h-[440px] rounded-card" />
+          <Skeleton className="h-[440px]" variant="card" />
         </div>
       )}
       {listError && (
@@ -267,7 +267,7 @@ export function QuotationTemplateManager({
           <div className="space-y-4">
             {detailLoading && (
               <div role="status" aria-busy="true" aria-label="Carregando detalhes do modelo">
-                <Skeleton className="h-[440px] rounded-card" />
+                <Skeleton className="h-[440px]" variant="card" />
               </div>
             )}
             {detailError && selectedId && (

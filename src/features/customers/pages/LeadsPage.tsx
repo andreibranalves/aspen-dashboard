@@ -976,9 +976,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       >
         {detailLoading && (
           <div className="space-y-4" role="status" aria-busy="true" aria-label="Carregando detalhes">
-            <Skeleton className="h-24 rounded-card" />
-            <Skeleton className="h-48 rounded-card" />
-            <Skeleton className="h-32 rounded-card" />
+            <Skeleton className="h-24" variant="card" />
+            <Skeleton className="h-48" variant="card" />
+            <Skeleton className="h-32" variant="card" />
           </div>
         )}
         {detailError && !detailLoading && (

@@ -205,6 +205,9 @@ export function respond(url) {
     return searchParams.get('view') === 'categories' ? { categories: ['Bolsas', 'Cangas', 'Lenços'] } : products;
   }
   if (pathname === '/api/sales-orders') return salesOrders;
+  // Sem configurações salvas: a tela usa os padrões locais.
+  if (pathname === '/api/settings') return { status: 404, body: { error: 'Configurações não encontradas.' } };
+  if (pathname === '/api/tasks') return searchParams.get('view') === 'alerts' ? { overdue_count: 0 } : { tasks: [], today: '2026-09-15', overdue_count: 0 };
   if (pathname === '/api/sales-dashboard') return salesDashboard;
   if (pathname === '/api/commercial-queue') return commercialQueue;
   if (pathname === '/api/quotation-templates') {

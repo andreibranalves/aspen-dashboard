@@ -54,6 +54,23 @@ export function quotationStatusBadgeKey(status: unknown): string {
   return QUOTATION_STATUS_META[normalizeQuotationStatus(status)].badge;
 }
 
+/** Status de pedido de venda (valores crus do backend). */
+export const SALES_ORDER_STATUS_LABELS: Record<string, string> = {
+  Draft: 'Rascunho',
+  'On Hold': 'Em espera',
+  'To Pay': 'A pagar',
+  'To Deliver and Bill': 'A entregar e faturar',
+  'To Bill': 'A faturar',
+  'To Deliver': 'A entregar',
+  Completed: 'Concluído',
+  Cancelled: 'Cancelado',
+  Closed: 'Fechado',
+};
+
+export function salesOrderStatusLabel(status: string | null | undefined): string {
+  return SALES_ORDER_STATUS_LABELS[status || ''] ?? 'Status desconhecido';
+}
+
 /** Rótulos pt-BR acentuados para as etapas do pipeline (valores crus do backend). */
 export const PIPELINE_LABELS: Record<string, string> = {
   'Novo Lead': 'Novo lead',

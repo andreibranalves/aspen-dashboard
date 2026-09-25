@@ -78,8 +78,8 @@ Tailwind's size scale, so `rounded-md/lg/xl` do not exist. Pick by role:
 | `rounded-badge` | 6px | status badges, segmented triggers, menu items |
 | `rounded-control` | 11px | buttons, fields, inline alerts, menus, small insets |
 | `rounded-nav` | 14px | sidebar items, top search |
-| `rounded-card` | 25px | cards, panels, dialogs, drawers |
-| `rounded-shell` | 31px | the workspace frame |
+| `rounded-card` | 16px | cards, panels, dialogs, drawers (features use `Card`, not the class) |
+| `rounded-shell` | 20px | the workspace frame |
 | `rounded-full` | — | avatars and icon discs only |
 
 ### Focus
@@ -97,7 +97,8 @@ Fields, selects and the default button are 40px. Button sizes: `xs` 28, `sm`
 show a tinted disabled state at full opacity; quiet variants fade.
 
 Appearance comes from props, never from `className` on a `components/ui`
-primitive. `eslint.config.js` enforces this with `shadcn/no-restyle`
+primitive or a `components/shared` composition (`settings.shadcn.ui` covers
+both). `eslint.config.js` enforces this with `shadcn/no-restyle`
 (`className` may carry layout only, plus the per-component `contracts`) and
 `shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant. Actions use `Button` or
 `MenuItem`; a plain `<button>` is only for list options, selectable cards,
@@ -111,11 +112,17 @@ disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this i
 | `Button` | `variant`: `default`, `destructive`, `outline`, `outline-destructive`, `outline-ink` (on colored panels), `secondary`, `soft`, `ghost`, `ghost-muted`, `ghost-destructive`, `ghost-muted-destructive` (remove icons), `link`, `success` |
 | `Table` | `density`: `default` (lists), `compact` (documents), `dense` (editable tables in cards); `edges`: `flush`, `inset` |
 | `TableRow` | `selected`, `tone="warning"`, `interactive` |
+| `Card` | `variant`: `default`, `outline`, `inset`; `padding`: `none`, `sm`, `default`, `lg`; `as` for the tag |
+| `Text` | `variant`: `body`, `meta`, `caption`, `label`, `value`, `id` (the only mono); `as`, `truncate` |
+| `Field` | `label`, `hint`, `error`, `labelHidden`; wires `id`, `aria-describedby` and `aria-invalid` into the `Input`, `Select`, `Textarea` or `MoneyInput` inside it (one control per field) |
+| `MoneyInput` | `value: number \| null`, `onValueChange`; shows `1.234,56`, keeps what is typed while focused |
 | `Input` | `size`, `hideSpinButtons` |
 | `Heading` | `level`: `section`, `subsection`, `card`, `eyebrow`; `as` for the tag |
 | `MenuItem` | `tone`: `default`, `destructive`; `asChild` for links |
 | `Textarea` | `variant`: `default`, `code`, `bare` (composer inside a bordered box) |
 | `StatusBadge` | `status` maps to a tone; `tone` overrides it |
+| `EmptyState` / `ErrorState` | `variant`: `card` (own block), `dashed` (inside a card or list), `bare` (fills a framed pane) |
+| `Skeleton` | `variant`: `rect` (controls), `card`, `circle`, `text` |
 
 ## Layout
 
@@ -135,18 +142,22 @@ row, then `ListSection`: filters → content → pagination, 20px apart, on one
 surface card (`surface={false}` when the content is already a card grid).
 State, search and selection stay in the page.
 
-Vertical margins on children (`mt-*`, `mb-*`, `my-*`) are counted in
-`src/features` and `src/app` by `scripts/check-ui-ratchet.mjs` (in
-`verify:fast`). The count may only go down: prefer `gap`/`space-y` on the
-parent and lower the limit in the same change.
+`scripts/check-ui-ratchet.mjs` (in `verify:fast`) counts, in `src/features`
+and `src/app`: vertical margins on children (`mt-*`, `mb-*`, `my-*`), hand-built
+`rounded-card` surfaces, raw `<label>`, arbitrary Tailwind values and loose
+`text-xs`. Counts may only go down: use `gap`/`space-y`, `Card`, `Field`,
+`Text` and layout tokens, and lower the limit in the same change.
 
 `npm run test:visual` compares the main screens against
 `tests/visual/__screenshots__/` with mocked API data and a fixed clock, pixel
 for pixel. It runs locally, not in CI. After an intentional visual change,
 review the new images and run `npm run test:visual:update`.
 
-Intentional inner widths stay: Manual and Settings forms cap at 1060px, detail
-side panels are 280–336px from `xl`, Auto keeps its two-panel split.
+Layout widths are tokens: `max-w-form` (1060px) for long forms and `w-aside` /
+`grid-cols-main-aside` (336px) for the detail side panel; journeys migrate
+their fixed widths to them as they land. Auto keeps its two-panel split. Horizontal strips that may overflow (tabs, filters) use
+`scrollbar-none`; fixed bottom bars use `pb-safe` and sit above
+`--mobile-nav-h`.
 
 ## Components: use X for Y
 
@@ -158,7 +169,14 @@ side panels are 280–336px from `xl`, Auto keeps its two-panel split.
 | Alternate views/modes | `TabBar variant="segmented"` | Lista/Quadro, Conversa/Manual |
 | Search in a list | `SearchField` inside `PageToolbar` | 286px cap |
 | Pagination | `ListPagination` | shows `de X` only when the endpoint returns a total |
+| Status filter with counts | `StatusFilterBar` | above lists, instead of StatCards + status select; `count: null` while loading |
+| List on both widths | `DataList` | table from `md`, stacked rows below; `getHref` makes rows real links |
+| Primary action on mobile | `MobileActionBar` | fixed bottom below `lg`, one primary action |
+| Long form save | `StickySaveBar` | only while dirty |
 | Metrics row | `StatCard` in `StatGrid` | pass `loading`; never show 0 before data |
+| Grouped content | `Card` | never a hand-built `rounded-card` surface |
+| Form field | `Field` + control | label, hint and error wired to the control |
+| Money field | `MoneyInput` in `Field` | never `toFixed` in UI |
 | Nothing to show | `EmptyState` | distinguish empty base vs no results for filters |
 | Failed load | `ErrorState` | same geometry as `EmptyState`, `role="alert"`, retry |
 | Message in context | `InlineAlert` | tone in icon/border, text in body color, one action |
@@ -323,27 +341,15 @@ then, the sections above describe the running app.
 - Desktop layouts start at `lg` (1024) wherever they fit; `xl` is reserved for
   the 336px side panel.
 
-### Surfaces and type
+### Still to land
 
-- Radius roles tighten: card 16px, shell 20px (desktop only); controls keep
-  11px.
-- One `Card` primitive (`variant`: `default`, `outline`, `inset`) replaces
-  hand-built `rounded-card` surfaces in features.
-- `Field` (label, control, error) replaces raw `<label>` in features; `Text`
-  (`meta`, `caption`, `value`) replaces loose `text-xs`/`font-medium` pairs.
+- Surfaces: features migrate hand-built `rounded-card` to `Card`, raw
+  `<label>` to `Field`, loose `text-xs`/`font-medium` to `Text` (ratchets above).
 - Monospace is for SKUs and identifiers only, never money.
 - No colored card backgrounds. Charts use `chart-*` tokens only inside chart
   components; no palette cycled by index.
-
-### Page patterns
-
-| Need | Use | Notes |
-| --- | --- | --- |
-| Status filter with counts | `StatusFilterBar` | replaces StatCards + status select above lists |
-| List that works on both widths | `DataList` | table from `md`; stacked two-line rows below; rows are real links |
-| Primary action on mobile detail/entry | `MobileActionBar` | fixed bottom, `shadow-bar`, one primary action |
-| Long form save | `StickySaveBar` | appears only while dirty |
-| Money input | `MoneyInput` | pt-BR display (`1.234,56`), never `toFixed` in UI |
+- Lists adopt `StatusFilterBar` and `DataList`; details and Novo orçamento adopt
+  `MobileActionBar`; long forms adopt `StickySaveBar`.
 
 ### Content rules
 

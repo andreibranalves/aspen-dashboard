@@ -22,19 +22,8 @@ import {
   type SalesOrderItemView,
 } from '@/features/sales-orders/salesOrderViewModel';
 import { Heading } from '@/components/ui/heading';
+import { salesOrderStatusLabel } from '@/lib/statusLabels';
 import { NotesSection, ProductionSection } from '@/features/sales-orders/components/ProductionPanel';
-
-const STATUS_LABELS: Record<string, string> = {
-  Draft: 'Rascunho',
-  'On Hold': 'Em espera',
-  'To Pay': 'A pagar',
-  'To Deliver and Bill': 'A entregar e faturar',
-  'To Bill': 'A faturar',
-  'To Deliver': 'A entregar',
-  Completed: 'Concluído',
-  Cancelled: 'Cancelado',
-  Closed: 'Fechado',
-};
 
 interface SalesOrderDetailPageProps {
   id: string;
@@ -126,7 +115,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
   const grandTotal =
     data.grand_total ?? data.rounded_total ?? (items && items.length > 0 ? itemTotal : undefined);
   const orderDate = data.date ?? data.data;
-  const statusLabel = STATUS_LABELS[data.status] || data.status;
+  const statusLabel = salesOrderStatusLabel(data.status);
   const orderIsReadOnly =
     data.status === 'Draft' || data.status === 'Cancelled' || data.status === 'Closed';
 

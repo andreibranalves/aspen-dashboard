@@ -135,6 +135,8 @@ export default [
     plugins: {
       shadcn,
     },
+    // Composições de components/shared seguem o mesmo contrato dos primitivos.
+    settings: { shadcn: { ui: ['@/components/ui', '@/components/shared'] } },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-undef': 'error',
@@ -159,6 +161,8 @@ export default [
             { pattern: '^Input$', allow: ['layout', 'font-mono', 'font-medium', 'tracking-widest', 'pl-*', 'pr-*'] },
             { pattern: '^Textarea$', allow: ['layout', 'font-mono', 'pt-*'] },
             { pattern: '^Heading$', allow: ['layout', 'truncate', 'gap-*'] },
+            // Contêineres de página definem o ritmo vertical do conteúdo.
+            { pattern: '^(PageShell|ListPageLayout)$', allow: ['layout', 'spacing'] },
           ],
         },
       ],

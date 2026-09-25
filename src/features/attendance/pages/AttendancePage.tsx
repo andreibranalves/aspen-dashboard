@@ -8,7 +8,6 @@ import ErrorState from '@/components/shared/ErrorState';
 import InlineAlert from '@/components/shared/InlineAlert';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
-import PageToolbar from '@/components/shared/PageToolbar';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
 import { Select } from '@/components/ui/select';
@@ -521,7 +520,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
           aria-label="Lista de conversas"
           className={cn('flex min-h-0 flex-col border-border-subtle lg:border-r', selectedId && 'max-lg:hidden')}
         >
-          <PageToolbar className="flex-col items-stretch gap-2 border-b border-border-subtle p-3">
+          <div className="flex flex-col gap-2 border-b border-border-subtle p-3">
             <SearchField
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -541,7 +540,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 </option>
               ))}
             </Select>
-          </PageToolbar>
+          </div>
           {listError && conversations.length > 0 && (
             <InlineAlert tone="warning" className="m-2">
               {listError}
@@ -566,13 +565,14 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
           className={cn('relative flex min-h-0 flex-col', !selectedId && 'max-lg:hidden')}
         >
           {!thread ? (
-            <EmptyState icon={MessagesSquare} title="Selecione uma conversa" className="h-full rounded-none" />
+            <EmptyState icon={MessagesSquare} title="Selecione uma conversa" variant="bare" className="h-full" />
           ) : thread.error ? (
             <ErrorState
               title="Não foi possível abrir a conversa"
               description={thread.error}
               onRetry={() => void loadThread(thread.conversationId)}
-              className="h-full rounded-none"
+              variant="bare"
+              className="h-full"
             />
           ) : thread.loading || !conversation ? (
             <p className="px-4 py-6 text-sm text-fg-muted" role="status">
@@ -632,7 +632,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 </div>
               )}
               {thread.messages.length === 0 && (deliveryView?.conversationId !== conversation.id || deliveryView.items.length === 0) ? (
-                <EmptyState icon={MessagesSquare} title="Sem mensagens registradas" className="flex-1 rounded-none" />
+                <EmptyState icon={MessagesSquare} title="Sem mensagens registradas" variant="bare" className="flex-1" />
               ) : (
                 <MessageTimeline
                   ref={timelineRef}

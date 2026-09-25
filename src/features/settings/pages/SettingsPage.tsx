@@ -291,13 +291,13 @@ export default function SettingsPage() {
         <TabPanel value={activeTab}>
           {loading && (activeTab === 'patterns' || activeTab === 'company') && (
             <div className="space-y-5" role="status" aria-busy="true" aria-label="Carregando configurações">
-              <Skeleton className="h-10 rounded-control" />
+              <Skeleton className="h-10" />
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="space-y-5">
-                  <Skeleton className="h-[280px] rounded-card" />
-                  <Skeleton className="h-[360px] rounded-card" />
+                  <Skeleton className="h-[280px]" variant="card" />
+                  <Skeleton className="h-[360px]" variant="card" />
                 </div>
-                <Skeleton className="h-[260px] rounded-card" />
+                <Skeleton className="h-[260px]" variant="card" />
               </div>
             </div>
           )}

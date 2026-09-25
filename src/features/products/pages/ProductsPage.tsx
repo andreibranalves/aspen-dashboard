@@ -446,7 +446,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
       {loading && (
         <div role="status" aria-busy="true" aria-label="Carregando produtos" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: Math.min(limit, 10) }, (_, index) => (
-            <Skeleton key={index} className="h-[230px] rounded-card" />
+            <Skeleton key={index} className="h-[230px]" variant="card" />
           ))}
         </div>
       )}

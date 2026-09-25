@@ -4,6 +4,7 @@ import {
   normalizeQuotationStatus,
   quotationStatusLabel,
   quotationStatusBadgeKey,
+  salesOrderStatusLabel,
 } from '../../src/lib/statusLabels.ts';
 
 test('status desconhecido não vira rascunho', () => {
@@ -26,4 +27,11 @@ test('estados válidos continuam mapeando normalmente', () => {
   assert.equal(quotationStatusLabel('draft'), 'Rascunho');
   assert.equal(quotationStatusLabel('enviado'), 'Emitido');
   assert.equal(quotationStatusLabel('expired'), 'Expirado');
+});
+
+test('status de pedido usa o rótulo canônico e não inventa estado', () => {
+  assert.equal(salesOrderStatusLabel('To Deliver and Bill'), 'A entregar e faturar');
+  assert.equal(salesOrderStatusLabel('Draft'), 'Rascunho');
+  assert.equal(salesOrderStatusLabel('Novo status'), 'Status desconhecido');
+  assert.equal(salesOrderStatusLabel(null), 'Status desconhecido');
 });

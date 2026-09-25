@@ -2189,7 +2189,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 icon={ClipboardList}
                 title="Nenhum orçamento na fila"
                 description="Cole um pedido e extraia os dados para preencher a fila."
-                className="min-h-0 flex-1 rounded-none bg-transparent py-6"
+                variant="bare"
+                className="min-h-0 flex-1"
               />
             )}
             {activeDraft && (

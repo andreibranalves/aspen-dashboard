@@ -397,7 +397,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                   <Plus size={14} aria-hidden="true" /> Novo fluxo
                 </Button>
               }
-              className="rounded-control border border-dashed border-line bg-surface py-12"
+              variant="dashed"
             />
           ) : (
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">

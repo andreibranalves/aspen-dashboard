@@ -43,16 +43,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-
-const STATUS_LABELS: Record<string, string> = {
-  Draft: 'Rascunho',
-  'To Deliver and Bill': 'A entregar e faturar',
-  'To Bill': 'A faturar',
-  'To Deliver': 'A entregar',
-  Completed: 'Concluído',
-  Cancelled: 'Cancelado',
-  Closed: 'Fechado',
-};
+import { salesOrderStatusLabel } from '@/lib/statusLabels';
 
 interface PeriodOption {
   value: string;
@@ -76,16 +67,6 @@ const STATUSES = [
   'Completed',
   'Cancelled',
   'Closed',
-];
-const STATUS_DISPLAY = [
-  'Todos',
-  'Rascunho',
-  'A entregar e faturar',
-  'A faturar',
-  'A entregar',
-  'Concluído',
-  'Cancelado',
-  'Fechado',
 ];
 const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => option.value));
 const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
@@ -539,9 +520,10 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
             title="Status do pedido"
             className="w-full sm:min-w-40"
           >
-            {STATUSES.map((s, i) => (
+            <option value="">Todos</option>
+            {STATUSES.map((s) => (
               <option key={s} value={s}>
-                {STATUS_DISPLAY[i]}
+                {salesOrderStatusLabel(s)}
               </option>
             ))}
           </Select>
@@ -638,7 +620,7 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
                   <TableCell >
                     <StatusBadge
                       status={row.status || ''}
-                      label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
+                      label={salesOrderStatusLabel(row.status)}
                     />
                   </TableCell>
                   <TableCell className="text-right font-sans tabular-nums">
@@ -675,7 +657,7 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
                 <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
                 <StatusBadge
                   status={row.status || ''}
-                  label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
+                  label={salesOrderStatusLabel(row.status)}
                 />
               </div>
               <div className="flex items-center justify-between text-sm">

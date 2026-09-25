@@ -136,6 +136,25 @@ describe('Aspen UI contract', () => {
     assert.match(read('src/components/ui/stat-card.tsx'), /loading/);
   });
 
+  it('ships the revamp foundation and wires Field into every form control', () => {
+    for (const file of [
+      'src/components/ui/card.tsx',
+      'src/components/ui/text.tsx',
+      'src/components/ui/field.tsx',
+      'src/components/ui/money-input.tsx',
+      'src/components/shared/StatusFilterBar.tsx',
+      'src/components/shared/DataList.tsx',
+      'src/components/shared/MobileActionBar.tsx',
+      'src/components/shared/StickySaveBar.tsx',
+    ]) {
+      assert.equal(existsSync(path.join(root, file)), true, file);
+    }
+    for (const control of ['input', 'select', 'textarea']) {
+      assert.match(read(`src/components/ui/${control}.tsx`), /useFieldControl\(/, control);
+    }
+    assert.match(read('eslint.config.js'), /ui: \['@\/components\/ui', '@\/components\/shared'\]/);
+  });
+
   it('announces lazy route loading', () => {
     const pageLoader = read('src/components/shared/PageLoader.tsx');
     assert.match(pageLoader, /role="status"/);

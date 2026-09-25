@@ -731,21 +731,21 @@ function LoadingResults({
       {tab === 'overview' ? (
         <div id="results-panel-overview" role="tabpanel" aria-labelledby="results-tab-overview" aria-busy="true" className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(190px,0.97fr)_repeat(3,minmax(0,1fr))]">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:row-span-2 xl:grid-cols-1">
-            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px] rounded-card" />)}
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px]" variant="card" />)}
           </div>
-          <Skeleton className="h-[340px] rounded-card" />
-          <Skeleton className="h-[340px] rounded-card" />
-          <Skeleton className="h-[340px] rounded-card" />
-          <Skeleton className="h-[340px] rounded-card xl:col-span-3 xl:col-start-2" />
+          <Skeleton className="h-[340px]" variant="card" />
+          <Skeleton className="h-[340px]" variant="card" />
+          <Skeleton className="h-[340px]" variant="card" />
+          <Skeleton className="h-[340px] xl:col-span-3 xl:col-start-2" variant="card" />
         </div>
       ) : (
         <div id={`results-panel-${tab}`} role="tabpanel" aria-labelledby={`results-tab-${tab}`} aria-busy="true" className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px] rounded-card" />)}
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[145px]" variant="card" />)}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Skeleton className="h-[360px] rounded-card" />
-            <Skeleton className="h-[360px] rounded-card" />
+            <Skeleton className="h-[360px]" variant="card" />
+            <Skeleton className="h-[360px]" variant="card" />
           </div>
         </div>
       )}

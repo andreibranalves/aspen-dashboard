@@ -246,7 +246,7 @@ export default function SendHistoryTab({
               ? 'O histórico aparecerá aqui após o primeiro envio de um fluxo WhatsApp.'
               : undefined
           }
-          className="rounded-control border border-dashed border-line bg-surface py-12"
+          variant="dashed"
         />
       )}
 
