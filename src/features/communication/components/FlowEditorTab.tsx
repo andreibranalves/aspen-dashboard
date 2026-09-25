@@ -40,6 +40,7 @@ const STEP_TYPES = {
   DOCUMENT: 'document',
   PRODUCT_MEDIA: 'product_media',
 } as const;
+import { Textarea } from '@/components/ui/textarea';
 
 type StepType = (typeof STEP_TYPES)[keyof typeof STEP_TYPES];
 type FlowStep = CommunicationFlowStep;
@@ -512,7 +513,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 className="flex min-w-0 flex-1 items-center gap-3 rounded-control text-left"
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-raised">
-                  <MessageSquare size={20} className="text-sage" aria-hidden="true" />
+                  <MessageSquare size={20} className="text-primary" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
                   <Heading level="section" id="selected-flow-title" className="truncate">
@@ -713,14 +714,14 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                             >
                               Mensagem
                             </label>
-                            <textarea
+                            <Textarea
                               id={`step-template-${step.id}`}
                               value={step.template || ''}
                               onChange={(event) =>
                                 updateStep(selectedFlow.id, step.id, 'template', event.target.value)
                               }
                               placeholder="Digite a mensagem. Use variáveis como (primeiro_nome) e (produto_resumo)."
-                              className="min-h-[96px] w-full resize-y rounded-control border border-line bg-surface px-3 py-2 text-sm leading-5 text-fg placeholder:text-fg-muted"
+                              className="min-h-24"
                             />
                           </div>
                         )}
@@ -1009,8 +1010,8 @@ function FlowPreview({ step }: { step?: FlowStep }) {
     >
       <Heading as="h3" level="section" id="flow-preview-title">Prévia no WhatsApp</Heading>
       <p className="mt-1 text-xs text-fg-muted">{title}</p>
-      <div className="mt-5 overflow-hidden rounded-card border-8 border-surface-subtle bg-taupe">
-        <div className="px-4 py-3 text-xs font-semibold text-taupe-ink">Aspen · prévia</div>
+      <div className="mt-5 overflow-hidden rounded-card border-8 border-surface-subtle bg-surface-subtle">
+        <div className="px-4 py-3 text-xs font-semibold text-fg">Aspen · prévia</div>
         <div className="min-h-48 bg-chat-background p-3">
           <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-xs">{content}</div>
         </div>
