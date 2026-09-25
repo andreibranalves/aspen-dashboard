@@ -4,9 +4,7 @@ import {
   Building2,
   CheckCircle2,
   FileCode2,
-  Loader2,
   MessageSquare,
-  Save,
   Settings2,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -32,6 +30,10 @@ import {
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 import { useRouteGuardContext } from '@/hooks/useHashRoute';
 import { Heading } from '@/components/ui/heading';
+import { Field } from '@/components/ui/field';
+import { MoneyInput } from '@/components/ui/money-input';
+import StickySaveBar from '@/components/shared/StickySaveBar';
+import { fromApiDecimal, toApiDecimal } from '@/lib/formatting/formatters';
 
 type SettingsTab = 'patterns' | 'templates' | 'flows' | 'company' | 'channels';
 
@@ -322,17 +324,7 @@ export default function SettingsPage() {
               }}
               className="space-y-5"
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-fg-muted">{TAB_DESCRIPTIONS.patterns}.</p>
-                <Button type="submit" disabled={saving} aria-busy={saving}>
-                  {saving ? (
-                    <Loader2 className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Save aria-hidden="true" />
-                  )}
-                  {saving ? 'Salvando...' : 'Salvar configurações'}
-                </Button>
-              </div>
+              <p className="text-xs text-fg-muted">{TAB_DESCRIPTIONS.patterns}.</p>
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="min-w-0 space-y-5">
                   <section
@@ -388,28 +380,24 @@ export default function SettingsPage() {
                             )}
                           </span>
                         </label>
-                        <label className="flex flex-col gap-1.5 text-sm text-fg">
-                          <span className="text-xs font-medium text-fg-muted">Frete padrão (R$)</span>
-                          <Input
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={form.frete_padrao}
-                            onChange={(event) => updateField('frete_padrao', event.target.value)}
+                        <Field label="Frete padrão (R$)">
+                          <MoneyInput
+                            placeholder="0,00"
+                            value={fromApiDecimal(form.frete_padrao)}
+                            onValueChange={(value) => updateField('frete_padrao', value === null ? '' : toApiDecimal(value))}
                             disabled={saving}
                             required
                           />
-                        </label>
-                        <label className="flex flex-col gap-1.5 text-sm text-fg">
-                          <span className="text-xs font-medium text-fg-muted">Alíquota (%)</span>
-                          <Input
-                            inputMode="decimal"
-                            placeholder="4.00"
-                            value={form.aliquota}
-                            onChange={(event) => updateField('aliquota', event.target.value)}
+                        </Field>
+                        <Field label="Alíquota (%)">
+                          <MoneyInput
+                            placeholder="4,00"
+                            value={fromApiDecimal(form.aliquota)}
+                            onValueChange={(value) => updateField('aliquota', value === null ? '' : toApiDecimal(value))}
                             disabled={saving}
                             required
                           />
-                        </label>
+                        </Field>
                       </div>
                     </fieldset>
                   </section>
@@ -465,6 +453,7 @@ export default function SettingsPage() {
                 </aside>
               </div>
               <SettingsFeedback error={saveError} success={savedMessage} />
+              <StickySaveBar dirty={formDirty} saving={saving} onSave={() => void handleSave()} onDiscard={() => setForm(savedForm)} saveLabel="Salvar configurações" />
             </form>
           )}
 
@@ -489,17 +478,7 @@ export default function SettingsPage() {
               }}
               className="space-y-5"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-fg-muted">Dados apresentados nos documentos comerciais.</p>
-                <Button type="submit" disabled={saving} aria-busy={saving}>
-                  {saving ? (
-                    <Loader2 className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Save aria-hidden="true" />
-                  )}
-                  {saving ? 'Salvando...' : 'Salvar empresa'}
-                </Button>
-              </div>
+              <p className="text-xs text-fg-muted">Dados apresentados nos documentos comerciais.</p>
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_285px]">
                 <div className="min-w-0 space-y-5">
                   <section
@@ -686,6 +665,7 @@ export default function SettingsPage() {
                 </aside>
               </div>
               <SettingsFeedback error={saveError} success={savedMessage} />
+              <StickySaveBar dirty={formDirty} saving={saving} onSave={() => void handleSave()} onDiscard={() => setForm(savedForm)} saveLabel="Salvar empresa" />
             </form>
           )}
           {activeTab === 'channels' && <ChannelsTab />}

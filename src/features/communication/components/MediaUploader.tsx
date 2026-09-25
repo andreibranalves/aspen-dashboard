@@ -221,7 +221,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         className={[
           'relative flex min-h-36 items-center justify-center rounded-control border border-dashed p-6 text-center transition-colors',
           dragging
-            ? 'border-light-sage bg-sage/20'
+            ? 'border-primary bg-primary/10'
             : 'border-line bg-raised hover:border-light-sage hover:bg-surface-hover',
           uploading || groups.length === 0 ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
         ].join(' ')}

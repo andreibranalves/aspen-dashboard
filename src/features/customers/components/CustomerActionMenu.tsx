@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Eye, FileText, MoreHorizontal, ReceiptText, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MenuItem } from '@/components/ui/menu-item';
 
@@ -8,6 +8,11 @@ export interface CustomerActionMenuProps {
   onArchiveToggle: () => void;
   customerName?: string;
   onDelete?: () => void;
+  /** Abre a lista de orçamentos filtrada por este cliente. */
+  onViewQuotations?: () => void;
+  /** No celular as ações da linha vêm para o menu. */
+  onNewQuotation?: () => void;
+  onQuickView?: () => void;
 }
 
 /** Secondary customer actions stay available without competing with the name. */
@@ -16,6 +21,9 @@ export function CustomerActionMenu({
   onArchiveToggle,
   customerName,
   onDelete,
+  onViewQuotations,
+  onNewQuotation,
+  onQuickView,
 }: CustomerActionMenuProps) {
   const actionLabel = archived ? 'Restaurar cliente' : 'Arquivar cliente';
   const accessibleLabel = `Mais ações${customerName ? ` para ${customerName}` : ''}`;
@@ -90,8 +98,30 @@ export function CustomerActionMenu({
           aria-label={accessibleLabel}
           className="absolute right-0 top-full z-floating mt-1 min-w-44 rounded-control border border-line bg-surface p-1 shadow-lg"
         >
+          {onNewQuotation && (
+            <MenuItem ref={actionRef} role="menuitem" onClick={() => { dismiss(false); onNewQuotation(); }}>
+              <ReceiptText aria-hidden="true" /> Novo orçamento
+            </MenuItem>
+          )}
+          {onQuickView && (
+            <MenuItem role="menuitem" onClick={() => { dismiss(false); onQuickView(); }}>
+              <Eye aria-hidden="true" /> Visualização rápida
+            </MenuItem>
+          )}
+          {onViewQuotations && (
+            <MenuItem
+              ref={onNewQuotation ? undefined : actionRef}
+              role="menuitem"
+              onClick={() => {
+                dismiss(false);
+                onViewQuotations();
+              }}
+            >
+              <FileText aria-hidden="true" /> Ver orçamentos
+            </MenuItem>
+          )}
           <MenuItem
-            ref={actionRef}
+            ref={onViewQuotations ? undefined : actionRef}
             role="menuitem"
             onClick={() => {
               dismiss(true);

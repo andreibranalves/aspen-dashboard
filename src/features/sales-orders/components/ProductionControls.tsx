@@ -3,6 +3,8 @@ import { AlertTriangle } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { MoneyInput } from '@/components/ui/money-input';
 import { useToast } from '@/components/shared/toast';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
@@ -134,7 +136,7 @@ interface AdvanceStageDialogProps {
 
 export function AdvanceStageDialog({ order, onClose, onAdvance }: AdvanceStageDialogProps) {
   const [date, setDate] = useState(todaySaoPaulo);
-  const [deposit, setDeposit] = useState('');
+  const [deposit, setDeposit] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openFor, setOpenFor] = useState<string | null>(null);
@@ -142,7 +144,7 @@ export function AdvanceStageDialog({ order, onClose, onAdvance }: AdvanceStageDi
   if (order && openFor !== order.id) {
     setOpenFor(order.id);
     setDate(todaySaoPaulo());
-    setDeposit(defaultDeposit(order.grand_total).toFixed(2));
+    setDeposit(defaultDeposit(order.grand_total));
     setError(null);
   }
   if (!order && openFor !== null) setOpenFor(null);
@@ -150,7 +152,7 @@ export function AdvanceStageDialog({ order, onClose, onAdvance }: AdvanceStageDi
   const stage = order?.production_stage;
   const asksDeposit = stage === 'aguardando_entrada';
   const delivering = stage === 'pronto';
-  const depositValue = Number(deposit.replace(',', '.'));
+  const depositValue = deposit ?? Number.NaN;
   const depositInvalid =
     asksDeposit && (!Number.isFinite(depositValue) || depositValue < 0 || depositValue > (order?.grand_total ?? 0));
 
@@ -193,24 +195,13 @@ export function AdvanceStageDialog({ order, onClose, onAdvance }: AdvanceStageDi
           void submit();
         }}
       >
-        <label className="grid gap-1.5 text-sm">
-          <span className="font-medium">Data</span>
+        <Field label="Data">
           <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
-        </label>
+        </Field>
         {asksDeposit && (
-          <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">Valor da entrada</span>
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              max={order?.grand_total}
-              step="0.01"
-              value={deposit}
-              onChange={(event) => setDeposit(event.target.value)}
-              aria-invalid={depositInvalid || undefined}
-            />
-          </label>
+          <Field label="Valor da entrada (R$)" error={depositInvalid ? 'Informe um valor entre zero e o total do pedido.' : undefined}>
+            <MoneyInput value={deposit} onValueChange={setDeposit} />
+          </Field>
         )}
         {delivering && order && saldoOpen(order) && (
           <p className="flex items-start gap-2 text-sm text-warning" role="status">
