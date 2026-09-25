@@ -180,6 +180,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const managementList = management.list!;
     const before = await managementGet(draft.quotation_name);
     assert.ok(before);
+    // Validade = criação da revisão + validade_dias, somada uma vez só; a data da revisão não se move.
+    const createdValidity = new Date(createdRevision!.createdAt.getTime());
+    createdValidity.setUTCDate(createdValidity.getUTCDate() + explicitSettings.validadeDias);
+    const createdHistory = before.revision_history.find((entry) => entry.revision_id === draft.revision_id);
+    assert.equal(before.validade, createdValidity.toISOString().slice(0, 10));
+    assert.equal(createdHistory?.created_at, createdRevision!.createdAt.toISOString());
+    assert.equal(createdHistory?.validade, before.validade);
     const laterBefore = await managementGet(laterDraft.quotation_name);
     const [minimalVersion] = await db
       .select({ id: quotationTemplateVersions.id })

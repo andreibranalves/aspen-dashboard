@@ -347,7 +347,8 @@ function firstDefined(value: Record<string, unknown>, keys: readonly string[]): 
 }
 
 function asDate(value: Date | string | null | undefined): Date {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  // Cópia: validUntil/validityDeadline somam dias no resultado e não podem mover a data da linha.
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value.getTime());
   if (typeof value === 'string') {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) return parsed;
