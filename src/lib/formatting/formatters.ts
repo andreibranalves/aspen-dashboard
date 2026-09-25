@@ -29,6 +29,18 @@ export function parseDecimalBR(text: string): number | null {
   return Number(normalized);
 }
 
+/** Decimal no formato da API ("12.50"), a partir do número editado na tela. */
+export function toApiDecimal(value: number, fractionDigits = 2): string {
+  return value.toFixed(fractionDigits);
+}
+
+/** Lê o decimal da API ("12.5", "4.00"); vazio ou inválido vira null. */
+export function fromApiDecimal(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** 12,5% \u2014 com `signed`, +12,5% para varia\u00e7\u00f5es. */
 export function formatPercent(value: number, { digits = 1, signed = false } = {}): string {
   return `${signed && value > 0 ? '+' : ''}${formatDecimalBR(value, digits)}%`;

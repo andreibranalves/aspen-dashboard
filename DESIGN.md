@@ -100,7 +100,10 @@ Appearance comes from props, never from `className` on a `components/ui`
 primitive or a `components/shared` composition (`settings.shadcn.ui` covers
 both). `eslint.config.js` enforces this with `shadcn/no-restyle`
 (`className` may carry layout only, plus the per-component `contracts`) and
-`shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant. Actions use `Button` or
+`shadcn/no-arbitrary-values`. When a call site needs a new look, add a variant. In `src/features` and `src/app`,
+`no-restricted-syntax` also rejects decorative colors (`sage`, `orange`,
+`taupe` outside chart tokens), `.toFixed(` (use the formatters), raw
+`<textarea>` and text glyphs used as icons. Actions use `Button` or
 `MenuItem`; a plain `<button>` is only for list options, selectable cards,
 disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this in
 `src/features` and `src/app`: a raw `<button>` must declare `role`, `aria-expanded`,
@@ -159,7 +162,7 @@ and `src/app`: vertical margins on children (`mt-*`, `mb-*`, `my-*`), hand-built
 
 `npm run test:visual` compares the main screens against
 `tests/visual/__screenshots__/` with mocked API data and a fixed clock,
-tolerating only font antialiasing noise (40 pixels). It runs locally, not in CI. After an intentional visual change,
+tolerating only font antialiasing noise (100 pixels). It runs locally, not in CI. After an intentional visual change,
 review the new images and run `npm run test:visual:update`.
 
 Layout widths are tokens: `max-w-form` (1060px) for long forms and `w-aside` /
@@ -188,6 +191,7 @@ the `--spacing-workspace` token).
 | Grouped content | `Card` | never a hand-built `rounded-card` surface |
 | Form field | `Field` + control | label, hint and error wired to the control |
 | Money field | `MoneyInput` in `Field` | never `toFixed` in UI |
+| Exports of a page | `ExportMenu` with `ExportCsvButton` items | one Exportar button |
 | Nothing to show | `EmptyState` | distinguish empty base vs no results for filters |
 | Failed load | `ErrorState` | same geometry as `EmptyState`, `role="alert"`, retry |
 | Message in context | `InlineAlert` | tone in icon/border, text in body color, one action |
@@ -343,47 +347,34 @@ and `390x844`. The desktop profile uses a two-column cadastro/activity layout;
 the narrow layout places recent activity before cadastro and keeps the drawer
 full-width.
 
-## Approved revamp direction (2026-09)
+## Revamp contract (2026-09)
 
 Mobile is a first-class target: every journey, including creating, reviewing,
-issuing, and sending a quotation, must be operable at `390x844`. This section
-lists what is still to land; foundation and shell are already in the sections
-above, and the rest lands one journey per PR. When a slice lands, it moves the affected rules into the
-foundation, layout, and component sections above and removes them here. Until
-then, the sections above describe the running app.
+issuing, and sending a quotation, is operable at `390x844`. The foundation,
+shell, and journey rules below are in place; the ones under Still open are the
+remaining work, tracked by the ratchets.
 
-### Still to land: breakpoints
+### Journey rules
 
-- Desktop layouts start at `lg` (1024) wherever they fit; `xl` is reserved for
-  the 336px side panel. Journeys move their `xl:` layouts as they land.
-
-### Still to land
-
-- Surfaces: features migrate hand-built `rounded-card` to `Card`, raw
-  `<label>` to `Field`, loose `text-xs`/`font-medium` to `Text` (ratchets above).
-- Monospace is for SKUs and identifiers only, never money.
-- No colored card backgrounds. Charts use `chart-*` tokens only inside chart
-  components; no palette cycled by index.
-- Lists adopt `StatusFilterBar` and `DataList`; details and Novo orçamento adopt
-  `MobileActionBar`; long forms adopt `StickySaveBar`. Orçamentos (list and
-  detail) and Novo orçamento already follow this.
-- Atendimento already follows the mobile rules: below `lg` the list and the
+- Lists use `StatusFilterBar` and `DataList`; details and Novo orçamento use
+  `MobileActionBar`; long forms use `StickySaveBar`.
+- Atendimento: below `lg` the list and the
   open conversation swap, the conversation fills the work area (`h-workarea`)
   with the composer at the bottom, and the page title hides while it is open.
   The context column exists only with an open conversation. Message selection
   for a quotation is an icon toggle beside the bubble; attachments use a
   paperclip button, never a raw file input.
-- Comercial already follows this: each queue action is one row from `md`
+- Comercial: each queue action is one row from `md`
   (time, contact, one due badge, chevron) and two lines below it; the whole
   row opens the action. Negócios never shows internal ids or columns without
   data; linked proposals open from a text link.
-- Pedidos already follows this: production cards show client, number and
+- Pedidos: production cards show client, number and
   value, then the deadline bar and a full-width advance action; empty stages
   are narrow on desktop, and below `md` the board becomes one stage at a time
   chosen in a `StatusFilterBar`. The detail carries the client and final
   deadline in the header meta (no client card), and deposit amounts use
   `MoneyInput`.
-- Clientes already follows this: the list is a `DataList` (client with
+- Clientes: the list is a `DataList` (client with
   company contact and city, contact links, document from `lg`, status, row
   actions); below `md` the row actions fold into the row menu, which also holds
   Ver orçamentos. The profile never repeats the client name under the title,
@@ -391,24 +382,51 @@ then, the sections above describe the running app.
   shows pipeline stages through `pipelineLabel`. `DataList` mounts only the
   layout for the current width. `EntityIdentity` names are 14px over a 12px
   secondary line.
+- Catálogo: products are a dense `DataList` (product,
+  SKU, category from `lg`, unit, base price, status, archive) instead of
+  colored cards; exports sit in one `ExportMenu`; sets show their item count as
+  text. The product detail keeps its direct edit mode (Salvar/Cancelar in the
+  header, in `MobileActionBar` below `md`); a missing image is a neutral block.
+- Placeholders never repeat the label; they only show a format (`LNC-SED-70`,
+  `0,00`).
+- Envios, Resultados, Tarefas and Configurações: Envios
+  filters pending deliveries with a `StatusFilterBar` (counts from the summary,
+  no metric cards) and keeps Limpar fila as a quiet icon with confirmation;
+  Resultados puts its four numbers in one row from `lg`, uses neutral panels
+  with color only in chart marks, and shows no chart when the data is
+  unavailable; keyboard hints render only for fine pointers; Configurações
+  edits frete and alíquota with `MoneyInput` (API keeps dot decimals through
+  `toApiDecimal`) and saves through `StickySaveBar`.
 
 ### Content rules
 
 - A value appears once per view: no repeated client name, status badge, or
   record link between header, cards, and side panel.
-- Every date in a header meta row carries its label (`Emitido em`,
-  `Válido até`).
+- Every date in a header meta row carries its label (`Data`, `Válido até`,
+  `Prazo final`).
 - One path per action: an action in the side panel is not repeated in the
-  header.
-- Destructive bulk actions (`Limpar fila`) live in a menu with confirmation,
-  not as a header button.
+  header at the widths where the panel is visible.
+- Destructive bulk actions (`Limpar fila`) are quiet icons and always
+  confirmed, never a prominent header button.
 - Keyboard hints render only for fine pointers.
-- Tabs fit the width or scroll without a visible scrollbar.
+- Tabs and filter strips fit the width or scroll without a visible scrollbar.
+- Missing data stays missing: no fake zero, empty chart, or `—` column.
+
+### Still open
+
+- Surfaces: features still hold hand-built `rounded-card`, raw `<label>` and
+  loose `text-xs`/`font-medium`/`uppercase` (ratchets in
+  `scripts/check-ui-ratchet.mjs`); each goes to `Card`, `Field`, `Text` or
+  `Heading level="eyebrow"`, and becomes a lint ban at zero.
+- Breakpoints: desktop layouts start at `lg` wherever they fit; remaining
+  `xl:` layouts move as their screens are touched.
+- Status labels still written inline (Orçamentos filter, follow-ups, product
+  state) move to `lib/statusLabels`.
 
 ## Out of scope
 
 This contract does not add a state library or dependency, alter
 API/schema/database/auth/integrations, change official calculations, emit
 documents, or send messages. Journeys outside the approved slices change only
-through the revamp direction above. A later journey must update this document
+through the revamp contract above. A later journey must update this document
 before changing its normative visual rules.

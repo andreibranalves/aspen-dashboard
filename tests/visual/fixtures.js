@@ -294,9 +294,41 @@ const clientDetail = {
   modified: '2026-09-10T10:00:00-03:00',
 };
 
+const productDetail = {
+  produto: {
+    sku: 'CAN-100', nome: 'Canga estampada 100x160', descricao: 'Canga em viscose com estampa digital.',
+    categoria: 'Cangas', marca: null, unidade: 'Und', ativo: true, imagem: null,
+    modificado_em: '2026-09-10T10:00:00-03:00', preco_base: '9.50', custo_unitario: '4.20',
+  },
+  precos: [{ faixa: 1, qty: 100, rate: '9.50' }, { faixa: 2, qty: 300, rate: '8.90' }],
+  preco_base: '9.50',
+  pricing_available: true,
+};
+
+/** Configurações salvas, usadas só pela tela de Configurações (outras telas seguem sem elas). */
+export const savedSettings = {
+  validade_dias: 15, pagamento: '', entrega: '', frete_padrao: '0.00', aliquota: '4.00', observacoes: '',
+  template_padrao: 'branded', prazo_producao_dias: 20, prazo_producao_complemento: 'após confirmação do pagamento e aprovação da arte.',
+  secoes: {
+    schema_version: 1, show_summary: true, rich_text: true,
+    prazo_producao: { enabled: true, title: 'Prazo de produção' },
+    pagamento: { enabled: true, title: 'Dados para pagamento', body: '' },
+    condicoes_gerais: { enabled: true, title: 'Condições gerais', body: '' },
+  },
+  empresa: {
+    schema_version: 1,
+    identity: { legal_name: 'Aspen Estamparia', document: '' },
+    banking: { bank_name: '', bank_code: '', branch: '', account: '', pix_key: '' },
+    contacts: { website: '', phone: '', email: '', instagram: '' },
+  },
+  settings_version: 1,
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
+  if (pathname === '/api/product-detail') return productDetail;
+  if (pathname === '/api/product-activity') return { atividades: [] };
   if (pathname === '/api/client-detail') return clientDetail;
   if (pathname === '/api/quotations') return searchParams.has('id') ? quotationDetail : quotationsList;
   if (pathname === '/api/products') {
@@ -318,7 +350,13 @@ export function respond(url) {
   if (pathname === '/api/quotation-templates') {
     return { templates: [{ key: 'padrao', name: 'Padrão', is_default: true, current_version_id: null }], default_key: 'padrao' };
   }
-  if (pathname === '/api/quotation-deliveries') return { status: 404, body: { error: 'Entrega não encontrada.' } };
+  if (pathname === '/api/quotation-deliveries') {
+    // Lista da tela Envios; a consulta de uma entrega específica segue sem registro.
+    if (searchParams.has('page')) {
+      return { data: [], total: 0, page: 1, page_size: 25, summary: { active: 4, requires_action: 2, retry_scheduled: 1, delayed: 0, delivered_last_24_hours: 9 } };
+    }
+    return { status: 404, body: { error: 'Entrega não encontrada.' } };
+  }
   if (pathname === '/api/order-templates') return { data: [] };
   if (pathname === '/api/communication-flows') {
     return {
