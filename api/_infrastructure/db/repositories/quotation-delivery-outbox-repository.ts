@@ -29,9 +29,11 @@ import { promoteDealOnProviderAcceptance } from './crm-deals-repository.js';
 import {
   aggregateDeliveryState,
   applyReceipt as applyDeliveryReceipt,
+  DELIVERY_INTERRUPTED_PUBLIC_ERROR,
   failureTargetState,
   isRevisionUnavailableFailure,
   retryDelayMs,
+  SEND_WINDOW_MS,
   type DeliveryState,
   type DeliveryStepState,
   type EvolutionReceiptStatus,
@@ -862,6 +864,36 @@ async function syncDeliveryState(
 }
 
 /**
+ * Closes the send window of a delivery (ADR 0013): every step that never left
+ * becomes a pre-transport failure, so nothing old reaches the client and the
+ * operator's existing same-revision re-send revives exactly that remainder.
+ * Accepted steps keep their state. The caller holds the delivery row lock.
+ */
+async function interruptDelivery(db: DeliveryDatabase, deliveryId: string, now: Date): Promise<void> {
+  await db
+    .update(quotationDeliverySteps)
+    .set({
+      state: 'failed',
+      failureKind: 'permanent_pre_transport',
+      publicError: DELIVERY_INTERRUPTED_PUBLIC_ERROR,
+      nextAttemptAt: null,
+      reconciliationDeadline: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(quotationDeliverySteps.deliveryId, deliveryId),
+        inArray(quotationDeliverySteps.state, ['queued', 'retry_scheduled'])
+      )
+    );
+  await db
+    .update(quotationDeliveries)
+    .set({ publicError: DELIVERY_INTERRUPTED_PUBLIC_ERROR, updatedAt: now })
+    .where(eq(quotationDeliveries.id, deliveryId));
+  await syncDeliveryState(db, deliveryId, now);
+}
+
+/**
  * Folds every pending inbox receipt for one provider message id into its
  * correlated step, in received order. Receipt state is monotonic and operator
  * cancellations (`failed`) never regress, so duplicate callbacks are no-ops.
@@ -990,6 +1022,15 @@ function leaseUntil(now: Date, duration: number): Date {
   return new Date(now.getTime() + duration);
 }
 
+// An interrupted envio (ADR 0013) waits for the operator's re-send decision.
+const requiresActionCondition = or(
+  eq(quotationDeliveries.state, 'needs_review'),
+  and(
+    eq(quotationDeliveries.state, 'failed'),
+    eq(quotationDeliveries.publicError, DELIVERY_INTERRUPTED_PUBLIC_ERROR)
+  )
+)!;
+
 function listWhere(filters: ReturnType<typeof normalizeFilters>, now: Date): SQL | undefined {
   const conditions: SQL[] = [];
   if (filters.states?.length) conditions.push(inArray(quotationDeliveries.state, filters.states));
@@ -1009,8 +1050,7 @@ function listWhere(filters: ReturnType<typeof normalizeFilters>, now: Date): SQL
   if (filters.from) conditions.push(gte(quotationDeliveries.createdAt, filters.from));
   if (filters.to) conditions.push(lte(quotationDeliveries.createdAt, filters.to));
   const statusAlternatives: SQL[] = [];
-  if (filters.requiresAction === true)
-    statusAlternatives.push(eq(quotationDeliveries.state, 'needs_review'));
+  if (filters.requiresAction === true) statusAlternatives.push(requiresActionCondition);
   if (filters.includeActive === true)
     statusAlternatives.push(inArray(quotationDeliveries.state, ACTIVE_STATES));
   if (statusAlternatives.length) conditions.push(or(...statusAlternatives)!);
@@ -1052,7 +1092,7 @@ async function summary(db: DeliveryDatabase, now: Date): Promise<DeliveryListRes
   const [row] = await db
     .select({
       active: sql<number>`count(*) FILTER (WHERE ${quotationDeliveries.state} IN ('queued', 'processing', 'provider_accepted', 'reconciling', 'retry_scheduled'))`,
-      requiresAction: sql<number>`count(*) FILTER (WHERE ${quotationDeliveries.state} = 'needs_review')`,
+      requiresAction: sql<number>`count(*) FILTER (WHERE ${requiresActionCondition})`,
       retryScheduled: sql<number>`count(*) FILTER (WHERE ${quotationDeliveries.state} = 'retry_scheduled')`,
       delayed: sql<number>`count(*) FILTER (WHERE ${quotationDeliveries.state} = 'provider_accepted' AND ${quotationDeliveries.updatedAt} <= ${delayedAt})`,
       deliveredLast24Hours: sql<number>`count(*) FILTER (WHERE ${quotationDeliveries.state} = 'delivered' AND ${quotationDeliveries.deliveredAt} >= ${delayedAt})`,
@@ -1125,6 +1165,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             flowName: normalized.flowName,
             state: 'queued',
             nextAttemptAt: new Date(now.getTime() + normalized.steps[0]!.delayMs),
+            resumableUntil: new Date(now.getTime() + SEND_WINDOW_MS),
             createdAt: now,
             updatedAt: now,
           })
@@ -1413,31 +1454,41 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             .where(eq(quotationDeliveries.id, deliveryId));
           await syncDeliveryState(tx, deliveryId, now);
         }
-        const rows = (await tx.execute(sql`
-          SELECT s.id, s.delivery_id
-          FROM quotation_delivery_steps s
-          JOIN quotation_deliveries d ON d.id = s.delivery_id
-          WHERE s.state IN ('queued', 'retry_scheduled')
-            AND s.next_attempt_at IS NOT NULL
-            AND s.next_attempt_at <= ${nowIso}
-            AND (d.lease_until IS NULL OR d.lease_until <= clock_timestamp())
-            AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
-            AND NOT EXISTS (
-              SELECT 1
-              FROM quotation_delivery_steps prior
-              WHERE prior.delivery_id = s.delivery_id
-                AND prior.position < s.position
-                AND (
-                  prior.state NOT IN ('server_ack', 'delivered', 'read')
-                  OR prior.provider_message_id IS NULL
-                )
-            )
-          ORDER BY s.next_attempt_at, s.position
-          FOR UPDATE OF d, s SKIP LOCKED
-          LIMIT 1
-        `)) as Array<{ id: string; delivery_id: string }>;
-        const selected = rows[0];
-        if (!selected) return null;
+        let selected: { id: string; delivery_id: string; window_closed: boolean } | undefined;
+        for (;;) {
+          const rows = (await tx.execute(sql`
+            SELECT s.id, s.delivery_id,
+              COALESCE(
+                d.resumable_until,
+                GREATEST(d.created_at, d.resolved_at) + ${`${SEND_WINDOW_MS} milliseconds`}::interval
+              )
+                <= ${nowIso}::timestamptz AS window_closed
+            FROM quotation_delivery_steps s
+            JOIN quotation_deliveries d ON d.id = s.delivery_id
+            WHERE s.state IN ('queued', 'retry_scheduled')
+              AND s.next_attempt_at IS NOT NULL
+              AND s.next_attempt_at <= ${nowIso}
+              AND (d.lease_until IS NULL OR d.lease_until <= clock_timestamp())
+              AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
+              AND NOT EXISTS (
+                SELECT 1
+                FROM quotation_delivery_steps prior
+                WHERE prior.delivery_id = s.delivery_id
+                  AND prior.position < s.position
+                  AND (
+                    prior.state NOT IN ('server_ack', 'delivered', 'read')
+                    OR prior.provider_message_id IS NULL
+                  )
+              )
+            ORDER BY s.next_attempt_at, s.position
+            FOR UPDATE OF d, s SKIP LOCKED
+            LIMIT 1
+          `)) as Array<{ id: string; delivery_id: string; window_closed: boolean }>;
+          selected = rows[0];
+          if (!selected) return null;
+          if (!selected.window_closed) break;
+          await interruptDelivery(tx, selected.delivery_id, now);
+        }
         const token = randomUUID();
         // The lease clock is read under the same row lock as the selection, from
         // the database, so the granted lease is live at the moment it is granted.
@@ -2120,6 +2171,10 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             publicError: null,
             leaseToken: null,
             leaseUntil: null,
+            // Re-queuing is a new operator request: it opens a new send window.
+            ...(decision === 'confirmed_received'
+              ? {}
+              : { resumableUntil: new Date(now.getTime() + SEND_WINDOW_MS) }),
             updatedAt: now,
           })
           .where(eq(quotationDeliveries.id, deliveryId));

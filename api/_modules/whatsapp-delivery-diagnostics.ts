@@ -6,7 +6,11 @@ import {
 
 export interface WhatsappDeliveryDiagnosticsDependencies {
   readDiagnostics?: () => Promise<QuotationDeliveryDiagnostics>;
+  now?: () => Date;
 }
+
+/** ADR 0013: a worker silent for longer than this is treated as stopped. */
+const WORKER_STALE_AFTER_MS = 2 * 60 * 60_000;
 
 function json(statusCode: number, body: unknown): FunctionResult {
   return {
@@ -32,6 +36,10 @@ export async function handler(
   try {
     const readDiagnostics = dependencies.readDiagnostics || readQuotationDeliveryDiagnostics;
     const diagnostics = await readDiagnostics();
+    const now = dependencies.now?.() ?? new Date();
+    const workerStale =
+      !diagnostics.worker ||
+      now.getTime() - diagnostics.worker.lastRunAt.getTime() > WORKER_STALE_AFTER_MS;
     return json(200, {
       worker: diagnostics.worker
         ? {
@@ -53,6 +61,13 @@ export async function handler(
         : null,
       reconciling_steps: diagnostics.reconcilingSteps,
       pending_receipts: diagnostics.pendingReceipts,
+      overdue: {
+        steps: diagnostics.overdue.steps,
+        follow_ups: diagnostics.overdue.followUps,
+        replies: diagnostics.overdue.replies,
+        webhook_effects: diagnostics.overdue.webhookEffects,
+      },
+      worker_stale: workerStale,
     });
   } catch {
     return json(503, {
