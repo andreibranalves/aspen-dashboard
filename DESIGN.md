@@ -377,6 +377,12 @@ then, the sections above describe the running app.
   (time, contact, one due badge, chevron) and two lines below it; the whole
   row opens the action. Negócios never shows internal ids or columns without
   data; linked proposals open from a text link.
+- Pedidos already follows this: production cards show client, number and
+  value, then the deadline bar and a full-width advance action; empty stages
+  are narrow on desktop, and below `md` the board becomes one stage at a time
+  chosen in a `StatusFilterBar`. The detail carries the client and final
+  deadline in the header meta (no client card), and deposit amounts use
+  `MoneyInput`.
 
 ### Content rules
 

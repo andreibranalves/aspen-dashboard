@@ -248,6 +248,39 @@ const crmDeals = {
   ],
 };
 
+const productionOrder = (id, order_number, customer_name, grand_total, production_stage, production) => ({
+  id, order_number, customer_name, grand_total, status: 'To Deliver and Bill', date: '2026-09-01',
+  production_stage, production, production_days: 20, deadline_manual: false,
+  deposit_received_on: null, deposit_amount: null, art_approved_on: null, ready_on: null,
+  delivered_on: null, balance_received_on: null, received_amount: 0,
+});
+
+const productionBoard = {
+  attention_count: 1,
+  items: [
+    productionOrder('PED-2026-0101', 'PED-2026-0101', 'Confecções Horizonte Ltda', 1250, 'aguardando_entrada',
+      { deadline: null, total_days: null, elapsed_days: null, state: 'sem_prazo', stalled_days: 12 }),
+    productionOrder('PED-2026-0103', 'PED-2026-0103', 'Estamparia Litoral Norte', 3920.5, 'aguardando_entrada',
+      { deadline: null, total_days: null, elapsed_days: null, state: 'sem_prazo', stalled_days: 3 }),
+    productionOrder('PED-2026-0102', 'PED-2026-0102', 'Marina Albuquerque', 480, 'em_producao',
+      { deadline: '2026-09-29', total_days: 20, elapsed_days: 14, state: 'em_risco', stalled_days: null }),
+  ],
+};
+
+const salesOrderDetail = {
+  ...productionOrder('PED-2026-0101', 'PED-2026-0101', 'Confecções Horizonte Ltda', 1250, 'aguardando_arte',
+    { deadline: '2026-10-08', total_days: 20, elapsed_days: 4, state: 'no_prazo', stalled_days: null }),
+  deposit_received_on: '2026-09-10',
+  deposit_amount: 625,
+  received_amount: 625,
+  source_quotation: 'ORC-20260101',
+  items: [
+    { item_code: 'CAN-100', item_name: 'Canga estampada 100x160', qty: 100, rate: 9.5, amount: 950 },
+    { item_code: 'LEN-040', item_name: 'Lenço de seda 40x40', qty: 30, rate: 10, amount: 300 },
+  ],
+  notes: [],
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
@@ -255,7 +288,10 @@ export function respond(url) {
   if (pathname === '/api/products') {
     return searchParams.get('view') === 'categories' ? { categories: ['Bolsas', 'Cangas', 'Lenços'] } : products;
   }
-  if (pathname === '/api/sales-orders') return salesOrders;
+  if (pathname === '/api/sales-orders') {
+    if (searchParams.has('id')) return salesOrderDetail;
+    return searchParams.get('view') === 'production' ? productionBoard : salesOrders;
+  }
   // Sem configurações salvas: a tela usa os padrões locais.
   if (pathname === '/api/settings') return { status: 404, body: { error: 'Configurações não encontradas.' } };
   if (pathname === '/api/whatsapp-conversations') return conversations;

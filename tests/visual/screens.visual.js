@@ -13,6 +13,7 @@ const SCREENS = [
   { name: 'clientes', route: '/leads', heading: 'Clientes', mobile: true },
   { name: 'orcamentos', route: '/quotations', heading: 'Orçamentos', mobile: true, dark: true },
   { name: 'pedidos', route: '/sales-orders', heading: 'Pedidos', mobile: true },
+  { name: 'pedido-detalhe', route: '/sales-orders/PED-2026-0101', heading: 'PED-2026-0101', viewport: TALL, mobile: true },
   { name: 'produtos', route: '/products', heading: 'Produtos', mobile: true },
   { name: 'painel', route: '/dashboard', mobile: true },
   { name: 'crm', route: '/crm', mobile: true },

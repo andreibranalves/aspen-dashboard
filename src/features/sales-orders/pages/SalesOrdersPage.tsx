@@ -8,7 +8,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight } from 'lucide-react';
+import { ShoppingCart, TrendingUp, DollarSign, Package, ChevronRight, ChevronDown } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import PageHeader from '@/components/shared/PageHeader';
@@ -228,7 +228,7 @@ function SalesOrderExportMenu({
         aria-controls="sales-order-export-menu"
         onClick={() => setOpen((current) => !current)}
       >
-        Exportar <span aria-hidden="true">▾</span>
+        Exportar <ChevronDown aria-hidden="true" />
       </Button>
       <div
         ref={menuRef}
