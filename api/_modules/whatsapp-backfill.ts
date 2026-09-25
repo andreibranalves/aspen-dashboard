@@ -18,6 +18,7 @@ import {
   type EvolutionMessagePage,
 } from './evolution-history.js';
 import { ingestWhatsappUpserts, type WhatsappUpsertIngestionItem } from './whatsapp-attendance-ingestion.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export const BACKFILL_PAGE_SIZE = 100;
 // Each call fits the 60 s function limit: no new page starts unless one full
@@ -219,7 +220,7 @@ export async function handler(
       summary: projectSummary(result.summary),
     });
   } catch (error) {
-    console.error('[whatsapp-backfill]', error instanceof Error ? error.name : typeof error);
+    console.error('[whatsapp-backfill]', safeErrorSummary(error));
     return json(503, { error: 'Não foi possível executar o backfill. Tente novamente.' });
   }
 }

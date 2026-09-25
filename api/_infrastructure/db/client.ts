@@ -60,7 +60,9 @@ function postgresIdentity(value: string): string {
   let parsed: URL;
   try { parsed = new URL(value); } catch { throw new Error('DATABASE_URL inválida.'); }
   if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') throw new Error('DATABASE_URL deve usar PostgreSQL.');
-  return [parsed.hostname.toLowerCase(), parsed.port || '5432', decodeURIComponent(parsed.pathname.replace(/^\//, ''))].join('|');
+  // No Neon, `ep-x` (direto) e `ep-x-pooler` são o mesmo banco.
+  const host = parsed.hostname.toLowerCase().replace(/^([^.]+)-pooler\./, '$1.');
+  return [host, parsed.port || '5432', decodeURIComponent(parsed.pathname.replace(/^\//, ''))].join('|');
 }
 
 function assertPreviewIsolation(): void {

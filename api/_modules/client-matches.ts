@@ -9,6 +9,7 @@ import {
   createPostgresClientMatchRepository,
   type ClientMatchRepository,
 } from '../_infrastructure/db/repositories/client-matching-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -56,7 +57,7 @@ export function createCoreHandler(
       if (error instanceof ClientMatchInputError) {
         return json(error.statusCode, { error: error.message });
       }
-      const kind = error instanceof Error ? error.name : typeof error;
+      const kind = safeErrorSummary(error);
       console.error(`[client-matches] matching failed (${kind})`);
       return json(503, { error: UNAVAILABLE_MESSAGE });
     }

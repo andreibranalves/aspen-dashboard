@@ -13,6 +13,7 @@ import {
   requestOrigin,
   whatsappContextCorsHeaders,
 } from '../_shared/whatsapp-context-cors.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export const WHATSAPP_CONTEXT_QUOTATION_LIMIT = 6;
 export const WHATSAPP_CONTEXT_DELIVERY_LIMIT = 12;
@@ -306,7 +307,7 @@ export async function resolveWhatsappContext(
     return reply(200, { ...result, linking, matchSource: 'phone' });
   } catch (error) {
     if (error instanceof LinkConflict) return { statusCode: 409, body: { error: LINK_CONFLICT_MESSAGE }, linkConflict: true };
-    console.error('[whatsapp-context]', error instanceof Error ? error.name : typeof error);
+    console.error('[whatsapp-context]', safeErrorSummary(error));
     return reply(503, { error: 'Não foi possível consultar o contexto comercial.' });
   }
 }

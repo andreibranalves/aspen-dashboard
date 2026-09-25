@@ -15,6 +15,7 @@ import {
   type CrmDealUpsertInput,
   type CrmDatabase,
 } from './crm-deals-repository.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 type DatabaseProvider = () => AppDatabase;
 export type QuotationIssueDatabase = AppDatabase;
@@ -315,7 +316,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
       return result;
     } catch (error) {
       const message = publicError(error);
-      if (!(error instanceof QuotationIssueInputError) && !(error instanceof QuotationIssueConflictError) && !(error instanceof QuotationIssueRepositoryError)) console.error(`[quotation-issue] failed (${error instanceof Error ? error.name : typeof error})`);
+      if (!(error instanceof QuotationIssueInputError) && !(error instanceof QuotationIssueConflictError) && !(error instanceof QuotationIssueRepositoryError)) console.error(`[quotation-issue] failed (${safeErrorSummary(error)})`);
       try {
         if (claimedLeaseExpiresAt && claimedUpdatedAt) {
           await database().update(quotationIssueRequests).set({ state: 'retryable', publicError: message, leaseExpiresAt: null, updatedAt: date(now(), started) }).where(and(eq(quotationIssueRequests.idempotencyKey, key), eq(quotationIssueRequests.state, 'processing'), eq(quotationIssueRequests.leaseExpiresAt, claimedLeaseExpiresAt), eq(quotationIssueRequests.updatedAt, claimedUpdatedAt)));

@@ -6,6 +6,7 @@ import {
   type OperatorTaskInput,
   type OperatorTasksRepository,
 } from '../_infrastructure/db/repositories/operator-tasks-repository.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export interface TasksHandlerDependencies {
   repository?: OperatorTasksRepository;
@@ -33,8 +34,7 @@ function parseBody(body: string): OperatorTaskInput & { action?: unknown } {
 }
 
 function logError(error: unknown): void {
-  const value = error as { logMessage?: string; message?: string; name?: string };
-  console.error('[tasks]', value.logMessage || value.name || 'erro');
+  console.error('[tasks]', safeLogMessage(error));
 }
 
 export function createTasksHandler(

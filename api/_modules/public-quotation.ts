@@ -10,6 +10,7 @@ import {
   MAX_QUOTATION_PDF_BYTES,
   quotationPdfChecksum,
 } from './quotation-document-storage.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const kv = getKvClient();
 const TOKEN_PREFIX = 'aspen:public-quotation:';
@@ -53,7 +54,7 @@ function unavailable(): FunctionResult {
 }
 
 function logFailure(error: unknown): void {
-  console.error(`[public-quotation] failed (${error instanceof Error ? error.name : typeof error})`);
+  console.error(`[public-quotation] failed (${safeErrorSummary(error)})`);
 }
 
 function tokenHash(token: string): string {

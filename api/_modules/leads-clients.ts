@@ -8,6 +8,7 @@ import {
   parseListOptions,
 } from './client-core.js';
 import { getClientRepository, type ClientRepository } from './client-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -17,7 +18,7 @@ export interface LeadsClientsHandlerDependencies {
 }
 
 function logCoreError(operation: string, error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[leads-clients] core ${operation} failed (${kind})`);
 }
 

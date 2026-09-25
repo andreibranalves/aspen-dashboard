@@ -2,6 +2,7 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { getOpenRouterClient } from '../_infrastructure/integrations/openrouter/client.js';
 import { getOpenRouterConfig } from '../_infrastructure/integrations/openrouter/config.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 // a current draft and return proposed changes.
 
 const EDIT_SYSTEM_PROMPT = `Você é um assistente de edição de cotação da Aspen Estamparia.
@@ -118,8 +119,8 @@ async function editDraftWithOpenRouter(prompt: string, currentDraft: unknown): P
   const data = parseJsonSafely(responseText);
 
   if (!res.ok) {
-    const upstreamMessage = (data?.error as Record<string, unknown>)?.message as string || responseText || `OpenRouter retornou HTTP ${res.status}`;
-    throw createHttpError(502, 'Falha ao interpretar edição.', `OpenRouter HTTP ${res.status}: ${upstreamMessage}`);
+    // O corpo do erro pode repetir o texto enviado; o log fica só com o status.
+    throw createHttpError(502, 'Falha ao interpretar edição.', `OpenRouter HTTP ${res.status}`);
   }
 
   const raw = extractAssistantText(data ?? {});
@@ -158,8 +159,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   } catch (err: unknown) {
     const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
     const statusCode = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
-    const message = typeof details.message === 'string' ? details.message : 'Erro interno na edição.';
-    console.error('[edit-draft]', details.logMessage || details.message || err);
+    // Só erros escritos no código (com statusCode) chegam à resposta; os demais podem trazer SQL.
+    const message = Number.isInteger(details.statusCode) && typeof details.message === 'string' ? details.message : 'Erro interno na edição.';
+    console.error('[edit-draft]', safeLogMessage(err));
     return {
       statusCode,
       headers: { 'Content-Type': 'application/json' },

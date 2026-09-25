@@ -13,6 +13,7 @@ import {
 } from '../_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import { hasDisallowedWhatsappControls } from './quotation-follow-up-state.js';
 import { dispatchOutboxMessage, type SendText } from './whatsapp-message-dispatch.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_REPLY_CHARS = 4_000;
@@ -96,7 +97,7 @@ async function handle(run: () => Promise<FunctionResult>, failure: string): Prom
       const refusal = REFUSALS[error.reason];
       return json(refusal.status, { code: refusal.code, error: refusal.error });
     }
-    console.error('[whatsapp-message-send]', error instanceof Error ? error.name : typeof error);
+    console.error('[whatsapp-message-send]', safeErrorSummary(error));
     return json(503, { error: failure });
   }
 }

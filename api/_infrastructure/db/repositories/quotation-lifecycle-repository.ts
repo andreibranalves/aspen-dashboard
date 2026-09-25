@@ -29,6 +29,7 @@ import {
   isIssuedQuotationStatus,
   type QuotationStatus,
 } from '../../../_modules/quotation-status.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -263,7 +264,7 @@ export function createPostgresQuotationLifecycleRepository(
           mapSalesOrderError(error);
         }
         if (known(error)) throw error;
-        console.error(`[quotation-lifecycle] set status failed (${error instanceof Error ? error.name : typeof error})`);
+        console.error(`[quotation-lifecycle] set status failed (${safeErrorSummary(error)})`);
         throw new QuoteManagementRepositoryError('Não foi possível atualizar o estado comercial. Tente novamente.');
       }
     },
@@ -398,7 +399,7 @@ export function createPostgresQuotationLifecycleRepository(
           throw new QuoteManagementConflictError('Já existe uma revisão em rascunho ou a versão foi criada por outro usuário. Recarregue o orçamento.');
         }
         if (known(error)) throw error;
-        console.error(`[quotation-lifecycle] create revision failed (${error instanceof Error ? error.name : typeof error})`);
+        console.error(`[quotation-lifecycle] create revision failed (${safeErrorSummary(error)})`);
         throw new QuoteManagementRepositoryError('Não foi possível criar a nova revisão. Tente novamente.');
       }
     },

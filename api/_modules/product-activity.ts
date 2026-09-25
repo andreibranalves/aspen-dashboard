@@ -4,6 +4,7 @@ import {
   ProductActivityRepositoryError,
   type ProductActivityRepository,
 } from '../_infrastructure/db/repositories/product-activity-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -55,7 +56,7 @@ export function createHandler(
         atividades: atividades.map(({ tipo, texto, data, id }) => ({ tipo, texto, data, id })),
       });
     } catch (error) {
-      console.error('[product-activity]', error instanceof Error ? error.name : typeof error);
+      console.error('[product-activity]', safeErrorSummary(error));
       if (error instanceof ProductActivityRepositoryError && error.expose) {
         return json(error.statusCode, { error: error.message });
       }

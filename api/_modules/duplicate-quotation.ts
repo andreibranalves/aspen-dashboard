@@ -9,6 +9,7 @@ import {
   type QuoteDraftRepository,
   type QuoteDuplicateResult,
 } from '../_infrastructure/db/repositories/quote-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 export type DuplicateQuotationRepository = Pick<
@@ -33,7 +34,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function logError(error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[duplicate-quotation] failed (${kind})`);
 }
 

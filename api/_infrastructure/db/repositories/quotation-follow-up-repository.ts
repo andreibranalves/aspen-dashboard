@@ -56,8 +56,9 @@ export class NotFoundError extends Error {
 }
 export class RepositoryError extends Error {
   readonly statusCode = 503;
-  constructor(message = 'Não foi possível atualizar a fila de follow-up. Tente novamente.') {
-    super(message);
+  // `cause` guarda o erro do banco para o log seguro (safeErrorSummary); nunca vai à resposta.
+  constructor(message = 'Não foi possível atualizar a fila de follow-up. Tente novamente.', options?: ErrorOptions) {
+    super(message, options);
     this.name = 'RepositoryError';
   }
 }
@@ -1413,7 +1414,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async get(quotationId: string, options: FollowUpGetOptions = {}) {
@@ -1450,7 +1451,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof ConflictError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async approve(input: ApproveInput) {
@@ -1507,7 +1508,7 @@ export function createPostgresQuotationFollowUpRepository(
                 if (error instanceof InputError || error instanceof ConflictError || error instanceof NotFoundError)
                     throw error;
                 if (unique(error)) throw new ConflictError(STALE);
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async dismiss(input: DismissInput) {
@@ -1602,7 +1603,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof ConflictError || error instanceof NotFoundError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async upsertAwaitingReceiptFromAcceptedDelivery(
@@ -1825,7 +1826,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async listAcceptedDeliveriesMissingFollowUp(
@@ -1914,7 +1915,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         // Records that the acceptance projection was attempted for this delivery.
@@ -1943,7 +1944,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         // A delivered outbox step is durable proof that the provider confirmed
@@ -2021,7 +2022,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         // Records that the worker attempted to project this candidate, which is
@@ -2047,7 +2048,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async upsertFromDeliveryReceipt(
@@ -2493,7 +2494,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async applyConversationToOpenFollowUps(input: {
@@ -2635,8 +2636,8 @@ export function createPostgresQuotationFollowUpRepository(
                   }
                 });
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async promoteDueWaitingToReady(inputNow: Date = new Date()) {
@@ -2673,7 +2674,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (error instanceof InputError)
                     throw error;
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async claimApproved(optionalId?: string) {
@@ -2790,8 +2791,8 @@ export function createPostgresQuotationFollowUpRepository(
                     return null;
                 });
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async markTransportStarted(quotationFollowUpId: string, leaseToken: string) {
@@ -2879,8 +2880,8 @@ export function createPostgresQuotationFollowUpRepository(
                     return Array.from(result).length > 0;
                 });
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async completeSent(input: {
@@ -3045,7 +3046,7 @@ export function createPostgresQuotationFollowUpRepository(
             catch (error) {
                 if (unique(error))
                     throw new ConflictError('Identificador da mensagem já utilizado.');
-                throw new RepositoryError();
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async completeFailed(input: { id: string; leaseToken: string; reason: 'provider_rejected' | 'rate_limited' }) {
@@ -3066,8 +3067,8 @@ export function createPostgresQuotationFollowUpRepository(
                 const row = Array.from(result)[0];
                 return row ? loadRecord(getDb(), String(row.quotation_id), started, now) : null;
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async completeNeedsReview(input: {
@@ -3094,8 +3095,8 @@ export function createPostgresQuotationFollowUpRepository(
                 const row = Array.from(result)[0];
                 return row ? loadRecord(getDb(), String(row.quotation_id), started, now) : null;
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async reapExpiredLeases(limit = 50) {
@@ -3124,8 +3125,8 @@ export function createPostgresQuotationFollowUpRepository(
           RETURNING f.id`);
                 return Array.from(result).length;
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
         async countApprovalsTodayUtc(now: Date = new Date()) {
@@ -3135,8 +3136,8 @@ export function createPostgresQuotationFollowUpRepository(
             AND approved_at < date_trunc('day', ${iso(now)}::timestamptz AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' + interval '1 day'`);
                 return Number(Array.from(result)[0]?.count || 0);
             }
-            catch {
-                throw new RepositoryError();
+            catch (error) {
+                throw new RepositoryError(undefined, { cause: error });
             }
         },
     };

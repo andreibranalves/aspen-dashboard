@@ -42,6 +42,7 @@ import {
   detectProductCategories,
   normalizeProductCategory as normalizeCategory,
 } from './product-category.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const DEFAULT_TEMPLATE =
   '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
@@ -1004,7 +1005,7 @@ export async function handler(
     const code = Number.isInteger(typedErr?.statusCode) ? typedErr.statusCode! : 500;
     console.error(
       '[send-whatsapp]',
-      err instanceof Error ? err.name : typeof err,
+      safeErrorSummary(err),
       code,
     );
     if (deliveryRepository && normalizedRevisionId && (providerStarted || transportClaimed)) {

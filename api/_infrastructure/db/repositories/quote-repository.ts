@@ -69,6 +69,7 @@ import {
   type ClientMatchResponse,
 } from '../../../_modules/client-matching.js';
 import { searchClientMatchCandidates } from './client-matching-repository.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -1128,7 +1129,7 @@ function isDuplicateDocument(error: unknown): boolean {
 }
 
 function safeErrorKind(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
+  return safeErrorSummary(error);
 }
 
 async function readSettings(tx: QuoteTransaction): Promise<Settings> {

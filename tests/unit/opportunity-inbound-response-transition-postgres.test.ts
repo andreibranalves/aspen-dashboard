@@ -232,6 +232,134 @@ test(
 );
 
 test(
+  'applyInboundResponseTransition starts Preciso responder when the opportunity has no action',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeFixture();
+    try {
+      const occurredAt = new Date('2026-09-14T02:30:00.000Z');
+      const result = await applyInboundResponseTransition({
+        database: db,
+        opportunityId: fixture.ids.opportunity,
+        occurredAt,
+        idFactory: () => randomUUID(),
+      });
+      const actions = await actionsFor(fixture.ids.opportunity);
+      assert.equal(actions.length, 1);
+      const [created] = actions;
+      assert.equal(created.state, 'active');
+      assert.equal(created.kind, 'review');
+      assert.equal(created.reasonCode, 'inbound_needs_response');
+      assert.equal(created.reason, 'Preciso responder');
+      assert.equal(created.origin, 'event');
+      assert.equal(created.dueDate, '2026-09-13');
+      assert.equal(created.version, 1);
+      assert.equal(result.state, 'active');
+      assert.equal(result.action, null);
+      assert.equal(result.successor?.actionId, created.id);
+
+      const again = await applyInboundResponseTransition({
+        database: db,
+        opportunityId: fixture.ids.opportunity,
+        occurredAt,
+        idFactory: () => randomUUID(),
+      });
+      assert.equal((await actionsFor(fixture.ids.opportunity)).length, 1);
+      assert.equal(again.actionId, created.id);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+);
+
+test(
+  'applyInboundResponseTransition continues the version after a closed history',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeFixture();
+    try {
+      const closedId = await insertActiveAction(fixture, 'follow_up_first_return');
+      await db
+        .update(opportunityNextActions)
+        .set({ state: 'completed', version: 3 })
+        .where(eq(opportunityNextActions.id, closedId));
+      const result = await applyInboundResponseTransition({
+        database: db,
+        opportunityId: fixture.ids.opportunity,
+        occurredAt: new Date('2026-09-14T02:30:00.000Z'),
+        idFactory: () => randomUUID(),
+      });
+      assert.equal(result.state, 'active');
+      assert.equal(result.version, 4);
+      const active = (await actionsFor(fixture.ids.opportunity)).filter((row) => row.state === 'active');
+      assert.equal(active.length, 1);
+      assert.equal(active[0].reasonCode, 'inbound_needs_response');
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+);
+
+test(
+  'applyInboundResponseTransition keeps a suspended action instead of starting another',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeFixture();
+    try {
+      const suspendedId = await insertActiveAction(fixture, 'follow_up_first_return');
+      await db
+        .update(opportunityNextActions)
+        .set({ state: 'suspended', transitionReason: 'Não contatar' })
+        .where(eq(opportunityNextActions.id, suspendedId));
+      const result = await applyInboundResponseTransition({
+        database: db,
+        opportunityId: fixture.ids.opportunity,
+        occurredAt: new Date('2026-09-14T02:30:00.000Z'),
+        idFactory: () => randomUUID(),
+      });
+      const actions = await actionsFor(fixture.ids.opportunity);
+      assert.equal(actions.length, 1);
+      assert.equal(actions[0].state, 'suspended');
+      assert.equal(result.state, 'suspended');
+      assert.equal(result.actionId, suspendedId);
+      assert.equal(result.successor, null);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+);
+
+test(
+  'webhook inbound on an opportunity without action applies instead of failing',
+  { skip: databaseSkip, concurrency: false },
+  async () => {
+    const fixture = await makeFixture();
+    const originalInstance = process.env.EVOLUTION_INSTANCE;
+    const instance = `inbound-no-action-${randomUUID()}`;
+    process.env.EVOLUTION_INSTANCE = instance;
+    try {
+      const repository = createPostgresQuotationFollowUpRepository(() => db);
+      await repository.applyConversationToOpenFollowUps!({
+        instance,
+        providerConversationId: '5511999990000@s.whatsapp.net',
+        providerMessageId: `inbound-no-action-${randomUUID()}`,
+        fromMe: false,
+        occurredAt: new Date('2026-09-14T02:30:00.000Z'),
+        identityStatus: 'derived',
+        canonicalPhone: '5511999990000',
+      });
+      const actions = await actionsFor(fixture.ids.opportunity);
+      assert.equal(actions.length, 1);
+      assert.equal(actions[0].state, 'active');
+      assert.equal(actions[0].reasonCode, 'inbound_needs_response');
+    } finally {
+      process.env.EVOLUTION_INSTANCE = originalInstance;
+      await fixture.cleanup();
+    }
+  }
+);
+
+test(
   'associateInboundResponse moves a consolidated alert without replacing newer sibling work',
   { skip: databaseSkip, concurrency: false },
   async () => {

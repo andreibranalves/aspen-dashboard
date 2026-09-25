@@ -4,6 +4,7 @@ import {
   generateQuotationPdf,
   type GenerateQuotationPdfOptions,
 } from './quotation-pdf.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export type QuotationPdfHandlerDependencies = GenerateQuotationPdfOptions;
 
@@ -43,7 +44,7 @@ export function createQuotationPdfHandler(
       if (details.statusCode === 404 || details.code === 'NOT_FOUND') {
         return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
       }
-      console.error('[pdf]', details.message || err);
+      console.error('[pdf]', safeLogMessage(err));
       return { statusCode: 502, headers: { 'Content-Type': 'text/plain' }, body: 'Erro ao gerar PDF' };
     }
   };

@@ -3,6 +3,7 @@ import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { createPostgresWhatsappAttendanceRepository, type WhatsappAttendanceRepository } from '../_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 import { getOpenRouterClient, type OpenRouterClient } from '../_infrastructure/integrations/openrouter/client.js';
 import { atendimentoContext } from './atendimento-context.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIONS = ['suggest_reply', 'identify_missing', 'summarize'] as const;
@@ -186,7 +187,7 @@ export function createAtendimentoAiHandler(dependencies: AtendimentoAiDependenci
       } finally { clearTimeout(timeout); }
     } catch (error) {
       if (error instanceof InputError) return json(400, { error: error.message });
-      console.error('[atendimento-ai]', error instanceof Error ? error.name : typeof error);
+      console.error('[atendimento-ai]', safeErrorSummary(error));
       return json(503, { error: 'Assistência indisponível. Continue o atendimento manualmente.' });
     }
   };

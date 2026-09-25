@@ -8,6 +8,7 @@ import {
   type QuoteDraftCreateInput,
   type QuoteDraftRepository,
 } from '../_infrastructure/db/repositories/quote-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface OrcamentoCoreDependencies {
@@ -27,7 +28,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function logError(error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[orcamento-core] create failed (${kind})`);
 }
 

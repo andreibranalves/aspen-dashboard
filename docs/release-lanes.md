@@ -35,8 +35,9 @@ idempotência ou concorrência danosa, migration destrutiva ou corrupção durá
 difícil de recuperar. O ticket/PR deve citar o dano.
 
 Valide invariantes e erros, usando PostgreSQL/E2E quando pertinentes. O review
-deve examinar o dano concreto citado no ticket/PR. Exija CI, Preview e preflight
-de isolamento, além de E2E focado quando pertinente. Merge/deploy e operações
+deve examinar o dano concreto citado no ticket/PR. Exija CI e Preview, com a
+migration aplicada na branch do PR quando houver, além de E2E focado quando
+pertinente. Merge/deploy e operações
 sensíveis continuam sujeitos às aprovações abaixo.
 
 Migrations seguem o [runbook PostgreSQL](./database-migrations.md), inclusive

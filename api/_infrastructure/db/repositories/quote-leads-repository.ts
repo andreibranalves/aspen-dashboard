@@ -15,6 +15,7 @@ import {
   type QuoteLeadAttribution,
   type QuoteLeadStatus,
 } from '../../../_modules/quote-leads-pure.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 export { quoteLeadIdentityKey } from '../../../_modules/quote-leads-pure.js';
 export type { QuoteLeadStatus } from '../../../_modules/quote-leads-pure.js';
@@ -271,7 +272,7 @@ function safeError(error: unknown): never {
       : 0;
   if (statusCode >= 400 && statusCode < 500) throw error;
   if (statusCode === 503) throw error;
-  console.error('[quote-leads-repository]', error instanceof Error ? error.name : typeof error);
+  console.error('[quote-leads-repository]', safeErrorSummary(error));
   throw createHttpError(503, 'Não foi possível acessar a fila de leads.');
 }
 

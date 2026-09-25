@@ -3,6 +3,7 @@ import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { isKvConfigured } from '../_infrastructure/integrations/kv/config.js';
 import type { VercelRequestLike } from '../_http/types.js';
 import { getRouteName } from './auth.js';
+import { safeErrorSummary } from './safe-error.js';
 
 const kv = getKvClient();
 
@@ -94,7 +95,7 @@ export async function checkRateLimitAsync(req: VercelRequestLike): Promise<boole
       throw new Error('invalid shared limiter count');
     return count <= max;
   } catch (error) {
-    console.error(`[rate-limit] shared limiter unavailable (${error instanceof Error ? error.name : typeof error})`);
+    console.error(`[rate-limit] shared limiter unavailable (${safeErrorSummary(error)})`);
     return false;
   }
 }

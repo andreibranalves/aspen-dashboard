@@ -128,6 +128,22 @@ function parseMigrationPostgresUrl(raw, name) {
   }
 }
 
+/**
+ * Alvo `preview`: a branch Neon descartável do próprio PR, resolvida pela API
+ * do Neon. Prova somente que a URL resolvida não é a de produção.
+ */
+export function runPreviewMigrationPreflight({ env = process.env, targetUrl, now = () => new Date() } = {}) {
+  const preview = parseMigrationPostgresUrl(targetUrl, 'URL da branch de Preview');
+  const production = parseMigrationPostgresUrl(env.PRODUCTION_DATABASE_URL, 'PRODUCTION_DATABASE_URL');
+  if (postgresIdentity(preview) === postgresIdentity(production)) {
+    throw new Error('A branch de Preview não pode apontar para produção.');
+  }
+  return {
+    timestamp: now().toISOString(),
+    checks: ['branch Neon do PR resolvida', 'Preview difere de produção'],
+  };
+}
+
 export function runMigrationPreflight({
   env = process.env,
   execute = execFileSync,

@@ -3,6 +3,7 @@ import { findReceivedMediaMessage } from '../_infrastructure/db/repositories/wha
 import { getEvolutionClient, type EvolutionClient } from '../_infrastructure/integrations/evolution/client.js';
 import { safeMediaFilename } from './postgres-media.js';
 import { detectedWhatsappMediaMime, MAX_OPERATOR_ATTACHMENT_BYTES, whatsappMediaAllowed, whatsappMediaLimit } from './whatsapp-media-validation.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_RESPONSE_BYTES = Math.ceil(MAX_OPERATOR_ATTACHMENT_BYTES * 4 / 3) + 4096;
@@ -97,7 +98,7 @@ export function createReceivedMediaHandler(dependencies: ReceivedMediaDependenci
       }
     } catch (error) {
       if (error instanceof MediaTooLargeError) return json(413, 'MEDIA_TOO_LARGE', 'Mídia acima do limite permitido.');
-      console.error('[whatsapp-message-media]', error instanceof Error ? error.name : typeof error);
+      console.error('[whatsapp-message-media]', safeErrorSummary(error));
       return json(503, 'MEDIA_UNAVAILABLE', 'Mídia indisponível na origem.');
     }
   };

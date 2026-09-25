@@ -1,6 +1,7 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { createWhatsappAttachment } from '../_infrastructure/db/repositories/whatsapp-attachments-repository.js';
 import { validateOperatorMedia } from './whatsapp-media-validation.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -30,7 +31,7 @@ export async function whatsappAttachments(event: FunctionEvent): Promise<Functio
     if (error instanceof SyntaxError || (error instanceof Error && error.message === 'INVALID_MEDIA')) {
       return json(400, { error: 'Formato ou tamanho do anexo inválido.' });
     }
-    console.error('[whatsapp-attachments]', error instanceof Error ? error.name : typeof error);
+    console.error('[whatsapp-attachments]', safeErrorSummary(error));
     return json(503, { error: 'Não foi possível guardar o anexo. Tente novamente.' });
   }
 }
