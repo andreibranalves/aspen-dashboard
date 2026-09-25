@@ -300,10 +300,68 @@ and `390x844`. The desktop profile uses a two-column cadastro/activity layout;
 the narrow layout places recent activity before cadastro and keeps the drawer
 full-width.
 
+## Approved revamp direction (2026-09)
+
+Mobile is a first-class target: every journey, including creating, reviewing,
+issuing, and sending a quotation, must be operable at `390x844`. This section
+is the target for the revamp; it lands in slices (foundation, shell, then one
+journey per PR). When a slice lands, it moves the affected rules into the
+foundation, layout, and component sections above and removes them here. Until
+then, the sections above describe the running app.
+
+### Shell and navigation
+
+- Desktop sidebar groups destinations: **Operação** (Atendimento, Orçamentos,
+  Comercial, Pedidos, Tarefas), **Cadastros** (Clientes, Catálogo) and
+  **Acompanhamento** (Envios, Resultados); Configurações stays in the footer.
+- `Novo orçamento` is the single global primary action, in the TopBar at every
+  width, next to `Tarefa` (shortcut T). Sidebar and page headers do not repeat
+  it.
+- Below `lg`, a bottom bar holds Atendimento, Orçamentos, Comercial, Pedidos and
+  `Mais` (a sheet with the other destinations). The header shows back + page
+  title instead of the breadcrumb. The canvas/shell double frame is dropped.
+- Desktop layouts start at `lg` (1024) wherever they fit; `xl` is reserved for
+  the 336px side panel.
+
+### Surfaces and type
+
+- Radius roles tighten: card 16px, shell 20px (desktop only); controls keep
+  11px.
+- One `Card` primitive (`variant`: `default`, `outline`, `inset`) replaces
+  hand-built `rounded-card` surfaces in features.
+- `Field` (label, control, error) replaces raw `<label>` in features; `Text`
+  (`meta`, `caption`, `value`) replaces loose `text-xs`/`font-medium` pairs.
+- Monospace is for SKUs and identifiers only, never money.
+- No colored card backgrounds. Charts use `chart-*` tokens only inside chart
+  components; no palette cycled by index.
+
+### Page patterns
+
+| Need | Use | Notes |
+| --- | --- | --- |
+| Status filter with counts | `StatusFilterBar` | replaces StatCards + status select above lists |
+| List that works on both widths | `DataList` | table from `md`; stacked two-line rows below; rows are real links |
+| Primary action on mobile detail/entry | `MobileActionBar` | fixed bottom, `shadow-bar`, one primary action |
+| Long form save | `StickySaveBar` | appears only while dirty |
+| Money input | `MoneyInput` | pt-BR display (`1.234,56`), never `toFixed` in UI |
+
+### Content rules
+
+- A value appears once per view: no repeated client name, status badge, or
+  record link between header, cards, and side panel.
+- Every date in a header meta row carries its label (`Emitido em`,
+  `Válido até`).
+- One path per action: an action in the side panel is not repeated in the
+  header.
+- Destructive bulk actions (`Limpar fila`) live in a menu with confirmation,
+  not as a header button.
+- Keyboard hints render only for fine pointers.
+- Tabs fit the width or scroll without a visible scrollbar.
+
 ## Out of scope
 
-This contract does not redesign complete feature journeys outside the approved
-entry slice, add a state library or dependency, alter API/schema/database/auth/
-integrations, change official calculations, emit documents, send messages, or
-implement Figma's future navigation map. A later journey must update this
-document before changing its normative visual rules.
+This contract does not add a state library or dependency, alter
+API/schema/database/auth/integrations, change official calculations, emit
+documents, or send messages. Journeys outside the approved slices change only
+through the revamp direction above. A later journey must update this document
+before changing its normative visual rules.

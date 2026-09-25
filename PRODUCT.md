@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Um único usuário: o dono da Aspen Estamparia, que opera o app sozinho no dia a dia, em desktop. Não há equipe, multiusuário nem permissões — decisões de UI podem otimizar para um operador único experiente.
+Um único usuário: o dono da Aspen Estamparia, que opera o app sozinho no dia a dia, no desktop e no celular. Não há equipe, multiusuário nem permissões — decisões de UI podem otimizar para um operador único experiente.
 
 ## Product Purpose
 
@@ -22,7 +22,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 
 ## Operating Context
 
-- Uso diário em navegador desktop (não há uso mobile real hoje).
+- Uso diário no navegador do desktop e do celular. O celular opera o fluxo inteiro, inclusive criar, revisar, emitir e enviar orçamento.
 - Fluxo típico: cliente manda mensagem/arte no WhatsApp → conversa no Atendimento → extração gera rascunho em Novo orçamento → revisão → emissão → envio WhatsApp/e-mail → retorno no Comercial, Tarefas e Pedidos.
 - Deploy na Vercel (Function única `api/[...path].ts`); lanes de release descritas em `docs/release-lanes.md`.
 - Valores de ambiente reais ficam em `~/.config/aspen-dashboard/` (fora do repo).
@@ -48,9 +48,9 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 2. WhatsApp é o canal do negócio; integrações valem mais que interfaces novas.
 3. Um operador só: simplicidade e densidade valem mais que recursos de equipe.
 4. O rótulo basta. Não explicar o óbvio em helpers de campo, subtítulos de página ou descrições de seção.
-5. Desktop-first: atalhos, tabelas densas e fluxos de poucos cliques primeiro.
+5. Dois formatos de primeira classe: no desktop, atalhos, tabelas densas e poucos cliques; no celular, o mesmo fluxo completo, com navegação inferior, linhas empilhadas e a ação primária ao alcance do polegar.
 6. O comercial (CRM/pedidos) deve evoluir sem complicar o fluxo principal.
 
 ## Accessibility & Inclusion
 
-Sem requisitos específicos estabelecidos; público é o próprio dono em desktop, pt-BR.
+Sem requisitos formais; público é o próprio dono, em desktop e celular, pt-BR. No celular, alvos de toque têm pelo menos 40px e nenhuma tela exige rolagem horizontal da página.
