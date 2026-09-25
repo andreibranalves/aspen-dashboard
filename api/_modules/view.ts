@@ -1,6 +1,7 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { renderQuotationHtml } from './quotation-html.js';
 import { resolvePrintFormat } from './print-format.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const quotationId = event.queryStringParameters?.q;
@@ -21,7 +22,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     if (details.statusCode === 404) {
       return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
     }
-    console.error('[view]', details.message || err);
+    console.error('[view]', safeLogMessage(err));
     return { statusCode: 502, headers: { 'Content-Type': 'text/plain' }, body: 'Erro ao buscar orçamento' };
   }
 }

@@ -5,6 +5,7 @@ import {
   normalizeCrmPipelineStageName,
   type CrmPipelineStageRepository,
 } from '../_infrastructure/db/repositories/crm-pipeline-stages-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export interface CrmPipelineStagesHandlerDependencies {
   repository?: CrmPipelineStageRepository;
@@ -110,7 +111,7 @@ export function createCrmPipelineStagesHandler(
         '[crm-pipeline-stages]',
         httpError.logMessage ||
           httpError.message ||
-          (error instanceof Error ? error.name : typeof error)
+          (safeErrorSummary(error))
       );
       return json(statusCode, {
         error: httpError.statusCode ? httpError.message : 'Erro interno.',

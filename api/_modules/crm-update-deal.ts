@@ -4,6 +4,7 @@ import {
   createPostgresCrmDealRepository,
   type CrmDealRepository,
 } from '../_infrastructure/db/repositories/crm-deals-repository.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export interface CrmUpdateDealHandlerDependencies {
   repository?: CrmDealRepository;
@@ -52,7 +53,7 @@ export function createCrmUpdateDealHandler(
     } catch (error) {
       const httpError = error as { statusCode?: number; message?: string; logMessage?: string };
       const statusCode = Number.isInteger(httpError.statusCode) ? httpError.statusCode! : 500;
-      console.error('[crm-update-deal]', httpError.logMessage || httpError.message || error);
+      console.error('[crm-update-deal]', safeLogMessage(error));
       return json(statusCode, {
         error: httpError.statusCode ? httpError.message : 'Erro interno.',
       });

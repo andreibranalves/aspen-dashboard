@@ -15,6 +15,7 @@ import {
 } from './client-core.js';
 import { getClientRepository, type ClientRepository } from './client-repository.js';
 import { ClientInputError } from './client-schema.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export type {
   ClientCommercialContext,
@@ -32,7 +33,7 @@ export interface ClientDetailHandlerDependencies {
 }
 
 function logCoreError(operation: string, error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[client-detail] core ${operation} failed (${kind})`);
 }
 

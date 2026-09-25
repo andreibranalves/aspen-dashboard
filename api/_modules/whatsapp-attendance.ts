@@ -18,6 +18,7 @@ import {
   type WhatsappConversationStatus,
   type WhatsappMessageRecord,
 } from '../_infrastructure/db/repositories/whatsapp-attendance-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_PAGE = 50;
@@ -122,7 +123,7 @@ async function handleErrors(run: () => Promise<FunctionResult>, failure: string)
     return await run();
   } catch (error) {
     if (error instanceof InputError) return json(400, { error: error.message });
-    console.error('[whatsapp-attendance]', error instanceof Error ? error.name : typeof error);
+    console.error('[whatsapp-attendance]', safeErrorSummary(error));
     return json(503, { error: failure });
   }
 }

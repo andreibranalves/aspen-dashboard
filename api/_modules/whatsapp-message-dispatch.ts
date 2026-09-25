@@ -11,6 +11,7 @@ import {
 import { EvolutionTransportError, sendFrozenStep, sendOperatorMedia } from './evolution-transport.js';
 import { loadWhatsappAttachment, type WhatsappAttachment } from '../_infrastructure/db/repositories/whatsapp-attachments-repository.js';
 import { validateOperatorMedia } from './whatsapp-media-validation.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 // Longer than one full transport timeout (15 s) so a live dispatch never loses
 // its lease; an expired lease therefore means the function died.
@@ -116,7 +117,7 @@ export async function dispatchOutboxMessage(
     try {
       await repository.applyReceipts(providerMessageId);
     } catch (error) {
-      console.error('[whatsapp-message-dispatch] receipts', error instanceof Error ? error.name : typeof error);
+      console.error('[whatsapp-message-dispatch] receipts', safeErrorSummary(error));
     }
   }
   return accepted;

@@ -9,6 +9,7 @@ import {
   PricingRepositoryError,
   type PricingRepository,
 } from '../_infrastructure/db/repositories/pricing-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -26,7 +27,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
 }
 
 function logError(error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[product-detail-core] failed (${kind})`);
 }
 

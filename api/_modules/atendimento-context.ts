@@ -17,6 +17,7 @@ import {
   type WhatsappContextRequest,
   type WhatsappContextResult,
 } from './whatsapp-context.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_SEARCH_CHARS = 100;
@@ -114,7 +115,7 @@ export function createAtendimentoContextHandlers(dependencies: AtendimentoContex
       return await run();
     } catch (error) {
       if (error instanceof InputError) return json(400, { error: error.message });
-      console.error('[atendimento-context]', error instanceof Error ? error.name : typeof error);
+      console.error('[atendimento-context]', safeErrorSummary(error));
       return json(503, { error: failure });
     }
   }

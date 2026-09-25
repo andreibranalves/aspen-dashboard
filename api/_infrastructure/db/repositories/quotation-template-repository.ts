@@ -8,6 +8,7 @@ import {
   quoteRevisions,
   quotations,
 } from '../schema.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteDatabase = AppDatabase;
@@ -150,7 +151,7 @@ export function createQuotationTemplateRepository(getDb: DatabaseProvider = getD
       } catch (error) {
         if (error instanceof QuotationTemplateSnapshotRepositoryError) throw error;
         console.error(
-          `[quotation-template-repository] read failed (${error instanceof Error ? error.name : typeof error})`
+          `[quotation-template-repository] read failed (${safeErrorSummary(error)})`
         );
         throw new QuotationTemplateSnapshotRepositoryError();
       }

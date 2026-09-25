@@ -8,6 +8,7 @@ import {
   type QuotationDeliveryOutboxRepository,
 } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import type { DeliveryState } from './quotation-delivery-state.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -166,8 +167,7 @@ export function createCommunicationSendEventsHandler(
       const items = deliveries.slice(0, limit).map(mapDelivery);
       return json(200, { success: true, items, total: items.length, source: 'postgres' });
     } catch (error) {
-      const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
-      console.error('[comm-send-events]', details.logMessage || details.message || error);
+      console.error('[comm-send-events]', safeLogMessage(error));
       return json(500, { error: 'Não foi possível carregar o histórico de envios.' });
     }
   };

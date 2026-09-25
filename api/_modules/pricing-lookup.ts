@@ -15,6 +15,7 @@ import {
   parseSurchargePercent,
   resolveProductPrice,
 } from './pricing-core.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -32,7 +33,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
 }
 
 function errorResponse(error: unknown): FunctionResult {
-  console.error('[pricing-lookup]', error instanceof Error ? error.name : typeof error);
+  console.error('[pricing-lookup]', safeErrorSummary(error));
   if (error instanceof PricingValidationError || error instanceof PricingUnavailableError) {
     return json(error.statusCode, { error: error.message });
   }

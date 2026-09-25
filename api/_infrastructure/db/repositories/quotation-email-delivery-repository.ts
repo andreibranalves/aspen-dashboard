@@ -7,6 +7,7 @@ import {
 import { getDatabase, type AppDatabase } from '../client.js';
 import { promoteDealOnProviderAcceptance } from './crm-deals-repository.js';
 import { quotationEmailDeliveries } from '../schema.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -205,7 +206,7 @@ function isKnownError(error: unknown): boolean {
 function rethrowRepositoryError(error: unknown, operation: string): never {
   if (isKnownError(error)) throw error;
   console.error(
-    `[quotation-email-delivery] ${operation} failed (${error instanceof Error ? error.name : typeof error})`
+    `[quotation-email-delivery] ${operation} failed (${safeErrorSummary(error)})`
   );
   throw new QuotationEmailDeliveryRepositoryError();
 }

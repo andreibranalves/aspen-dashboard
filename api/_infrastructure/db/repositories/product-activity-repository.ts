@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { productActivityEvents } from '../schema.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 export const PRODUCT_ACTIVITY_TYPES = ['produto', 'preco', 'orcamento', 'pedido'] as const;
 export type ProductActivityType = (typeof PRODUCT_ACTIVITY_TYPES)[number];
@@ -211,7 +212,7 @@ export function createPostgresProductActivityRepository(
         });
       } catch (error) {
         if (error instanceof ProductActivityRepositoryError) throw error;
-        console.error('[product-activity-repository] append failed', error instanceof Error ? error.name : typeof error);
+        console.error('[product-activity-repository] append failed', safeErrorSummary(error));
         throw new ProductActivityRepositoryError(503, 'Não foi possível registrar a atividade do produto.', false);
       }
     },
@@ -229,7 +230,7 @@ export function createPostgresProductActivityRepository(
           .limit(normalizedLimit);
         return rows.map(toRecord);
       } catch (error) {
-        console.error('[product-activity-repository] list failed', error instanceof Error ? error.name : typeof error);
+        console.error('[product-activity-repository] list failed', safeErrorSummary(error));
         throw new ProductActivityRepositoryError(503, 'Não foi possível consultar a atividade do produto.', false);
       }
     },

@@ -10,6 +10,7 @@ import {
   type CrmPipelineStage,
   type CrmPipelineStageRepository,
 } from '../_infrastructure/db/repositories/crm-pipeline-stages-repository.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export interface CrmDealsHandlerDependencies {
   repository?: CrmDealRepository;
@@ -128,7 +129,7 @@ export function createCrmDealsHandler(
     } catch (error) {
       const httpError = error as { statusCode?: number; message?: string; logMessage?: string };
       const statusCode = Number.isInteger(httpError.statusCode) ? httpError.statusCode! : 500;
-      console.error('[crm-deals]', httpError.logMessage || httpError.message || error);
+      console.error('[crm-deals]', safeLogMessage(error));
       return json(statusCode, {
         error: httpError.statusCode ? httpError.message : 'Erro interno.',
       });

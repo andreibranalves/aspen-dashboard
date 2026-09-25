@@ -5,6 +5,7 @@ import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
 } from '../_infrastructure/db/repositories/sales-orders-repository.js';
+import { safeLogMessage } from '../_shared/safe-error.js';
 
 export interface SalesOrderFromQuotationHandlerDependencies {
   repository?: SalesOrdersRepository;
@@ -29,8 +30,7 @@ function payloadFrom(body: string | undefined): Record<string, unknown> {
 }
 
 function logError(error: unknown): void {
-  const value = error as { logMessage?: string; message?: string };
-  console.error('[sales-order-from-quotation]', value.logMessage || value.message || error);
+  console.error('[sales-order-from-quotation]', safeLogMessage(error));
 }
 
 export function createSalesOrderFromQuotationHandler(

@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { createHttpError } from '../_shared/http-error.js';
 import { getDatabase, type AppDatabase } from '../_infrastructure/db/client.js';
 import { clients, crmDeals, quoteLeads, quoteRevisions, quotationDeliveries, quotations } from '../_infrastructure/db/schema.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 // Identifiers and names only; never applied to a message body.
 function cleanText(value: unknown): string {
   return String(value || '')
@@ -175,7 +176,7 @@ function repositoryFailure(error: unknown, fallback: string): never {
   const statusCode = Number((error as { statusCode?: unknown })?.statusCode || 0);
   if (statusCode >= 400 && statusCode < 500) throw error;
   if (statusCode === 503) throw error;
-  console.error('[whatsapp-crm-match]', error instanceof Error ? error.name : typeof error);
+  console.error('[whatsapp-crm-match]', safeErrorSummary(error));
   throw createHttpError(503, fallback);
 }
 

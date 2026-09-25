@@ -18,6 +18,7 @@ import {
   createPostgresProductCatalogRepository,
   type ProductCatalogRepository,
 } from '../_infrastructure/db/repositories/product-catalog-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
@@ -51,7 +52,7 @@ function mapStatus(value: string | undefined): ProductStatus | null {
 }
 
 function logError(operation: string, error: unknown): void {
-  const kind = error instanceof Error ? error.name : typeof error;
+  const kind = safeErrorSummary(error);
   console.error(`[products-core] ${operation} failed (${kind})`);
 }
 

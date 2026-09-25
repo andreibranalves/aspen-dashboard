@@ -23,6 +23,7 @@ import {
   createPostgresWhatsappContactActivityRepository,
   type WhatsappContactActivityRepository,
 } from '../_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
+import { safeErrorSummary } from '../_shared/safe-error.js';
 
 export interface CommercialQueueHandlerDependencies {
   repository?: OpportunityActionRepository;
@@ -428,7 +429,7 @@ function mapError(error: unknown, operation: 'load' | 'update'): FunctionResult 
     operation === 'load'
       ? '[commercial-queue] falha ao carregar a fila'
       : '[commercial-queue] falha ao atualizar a fila',
-    error instanceof Error ? error.name : typeof error
+    safeErrorSummary(error)
   );
   return json(503, {
     error:

@@ -10,6 +10,7 @@ import {
   quotations,
 } from '../schema.js';
 import { cancelQuotationFollowUpForFact } from './quotation-follow-up-facts.js';
+import { safeErrorSummary } from '../../../_shared/safe-error.js';
 
 export const CRM_PIPELINE = [
   'Novo Lead',
@@ -260,7 +261,7 @@ function safeRepositoryError(error: unknown): never {
   if (error instanceof CrmDealInputError || error instanceof CrmDealRepositoryError) {
     throw error;
   }
-  console.error('[crm-deals-repository]', error instanceof Error ? error.name : typeof error);
+  console.error('[crm-deals-repository]', safeErrorSummary(error));
   throw new CrmDealRepositoryError();
 }
 
