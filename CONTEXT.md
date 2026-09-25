@@ -23,6 +23,14 @@ _Avoid_: Geração do PDF
 Entrega de uma revisão emitida ao cliente por WhatsApp ou e-mail. Depois do envio, mudar o destinatário exige nova revisão.
 _Avoid_: Entrega, disparo
 
+**Passo**:
+Cada mensagem de um envio por WhatsApp (texto, imagem ou PDF), enviada em ordem e com pausa entre uma e outra.
+_Avoid_: Etapa, mensagem do fluxo
+
+**Envio interrompido**:
+Envio cujos passos não terminaram em até 30 minutos do pedido do operador. O que faltou não sai sozinho; o operador revisa e reenvia o orçamento.
+_Avoid_: Envio parcial, envio pendente
+
 **Retorno**:
 Contato de acompanhamento com o cliente que ainda não respondeu a um orçamento enviado.
 _Avoid_: Follow-up, cobrança
@@ -143,6 +151,7 @@ O código guarda nomes anteriores ao glossário. Use o termo do glossário em te
 | Orçamento | `quotations`, `quotation_*`, `quote_*` |
 | Revisão | `quote_revisions`, `quote_revision_items` |
 | Envio | `quotation_deliveries`, `quotation_email_deliveries` |
+| Passo | `quotation_delivery_steps` |
 | Retorno | `quotation_follow_ups` |
 | Modelo de documento | `quotation_templates`, `quotation_template_versions` |
 | Modelo de pedido | `order_templates` |
