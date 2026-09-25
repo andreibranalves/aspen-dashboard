@@ -1,90 +1,77 @@
 # Preview isolado
 
-Fonte única do gate de Preview. Cada PR/branch implantado em Vercel Preview tem
-sua própria URL e usa o PostgreSQL isolado correspondente (branch Neon).
-`DATABASE_URL` deve ser a URL efetiva desse deployment e distinta de
-`PRODUCTION_DATABASE_URL`; o Preview não envia efeitos externos. Production é
-reservado ao `master`.
+Cada PR implantado na Vercel ganha um Preview com URL própria e uma branch
+PostgreSQL no Neon, `preview/<branch-git>`, copiada da produção no primeiro
+deploy. Preview é a única homologação e Production é o `master` (ADR 0011).
+`npm run preview` do Vite e a prévia de um orçamento são recursos locais, não
+homologação.
 
-Preview é a única homologação. Não há VPS de staging, target permanente de
-migration nem branch permanente como ambiente de homologação. `npm run preview`
-do Vite e a prévia de um orçamento são recursos locais, não homologação.
+## O que o código garante
 
-## Preflight obrigatório
+- Num deployment `VERCEL_ENV=preview`, toda conexão ao banco falha fechada sem
+  `APP_ENV=preview`, `EXTERNAL_WRITES_ENABLED=0` e um `DATABASE_URL` diferente
+  de `PRODUCTION_DATABASE_URL`
+  ([client.ts](../api/_infrastructure/db/client.ts)). A comparação trata
+  `ep-x` e `ep-x-pooler` do Neon como o mesmo banco.
+- Evolution, e-mail, Blob, QStash e Google Data Manager só escrevem com
+  `VERCEL_ENV` de produção, `APP_ENV=production` e
+  `EXTERNAL_WRITES_ENABLED=1` ([external-writes.ts](../api/_shared/external-writes.ts)).
+  Envio real só acontece em Production.
+- Não há dual-write, banco fallback nem coluna `is_test`.
+
+`/api/operational-status` mostra ambiente, escritas externas, conectividade e
+persistência de um deployment.
+
+## Dados reais
+
+A branch do Preview é uma cópia dos dados de produção, com clientes, telefones e
+conversas. O acesso passa pela proteção de deployment da Vercel e pelo login do
+app. Não copie dados do Preview para fora dele.
+
+## Migration no Preview
+
+O deploy não aplica migration: a branch nasce com o schema de produção. Num PR
+com migration, aplique-a na branch do próprio PR antes de validar o Preview,
+com a autorização prevista em `AGENTS.md`:
 
 ```bash
-APP_ENV=preview EXTERNAL_WRITES_ENABLED=0 npm run preview:preflight
+npm run migrate:apply -- --target preview
 ```
 
-O executor protegido injeta `DATABASE_URL` e `PRODUCTION_DATABASE_URL` para o
-preflight; não coloque valores no checkout nem em comandos. Esse preflight
-valida somente o modo Preview, as escritas externas e a identidade distinta do
-PostgreSQL de produção. O contrato falha fechado quando uma variável exigida
-está ausente; o preflight também falha quando as URLs são inválidas ou apontam
-para a mesma identidade PostgreSQL.
+O comando parte da branch Git atual, encontra `preview/<branch-git>` pela API do
+Neon, recusa branch padrão, primária ou protegida e qualquer URL de produção, e
+só então aplica ([runbook](./database-migrations.md#gate-preview)). Se a
+migration mudar depois de aplicada, resete a branch a partir de `main` no Neon e
+aplique de novo.
 
-## E2E controlado
+## Limite de branches e ciclo de vida
 
-O executor protegido pré-configura `DATABASE_URL`, `PRODUCTION_DATABASE_URL`,
-`E2E_USERNAME`, `E2E_PASSWORD`, `PREVIEW_E2E_USERNAME`,
-`VERCEL_AUTOMATION_BYPASS_SECRET`, os IDs `KNOWN_POSTGRES_*` e as atestações
-`PREVIEW_EGRESS_BLOCKED=1` e `PREVIEW_FIXTURE_RESET=1`. O operador verifica que
-`DATABASE_URL` é a URL efetiva do deployment do PR. Não coloque URLs de banco ou
-credenciais inline.
+O plano Free do Neon aceita 10 branches por projeto, `main` inclusa. Acima
+disso, todo Preview novo falha com `Resource provisioning failed` antes do
+build. Cada PR aberto com Preview ocupa uma vaga até fechar.
+
+- `dependabot/**` e `docs/**` não geram Preview (`git.deploymentEnabled` em
+  `vercel.json`). Use `docs/` só para PR sem código de runtime; o CI continua
+  validando.
+- Ao fechar o PR, a integração Vercel + Neon e
+  `.github/workflows/neon-preview-prune.yml` tentam apagar a branch. É
+  best-effort: falha não bloqueia o PR.
+- Liberar vaga é apagar a branch de um PR aberto, o que destrói aquele banco.
+  O operador lista as branches, compara com os PRs abertos e aprova a remoção;
+  `main` nunca sai e `backup-*` exige aprovação específica. O próximo deploy
+  do PR recria a branch.
+
+## E2E no Preview
 
 ```bash
 node scripts/cutover-env-status.mjs preview-e2e
-PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview -- --list
 PREVIEW_BASE_URL="https://<deployment-do-pr>.vercel.app" npm run test:e2e:preview
 ```
 
-O runner valida a origem, executa o preflight antes do Playwright, passa o
-segredo de bypass somente ao filho autorizado e não passa as URLs de banco. O
-bootstrap faz uma única requisição por `APIRequestContext` à origem exata, com
-os headers oficiais do bypass, e recebe o cookie nesse contexto; a config não
-usa header global e desliga traces em Preview. O valor nunca é exibido.
-
-O preflight local compara identidades; `/api/operational-status` prova
-ambiente, writes-off, conectividade e persistência servida; a fixture atestada
-prova que o deployment atende ao alvo atestado. Nenhuma dessas provas, sozinha,
-comprova a identidade única da branch.
-
-Use somente o orçamento e a fixture descartável identificados pelo ambiente do
-operador; não crie cotação nem fixture novos. Confirme o estado da página, o
-banco isolado, o egress atestado e a ausência de mensagem duplicada. O listener
-de requests do browser é atestação independente, não prova de egress da Vercel.
-`DELIVERY_ACK` não é gate do Preview: envio real só ocorre em Production, com
-autorização.
-
-## Bloqueios no Preview
-
-Evolution, Resend, mutações de Blob e emissão de tokens de upload são bloqueados
-no Preview. `VERCEL_ENV=preview` também veta flags de produção contraditórias;
-o banco exige `APP_ENV=preview` nesse deployment. Persistência PostgreSQL pode
-ser exercitada somente no banco isolado. Não há dual-write, banco fallback ou
-coluna `is_test`.
-
-O código só lê as chaves `PREVIEW_*`. As antigas `STAGING_BASE_URL`,
-`STAGING_E2E_USERNAME`, `STAGING_EGRESS_BLOCKED` e `STAGING_FIXTURE_RESET` que
-ainda existirem no arquivo operacional estão sem uso. `STAGING_DATABASE_URL` e
-`STAGING_PG_SERVICE` continuam no contrato de migrations
-([runbook](./database-migrations.md)).
-
-## Ciclo de vida das branches de Preview
-
-A integração Vercel + Neon e o workflow
-`.github/workflows/neon-preview-prune.yml` fazem a tentativa best-effort de
-limpar a branch PostgreSQL associada quando o PR fecha. O workflow não prova
-que houve deployment, criação da branch ou remoção efetiva, e falha não bloqueia
-o PR.
-
-O plano Free do Neon aceita 10 branches por projeto; acima disso, todo Preview
-novo falha com `Resource provisioning failed`. Por isso branches `dependabot/**`
-não geram deployment (`git.deploymentEnabled` em `vercel.json`); o CI valida
-essas atualizações.
-
-Para uma limpeza manual, o operador lista as branches sem alterar recursos,
-compara-as aos PRs abertos, preserva `main` e releases em validação, apresenta
-as candidatas e obtém aprovação humana explícita. Remover uma branch é
-destrutivo para seu banco; `main` nunca é removida e `backup-*` exige aprovação
-específica.
+O primeiro comando lista as variáveis exigidas, só com nomes e estados; o
+`DATABASE_URL` delas é o da branch do PR. O runner roda o preflight de
+isolamento, restaura a cotação de rascunho e entra na proteção da Vercel com o
+segredo de bypass, sem exibi-lo nem passar as URLs de banco ao Playwright. Use
+só as cotações indicadas em `KNOWN_POSTGRES_*`. `PREVIEW_EGRESS_BLOCKED` e
+`PREVIEW_FIXTURE_RESET` são declarações do operador; a garantia contra envio
+externo é o bloqueio do código acima.
