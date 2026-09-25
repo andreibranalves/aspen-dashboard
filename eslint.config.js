@@ -23,7 +23,19 @@ const designScaleSyntax = [
   { selector: String.raw`TemplateElement[value.raw=/(^|\s)-?z-\d/]`, message: Z_INDEX_MESSAGE },
 ];
 
+const DECORATIVE_COLOR = String.raw`(^|\s)(bg|text|border)-(sage|orange|taupe)(-ink)?(\/\d+)?(\s|$)`;
+const DECORATIVE_COLOR_MESSAGE =
+  'Cor decorativa: use tokens semânticos (primary, success, warning…) ou chart-* em marcas de gráfico.';
+
 const featureSyntax = [
+  { selector: `Literal[value=/${DECORATIVE_COLOR}/]`, message: DECORATIVE_COLOR_MESSAGE },
+  { selector: `TemplateElement[value.raw=/${DECORATIVE_COLOR}/]`, message: DECORATIVE_COLOR_MESSAGE },
+  {
+    selector: "CallExpression[callee.property.name='toFixed']",
+    message: 'Use formatBRL, formatDecimalBR, formatPercent ou toApiDecimal de @/lib/formatting/formatters.',
+  },
+  { selector: "JSXOpeningElement[name.name='textarea']", message: 'Use Textarea de @/components/ui/textarea.' },
+  { selector: String.raw`JSXText[value=/[⌄▾▼▲►◄˅]/]`, message: 'Glifo de texto como ícone: use o ícone do lucide-react.' },
   {
     selector:
       "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(role|aria-expanded|aria-pressed|aria-selected|aria-current)$/]))",

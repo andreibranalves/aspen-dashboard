@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { apiGet, apiPut } from '@/lib/api/api';
-import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
+import { formatBRL, formatDate, capitalize, formatPercent } from '@/lib/formatting/formatters';
 import ErrorState from '@/components/shared/ErrorState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -123,7 +123,7 @@ function formatCompactBRL(value: number): string {
 function formatComparison(value: number | null, noOrders = false): string {
   if (noOrders || value === null) return 'Comparação indisponível';
   if (value === 0) return 'Sem variação';
-  return `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}% vs. período anterior`;
+  return `${formatPercent(value, { signed: true })} vs. período anterior`;
 }
 
 function formatExpense(value: number): string {
@@ -174,7 +174,7 @@ function RevenueChart({
   return (
     <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
       <div
-        className="relative flex h-56 min-w-(--chart-min-w) items-end justify-around gap-2 border-b border-orange-ink/20 px-3 pb-5 pl-9 pt-7"
+        className="relative flex h-56 min-w-(--chart-min-w) items-end justify-around gap-2 border-b border-line px-3 pb-5 pl-9 pt-7"
         style={{ '--chart-min-w': `${Math.max(180, series.items.length * 42 + 40)}px` } as CSSProperties}
       >
         <span className="pointer-events-none absolute left-1 top-3 text-xs text-fg-muted">
@@ -498,7 +498,7 @@ function RankingPanel({ kind, rows, omitted, summary }: {
             <Heading level="section">{product ? 'Participação no catálogo' : 'Clientes por receita'}</Heading>
             <Table className="mt-6 min-w-[390px]">
               <TableHeader><TableRow><TableHead>{product ? 'Produto' : 'Cliente'}</TableHead><TableHead className="text-right">Receita</TableHead><TableHead className="text-right">Participação</TableHead></TableRow></TableHeader>
-              <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? `${(row.revenue / revenue * 100).toFixed(1).replace('.', ',')}%` : '—'}</TableCell></TableRow>)}</TableBody>
+              <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? formatPercent((row.revenue / revenue) * 100) : '—'}</TableCell></TableRow>)}</TableBody>
             </Table>
             <OmittedRowsNote omitted={omitted} />
           </section>
