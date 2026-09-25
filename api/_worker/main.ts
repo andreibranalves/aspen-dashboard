@@ -20,7 +20,7 @@ async function exitWithError(task: string, error: unknown): Promise<void> {
   process.exit(1);
 }
 
-function shutdown(signal: NodeJS.Signals): void {
+function shutdown(signal: 'SIGTERM' | 'SIGINT'): void {
   console.log(`[worker] ${signal}: encerrando`);
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), SHUTDOWN_GRACE_MS).unref();
