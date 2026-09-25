@@ -230,14 +230,114 @@ const threadMessages = {
   revision: 3,
 };
 
+const deal = (id, lead_name, status, quotation, modificado_em) => ({
+  id, lead_name, status, quotation, quotation_id: quotation ? `q-${id}` : null,
+  email: '', telefone: '11999990001', follow_up_stage: 1, modificado_em, criado_em: '2026-09-01T10:00:00-03:00',
+});
+
+const crmDeals = {
+  columns: [
+    { status: 'Novo Lead', name: 'Novo lead', count: 1, deals: [deal('d1', 'Lead Sintético', 'Novo Lead', null, '2026-09-14T10:00:00-03:00')] },
+    { status: 'Orcamento Enviado', name: 'Orçamento enviado', count: 2, deals: [
+      deal('d2', 'Confecções Horizonte Ltda', 'Orcamento Enviado', 'ORC-20260101', '2026-09-10T10:00:00-03:00'),
+      deal('d3', 'Estamparia Litoral Norte', 'Orcamento Enviado', 'ORC-20260103', '2026-09-05T10:00:00-03:00'),
+    ] },
+    { status: 'Em Negociacao', name: 'Em negociação', count: 0, deals: [] },
+    { status: 'Pedido Fechado', name: 'Pedido fechado', count: 1, deals: [deal('d4', 'Marina Albuquerque', 'Pedido Fechado', 'ORC-20260102', '2026-09-08T10:00:00-03:00')] },
+    { status: 'Perdido', name: 'Perdido', count: 0, deals: [] },
+  ],
+};
+
+const productionOrder = (id, order_number, customer_name, grand_total, production_stage, production) => ({
+  id, order_number, customer_name, grand_total, status: 'To Deliver and Bill', date: '2026-09-01',
+  production_stage, production, production_days: 20, deadline_manual: false,
+  deposit_received_on: null, deposit_amount: null, art_approved_on: null, ready_on: null,
+  delivered_on: null, balance_received_on: null, received_amount: 0,
+});
+
+const productionBoard = {
+  attention_count: 1,
+  items: [
+    productionOrder('PED-2026-0101', 'PED-2026-0101', 'Confecções Horizonte Ltda', 1250, 'aguardando_entrada',
+      { deadline: null, total_days: null, elapsed_days: null, state: 'sem_prazo', stalled_days: 12 }),
+    productionOrder('PED-2026-0103', 'PED-2026-0103', 'Estamparia Litoral Norte', 3920.5, 'aguardando_entrada',
+      { deadline: null, total_days: null, elapsed_days: null, state: 'sem_prazo', stalled_days: 3 }),
+    productionOrder('PED-2026-0102', 'PED-2026-0102', 'Marina Albuquerque', 480, 'em_producao',
+      { deadline: '2026-09-29', total_days: 20, elapsed_days: 14, state: 'em_risco', stalled_days: null }),
+  ],
+};
+
+const salesOrderDetail = {
+  ...productionOrder('PED-2026-0101', 'PED-2026-0101', 'Confecções Horizonte Ltda', 1250, 'aguardando_arte',
+    { deadline: '2026-10-08', total_days: 20, elapsed_days: 4, state: 'no_prazo', stalled_days: null }),
+  deposit_received_on: '2026-09-10',
+  deposit_amount: 625,
+  received_amount: 625,
+  source_quotation: 'ORC-20260101',
+  items: [
+    { item_code: 'CAN-100', item_name: 'Canga estampada 100x160', qty: 100, rate: 9.5, amount: 950 },
+    { item_code: 'LEN-040', item_name: 'Lenço de seda 40x40', qty: 30, rate: 10, amount: 300 },
+  ],
+  notes: [],
+};
+
+const clientDetail = {
+  ...leadsClients.data[0],
+  display_name: 'Confecções Horizonte Ltda',
+  person_type: 'company',
+  tax_id: null,
+  address: { municipio: 'São Paulo', uf: 'SP' },
+  latest_quotation: { name: 'ORC-20260101', status: 'Emitido', date: '2026-09-10', grand_total: 1250 },
+  deal: { name: 'Confecções Horizonte Ltda', status: 'Orcamento Enviado', next_step: 'Confirmar prazo de entrega' },
+  orders: [],
+  creation: '2026-09-01T10:00:00-03:00',
+  modified: '2026-09-10T10:00:00-03:00',
+};
+
+const productDetail = {
+  produto: {
+    sku: 'CAN-100', nome: 'Canga estampada 100x160', descricao: 'Canga em viscose com estampa digital.',
+    categoria: 'Cangas', marca: null, unidade: 'Und', ativo: true, imagem: null,
+    modificado_em: '2026-09-10T10:00:00-03:00', preco_base: '9.50', custo_unitario: '4.20',
+  },
+  precos: [{ faixa: 1, qty: 100, rate: '9.50' }, { faixa: 2, qty: 300, rate: '8.90' }],
+  preco_base: '9.50',
+  pricing_available: true,
+};
+
+/** Configurações salvas, usadas só pela tela de Configurações (outras telas seguem sem elas). */
+export const savedSettings = {
+  validade_dias: 15, pagamento: '', entrega: '', frete_padrao: '0.00', aliquota: '4.00', observacoes: '',
+  template_padrao: 'branded', prazo_producao_dias: 20, prazo_producao_complemento: 'após confirmação do pagamento e aprovação da arte.',
+  secoes: {
+    schema_version: 1, show_summary: true, rich_text: true,
+    prazo_producao: { enabled: true, title: 'Prazo de produção' },
+    pagamento: { enabled: true, title: 'Dados para pagamento', body: '' },
+    condicoes_gerais: { enabled: true, title: 'Condições gerais', body: '' },
+  },
+  empresa: {
+    schema_version: 1,
+    identity: { legal_name: 'Aspen Estamparia', document: '' },
+    banking: { bank_name: '', bank_code: '', branch: '', account: '', pix_key: '' },
+    contacts: { website: '', phone: '', email: '', instagram: '' },
+  },
+  settings_version: 1,
+};
+
 export function respond(url) {
   const { pathname, searchParams } = url;
   if (pathname === '/api/leads-clients') return leadsClients;
+  if (pathname === '/api/product-detail') return productDetail;
+  if (pathname === '/api/product-activity') return { atividades: [] };
+  if (pathname === '/api/client-detail') return clientDetail;
   if (pathname === '/api/quotations') return searchParams.has('id') ? quotationDetail : quotationsList;
   if (pathname === '/api/products') {
     return searchParams.get('view') === 'categories' ? { categories: ['Bolsas', 'Cangas', 'Lenços'] } : products;
   }
-  if (pathname === '/api/sales-orders') return salesOrders;
+  if (pathname === '/api/sales-orders') {
+    if (searchParams.has('id')) return salesOrderDetail;
+    return searchParams.get('view') === 'production' ? productionBoard : salesOrders;
+  }
   // Sem configurações salvas: a tela usa os padrões locais.
   if (pathname === '/api/settings') return { status: 404, body: { error: 'Configurações não encontradas.' } };
   if (pathname === '/api/whatsapp-conversations') return conversations;
@@ -246,10 +346,17 @@ export function respond(url) {
   if (pathname === '/api/tasks') return searchParams.get('view') === 'alerts' ? { overdue_count: 0 } : { tasks: [], today: '2026-09-15', overdue_count: 0 };
   if (pathname === '/api/sales-dashboard') return salesDashboard;
   if (pathname === '/api/commercial-queue') return commercialQueue;
+  if (pathname === '/api/crm-deals') return crmDeals;
   if (pathname === '/api/quotation-templates') {
     return { templates: [{ key: 'padrao', name: 'Padrão', is_default: true, current_version_id: null }], default_key: 'padrao' };
   }
-  if (pathname === '/api/quotation-deliveries') return { status: 404, body: { error: 'Entrega não encontrada.' } };
+  if (pathname === '/api/quotation-deliveries') {
+    // Lista da tela Envios; a consulta de uma entrega específica segue sem registro.
+    if (searchParams.has('page')) {
+      return { data: [], total: 0, page: 1, page_size: 25, summary: { active: 4, requires_action: 2, retry_scheduled: 1, delayed: 0, delivered_last_24_hours: 9 } };
+    }
+    return { status: 404, body: { error: 'Entrega não encontrada.' } };
+  }
   if (pathname === '/api/order-templates') return { data: [] };
   if (pathname === '/api/communication-flows') {
     return {

@@ -7,27 +7,32 @@ const RATCHETS = [
   {
     name: 'margem vertical em filhos (prefira gap/space-y no pai)',
     pattern: /(?<![\w:-])-?m[tby]-(?!auto\b)[\d.]+(?![\w.-])/g,
-    limit: 270,
+    limit: 261,
   },
   {
     name: 'superfície de card montada à mão (use Card)',
     pattern: /(?<![\w-])rounded-card(?![\w-])/g,
-    limit: 72,
+    limit: 68,
   },
   {
     name: '<label> cru (use Field)',
     pattern: /<label\b/g,
-    limit: 128,
+    limit: 121,
   },
   {
     name: 'valor arbitrário do Tailwind (use tokens de layout)',
     pattern: /(?<![\w:-])[\w:-]*[a-z]-\[[^\]\s]+\](?!:)/g,
-    limit: 105,
+    limit: 90,
+  },
+  {
+    name: 'eyebrow à mão (use Heading level="eyebrow")',
+    pattern: /(?<![\w:-])uppercase(?![\w-])/g,
+    limit: 14,
   },
   {
     name: 'text-xs solto (use Text ou Field)',
     pattern: /(?<![\w:-])text-xs(?![\w-])/g,
-    limit: 278,
+    limit: 260,
   },
 ];
 

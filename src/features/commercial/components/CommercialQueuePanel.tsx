@@ -1294,11 +1294,13 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
         <div aria-label="Agenda comercial" className="space-y-3">
           {visibleRows.map((item) => (
             <details key={item.actionId} className="group rounded-card bg-surface">
-              <summary className="grid cursor-pointer list-none items-center gap-3 rounded-card p-4 xl:grid-cols-[82px_minmax(0,1fr)_auto_auto] xl:px-5 xl:py-4 [&::-webkit-details-marker]:hidden">
-                <span className="flex flex-col gap-1 text-xs"><time dateTime={item.dueAt} className="font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time><span className="text-2xs text-fg-muted">{dueStatusLabel(item.dueStatus)}</span></span>
-                <EntityIdentity name={contactLabel(item)} primary={item.reason || item.reasonLabel} secondary={`${contactLabel(item)} · ${item.kindLabel}`} />
-                <span className="flex items-center gap-2"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} tone={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
-                <span className="inline-flex items-center justify-center gap-2 rounded-control border border-line px-3 py-2 text-xs font-semibold"> <ChevronRight size={14} aria-hidden="true" className="transition-transform group-open:rotate-90" /> Abrir ação</span>
+              {/* Celular: prazo e status na primeira linha, contato abaixo; a partir de md, uma linha só. A linha inteira abre a ação. */}
+              <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-2 rounded-card px-4 py-3 md:grid md:grid-cols-[88px_minmax(0,1fr)_auto_auto] md:px-5 [&::-webkit-details-marker]:hidden">
+                <time dateTime={item.dueAt} className="text-xs font-semibold tabular-nums">{item.scheduleType === 'date_only' ? formatDate(item.dueDate || item.dueAt) : item.dueTime || formatDateTime(item.dueAt).split(', ')[1] || '—'}</time>
+                <span className="ml-auto flex items-center gap-2 md:order-3 md:ml-0"><StatusBadge status={item.dueStatus} label={dueStatusLabel(item.dueStatus)} tone={dueStatusTone(item.dueStatus)} />{item.isUrgent && <StatusBadge status="urgent" label="Urgente" />}</span>
+                <EntityIdentity className="basis-full md:order-2 md:basis-auto" name={contactLabel(item)} primary={item.reason || item.reasonLabel} secondary={`${contactLabel(item)} · ${item.kindLabel}`} />
+                <ChevronRight size={16} aria-hidden="true" className="hidden text-fg-muted transition-transform group-open:rotate-90 md:order-4 md:block" />
+                <span className="sr-only">Abrir ação</span>
               </summary>
               <div className="grid gap-4 border-t border-line px-5 py-4 text-xs text-fg-muted lg:grid-cols-2">
                 <div className="space-y-2"><div>{clientName(item)}</div><p>{item.demandSummary || 'Demanda não informada'}</p>{contactDetail(item) && <p>{contactDetail(item)}</p>}{item.proposals.length > 0 && <ul className="space-y-1">{item.proposals.map((proposal) => <li key={proposal.quotationId}>{proposalLabel(proposal)}</li>)}</ul>}{contextDetails(item)}</div>
