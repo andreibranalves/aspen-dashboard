@@ -113,7 +113,7 @@ disclosure toggles and navigation chrome. `no-restricted-syntax` enforces this i
 | `Table` | `density`: `default` (lists), `compact` (documents), `dense` (editable tables in cards); `edges`: `flush`, `inset` |
 | `TableRow` | `selected`, `tone="warning"`, `interactive` |
 | `Card` | `variant`: `default`, `outline`, `inset`; `padding`: `none`, `sm`, `default`, `lg`; `as` for the tag |
-| `Text` | `variant`: `body`, `meta`, `caption`, `label`, `value`, `id` (the only mono); `as`, `truncate` |
+| `Text` | `variant`: `body`, `title` (row name), `meta`, `caption`, `label`, `value`, `id` (SKU), `record` (record number a row opens); only `id`/`record` are mono; `as`, `truncate` |
 | `Field` | `label`, `hint`, `error`, `labelHidden`; wires `id`, `aria-describedby` and `aria-invalid` into the `Input`, `Select`, `Textarea` or `MoneyInput` inside it (one control per field) |
 | `MoneyInput` | `value: number \| null`, `onValueChange`; shows `1.234,56`, keeps what is typed while focused |
 | `Input` | `size`, `hideSpinButtons` |
@@ -254,9 +254,10 @@ define additional UI in this slice.
 
 The list keeps the existing status/search query state, batch selection and
 actions, export behavior, pagination, and API response semantics. Its visual
-hierarchy is title/count, status filters with authoritative counts, compact
-search, fluid table, and secondary row actions. E-mail delivery remains
-available as row context without becoming a primary table column.
+hierarchy is title, `StatusFilterBar` with the authoritative counts (no metric
+cards), compact search, and `DataList` rows that are real links with secondary
+row actions. E-mail delivery remains row context (a sent mark beside the
+status), not a column. The revision shows only when it is above 1.
 
 The detail keeps the existing draft/revision, emission, PDF, WhatsApp, e-mail,
 approval/order, loss, deletion, and history workflows. Issued views follow the
@@ -265,8 +266,13 @@ and totals, and commercial conditions appear together without tabs. The client
 card retains Ver cliente, Abrir no CRM, and Ver orçamentos anteriores.
 Commercial sections respect their saved visibility and titles, using the existing
 display-title normalization, and retain their original meanings. Detalhes do
-documento and Histórico e revisões use native collapsible sections. Visualizar PDF
-and Mais ações remain in the header. Acompanhamento comercial groups delivery
+documento and Histórico e revisões use native collapsible sections. The header
+meta labels its dates (`Data`, `Válido até`). Prévia do documento, Nova revisão
+and Mais ações stay in the header; Preparar envio shows there only while the
+Comunicação panel is stacked (`md` to `xl`). Below `md` the header keeps Mais
+ações (with Nova revisão), items render as stacked rows, and `MobileActionBar`
+carries the primary pair: Prévia + Preparar envio (issued), Editar + Emitir
+(draft), Cancelar + Salvar (editing). Acompanhamento comercial groups delivery
 and negotiation actions in a 336px side panel at extra-large widths and stacks
 below the content on smaller screens. Draft review and editing
 use the same detail shell with totals and consequential emission actions in the
@@ -349,7 +355,8 @@ then, the sections above describe the running app.
 - No colored card backgrounds. Charts use `chart-*` tokens only inside chart
   components; no palette cycled by index.
 - Lists adopt `StatusFilterBar` and `DataList`; details and Novo orçamento adopt
-  `MobileActionBar`; long forms adopt `StickySaveBar`.
+  `MobileActionBar`; long forms adopt `StickySaveBar`. Orçamentos (list and
+  detail) is the pilot and already follows this.
 
 ### Content rules
 

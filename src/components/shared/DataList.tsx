@@ -27,7 +27,9 @@ interface DataListProps<T> {
   columns: ReadonlyArray<DataListColumn<T>>;
   /** Linha empilhada abaixo de `md`: título, meta e valor. */
   mobileRow: (item: T) => ReactNode;
-  /** Controles da linha empilhada (checkbox, menu), fora do link. */
+  /** Controle à esquerda da linha empilhada (checkbox de seleção), fora do link. */
+  mobileLead?: (item: T) => ReactNode;
+  /** Controles à direita da linha empilhada (menu), fora do link. */
   mobileAside?: (item: T) => ReactNode;
   /** Destino da linha. Com href, a linha é um link de verdade: abre em nova aba e com o botão do meio. */
   getHref?: (item: T) => string | undefined;
@@ -52,6 +54,7 @@ export default function DataList<T>({
   getKey,
   columns,
   mobileRow,
+  mobileLead,
   mobileAside,
   getHref,
   getRowLabel,
@@ -119,6 +122,7 @@ export default function DataList<T>({
               className="relative flex min-h-14 items-center gap-3 py-3 data-[state=selected]:bg-surface-selected"
             >
               {href && <RowLink href={href} label={getRowLabel?.(item)} />}
+              {mobileLead && <div className="relative z-sticky shrink-0">{mobileLead(item)}</div>}
               <div className="min-w-0 flex-1">{mobileRow(item)}</div>
               {mobileAside && <div className="relative z-sticky shrink-0">{mobileAside(item)}</div>}
             </li>
