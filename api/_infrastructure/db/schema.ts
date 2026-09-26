@@ -328,6 +328,9 @@ export const quotations = pgTable(
     opportunityId: uuid('opportunity_id').references((): AnyPgColumn => crmDeals.id, {
       onDelete: 'set null',
     }),
+    // Acquisition channel the operator picked when creating the proposal
+    // (`LEAD_SOURCE_VALUES`). Null for proposals created before it was stored.
+    leadSource: varchar('lead_source', { length: 40 }),
     // Stable client-generated creation key. A retry that loses the first
     // response replays the original quotation instead of creating another one.
     // Nullable so every legacy consumer without a key keeps working.

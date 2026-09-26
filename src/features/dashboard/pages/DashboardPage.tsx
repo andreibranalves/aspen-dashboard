@@ -33,6 +33,7 @@ import {
 import {
   projectDashboardView,
   type DashboardListView,
+  type DashboardSourceView,
   type DashboardSummaryView,
   type DashboardViewData,
 } from '@/features/dashboard/dashboardViewModel';
@@ -362,69 +363,164 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
   );
 }
 
-const ORDER_SOURCE_LABELS: Record<string, string> = {
-  site_form: 'Site',
-  whatsapp: 'WhatsApp',
-  typebot: 'Typebot',
-  sem_origem: 'Sem origem',
+interface OrderOrigin {
+  key: string;
+  label: string;
+  swatch: string;
+  stroke: string;
+  /** Sem categoria: fatia fina, para não depender só da cor entre dois cinzas. */
+  missing?: boolean;
+}
+
+/** Canais com cor própria, listados mesmo zerados: saber que um canal não trouxe pedidos também é resposta. */
+const ORDER_ORIGIN_CHANNELS: OrderOrigin[] = [
+  { key: 'Google Ads', label: 'Google Ads', swatch: 'size-2.5 rounded-xs bg-chart-one', stroke: 'stroke-chart-one' },
+  { key: 'WhatsApp', label: 'WhatsApp', swatch: 'size-2.5 rounded-xs bg-chart-two', stroke: 'stroke-chart-two' },
+  { key: 'Bríndice', label: 'Bríndice', swatch: 'size-2.5 rounded-xs bg-chart-three', stroke: 'stroke-chart-three' },
+  {
+    key: 'Cliente recorrente',
+    label: 'Cliente recorrente',
+    swatch: 'size-2.5 rounded-xs bg-chart-four',
+    stroke: 'stroke-chart-four',
+  },
+];
+const OTHER_ORIGINS = { swatch: 'size-2.5 rounded-xs bg-chart-neutral', stroke: 'stroke-chart-neutral' };
+const MISSING_ORIGIN: OrderOrigin = {
+  key: 'sem_origem',
+  label: 'Sem origem',
+  swatch: 'h-1 w-2.5 rounded-full bg-border-strong',
+  stroke: 'stroke-border-strong',
+  missing: true,
 };
 
-/** Canais listados mesmo zerados: saber que um canal não trouxe pedidos também é resposta. */
-const ORDER_SOURCE_CHANNELS = ['site_form', 'whatsapp', 'typebot'];
+interface OriginSlice extends OrderOrigin {
+  orders: number;
+  title?: string;
+}
+
+function originSlices(rows: DashboardSourceView[]): OriginSlice[] {
+  const counts = new Map(rows.map((row) => [row.source, row.orders]));
+  const known = new Set([...ORDER_ORIGIN_CHANNELS.map((origin) => origin.key), MISSING_ORIGIN.key]);
+  const others = rows.filter((row) => !known.has(row.source));
+  const slices: OriginSlice[] = ORDER_ORIGIN_CHANNELS.map((origin) => ({ ...origin, orders: counts.get(origin.key) ?? 0 }));
+  if (others.length === 1) {
+    slices.push({ ...OTHER_ORIGINS, key: others[0]!.source, label: others[0]!.source, orders: others[0]!.orders });
+  } else if (others.length > 1) {
+    slices.push({
+      ...OTHER_ORIGINS,
+      key: 'outros',
+      label: 'Outros',
+      title: others.map((row) => row.source).join(', '),
+      orders: others.reduce((sum, row) => sum + row.orders, 0),
+    });
+  }
+  const missing = counts.get(MISSING_ORIGIN.key) ?? 0;
+  if (missing > 0) slices.push({ ...MISSING_ORIGIN, orders: missing });
+  return slices;
+}
+
+/** Circunferência normalizada (`pathLength`) e o vão de superfície entre fatias, na mesma unidade. */
+const RING_LENGTH = 100;
+const RING_GAP = 0.8;
+
+function OriginDonut({
+  slices,
+  total,
+  active,
+  onActive,
+}: {
+  slices: OriginSlice[];
+  total: number;
+  active: string | null;
+  onActive: (key: string | null) => void;
+}) {
+  const filled = slices.filter((slice) => slice.orders > 0);
+  const gap = filled.length > 1 ? RING_GAP : 0;
+  const focus = filled.find((slice) => slice.key === active);
+  let start = 0;
+  return (
+    <div className="relative size-40 shrink-0">
+      <svg viewBox="0 0 120 120" className="size-full -rotate-90" aria-hidden="true">
+        {filled.map((slice) => {
+          const length = (slice.orders / total) * RING_LENGTH;
+          const offset = start;
+          start += length;
+          return (
+            <circle
+              key={slice.key}
+              cx="60"
+              cy="60"
+              r="50"
+              fill="none"
+              strokeWidth={slice.missing ? 4 : 16}
+              pathLength={RING_LENGTH}
+              strokeDasharray={`${Math.max(length - gap, 0.4)} ${RING_LENGTH}`}
+              strokeDashoffset={-offset}
+              className={cn(
+                'transition-opacity',
+                slice.stroke,
+                active !== null && active !== slice.key && 'opacity-30'
+              )}
+              onMouseEnter={() => onActive(slice.key)}
+              onMouseLeave={() => onActive(null)}
+            />
+          );
+        })}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-7">
+        <Text variant="value">{focus ? focus.orders : total}</Text>
+        <Text variant="caption" truncate>
+          {focus ? `${focus.label} · ${formatShare(focus.orders, total)}` : total === 1 ? 'pedido' : 'pedidos'}
+        </Text>
+      </div>
+    </div>
+  );
+}
 
 function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
+  const [active, setActive] = useState<string | null>(null);
   const rows = data.ordersBySource?.items ?? [];
   const total = rows.reduce((sum, row) => sum + row.orders, 0);
-  const counts = new Map(rows.map((row) => [row.source, row.orders]));
-  const sources = [
-    ...ORDER_SOURCE_CHANNELS,
-    ...rows
-      .map((row) => row.source)
-      .filter((source) => !ORDER_SOURCE_CHANNELS.includes(source) && source !== 'sem_origem'),
-    ...(counts.has('sem_origem') ? ['sem_origem'] : []),
-  ];
+  const slices = originSlices(rows);
   return (
     <Card as="section" aria-labelledby="order-sources-title">
       <div className="flex flex-col gap-5">
-        <div className="flex items-baseline justify-between gap-3">
-          <Heading level="section" id="order-sources-title">
-            Origem dos pedidos
-          </Heading>
-          {total > 0 && (
-            <Text variant="meta">
-              {total} {total === 1 ? 'pedido' : 'pedidos'}
-            </Text>
-          )}
-        </div>
+        <Heading level="section" id="order-sources-title">
+          Origem dos pedidos
+        </Heading>
         {data.ordersBySource === null ? (
           <Unavailable>Origem indisponível.</Unavailable>
         ) : total === 0 ? (
           <Unavailable>Nenhum pedido no período.</Unavailable>
         ) : (
-          <ul className="flex flex-col gap-4">
-            {sources.map((source) => {
-              const orders = counts.get(source) ?? 0;
-              return (
-                <li key={source} className="flex flex-col gap-1.5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <Text truncate>{ORDER_SOURCE_LABELS[source] ?? source}</Text>
-                    <span className="flex shrink-0 items-baseline gap-2">
-                      <Text variant="value">{orders}</Text>
-                      <Text variant="caption">{formatShare(orders, total)}</Text>
-                    </span>
-                  </div>
-                  <div
-                    className={cn(
-                      'h-2 w-(--share) rounded-r-xs',
-                      source === 'sem_origem' ? 'bg-chart-neutral' : 'bg-chart-one'
-                    )}
-                    style={{ '--share': formatShare(orders, total) } as CSSProperties}
-                    aria-hidden="true"
-                  />
+          <div className="flex flex-col items-center gap-5">
+            <OriginDonut slices={slices} total={total} active={active} onActive={setActive} />
+            <ul className="flex w-full flex-col gap-2.5">
+              {slices.map((slice) => (
+                <li
+                  key={slice.key}
+                  className={cn(
+                    'flex items-center gap-2 transition-opacity',
+                    active !== null && active !== slice.key && 'opacity-50'
+                  )}
+                  title={slice.title}
+                  onMouseEnter={() => setActive(slice.orders > 0 ? slice.key : null)}
+                  onMouseLeave={() => setActive(null)}
+                >
+                  <span className={cn('shrink-0', slice.swatch)} aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <Text variant="meta" truncate>
+                      {slice.label}
+                    </Text>
+                  </span>
+                  <Text variant="value">{slice.orders}</Text>
+                  <span className="w-9 text-right">
+                    <Text variant="caption">{formatShare(slice.orders, total)}</Text>
+                  </span>
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     </Card>

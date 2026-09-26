@@ -128,8 +128,15 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
         { item_code: sku, qty: '1.001', manual_rate: true, rate: '2.50' },
       ],
       frete: '1.25',
+      origem: 'brindice',
     });
     assert.equal(manual.quotation_name, `ORC-${year}0005`);
+    const storedLeadSources = await db
+      .select({ id: quotations.id, leadSource: quotations.leadSource })
+      .from(quotations)
+      .where(inArray(quotations.id, [manual.quotation_uuid, concurrent[0].quotation_uuid]));
+    assert.equal(storedLeadSources.find((row) => row.id === manual.quotation_uuid)?.leadSource, 'Bríndice');
+    assert.equal(storedLeadSources.find((row) => row.id === concurrent[0].quotation_uuid)?.leadSource, null);
     assert.equal(manual.subtotal, '302.51');
     assert.equal(manual.frete, '1.25');
     assert.equal(manual.total, '303.76');
