@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type UIEvent } from 'react';
-import { ArrowDown, ArrowLeft, FilePlus, LoaderCircle, MessagesSquare, PanelRight } from 'lucide-react';
+import { ArrowDown, ArrowLeft, MessagesSquare, PanelRight, RefreshCw } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import EmptyState from '@/components/shared/EmptyState';
@@ -136,6 +136,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const [deliveryPending, setDeliveryPending] = useState<string | null>(null);
   const [quoteContact, setQuoteContact] = useState<AtendimentoContact | null>(null);
   const [preparingQuote, setPreparingQuote] = useState(false);
+  const [reloading, setReloading] = useState(false);
 
   const loadDeliveries = useCallback(async () => {
     const conversationId = selectedIdRef.current;
@@ -463,6 +464,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
         name: contact.name?.value || contact.profileName || '',
         company: contact.company?.value || '',
         email: contact.email?.value || '',
+        order: contact.order?.text || '',
       };
       const key = `aspen-attendance-quote-pending:${conversationId}`;
       const selectionKey = JSON.stringify(payload);
@@ -480,6 +482,19 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
       if (selectedIdRef.current === conversationId) setStatusNotice(errorMessage(error, 'Não foi possível preparar o orçamento.'));
     } finally {
       setPreparingQuote(false);
+    }
+  };
+
+  const reload = async () => {
+    setReloading(true);
+    try {
+      await Promise.all([
+        // A failed refresh already shows in the list.
+        loadFirstPage('refresh').catch(() => undefined),
+        selectedIdRef.current ? loadThread(selectedIdRef.current) : undefined,
+      ]);
+    } finally {
+      setReloading(false);
     }
   };
 
@@ -503,14 +518,24 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
           aria-label="Lista de conversas"
           className={cn('flex min-h-0 flex-col border-border-subtle lg:border-r', selectedId && 'max-lg:hidden')}
         >
-          <div className="border-b border-border-subtle p-3">
+          <div className="flex items-center gap-2 border-b border-border-subtle p-3">
             <SearchField
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar por nome ou telefone"
               aria-label="Buscar conversas"
-              containerClassName="sm:max-w-none"
+              containerClassName="flex-1 sm:max-w-none"
             />
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Atualizar conversas e mensagens"
+              title="Atualizar conversas e mensagens"
+              disabled={reloading}
+              onClick={() => void reload()}
+            >
+              <RefreshCw aria-hidden="true" className={reloading ? 'animate-spin' : undefined} />
+            </Button>
           </div>
           {listError && conversations.length > 0 && (
             <InlineAlert tone="warning" className="m-2">
@@ -580,14 +605,12 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 />
                 <Button
                   variant="outline"
-                  size="icon"
                   disabled={preparingQuote}
                   aria-busy={preparingQuote}
-                  aria-label="Orçamento desta conversa"
-                  title="Orçamento desta conversa"
+                  title="Extrair dados do cliente e pedido para um orçamento"
                   onClick={() => void prepareQuote()}
                 >
-                  {preparingQuote ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <FilePlus aria-hidden="true" />}
+                  {preparingQuote ? 'Extraindo…' : 'Extrair'}
                 </Button>
                 {!wide && (
                   <Button variant="ghost" size="icon" onClick={() => setContextOpen(true)} aria-label="Contexto comercial">

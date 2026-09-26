@@ -63,7 +63,7 @@ test('reads name and company the client wrote, the newest inbound e-mail and the
   assert.deepEqual(result.body.email, { value: 'maria.silva@lojasol.com.br', messageId: newEmail.id, at: '2026-09-25T12:02:00.000Z' });
   assert.equal(result.body.phone, '5521988887777');
   assert.equal(result.body.profileName, 'Mari');
-  assert.equal(result.body.nameUnavailable, false);
+  assert.equal(result.body.modelUnavailable, false);
   // The operator's own messages never reach the model.
   const sent = JSON.parse((flow.payload?.messages as Array<{ content: string }>)[1].content) as Array<{ id: string }>;
   assert.deepEqual(sent.map((item) => item.id), [intro.id, oldEmail.id, newEmail.id]);
@@ -87,12 +87,48 @@ test('drops a name that is not written in the cited message', async () => {
   }
 });
 
+test('copies the order messages the model points at, verbatim and oldest first', async () => {
+  const hello = message('Bom dia!', 'inbound', '2026-09-25T12:00:00Z');
+  const order = message('Quero 100 camisetas pretas, tamanho M', 'inbound', '2026-09-25T12:01:00Z');
+  const reply = message('Claro, com estampa?', 'outbound', '2026-09-25T12:02:00Z');
+  const detail = message('  Com logo nas costas  ', 'inbound', '2026-09-25T12:03:00Z');
+  const flow = setup({
+    messages: [hello, order, reply, detail],
+    answer: () => ({
+      name: { value: '', messageId: '' }, company: { value: '', messageId: '' },
+      // Out of order, repeated, an operator message and an unknown ID.
+      order: [detail.id, order.id, detail.id, reply.id, randomUUID()],
+    }),
+  });
+  const result = await flow.post();
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.order, {
+    text: 'Quero 100 camisetas pretas, tamanho M\nCom logo nas costas',
+    messageIds: [order.id, detail.id],
+    at: '2026-09-25T12:03:00.000Z',
+  });
+});
+
+test('no order when the model points at none, and the newest order messages fit the cap', async () => {
+  const none = setup({ messages: [message('Oi')], answer: () => ({ name: { value: '', messageId: '' }, company: { value: '', messageId: '' }, order: [] }) });
+  assert.equal((await none.post()).body.order, null);
+
+  const old = message('a'.repeat(3_000), 'inbound', '2026-09-25T12:00:00Z');
+  const recent = message('b'.repeat(3_000), 'inbound', '2026-09-25T12:01:00Z');
+  const capped = setup({
+    messages: [old, recent],
+    answer: () => ({ name: { value: '', messageId: '' }, company: { value: '', messageId: '' }, order: [old.id, recent.id] }),
+  });
+  assert.deepEqual((await capped.post()).body.order.messageIds, [recent.id]);
+});
+
 test('reports a failed name read apart from a name that is not there', async () => {
   const flow = setup({ messages: [message('email: a@b.com')], status: 503 });
   const result = await flow.post();
   assert.equal(result.status, 200);
   assert.equal(result.body.name, null);
-  assert.equal(result.body.nameUnavailable, true);
+  assert.equal(result.body.order, null);
+  assert.equal(result.body.modelUnavailable, true);
   assert.equal(result.body.email.value, 'a@b.com');
 });
 
@@ -103,7 +139,7 @@ test('without client text there is no model call, and a conflicting identity hid
   assert.equal(flow.calls, 0);
   assert.equal(result.body.email, null);
   assert.equal(result.body.phone, null);
-  assert.equal(result.body.nameUnavailable, false);
+  assert.equal(result.body.modelUnavailable, false);
 });
 
 test('rejects an invalid or unknown conversation', async () => {
