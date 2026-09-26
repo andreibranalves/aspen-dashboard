@@ -1,8 +1,8 @@
 # Runbook operacional do WhatsApp
 
-Readiness da aplicação, configuração do webhook Evolution e dos schedules QStash
+Readiness da aplicação, configuração do webhook Evolution e do wake do worker
 e prontidão de envio. Nenhuma etapa executa deploy ou
-migration; alterar webhook, schedule ou env é operação do responsável principal,
+migration; alterar webhook, wake ou env é operação do responsável principal,
 com autorização própria (ver `AGENTS.md`).
 
 ## Readiness
@@ -15,21 +15,22 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 
 ## Webhook e worker de entregas
 
-Os nomes de configuração necessários são:
+Os nomes de configuração necessários na Vercel são:
 
 ```text
 EVOLUTION_WEBHOOK_SECRET
-CRON_SECRET
 EVOLUTION_INSTANCE
+WORKER_WAKE_URL
+WORKER_WAKE_SECRET
 ```
 
 Configure o webhook da Evolution com os eventos `MESSAGES_UPSERT` (mensagens do Atendimento) e `MESSAGES_UPDATE` (recibos), `webhookBase64: false` e um cabeçalho `Authorization` personalizado.
 
 Confirme que `/api/evolution-webhook` rejeita requisições sem bearer e com bearer incorreto.
 
-Confirme que o schedule QStash `aspen-whatsapp-delivery-worker` invoca `POST /api/quotation-delivery-worker` a cada dois minutos, com zero retries e `Authorization: Bearer <CRON_SECRET>` encaminhado por `Upstash-Forward-Authorization`.
+Envios, respostas do Atendimento, retornos, recibos e efeitos do webhook saem do container `aspen-worker` no VPS ([ADR 0013](adr/0013-worker-whatsapp-no-vps.md), [runbook](worker-runbook.md)). Depois de gravar trabalho, a Function chama `POST WORKER_WAKE_URL` (`https://aspen-worker.srv1892439.hstgr.cloud/wake`) com `Authorization: Bearer <WORKER_WAKE_SECRET>`, o mesmo valor do `.env` do worker. O wake é só um aviso: o worker relê o banco, trabalha até esvaziar o que venceu e dorme até o próximo vencimento registrado, no máximo uma hora. Se o wake falhar, a tela avisa o operador e o trabalho sai nessa varredura.
 
-O schedule fica fora do `vercel.json` porque o plano Hobby da Vercel aceita somente execuções diárias. Configure `Upstash-Redact-Fields: header[Authorization]` e nunca registre o token QStash ou `CRON_SECRET`.
+Nunca registre `WORKER_WAKE_SECRET`.
 
 Inspecione **Envios** para localizar linhas ativas e acionáveis.
 
@@ -43,31 +44,31 @@ Não registre valores dessas variáveis neste repositório, em comandos ou em re
 
 ## Prontidão do envio WhatsApp (somente leitura)
 
-Antes de investigar um relato de envio parcial, confirme que o webhook e o schedule
-apontam para o host ativo e que não há fila executável vencida. O comando não envia
+Antes de investigar um relato de envio parcial, confirme que o webhook e o wake
+apontam para o destino ativo e que não há fila executável vencida. O comando não envia
 mensagem, não aciona o worker e não imprime credenciais, cabeçalhos ou telefones.
 
 ```bash
 node scripts/whatsapp-delivery-readiness.mjs \
   --webhook-url https://<host-ativo>/api/evolution-webhook \
-  --worker-url  https://<host-ativo>/api/quotation-delivery-worker
+  --worker-url  https://aspen-worker.srv1892439.hstgr.cloud/wake
 ```
 
 A URL do banco vem apenas do ambiente protegido (`DATABASE_URL`). `--database-url` é
 proibido e encerra com código diferente de zero, sem ecoar o valor, para não expor
 credenciais no histórico do shell ou na listagem de processos.
 
-- `dns=FAIL` significa que o destino configurado não resolve — o webhook e o schedule
-  não chegam à aplicação ativa, mesmo com o worker saudável.
+- `dns=FAIL` significa que o destino configurado não resolve — o webhook ou o wake
+  não chegam ao destino ativo, mesmo com o worker saudável.
 - A sondagem é obrigatória: ela envia a menor requisição sem credenciais nem
   corpo no método não suportado `HEAD` para exatamente `/api/evolution-webhook` e
-  `/api/quotation-delivery-worker` e reporta o status observado e o esperado,
-  sempre `405` (método rejeitado pelo handler antes do bearer e de qualquer
-  trabalho). Nada é processado: a pipeline libera as rotas de máquina canônicas,
-  o roteamento alcança o handler e o handler rejeita `HEAD` antes de qualquer
-  ação. Caminho protegido errado responde `401` antes do roteamento e reprova,
-  assim como uma rota canônica divergente do caminho esperado; rota quebrada
-  (`500`) também reprova. `OPTIONS` não é usado porque o adapter Node o responde
+  o `/wake` do worker e reporta o status observado e o esperado,
+  sempre `405` (método rejeitado antes do bearer e de qualquer
+  trabalho). Nada é processado: na Vercel a pipeline libera a rota de máquina
+  canônica e o handler rejeita `HEAD` antes de qualquer ação; no VPS o worker
+  rejeita `HEAD` no `/wake`. Caminho protegido errado na Vercel responde `401`
+  antes do roteamento e reprova, caminho desconhecido no worker responde `404`
+  e reprova, e rota quebrada (`500`) também reprova. `OPTIONS` não é usado porque o adapter Node o responde
   com `204` antes do roteamento. `probe=OMITIDO` (por exemplo com `--no-probe`,
   que existe só para diagnóstico) também reprova e termina com código diferente
   de zero.
@@ -85,24 +86,22 @@ status esperado e a fila está verificada e saudável; em qualquer outro caso im
 `resultado: FALHA` e termina com código de saída diferente de zero.
 
 Compare o `host=` reportado com o host ativo conhecido. O comando não corrige
-destinos: alteração de QStash ou do webhook é operação do responsável principal.
+destinos: alteração do wake ou do webhook é operação do responsável principal.
 
 A aba **Canais** de Configurações mostra, somente leitura, a última execução
 registrada do worker de entregas, quantas etapas estão em reconciliação e quantos recibos
 aguardam correlação (`GET /api/whatsapp-delivery-diagnostics`). O painel não envia, não
-reivindica lease nem expira nada. `nenhuma execução registrada` significa que nenhuma
-execução autorizada gravou resultado desde o deploy desta versão: confirme o schedule
-QStash e o bearer encaminhado antes de concluir que o worker não rodou.
+reivindica lease nem expira nada. `nenhuma execução registrada` significa que nenhum
+ciclo do worker gravou resultado desde o deploy desta versão: confira
+`docker ps --filter name=aspen-worker` e `docker logs --tail 100 aspen-worker` no VPS
+antes de concluir que o worker não rodou.
 
-## Worker de follow-up de orçamento
+## Retornos de orçamento
 
-Com
-`QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=0` o worker não envia. Com a
-configuração de `QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT`,
-`QUOTATION_FOLLOW_UP_WORKER_URL`, `QSTASH_TOKEN`, `QSTASH_API_URL` e `CRON_SECRET`,
-programe no QStash uma chamada a `POST /api/quotation-follow-up-worker` a cada 15
-minutos, com zero retries e o bearer encaminhado por
-`Upstash-Forward-Authorization`.
+O worker envia os retornos aprovados. Com
+`QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=0` ele não envia. As variáveis
+`QUOTATION_FOLLOW_UP_*` ficam na Vercel e no `.env` do worker, com os mesmos
+valores.
 
 Habilite o envio somente com `APP_ENV=production`,
 `EXTERNAL_WRITES_ENABLED=1` e `QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=1`.

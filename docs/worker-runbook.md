@@ -16,7 +16,24 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
    install -m 600 /dev/null /docker/aspen-worker/.env
    ```
 
-   Preencha `/docker/aspen-worker/.env` com `nano`. Nesta fase basta `SENTRY_DSN`; as fases seguintes acrescentam banco, Evolution e `WORKER_WAKE_SECRET`. Valor com `$` vai entre aspas simples.
+   Preencha `/docker/aspen-worker/.env` com `nano`. Valor com `$` vai entre aspas simples.
+
+   ```text
+   SENTRY_DSN=
+   # Os mesmos valores do ambiente Production da Vercel:
+   DATABASE_URL=
+   EVOLUTION_API_KEY=
+   EVOLUTION_INSTANCE=
+   QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=
+   QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT=
+   WORKER_WAKE_SECRET=
+   # Próprios do worker:
+   APP_ENV=production
+   EXTERNAL_WRITES_ENABLED=1
+   EVOLUTION_BASE_URL=http://evolution-api-zscx-api-1:8080
+   ```
+
+   `WORKER_WAKE_SECRET` sai de `openssl rand -hex 32` e vai também para a Vercel (passo 7). `EXTERNAL_WRITES_ENABLED=0` desliga todo envio do worker; `QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=0`, só os retornos. Mudança no `.env` vale depois de `ASPEN_WORKER_TAG=$(cat /docker/aspen-worker/current-tag) docker compose -f /docker/aspen-worker/docker-compose.yml up -d --wait`.
 
 2. Script de deploy:
 
@@ -58,12 +75,15 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
 
    Depois apague os dois arquivos da chave do seu computador.
 
+7. Vercel, no ambiente Production: `WORKER_WAKE_URL=https://aspen-worker.srv1892439.hstgr.cloud/wake` e `WORKER_WAKE_SECRET` com o valor do `.env`. Sem elas, a Function não acorda o worker, o operador vê o aviso de wake e o trabalho espera a próxima varredura, em até 1 h. O Preview não recebe essas variáveis.
+
 O primeiro deploy é o merge que traz o worker. Se a instalação ainda não estiver pronta, o job falha; conclua a instalação e use **Re-run jobs**.
 
 ## Operação
 
 - Estado: `docker ps --filter name=aspen-worker`, `cat /docker/aspen-worker/current-tag` e `curl -s https://aspen-worker.srv1892439.hstgr.cloud/health`, que responde com o sha em execução.
 - Logs: `docker logs --tail 100 aspen-worker`. Rotação em 10 MB × 5; erros vão ao Sentry.
+- Ciclo: o worker varre ao subir, a cada `/wake` e no próximo vencimento registrado no banco, no máximo a cada hora. Reiniciar o container força uma varredura. Ao parar, ele não começa outro envio e espera o passo em curso, por até 90 s.
 - Rollback: **Actions › Worker deploy › Run workflow**, com o sha de uma imagem que está no VPS (`docker image ls aspen-worker`; ficam as 5 mais novas). Não há rebuild.
 - Mudança no compose ou no script: reinstale como nos passos 1 e 2 e rode `ASPEN_WORKER_TAG=$(cat /docker/aspen-worker/current-tag) docker compose -f /docker/aspen-worker/docker-compose.yml up -d --wait`.
 - Rotação da chave de deploy: gere outra, troque a linha no `authorized_keys` e o secret `WORKER_DEPLOY_SSH_KEY`.

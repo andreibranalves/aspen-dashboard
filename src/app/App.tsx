@@ -1,6 +1,7 @@
 import { Suspense, type ReactNode } from 'react';
 import { useHashRoute, RouteGuardProvider } from '@/hooks/useHashRoute';
 import { ToastProvider } from '@/components/shared/toast';
+import { WorkerWakeNotice } from '@/components/shared/WorkerWakeNotice';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 import { routes, type AppRoute } from '@/app/routes';
@@ -37,6 +38,7 @@ export default function App() {
   if (matched && matched.entry.layout === false) {
     return (
       <ToastProvider>
+        <WorkerWakeNotice />
         <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
           {content}
         </RouteGuardProvider>
@@ -45,6 +47,7 @@ export default function App() {
   }
   return (
     <ToastProvider>
+      <WorkerWakeNotice />
       <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
         <Layout route={route} onNavigate={navigate}>
           {content}

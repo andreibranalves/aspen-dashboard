@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  FOLLOW_UP_IMMEDIATE_PUBLISH_DAILY_CAP,
+  FOLLOW_UP_IMMEDIATE_SEND_DAILY_CAP,
   FOLLOW_UP_LEASE_MS,
   FOLLOW_UP_WAIT_MS,
   buildDefaultFollowUpMessage,
@@ -18,7 +18,7 @@ import {
   followUpExternalWritesEnabled,
   parseFollowUpTrackingStartedAt,
   recoverExpiredFollowUpLease,
-  shouldPublishFollowUpImmediately,
+  shouldSendFollowUpImmediately,
   type FollowUpCandidateFacts,
 } from '../../api/_modules/quotation-follow-up-state.js';
 
@@ -367,10 +367,10 @@ test('default message includes client and quotation without tutorial copy', () =
   );
 });
 
-test('immediate QStash publish stops after the daily cap', () => {
-  assert.equal(shouldPublishFollowUpImmediately(0), true);
-  assert.equal(shouldPublishFollowUpImmediately(FOLLOW_UP_IMMEDIATE_PUBLISH_DAILY_CAP - 1), true);
-  assert.equal(shouldPublishFollowUpImmediately(FOLLOW_UP_IMMEDIATE_PUBLISH_DAILY_CAP), false);
+test('immediate follow-up sends stop after the daily cap', () => {
+  assert.equal(shouldSendFollowUpImmediately(0), true);
+  assert.equal(shouldSendFollowUpImmediately(FOLLOW_UP_IMMEDIATE_SEND_DAILY_CAP - 1), true);
+  assert.equal(shouldSendFollowUpImmediately(FOLLOW_UP_IMMEDIATE_SEND_DAILY_CAP), false);
 });
 
 test('follow-up external writes require production and both kill switches', () => {

@@ -32,7 +32,7 @@ Frontend → HTTP → api/_app → api/_modules → api/_infrastructure
 - O frontend acessa estado e regras de negócio pelo backend HTTP; não acessa banco diretamente.
 - Exceção: `MediaUploader` envia bytes diretamente ao Vercel Blob com token emitido por `/api/communication-media-upload`; metadados continuam passando pelo backend.
 - `api/[...path].ts` é a única Function implantável e delega ao pipeline HTTP compartilhado.
-- `api/_worker/main.ts` é a entrada do container `aspen-worker` no VPS (ADR 0013). Não é Function da Vercel: usa o mesmo build e os mesmos módulos, mas atende só as rotas próprias do worker. Deploy e operação em [`docs/worker-runbook.md`](docs/worker-runbook.md).
+- `api/_worker/main.ts` é a entrada do container `aspen-worker` no VPS (ADR 0013). Não é Function da Vercel: usa o mesmo build e os mesmos módulos, mas atende só `/health` e `/wake`, pelo qual a Function o acorda depois de gravar trabalho. Deploy e operação em [`docs/worker-runbook.md`](docs/worker-runbook.md).
 - Autenticação, rate limiting e normalização de erros permanecem nesse pipeline; respostas e logs não expõem segredos, dados pessoais, stack traces ou erros brutos.
 - `api/_app/routes.ts` é o único registro de endpoints.
 - `api/_http` adapta transportes; não contém regras de negócio.
@@ -47,7 +47,7 @@ Não:
 
 - acessar PostgreSQL ou Drizzle pelo frontend;
 - acessar PostgreSQL ou Drizzle fora do boundary documentado em [`docs/postgresql-drizzle-boundary.md`](docs/postgresql-drizzle-boundary.md);
-- importar SDKs ou ler configuração de ambiente de Evolution API, OpenRouter, Resend, QStash, Vercel Blob ou Vercel KV em `api/_modules` ou `api/_shared`; use as factories da camada de integrações;
+- importar SDKs ou ler configuração de ambiente de Evolution API, OpenRouter, Resend, wake do worker, Vercel Blob ou Vercel KV em `api/_modules` ou `api/_shared`; use as factories da camada de integrações;
 - acessar fornecedores diretamente pelo frontend, exceto o upload ao Vercel Blob mediado pelo token do backend descrito acima;
 - adicionar rotas do frontend fora de `src/app/routes.tsx`;
 - adicionar endpoints fora de `api/_app/routes.ts`;

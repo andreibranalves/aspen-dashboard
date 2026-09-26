@@ -14,21 +14,16 @@ import {
   isFollowUpListView,
   normalizeWhatsappOutboundText,
 } from './quotation-follow-up-state.js';
-import {
-  publishQuotationFollowUp,
-  type QuotationFollowUpQstashDependencies,
-} from '../_infrastructure/integrations/qstash/client.js';
+import { wakeWorker } from '../_infrastructure/integrations/worker/client.js';
 
 export interface FollowUpsHandlerDependencies {
   followUpModule?: QuotationFollowUpModule;
-  publish?: typeof publishQuotationFollowUp;
-  qstash?: QuotationFollowUpQstashDependencies;
+  wakeWorker?: typeof wakeWorker;
   environment?: {
     APP_ENV?: string;
     EXTERNAL_WRITES_ENABLED?: string;
     QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED?: string;
   };
-  now?: () => Date;
 }
 
 class HandlerInputError extends Error {
@@ -136,7 +131,6 @@ export function createFollowUpsHandler(
   dependencies: FollowUpsHandlerDependencies = {},
 ): (event: FunctionEvent) => Promise<FunctionResult> {
   const module = dependencies.followUpModule || createQuotationFollowUpModule();
-  const now = dependencies.now || (() => new Date());
   const environment = dependencies.environment || process.env;
 
   return async (event: FunctionEvent): Promise<FunctionResult> => {
@@ -208,14 +202,9 @@ export function createFollowUpsHandler(
         });
         const followUpId = approved.followUpId;
         if (!followUpId) throw new Error('approved row missing id');
-        try {
-          const approvals = await module.countApprovalsTodayUtc(now());
-          const publish = dependencies.publish || publishQuotationFollowUp;
-          await publish({ followUpId, approvalsCreatedTodayUtc: approvals }, dependencies.qstash);
-        } catch {
-          // Approved row is durable; the 15-minute recovery schedule retries publish.
-        }
-        return json(201, { follow_up_id: followUpId, state: 'approved' });
+        // A aprovação já é durável; sem o aviso, a varredura horária do worker envia.
+        const workerWake = await (dependencies.wakeWorker || wakeWorker)();
+        return json(201, { follow_up_id: followUpId, state: 'approved', worker_wake: workerWake });
       }
 
       if (Object.keys(body).some((key) => !['quotation_id', 'eligibility_version', 'reason'].includes(key))) {

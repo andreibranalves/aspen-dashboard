@@ -1,3 +1,5 @@
+import { noticeWorkerWake } from '@/lib/workerWake';
+
 export type DeliveryState =
   | 'queued'
   | 'processing'
@@ -612,6 +614,7 @@ export async function enqueueDelivery(
   });
   if (!response.ok) return requestError(response, 'Não foi possível iniciar o envio.');
   const body = await responseBody(response);
+  noticeWorkerWake(body);
   if (!isRecord(body) || body.success !== true || !isRecord(body.delivery)) invalidResponse();
   const deliveryId = text(body.delivery_id, { maximum: 255 });
   const responseRevisionId = text(body.revision_id, { maximum: 255 });
@@ -662,5 +665,7 @@ export async function resolveDelivery(
     body: JSON.stringify({ decision, note: note.trim() }),
   });
   if (!response.ok) return requestError(response, 'Não foi possível resolver a entrega.');
-  return parseDelivery(await responseBody(response));
+  const body = await responseBody(response);
+  noticeWorkerWake(body);
+  return parseDelivery(body);
 }

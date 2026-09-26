@@ -16,9 +16,27 @@ COPY scripts/build-api.mjs scripts/
 COPY api api
 RUN node scripts/build-api.mjs
 
+# O PDF e o WebP do envio usam o chromium do @sparticuz/chromium, que se
+# extrai em os.tmpdir(). O /tmp do container é noexec, então a extração
+# acontece aqui, e o fonts.conf do pacote passa a apontar para as fontes dela.
+FROM deps AS chromium
+RUN mkdir /opt/chromium \
+  && TMPDIR=/opt/chromium node -e "import('@sparticuz/chromium').then((m) => m.default.executablePath())" \
+  && sed -i 's#<dir>/tmp/fonts</dir>#<dir>/opt/chromium/fonts</dir>#' /opt/chromium/fonts/fonts.conf \
+  && grep -q '<dir>/opt/chromium/fonts</dir>' /opt/chromium/fonts/fonts.conf \
+  && chmod -R a+rX /opt/chromium && chmod 755 /opt/chromium/chromium
+
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
-ENV NODE_ENV=production
+# Bibliotecas que o chromium do pacote não traz fora do Lambda.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libnss3 libexpat1 \
+  && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production \
+  SPARTICUZ_CHROMIUM_PATH=/opt/chromium/chromium \
+  FONTCONFIG_PATH=/opt/chromium/fonts \
+  HOME=/tmp
 WORKDIR /app
+COPY --from=chromium /opt/chromium /opt/chromium
 COPY package.json ./
 COPY --from=deps /app/node_modules node_modules
 COPY --from=build /app/api api

@@ -7,13 +7,12 @@ const RUNTIME_ROOTS = [resolve(PROJECT_ROOT, 'api/_modules'), resolve(PROJECT_RO
 
 const FORBIDDEN_IMPORTS = /^@vercel\/(?:blob(?:\/client)?|kv)$/;
 const PROVIDER_ENV_NAME =
-  /^(?:EVOLUTION_[A-Z0-9_]+|OPENROUTER_[A-Z0-9_]+|RESEND_[A-Z0-9_]+|QSTASH_[A-Z0-9_]+|(?:QUOTATION_)?BLOB_[A-Z0-9_]+|KV_REST_API_(?:URL|TOKEN)|VERCEL_OIDC_TOKEN|GOOGLE_ADS_[A-Z0-9_]+)$/;
+  /^(?:EVOLUTION_[A-Z0-9_]+|OPENROUTER_[A-Z0-9_]+|RESEND_[A-Z0-9_]+|WORKER_WAKE_[A-Z0-9_]+|(?:QUOTATION_)?BLOB_[A-Z0-9_]+|KV_REST_API_(?:URL|TOKEN)|VERCEL_OIDC_TOKEN|GOOGLE_ADS_[A-Z0-9_]+)$/;
 const PROCESS_ENV_ACCESS =
   /\bprocess\s*\.\s*env\s*(?:\.\s*([A-Z][A-Z0-9_]*)|\[\s*['"]([A-Z][A-Z0-9_]*)['"]\s*\])/g;
 const FORBIDDEN_ENDPOINTS = [
   { pattern: /openrouter\.ai\/api\/v1\/chat\/completions/g, target: 'openrouter endpoint' },
   { pattern: /api\.resend\.com\/emails/g, target: 'resend endpoint' },
-  { pattern: /qstash\.upstash\.io/g, target: 'qstash endpoint' },
 ];
 
 const IMPORT_GAP = String.raw`(?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;

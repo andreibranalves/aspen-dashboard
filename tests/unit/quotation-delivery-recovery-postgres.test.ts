@@ -251,8 +251,9 @@ databaseTest(
     assert.equal(frozen?.state, 'reconciling');
     assert.equal((await projectPublicDelivery(frozen!)).projection.requiresAction, false);
 
+    // The expiry counts as processed; nothing is claimed for transport.
     const processed = await module.processDue(3, 5_000);
-    assert.equal(processed.processed, 0);
+    assert.equal(processed.processed, 1);
     const recovered = await module.get({ deliveryId: delivery.id });
     assert.equal(recovered?.state, 'needs_review');
     const recoveredProjection = (await projectPublicDelivery(recovered!)).projection;

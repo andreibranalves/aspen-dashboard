@@ -40,13 +40,14 @@ function runCli(args: string[], env: Record<string, string> = {}) {
   });
 }
 
-const MACHINE_ROUTES = new Set(['evolution-webhook', 'quotation-delivery-worker']);
+const MACHINE_ROUTES = new Set(['evolution-webhook']);
 
-// A local, side-effect-free server that mirrors the real request pipeline: the
+// A local, side-effect-free server that mirrors the real request pipelines: the
 // Node adapter answers OPTIONS before routing, global auth runs before route
-// lookup, only the canonical machine routes bypass it, and each handler rejects
-// unsupported HEAD with 405 before any bearer check or work. It never parses
-// webhooks, never invokes the worker and never contacts Evolution.
+// lookup, only the canonical machine routes bypass it, the VPS worker serves
+// `/wake` on its own, and each handler rejects unsupported HEAD with 405 before
+// any bearer check or work. It never parses webhooks, never wakes the worker and
+// never contacts Evolution.
 async function withRouteAwareServer(
   fn: (input: {
     port: number;
@@ -64,16 +65,12 @@ async function withRouteAwareServer(
       response.end();
       return;
     }
-    if (!MACHINE_ROUTES.has(routeName)) {
+    if (url.pathname !== '/wake' && !MACHINE_ROUTES.has(routeName)) {
       response.writeHead(401);
       response.end('unauthorized');
       return;
     }
-    const supported =
-      routeName === 'quotation-delivery-worker'
-        ? method === 'GET' || method === 'POST'
-        : method === 'POST';
-    if (!supported) {
+    if (method !== 'POST') {
       response.writeHead(405);
       response.end('method not allowed');
       return;
@@ -93,7 +90,7 @@ async function withRouteAwareServer(
 function destination(name: 'webhook' | 'worker') {
   const spec = DESTINATION_SPECS.find((entry: { name: string }) => entry.name === name)!;
   return parseDestination(
-    `https://app.example.com/api/${name === 'webhook' ? 'evolution-webhook' : 'quotation-delivery-worker'}`,
+    name === 'webhook' ? 'https://app.example.com/api/evolution-webhook' : 'https://aspen-worker.example.com/wake',
     spec.name,
   )!;
 }
@@ -159,7 +156,7 @@ test('endpoint specs use the canonical paths with a side-effect-free HEAD probe'
     ),
     [
       ['webhook', 'HEAD', 405, '/api/evolution-webhook'],
-      ['worker', 'HEAD', 405, '/api/quotation-delivery-worker'],
+      ['worker', 'HEAD', 405, '/wake'],
     ],
   );
 });
@@ -214,7 +211,7 @@ test('an invalid backlog shape fails closed instead of becoming a green empty qu
 test('a malformed database result is reported as an unchecked, failing backlog', async () => {
   const report = await runReadiness({
     webhookUrl: 'https://app.example.com/api/evolution-webhook',
-    workerUrl: 'https://app.example.com/api/quotation-delivery-worker',
+    workerUrl: 'https://aspen-worker.example.com/wake',
     databaseUrl: 'postgres://user:pass@127.0.0.1:5432/aspen',
     env: {},
     resolve: async () => ({ address: '203.0.113.20' }),
@@ -234,7 +231,7 @@ test('a malformed database result is reported as an unchecked, failing backlog',
 test('readiness report shows the destination host and fails on unresolved DNS without leaking URLs', async () => {
   const report = await runReadiness({
     webhookUrl: 'https://old.example.com/api/evolution-webhook',
-    workerUrl: 'https://app.example.com/api/quotation-delivery-worker',
+    workerUrl: 'https://aspen-worker.example.com/wake',
     env: {},
     resolve: async (host: string) => {
       if (host === 'old.example.com') {
@@ -247,16 +244,16 @@ test('readiness report shows the destination host and fails on unresolved DNS wi
   assert.equal(report.backlog.checked, false);
   const output = formatReadiness(report);
   assert.match(output, /destino webhook: host=old\.example\.com dns=FAIL \(HOST_NOT_FOUND\)/);
-  assert.match(output, /destino worker: host=app\.example\.com dns=OK/);
+  assert.match(output, /destino worker: host=aspen-worker\.example\.com dns=OK/);
   assert.match(output, /resultado: FALHA em webhook, fila/);
   assert.doesNotMatch(output, /api\/evolution-webhook/);
-  assert.doesNotMatch(output, /api\/quotation-delivery-worker/);
+  assert.doesNotMatch(output, /\/wake/);
 });
 
 test('missing, wrong-route and failing destinations make readiness fail closed', async () => {
   const base = {
     webhookUrl: 'https://app.example.com/api/evolution-webhook',
-    workerUrl: 'https://app.example.com/api/quotation-delivery-worker',
+    workerUrl: 'https://aspen-worker.example.com/wake',
     probe: true,
   };
   const resolve = async () => ({ address: '203.0.113.20' });
@@ -324,7 +321,7 @@ test('an omitted probe can never produce an OK report', async () => {
   let probes = 0;
   const probing = await runReadiness({
     webhookUrl: 'https://app.example.com/api/evolution-webhook',
-    workerUrl: 'https://app.example.com/api/quotation-delivery-worker',
+    workerUrl: 'https://aspen-worker.example.com/wake',
     env: {},
     resolve: async () => ({ address: '203.0.113.20' }),
     fetchImpl: async () => {
@@ -338,7 +335,7 @@ test('an omitted probe can never produce an OK report', async () => {
   probes = 0;
   const optedOut = await runReadiness({
     webhookUrl: 'https://app.example.com/api/evolution-webhook',
-    workerUrl: 'https://app.example.com/api/quotation-delivery-worker',
+    workerUrl: 'https://aspen-worker.example.com/wake',
     probe: false,
     env: {},
     resolve: async () => ({ address: '203.0.113.20' }),
@@ -357,7 +354,7 @@ test('the process probes both canonical endpoints with HEAD and fails closed wit
       '--webhook-url',
       `http://127.0.0.1:${port}/api/evolution-webhook`,
       '--worker-url',
-      `http://127.0.0.1:${port}/api/quotation-delivery-worker`,
+      `http://127.0.0.1:${port}/wake`,
     ];
     const probed = await runCli(urls, { DATABASE_URL: '' });
     assert.match(probed.stdout, /probe=HTTP 405 OK/g);
@@ -365,7 +362,7 @@ test('the process probes both canonical endpoints with HEAD and fails closed wit
     assert.deepEqual(requests.map((entry) => entry.method), ['HEAD', 'HEAD']);
     assert.deepEqual(requests.map((entry) => entry.path), [
       '/api/evolution-webhook',
-      '/api/quotation-delivery-worker',
+      '/wake',
     ]);
     // No database is configured here, so the overall result is still FALHA; the
     // probes themselves must have run.
@@ -390,7 +387,7 @@ test('a wrong protected path returns 401 before route lookup and fails readiness
     assert.deepEqual(
       await probeDestination({
         origin: base,
-        path: '/api/quotation-delivery-worker',
+        path: '/wake',
         method: 'HEAD',
       }),
       { ok: true, status: 405 },
@@ -461,7 +458,7 @@ test('a database failure is reported without leaking the connection string', asy
         '--webhook-url',
         `http://127.0.0.1:${port}/api/evolution-webhook`,
         '--worker-url',
-        `http://127.0.0.1:${port}/api/quotation-delivery-worker`,
+        `http://127.0.0.1:${port}/wake`,
       ],
       { DATABASE_URL: `postgres://hermes:${secret}@127.0.0.1:1/aspen` },
     );
@@ -546,7 +543,7 @@ test('an arbitrary driver code or secret-bearing message never reaches stdout, s
         '--webhook-url',
         `http://127.0.0.1:${port}/api/evolution-webhook`,
         '--worker-url',
-        `http://127.0.0.1:${port}/api/quotation-delivery-worker`,
+        `http://127.0.0.1:${port}/wake`,
       ],
       { DATABASE_URL: `postgres://hermes:${codeSecret}@127.0.0.1:1/aspen` },
     );
@@ -568,7 +565,7 @@ test('the real CLI exits nonzero for a failed readiness report without leaking p
       '--webhook-url',
       'https://nonexistent.invalid/api/evolution-webhook',
       '--worker-url',
-      'https://nonexistent.invalid/api/quotation-delivery-worker',
+      'https://nonexistent.invalid/wake',
     ],
     { encoding: 'utf8', timeout: 30_000, env: { ...process.env, DOTENV_CONFIG_PATH: '/dev/null' } },
   );
@@ -582,7 +579,7 @@ test('main reports a healthy run as acceptable only when destinations and backlo
     '--webhook-url',
     'https://nonexistent.invalid/api/evolution-webhook',
     '--worker-url',
-    'https://nonexistent.invalid/api/quotation-delivery-worker',
+    'https://nonexistent.invalid/wake',
   ]);
   assert.equal(failing.ok, false);
   assert.match(failing.output, /resultado: FALHA/);

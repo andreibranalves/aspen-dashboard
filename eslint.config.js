@@ -78,6 +78,7 @@ export default [
     files: [
       'api/**/*.{js,ts}',
       'scripts/**/*.{js,mjs}',
+      'deploy/**/*.mjs',
       '*.config.js',
     ],
     languageOptions: {

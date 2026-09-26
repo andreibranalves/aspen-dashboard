@@ -1,3 +1,5 @@
+import { noticeWorkerWake } from '@/lib/workerWake';
+
 export type FollowUpListView = 'ready' | 'waiting' | 'sent' | 'dismissed' | 'attention';
 export type FollowUpState =
   | 'awaiting_receipt'
@@ -278,6 +280,7 @@ export async function approveFollowUp(input: ApproveFollowUpInput): Promise<Foll
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ quotation_id: quotationId, eligibility_version: eligibilityVersion, message }),
   }, 'Não foi possível aprovar o follow-up.');
+  noticeWorkerWake(body);
   return parseFollowUpMutation(body);
 }
 

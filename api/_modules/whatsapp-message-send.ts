@@ -14,6 +14,7 @@ import {
 import { hasDisallowedWhatsappControls } from './quotation-follow-up-state.js';
 import { dispatchOutboxMessage, type SendText } from './whatsapp-message-dispatch.js';
 import { safeErrorSummary } from '../_shared/safe-error.js';
+import { wakeWorker } from '../_infrastructure/integrations/worker/client.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_REPLY_CHARS = 4_000;
@@ -21,6 +22,7 @@ export const MAX_REPLY_CHARS = 4_000;
 export interface MessageSendDependencies {
   repository?: WhatsappMessageOutboxRepository;
   send?: SendText;
+  wakeWorker?: typeof wakeWorker;
 }
 
 class InputError extends Error {}
@@ -140,7 +142,12 @@ export async function postOperatorMessage(
           (await repository.findByMessageId(record.messageId)) ||
           record
         : record;
-    return json(202, { message: projectOutbox(result) });
+    // O que não saiu agora fica para o worker do VPS (ADR 0013).
+    const workerWake =
+      result.state === 'queued' || result.state === 'retry_scheduled'
+        ? await (dependencies.wakeWorker || wakeWorker)()
+        : undefined;
+    return json(202, { message: projectOutbox(result), worker_wake: workerWake });
   }, 'Não foi possível registrar o envio. Tente novamente.');
 }
 

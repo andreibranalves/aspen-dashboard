@@ -186,9 +186,14 @@ export interface EvolutionMessageEvent {
 export interface QuotationDeliveryModule {
   enqueue(input: DeliveryIdentity): Promise<DeliveryAggregate>;
   process(deliveryId?: string): Promise<DeliveryAggregate | null>;
+  /**
+   * `processed` counts claims and expired reconciliations. `stop` ends the batch
+   * before the next claim; the step already claimed finishes.
+   */
   processDue(
     limit: number,
-    timeBudgetMs?: number
+    timeBudgetMs?: number,
+    stop?: AbortSignal
   ): Promise<{ processed: number; remaining: boolean }>;
   applyEvolutionEvent(event: EvolutionMessageEvent): Promise<DeliveryAggregate | null>;
   cancelPending(): Promise<number>;
@@ -610,6 +615,20 @@ export function createQuotationDeliveryModule(
   const sleep =
     dependencies.sleep ||
     ((delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
+  // The wait between steps ends early when the worker is stopping.
+  async function pause(delayMs: number, stop?: AbortSignal): Promise<void> {
+    if (!stop) return sleep(delayMs);
+    let onStop = () => {};
+    const stopped = new Promise<void>((resolve) => {
+      onStop = resolve;
+      stop.addEventListener('abort', onStop, { once: true });
+    });
+    try {
+      await Promise.race([sleep(delayMs), stopped]);
+    } finally {
+      stop.removeEventListener('abort', onStop);
+    }
+  }
   let fallbackDocumentPreparer: DeliveryDocumentPreparer | undefined;
   const documentPreparer =
     dependencies.prepareDeliveryDocument ||
@@ -998,7 +1017,8 @@ export function createQuotationDeliveryModule(
     deliveryId: string | undefined,
     maxClaims = Number.POSITIVE_INFINITY,
     deadline = Date.now() + PROCESS_DUE_TIME_BUDGET_MS,
-    waitForNextAttempt = Boolean(deliveryId)
+    waitForNextAttempt = Boolean(deliveryId),
+    stop?: AbortSignal
   ): Promise<ProcessResult> {
     let latest: DeliveryAggregate | null = null;
     let claims = 0;
@@ -1025,7 +1045,7 @@ export function createQuotationDeliveryModule(
     // prove it drained.
     const reconciliationSticky = acceptanceStart.sticky || receiptStart.sticky;
     while (claims < maxClaims) {
-      if (Date.now() >= deadline) {
+      if (Date.now() >= deadline || stop?.aborted) {
         deadlineExhausted = true;
         break;
       }
@@ -1036,7 +1056,7 @@ export function createQuotationDeliveryModule(
             ? latest.nextAttemptAt.getTime() - now().getTime()
             : 0;
         if (delayMs > 0 && Date.now() + delayMs <= deadline) {
-          await sleep(delayMs);
+          await pause(delayMs, stop);
           continue;
         }
         break;
@@ -1328,21 +1348,23 @@ export function createQuotationDeliveryModule(
 
   async function processDue(
     requestedLimit: number,
-    timeBudgetMs = PROCESS_DUE_TIME_BUDGET_MS
+    timeBudgetMs = PROCESS_DUE_TIME_BUDGET_MS,
+    stop?: AbortSignal
   ): Promise<{ processed: number; remaining: boolean }> {
     const limit = validateBatchLimit(requestedLimit);
     if (!Number.isSafeInteger(timeBudgetMs) || timeBudgetMs < 1) {
       throw new QuotationDeliveryModuleInputError('Orçamento de tempo inválido.');
     }
     const deadline = Date.now() + timeBudgetMs;
-    await repository.expireReconciliations(limit);
-    const result = await processInternal(undefined, limit, deadline, true);
+    const expired = await repository.expireReconciliations(limit);
+    const result = await processInternal(undefined, limit, deadline, true, stop);
     return {
-      processed: result.claims,
-      // `remaining` must be honest: a full claim batch, an exhausted deadline,
-      // or unconsumed follow-up reconciliation all mean the next invocation has
-      // durable work to continue.
+      processed: result.claims + expired,
+      // `remaining` must be honest: a full claim or expiry batch, an exhausted
+      // deadline, or unconsumed follow-up reconciliation all mean the next
+      // invocation has durable work to continue.
       remaining:
+        expired >= limit ||
         result.claims >= limit ||
         result.deadlineExhausted ||
         Date.now() >= deadline ||

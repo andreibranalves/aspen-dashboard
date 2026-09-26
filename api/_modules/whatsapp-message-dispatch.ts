@@ -131,10 +131,12 @@ export interface SweepResult {
 
 /**
  * Recovery sweep run after the quotation batch: database-only lease recovery
- * first, then one transport at a time while a full timeout still fits.
+ * first, then one transport at a time while a full timeout still fits and the
+ * worker is not stopping.
  */
 export async function sweepOperatorMessages(input: {
   deadlineAt: number;
+  stop?: AbortSignal;
   clock?: () => number;
   repository?: WhatsappMessageOutboxRepository;
   send?: SendText;
@@ -144,7 +146,7 @@ export async function sweepOperatorMessages(input: {
   const { requeued, toReview } = await repository.recoverExpiredLeases(new Date(clock()));
   let dispatched = 0;
   const tried = new Set<string>();
-  while (clock() + TRANSPORT_TIMEOUT_MS + SWEEP_MARGIN_MS <= input.deadlineAt) {
+  while (!input.stop?.aborted && clock() + TRANSPORT_TIMEOUT_MS + SWEEP_MARGIN_MS <= input.deadlineAt) {
     const id = await repository.nextDue({ now: new Date(clock()), minAgeMs: SWEEP_MIN_AGE_MS });
     if (!id || tried.has(id)) break;
     tried.add(id);

@@ -49,7 +49,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 **D1 — A tela de conversa volta ao Aspen.** Em 21/08/2026 (`1116b8b`) a Inbox foi retirada e o WhatsApp Web com a extensão passou a ser a superfície de conversa. [S17] Em 23/09/2026 o operador decidiu reverter: o Atendimento passa a ser a superfície de conversa do Aspen. A extensão continua funcionando sem mudança neste escopo, com o mesmo serviço de contexto e a mesma tabela de vínculos; aposentá-la é decisão posterior.
 
-**D2 — Envio despachado na própria requisição.** O POST de envio grava a intenção, faz commit e chama o transporte antes de responder. O agendamento QStash existente, a cada 2 minutos, ganha uma varredura de recuperação limitada depois do lote de orçamentos. Sem nova rota de worker, agendamento, segredo ou env. Detalhes em §10.
+**D2 — Envio despachado na própria requisição.** O POST de envio grava a intenção, faz commit e chama o transporte antes de responder. O acionador periódico dos envios de orçamento (na época, o agendamento QStash; desde o ADR 0013, o aspen-worker) ganha uma varredura de recuperação limitada depois do lote de orçamentos. Detalhes em §10.
 
 **D3 — Sem importação do histórico do KV.** O histórico novo nasce no PostgreSQL a partir do webhook e de um backfill pela Evolution. O KV recebe só um snapshot protegido e sai do código. Detalhes em §16.
 
@@ -243,14 +243,14 @@ Tudo acontece dentro da requisição, aguardado; nada roda depois da resposta. S
 
 ### 10.2 Varredura de recuperação
 
-O agendamento QStash existente (`aspen-whatsapp-delivery-worker`, a cada 2 minutos, `POST /api/quotation-delivery-worker`) é o único acionador periódico. [S18] O handler roda o lote de orçamentos como hoje e, com o tempo que sobrar, a varredura de mensagens:
+O ciclo do aspen-worker no VPS (ADR 0013; antes, o agendamento QStash de 2 minutos) é o único acionador periódico. [S18] Ele roda o lote de orçamentos e depois a varredura de mensagens:
 
 - Primeiro, transições só de banco: lease vencido sem `transport_started_at` volta a `queued`; lease vencido com `transport_started_at` vai para `needs_review`.
-- Depois, transporte de `queued` e `retry_scheduled` vencidos, um por vez, só enquanto o tempo restante couber um timeout de transporte com margem. O restante fica para o próximo tick.
+- Depois, transporte de `queued` e `retry_scheduled` vencidos, um por vez, só enquanto o tempo restante couber um timeout de transporte com margem. O restante fica para o próximo ciclo.
 - Ignora `queued` criados há pouco, para não disputar com o despacho na requisição; a reserva atômica garante a correção de qualquer forma.
 - Nunca reduz nem atrasa o lote de orçamentos.
 
-Sem nova rota, agendamento, segredo ou env; o endpoint mantém o nome. Um segundo agendamento de 2 minutos somaria ~720 mensagens QStash por dia às ~720 atuais, acima do limite gratuito de 1.000 por dia. [S18] A pior latência de uma retentativa é um tick; o caminho feliz não depende da varredura. A varredura registra seu resultado separado do lote de orçamentos, para o diagnóstico (RNF-04).
+Quando uma resposta não sai na hora, a Function acorda o worker por `/wake`; sem o aviso, a retentativa espera o próximo vencimento registrado no banco. O caminho feliz não depende da varredura. A varredura registra seu resultado separado do lote de orçamentos, para o diagnóstico (RNF-04).
 
 Registrar a aceitação real do provedor, ID de mensagem e recibos. Um identificador sentinela como `accepted` não é ID de mensagem e não pode entrar na chave de deduplicação. Aceitação sem correlação permanece pendente de reconciliação, sem criar identidade fictícia.
 

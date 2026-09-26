@@ -1,7 +1,7 @@
 export const FOLLOW_UP_WAIT_MS = 24 * 60 * 60 * 1000;
 export const FOLLOW_UP_LEASE_MS = 90_000;
 export const FOLLOW_UP_MESSAGE_MAX_CHARS = 4_000;
-export const FOLLOW_UP_IMMEDIATE_PUBLISH_DAILY_CAP = 100;
+export const FOLLOW_UP_IMMEDIATE_SEND_DAILY_CAP = 100;
 export const ELIGIBLE_QUOTATION_STATUS = 'emitido';
 export const ELIGIBLE_CRM_STATUS = 'Orcamento Enviado';
 export const FOLLOW_UP_CHANNEL = 'whatsapp';
@@ -272,8 +272,8 @@ export function buildDefaultFollowUpMessage(input: {
   return `${greeting}\n\nPassando para saber se você teve a chance de ver o orçamento ${input.businessNumber}. Qualquer dúvida, estou à disposição.`;
 }
 
-export function shouldPublishFollowUpImmediately(approvalsCreatedTodayUtc: number): boolean {
-  return approvalsCreatedTodayUtc < FOLLOW_UP_IMMEDIATE_PUBLISH_DAILY_CAP;
+export function shouldSendFollowUpImmediately(approvalsCreatedTodayUtc: number): boolean {
+  return approvalsCreatedTodayUtc < FOLLOW_UP_IMMEDIATE_SEND_DAILY_CAP;
 }
 
 export function followUpExternalWritesEnabled(env: {

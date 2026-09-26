@@ -22,7 +22,8 @@ import {
   createQuotationDeliveryModule,
   type QuotationDeliveryModule,
 } from './quotation-delivery-outbox.js';
-import { deliveryErrorResponse, toPublicDeliveryView } from './quotation-deliveries.js';
+import { deliveryErrorResponse, toPublicDeliveryView, wakeWorkerFor } from './quotation-deliveries.js';
+import type { wakeWorker } from '../_infrastructure/integrations/worker/client.js';
 import { safeLogMessage } from '../_shared/safe-error.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export type SendWhatsappFlowDependencies = {
   resolveFlow?: DeliveryPlanInput['resolveFlow'];
   transport?: EvolutionTransportDependencies;
   deliveryModule?: QuotationDeliveryModule;
+  wakeWorker?: typeof wakeWorker;
 };
 
 export async function handler(
@@ -183,6 +185,7 @@ export async function handler(
         });
         const delivery = await deliveryModule.enqueue({ revisionId, flowId });
         if (!delivery) return deliveryErrorResponse(new Error('Entrega ausente.'));
+        const workerWake = await wakeWorkerFor(delivery, dependencies.wakeWorker);
         return jsonResponse(delivery.state === 'delivered' ? 200 : 202, {
           success: true,
           delivery_id: delivery.id,
@@ -190,6 +193,7 @@ export async function handler(
           revision_id: delivery.revisionId,
           flow_id: delivery.flowId,
           delivery: toPublicDeliveryView(delivery),
+          worker_wake: workerWake,
         });
       } catch (error) {
         return deliveryErrorResponse(error);

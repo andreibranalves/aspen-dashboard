@@ -17,7 +17,7 @@
 // Usage:
 //   node scripts/whatsapp-delivery-readiness.mjs \
 //     --webhook-url https://app.example.com/api/evolution-webhook \
-//     --worker-url  https://app.example.com/api/quotation-delivery-worker
+//     --worker-url  https://aspen-worker.example.com/wake
 //
 // DATABASE_URL (when present) enables the stale-backlog section. The URL is read
 // only from the environment/config; `--database-url` is forbidden and fails
@@ -27,8 +27,8 @@ import { lookup } from 'node:dns/promises';
 import { pathToFileURL } from 'node:url';
 
 const PROBE_TIMEOUT_MS = 5_000;
-// A runnable step this old has been waiting far beyond the QStash cadence and
-// indicates a stalled scheduler, worker or claim path.
+// A runnable step this old has been waiting far beyond the worker's wake and
+// timer and indicates a stalled worker or claim path.
 const STALE_RUNNABLE_MS = 30 * 60_000;
 const SAFE_DATABASE_FAILURE = 'Falha ao consultar a fila no banco de dados.';
 const INVALID_BACKLOG = 'INVALID_BACKLOG';
@@ -118,11 +118,11 @@ export function formatReadinessFailure(error) {
 }
 
 // Endpoint-specific safe probes. Each sends an unsupported `HEAD` without
-// credentials or body: the real pipeline lets the canonical machine route
-// through global auth, route lookup reaches the handler, and the handler rejects
-// HEAD with `405` before bearer validation or any work. Reaching that 405 proves
-// the configured path is the canonical endpoint; a wrong protected path returns
-// `401` from global auth before route lookup and therefore fails readiness.
+// credentials or body, and the handler rejects it with `405` before bearer
+// validation or any work. On Vercel the real pipeline lets the canonical machine
+// route through global auth; a wrong protected path returns `401` before route
+// lookup and therefore fails readiness. The VPS worker (ADR 0013) answers `404`
+// on any path but its own.
 // `OPTIONS` is unusable here: the Node adapter short-circuits it with `204`.
 export const DESTINATION_SPECS = [
   {
@@ -136,8 +136,8 @@ export const DESTINATION_SPECS = [
     name: 'worker',
     method: 'HEAD',
     expectedStatus: 405,
-    envKey: 'QUOTATION_DELIVERY_WORKER_URL',
-    path: '/api/quotation-delivery-worker',
+    envKey: 'WORKER_WAKE_URL',
+    path: '/wake',
   },
 ];
 
