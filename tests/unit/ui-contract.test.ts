@@ -117,8 +117,8 @@ describe('Aspen UI contract', () => {
     assert.match(button, /default: 'h-8/);
     assert.doesNotMatch(button, /(?:sm|md|lg): 'h-/);
     assert.match(button, /rounded-control/);
-    assert.match(input, /h-10/);
-    assert.match(select, /h-10/);
+    assert.match(input, /default: 'h-8/);
+    assert.match(select, /default: 'h-8/);
     assert.match(read('src/components/ui/badge.tsx'), /rounded-badge[^']*text-2xs/);
   });
 
