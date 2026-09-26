@@ -178,7 +178,7 @@ export const routes: AppRoute[] = [
     path: '/crm',
     suspense: true,
     render: ({ navigate }) => <CommercialPage navigate={navigate} />,
-    nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2, group: 'operacao', bottom: 2 },
+    nav: { label: 'Comercial', icon: Columns3, placement: 'destination', order: 2, group: 'operacao' },
   },
   {
     path: '/quotations',
