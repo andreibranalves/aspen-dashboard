@@ -49,7 +49,7 @@ export default function Sidebar({
             ? cn(buttonSizes.icon, 'mx-auto justify-center')
             : cn(buttonSizes.default, 'mx-3 w-[calc(100%-1.5rem)]'),
           'focus-inset',
-          isActive ? 'bg-shell-active text-white' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
+          isActive ? 'bg-shell-hover text-shell-text' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
         title={collapsed ? label : undefined}
         aria-label={collapsed || count > 0 ? label : undefined}
@@ -58,7 +58,7 @@ export default function Sidebar({
         <span className="relative shrink-0">
           <Icon
             size={16}
-            className={cn(isActive ? 'text-white' : 'text-shell-muted')}
+            className={cn(isActive ? 'text-shell-text' : 'text-shell-muted')}
             aria-hidden="true"
           />
           {collapsed && count > 0 && (
