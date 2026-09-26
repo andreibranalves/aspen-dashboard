@@ -22,7 +22,7 @@ const RATCHETS = [
   {
     name: 'valor arbitrário do Tailwind (use tokens de layout)',
     pattern: /(?<![\w:-])[\w:-]*[a-z]-\[[^\]\s]+\](?!:)/g,
-    limit: 86,
+    limit: 85,
   },
   {
     name: 'eyebrow à mão (use Heading level="eyebrow")',
