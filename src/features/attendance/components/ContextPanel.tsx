@@ -4,6 +4,7 @@ import InlineAlert from '@/components/shared/InlineAlert';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
+import LoadingSpinner from '@/features/attendance/components/LoadingSpinner';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import type { ApiError } from '@/lib/api/api';
 import {
@@ -126,11 +127,7 @@ export default function ContextPanel({ conversationId, identityVersion, onUseSug
     );
   }
   if (!context) {
-    return (
-      <p className="px-4 py-6 text-sm text-fg-muted" role="status">
-        Carregando contexto…
-      </p>
-    );
+    return <LoadingSpinner label="Carregando contexto" />;
   }
 
   const { linking } = context;
