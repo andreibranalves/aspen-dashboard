@@ -1,5 +1,5 @@
 import type { ClipboardEvent, DragEvent, ReactNode } from 'react';
-import { Loader2, PackagePlus, SlidersHorizontal, X } from 'lucide-react';
+import { Loader2, PackagePlus, Settings, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Heading } from '@/components/ui/heading';
 import { Textarea } from '@/components/ui/textarea';
@@ -49,8 +49,8 @@ export default function QuoteOrderStep({
       <div className="flex flex-col gap-3 px-5 py-3.5 md:px-6">
         <div className="flex items-center justify-between gap-3">
           <Heading level="card">Cole o pedido do cliente</Heading>
-          <Button type="button" variant="ghost-muted" size="xs" onClick={onManageTemplates} disabled={blocked}>
-            <SlidersHorizontal size={14} /> Gerenciar modelos
+          <Button type="button" variant="outline" onClick={onManageTemplates} disabled={blocked}>
+            <Settings size={14} aria-hidden="true" /> <span className="max-sm:sr-only">Gerenciar modelos</span>
           </Button>
         </div>
         {notices}
