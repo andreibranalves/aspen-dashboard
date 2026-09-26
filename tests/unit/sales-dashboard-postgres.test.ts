@@ -400,7 +400,12 @@ test(
         { date: '2098-08-01', revenue: 100, orders: 1 },
         { date: '2098-08-10', revenue: 61.7, orders: 13 },
       ]);
-      assert.deepEqual(body.orders_by_source, [{ source: 'sem_origem', orders: 14 }]);
+      // Client B already had an order on 2098-07-31, so its orders in the
+      // period come back as a recurring client.
+      assert.deepEqual(body.orders_by_source, [
+        { source: 'Cliente recorrente', orders: 13 },
+        { source: 'sem_origem', orders: 1 },
+      ]);
       assert.equal('stale_quotations' in body, false);
     } finally {
       if (migrated) {
@@ -414,6 +419,106 @@ test(
         await db.delete(schema.quotations).where(inArray(schema.quotations.id, quotationIds));
         await db.delete(schema.clients).where(inArray(schema.clients.id, clientIds));
         await db.delete(schema.products).where(inArray(schema.products.sku, productSkus));
+      }
+      await client.end({ timeout: 5 });
+    }
+  }
+);
+
+test(
+  'classifies order origin by the strongest evidence',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, {
+      max: 2,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const db = drizzle(client, { schema });
+    const repository = createPostgresSalesOrdersRepository(() => db, { now: () => NOW });
+    const handler = createSalesDashboardHandler({ repository, ...profitDependencies });
+    const clientIds = Array.from({ length: 7 }, () => randomUUID());
+    const [adLead, whatsappLead, siteLead] = [randomUUID(), randomUUID(), randomUUID()];
+    // [client, explicit channel, lead] per proposal; each proposal becomes one order.
+    const proposals: Array<[number, string | null, string | null]> = [
+      [0, 'Bríndice', adLead], // the operator's pick beats the ad click id
+      [1, null, adLead],
+      [3, null, whatsappLead],
+      [4, null, siteLead], // utm without a click id is not proof of Google Ads
+      [6, 'WhatsApp', null], // merges with the WhatsApp lead above
+    ];
+    const quotationIds = proposals.map(() => randomUUID());
+    const orderIds = [...proposals.map(() => randomUUID()), randomUUID(), randomUUID(), randomUUID()];
+    let migrated = false;
+
+    try {
+      await migrate(db, { migrationsFolder });
+      migrated = true;
+      await resetSharedCommerce(db);
+      await db.insert(schema.clients).values(
+        clientIds.map((id, index) => ({ id, nome: `Cliente Origem ${index}` }))
+      );
+      await db.insert(schema.quoteLeads).values([
+        { id: adLead, identityKey: `origin-ad-${adLead}`, source: 'site_form', attribution: { gclid: 'click-1' } },
+        { id: whatsappLead, identityKey: `origin-wa-${whatsappLead}`, source: 'whatsapp' },
+        { id: siteLead, identityKey: `origin-site-${siteLead}`, source: 'site_form', attribution: { utm_source: 'google', gclid: ' ' } },
+      ]);
+      await db.insert(schema.quotations).values(
+        proposals.map(([clientIndex, leadSource, quoteLeadId], index) => ({
+          id: quotationIds[index]!,
+          businessNumber: `ORC-2098050${index}`,
+          clientId: clientIds[clientIndex]!,
+          quoteLeadId,
+          leadSource,
+          status: 'aprovado' as const,
+        }))
+      );
+      const order = (id: string, clientIndex: number, transactionDate: string, quotationId: string | null = null) => ({
+        id,
+        orderNumber: `PED-2098-${String(9500 + orderIds.indexOf(id))}`,
+        quotationId,
+        clientId: clientIds[clientIndex]!,
+        status: 'To Deliver and Bill',
+        transactionDate,
+        subtotal: '10.00',
+        grandTotal: '10.00',
+      });
+      await db.insert(schema.salesOrders).values([
+        ...proposals.map(([clientIndex], index) =>
+          order(orderIds[index]!, clientIndex, '2098-08-05', quotationIds[index]!)
+        ),
+        order(orderIds[5]!, 2, '2098-07-01'), // outside the period, makes client 2 recurring
+        order(orderIds[6]!, 2, '2098-08-06'),
+        order(orderIds[7]!, 5, '2098-08-06'),
+      ]);
+
+      const response = await handler(
+        event('GET', undefined, { from: '2098-08-01', to: '2098-08-10' })
+      );
+      assert.equal(response.statusCode, 200);
+      const body = JSON.parse(response.body || '{}');
+      assert.deepEqual(body.orders_by_source[0], { source: 'WhatsApp', orders: 2 });
+      assert.deepEqual(
+        [...body.orders_by_source].sort((a, b) => a.source.localeCompare(b.source)),
+        [
+          { source: 'Bríndice', orders: 1 },
+          { source: 'Cliente recorrente', orders: 1 },
+          { source: 'Google Ads', orders: 1 },
+          { source: 'sem_origem', orders: 1 },
+          { source: 'Site', orders: 1 },
+          { source: 'WhatsApp', orders: 2 },
+        ]
+      );
+    } finally {
+      if (migrated) {
+        await db.delete(schema.salesOrders).where(inArray(schema.salesOrders.id, orderIds));
+        await db.delete(schema.quotations).where(inArray(schema.quotations.id, quotationIds));
+        await db
+          .delete(schema.quoteLeads)
+          .where(inArray(schema.quoteLeads.id, [adLead, whatsappLead, siteLead]));
+        await db.delete(schema.clients).where(inArray(schema.clients.id, clientIds));
       }
       await client.end({ timeout: 5 });
     }

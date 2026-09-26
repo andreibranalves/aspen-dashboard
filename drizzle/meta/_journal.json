@@ -407,6 +407,13 @@
       "when": 1790270000000,
       "tag": "0057_operator_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1790280000000,
+      "tag": "0058_quotation_lead_source",
+      "breakpoints": true
     }
   ]
 }

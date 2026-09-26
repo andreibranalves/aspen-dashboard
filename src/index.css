@@ -230,13 +230,14 @@
     --avatar-two: 240 233 203;
     --avatar-three: 222 214 236;
     /* Séries categóricas na ordem fixa azul, verde, violeta, âmbar; cada tema foi
-       validado (faixa de luminosidade, croma, daltonismo e contraste) contra a sua superfície. */
+       validado (faixa de luminosidade, croma, daltonismo e contraste) contra a sua superfície,
+       com todos os pares distintos entre si: numa pizza qualquer par pode ficar lado a lado. */
     --chart-one: 57 135 229;
     --chart-two: 25 158 112;
-    --chart-three: 144 133 233;
+    --chart-three: 149 69 181;
     --chart-four: 201 133 0;
-    /* Categoria sem identidade (ex.: "Sem origem"); nunca é uma série. */
-    --chart-neutral: 137 135 129;
+    /* Categoria sem identidade (ex.: "Outros"); nunca é uma série. */
+    --chart-neutral: 95 93 88;
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -308,6 +309,7 @@
     --chart-two: 27 175 122;
     --chart-three: 74 58 167;
     --chart-four: 237 161 0;
+    --chart-neutral: 201 199 193;
   }
 
   * {

@@ -594,20 +594,55 @@ async function dashboardSummary(
   };
 }
 
+/**
+ * Acquisition channel of an order, strongest evidence first: the channel the
+ * operator picked on the proposal, a Google Ads click id captured with the lead,
+ * an earlier order from the same client, then the lead's own entry channel.
+ */
+function orderOriginExpression() {
+  const adClick = sql`coalesce(
+    nullif(btrim(${quoteLeads.attribution}->>'gclid'), ''),
+    nullif(btrim(${quoteLeads.attribution}->>'gbraid'), ''),
+    nullif(btrim(${quoteLeads.attribution}->>'wbraid'), '')
+  )`;
+  return sql<string>`case
+    when ${quotations.leadSource} is not null then ${quotations.leadSource}
+    when ${adClick} is not null then 'Google Ads'
+    when exists (
+      select 1
+      from sales_orders prior
+      where prior.client_id = ${salesOrders.clientId}
+        and prior.id <> ${salesOrders.id}
+        and prior.status in (${sql.join(
+          FATURAMENTO_ORDER_STATUSES.map((status) => sql`${status}`),
+          sql`, `
+        )})
+        and (prior.transaction_date, prior.created_at) < (${salesOrders.transactionDate}, ${salesOrders.createdAt})
+    ) then 'Cliente recorrente'
+    when ${quoteLeads.source} = 'whatsapp' then 'WhatsApp'
+    when ${quoteLeads.source} = 'site_form' then 'Site'
+    when ${quoteLeads.source} = 'typebot' then 'Typebot'
+    when nullif(btrim(${quoteLeads.source}), '') is not null then ${quoteLeads.source}
+    else 'sem_origem'
+  end`;
+}
+
 async function dashboardOrdersBySource(
   database: SalesOrderDatabase,
   start: string,
   end: string
 ): Promise<SalesDashboardResult['orders_by_source']> {
+  // Grouped by position: the expression carries bound parameters, so repeating
+  // it in GROUP BY would not match the selected column.
   const rows = await database
-    .select({ source: quoteLeads.source, orders: sql<number>`count(*)::int` })
+    .select({ source: orderOriginExpression(), orders: sql<number>`count(*)::int` })
     .from(salesOrders)
     .leftJoin(quotations, eq(salesOrders.quotationId, quotations.id))
     .leftJoin(quoteLeads, eq(quotations.quoteLeadId, quoteLeads.id))
     .where(faturamentoOrdersPeriodFilter(start, end))
-    .groupBy(quoteLeads.source)
-    .orderBy(desc(sql`count(*)`));
-  return rows.map((row) => ({ source: row.source || 'sem_origem', orders: Number(row.orders) || 0 }));
+    .groupBy(sql`1`)
+    .orderBy(desc(sql`count(*)`), sql`1`);
+  return rows.map((row) => ({ source: row.source, orders: Number(row.orders) || 0 }));
 }
 
 /**
