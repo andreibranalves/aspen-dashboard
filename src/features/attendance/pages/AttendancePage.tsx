@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
+  contactPhotoUrl,
   fetchConversations,
   fetchMessagesAfter,
   fetchMessagesBefore,
@@ -600,6 +601,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 <EntityIdentity
                   name={conversationName(conversation)}
                   secondary={conversation.phone ? fmtPhone(conversation.phone) : 'Telefone não identificado'}
+                  imageSrc={contactPhotoUrl(conversation.id)}
                   className="min-w-0 flex-1"
                 />
                 <Select

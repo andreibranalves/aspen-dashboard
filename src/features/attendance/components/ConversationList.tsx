@@ -1,12 +1,13 @@
 import { MessagesSquare } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
+import { EntityAvatar } from '@/components/shared/EntityIdentity';
 import ErrorState from '@/components/shared/ErrorState';
 import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { STATUS_BADGE, STATUS_LABELS } from '@/features/attendance/attendanceLabels';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
-import type { AttendanceConversation } from '@/lib/api/attendanceApi';
+import { contactPhotoUrl, type AttendanceConversation } from '@/lib/api/attendanceApi';
 
 interface ConversationListProps {
   items: AttendanceConversation[];
@@ -81,6 +82,7 @@ export default function ConversationList({
                   selected && 'bg-surface-selected'
                 )}
               >
+                <EntityAvatar name={name} imageSrc={contactPhotoUrl(item.id)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className={cn('truncate text-sm text-fg', item.unreadCount > 0 ? 'font-bold' : 'font-medium')}>
