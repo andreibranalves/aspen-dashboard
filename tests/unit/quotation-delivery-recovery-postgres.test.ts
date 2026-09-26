@@ -181,6 +181,14 @@ const pdfStep = (position: number, revisionId: string) => ({
   delayMs: 0,
 });
 
+type DeliveryModule = ReturnType<typeof createQuotationDeliveryModule>;
+
+// The request only records the envio; the worker sends it (ADR 0013).
+async function enqueueAndProcess(module: DeliveryModule, input: Parameters<DeliveryModule['enqueue']>[0]) {
+  const queued = await module.enqueue(input);
+  return (await module.process(queued.id)) || queued;
+}
+
 async function readDeal(quotationId: string) {
   const [deal] = await db.select().from(crmDeals).where(eq(crmDeals.quotationId, quotationId));
   return deal || null;
@@ -230,7 +238,7 @@ databaseTest(
       },
     });
 
-    const delivery = await module.enqueue({
+    const delivery = await enqueueAndProcess(module, {
       revisionId,
       flowId: `flow-${revisionId}`,
       quotationId,
@@ -252,7 +260,7 @@ databaseTest(
     assert.equal((await projectPublicDelivery(frozen!)).projection.requiresAction, false);
 
     // The expiry counts as processed; nothing is claimed for transport.
-    const processed = await module.processDue(3, 5_000);
+    const processed = await module.processDue(3);
     assert.equal(processed.processed, 1);
     const recovered = await module.get({ deliveryId: delivery.id });
     assert.equal(recovered?.state, 'needs_review');
@@ -293,7 +301,7 @@ databaseTest(
       },
     });
 
-    const delivery = await module.enqueue({
+    const delivery = await enqueueAndProcess(module, {
       revisionId,
       flowId: `flow-${revisionId}`,
       quotationId,
@@ -330,7 +338,7 @@ databaseTest(
     assert.equal(resolved.steps[0]?.failureKind, null);
 
     accept = true;
-    await module.processDue(3, 5_000);
+    await module.processDue(3);
     const finished = await module.get({ deliveryId: delivery.id });
     assert.equal(finished?.state, 'provider_accepted');
     assert.equal(finished?.steps[0]?.state, 'server_ack');
@@ -369,7 +377,7 @@ databaseTest('an operator-cancelled delivery never offers the same-revision re-s
       );
     },
   });
-  const delivery = await cancelled.module.enqueue({
+  const delivery = await enqueueAndProcess(cancelled.module, {
     revisionId: cancelledSeed.revisionId,
     flowId: `flow-${cancelledSeed.revisionId}`,
     quotationId: cancelledSeed.quotationId,
@@ -424,7 +432,7 @@ databaseTest('an undeliverable revision is never offered as a same-revision re-s
     },
   });
 
-  const delivery = await module.enqueue({
+  const delivery = await enqueueAndProcess(module, {
     revisionId,
     flowId: `flow-${revisionId}`,
     quotationId,
@@ -494,7 +502,7 @@ databaseTest(
       },
     });
 
-    const delivery = await module.enqueue({
+    const delivery = await enqueueAndProcess(module, {
       revisionId,
       flowId: `flow-${revisionId}`,
       quotationId,
@@ -509,7 +517,7 @@ databaseTest(
     assert.equal((await readDeal(quotationId))?.status, 'Novo Lead');
 
     clockRef.value = new Date('2026-09-18T13:05:00.000Z');
-    await module.processDue(3, 5_000);
+    await module.processDue(3);
     const needsReview = await module.get({ deliveryId: delivery.id });
     assert.equal(needsReview?.state, 'needs_review');
     assert.equal((await readDeal(quotationId))?.status, 'Novo Lead');
@@ -544,7 +552,7 @@ databaseTest(
       steps: [textStep(0)],
       transport: async () => ({ accepted: true, providerMessageId: `fake-${randomUUID()}` }),
     });
-    await advancedFixture.module.enqueue({
+    await enqueueAndProcess(advancedFixture.module, {
       revisionId: advanced.revisionId,
       flowId: `flow-${advanced.revisionId}`,
       quotationId: advanced.quotationId,
@@ -561,7 +569,7 @@ databaseTest(
       steps: [textStep(0)],
       transport: async () => ({ accepted: true, providerMessageId: `fake-${randomUUID()}` }),
     });
-    await lostFixture.module.enqueue({
+    await enqueueAndProcess(lostFixture.module, {
       revisionId: lost.revisionId,
       flowId: `flow-${lost.revisionId}`,
       quotationId: lost.quotationId,

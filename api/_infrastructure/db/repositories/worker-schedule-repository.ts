@@ -57,11 +57,8 @@ export async function readWorkerSchedule(
       SELECT f.lease_until FROM quotation_follow_ups f
       WHERE f.state = 'processing' AND f.lease_until IS NOT NULL
       UNION ALL
-      SELECT o.created_at + interval '60 seconds' FROM whatsapp_message_outbox o
-      WHERE o.state = 'queued'
-      UNION ALL
       SELECT o.next_attempt_at FROM whatsapp_message_outbox o
-      WHERE o.state = 'retry_scheduled' AND o.next_attempt_at IS NOT NULL
+      WHERE o.state IN ('queued', 'retry_scheduled')
       UNION ALL
       SELECT o.lease_expires_at FROM whatsapp_message_outbox o
       WHERE o.state = 'dispatching' AND o.lease_expires_at IS NOT NULL

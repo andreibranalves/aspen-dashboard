@@ -150,8 +150,8 @@ test('plan rejects disabled flows, excessive expanded steps and delay budget', a
   await assert.rejects(createDeliveryPlan(manySteps), /limite de etapas/i);
   await assert.rejects(
     createDeliveryPlan(fixtureInput({
-      flow: { ...fixtureInput().flow!, delay_min_seconds: 46, delay_max_seconds: 46 },
+      flow: { ...fixtureInput().flow!, delay_min_seconds: 301, delay_max_seconds: 301 },
     })),
-    /45 segundos/i,
+    /10 minutos/i,
   );
 });

@@ -1,6 +1,6 @@
-// Operator replies (M1b, spec §10.1 and §14): the intent is recorded and
-// committed before the transport, dispatched inside the same request, and the
-// response is always the persisted state, never a delivery guarantee.
+// Operator replies (M1b, spec §10.1 and §14): the request records the intent
+// and wakes the worker, which is the only sender (ADR 0013). The response is
+// always the persisted state, never a delivery guarantee.
 
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import {
@@ -12,7 +12,6 @@ import {
   type WhatsappMessageOutboxRepository,
 } from '../_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import { hasDisallowedWhatsappControls } from './quotation-follow-up-state.js';
-import { dispatchOutboxMessage, type SendText } from './whatsapp-message-dispatch.js';
 import { safeErrorSummary } from '../_shared/safe-error.js';
 import { wakeWorker } from '../_infrastructure/integrations/worker/client.js';
 
@@ -21,7 +20,6 @@ export const MAX_REPLY_CHARS = 4_000;
 
 export interface MessageSendDependencies {
   repository?: WhatsappMessageOutboxRepository;
-  send?: SendText;
   wakeWorker?: typeof wakeWorker;
 }
 
@@ -128,26 +126,19 @@ export async function postOperatorMessage(
     }
     if (hasDisallowedWhatsappControls(text)) throw new InputError('A mensagem contém caracteres não permitidos.');
 
-    const { record, created } = await repository.createIntent({
+    // A repeated key returns the recorded operation and never records it again.
+    const { record } = await repository.createIntent({
       clientRequestId,
       conversationId,
       expectedIdentityVersion: version,
       body: text,
       attachmentId,
     });
-    // A repeated key returns the recorded operation and never transports again.
-    const result =
-      created && record.state === 'queued'
-        ? (await dispatchOutboxMessage(record.id, { repository, send: dependencies.send })) ||
-          (await repository.findByMessageId(record.messageId)) ||
-          record
-        : record;
-    // O que não saiu agora fica para o worker do VPS (ADR 0013).
     const workerWake =
-      result.state === 'queued' || result.state === 'retry_scheduled'
+      record.state === 'queued' || record.state === 'retry_scheduled'
         ? await (dependencies.wakeWorker || wakeWorker)()
         : undefined;
-    return json(202, { message: projectOutbox(result), worker_wake: workerWake });
+    return json(202, { message: projectOutbox(record), worker_wake: workerWake });
   }, 'Não foi possível registrar o envio. Tente novamente.');
 }
 

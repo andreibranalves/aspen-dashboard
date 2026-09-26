@@ -50,7 +50,6 @@ import {
 } from '../../api/_modules/quotation-delivery-state.js';
 import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { createPostgresWhatsappContactActivityRepository } from '../../api/_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
-import { createDbDeadline } from '../../api/_infrastructure/db/deadline.js';
 import { toPublicDeliveryView } from '../../api/_modules/quotation-deliveries.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 
@@ -151,6 +150,15 @@ async function createIssuedRevision(): Promise<string> {
   });
   testRevisionIds.add(revisionId);
   return revisionId;
+}
+
+// The request only records the envio; the worker sends it (ADR 0013).
+async function enqueueAndProcess(
+  module: ReturnType<typeof createQuotationDeliveryModule>,
+  identity: { revisionId: string; flowId: string },
+) {
+  const queued = await module.enqueue(identity);
+  return (await module.process(queued.id)) || queued;
 }
 
 async function setDelivery(id: string, values: Record<string, unknown>) {
@@ -454,7 +462,7 @@ databaseTest('module integration persists frozen delay and waits for the due pre
     logger: () => {},
   });
 
-  const first = await module.enqueue({ revisionId: ids.revision, flowId });
+  const first = await enqueueAndProcess(module, { revisionId: ids.revision, flowId });
   assert.deepEqual(calls, [0]);
   assert.equal(first.state, 'queued');
   assert.equal(first.steps[1]?.nextAttemptAt?.getTime(), integrationClock.getTime() + 60_000);
@@ -509,7 +517,7 @@ databaseTest('accepted step followed by a retryable next step preserves order an
     logger: () => {},
   });
 
-  const retry = await module.enqueue({ revisionId: ids.revision, flowId });
+  const retry = await enqueueAndProcess(module, { revisionId: ids.revision, flowId });
   assert.equal(retry.state, 'retry_scheduled');
   assert.equal(retry.steps[0]?.state, 'server_ack');
   assert.equal(retry.steps[1]?.state, 'retry_scheduled');
@@ -1688,14 +1696,14 @@ databaseTest('an early receipt folded by markAccepted projects the follow-up exa
   const module = createQuotationDeliveryModule({
     repository: integrationRepository,
     followUpRepository: {
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-      upsertFromDeliveryReceipt: async (value, options) => {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+      upsertFromDeliveryReceipt: async (value) => {
         receiptProjections += 1;
-        return followUp.upsertFromDeliveryReceipt!(value, options);
+        return followUp.upsertFromDeliveryReceipt!(value);
       },
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      listAcceptedDeliveriesMissingFollowUp: (filter) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
     },
     planner: async () => ({
       revisionId,
@@ -1716,7 +1724,7 @@ databaseTest('an early receipt folded by markAccepted projects the follow-up exa
     logger: () => {},
   });
 
-  const running = module.enqueue({ revisionId, flowId });
+  const running = enqueueAndProcess(module, { revisionId, flowId });
   await enteredTransport.promise;
 
   // The receipt arrives before `markAccepted` persisted the provider id: it is
@@ -1785,14 +1793,14 @@ databaseTest('an early receipt keeps the durable inbox time, not the acceptance 
   const module = createQuotationDeliveryModule({
     repository: integrationRepository,
     followUpRepository: {
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-      upsertFromDeliveryReceipt: (value, options) =>
-        followUp.upsertFromDeliveryReceipt!(value, options),
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
-      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
-        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+      upsertAwaitingReceiptFromAcceptedDelivery: (value) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+      upsertFromDeliveryReceipt: (value) =>
+        followUp.upsertFromDeliveryReceipt!(value),
+      listAcceptedDeliveriesMissingFollowUp: (filter) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+      listAwaitingReceiptWithCompletedDelivery: (filter) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter),
     },
     planner: async () => ({
       revisionId,
@@ -1813,7 +1821,7 @@ databaseTest('an early receipt keeps the durable inbox time, not the acceptance 
     logger: () => {},
   });
 
-  const running = module.enqueue({ revisionId, flowId });
+  const running = enqueueAndProcess(module, { revisionId, flowId });
   await enteredTransport.promise;
 
   // The provider receipt lands first, at t0. The acceptance is only persisted
@@ -1867,20 +1875,20 @@ databaseTest('a rejected receipt projection is recovered by the worker without a
   const module = createQuotationDeliveryModule({
     repository: integrationRepository,
     followUpRepository: {
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-      upsertFromDeliveryReceipt: async (value, options) => {
+      upsertAwaitingReceiptFromAcceptedDelivery: (value) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+      upsertFromDeliveryReceipt: async (value) => {
         projections += 1;
         if (rejectNextProjection) {
           rejectNextProjection = false;
           throw new Error('transient projection failure');
         }
-        return followUp.upsertFromDeliveryReceipt!(value, options);
+        return followUp.upsertFromDeliveryReceipt!(value);
       },
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
-      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
-        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
+      listAcceptedDeliveriesMissingFollowUp: (filter) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+      listAwaitingReceiptWithCompletedDelivery: (filter) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter),
     },
     planner: async () => ({
       revisionId,
@@ -1900,7 +1908,7 @@ databaseTest('a rejected receipt projection is recovered by the worker without a
     logger: () => {},
   });
 
-  const accepted = await module.enqueue({ revisionId, flowId });
+  const accepted = await enqueueAndProcess(module, { revisionId, flowId });
   assert.equal(accepted.state, 'provider_accepted');
   assert.equal(transportCalls, 1);
 
@@ -2524,13 +2532,13 @@ databaseTest('receipt reconciliation makes bounded progress past a poison row an
       NonNullable<typeof followUp.upsertAwaitingReceiptFromAcceptedDelivery>
     >[0]) => followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
     listAcceptedDeliveriesMissingFollowUp: () => Promise.resolve({ data: [], hasMore: false }),
-    listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
-      followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
-    markReceiptProjectionAttempt: (value, options) =>
-      followUp.markReceiptProjectionAttempt!(value, options),
-    upsertFromDeliveryReceipt: async (value, options) => {
+    listAwaitingReceiptWithCompletedDelivery: (filter) =>
+      followUp.listAwaitingReceiptWithCompletedDelivery!(filter),
+    markReceiptProjectionAttempt: (value) =>
+      followUp.markReceiptProjectionAttempt!(value),
+    upsertFromDeliveryReceipt: async (value) => {
       if (poisonSet.has(value.deliveryId)) throw new Error('poison projection');
-      return followUp.upsertFromDeliveryReceipt!(value as never, options);
+      return followUp.upsertFromDeliveryReceipt!(value as never);
     },
   };
 
@@ -2608,42 +2616,6 @@ databaseTest('receipt reconciliation makes bounded progress past a poison row an
   assert.deepEqual([...converged].sort(), [...poisonIds].sort());
   assert.equal(pending.length, 53);
   assert.equal(poisonIds.length, FOLLOW_UP_RECONCILIATION_BATCH);
-});
-
-databaseTest('a blocked reconciliation statement is cancelled by the server-side statement timeout', async () => {
-  const followUp = createPostgresQuotationFollowUpRepository(() => db);
-  const blocker = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'adv-timeout-blocker' },
-  });
-  const locked = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const hold = blocker.begin(async (tx) => {
-    await tx`LOCK TABLE quotation_follow_ups IN ACCESS EXCLUSIVE MODE`;
-    locked.resolve();
-    await release.promise;
-  });
-  try {
-    await locked.promise;
-    // Safety net: if the server-side timeout is broken the statement would block
-    // forever; release after 4s so the assertion fails instead of hanging. With
-    // the timeout it is cancelled by PostgreSQL well before that.
-    const releaseTimer = setTimeout(() => release.resolve(), 4_000);
-    const startedAt = Date.now();
-    await assert.rejects(
-      followUp.listAwaitingReceiptWithCompletedDelivery!({ limit: 1 }, { timeoutMs: 300 }),
-    );
-    const elapsed = Date.now() - startedAt;
-    clearTimeout(releaseTimer);
-    assert.ok(elapsed < 3_000, `statement timeout did not cancel the held query (took ${elapsed}ms)`);
-  } finally {
-    release.resolve();
-    await hold.catch(() => {});
-    await blocker.end({ timeout: 5 });
-  }
 });
 
 databaseTest('duplicate callbacks stay idempotent in the durable inbox', async () => {
@@ -2734,8 +2706,8 @@ databaseTest('the durable inbox is pruned by receipt age', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Correction round 5: true deadlines/cancellation, durable rotation and
-// fairness, honest saturation reporting, and PLAYED receipt clock folding.
+// Correction round 5: durable rotation and fairness, honest saturation
+// reporting, and PLAYED receipt clock folding.
 // ---------------------------------------------------------------------------
 
 interface ProjectionFixture {
@@ -2863,144 +2835,6 @@ async function seedProjectionFixture(
   return { deliveryId, followUpId: null, providerMessageId, revisionId, phone };
 }
 
-databaseTest('a queued bounded reconciliation statement is cancelled and can never commit after the deadline', async () => {
-  const fixture = await seedProjectionFixture(9001, new Date(now.getTime() - 100_000), 'accepted');
-  // A dedicated pool with max: 1 mirrors the serverless pool: while its only
-  // connection is held, any bounded statement queues behind it.
-  const dedicated = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'adv-r5-queued' },
-  });
-  const dedicatedDb = drizzle(dedicated, { schema });
-  const dedicatedRepository = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
-  const held = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const hold = dedicated.begin(async (tx) => {
-    await tx`SELECT 1`;
-    held.resolve();
-    await release.promise;
-  });
-  try {
-    await held.promise;
-    const deadline = createDbDeadline(250);
-    const startedAt = Date.now();
-    await assert.rejects(
-      dedicatedRepository.markAcceptanceProjectionAttempt!(
-        { deliveryId: fixture.deliveryId },
-        { deadline }
-      ),
-    );
-    assert.ok(
-      Date.now() - startedAt < 2_000,
-      'the queued statement must be cancelled at the deadline, not wait for the connection',
-    );
-
-    // Releasing the only connection must not let the cancelled queued write run.
-    release.resolve();
-    await hold;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    const [row] = await db
-      .select({ marker: quotationDeliveries.followUpProjectionAttemptedAt })
-      .from(quotationDeliveries)
-      .where(eq(quotationDeliveries.id, fixture.deliveryId));
-    assert.equal(row?.marker, null, 'a post-deadline queued write must never commit');
-  } finally {
-    release.resolve();
-    await hold.catch(() => {});
-    await dedicated.end({ timeout: 5 });
-  }
-});
-
-databaseTest('a reconciliation statement blocked on a held lock is cancelled at the deadline, writes nothing later and frees the sole connection', async () => {
-  const fixture = await seedProjectionFixture(9200, new Date(now.getTime() - 100_000), 'accepted');
-  // The dedicated pool mirrors the serverless `max: 1` pool used by the worker.
-  const dedicated = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'r7-atomic-target' },
-  });
-  const dedicatedDb = drizzle(dedicated, { schema });
-  const dedicatedFollowUp = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
-  const dedicatedOutbox = createPostgresQuotationDeliveryOutboxRepository(() => dedicatedDb, {
-    now: () => new Date(now),
-  });
-  const blocker = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'r7-atomic-blocker' },
-  });
-  const held = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const clientRows = (await db.execute(sql`
-    SELECT q.client_id AS client_id
-    FROM quotation_deliveries d
-    JOIN quote_revisions r ON r.id = d.revision_id
-    JOIN quotations q ON q.id = r.quotation_id
-    WHERE d.id = ${fixture.deliveryId}::uuid
-  `)) as unknown as Array<{ client_id: string }>;
-  const clientId = clientRows[0]!.client_id;
-  // The blocker holds the exact client row the atomic upsert's `FOR UPDATE OF cl`
-  // must acquire, so the reconciliation statement runs (not queues) and blocks.
-  const hold = blocker.begin(async (tx) => {
-    await tx`SELECT id FROM clients WHERE id = ${clientId}::uuid FOR UPDATE`;
-    held.resolve();
-    await release.promise;
-  });
-  try {
-    await held.promise;
-    const startedAt = Date.now();
-    await assert.rejects(
-      dedicatedFollowUp.upsertAwaitingReceiptFromAcceptedDelivery!(
-        {
-          deliveryId: fixture.deliveryId,
-          revisionId: fixture.revisionId,
-          phone: fixture.phone,
-          providerMessageId: fixture.providerMessageId,
-        },
-        { deadline: createDbDeadline(300) },
-      ),
-    );
-    assert.ok(
-      Date.now() - startedAt < 2_000,
-      'a statement blocked on a held lock must be cancelled at the deadline',
-    );
-
-    release.resolve();
-    await hold;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const rows = await db
-      .select()
-      .from(quotationFollowUps)
-      .where(eq(quotationFollowUps.deliveryId, fixture.deliveryId));
-    assert.equal(rows.length, 0, 'a cancelled statement must never write after the lock releases');
-    const stuck = (await db.execute(sql`
-      SELECT 1 FROM pg_stat_activity
-      WHERE application_name = 'r7-atomic-target' AND state = 'idle in transaction'
-    `)) as unknown as unknown[];
-    assert.equal(Array.from(stuck).length, 0, 'no transaction may dangle after the caller returns');
-
-    // The sole connection is immediately usable for the outbound claim path.
-    const revisionId = await createIssuedRevision();
-    const flowId = `r7-atomic-reclaim-${randomUUID().slice(0, 8)}`;
-    const due = await repository.enqueue(input({ revisionId, flowId, steps: [textStep(0)] }));
-    const claimed = await dedicatedOutbox.claim();
-    assert.ok(claimed, 'the pool must be usable immediately for a due outbound claim');
-    assert.equal(claimed!.delivery.id, due.id);
-  } finally {
-    release.resolve();
-    await hold.catch(() => {});
-    await blocker.end({ timeout: 5 });
-    await dedicated.end({ timeout: 5 });
-  }
-});
-
 databaseTest('PLAYED before acceptance folds the durable inbox clock, not the acceptance clock', async () => {
   integrationClock = new Date(now);
   const revisionId = await createIssuedRevision();
@@ -3013,12 +2847,12 @@ databaseTest('PLAYED before acceptance folds the durable inbox clock, not the ac
   const module = createQuotationDeliveryModule({
     repository: integrationRepository,
     followUpRepository: {
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-      upsertFromDeliveryReceipt: (value, options) =>
-        followUp.upsertFromDeliveryReceipt!(value, options),
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      upsertAwaitingReceiptFromAcceptedDelivery: (value) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+      upsertFromDeliveryReceipt: (value) =>
+        followUp.upsertFromDeliveryReceipt!(value),
+      listAcceptedDeliveriesMissingFollowUp: (filter) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
     },
     planner: async () => ({
       revisionId,
@@ -3039,7 +2873,7 @@ databaseTest('PLAYED before acceptance folds the durable inbox clock, not the ac
     logger: () => {},
   });
 
-  const running = module.enqueue({ revisionId, flowId });
+  const running = enqueueAndProcess(module, { revisionId, flowId });
   await enteredTransport.promise;
 
   // The PLAYED receipt lands first, at t0. The acceptance is persisted only at
@@ -3090,12 +2924,12 @@ databaseTest('an immediate PLAYED receipt projects a follow-up from the inbox cl
   const module = createQuotationDeliveryModule({
     repository: integrationRepository,
     followUpRepository: {
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-      upsertFromDeliveryReceipt: (value, options) =>
-        followUp.upsertFromDeliveryReceipt!(value, options),
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
+      upsertAwaitingReceiptFromAcceptedDelivery: (value) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+      upsertFromDeliveryReceipt: (value) =>
+        followUp.upsertFromDeliveryReceipt!(value),
+      listAcceptedDeliveriesMissingFollowUp: (filter) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
     },
     planner: async () => ({
       revisionId,
@@ -3115,7 +2949,7 @@ databaseTest('an immediate PLAYED receipt projects a follow-up from the inbox cl
     logger: () => {},
   });
 
-  const accepted = await module.enqueue({ revisionId, flowId });
+  const accepted = await enqueueAndProcess(module, { revisionId, flowId });
   assert.equal(accepted.state, 'provider_accepted');
 
   // Skew the clock forward before the PLAYED arrives: the inbox `received_at`
@@ -3160,14 +2994,14 @@ databaseTest('51+ poison acceptance candidates cannot starve candidate 51 and ou
   const poisonSet = new Set(poison);
   const attempted = new Set<string>();
   const followUpDeps = {
-    listAcceptedDeliveriesMissingFollowUp: (filter: { limit?: number }, options: unknown) =>
-      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options as never),
-    markAcceptanceProjectionAttempt: (value: { deliveryId: string }, options: unknown) =>
-      followUp.markAcceptanceProjectionAttempt!(value, options as never),
-    upsertAwaitingReceiptFromAcceptedDelivery: async (value: { deliveryId: string }, options: unknown) => {
+    listAcceptedDeliveriesMissingFollowUp: (filter: { limit?: number }) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+    markAcceptanceProjectionAttempt: (value: { deliveryId: string }) =>
+      followUp.markAcceptanceProjectionAttempt!(value),
+    upsertAwaitingReceiptFromAcceptedDelivery: async (value: { deliveryId: string }) => {
       attempted.add(value.deliveryId);
       if (poisonSet.has(value.deliveryId)) throw new Error('poison acceptance');
-      return followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value as never, options as never);
+      return followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value as never);
     },
   };
 
@@ -3219,10 +3053,10 @@ databaseTest('a saturated acceptance source reports remaining even when every at
   }
   const attempted = new Set<string>();
   const followUpDeps = {
-    listAcceptedDeliveriesMissingFollowUp: (filter: { limit?: number }, options: unknown) =>
-      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options as never),
-    markAcceptanceProjectionAttempt: (value: { deliveryId: string }, options: unknown) =>
-      followUp.markAcceptanceProjectionAttempt!(value, options as never),
+    listAcceptedDeliveriesMissingFollowUp: (filter: { limit?: number }) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+    markAcceptanceProjectionAttempt: (value: { deliveryId: string }) =>
+      followUp.markAcceptanceProjectionAttempt!(value),
     // Successful no-op: the candidate never leaves the source, so a saturated
     // source is the only reason work remains.
     upsertAwaitingReceiptFromAcceptedDelivery: async (value: { deliveryId: string }) => {
@@ -3250,303 +3084,10 @@ databaseTest('a saturated acceptance source reports remaining even when every at
   }
 });
 
-databaseTest('a slow receipt projection rotates durably without marking the projection successful', async () => {
-  const first = await seedProjectionFixture(300, new Date(now.getTime() - 10_000), 'receipt');
-  const second = await seedProjectionFixture(301, new Date(now.getTime() - 9_000), 'receipt');
-  const followUp = createPostgresQuotationFollowUpRepository(() => db);
-  const attempted: string[] = [];
-  const module = createQuotationDeliveryModule({
-    repository: integrationRepository,
-    followUpRepository: {
-      listAcceptedDeliveriesMissingFollowUp: async () => ({ data: [], hasMore: false }),
-      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
-      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
-        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
-      markReceiptProjectionAttempt: (value, options) =>
-        followUp.markReceiptProjectionAttempt!(value, options),
-      // The projection never settles: it is the deadline that must end it.
-      upsertFromDeliveryReceipt: (value) => {
-        attempted.push(value.deliveryId);
-        return new Promise(() => {});
-      },
-    },
-    transport: async () => ({ accepted: true as const, providerMessageId: `provider-${randomUUID()}` }),
-    now: () => new Date(now),
-    instance: followUpInstance,
-    logger: () => {},
-  });
-
-  const startedAt = Date.now();
-  await module.processDue(1, 18_000);
-  assert.ok(Date.now() - startedAt < 17_000, 'a held projection must be bounded by the deadline');
-  assert.deepEqual(attempted, [first.deliveryId]);
-
-  const [firstRow] = await db
-    .select()
-    .from(quotationFollowUps)
-    .where(eq(quotationFollowUps.id, first.followUpId!));
-  const [secondRow] = await db
-    .select()
-    .from(quotationFollowUps)
-    .where(eq(quotationFollowUps.id, second.followUpId!));
-  // Durable rotation happened even though the business projection did not.
-  assert.ok(
-    firstRow!.updatedAt.getTime() > secondRow!.updatedAt.getTime(),
-    'the timed-out candidate must rotate to the tail',
-  );
-  assert.equal(firstRow!.state, 'awaiting_receipt');
-  assert.equal(firstRow!.firstProviderReceiptAt, null);
-
-  // The next invocation starts from the row after the timed-out candidate.
-  attempted.length = 0;
-  await module.processDue(1, 18_000);
-  assert.equal(attempted[0], second.deliveryId);
-});
-
-databaseTest('a held lock on the immediate acceptance projection cannot strand the invocation and is recovered without a second POST', async () => {
-  integrationClock = new Date(now);
-  process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
-    now.getTime() - 86_400_000,
-  ).toISOString();
-  const revisionId = await createIssuedRevision();
-  const flowId = `held-immediate-${randomUUID().slice(0, 8)}`;
-  const deliveryId = randomUUID();
-  await db.insert(quotationDeliveries).values({
-    id: deliveryId,
-    revisionId,
-    phone: '5511999999999',
-    flowId,
-    flowName: 'Held immediate',
-    state: 'queued',
-    nextAttemptAt: new Date(now),
-    createdAt: now,
-    updatedAt: now,
-  });
-  await db.insert(quotationDeliverySteps).values({
-    id: randomUUID(),
-    deliveryId,
-    position: 0,
-    type: 'text',
-    payloadSnapshot: { text: 'held', delayMs: 0 },
-    state: 'queued',
-    attemptCount: 0,
-    nextAttemptAt: new Date(now),
-    createdAt: now,
-    updatedAt: now,
-  });
-  testRevisionIds.add(revisionId);
-
-  const followUp = createPostgresQuotationFollowUpRepository(() => db);
-  let transportCalls = 0;
-  const module = createQuotationDeliveryModule({
-    repository: integrationRepository,
-    followUpRepository: {
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
-      markAcceptanceProjectionAttempt: (value, options) =>
-        followUp.markAcceptanceProjectionAttempt!(value, options),
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-    },
-    transport: async () => {
-      transportCalls += 1;
-      return { accepted: true as const, providerMessageId: `provider-held-${randomUUID()}` };
-    },
-    now: () => new Date(integrationClock),
-    instance: followUpInstance,
-    logger: () => {},
-  });
-
-  const blocker = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'adv-r5-immediate-blocker' },
-  });
-  const held = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const hold = blocker.begin(async (tx) => {
-    // The acceptance projection locks the client row (`FOR UPDATE OF cl`), so
-    // holding it simulates an external lock after provider acceptance.
-    await tx`SELECT id FROM clients WHERE id = ${ids.client}::uuid FOR UPDATE`;
-    held.resolve();
-    await release.promise;
-  });
-
-  try {
-    await held.promise;
-    const startedAt = Date.now();
-    await module.processDue(1, 3_000);
-    const elapsed = Date.now() - startedAt;
-    assert.ok(elapsed < 6_000, `a held projection must be bounded (took ${elapsed}ms)`);
-    assert.equal(transportCalls, 1, 'exactly one provider POST');
-
-    // Provider acceptance and its id are durable before the optional projection.
-    const accepted = await integrationRepository.get(deliveryId);
-    assert.equal(accepted?.state, 'provider_accepted');
-    assert.equal(accepted?.steps[0]?.state, 'server_ack');
-    const [stored] = await db
-      .select({ providerMessageId: quotationDeliverySteps.providerMessageId })
-      .from(quotationDeliverySteps)
-      .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
-    assert.ok(stored?.providerMessageId);
-    // The projection timed out: no follow-up yet, but the durable retry source
-    // (the accepted delivery) remains.
-    assert.equal(
-      (
-        await db
-          .select()
-          .from(quotationFollowUps)
-          .where(eq(quotationFollowUps.revisionId, revisionId))
-      ).length,
-      0,
-    );
-
-    // Releasing the lock lets the next invocation recover with no second POST.
-    release.resolve();
-    await hold;
-    // The timed-out projection must have been truly cancelled: a merely raced
-    // operation would commit its write as soon as the lock is released, before
-    // the recovery pass runs.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    assert.equal(
-      (
-        await db
-          .select()
-          .from(quotationFollowUps)
-          .where(eq(quotationFollowUps.revisionId, revisionId))
-      ).length,
-      0,
-      'a post-deadline projection must never commit on its own',
-    );
-    await module.processDue(1, 30_000);
-    const rows = await db
-      .select()
-      .from(quotationFollowUps)
-      .where(eq(quotationFollowUps.revisionId, revisionId));
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]?.state, 'awaiting_receipt');
-    assert.equal(transportCalls, 1, 'recovery must never replay the provider POST');
-  } finally {
-    release.resolve();
-    await hold.catch(() => {});
-    await blocker.end({ timeout: 5 });
-    delete process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT;
-  }
-});
-
 // ---------------------------------------------------------------------------
-// Correction round 6: outer transaction-lifecycle cancellation, activity
-// convergence, and sticky-vs-saturated `remaining` semantics.
+// Correction round 6: activity convergence and sticky-vs-saturated
+// `remaining` semantics.
 // ---------------------------------------------------------------------------
-
-databaseTest('a reconciliation statement queued behind the sole connection is cancelled at the deadline and never writes', async () => {
-  const fixture = await seedProjectionFixture(9201, new Date(now.getTime() - 100_000), 'accepted');
-  const dedicated = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'r6-queued-acquire' },
-  });
-  const dedicatedDb = drizzle(dedicated, { schema });
-  const dedicatedFollowUp = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
-  const held = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const hold = dedicated.begin(async (tx) => {
-    await tx`SELECT 1`;
-    held.resolve();
-    await release.promise;
-  });
-  try {
-    await held.promise;
-    const deadline = createDbDeadline(250);
-    const startedAt = Date.now();
-    await assert.rejects(
-      dedicatedFollowUp.upsertAwaitingReceiptFromAcceptedDelivery!(
-        {
-          deliveryId: fixture.deliveryId,
-          revisionId: fixture.revisionId,
-          phone: fixture.phone,
-          providerMessageId: fixture.providerMessageId,
-        },
-        { deadline },
-      ),
-    );
-    assert.ok(
-      Date.now() - startedAt < 2_000,
-      'the queued statement must be cancelled at the deadline, not wait for the connection',
-    );
-
-    // Releasing the only connection must not let the cancelled statement run.
-    release.resolve();
-    await hold;
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const rows = await db
-      .select()
-      .from(quotationFollowUps)
-      .where(eq(quotationFollowUps.deliveryId, fixture.deliveryId));
-    assert.equal(rows.length, 0, 'a reservation that lands after the deadline must never insert');
-  } finally {
-    release.resolve();
-    await hold.catch(() => {});
-    await dedicated.end({ timeout: 5 });
-  }
-});
-
-databaseTest('the sole connection is immediately usable for a due outbound claim after a cancelled reconciliation statement', async () => {
-  const revisionId = await createIssuedRevision();
-  const flowId = `r6-reclaim-${randomUUID().slice(0, 8)}`;
-  const due = await repository.enqueue(input({ revisionId, flowId, steps: [textStep(0)] }));
-  const fixture = await seedProjectionFixture(9203, new Date(now.getTime() - 100_000), 'accepted');
-  const dedicated = postgres(TEST_DATABASE_URL!, {
-    max: 1,
-    prepare: false,
-    connect_timeout: 10,
-    onnotice: () => {},
-    connection: { application_name: 'r6-reclaim-target' },
-  });
-  const dedicatedDb = drizzle(dedicated, { schema });
-  const dedicatedFollowUp = createPostgresQuotationFollowUpRepository(() => dedicatedDb);
-  const dedicatedOutbox = createPostgresQuotationDeliveryOutboxRepository(() => dedicatedDb, {
-    now: () => new Date(now),
-  });
-  const held = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  // The blocker occupies the dedicated pool's only connection, so the single
-  // reconciliation statement queues behind it and is cancelled by the deadline.
-  const hold = dedicated.begin(async (tx) => {
-    await tx`SELECT 1`;
-    held.resolve();
-    await release.promise;
-  });
-  try {
-    await held.promise;
-    const deadline = createDbDeadline(250);
-    await assert.rejects(
-      dedicatedFollowUp.upsertAwaitingReceiptFromAcceptedDelivery!(
-        {
-          deliveryId: fixture.deliveryId,
-          revisionId: fixture.revisionId,
-          phone: fixture.phone,
-          providerMessageId: fixture.providerMessageId,
-        },
-        { deadline },
-      ),
-    );
-
-    release.resolve();
-    await hold;
-    const claimed = await dedicatedOutbox.claim();
-    assert.ok(claimed, 'the pool must be usable immediately for a due outbound claim');
-    assert.equal(claimed!.delivery.id, due.id);
-  } finally {
-    release.resolve();
-    await hold.catch(() => {});
-    await dedicated.end({ timeout: 5 });
-  }
-});
 
 databaseTest('a final acceptance pass that drains a 21-candidate source returns remaining false', async () => {
   process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
@@ -3560,12 +3101,12 @@ databaseTest('a final acceptance pass that drains a 21-candidate source returns 
   const module = createQuotationDeliveryModule({
     repository: integrationRepository,
     followUpRepository: {
-      listAcceptedDeliveriesMissingFollowUp: (filter, options) =>
-        followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
-      markAcceptanceProjectionAttempt: (value, options) =>
-        followUp.markAcceptanceProjectionAttempt!(value, options),
-      upsertAwaitingReceiptFromAcceptedDelivery: (value, options) =>
-        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
+      listAcceptedDeliveriesMissingFollowUp: (filter) =>
+        followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+      markAcceptanceProjectionAttempt: (value) =>
+        followUp.markAcceptanceProjectionAttempt!(value),
+      upsertAwaitingReceiptFromAcceptedDelivery: (value) =>
+        followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
     },
     transport: async () => ({
       accepted: true as const,
@@ -3605,12 +3146,12 @@ databaseTest('a saturated receipt source keeps remaining true while a due outbou
     followUpRepository: {
       listAcceptedDeliveriesMissingFollowUp: async () => ({ data: [], hasMore: false }),
       upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
-      listAwaitingReceiptWithCompletedDelivery: (filter, options) =>
-        followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
-      markReceiptProjectionAttempt: (value, options) =>
-        followUp.markReceiptProjectionAttempt!(value, options),
-      upsertFromDeliveryReceipt: (value, options) =>
-        followUp.upsertFromDeliveryReceipt!(value as never, options),
+      listAwaitingReceiptWithCompletedDelivery: (filter) =>
+        followUp.listAwaitingReceiptWithCompletedDelivery!(filter),
+      markReceiptProjectionAttempt: (value) =>
+        followUp.markReceiptProjectionAttempt!(value),
+      upsertFromDeliveryReceipt: (value) =>
+        followUp.upsertFromDeliveryReceipt!(value as never),
     },
     transport: async () => {
       transportCalls += 1;
@@ -3651,27 +3192,6 @@ databaseTest('an uninspectable acceptance source fails closed and keeps remainin
   assert.equal(result.remaining, true, 'an uninspectable source must never report drained');
 });
 
-databaseTest('an acceptance source that never settles fails closed at the deadline', async () => {
-  const module = createQuotationDeliveryModule({
-    repository: integrationRepository,
-    followUpRepository: {
-      listAcceptedDeliveriesMissingFollowUp: () => new Promise(() => {}),
-      upsertAwaitingReceiptFromAcceptedDelivery: async () => {},
-    },
-    transport: async () => ({
-      accepted: true as const,
-      providerMessageId: `provider-${randomUUID()}`,
-    }),
-    now: () => new Date(now),
-    instance: followUpInstance,
-    logger: () => {},
-  });
-  const startedAt = Date.now();
-  const result = await module.processDue(1, 300);
-  assert.ok(Date.now() - startedAt < 5_000, 'the never-settling source must be bounded');
-  assert.equal(result.remaining, true);
-});
-
 databaseTest('a failed acceptance activity keeps the delivery in the retry source until activity and follow-up are both durable', async () => {
   integrationClock = new Date(now);
   process.env.QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT = new Date(
@@ -3687,27 +3207,22 @@ databaseTest('a failed acceptance activity keeps the delivery in the retry sourc
   const conversation = `${phone}@s.whatsapp.net`;
   let activityFails = true;
   const activityDeps = {
-    recordActivity: (
-      value: Parameters<typeof activity.recordActivity>[0],
-      options?: Parameters<typeof activity.recordActivity>[1],
-    ) =>
-      activityFails
-        ? Promise.reject(new Error('activity down'))
-        : activity.recordActivity(value, options),
+    recordActivity: (value: Parameters<typeof activity.recordActivity>[0]) =>
+      activityFails ? Promise.reject(new Error('activity down')) : activity.recordActivity(value),
   };
   const followUpDeps = {
-    upsertAwaitingReceiptFromAcceptedDelivery: (value: never, options: never) =>
-      followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options),
-    upsertFromDeliveryReceipt: (value: never, options: never) =>
-      followUp.upsertFromDeliveryReceipt!(value, options),
-    listAcceptedDeliveriesMissingFollowUp: (filter: never, options: never) =>
-      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
-    markAcceptanceProjectionAttempt: (value: never, options: never) =>
-      followUp.markAcceptanceProjectionAttempt!(value, options),
-    listAwaitingReceiptWithCompletedDelivery: (filter: never, options: never) =>
-      followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
-    markReceiptProjectionAttempt: (value: never, options: never) =>
-      followUp.markReceiptProjectionAttempt!(value, options),
+    upsertAwaitingReceiptFromAcceptedDelivery: (value: never) =>
+      followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value),
+    upsertFromDeliveryReceipt: (value: never) =>
+      followUp.upsertFromDeliveryReceipt!(value),
+    listAcceptedDeliveriesMissingFollowUp: (filter: never) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+    markAcceptanceProjectionAttempt: (value: never) =>
+      followUp.markAcceptanceProjectionAttempt!(value),
+    listAwaitingReceiptWithCompletedDelivery: (filter: never) =>
+      followUp.listAwaitingReceiptWithCompletedDelivery!(filter),
+    markReceiptProjectionAttempt: (value: never) =>
+      followUp.markReceiptProjectionAttempt!(value),
   };
   let transportCalls = 0;
   const providerMessageId = `provider-activity-${randomUUID()}`;
@@ -3783,20 +3298,20 @@ databaseTest('a failed follow-up upsert retries after a durable activity without
   const conversation = `${phone}@s.whatsapp.net`;
   let upsertFails = true;
   const followUpDeps = {
-    upsertAwaitingReceiptFromAcceptedDelivery: async (value: never, options: never) => {
+    upsertAwaitingReceiptFromAcceptedDelivery: async (value: never) => {
       if (upsertFails) throw new Error('follow-up down');
-      return followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value, options);
+      return followUp.upsertAwaitingReceiptFromAcceptedDelivery!(value);
     },
-    upsertFromDeliveryReceipt: (value: never, options: never) =>
-      followUp.upsertFromDeliveryReceipt!(value, options),
-    listAcceptedDeliveriesMissingFollowUp: (filter: never, options: never) =>
-      followUp.listAcceptedDeliveriesMissingFollowUp!(filter, options),
-    markAcceptanceProjectionAttempt: (value: never, options: never) =>
-      followUp.markAcceptanceProjectionAttempt!(value, options),
-    listAwaitingReceiptWithCompletedDelivery: (filter: never, options: never) =>
-      followUp.listAwaitingReceiptWithCompletedDelivery!(filter, options),
-    markReceiptProjectionAttempt: (value: never, options: never) =>
-      followUp.markReceiptProjectionAttempt!(value, options),
+    upsertFromDeliveryReceipt: (value: never) =>
+      followUp.upsertFromDeliveryReceipt!(value),
+    listAcceptedDeliveriesMissingFollowUp: (filter: never) =>
+      followUp.listAcceptedDeliveriesMissingFollowUp!(filter),
+    markAcceptanceProjectionAttempt: (value: never) =>
+      followUp.markAcceptanceProjectionAttempt!(value),
+    listAwaitingReceiptWithCompletedDelivery: (filter: never) =>
+      followUp.listAwaitingReceiptWithCompletedDelivery!(filter),
+    markReceiptProjectionAttempt: (value: never) =>
+      followUp.markReceiptProjectionAttempt!(value),
   };
   let transportCalls = 0;
   const providerMessageId = `provider-followup-${randomUUID()}`;
@@ -3805,7 +3320,7 @@ databaseTest('a failed follow-up upsert retries after a durable activity without
       repository: integrationRepository,
       followUpRepository: followUpDeps,
       activityRepository: {
-        recordActivity: (value: never, options: never) => activity.recordActivity(value, options),
+        recordActivity: (value: never) => activity.recordActivity(value),
       },
       transport: async () => {
         transportCalls += 1;

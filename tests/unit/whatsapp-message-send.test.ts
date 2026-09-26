@@ -139,12 +139,24 @@ it('validates a scoped private attachment before starting media transport', asyn
 });
 
 describe('operator message send', () => {
-  it('records, dispatches once and answers 202 with the persisted state; a repeat never transports again', async () => {
-    const repository = fakeRepository();
-    const sent: string[] = [];
-    const send = async ({ text }: { text: string }) => {
-      sent.push(text);
-      return { providerMessageId: 'prov-1' };
+  it('records the reply, wakes the worker and answers 202 queued without sending; a repeat never records again', async () => {
+    const recorded: string[] = [];
+    const base = fakeRepository();
+    const repository: WhatsappMessageOutboxRepository = {
+      ...base,
+      async createIntent(input) {
+        const result = await base.createIntent(input);
+        if (result.created) recorded.push(input.body);
+        return result;
+      },
+      async claim() {
+        throw new Error('the request must not dispatch');
+      },
+    };
+    let wakes = 0;
+    const wakeWorker = async () => {
+      wakes += 1;
+      return 'sent' as const;
     };
     const payload = {
       clientRequestId: randomUUID(),
@@ -152,17 +164,30 @@ describe('operator message send', () => {
       expectedIdentityVersion: 1,
       body: 'Olá!\r\n\r\nSegue a proposta.',
     };
-    const first = await postOperatorMessage(post(payload), { repository, send });
-    const repeat = await postOperatorMessage(post(payload), { repository, send });
+    const first = await postOperatorMessage(post(payload), { repository, wakeWorker });
+    const repeat = await postOperatorMessage(post(payload), { repository, wakeWorker });
 
     assert.equal(first.statusCode, 202);
-    assert.equal(JSON.parse(first.body || '{}').message.state, 'provider_accepted');
-    assert.deepEqual(sent, ['Olá!\n\nSegue a proposta.'], 'CRLF normalized, one transport');
+    assert.deepEqual(JSON.parse(first.body || '{}'), {
+      message: { ...JSON.parse(first.body || '{}').message, state: 'queued' },
+      worker_wake: 'sent',
+    });
+    assert.deepEqual(recorded, ['Olá!\n\nSegue a proposta.'], 'CRLF normalized, one intent');
     assert.equal(repeat.statusCode, 202);
-    assert.equal(JSON.parse(repeat.body || '{}').message.state, 'provider_accepted');
+    assert.equal(JSON.parse(repeat.body || '{}').message.state, 'queued');
+    assert.equal(wakes, 2);
 
     const lost = await getOperatorMessageByRequest(conversationId, payload.clientRequestId, { repository });
-    assert.equal(JSON.parse(lost.body || '{}').message.state, 'provider_accepted');
+    assert.equal(JSON.parse(lost.body || '{}').message.state, 'queued');
+  });
+
+  it('reports a refused wake so the screen can warn', async () => {
+    const result = await postOperatorMessage(
+      post({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'Oi' }),
+      { repository: fakeRepository(), wakeWorker: async () => 'failed' },
+    );
+    assert.equal(result.statusCode, 202);
+    assert.equal(JSON.parse(result.body || '{}').worker_wake, 'failed');
   });
 
   it('maps refusals to stable pt-BR codes', async () => {

@@ -367,17 +367,24 @@ test('an action on a stale view changes nothing', { skip: databaseSkip }, async 
   assert.equal((await repository.findByMessageId(record.messageId))?.state, 'retry_scheduled');
 });
 
-test('the sweep dispatches only old intents and stops before the budget runs out', { skip: databaseSkip }, async () => {
+test('the sweep sends a fresh reply at once, in the order written, and stops before the budget runs out', { skip: databaseSkip }, async () => {
   const repository = createPostgresWhatsappMessageOutboxRepository(() => db);
   const { conversationId } = await conversation();
-  const old = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'velha', now: new Date(Date.now() - 10 * 60_000) });
+  const first = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'primeira', now: new Date(Date.now() - 2_000) });
+  const second = await repository.createIntent({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: 1, body: 'segunda', now: new Date(Date.now() - 1_000) });
   const calls: string[] = [];
   const noRoom = await sweepOperatorMessages({ repository, deadlineAt: Date.now() + 10_000, send: accepting('p', calls) });
   assert.equal(noRoom.dispatched, 0, 'no transport without room for a full timeout');
 
-  await sweepOperatorMessages({ repository, deadlineAt: Date.now() + 60_000, send: accepting(`p-${randomUUID()}`, calls) });
-  assert.ok(calls.includes('velha'));
-  assert.equal((await repository.findByMessageId(old.record.messageId))?.state, 'provider_accepted');
+  let sent = 0;
+  const unique: SendText = async (input) => {
+    sent += 1;
+    return accepting(`p-${sent}-${randomUUID()}`, calls)(input);
+  };
+  await sweepOperatorMessages({ repository, deadlineAt: Date.now() + 5 * 60_000, send: unique });
+  assert.ok(calls.indexOf('primeira') >= 0 && calls.indexOf('primeira') < calls.indexOf('segunda'));
+  assert.equal((await repository.findByMessageId(first.record.messageId))?.state, 'provider_accepted');
+  assert.equal((await repository.findByMessageId(second.record.messageId))?.state, 'provider_accepted');
 });
 
 test('a reply written before the send window is never sent', { skip: databaseSkip }, async () => {

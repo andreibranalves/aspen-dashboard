@@ -28,7 +28,6 @@ import {
   type DeliveryPlan,
   type DeliveryPlanInput,
 } from './quotation-delivery-plan.js';
-import { createDbDeadline, type DbDeadline } from '../_infrastructure/db/deadline.js';
 import {
   EvolutionTransportError,
   sendFrozenStep,
@@ -48,14 +47,9 @@ export const RECONCILIATION_WAIT_MS = 120_000;
 export const PROVIDER_DELAY_WARNING_MS = 86_400_000;
 export const DEFAULT_PROCESS_DUE_LIMIT = 20;
 export const MAX_PROCESS_DUE_LIMIT = 50;
-export const PROCESS_DUE_TIME_BUDGET_MS = 45_000;
-// Follow-up projection reconciliation shares the worker's deadline with outbound
-// claims; this caps how many candidates one invocation may attempt so a slow or
-// poisoned slice can never monopolize the whole pass.
+// Caps how many follow-up projection candidates one pass may attempt, so a
+// poisoned slice can never monopolize the worker before outbound claims.
 export const FOLLOW_UP_RECONCILIATION_BATCH = 20;
-// Reconciliation must never consume the entire function budget: outbound claims
-// keep at least this much wall clock even when every projection is slow.
-export const FOLLOW_UP_RECONCILIATION_RESERVE_MS = 15_000;
 
 const RECEIPT_STATUSES: readonly EvolutionReceiptStatus[] = [
   'ERROR',
@@ -172,7 +166,6 @@ export interface QuotationDeliveryModuleDependencies {
   now?: () => Date;
   instance?: string;
   logger?: DeliveryLogger;
-  sleep?: (delayMs: number) => Promise<void>;
 }
 
 export interface EvolutionMessageEvent {
@@ -184,17 +177,16 @@ export interface EvolutionMessageEvent {
 }
 
 export interface QuotationDeliveryModule {
+  /** Records the envio and its steps; only the worker transports them (ADR 0013). */
   enqueue(input: DeliveryIdentity): Promise<DeliveryAggregate>;
+  /** Sends the due steps of one envio; a step in its pause waits for a later call. */
   process(deliveryId?: string): Promise<DeliveryAggregate | null>;
   /**
-   * `processed` counts claims and expired reconciliations. `stop` ends the batch
-   * before the next claim; the step already claimed finishes.
+   * `processed` counts claims and expired reconciliations. Steps still in their
+   * pause are left to the worker's schedule. `stop` ends the batch before the
+   * next claim; the step already claimed finishes.
    */
-  processDue(
-    limit: number,
-    timeBudgetMs?: number,
-    stop?: AbortSignal
-  ): Promise<{ processed: number; remaining: boolean }>;
+  processDue(limit: number, stop?: AbortSignal): Promise<{ processed: number; remaining: boolean }>;
   applyEvolutionEvent(event: EvolutionMessageEvent): Promise<DeliveryAggregate | null>;
   cancelPending(): Promise<number>;
   get(input: {
@@ -227,14 +219,13 @@ class DeliveryStepFailure extends Error {
 interface ProcessResult {
   aggregate: DeliveryAggregate | null;
   claims: number;
-  deadlineExhausted: boolean;
   reconciliationPending: boolean;
 }
 
 /**
  * Result of one bounded reconciliation pass. `sticky` is fail-closed: the
- * source could not be inspected, the pass ran out of budget, or a durable
- * projection failed — the caller must keep reporting work. `hasMore` is
+ * source could not be inspected or a durable projection failed — the caller
+ * must keep reporting work. `hasMore` is
  * temporary saturation of the source slice, which a later successful pass that
  * drains the source is allowed to clear.
  */
@@ -612,23 +603,6 @@ export function createQuotationDeliveryModule(
   const transportDependencies =
     dependencies.transportDependencies || dependencies.evolutionTransport;
   const logger = dependencies.logger;
-  const sleep =
-    dependencies.sleep ||
-    ((delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
-  // The wait between steps ends early when the worker is stopping.
-  async function pause(delayMs: number, stop?: AbortSignal): Promise<void> {
-    if (!stop) return sleep(delayMs);
-    let onStop = () => {};
-    const stopped = new Promise<void>((resolve) => {
-      onStop = resolve;
-      stop.addEventListener('abort', onStop, { once: true });
-    });
-    try {
-      await Promise.race([sleep(delayMs), stopped]);
-    } finally {
-      stop.removeEventListener('abort', onStop);
-    }
-  }
   let fallbackDocumentPreparer: DeliveryDocumentPreparer | undefined;
   const documentPreparer =
     dependencies.prepareDeliveryDocument ||
@@ -749,42 +723,20 @@ export function createQuotationDeliveryModule(
     }
   }
 
-  // Resolves after `operation` or rejects when the shared database deadline
-  // expires. The operation is cancelled by the deadline itself (postgres.js
-  // `query.cancel()` plus the shared statement budget); this race is only the
-  // last-resort guard for an injected dependency that ignores its deadline. The
-  // operation's rejection is always observed so a post-race failure never
-  // becomes an unhandled rejection.
-  function deadlineGuard<T>(deadline: DbDeadline | null, operation: Promise<T>): Promise<T> {
-    operation.catch(() => {});
-    return deadline ? Promise.race([operation, deadline.whenExpired]) : operation;
-  }
-
-  function budgetFrom(absoluteDeadline: number): DbDeadline | null {
-    if (absoluteDeadline === Number.POSITIVE_INFINITY) return null;
-    return createDbDeadline(Math.max(1, absoluteDeadline - Date.now()));
-  }
-
   async function retryFollowUpAcceptanceWrites(
     targetDeliveryId?: string,
-    budget: DbDeadline | null = null,
     maxCandidates = FOLLOW_UP_RECONCILIATION_BATCH
   ): Promise<ReconciliationOutcome> {
     const list = followUpRepository?.listAcceptedDeliveriesMissingFollowUp;
     const upsert = followUpRepository?.upsertAwaitingReceiptFromAcceptedDelivery;
     if (!list || !upsert) return NO_RECONCILIATION;
     const markAttempt = followUpRepository?.markAcceptanceProjectionAttempt;
-    if (budget?.expired) return STICKY_RECONCILIATION;
     let page: Awaited<ReturnType<typeof list>>;
     try {
-      page = await deadlineGuard(
-        budget,
-        list(
-          targetDeliveryId
-            ? { deliveryId: targetDeliveryId, limit: maxCandidates }
-            : { limit: maxCandidates },
-          budget ? { deadline: budget } : undefined
-        )
+      page = await list(
+        targetDeliveryId
+          ? { deliveryId: targetDeliveryId, limit: maxCandidates }
+          : { limit: maxCandidates },
       );
     } catch {
       // The acceptance source itself could not be inspected. Uninspected
@@ -805,11 +757,6 @@ export function createQuotationDeliveryModule(
     let processed = 0;
     let persistenceFailed = false;
     for (const row of page.data) {
-      if (budget?.expired) {
-        // The budget ended before this slice was fully inspected: fail closed
-        // while still reporting the unconsumed slice.
-        return { sticky: true, hasMore: page.hasMore };
-      }
       if (processed >= maxCandidates) {
         // The durable slice still has candidates beyond this pass: temporary
         // saturation, not a failure. A later successful pass may clear it.
@@ -817,17 +764,11 @@ export function createQuotationDeliveryModule(
       }
       processed += 1;
       // The durable rotation marker is written before the projection, so a
-      // persistently failing or timed-out candidate still moves to the tail and
-      // cannot starve 51+ later candidates across invocations.
+      // persistently failing candidate still moves to the tail and cannot
+      // starve 51+ later candidates across passes.
       if (markAttempt) {
         try {
-          await deadlineGuard(
-            budget,
-            markAttempt(
-              { deliveryId: row.deliveryId },
-              budget ? { deadline: budget } : undefined
-            )
-          );
+          await markAttempt({ deliveryId: row.deliveryId });
         } catch {
           persistenceFailed = true;
           logEvent(
@@ -852,23 +793,17 @@ export function createQuotationDeliveryModule(
         // so re-running it on a retry cannot duplicate the row.
         const canonicalPhone = normalizeWhatsappPhone(row.phone);
         if (activityRepository && canonicalPhone) {
-          await deadlineGuard(
-            budget,
-            activityRepository.recordActivity(
-              {
-                instance,
-                providerConversationId: `${canonicalPhone}@s.whatsapp.net`,
-                providerMessageId: row.providerMessageId,
-                fromMe: true,
-                occurredAt: row.acceptedAt || now(),
-                identityStatus: 'derived',
-                canonicalPhone,
-              },
-              budget ? { deadline: budget } : undefined
-            )
-          );
+          await activityRepository.recordActivity({
+            instance,
+            providerConversationId: `${canonicalPhone}@s.whatsapp.net`,
+            providerMessageId: row.providerMessageId,
+            fromMe: true,
+            occurredAt: row.acceptedAt || now(),
+            identityStatus: 'derived',
+            canonicalPhone,
+          });
         }
-        await deadlineGuard(budget, upsert(row, budget ? { deadline: budget } : undefined));
+        await upsert(row);
       } catch {
         persistenceFailed = true;
         logEvent(
@@ -884,7 +819,7 @@ export function createQuotationDeliveryModule(
         );
       }
     }
-    return { sticky: persistenceFailed || Boolean(budget?.expired), hasMore: page.hasMore };
+    return { sticky: persistenceFailed, hasMore: page.hasMore };
   }
 
   // The receipt fold and the follow-up projection cannot share one transaction
@@ -893,31 +828,25 @@ export function createQuotationDeliveryModule(
   // receipt; this worker reconciliation re-projects from that proof — no
   // provider replay and no second queue.
   //
-  // The pass is bounded by both the same process deadline used for outbound
-  // claims and a per-invocation candidate budget, and each attempted candidate's
-  // durable retry order is refreshed so a persistent poison row rotates to the
-  // tail instead of head-of-line blocking the rest forever. `remaining` reports
-  // the unconsumed slice honestly, and an uninspectable source fails closed.
+  // The pass is bounded by a per-pass candidate budget, and each attempted
+  // candidate's durable retry order is refreshed so a persistent poison row
+  // rotates to the tail instead of head-of-line blocking the rest forever.
+  // `remaining` reports the unconsumed slice honestly, and an uninspectable
+  // source fails closed.
   async function retryFollowUpReceiptWrites(
     targetDeliveryId?: string,
-    budget: DbDeadline | null = null,
     maxCandidates = FOLLOW_UP_RECONCILIATION_BATCH
   ): Promise<ReconciliationOutcome> {
     const list = followUpRepository?.listAwaitingReceiptWithCompletedDelivery;
     const upsert = followUpRepository?.upsertFromDeliveryReceipt;
     if (!list || !upsert) return NO_RECONCILIATION;
     const markAttempt = followUpRepository?.markReceiptProjectionAttempt;
-    if (budget?.expired) return STICKY_RECONCILIATION;
     let page: Awaited<ReturnType<typeof list>>;
     try {
-      page = await deadlineGuard(
-        budget,
-        list(
-          targetDeliveryId
-            ? { deliveryId: targetDeliveryId, limit: maxCandidates }
-            : { limit: maxCandidates },
-          budget ? { deadline: budget } : undefined
-        )
+      page = await list(
+        targetDeliveryId
+          ? { deliveryId: targetDeliveryId, limit: maxCandidates }
+          : { limit: maxCandidates },
       );
     } catch {
       // The receipt source itself could not be inspected. Uninspected durable
@@ -938,28 +867,18 @@ export function createQuotationDeliveryModule(
     let processed = 0;
     let projectionFailed = false;
     for (const row of page.data) {
-      if (budget?.expired) {
-        // The budget ended before this slice was fully inspected: fail closed.
-        return { sticky: true, hasMore: page.hasMore };
-      }
       if (processed >= maxCandidates) {
         // Temporary source saturation that a later pass may clear.
         return { sticky: projectionFailed, hasMore: true };
       }
       processed += 1;
       // Rotation is durable and written before the projection: a projection that
-      // is slow or times out still moves the candidate to the tail and can never
-      // strand the same row at the head of every invocation. Touching the row's
-      // retry order is not a claim that the business projection succeeded.
+      // fails still moves the candidate to the tail and can never strand the
+      // same row at the head of every pass. Touching the row's retry order is
+      // not a claim that the business projection succeeded.
       if (markAttempt) {
         try {
-          await deadlineGuard(
-            budget,
-            markAttempt(
-              { followUpId: row.followUpId },
-              budget ? { deadline: budget } : undefined
-            )
-          );
+          await markAttempt({ followUpId: row.followUpId });
         } catch {
           projectionFailed = true;
           logEvent(
@@ -977,24 +896,18 @@ export function createQuotationDeliveryModule(
         }
       }
       try {
-        await deadlineGuard(
-          budget,
-          upsert(
-            {
-              deliveryId: row.deliveryId,
-              revisionId: row.revisionId,
-              phone: row.phone,
-              // Outbox steps are direct phone recipients; a LID value is passed
-              // through so the writer can resolve the identity itself.
-              providerConversationId: row.phone.includes('@')
-                ? row.phone
-                : `${row.phone}@s.whatsapp.net`,
-              allStepsDelivered: true,
-              receivedAt: row.receivedAt,
-            },
-            budget ? { deadline: budget } : undefined
-          )
-        );
+        await upsert({
+          deliveryId: row.deliveryId,
+          revisionId: row.revisionId,
+          phone: row.phone,
+          // Outbox steps are direct phone recipients; a LID value is passed
+          // through so the writer can resolve the identity itself.
+          providerConversationId: row.phone.includes('@')
+            ? row.phone
+            : `${row.phone}@s.whatsapp.net`,
+          allStepsDelivered: true,
+          receivedAt: row.receivedAt,
+        });
       } catch {
         projectionFailed = true;
         logEvent(
@@ -1010,57 +923,29 @@ export function createQuotationDeliveryModule(
         );
       }
     }
-    return { sticky: projectionFailed || Boolean(budget?.expired), hasMore: page.hasMore };
+    return { sticky: projectionFailed, hasMore: page.hasMore };
   }
 
   async function processInternal(
     deliveryId: string | undefined,
     maxClaims = Number.POSITIVE_INFINITY,
-    deadline = Date.now() + PROCESS_DUE_TIME_BUDGET_MS,
-    waitForNextAttempt = Boolean(deliveryId),
     stop?: AbortSignal
   ): Promise<ProcessResult> {
     let latest: DeliveryAggregate | null = null;
     let claims = 0;
-    let deadlineExhausted = false;
-    // One shared wall-clock budget for the immediate post-acceptance projections
-    // (acceptance follow-up, contact activity, folded-receipt follow-up) and a
-    // separate, earlier budget for both reconciliation passes. Each budget is a
-    // real postgres.js cancellation scope: a held lock or queued statement is
-    // cancelled at expiry instead of stranding the invocation or monopolizing
-    // the sole pooled connection.
-    const overallBudget = budgetFrom(deadline);
     // Both reconciliation sources must run: short-circuiting one on the other's
     // remaining work would reintroduce the starvation this pass exists to fix.
-    // Reconciliation stops early enough to leave the outbound claim path a real
-    // share of the same function budget.
-    const reconciliationBudget = budgetFrom(deadline - FOLLOW_UP_RECONCILIATION_RESERVE_MS);
-    // The budgets live for the whole invocation and are disposed in `finally`, so
-    // an exceptional `claim()`/projection cannot leak their timers.
-    try {
-    const acceptanceStart = await retryFollowUpAcceptanceWrites(deliveryId, reconciliationBudget);
-    const receiptStart = await retryFollowUpReceiptWrites(deliveryId, reconciliationBudget);
+    const acceptanceStart = await retryFollowUpAcceptanceWrites(deliveryId);
+    const receiptStart = await retryFollowUpReceiptWrites(deliveryId);
     // A sticky failure stays true for the invocation. `hasMore` saturation from
     // the start pass is provisional: the end pass re-inspects the source and may
     // prove it drained.
     const reconciliationSticky = acceptanceStart.sticky || receiptStart.sticky;
-    while (claims < maxClaims) {
-      if (Date.now() >= deadline || stop?.aborted) {
-        deadlineExhausted = true;
-        break;
-      }
+    // A step still in its pause is never waited for here: the worker's schedule
+    // wakes it when due, so a reply or another envio never waits behind it.
+    while (claims < maxClaims && !stop?.aborted) {
       const claimed = await repository.claim(deliveryId ? { deliveryId } : {});
-      if (!claimed) {
-        const delayMs =
-          waitForNextAttempt && claims > 0 && latest?.nextAttemptAt
-            ? latest.nextAttemptAt.getTime() - now().getTime()
-            : 0;
-        if (delayMs > 0 && Date.now() + delayMs <= deadline) {
-          await pause(delayMs, stop);
-          continue;
-        }
-        break;
-      }
+      if (!claimed) break;
       claims += 1;
       const startedAt = Date.now();
       let accepted: EvolutionAccepted;
@@ -1169,21 +1054,15 @@ export function createQuotationDeliveryModule(
           const canonicalPhone = normalizeWhatsappPhone(claimed.delivery.phone);
           if (activityRepository && canonicalPhone) {
             try {
-              await deadlineGuard(
-                overallBudget,
-                activityRepository.recordActivity(
-                  {
-                    instance,
-                    providerConversationId: `${canonicalPhone}@s.whatsapp.net`,
-                    providerMessageId: accepted.providerMessageId,
-                    fromMe: true,
-                    occurredAt: firstAcceptedStep.acceptedAt || now(),
-                    identityStatus: 'derived',
-                    canonicalPhone,
-                  },
-                  overallBudget ? { deadline: overallBudget } : undefined
-                )
-              );
+              await activityRepository.recordActivity({
+                instance,
+                providerConversationId: `${canonicalPhone}@s.whatsapp.net`,
+                providerMessageId: accepted.providerMessageId,
+                fromMe: true,
+                occurredAt: firstAcceptedStep.acceptedAt || now(),
+                identityStatus: 'derived',
+                canonicalPhone,
+              });
             } catch {
               acceptedActivityBlocked = true;
               logEvent(
@@ -1201,18 +1080,12 @@ export function createQuotationDeliveryModule(
           }
           if (!acceptedActivityBlocked) {
             try {
-              await deadlineGuard(
-                overallBudget,
-                upsertAcceptance(
-                  {
-                    deliveryId: claimed.delivery.id,
-                    revisionId: claimed.delivery.revisionId,
-                    phone: claimed.delivery.phone,
-                    providerMessageId: accepted.providerMessageId,
-                  },
-                  overallBudget ? { deadline: overallBudget } : undefined
-                )
-              );
+              await upsertAcceptance({
+                deliveryId: claimed.delivery.id,
+                revisionId: claimed.delivery.revisionId,
+                phone: claimed.delivery.phone,
+                providerMessageId: accepted.providerMessageId,
+              });
             } catch {
               logEvent(
                 logger,
@@ -1241,23 +1114,17 @@ export function createQuotationDeliveryModule(
           followUpRepository?.upsertFromDeliveryReceipt
         ) {
           try {
-            await deadlineGuard(
-              overallBudget,
-              followUpRepository.upsertFromDeliveryReceipt(
-                {
-                  deliveryId: claimed.delivery.id,
-                  revisionId: claimed.delivery.revisionId,
-                  phone: claimed.delivery.phone,
-                  // The inbox stores no remote jid; outbox steps are direct phone
-                  // recipients, so the derived conversation is authoritative.
-                  providerConversationId: `${claimed.delivery.phone}@s.whatsapp.net`,
-                  allStepsDelivered:
-                    latest.state === 'delivered' && latest.completionSource === 'provider_receipt',
-                  receivedAt: receiptOccurredAt(latest, now()),
-                },
-                overallBudget ? { deadline: overallBudget } : undefined
-              )
-            );
+            await followUpRepository.upsertFromDeliveryReceipt({
+              deliveryId: claimed.delivery.id,
+              revisionId: claimed.delivery.revisionId,
+              phone: claimed.delivery.phone,
+              // The inbox stores no remote jid; outbox steps are direct phone
+              // recipients, so the derived conversation is authoritative.
+              providerConversationId: `${claimed.delivery.phone}@s.whatsapp.net`,
+              allStepsDelivered:
+                latest.state === 'delivered' && latest.completionSource === 'provider_receipt',
+              receivedAt: receiptOccurredAt(latest, now()),
+            });
           } catch {
             logEvent(
               logger,
@@ -1299,12 +1166,11 @@ export function createQuotationDeliveryModule(
         break;
       }
     }
-    // The end pass shares the same deadline and candidate budget as the start
-    // pass, so it can never push the invocation past its declared budget. Its
-    // `hasMore` is the authoritative saturation signal: a successful end pass
-    // that drains a source the start pass had saturated clears `remaining`.
-    const acceptanceEnd = await retryFollowUpAcceptanceWrites(deliveryId, reconciliationBudget);
-    const receiptEnd = await retryFollowUpReceiptWrites(deliveryId, reconciliationBudget);
+    // The end pass's `hasMore` is the authoritative saturation signal: a
+    // successful end pass that drains a source the start pass had saturated
+    // clears `remaining`.
+    const acceptanceEnd = await retryFollowUpAcceptanceWrites(deliveryId);
+    const receiptEnd = await retryFollowUpReceiptWrites(deliveryId);
     const reconciliationPending =
       reconciliationSticky ||
       acceptanceEnd.sticky ||
@@ -1315,14 +1181,7 @@ export function createQuotationDeliveryModule(
     else if (deliveryId) latest = (await repository.get(deliveryId)) || latest;
     const cacheDeliveryId = deliveryId || latest?.id;
     if (cacheDeliveryId) webpCache.delete(cacheDeliveryId);
-    return { aggregate: latest, claims, deadlineExhausted, reconciliationPending };
-    } finally {
-      // Disposal is idempotent and runs on every exit: success, error, timeout,
-      // cancellation and early return. An exception from `claim()` or a
-      // projection must never leak the deadline timers.
-      reconciliationBudget?.dispose();
-      overallBudget?.dispose();
-    }
+    return { aggregate: latest, claims, reconciliationPending };
   }
 
   async function process(deliveryId?: string): Promise<DeliveryAggregate | null> {
@@ -1340,34 +1199,26 @@ export function createQuotationDeliveryModule(
 
   async function enqueue(input: DeliveryEnqueueInput): Promise<DeliveryAggregate> {
     const existing = await repository.getByIdentity(input);
-    if (existing) return (await process(existing.id)) || existing;
-    const plan = await planner(input);
-    const queued = await repository.enqueue(deliveryRecord(plan));
-    return (await process(queued.id)) || queued;
+    if (existing) return existing;
+    return repository.enqueue(deliveryRecord(await planner(input)));
   }
 
   async function processDue(
     requestedLimit: number,
-    timeBudgetMs = PROCESS_DUE_TIME_BUDGET_MS,
     stop?: AbortSignal
   ): Promise<{ processed: number; remaining: boolean }> {
     const limit = validateBatchLimit(requestedLimit);
-    if (!Number.isSafeInteger(timeBudgetMs) || timeBudgetMs < 1) {
-      throw new QuotationDeliveryModuleInputError('Orçamento de tempo inválido.');
-    }
-    const deadline = Date.now() + timeBudgetMs;
     const expired = await repository.expireReconciliations(limit);
-    const result = await processInternal(undefined, limit, deadline, true, stop);
+    const result = await processInternal(undefined, limit, stop);
     return {
       processed: result.claims + expired,
-      // `remaining` must be honest: a full claim or expiry batch, an exhausted
-      // deadline, or unconsumed follow-up reconciliation all mean the next
-      // invocation has durable work to continue.
+      // `remaining` must be honest: a full claim or expiry batch, a stop before
+      // the next claim, or unconsumed follow-up reconciliation means the next
+      // pass has durable work.
       remaining:
         expired >= limit ||
         result.claims >= limit ||
-        result.deadlineExhausted ||
-        Date.now() >= deadline ||
+        Boolean(stop?.aborted) ||
         result.reconciliationPending,
     };
   }

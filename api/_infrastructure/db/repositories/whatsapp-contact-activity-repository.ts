@@ -4,11 +4,6 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import {
-  createDbDeadline,
-  runBoundedBuiltQuery,
-  type DbDeadline,
-} from '../deadline.js';
-import {
   whatsappContactActivity,
   whatsappContactBlockEvents,
   whatsappFollowUpIngestionHealth,
@@ -17,9 +12,6 @@ import {
 export type WhatsappActivityIdentityStatus = 'verified' | 'derived' | 'unresolved' | 'conflict';
 
 type DatabaseProvider = () => AppDatabase;
-type ActivityDatabase =
-  | AppDatabase
-  | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 
 export interface RecordActivityInput {
   instance: string;
@@ -82,10 +74,7 @@ export interface WhatsappFollowUpIngestionHealthRecord {
 }
 
 export interface WhatsappContactActivityRepository {
-  recordActivity(
-    input: RecordActivityInput,
-    options?: { timeoutMs?: number; deadline?: DbDeadline }
-  ): Promise<void>;
+  recordActivity(input: RecordActivityInput): Promise<void>;
   getHealth(instance: string): Promise<WhatsappFollowUpIngestionHealthRecord | null>;
   blockIngestion(input: BlockIngestionInput): Promise<void>;
   unblockIngestionIfEvent(input: { instance: string; eventKey: string }): Promise<boolean>;
@@ -137,10 +126,7 @@ export function createPostgresWhatsappContactActivityRepository(
   getDb: DatabaseProvider = getDatabase,
 ): WhatsappContactActivityRepository {
   return {
-    async recordActivity(
-      input,
-      options: { timeoutMs?: number; deadline?: DbDeadline } = {},
-    ): Promise<void> {
+    async recordActivity(input): Promise<void> {
       const instance = normalizeRequired(input.instance, 'instance');
       const providerConversationId = normalizeRequired(
         input.providerConversationId,
@@ -155,8 +141,7 @@ export function createPostgresWhatsappContactActivityRepository(
       const outboundId = input.fromMe ? providerMessageId : null;
       const canonicalPhone = input.canonicalPhone?.trim() || null;
 
-      const persist = (target: ActivityDatabase) =>
-        target
+      await getDb()
         .insert(activity)
         .values({
           id: randomUUID(),
@@ -240,18 +225,6 @@ export function createPostgresWhatsappContactActivityRepository(
             updatedAt: sql`GREATEST(${activity.updatedAt}, excluded.updated_at)`,
           },
         });
-      const deadline =
-        options.deadline ||
-        (options.timeoutMs === undefined ? null : createDbDeadline(options.timeoutMs));
-      if (!deadline) {
-        await persist(getDb());
-        return;
-      }
-      // The same true deadline/cancellation mechanism used for reconciliation:
-      // a queued or blocked write is cancelled by postgres.js/PostgreSQL instead
-      // of later acquiring the sole pooled connection and committing.
-      const query = persist(getDb()).toSQL();
-      await runBoundedBuiltQuery(getDb(), deadline, { sql: query.sql, params: query.params });
     },
 
     async getHealth(instance): Promise<WhatsappFollowUpIngestionHealthRecord | null> {
