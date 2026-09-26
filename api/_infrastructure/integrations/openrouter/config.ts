@@ -1,4 +1,4 @@
-export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.5-flash';
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-6-luna';
 
 export interface OpenRouterConfig {
   apiKey: string;
