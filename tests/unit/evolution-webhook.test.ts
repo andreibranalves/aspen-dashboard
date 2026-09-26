@@ -6,6 +6,7 @@ import apiHandler from '../../api/[...path].js';
 import {
   handler as webhook,
   MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
+  receiveEvolutionWebhook,
 } from '../../api/_modules/evolution-webhook.js';
 import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 import type {
@@ -674,4 +675,63 @@ test('a failed receipt projection never withholds the receipt acknowledgement', 
   const result = await webhook(event(authorization), deps);
   assert.equal(result.statusCode, 200);
   assert.equal(deps.calls.length, 1);
+});
+
+test('the worker acknowledges an UPSERT after recording it and applies the effects afterwards', async () => {
+  const deps = dependencies();
+  const { response, afterResponse } = await receiveEvolutionWebhook(event(authorization, upsertPayload(upsertItem())), deps);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(deps.operationOrder, ['history']);
+  assert.equal(deps.effectsRepository.rows.size, 1, 'the effect is durable before the acknowledgement');
+  assert.equal(deps.healthCalls.length, 0);
+  assert.ok(afterResponse);
+
+  assert.equal(await afterResponse(), true);
+  assert.deepEqual(deps.operationOrder, ['history', 'activity', 'follow-up']);
+  assert.equal(deps.healthCalls.filter(([kind]) => kind === 'mark').length, 1);
+});
+
+test('an effect that fails after the acknowledgement stays pending without a watermark', async () => {
+  const deps = dependencies();
+  deps.followUpRepository.applyConversationToOpenFollowUps = async () => {
+    throw new Error('follow-up unavailable');
+  };
+  const { response, afterResponse } = await receiveEvolutionWebhook(event(authorization, upsertPayload(upsertItem())), deps);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(await afterResponse?.(), false);
+  assert.deepEqual(deps.effectsRepository.failures, [['5511999990000@s.whatsapp.net|inbound-message-1', 'follow_up']]);
+  assert.equal(deps.healthCalls.filter(([kind]) => kind === 'mark').length, 0);
+});
+
+test('a redelivered UPSERT records nothing twice and repeats no finished effect', async () => {
+  const deps = dependencies();
+  for (let delivery = 0; delivery < 2; delivery += 1) {
+    const { response, afterResponse } = await receiveEvolutionWebhook(event(authorization, upsertPayload(upsertItem())), deps);
+    assert.equal(response.statusCode, 200);
+    assert.equal(await afterResponse?.(), true);
+  }
+  assert.equal(deps.effectsRepository.rows.size, 1);
+  assert.equal(deps.activityCalls.length, 1);
+  assert.equal(deps.followUpCalls.length, 1);
+});
+
+test('the worker acknowledges a receipt before folding it into the attendance message', async () => {
+  const deps = dependencies();
+  const { response, afterResponse } = await receiveEvolutionWebhook(event(authorization), deps);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(deps.calls.length, 1, 'the receipt is in the durable inbox');
+  assert.deepEqual(deps.receiptCalls, []);
+  assert.equal(await afterResponse?.(), true);
+  assert.deepEqual(deps.receiptCalls, ['provider-message-1']);
+});
+
+test('the worker refuses a webhook without the bearer and leaves nothing for later', async () => {
+  const deps = dependencies();
+  const receipt = await receiveEvolutionWebhook(event({}, upsertPayload(upsertItem())), deps);
+  assert.equal(receipt.response.statusCode, 401);
+  assert.equal(receipt.afterResponse, undefined);
+  assert.equal(deps.historyCalls.length + deps.effectsRepository.rows.size, 0);
 });

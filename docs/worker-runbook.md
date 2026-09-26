@@ -24,6 +24,7 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
    DATABASE_URL=
    EVOLUTION_API_KEY=
    EVOLUTION_INSTANCE=
+   EVOLUTION_WEBHOOK_SECRET=
    QUOTATION_FOLLOW_UP_EXTERNAL_WRITES_ENABLED=
    QUOTATION_FOLLOW_UP_TRACKING_STARTED_AT=
    WORKER_WAKE_SECRET=
@@ -77,13 +78,31 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
 
 7. Vercel, no ambiente Production: `WORKER_WAKE_URL=https://aspen-worker.srv1892439.hstgr.cloud/wake` e `WORKER_WAKE_SECRET` com o valor do `.env`. Sem elas, a Function não acorda o worker, o operador vê o aviso de wake e o trabalho espera a próxima varredura, em até 1 h. O Preview não recebe essas variáveis.
 
+8. Webhook do Evolution, depois de um deploy com a rota `/webhook/evolution`. Sem `.env` com `EVOLUTION_WEBHOOK_SECRET` (o bearer que o Evolution já manda), o worker recusa todo webhook. Sem bearer, a rota responde 401:
+
+   ```bash
+   docker exec aspen-worker node -e "fetch('http://127.0.0.1:8080/webhook/evolution',{method:'POST'}).then((r)=>console.log(r.status))"
+   ```
+
+   Aponte o Evolution para o worker. O comando lê a chave da API e o cabeçalho atual sem imprimi-los:
+
+   ```bash
+   K=$(docker inspect evolution-api-zscx-api-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^AUTHENTICATION_API_KEY=//p')
+   P=$(docker port evolution-api-zscx-api-1 8080/tcp | head -1); P=${P##*:}
+   curl -s -H "apikey: $K" "http://127.0.0.1:$P/webhook/find/aspen-estamparia"      | jq '{webhook: {enabled: true, url: "http://aspen-worker:8080/webhook/evolution", headers: .headers, byEvents: false, base64: false, events: .events}}'      | curl -s -H "apikey: $K" -H 'Content-Type: application/json' -d @- "http://127.0.0.1:$P/webhook/set/aspen-estamparia"      | jq '{url, enabled, events}'
+   unset K
+   ```
+
+   Confira que uma mensagem recebida aparece no Atendimento. Para voltar, repita com `url: "https://app.aspenestamparia.com/api/evolution-webhook"`.
+
 O primeiro deploy é o merge que traz o worker. Se a instalação ainda não estiver pronta, o job falha; conclua a instalação e use **Re-run jobs**.
 
 ## Operação
 
 - Estado: `docker ps --filter name=aspen-worker`, `cat /docker/aspen-worker/current-tag` e `curl -s https://aspen-worker.srv1892439.hstgr.cloud/health`, que responde com o sha em execução.
 - Logs: `docker logs --tail 100 aspen-worker`. Rotação em 10 MB × 5; erros vão ao Sentry.
-- Ciclo: o worker varre ao subir, a cada `/wake` e no próximo vencimento registrado no banco, no máximo a cada hora. Reiniciar o container força uma varredura. Ao parar, ele não começa outro envio e espera o passo em curso, por até 90 s.
+- Webhook: o Evolution chama `http://aspen-worker:8080/webhook/evolution` pela rede Docker. O worker grava mensagem, recibo e efeito, responde e aplica os efeitos em seguida; efeito que falha fica pendente para o ciclo. Enquanto o worker está fora, o Evolution reenvia o webhook com backoff.
+- Ciclo: o worker varre ao subir, a cada `/wake`, depois de cada webhook e no próximo vencimento registrado no banco, no máximo a cada hora. Reiniciar o container força uma varredura. Ao parar, ele não começa outro envio e espera o passo em curso, por até 90 s.
 - Rollback: **Actions › Worker deploy › Run workflow**, com o sha de uma imagem que está no VPS (`docker image ls aspen-worker`; ficam as 5 mais novas). Não há rebuild.
 - Mudança no compose ou no script: reinstale como nos passos 1 e 2 e rode `ASPEN_WORKER_TAG=$(cat /docker/aspen-worker/current-tag) docker compose -f /docker/aspen-worker/docker-compose.yml up -d --wait`.
 - Rotação da chave de deploy: gere outra, troque a linha no `authorized_keys` e o secret `WORKER_DEPLOY_SSH_KEY`.

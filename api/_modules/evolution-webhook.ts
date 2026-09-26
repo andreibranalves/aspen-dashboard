@@ -68,6 +68,18 @@ export interface EvolutionWebhookDependencies {
   now?: () => Date;
 }
 
+/**
+ * What the webhook recorded before answering. `afterResponse` applies what can
+ * wait for the acknowledgement (message effects, the receipt projection) and
+ * resolves false when an effect failed and stays pending.
+ */
+export interface EvolutionWebhookOutcome {
+  response: FunctionResult;
+  afterResponse?: () => Promise<boolean>;
+}
+
+const RECORD_FAILURE = 'Não foi possível registrar a mensagem recebida da Evolution. Tente novamente.';
+
 function json(statusCode: number, body: unknown): FunctionResult {
   return {
     statusCode,
@@ -240,29 +252,30 @@ function parseUpsertItems(
   return { parsed, failureEventKey: null };
 }
 
-export async function handler(
+/** Records the webhook durably; the caller answers with `response` and then runs `afterResponse`. */
+export async function receiveEvolutionWebhook(
   event: FunctionEvent,
   dependencies: EvolutionWebhookDependencies = {},
-): Promise<FunctionResult> {
+): Promise<EvolutionWebhookOutcome> {
   if (String(event.httpMethod || '').toUpperCase() !== 'POST') {
-    return json(405, { error: 'Método não permitido.' });
+    return { response: json(405, { error: 'Método não permitido.' }) };
   }
 
   const environment = dependencies.environment || process.env;
   if (!isMachineBearerAuthorized(event.headers, environment.EVOLUTION_WEBHOOK_SECRET)) {
-    return json(401, { error: 'Não autorizado.' });
+    return { response: json(401, { error: 'Não autorizado.' }) };
   }
 
   const body = typeof event.body === 'string' ? event.body : '';
   if (Buffer.byteLength(body, 'utf8') > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) {
-    return json(413, { error: 'Corpo da requisição excede o limite permitido.' });
+    return { response: json(413, { error: 'Corpo da requisição excede o limite permitido.' }) };
   }
 
   const payload = parsePayload(body);
-  if (!payload) return json(400, { error: 'Corpo do webhook inválido.' });
+  if (!payload) return { response: json(400, { error: 'Corpo do webhook inválido.' }) };
 
   const configuredInstance = text(environment.EVOLUTION_INSTANCE);
-  if (!configuredInstance) return json(503, { error: 'Webhook da Evolution não configurado.' });
+  if (!configuredInstance) return { response: json(503, { error: 'Webhook da Evolution não configurado.' }) };
 
   const now = dependencies.now || (() => new Date());
   const upsert = parseUpsertItems(payload, configuredInstance, now());
@@ -278,35 +291,36 @@ export async function handler(
         eventKey: upsert.failureEventKey,
         now: now(),
       });
-      return json(503, {
-        error: 'Não foi possível interpretar a mensagem recebida da Evolution. Tente novamente.',
-      });
+      return {
+        response: json(503, {
+          error: 'Não foi possível interpretar a mensagem recebida da Evolution. Tente novamente.',
+        }),
+      };
     }
+    if (upsert.parsed.length === 0) return { response: json(200, { received: true }) };
 
     // Durable history first; the existing follow-up/activity effects still run
     // when it fails, but the provider only gets an acknowledgement after the
     // messages are stored (or already were).
     let historyStored = true;
-    if (upsert.parsed.length > 0) {
-      try {
-        await ingestWhatsappUpserts({
-          instance: configuredInstance,
-          origin: 'live',
-          items: upsert.parsed.map(
-            (item): WhatsappUpsertIngestionItem => ({
-              item: item.item,
-              providerMessageId: item.providerMessageId,
-              remoteJid: item.remoteJid,
-              fromMe: item.fromMe,
-              occurredAt: item.occurredAt,
-            }),
-          ),
-          repository: dependencies.attendanceRepository,
-        });
-      } catch (error) {
-        historyStored = false;
-        console.error('[evolution-webhook] history', safeErrorSummary(error));
-      }
+    try {
+      await ingestWhatsappUpserts({
+        instance: configuredInstance,
+        origin: 'live',
+        items: upsert.parsed.map(
+          (item): WhatsappUpsertIngestionItem => ({
+            item: item.item,
+            providerMessageId: item.providerMessageId,
+            remoteJid: item.remoteJid,
+            fromMe: item.fromMe,
+            occurredAt: item.occurredAt,
+          }),
+        ),
+        repository: dependencies.attendanceRepository,
+      });
+    } catch (error) {
+      historyStored = false;
+      console.error('[evolution-webhook] history', safeErrorSummary(error));
     }
 
     const effectInputs: FollowUpConversationInput[] = upsert.parsed.map((item) => ({
@@ -321,37 +335,13 @@ export async function handler(
     const runners = createWebhookEffectRunners(activityRepository, followUpRepository);
     const effectsRepository = dependencies.effectsRepository || createPostgresWhatsappWebhookEffectsRepository();
     let effectRecords: WebhookEffectRecord[] | null = null;
-    if (effectInputs.length > 0) {
-      try {
-        effectRecords = await effectsRepository.register(effectInputs);
-      } catch (error) {
-        console.error('[evolution-webhook] effects', safeErrorSummary(error));
-      }
+    try {
+      effectRecords = await effectsRepository.register(effectInputs);
+    } catch (error) {
+      console.error('[evolution-webhook] effects', safeErrorSummary(error));
     }
-    let effectsApplied = true;
-    if (effectRecords) {
-      // Stop at the first failure: the remaining events stay pending in order
-      // and resume on a provider retry or the next worker tick.
-      for (const record of effectRecords) {
-        try {
-          await applyWebhookEffects(record, runners, effectsRepository, now);
-        } catch (error) {
-          effectsApplied = false;
-          console.error('[evolution-webhook] effect', safeErrorSummary(error));
-          break;
-        }
-      }
-    } else {
-      // Without a durable record the effects still run as before, but the
-      // acknowledgement is withheld below so the event can be retried.
-      for (const input of effectInputs) {
-        await runners.recordActivity(input);
-        await runners.applyFollowUp(input);
-      }
-    }
-    const effectsDurable = effectInputs.length === 0 || effectRecords !== null;
 
-    if (upsert.parsed.length > 0 && effectsApplied) {
+    const markIngested = async () => {
       const latest = upsert.parsed.reduce((current, candidate) => {
         const currentTime = current.occurredAt.getTime();
         const candidateTime = candidate.occurredAt.getTime();
@@ -372,17 +362,41 @@ export async function handler(
           eventKey: item.eventKey,
         });
       }
+    };
+    const recordFailure = json(503, { error: RECORD_FAILURE });
+
+    if (!effectRecords) {
+      // Without a durable record the effects still run as before, but the
+      // acknowledgement is withheld so the event can be retried.
+      for (const input of effectInputs) {
+        await runners.recordActivity(input);
+        await runners.applyFollowUp(input);
+      }
+      await markIngested();
+      return { response: recordFailure };
     }
-    if (!historyStored || !effectsDurable || !effectsApplied) {
-      return json(503, {
-        error: 'Não foi possível registrar a mensagem recebida da Evolution. Tente novamente.',
-      });
-    }
-    return json(200, { received: true });
+    const records = effectRecords;
+    return {
+      response: historyStored ? json(200, { received: true }) : recordFailure,
+      afterResponse: async () => {
+        // Stop at the first failure: the remaining events stay pending in order
+        // and resume on a provider retry or the next worker cycle.
+        for (const record of records) {
+          try {
+            await applyWebhookEffects(record, runners, effectsRepository, now);
+          } catch (error) {
+            console.error('[evolution-webhook] effect', safeErrorSummary(error));
+            return false;
+          }
+        }
+        await markIngested();
+        return true;
+      },
+    };
   }
 
   const evolutionEvent = parseReceipt(payload, configuredInstance);
-  if (!evolutionEvent) return json(200, { received: true, ignored: true });
+  if (!evolutionEvent) return { response: json(200, { received: true, ignored: true }) };
 
   try {
     const deliveryModule = dependencies.deliveryModule || createQuotationDeliveryModule();
@@ -391,24 +405,44 @@ export async function handler(
     // provider id (or matches no step at all). Losing an acknowledgement is
     // therefore not a risk, and no provider replay is required.
     await deliveryModule.applyEvolutionEvent(evolutionEvent);
+  } catch (error) {
+    if (error instanceof QuotationDeliveryModuleInputError) {
+      return { response: json(400, { error: error.message }) };
+    }
+    return {
+      response: json(503, {
+        error: 'Não foi possível processar o webhook da Evolution. Tente novamente.',
+      }),
+    };
+  }
+  return {
+    response: json(200, { received: true }),
     // The receipt is already durable in the inbox; folding it into the
     // attendance message is best effort and recomputed on the next receipt or
     // on acceptance, so its failure never withholds the acknowledgement.
-    try {
-      const outbox = dependencies.outboxRepository || createPostgresWhatsappMessageOutboxRepository();
-      await outbox.applyReceipts(evolutionEvent.providerMessageId);
-    } catch (error) {
-      console.error('[evolution-webhook] receipt', safeErrorSummary(error));
-    }
-    return json(200, { received: true });
-  } catch (error) {
-    if (error instanceof QuotationDeliveryModuleInputError) {
-      return json(400, { error: error.message });
-    }
-    return json(503, {
-      error: 'Não foi possível processar o webhook da Evolution. Tente novamente.',
-    });
-  }
+    afterResponse: async () => {
+      try {
+        const outbox = dependencies.outboxRepository || createPostgresWhatsappMessageOutboxRepository();
+        await outbox.applyReceipts(evolutionEvent.providerMessageId);
+      } catch (error) {
+        console.error('[evolution-webhook] receipt', safeErrorSummary(error));
+      }
+      return true;
+    },
+  };
+}
+
+/**
+ * Vercel route. A Function does not run after answering, so it applies the
+ * effects first and withholds the acknowledgement while one stays pending.
+ */
+export async function handler(
+  event: FunctionEvent,
+  dependencies: EvolutionWebhookDependencies = {},
+): Promise<FunctionResult> {
+  const { response, afterResponse } = await receiveEvolutionWebhook(event, dependencies);
+  if (afterResponse && !(await afterResponse())) return json(503, { error: RECORD_FAILURE });
+  return response;
 }
 
 export const evolutionWebhook = handler;

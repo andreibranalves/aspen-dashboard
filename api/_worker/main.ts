@@ -7,6 +7,7 @@ import { safeErrorSummary } from '../_shared/safe-error.js';
 import { createLiveWorkerCycle } from './live-cycle.js';
 import { createWorkerScheduler } from './scheduler.js';
 import { createWorkerServer } from './server.js';
+import { createWorkerEvolutionWebhook } from './webhook.js';
 
 // Fixa: o HEALTHCHECK da imagem e o compose do VPS apontam para ela.
 const PORT = 8080;
@@ -23,10 +24,13 @@ function reportError(task: string, error: unknown): void {
 }
 
 const scheduler = createWorkerScheduler({ runCycle: createLiveWorkerCycle(reportError), reportError });
+const webhook = createWorkerEvolutionWebhook({ wake: () => scheduler.wake() });
 const server = createWorkerServer({
   sha,
   wakeSecret: process.env.WORKER_WAKE_SECRET,
   onWake: () => scheduler.wake(),
+  evolutionWebhook: webhook.handle,
+  reportError,
 });
 
 async function exitWithError(task: string, error: unknown): Promise<void> {
@@ -46,8 +50,7 @@ function crash(error: unknown): void {
 function shutdown(signal: 'SIGTERM' | 'SIGINT'): void {
   console.log(`[worker] ${signal}: encerrando`);
   server.close();
-  void scheduler
-    .stop()
+  void Promise.allSettled([scheduler.stop(), webhook.settle()])
     .then(() => flushErrorReports(2_000))
     .finally(() => process.exit(0));
   setTimeout(() => process.exit(0), SHUTDOWN_GRACE_MS).unref();
