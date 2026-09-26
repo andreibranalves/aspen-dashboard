@@ -431,18 +431,3 @@ export async function receiveEvolutionWebhook(
     },
   };
 }
-
-/**
- * Vercel route. A Function does not run after answering, so it applies the
- * effects first and withholds the acknowledgement while one stays pending.
- */
-export async function handler(
-  event: FunctionEvent,
-  dependencies: EvolutionWebhookDependencies = {},
-): Promise<FunctionResult> {
-  const { response, afterResponse } = await receiveEvolutionWebhook(event, dependencies);
-  if (afterResponse && !(await afterResponse())) return json(503, { error: RECORD_FAILURE });
-  return response;
-}
-
-export const evolutionWebhook = handler;

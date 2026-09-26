@@ -93,7 +93,7 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
    unset K
    ```
 
-   Confira que uma mensagem recebida aparece no Atendimento. Para voltar, repita com `url: "https://app.aspenestamparia.com/api/evolution-webhook"`.
+   Confira que uma mensagem recebida aparece no Atendimento.
 
 O primeiro deploy é o merge que traz o worker. Se a instalação ainda não estiver pronta, o job falha; conclua a instalação e use **Re-run jobs**.
 

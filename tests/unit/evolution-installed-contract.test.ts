@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { handler as webhook } from '../../api/_modules/evolution-webhook.js';
+import { receiveEvolutionWebhook } from '../../api/_modules/evolution-webhook.js';
 import { createReceivedMediaHandler } from '../../api/_modules/whatsapp-message-media.js';
 import { sendOperatorMedia } from '../../api/_modules/evolution-transport.js';
 import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
@@ -17,6 +17,13 @@ function fixture<T = Record<string, unknown>>(name: string): T {
 
 const secret = 's'.repeat(32);
 const instance = 'instance-test';
+
+/** Como o worker atende: responde e depois aplica os efeitos adiados. */
+async function webhook(...args: Parameters<typeof receiveEvolutionWebhook>) {
+  const { response, afterResponse } = await receiveEvolutionWebhook(...args);
+  if (afterResponse) assert.equal(await afterResponse(), true);
+  return response;
+}
 
 function webhookDependencies() {
   const history: IngestWhatsappConversationInput[] = [];

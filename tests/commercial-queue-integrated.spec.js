@@ -58,7 +58,7 @@ const suffix = randomUUID().slice(0, 8);
 // Endpoints that could produce external communication. A lead becomes queue
 // work, never a message, so the journey must never touch them.
 const EXTERNAL_COMMUNICATION =
-  /\/api\/(evolution-webhook|send-whatsapp|send-quotation-email|quotation-deliveries)/;
+  /\/api\/(send-whatsapp|send-quotation-email|quotation-deliveries)/;
 
 let sql;
 let db;
