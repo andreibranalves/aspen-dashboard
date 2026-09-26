@@ -1974,26 +1974,24 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
   return (
     <PageShell className="min-w-0 flex min-h-0 flex-1 flex-col space-y-6 overflow-x-hidden pb-0">
-      {mode === 'manual' && (
-        <PageHeader
-          title="Novo orçamento"
-          className="items-center"
-          actions={
-            <TabBar
-              value={mode}
-              onValueChange={switchMode}
-              label="Modo de criação"
-              idPrefix="quotation-mode"
-              variant="segmented"
-              className="!mt-0"
-              items={[
-                { value: 'conversation', label: 'Conversa', icon: MessagesSquare, disabled: pricingPending },
-                { value: 'manual', label: 'Manual', icon: PencilLine, disabled: pricingPending },
-              ]}
-            />
-          }
-        />
-      )}
+    <PageHeader
+        title="Novo orçamento"
+        className="items-center"
+        actions={
+          <TabBar
+            value={mode}
+            onValueChange={switchMode}
+            label="Modo de criação"
+            idPrefix="quotation-mode"
+            variant="segmented"
+            className="!mt-0"
+            items={[
+              { value: 'conversation', label: 'Conversa', icon: MessagesSquare, disabled: pricingPending },
+              { value: 'manual', label: 'Manual', icon: PencilLine, disabled: pricingPending },
+            ]}
+          />
+        }
+      />
 
       {manual.originPrefill && (
         <p className="text-sm text-fg-muted" role="status">
@@ -2028,8 +2026,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
       {mode === 'conversation' ? (
         <Card ref={quoteCardRef} variant="outline" padding="none" className="mx-auto w-full max-w-4xl scroll-mt-4">
-          <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line px-5 py-4 md:px-6">
-            <Heading level="card" as="h1">Novo orçamento</Heading>
+          <header className="flex items-center px-5 pb-3.5 pt-4 md:px-6">
             <QuoteSteps
               current={quoteStep}
               reachable={quoteStep === 'order' && activeDraft
@@ -2104,14 +2101,12 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onRefetchPricing={refetchDraftPricing}
                 defaultProductionDays={defaultProductionDays}
                 onCreateQuote={handleAutoIssue}
+                onReviewQuote={handleAutoReview}
                 onRecoverIssue={retryQuotationIssueRecovery}
                 onClearIssueRecovery={releaseUnconfirmedIssue}
                 onPricingPendingChange={reportConversationPricing}
                 isSavingDraft={Boolean(savingDraft[activeDraft.index])}
-                onReviewQuote={handleAutoReview}
                 onBackToOrder={() => setOrderOpen(true)}
-                onEditManually={() => switchMode('manual')}
-                manualDisabled={liveDraftOperation || pricingPending}
                 onNewQuote={resetConversation}
                 newQuoteDisabled={clearResultsBlocked}
                 onNextOrder={nextOrder ? () => setActiveDraftIndex(nextOrder.index) : undefined}
@@ -2134,8 +2129,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 templateLoading={templateLoading}
                 templateError={templateError}
                 onRetryTemplates={loadTemplates}
+                // Com 0 ou 1 demanda aberta a escolha é automática; o campo só aparece com várias.
                 opportunitySelector={
-                  draftHasOrigin(activeDraft) ? undefined : (
+                  draftHasOrigin(activeDraft) || (draftOpportunityChoices[activeDraft.index] || []).length < 2 ? undefined : (
                     <OpportunitySelector
                       choices={draftOpportunityChoices[activeDraft.index] || []}
                       loading={Boolean(draftOpportunityLoading[activeDraft.index])}

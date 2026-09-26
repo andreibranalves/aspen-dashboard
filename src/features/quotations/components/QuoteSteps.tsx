@@ -1,5 +1,4 @@
 import { Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export type QuoteStep = 'order' | 'review' | 'send';
@@ -21,52 +20,34 @@ interface QuoteStepsProps {
 export default function QuoteSteps({ current, reachable = null, onSelect }: QuoteStepsProps) {
   const currentIndex = STEPS.findIndex((step) => step.id === current);
   return (
-    <ol aria-label="Etapas do orçamento" className="flex items-center gap-2">
+    <ol aria-label="Etapas do orçamento" className="-mx-3 flex items-center">
       {STEPS.map((step, index) => {
         const done = index < currentIndex;
         const active = index === currentIndex;
         const content = (
           <>
-            <span
-              className={cn(
-                'grid size-6 shrink-0 place-items-center rounded-full text-2xs font-semibold tabular-nums',
-                done && 'bg-success-fill text-success-foreground',
-                active && 'bg-primary text-on-solid',
-                !done && !active && 'border border-line text-fg-muted'
-              )}
-            >
-              {done ? <Check size={14} aria-hidden="true" /> : String(index + 1).padStart(2, '0')}
-            </span>
-            <span
-              className={cn(
-                'text-sm',
-                active ? 'font-semibold text-primary-text' : done ? 'font-medium text-fg' : 'text-fg-muted',
-                !active && 'max-sm:sr-only'
-              )}
-            >
+            {done && <Check size={14} className="text-success" aria-hidden="true" />}
+            <span className={cn(active && 'border-b-2 border-primary py-1')}>
               {step.label}
               {done && <span className="sr-only"> (concluída)</span>}
             </span>
           </>
         );
         return (
-          <li key={step.id} aria-current={active ? 'step' : undefined} className="flex items-center gap-2">
-            {index > 0 && (
-              <span
-                aria-hidden="true"
-                className={cn('h-px w-4 sm:w-6', index <= currentIndex ? 'bg-success' : 'bg-line')}
-              />
-            )}
+          <li key={step.id} aria-current={active ? 'step' : undefined}>
             {reachable === step.id && onSelect ? (
-              <Button type="button" variant="ghost" onClick={() => onSelect(step.id)}>
+              // eslint-disable-next-line no-restricted-syntax -- etapa do trilho, no mesmo tipo das vizinhas
+              <button
+                type="button"
+                onClick={() => onSelect(step.id)}
+                className="flex h-8 items-center gap-2 rounded-control px-3 text-compact font-medium text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+              >
                 {content}
-              </Button>
+              </button>
             ) : (
               <span
-                className={cn(
-                  'flex h-8 items-center gap-2 rounded-control',
-                  active ? 'bg-surface-selected px-3' : 'px-1'
-                )}
+                // Sem cn: o tailwind-merge descarta text-compact ao lado de text-fg.
+                className={`flex h-8 items-center gap-2 px-3 text-compact ${active ? 'font-semibold text-fg' : 'text-fg-muted'}`}
               >
                 {content}
               </span>

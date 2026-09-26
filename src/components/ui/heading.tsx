@@ -1,12 +1,14 @@
 import { forwardRef, type HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
-/** section: título de seção; subsection: bloco dentro da seção; card: título de card; eyebrow: rótulo de grupo. */
+/** section: título de seção; subsection: bloco dentro da seção; card: título de card; eyebrow: rótulo de grupo;
+ * subject: sujeito de uma etapa (cliente, orçamento emitido). */
 const levels = {
   section: 'text-base font-semibold text-fg',
   subsection: 'text-sm font-semibold text-fg',
   card: 'text-lead font-semibold leading-5 text-fg',
   eyebrow: 'text-xs font-semibold uppercase tracking-wider text-fg-muted',
+  subject: 'text-xl font-bold leading-tight tracking-tight text-fg',
 } as const;
 
 type HeadingLevel = keyof typeof levels;
@@ -17,6 +19,7 @@ const defaultTag: Record<HeadingLevel, HeadingTag> = {
   subsection: 'h3',
   card: 'h3',
   eyebrow: 'h3',
+  subject: 'h2',
 };
 
 interface HeadingProps extends HTMLAttributes<HTMLHeadingElement> {

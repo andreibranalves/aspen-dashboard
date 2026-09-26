@@ -50,9 +50,9 @@ export default function QuoteOrderStep({
 }: QuoteOrderStepProps) {
   return (
     <>
-      <div className="flex flex-col gap-3 px-5 py-5 md:px-6">
+      <div className="flex flex-col gap-3 px-5 py-3.5 md:px-6">
         <div className="flex items-center justify-between gap-3">
-          <Heading level="subsection" as="h2">Cole o pedido do cliente</Heading>
+          <Heading level="subject">Cole o pedido do cliente</Heading>
           <Button type="button" variant="ghost-muted" size="xs" onClick={onManageTemplates} disabled={blocked}>
             <SlidersHorizontal size={14} /> Gerenciar modelos
           </Button>
@@ -98,7 +98,7 @@ export default function QuoteOrderStep({
           )}
         </div>
       </div>
-      <footer className="flex flex-wrap items-center gap-2 rounded-b-card border-t border-line bg-surface-subtle px-5 py-3 md:px-6">
+      <footer className="flex flex-wrap items-center gap-2 px-5 pb-4 pt-5 md:px-6">
         <Button type="button" variant="ghost" onClick={onReset} disabled={!canReset}>
           Limpar
         </Button>

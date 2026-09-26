@@ -132,7 +132,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await page.getByLabel(`Quantidade de ${PRODUCT.sku}`).fill('7');
     await page.getByLabel(`Preço unitário de ${PRODUCT.sku}`).fill('19.75');
-    await page.getByLabel('Prazo de produção (dias úteis)').fill('10');
+    await page.getByLabel('Prazo de produção', { exact: true }).fill('10');
     await page.getByLabel('Observações do orçamento').fill('Condição negociada');
 
     await page.getByRole('tab', { name: 'A partir de uma conversa' }).click();
@@ -143,7 +143,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page.getByLabel('Nome do cliente')).toHaveValue('Cliente alternância');
     await expect(page.getByLabel(`Quantidade de ${PRODUCT.sku}`)).toHaveValue('7');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('19.75');
-    await expect(page.getByLabel('Prazo de produção (dias úteis)')).toHaveValue('10');
+    await expect(page.getByLabel('Prazo de produção', { exact: true })).toHaveValue('10');
     await expect(page.getByLabel('Observações do orçamento')).toHaveValue('Condição negociada');
   });
 
@@ -168,7 +168,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('heading', { name: 'Cliente antigo' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Voltar ao pedido' }).click();
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
     await expect(input).toHaveValue('primeiro pedido');
     await input.fill('segundo pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
@@ -176,7 +176,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page.getByRole('heading', { name: 'Cliente antigo' })).toHaveCount(0);
     await expect.poll(() => storedDraftNames(page)).toEqual(['Cliente novo']);
 
-    await page.getByRole('button', { name: 'Voltar ao pedido' }).click();
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
     await input.fill('falha posterior');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('alert').getByText('Não foi possível extrair os pedidos. Tente novamente.', { exact: true })).toBeVisible();
@@ -213,7 +213,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('heading', { name: 'Cliente um' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Voltar ao pedido' }).click();
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
     await page.getByRole('button', { name: 'Limpar', exact: true }).click();
     await expect(input).toHaveValue('');
     await expect(steps(page).getByRole('button')).toHaveCount(0);
@@ -241,7 +241,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('heading', { name: 'Cliente 1' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Voltar ao pedido' }).click();
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
     await input.fill('segundo pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('button', { name: 'Extraindo…' })).toBeVisible();
@@ -543,6 +543,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Mensagem do cliente para extração').fill('ativo');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
+    await page.getByRole('button', { name: 'Editar', exact: true }).click();
     await expect(page.getByLabel(`Preço unitário do item ${PRODUCT.sku}`)).toHaveValue('11,00');
     const issue = page.getByRole('button', { name: 'Emitir orçamento' });
     await expect(issue).toBeEnabled();

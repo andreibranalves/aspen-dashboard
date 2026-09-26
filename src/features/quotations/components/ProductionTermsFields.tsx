@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Input, type InputSize } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { MAX_PRODUCTION_DAYS, MAX_SURCHARGE_PERCENT } from '@/lib/productionDeadline';
@@ -17,6 +18,8 @@ export interface ProductionTermsFieldsProps {
   className?: string;
   onProductionDaysChange: (days: number) => void;
   onSurchargePercentChange: (percent: number) => void;
+  /** Campo de frete entre o prazo e o acréscimo, quando a tela o edita aqui. */
+  freight?: ReactNode;
 }
 
 /** Prazo de produção em dias úteis e acréscimo sobre os preços automáticos. */
@@ -28,11 +31,12 @@ export default function ProductionTermsFields({
   className,
   onProductionDaysChange,
   onSurchargePercentChange,
+  freight,
 }: ProductionTermsFieldsProps) {
   return (
-    <div className={cn('grid grid-cols-2 gap-3', className)}>
+    <div className={cn('grid gap-3', freight ? 'grid-cols-3' : 'grid-cols-2', className)}>
       <label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">
-        Prazo de produção (dias úteis)
+        Prazo de produção
         <Input
           type="number"
           inputMode="numeric"
@@ -48,6 +52,7 @@ export default function ProductionTermsFields({
           }}
         />
       </label>
+      {freight}
       <label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">
         Acréscimo (%)
         <Input

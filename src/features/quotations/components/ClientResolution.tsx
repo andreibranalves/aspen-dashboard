@@ -3,7 +3,6 @@ import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
-import { StatusBadge } from '@/components/ui/badge';
 import { Text } from '@/components/ui/text';
 import type {
   ClientResolutionCandidate,
@@ -96,8 +95,17 @@ interface ClientResolutionProps {
   onClearClientSelection?: (draftIdx: number) => void;
 }
 
-/** Settled identity, next to the client name: one badge and at most one action.
- * A pending choice renders in ClientResolutionChoice, below the header. */
+/** Live region that announces every identity change, including a pending choice. */
+export function ClientResolutionAnnouncement({ view }: { view: ClientResolutionView }) {
+  return (
+    <span className="sr-only" aria-live="polite">
+      {clientResolutionAnnouncement(view)}
+    </span>
+  );
+}
+
+/** Settled identity, inside the meta line (which sets its type) under the client
+ * name: one status and at most one action. A pending choice renders in ClientResolutionChoice. */
 export function ClientResolutionBadge({
   view,
   draftIdx,
@@ -106,22 +114,17 @@ export function ClientResolutionBadge({
   onRetryClientResolution,
   onClearClientSelection,
 }: ClientResolutionProps) {
-  if (view.state === 'idle') return null;
+  if (view.state === 'idle' || view.state === 'choice') return null;
   return (
-    <>
-      <span className="sr-only" aria-live="polite">
-        {clientResolutionAnnouncement(view)}
-      </span>
-      {view.state === 'checking' && (
-        <StatusBadge status="checking" label="Verificando cliente…" tone="tone-neutral-soft" />
-      )}
+    <span className="inline-flex items-center gap-2">
+      {view.state === 'checking' && 'Verificando cliente…'}
       {view.state === 'linked' && (
         <>
-          <StatusBadge status="linked" label="Cliente cadastrado" tone="tone-neutral-soft" />
+          <span>Cliente cadastrado</span>
           <Button
             type="button"
-            variant="ghost-muted"
-            size="xs"
+            variant="link"
+            size="inline"
             disabled={disabled || !onClearClientSelection}
             onClick={() => onClearClientSelection?.(draftIdx)}
           >
@@ -131,12 +134,12 @@ export function ClientResolutionBadge({
       )}
       {view.state === 'new_client' && (
         <>
-          <StatusBadge status="new_client" label="Novo cliente" tone="tone-success-soft" />
+          <span className="text-success">Novo cliente</span>
           {!view.confirmed && view.needsConfirmation && (
             <Button
               type="button"
-              variant="outline"
-              size="xs"
+              variant="link"
+              size="inline"
               disabled={disabled || !onConfirmNewClient}
               onClick={() => onConfirmNewClient?.(draftIdx)}
             >
@@ -147,8 +150,8 @@ export function ClientResolutionBadge({
       )}
       {view.state === 'archived' && (
         <>
-          <StatusBadge status="archived" label="Cadastro arquivado" tone="tone-warning-soft" />
-          <Button type="button" variant="outline" size="xs" asChild>
+          <span className="text-warning">Cadastro arquivado</span>
+          <Button type="button" variant="link" size="inline" asChild>
             <a href={view.clientId ? `#/leads/cliente/${encodeURIComponent(view.clientId)}` : '#/leads'}>
               Abrir cadastro
             </a>
@@ -157,11 +160,11 @@ export function ClientResolutionBadge({
       )}
       {view.state === 'error' && (
         <>
-          <StatusBadge status="error" label="Cliente não verificado" tone="tone-destructive-soft" />
+          <span className="text-destructive">Cliente não verificado</span>
           <Button
             type="button"
-            variant="outline"
-            size="xs"
+            variant="link"
+            size="inline"
             disabled={disabled || !onRetryClientResolution}
             onClick={() => onRetryClientResolution?.(draftIdx)}
           >
@@ -169,7 +172,7 @@ export function ClientResolutionBadge({
           </Button>
         </>
       )}
-    </>
+    </span>
   );
 }
 
@@ -195,7 +198,7 @@ export function ClientResolutionChoice({
   const hidden = selectable.length - visible.length;
 
   return (
-    <div className="flex flex-col gap-2 border-b border-line bg-surface-subtle px-5 py-4 md:px-6">
+    <div className="mx-5 flex flex-col gap-2 rounded-control bg-surface-subtle px-4 py-3 md:mx-6">
       <Text as="p" variant="title">{choiceHeading(view)}</Text>
       <ul className="divide-y divide-line overflow-hidden rounded-control border border-line bg-surface">
         {visible.map((candidate) => (

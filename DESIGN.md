@@ -48,6 +48,7 @@ by lint.
 | Section title | `Heading level="section"` 16px / 600 | top-level cards in a page |
 | Sub-section | `Heading level="subsection"` 14px / 600 | groups inside a section card |
 | Card title | `Heading level="card"` 15px / 600 | kanban and grid cards |
+| Step subject | `Heading level="subject"` 20px / 700 | what a step card is about (client, issued quote) |
 | Eyebrow | `Heading level="eyebrow"` 12px / 600 caps | group labels |
 | Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
 | Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb (the page name) |

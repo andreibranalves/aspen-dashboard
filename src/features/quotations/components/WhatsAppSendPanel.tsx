@@ -17,6 +17,13 @@ export interface WhatsAppSendPanelProps {
   disabled?: boolean;
 }
 
+// Fluxo só com o PDF resume em "PDF"; a frase completa equilibra o card com os fluxos descritos.
+function flowDescription(flow: CommunicationFlow): string {
+  if (flow.description) return flow.description;
+  const summary = communicationFlowSummary(flow);
+  return summary === 'PDF' ? 'Envia só o PDF do orçamento, sem mensagem.' : summary;
+}
+
 export default function WhatsAppSendPanel({
   selectedFlowId,
   flows = [],
@@ -30,7 +37,7 @@ export default function WhatsAppSendPanel({
     <fieldset className="flex flex-col gap-2" disabled={disabled || flows.length === 0}>
       <legend className="mb-2 text-sm font-semibold text-fg">Fluxo WhatsApp</legend>
       {flows.length > 0 && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:auto-cols-fr md:grid-flow-col md:grid-cols-none">
           {flows.map((flow) => {
             const checked = flow.id === selectedFlow?.id;
             return (
@@ -50,7 +57,7 @@ export default function WhatsAppSendPanel({
                 />
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-semibold text-fg">{flow.name}</span>
-                  <Text as="span" variant="meta">{flow.description || communicationFlowSummary(flow)}</Text>
+                  <Text as="span" variant="meta">{flowDescription(flow)}</Text>
                 </span>
               </label>
             );

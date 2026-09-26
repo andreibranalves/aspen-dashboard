@@ -1,11 +1,11 @@
 // Revisão e envio do card de novo orçamento (modo Conversa).
 
-import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
+import { Fragment, useState, useRef, useCallback, useEffect, type ReactNode } from 'react';
 import {
   AlertTriangle,
-  ArrowLeft,
   ArrowRight,
   Check,
+  ChevronRight,
   Eye,
   FileText,
   Loader2,
@@ -16,12 +16,11 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { capitalize, fmtPhone, formatBRL } from '@/lib/formatting/formatters';
+import { capitalize, fmtPhone, formatBRL, toApiDecimal } from '@/lib/formatting/formatters';
 import { isValidLeadSource, LEAD_SOURCES } from '@/lib/clientMetadata';
 import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
-import { StatusBadge } from '@/components/ui/badge';
 import { Field } from '@/components/ui/field';
 import { Heading } from '@/components/ui/heading';
 import { Input } from '@/components/ui/input';
@@ -34,6 +33,7 @@ import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPane
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import ProductionTermsFields from '@/features/quotations/components/ProductionTermsFields';
 import {
+  ClientResolutionAnnouncement,
   ClientResolutionBadge,
   ClientResolutionChoice,
 } from '@/features/quotations/components/ClientResolution';
@@ -69,14 +69,12 @@ export interface SplitResultCardProps {
   selectProduct: (draftIdx: number, itemIdx: number, product: Product) => Promise<void>;
   onRefetchPricing: (draftIdx: number) => Promise<Draft | undefined>;
   onCreateQuote: (draftIdx: number) => void;
+  onReviewQuote: (draftIdx: number) => void;
   onRecoverIssue?: (draftIdx: number) => void;
   onClearIssueRecovery?: (draftIdx: number) => void;
   onPricingPendingChange?: (draftIdx: number, pending: boolean) => void;
   isSavingDraft?: boolean;
-  onReviewQuote: (draftIdx: number) => void;
   onBackToOrder: () => void;
-  onEditManually: () => void;
-  manualDisabled?: boolean;
   onNewQuote: () => void;
   newQuoteDisabled?: boolean;
   /** Presente quando outro pedido da mesma conversa ainda não foi emitido. */
@@ -114,11 +112,12 @@ export interface SplitResultCardProps {
   defaultProductionDays?: number;
 }
 
-function TotalBlock({ value, note }: { value: string; note?: string }) {
+// compact: no celular o total fica no topo à direita, ao lado do cliente, com fonte menor.
+function TotalBlock({ value, note, compact = false }: { value: string; note?: string; compact?: boolean }) {
   return (
-    <div className="flex shrink-0 flex-col items-end gap-0.5 text-right max-sm:items-start max-sm:text-left">
+    <div className={cn('flex shrink-0 flex-col items-end gap-1.5 text-right', !compact && 'max-sm:items-start max-sm:text-left')}>
       <Text as="p" variant="label">Total</Text>
-      <p className="text-title font-bold leading-none tabular-nums text-fg">{value}</p>
+      <p className={cn('font-bold leading-none tracking-tight tabular-nums text-fg', compact ? 'text-lead sm:text-stat' : 'text-stat')}>{value}</p>
       {note && <Text as="p" variant="caption">{note}</Text>}
     </div>
   );
@@ -126,7 +125,7 @@ function TotalBlock({ value, note }: { value: string; note?: string }) {
 
 function StepFooter({ children }: { children: ReactNode }) {
   return (
-    <footer className="flex flex-wrap items-center gap-2 rounded-b-card border-t border-line bg-surface-subtle px-5 py-3 md:px-6">
+    <footer className="flex flex-wrap items-center gap-2 px-5 pb-4 pt-5 md:px-6">
       {children}
     </footer>
   );
@@ -145,14 +144,12 @@ export default function SplitResultCard({
   selectProduct,
   onRefetchPricing,
   onCreateQuote,
+  onReviewQuote,
   onRecoverIssue,
   onClearIssueRecovery,
   onPricingPendingChange,
   isSavingDraft = false,
-  onReviewQuote,
   onBackToOrder,
-  onEditManually,
-  manualDisabled = false,
   onNewQuote,
   newQuoteDisabled = false,
   onNextOrder,
@@ -190,6 +187,10 @@ export default function SplitResultCard({
   const [editingClient, setEditingClient] = useState(
     () => !draft.edited.nome?.trim() || !isValidLeadSource(draft.edited.origem)
   );
+  // Itens chegam só para leitura; abrem em edição quando algum ainda não tem produto ou preço.
+  const [editingItems, setEditingItems] = useState(
+    () => (draft.edited.items || []).some((item) => !item.item_code || !(Number(item.rate) > 0))
+  );
 
   useEffect(() => {
     if (isDone || draft.edited.template_key || !templates.some((template) => template.key === 'simples')) {
@@ -203,6 +204,8 @@ export default function SplitResultCard({
   const [itemResults, setItemResults] = useState<Record<number, Product[]>>({});
   const [itemSearching, setItemSearching] = useState<Record<number, boolean>>({});
   const [activeSearchIdx, setActiveSearchIdx] = useState<number | null>(null);
+  // Campo do item que abriu a busca: a lista de produtos aparece embaixo dele.
+  const [activeSearchField, setActiveSearchField] = useState<'sku' | 'name'>('sku');
   const searchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const qtyPricingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusNewItem = useRef(false);
@@ -273,11 +276,8 @@ export default function SplitResultCard({
   }, [activeSearchIdx]);
 
   // Debounced product search per item index
-  const onItemSkuChange = useCallback(
+  const runProductSearch = useCallback(
     (ii: number, value: string) => {
-      if (editingBlocked) return;
-      setItemSearchTerms((prev) => ({ ...prev, [ii]: value }));
-      onUpdateItem(draft.index, ii, 'item_code', value);
       if (searchTimers.current[ii]) clearTimeout(searchTimers.current[ii]);
       if (value && value.length >= 2) {
         setItemSearching((prev) => ({ ...prev, [ii]: true }));
@@ -296,7 +296,27 @@ export default function SplitResultCard({
         setItemSearching((prev) => ({ ...prev, [ii]: false }));
       }
     },
-    [draft.index, editingBlocked, onUpdateItem]
+    []
+  );
+
+  const onItemSkuChange = useCallback(
+    (ii: number, value: string) => {
+      if (editingBlocked) return;
+      setItemSearchTerms((prev) => ({ ...prev, [ii]: value }));
+      onUpdateItem(draft.index, ii, 'item_code', value);
+      runProductSearch(ii, value);
+    },
+    [draft.index, editingBlocked, onUpdateItem, runProductSearch]
+  );
+
+  // O nome também busca produto por SKU ou nome, sem apagar o SKU já escolhido.
+  const onItemNameChange = useCallback(
+    (ii: number, value: string) => {
+      if (editingBlocked) return;
+      onUpdateItem(draft.index, ii, 'item_name', value);
+      runProductSearch(ii, value);
+    },
+    [draft.index, editingBlocked, onUpdateItem, runProductSearch]
   );
 
   // Select product from dropdown
@@ -337,6 +357,7 @@ export default function SplitResultCard({
   const handleAddItem = useCallback(() => {
     if (editingBlocked) return;
     focusNewItem.current = true;
+    setEditingItems(true);
     onAddItem(draft.index);
   }, [draft.index, editingBlocked, onAddItem]);
 
@@ -357,13 +378,21 @@ export default function SplitResultCard({
   }, [items.length]);
 
   const calculatedTotal = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
-  const total = isDone ? snapshot?.total : calculatedTotal;
+  const freight = Number(draft.edited.frete) || 0;
+  const total = isDone ? snapshot?.total : calculatedTotal + freight;
   // Total sem o acréscimo: itens automáticos voltam ao preço de tabela.
   const baseTotal = draft.edited.items.reduce((sum, it) => {
     const rate = !it._rateManual && it._baseRate !== undefined ? it._baseRate : Number(it.rate) || 0;
     return sum + (Number(it.qty) || 0) * rate;
-  }, 0);
+  }, freight);
   const totalDisplay = total === undefined ? '—' : formatBRL(total);
+  const templateName = templates.find((template) => template.key === draft.edited.template_key)?.name || 'Modelo padrão';
+  const conditionsSummary = [
+    templateName,
+    `${draft.edited.prazo_producao_dias ?? defaultProductionDays} dias`,
+    draft.edited.frete ? `Frete ${formatBRL(freight)}` : 'Frete padrão',
+    draft.edited.acrescimo_percent > 0 && `+${draft.edited.acrescimo_percent}%`,
+  ].filter(Boolean).join(' · ');
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const hasClient = Boolean(draft.edited.nome?.trim());
   const actionBlockMessage = !hasClient && validItems === 0
@@ -392,9 +421,45 @@ export default function SplitResultCard({
 
   // Conteúdo de cada item, compartilhado pela tabela (desktop) e pela lista (celular).
   const itemRows = items.map((item, ii) => {
+    if (!editingItems) {
+      const cell = 'flex h-8 min-w-0 items-center px-3 text-sm text-fg';
+      return {
+        key: ii,
+        sku: <span className={cn(cell, 'truncate')}>{item.item_code || '—'}</span>,
+        name: <span className={cn(cell, 'truncate')}>{item.item_name || '—'}</span>,
+        qty: <span className={cn(cell, 'justify-end tabular-nums')}>{item.qty}</span>,
+        price: <span className={cn(cell, 'justify-end tabular-nums')}>{item.rate ? formatBRL(Number(item.rate)) : '—'}</span>,
+        remove: null,
+      };
+    }
     const results = itemResults[ii] || [];
     const searching = itemSearching[ii] || false;
     const showDropdown = activeSearchIdx === ii && results.length > 0;
+    const dropdown = showDropdown && (
+    <div className="absolute left-0 top-9 z-floating max-h-48 w-80 max-w-screen overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
+      {results.map((p) => (
+        // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
+        <button
+          key={p.sku || p.item_code}
+          type="button"
+          disabled={editingBlocked || isUnpricedProduct(p)}
+          title={isUnpricedProduct(p) ? 'Preço indisponível para este produto.' : undefined}
+          className={cn(
+            'flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors focus-inset',
+            isUnpricedProduct(p) ? 'cursor-not-allowed opacity-50' : 'hover:bg-surface-hover'
+          )}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => void handleSelectProduct(ii, p)}
+        >
+          <span className="shrink-0 font-mono text-3xs text-fg-muted">{p.sku || p.item_code}</span>
+          <span className="truncate">{String(p.nome || p.item_name || '—')}</span>
+          {isUnpricedProduct(p) && (
+            <span className="ml-auto shrink-0 text-3xs text-destructive">Preço indisponível</span>
+          )}
+        </button>
+      ))}
+    </div>
+    );
     const searchValue =
       itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : item.item_code || '';
     // Na tabela a célula parece texto até receber hover ou foco; na lista do celular fica com moldura.
@@ -412,48 +477,37 @@ export default function SplitResultCard({
             placeholder="Buscar SKU ou nome…"
             value={searchValue}
             onChange={(e) => onItemSkuChange(ii, e.target.value)}
-            onFocus={() => setActiveSearchIdx(ii)}
+            onFocus={() => {
+              setActiveSearchIdx(ii);
+              setActiveSearchField('sku');
+            }}
             disabled={editingBlocked}
           />
-          {searching && (
+          {searching && activeSearchField === 'sku' && (
             <Loader2 size={12} className="absolute right-2 top-2.5 animate-spin text-fg-muted" />
           )}
-          {showDropdown && (
-            <div className="absolute left-0 top-9 z-floating max-h-48 w-80 max-w-screen overflow-y-auto rounded-control border border-line bg-surface shadow-lg">
-              {results.map((p) => (
-                // eslint-disable-next-line no-restricted-syntax -- opção de autocomplete
-                <button
-                  key={p.sku || p.item_code}
-                  type="button"
-                  disabled={editingBlocked || isUnpricedProduct(p)}
-                  title={isUnpricedProduct(p) ? 'Preço indisponível para este produto.' : undefined}
-                  className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors focus-inset',
-                    isUnpricedProduct(p) ? 'cursor-not-allowed opacity-50' : 'hover:bg-surface-hover'
-                  )}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => void handleSelectProduct(ii, p)}
-                >
-                  <span className="shrink-0 font-mono text-3xs text-fg-muted">{p.sku || p.item_code}</span>
-                  <span className="truncate">{String(p.nome || p.item_name || '—')}</span>
-                  {isUnpricedProduct(p) && (
-                    <span className="ml-auto shrink-0 text-3xs text-destructive">Preço indisponível</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+          {activeSearchField === 'sku' && dropdown}
         </div>
       ),
       name: (
-        <Input
-          aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
-          variant={variant}
-          placeholder="Nome do produto"
-          value={item.item_name || ''}
-          onChange={(event) => onUpdateItem(draft.index, ii, 'item_name', event.target.value)}
-          disabled={editingBlocked}
-        />
+        <div className="relative" data-item-search-cell>
+          <Input
+            aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
+            variant={variant}
+            placeholder="Nome do produto"
+            value={item.item_name || ''}
+            onChange={(event) => onItemNameChange(ii, event.target.value)}
+            onFocus={() => {
+              setActiveSearchIdx(ii);
+              setActiveSearchField('name');
+            }}
+            disabled={editingBlocked}
+          />
+          {searching && activeSearchField === 'name' && (
+            <Loader2 size={12} className="absolute right-2 top-2.5 animate-spin text-fg-muted" />
+          )}
+          {activeSearchField === 'name' && dropdown}
+        </div>
       ),
       qty: (
         <Input
@@ -499,10 +553,6 @@ export default function SplitResultCard({
   });
 
   if (isDone) {
-    const itemCount = items.length;
-    const unitCount = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
-    const productionDays = draft.edited.prazo_producao_dias ?? defaultProductionDays;
-    const templateName = templates.find((template) => template.key === draft.edited.template_key)?.name || 'Modelo padrão';
     const businessNumber = issue?.businessNumber || (resultData?.businessNumber as string | undefined);
     const identity = [
       businessNumber && `Nº ${businessNumber}`,
@@ -512,41 +562,20 @@ export default function SplitResultCard({
     ].filter(Boolean).join(' · ');
     return (
       <div ref={cardRef}>
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-line px-5 py-5 md:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-5 py-3.5 md:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-4 max-sm:basis-full">
             <span className="grid size-12 shrink-0 place-items-center rounded-full bg-success/15 text-success">
               <Check size={24} aria-hidden="true" />
             </span>
             <div className="flex min-w-0 flex-col gap-1">
-              <Heading level="card" as="h2">Orçamento emitido</Heading>
+              <Heading level="subject">Orçamento emitido</Heading>
               <Text as="p" variant="meta">{identity}</Text>
             </div>
           </div>
           <TotalBlock value={totalDisplay} note={snapshot ? `Frete: ${formatBRL(snapshot.frete)}` : undefined} />
         </div>
 
-        <dl className="grid grid-cols-2 gap-4 border-b border-line px-5 py-4 sm:grid-cols-4 md:px-6">
-          <div className="flex min-w-0 flex-col gap-1">
-            <Text as="dt" variant="label">Itens</Text>
-            <Text as="dd" variant="value">
-              {itemCount} {itemCount === 1 ? 'produto' : 'produtos'} · {unitCount} un.
-            </Text>
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <Text as="dt" variant="label">Prazo</Text>
-            <Text as="dd" variant="value">{productionDays} {productionDays === 1 ? 'dia útil' : 'dias úteis'}</Text>
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <Text as="dt" variant="label">Origem</Text>
-            <Text as="dd" variant="value" truncate>{draft.edited.origem || '—'}</Text>
-          </div>
-          <div className="flex min-w-0 flex-col gap-1">
-            <Text as="dt" variant="label">Modelo</Text>
-            <Text as="dd" variant="value" truncate>{templateName}</Text>
-          </div>
-        </dl>
-
-        <div className="flex flex-col gap-3 px-5 py-5 md:px-6">
+        <div className="flex flex-col gap-3 px-5 py-3.5 md:px-6">
           <WhatsAppSendPanel
             flows={waFlows}
             selectedFlowId={waSelectedFlowId}
@@ -599,31 +628,47 @@ export default function SplitResultCard({
     );
   }
 
+  const metaItems = [
+    draft.edited.origem,
+    clientResolution && !hasSavedSnapshot && clientResolution.state !== 'idle' && clientResolution.state !== 'choice' && (
+      <ClientResolutionBadge
+        view={clientResolution}
+        draftIdx={draft.index}
+        disabled={editingBlocked}
+        onConfirmNewClient={onConfirmNewClient}
+        onRetryClientResolution={onRetryClientResolution}
+        onClearClientSelection={onClearClientSelection}
+      />
+    ),
+    hasSavedSnapshot && 'Rascunho salvo',
+    draft.edited.prazo_pedido && <span className="text-warning">Prazo pedido: {draft.edited.prazo_pedido}</span>,
+  ].filter(Boolean);
+
   return (
     <div
       ref={cardRef}
       aria-busy={isProcessing || issueBlocked || parentEditingBlocked || pricingPending}
       className={cn(isProcessing && !immutableIssue && 'opacity-60')}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-line px-5 py-5 md:px-6">
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5 max-sm:basis-full">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-5 py-3.5 md:px-6">
+        <div className={cn('flex min-w-0 flex-1 flex-col gap-1.5', editingClient && 'max-sm:basis-full')}>
           {editingClient ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Nome">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-6">
+              <Field label="Nome" className="sm:col-span-3">
                 <Input
                   value={draft.edited.nome || ''}
                   onChange={(e) => onUpdateField(draft.index, 'nome', e.target.value)}
                   disabled={editingBlocked}
                 />
               </Field>
-              <Field label="Empresa">
+              <Field label="Empresa" className="sm:col-span-3">
                 <Input
                   value={draft.edited.empresa || ''}
                   onChange={(e) => onUpdateField(draft.index, 'empresa', e.target.value)}
                   disabled={editingBlocked}
                 />
               </Field>
-              <Field label="E-mail">
+              <Field label="E-mail" className="sm:col-span-2">
                 <Input
                   type="email"
                   value={draft.edited.email || ''}
@@ -631,7 +676,7 @@ export default function SplitResultCard({
                   disabled={editingBlocked}
                 />
               </Field>
-              <Field label="Telefone">
+              <Field label="Telefone" className="sm:col-span-2">
                 <Input
                   inputMode="tel"
                   value={draft.edited.telefone || ''}
@@ -639,7 +684,7 @@ export default function SplitResultCard({
                   disabled={editingBlocked}
                 />
               </Field>
-              <Field label="Origem">
+              <Field label="Origem" className="sm:col-span-2">
                 <Select
                   value={draft.edited.origem || ''}
                   onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
@@ -655,7 +700,7 @@ export default function SplitResultCard({
                   ))}
                 </Select>
               </Field>
-              <div className="flex items-end">
+              <div className="flex sm:col-span-6">
                 <Button type="button" variant="outline" onClick={() => setEditingClient(false)} disabled={editingBlocked}>
                   <Check size={14} /> Concluir
                 </Button>
@@ -663,8 +708,8 @@ export default function SplitResultCard({
             </div>
           ) : (
             <>
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <Heading level="card" as="h2" className="min-w-0 truncate">
+              <div className="flex min-w-0 items-center gap-1">
+                <Heading level="subject" className="min-w-0 truncate">
                   {displayName || 'Cliente'}
                 </Heading>
                 <Button
@@ -677,22 +722,18 @@ export default function SplitResultCard({
                 >
                   <Pencil size={14} />
                 </Button>
-                {draft.edited.origem && <StatusBadge status={draft.edited.origem} tone="tone-primary-soft" />}
-                {clientResolution && !hasSavedSnapshot && (
-                  <ClientResolutionBadge
-                    view={clientResolution}
-                    draftIdx={draft.index}
-                    disabled={editingBlocked}
-                    onConfirmNewClient={onConfirmNewClient}
-                    onRetryClientResolution={onRetryClientResolution}
-                    onClearClientSelection={onClearClientSelection}
-                  />
-                )}
-                {hasSavedSnapshot && <StatusBadge status="saved" label="Rascunho salvo" tone="tone-neutral-soft" />}
-                {draft.edited.prazo_pedido && (
-                  <StatusBadge status="deadline" label={`Prazo pedido: ${draft.edited.prazo_pedido}`} tone="tone-warning-soft" />
-                )}
               </div>
+              {clientResolution && !hasSavedSnapshot && <ClientResolutionAnnouncement view={clientResolution} />}
+              {metaItems.length > 0 && (
+                <Text as="div" variant="meta" className="flex flex-wrap items-center">
+                  {metaItems.map((item, index) => (
+                    <Fragment key={index}>
+                      {index > 0 && <span aria-hidden="true" className="mx-2">·</span>}
+                      {item}
+                    </Fragment>
+                  ))}
+                </Text>
+              )}
               {contacts.length > 0 && (
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
                   {contacts.map((contact) => <Text key={contact} variant="meta">{contact}</Text>)}
@@ -706,6 +747,7 @@ export default function SplitResultCard({
         </div>
         <TotalBlock
           value={totalDisplay}
+          compact={!editingClient}
           note={draft.edited.acrescimo_percent > 0 ? `Base: ${formatBRL(baseTotal)}` : undefined}
         />
       </div>
@@ -721,12 +763,23 @@ export default function SplitResultCard({
         />
       )}
 
-      <div className="grid grid-cols-1 gap-3 border-b border-line px-5 py-4 sm:grid-cols-2 md:grid-cols-4 md:px-6">
-        {opportunitySelector}
+      {opportunitySelector && (
+        <div className="grid grid-cols-1 gap-3 px-5 py-3.5 sm:grid-cols-2 md:px-6">{opportunitySelector}</div>
+      )}
+
+      {/* Condições ficam recolhidas; o resumo mostra os valores sem abrir. */}
+      <details className="group px-5 py-3.5 md:px-6" open={Boolean(templateError)}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-control focus-inset [&::-webkit-details-marker]:hidden">
+          <ChevronRight size={14} className="shrink-0 text-fg-muted transition-transform group-open:rotate-90" aria-hidden="true" />
+          <span className="text-sm font-medium text-fg">Condições</span>
+          <span className="min-w-0 truncate">
+            <Text as="span" variant="meta">{conditionsSummary}</Text>
+          </span>
+        </summary>
+      <div className="grid grid-cols-1 gap-3 pt-3 sm:grid-cols-2 md:grid-cols-4">
         <Field
           label="Modelo de orçamento"
           error={templateError}
-          className={opportunitySelector ? undefined : 'md:col-span-2'}
         >
           {templateError ? (
             <Button type="button" variant="outline" onClick={onRetryTemplates}>Tentar novamente</Button>
@@ -746,7 +799,17 @@ export default function SplitResultCard({
           )}
         </Field>
         <ProductionTermsFields
-          className="sm:col-span-2"
+          className="sm:col-span-2 md:col-span-3"
+          freight={
+            <Field label="Frete (R$)">
+              <MoneyInput
+                value={draft.edited.frete ? freight : null}
+                onValueChange={(value) => onUpdateField(draft.index, 'frete', value === null ? '' : toApiDecimal(value))}
+                disabled={editingBlocked}
+                placeholder="Padrão"
+              />
+            </Field>
+          }
           productionDays={draft.edited.prazo_producao_dias ?? defaultProductionDays}
           surchargePercent={draft.edited.acrescimo_percent}
           disabled={editingBlocked}
@@ -758,19 +821,45 @@ export default function SplitResultCard({
           }}
         />
       </div>
+      </details>
 
-      {compactItems ? (
-        <ul aria-label="Itens do pedido" className="divide-y divide-line border-b border-line">
+      {compactItems && !editingItems ? (
+        // Leitura no celular: uma linha por item com o subtotal; "Editar" abre os campos.
+        <ul aria-label="Itens do pedido" className="divide-y divide-line">
+          {items.map((item, ii) => {
+            const qty = Number(item.qty) || 0;
+            const rate = Number(item.rate) || 0;
+            return (
+              <li key={ii} className="flex min-h-14 items-center gap-3 px-5 py-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <Text as="p" variant="meta">{item.item_code || '—'}</Text>
+                  <p className="line-clamp-2 text-sm font-semibold text-fg">
+                    {item.item_name || item.item_code || 'Item sem produto'}
+                  </p>
+                  <Text as="p" variant="meta">
+                    <span className="tabular-nums">{qty} {qty === 1 ? 'peça' : 'peças'} - {rate ? `${formatBRL(rate)} a un.` : '—'}</span>
+                  </Text>
+                </div>
+                <span className="whitespace-nowrap text-lead font-bold tabular-nums text-fg">
+                  {rate ? formatBRL(qty * rate) : '—'}
+                </span>
+              </li>
+            );
+          })}
+          {items.length === 0 && (
+            <li className="px-5 py-4 text-center text-sm text-fg-muted">Nenhum item adicionado</li>
+          )}
+        </ul>
+      ) : compactItems ? (
+        <ul aria-label="Itens do pedido" className="divide-y divide-line">
           {itemRows.map((row) => (
             <li key={row.key} className="flex flex-col gap-2 px-5 py-3">
-              <div className="flex items-start gap-2">
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  {row.name}
-                  {row.sku}
-                </div>
+              <div className="flex items-end gap-2">
+                <Field label="Produto" className="flex-1">{row.name}</Field>
                 {row.remove}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-4 gap-2">
+                <Field label="SKU" className="col-span-2">{row.sku}</Field>
                 <Field label="Qtd">{row.qty}</Field>
                 <Field label="Preço">{row.price}</Field>
               </div>
@@ -826,7 +915,7 @@ export default function SplitResultCard({
         </div>
       )}
 
-      <div className="flex flex-col items-start gap-3 px-5 py-4 md:px-6">
+      <div className="flex flex-col items-start gap-3 px-5 py-3.5 text-sm md:px-6">
         <Button type="button" variant="link" size="inline" onClick={handleAddItem} disabled={editingBlocked}>
           <Plus size={14} /> Adicionar item
         </Button>
@@ -840,11 +929,8 @@ export default function SplitResultCard({
       </div>
 
       <StepFooter>
-        <Button type="button" variant="ghost" onClick={onBackToOrder} disabled={editingBlocked}>
-          <ArrowLeft size={14} /> Voltar ao pedido
-        </Button>
-        <Button type="button" variant="ghost-muted" onClick={onEditManually} disabled={manualDisabled}>
-          Editar no manual
+        <Button type="button" variant="ghost-muted" onClick={onBackToOrder} disabled={editingBlocked}>
+          Voltar
         </Button>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {isProcessing && draft.result?.error && savedDraft.issueRecoveryRequired && onClearIssueRecovery && (
@@ -860,12 +946,29 @@ export default function SplitResultCard({
           <Button
             type="button"
             variant="outline"
+            onClick={() => setEditingItems((current) => !current)}
+            disabled={editingBlocked}
+            aria-pressed={editingItems}
+            size={compactItems ? 'icon' : undefined}
+            aria-label={compactItems ? (editingItems ? 'Concluir edição' : 'Editar') : undefined}
+            title={compactItems ? (editingItems ? 'Concluir edição' : 'Editar') : undefined}
+          >
+            {editingItems ? <Check size={14} /> : <Pencil size={14} />}
+            {!compactItems && (editingItems ? 'Concluir edição' : 'Editar')}
+          </Button>
+          {/* No celular a pré-visualização vira só ícone para caber no rodapé. */}
+          <Button
+            type="button"
+            variant="outline"
+            size={compactItems ? 'icon' : undefined}
             onClick={() => onReviewQuote(draft.index)}
             disabled={actionBlocked || !canCreate}
             title="Abre uma pré-visualização temporária sem salvar ou emitir."
+            aria-label={compactItems ? 'Pré-visualizar' : undefined}
             aria-describedby={actionBlockMessage ? actionStatusId : undefined}
           >
-            <Eye size={14} /> Pré-visualizar
+            <Eye size={14} />
+            {!compactItems && 'Pré-visualizar'}
           </Button>
           <Button
             type="button"

@@ -409,10 +409,11 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     const customItemName = 'Lenço 100 x 100 cm';
     await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
+    await page.getByText('Condições', { exact: true }).click();
     await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
     await page.getByRole('button', { name: 'Editar cliente' }).click();
     await page.getByLabel('Origem').selectOption('Google Ads');
-    await page.getByRole('button', { name: 'Concluir' }).click();
+    await page.getByRole('button', { name: 'Concluir', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'João Silva' })).toBeVisible();
 
     const previewRequest = context.waitForEvent('request',
@@ -432,8 +433,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page).toHaveURL(/#\/auto$/);
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
 
-    // Voltar ao pedido preserva o texto e o rascunho; a etapa Revisão reabre sem nova extração.
-    await page.getByRole('button', { name: 'Voltar ao pedido' }).click();
+    // Voltar preserva o texto e o rascunho; a etapa Revisão reabre sem nova extração.
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
     await expect(currentStep(page)).toHaveText(/Pedido/);
     await expect(page.getByLabel('Mensagem do cliente para extração')).toHaveValue(TEST_INPUT);
     await page.getByRole('list', { name: 'Etapas do orçamento' }).getByRole('button', { name: /Revisão/ }).click();
@@ -475,7 +476,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByLabel('Empresa')).toHaveValue('');
     await page.getByLabel('Empresa').fill('Silva Eventos');
     await page.getByLabel('Origem').selectOption('Google Ads');
-    await page.getByRole('button', { name: 'Concluir' }).click();
+    await page.getByRole('button', { name: 'Concluir', exact: true }).click();
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
 
     await expect.poll(() => savedPayload?.extracted?.empresa).toBe('Silva Eventos');
@@ -527,7 +528,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(currentStep(page)).toHaveText(/Revisão/, { timeout: 30000 });
     await page.getByRole('button', { name: 'Editar cliente' }).click();
     await page.getByLabel('Origem').selectOption('Google Ads');
-    await page.getByRole('button', { name: 'Concluir' }).click();
+    await page.getByRole('button', { name: 'Concluir', exact: true }).click();
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     await expect(page).toHaveURL(/#\/auto$/);
     await expect(currentStep(page)).toHaveText(/Envio/);
