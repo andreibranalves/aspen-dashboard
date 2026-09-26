@@ -53,7 +53,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 **D3 — Sem importação do histórico do KV.** O histórico novo nasce no PostgreSQL a partir do webhook e de um backfill pela Evolution. O KV recebe só um snapshot protegido e sai do código. Detalhes em §16.
 
-**D4 — "Extrair" entrega ao Novo orçamento.** O Atendimento lê os dados de contato e as mensagens do pedido do cliente, registra a demanda e abre `#/novo-orcamento` em modo conversa, que já faz extração, revisão de itens e identidade do cliente no Split Card. O Atendimento só mostra os dados lidos quando falta algum. Detalhes em §12.
+**D4 — "Extrair" entrega ao Novo orçamento.** O Atendimento lê os dados de contato e resume o pedido do cliente, registra a demanda e abre `#/novo-orcamento` em modo conversa, que já faz extração, revisão de itens e identidade do cliente no Split Card. O Atendimento só mostra os dados lidos quando falta algum. Detalhes em §12.
 
 ## 3. Base existente e decisão de reaproveitamento
 
@@ -81,7 +81,7 @@ A partir do M1b, o operador escreve, revisa e envia. A mensagem passa a existir 
 
 ### 4.3 Preparar orçamento
 
-O operador escolhe "Extrair" no cabeçalho da conversa. O servidor lê nome, e-mail e telefone do cliente e copia as mensagens do pedido, registra a demanda (§12) e o app abre o Novo orçamento em modo conversa com esse texto. Extração, itens, pendências, identidade do cliente, cálculo, salvamento, emissão e envio seguem os fluxos atuais.
+O operador escolhe "Extrair" no cabeçalho da conversa. O servidor lê nome, e-mail e telefone do cliente e resume o pedido, registra a demanda (§12) e o app abre o Novo orçamento em modo conversa com esse texto. Extração, itens, pendências, identidade do cliente, cálculo, salvamento, emissão e envio seguem os fluxos atuais.
 
 Ao voltar à conversa, o rascunho de resposta continua acessível durante a sessão.
 
@@ -107,7 +107,7 @@ Quando identidade, cadastro, entrega ou contexto estiverem em conflito, mostrar 
 | RF-08 | Exibir cliente, oportunidades, orçamentos e entregas a partir dos registros existentes. | M2 |
 | RF-09 | Confirmar/remover vínculo comercial com controle de versão, sem criar identidade paralela à extensão. | M2 |
 | RF-10 | Abrir mídia recebida suportada e enviar imagem/PDF validado por ação manual. | M2 |
-| RF-11 | Ler da conversa nome, e-mail, telefone e as mensagens do pedido do cliente, registrar a demanda e abrir o Novo orçamento com esse texto; revisão no Atendimento só quando faltar dado de contato. | M2 |
+| RF-11 | Ler da conversa nome, e-mail, telefone e o pedido do cliente, registrar a demanda e abrir o Novo orçamento com esse texto; revisão no Atendimento só quando faltar dado de contato. | M2 |
 | RF-12 | Exibir orçamento emitido/enviado e suas entregas na conversa sem repetir o transporte. | M2 |
 | RF-13 | Sugerir resposta, apontar pendências e resumir contexto, sempre internamente e sob solicitação. | M3 |
 | RF-14 | Identificar sugestões desatualizadas e impedir sua aplicação silenciosa a outra conversa ou outro cliente. | M3 |
@@ -289,20 +289,20 @@ Orçamentos oficiais mantêm suas URLs e revisões atuais. O chat não gera um n
 
 ## 12. Preparação de orçamento e vínculo com a demanda
 
-**RF-11 só lê dados de contato e copia as mensagens do pedido no Atendimento; não extrai itens, não emite nem envia.** O botão "Extrair" registra a demanda e entrega ao Novo orçamento; não cria documento oficial nem dispara WhatsApp.
+**RF-11 só lê dados de contato e resume o pedido no Atendimento; não extrai itens, não emite nem envia.** O botão "Extrair" registra a demanda e entrega ao Novo orçamento; não cria documento oficial nem dispara WhatsApp.
 
 `POST /api/atendimento-contact` lê as mensagens de texto recebidas (as 200 mais recentes; as enviadas nunca entram) e só devolve o que o cliente escreveu:
 
 - E-mail: o mais recente, por padrão de endereço, sem IA.
 - Telefone: o número do WhatsApp da conversa; nulo com identidade em conflito. Não é lido do texto.
 - Nome e empresa: a IA indica valor e mensagem; o backend descarta o valor que não estiver escrito nessa mensagem.
-- Pedido: na mesma chamada, a IA lista os IDs das mensagens em que o cliente descreve o que quer orçar (só o pedido mais recente). O backend descarta ID que não seja de mensagem recebida enviada à IA e copia essas mensagens literalmente, da mais antiga para a mais nova, mantendo as mais recentes dentro de 4.000 caracteres.
+- Pedido: na mesma chamada, a IA resume em uma linha o que o cliente quer orçar (ex.: "10 cangas personalizadas"; só o pedido mais recente) e cita as mensagens usadas. O backend descarta ID que não seja de mensagem recebida enviada à IA. Se o resumo tiver número que não esteja escrito nas mensagens citadas, usa essas mensagens como foram escritas, da mais antiga para a mais nova, mantendo as mais recentes dentro de 4.000 caracteres; assim nenhuma quantidade é inventada.
 - Falha da IA é informada à parte (`modelUnavailable`), não como ausência de nome, empresa ou pedido.
 
-Com nome, e-mail e telefone, o app registra a demanda e navega; pedido ausente não bloqueia. Faltando algum dado de contato, o Atendimento mostra o que achou, com a origem, e "Não encontrado na conversa" no resto; "Abrir orçamento assim" segue com o nome do perfil do WhatsApp no lugar do nome. `POST /api/atendimento-quote-draft`:
+O nome do perfil do WhatsApp vale quando o cliente não escreveu o nome. Com nome, e-mail e telefone, o app registra a demanda e navega; pedido ausente não bloqueia. Faltando algum dado de contato, o Atendimento mostra o que achou e "Não encontrado na conversa" no resto, sem a origem de cada valor; "Abrir orçamento assim" segue com o que houver. `POST /api/atendimento-quote-draft`:
 
 1. Recebe nome, empresa, e-mail e o texto do pedido; o telefone vem da conversa.
-2. Registra o cabeçalho `Nome:`/`Empresa:`/`E-mail:`/`Telefone:` que o Novo orçamento vai receber, seguido de `Pedido:` com as mensagens do cliente quando houver; o pedido também vira o `pedidoTexto` do quote lead e a demanda inicial da oportunidade. Demandas antigas guardam o texto das mensagens selecionadas e continuam abrindo igual.
+2. Registra o cabeçalho `Nome:`/`Empresa:`/`E-mail:`/`Telefone:` que o Novo orçamento vai receber, com `Pedido:` na última linha quando houver; o pedido também vira o `pedidoTexto` do quote lead e a demanda inicial da oportunidade. Demandas antigas guardam o texto das mensagens selecionadas e continuam abrindo igual.
 3. Cria ou recupera a admissão pela regra atual: quote lead com `source: 'whatsapp'`, `externalId` igual ao ID local da conversa e `demandId` estável. A mesma tentativa não cria dois quote leads/oportunidades; nova demanda na mesma conversa recebe nova identidade, sem sobrescrever a anterior. [S05]
 4. Retorna `demandId`, `quoteLeadId`, `crmDealId` quando existir e o destino de navegação.
 
@@ -373,7 +373,7 @@ Todos os endpoints seguem o pipeline autenticado atual e o registro único em `a
 | `GET /api/whatsapp-message-media?id=...` | Acesso controlado ao conteúdo de anexo validado. | M2 |
 | `GET /api/atendimento-context?conversationId=...` | Contexto comercial resolvido pelo backend a partir da conversa local, com o serviço da extensão e adapter sem CORS. | M2 |
 | `POST /api/atendimento-client-link` | Confirma/remove vínculo pela mesma regra e versão do vínculo existente. | M2 |
-| `POST /api/atendimento-contact` | Lê nome, empresa, e-mail e as mensagens do pedido escritos pelo cliente e o telefone da conversa, com a mensagem de origem (§12). | M2 |
+| `POST /api/atendimento-contact` | Lê nome, empresa e e-mail escritos pelo cliente, o resumo do pedido e o telefone da conversa, com a mensagem de origem (§12). | M2 |
 | `POST /api/atendimento-quote-draft` | Registra dados do cliente e demanda de forma idempotente; retorna `demandId`, `quoteLeadId`, `crmDealId` quando houver e destino (§12). | M2 |
 | `GET /api/atendimento-quote-draft?demandId=...` | Devolve o texto registrado da demanda ao Novo orçamento. | M2 |
 | `POST /api/atendimento-ai` | Ação interna permitida, conversa/seleção e contexto; retorna resultado estruturado revisável. | M3 |
@@ -480,7 +480,7 @@ Cada cenário deve ter evidência na entrega correspondente. A presença de um t
 | AC-24 | URL maliciosa, objeto público indevido, MIME adulterado ou anexo de outro escopo não contorna a validação. | RNF-01/06 | M2 |
 | AC-25 | O Novo orçamento recebe o cabeçalho registrado com os dados do cliente; nome ou empresa que não estejam escritos na mensagem citada nunca chegam a ele. | RF-11 | M2 |
 | AC-26 | Repetir "Extrair" com o mesmo `demandId` recupera a mesma demanda e quote lead; nova demanda na mesma conversa não sobrescreve a anterior. | RF-11, INV-08 | M2 |
-| AC-27 | "Extrair" só lê dados de contato e copia literalmente as mensagens do pedido; não extrai itens, não emite nem envia; extração, identidade, cálculo e salvamento acontecem no Novo orçamento e em `/api/orcamento`. | INV-08/09 | M2 |
+| AC-27 | "Extrair" só lê dados de contato e resume o pedido, sem quantidade que o cliente não escreveu; não extrai itens, não emite nem envia; extração, identidade, cálculo e salvamento acontecem no Novo orçamento e em `/api/orcamento`. | INV-08/09 | M2 |
 | AC-28 | Entrega existente de orçamento aparece na conversa sem criar outro envio ou PDF divergente. | RF-12, INV-11 | M2 |
 | AC-29 | IA sem preço/prazo confirmado registra pendência; fontes fora do contexto são rejeitadas. | RF-13 | M3 |
 | AC-30 | Texto de cliente tentando instruir o assistente não executa ferramenta, altera cadastro ou envia mensagem. | INV-09 | M3 |

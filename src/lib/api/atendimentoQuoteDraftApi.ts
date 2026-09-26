@@ -20,11 +20,10 @@ export interface ContactEvidence {
   at: string;
 }
 
-/** The client's own messages describing what to quote, copied verbatim. */
+/** One-line summary of what the client wants quoted, or the cited messages as written. */
 export interface ContactOrder {
   text: string;
   messageIds: string[];
-  at: string;
 }
 
 export interface AtendimentoContact {
