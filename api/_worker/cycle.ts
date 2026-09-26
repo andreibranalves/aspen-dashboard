@@ -24,6 +24,8 @@ export const MAX_FOLLOW_UPS_PER_CYCLE = 20;
 // Passado o teto diário de aprovações, os retornos saem um a cada 15 min.
 export const THROTTLED_FOLLOW_UP_INTERVAL_MS = 15 * 60_000;
 export const SCHEDULE_RETRY_MS = 5 * 60_000;
+// A varredura horária garante que a limpeza roda; mais que isso só gasta Neon.
+export const PRUNE_INTERVAL_MS = 60 * 60_000;
 
 export interface WorkerCycleResult {
   /** O ciclo mudou algum estado. */
@@ -37,6 +39,8 @@ export interface WorkerCycleResult {
 export interface WorkerCycleDependencies {
   processDue(limit: number, stop: AbortSignal): Promise<{ processed: number; remaining: boolean }>;
   drainEffects(deadlineAt: number): Promise<{ applied: number; failed: number }>;
+  /** Apaga os efeitos do webhook concluídos há mais de 14 dias. */
+  pruneEffects(): Promise<number>;
   sweepMessages(deadlineAt: number, stop: AbortSignal): Promise<SweepResult>;
   followUps: Pick<
     QuotationFollowUpWorkerModule,
@@ -61,6 +65,7 @@ export function createWorkerCycle(
   const clock = dependencies.clock || Date.now;
   const report = dependencies.reportError;
   let throttledFollowUpAt = 0;
+  let nextPruneAt = 0;
 
   async function deliveries(stop: AbortSignal) {
     let processed = 0;
@@ -160,6 +165,16 @@ export function createWorkerCycle(
         await record();
       } catch (error) {
         report(task, error);
+      }
+    }
+
+    // Uma falha espera a hora seguinte, como a limpeza que deu certo.
+    if (!stop.aborted && clock() >= nextPruneAt) {
+      nextPruneAt = clock() + PRUNE_INTERVAL_MS;
+      try {
+        await dependencies.pruneEffects();
+      } catch (error) {
+        report('limpeza dos efeitos', error);
       }
     }
 

@@ -6,7 +6,11 @@ import {
 } from '../_modules/quotation-follow-up-dispatch.js';
 import { createQuotationFollowUpModule } from '../_modules/quotation-follow-ups.js';
 import { sweepOperatorMessages } from '../_modules/whatsapp-message-dispatch.js';
-import { createWebhookEffectRunners, drainWebhookEffects } from '../_modules/whatsapp-webhook-effects.js';
+import {
+  createWebhookEffectRunners,
+  drainWebhookEffects,
+  pruneWebhookEffects,
+} from '../_modules/whatsapp-webhook-effects.js';
 import {
   recordMessageSweepRun,
   recordQuotationDeliveryWorkerRun,
@@ -33,6 +37,7 @@ export function createLiveWorkerCycle(reportError: WorkerCycleDependencies['repo
       if (!instance) return { applied: 0, failed: 0 };
       return drainWebhookEffects({ instance, runners: effectRunners, limit: EFFECTS_BATCH_LIMIT, deadlineAt });
     },
+    pruneEffects: () => pruneWebhookEffects(),
     sweepMessages: (deadlineAt, stop) => sweepOperatorMessages({ deadlineAt, stop }),
     followUps,
     dispatchFollowUp: () => dispatchNextApprovedFollowUp({ followUpModule: followUps }),

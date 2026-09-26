@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, eq, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { whatsappWebhookEffects } from '../schema.js';
@@ -36,6 +36,8 @@ export interface WhatsappWebhookEffectsRepository {
    * handling) so concurrent ticks never pick the same row.
    */
   claimDue(input: { instance: string; limit: number; now: Date; leaseMs: number; minAgeMs: number }): Promise<WebhookEffectRecord[]>;
+  /** Deletes up to `limit` rows whose two effects were applied before `completedBefore`; returns how many. */
+  pruneDone(input: { completedBefore: Date; limit: number }): Promise<number>;
 }
 
 const effects = whatsappWebhookEffects;
@@ -158,6 +160,28 @@ export function createPostgresWhatsappWebhookEffectsRepository(
           .map(toRecord)
           .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime() || left.id.localeCompare(right.id));
       });
+    },
+
+    async pruneDone({ completedBefore, limit }) {
+      const db = getDb();
+      // `updated_at` of a done row is when its last effect was marked done.
+      const oldest = db
+        .select({ id: effects.id })
+        .from(effects)
+        .where(
+          and(
+            isNotNull(effects.activityDoneAt),
+            isNotNull(effects.followUpDoneAt),
+            lt(effects.updatedAt, completedBefore),
+          ),
+        )
+        .orderBy(effects.updatedAt)
+        .limit(limit);
+      const deleted = await db
+        .delete(effects)
+        .where(inArray(effects.id, oldest))
+        .returning({ id: effects.id });
+      return deleted.length;
     },
   };
 }

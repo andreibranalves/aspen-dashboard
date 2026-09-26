@@ -17,6 +17,8 @@ import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   applyWebhookEffects,
   drainWebhookEffects,
+  EFFECT_RETENTION_MS,
+  pruneWebhookEffects,
   type WebhookEffectRunners,
 } from '../../api/_modules/whatsapp-webhook-effects.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
@@ -102,6 +104,38 @@ test('a failed follow-up is resumed by the drain without repeating the activity'
   const [done] = await repository.register([effect(instance, 'e1')]);
   assert.equal(done.activityDone && done.followUpDone, true);
   assert.equal(done.attempts, 1);
+});
+
+test('cleanup deletes only rows done before the retention, oldest first', { skip: databaseSkip }, async () => {
+  const repository = createPostgresWhatsappWebhookEffectsRepository(() => db);
+  const instance = `test-${randomUUID()}`;
+  const [olderDone, oldDone, recentDone, oldPending] = await repository.register(
+    ['older-done', 'old-done', 'recent-done', 'old-pending'].map((id) => effect(instance, id)),
+  );
+  for (const record of [olderDone, oldDone, recentDone]) {
+    await repository.markDone(record.id, 'activity');
+    await repository.markDone(record.id, 'follow_up');
+  }
+  await repository.markDone(oldPending.id, 'activity');
+  // Far in the past, so no row of another test falls under these cutoffs.
+  for (const [record, day] of [
+    [olderDone, '2000-01-01'],
+    [oldDone, '2000-01-02'],
+    [recentDone, '2000-01-20'],
+    [oldPending, '2000-01-01'],
+  ] as const) {
+    await sql`UPDATE whatsapp_webhook_effects SET updated_at = ${`${day}T00:00:00Z`}::timestamptz WHERE id = ${record.id}`;
+  }
+  const left = async () =>
+    (await sql`SELECT provider_message_id FROM whatsapp_webhook_effects WHERE instance = ${instance} ORDER BY 1`)
+      .map((row) => row.provider_message_id);
+
+  assert.equal(await repository.pruneDone({ completedBefore: new Date('2000-01-10T00:00:00Z'), limit: 1 }), 1);
+  assert.deepEqual(await left(), ['old-done', 'old-pending', 'recent-done']);
+
+  const now = () => new Date(Date.parse('2000-01-03T00:00:00Z') + EFFECT_RETENTION_MS);
+  assert.equal(await pruneWebhookEffects({ repository, now }), 1);
+  assert.deepEqual(await left(), ['old-pending', 'recent-done']);
 });
 
 test('the drain leaves fresh rows to the live webhook and leases each row once', { skip: databaseSkip }, async () => {
