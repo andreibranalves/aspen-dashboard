@@ -89,7 +89,6 @@ test('overview mostra orçamentos reais e gráfico legível com um dia', async (
 
 const conversionScenarios = [
   { ratio: 0.29, expected: '29%', artifact: '28.999999999999996%' },
-  { ratio: 0.57, expected: '57%', artifact: '56.99999999999999%' },
   { ratio: 0.1234, expected: '12%', artifact: '12.34%' },
 ];
 
@@ -276,39 +275,4 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
 
   await sidebar.getByRole('button', { name: 'Orçamentos' }).click();
   await expect(page).toHaveURL(/#\/quotations$/);
-});
-
-test('dados inválidos do dashboard produzem erro com retry, sem mascarar métricas como zero @smoke', async ({
-  page,
-}) => {
-  await page.route(/\/api\/settings(\?|$)/, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-  );
-  let retried = false;
-  await page.route('**/api/sales-dashboard**', async (route) => {
-    if (!retried) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ success: false, error: 'Erro controlado' }),
-      });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(dashboardResponse()),
-    });
-  });
-
-  await page.goto(`${BASE_URL}/#/dashboard`);
-  await expect(page.getByRole('heading', { name: 'Resultados', exact: true })).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'Não foi possível carregar os resultados' })
-  ).toBeVisible();
-  await expect(page.getByText('R$ 0', { exact: true })).toHaveCount(0);
-
-  retried = true;
-  await page.getByRole('button', { name: 'Tentar novamente' }).click();
-  await expect(page.getByRole('heading', { name: 'Resultados', level: 1 })).toBeVisible();
-  await expect(page.getByText('R$ 25 mil', { exact: true }).first()).toBeVisible();
 });

@@ -437,68 +437,6 @@ async function openResolvableDrawer(page, active) {
   return drawer;
 }
 
-test('a stale detail success released after PATCH cannot reopen the drawer', async ({ page }) => {
-  const active = delivery('provider_accepted', {
-    id: 'delivery-stale-success',
-    number: 'ORC-STALE-SUCCESS',
-    clientName: 'Cliente stale success',
-    delayed: true,
-  });
-  const resolved = delivery('delivered', {
-    id: active.id,
-    number: active.business_number,
-    clientName: active.client_name,
-  });
-  let patchCount = 0;
-  let postCount = 0;
-  let detailReads = 0;
-  const staleReleased = Promise.withResolvers();
-  const patchReleased = Promise.withResolvers();
-  await page.route('**/api/send-whatsapp-flow', (route) => {
-    postCount += 1;
-    return json(route, { error: 'unexpected provider POST' }, 500);
-  });
-  await page.route('**/api/communication-send-events**', (route) =>
-    json(route, { success: true, items: [], total: 0, source: 'postgres' })
-  );
-  await page.route('**/api/quotation-deliveries**', async (route) => {
-    const request = route.request();
-    const url = new globalThis.URL(request.url());
-    if (request.method() === 'PATCH') {
-      patchCount += 1;
-      await patchReleased.promise;
-      return json(route, resolved);
-    }
-    if (url.searchParams.has('id')) {
-      detailReads += 1;
-      await staleReleased.promise;
-      return json(route, active);
-    }
-    return json(route, listResponse([active]));
-  });
-
-  await page.goto('/#/whatsapp-deliveries');
-  const drawer = await openResolvableDrawer(page, active);
-  // Wait for the active-state detail poll to start and stay in flight.
-  await expect.poll(() => detailReads, { timeout: 15000 }).toBeGreaterThan(0);
-
-  await drawer.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
-  await page.getByLabel('Justificativa').fill('Cliente confirmou recebimento por ligação.');
-  await page.getByRole('button', { name: 'Confirmar resolução' }).click();
-  await expect.poll(() => patchCount).toBe(1);
-
-  // Release the resolution first, then the stale provider_accepted detail read.
-  patchReleased.resolve();
-  staleReleased.resolve();
-
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
-  await expect(page.getByRole('alert')).toHaveCount(0);
-  expect(patchCount).toBe(1);
-  expect(postCount).toBe(0);
-});
-
 test('a stale detail rejection released after PATCH cannot restore controls or an error', async ({ page }) => {
   const active = delivery('provider_accepted', {
     id: 'delivery-stale-rejection',

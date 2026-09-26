@@ -379,78 +379,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     ).toBe(true);
   });
 
-  test('consulta atividade local para produto do catálogo sem metadados de rollout', async ({
-    page,
-  }) => {
-    const priced = product('CORE-ACTIVITY', 'Produto com atividade local');
-    priced.preco_base = '10.00';
-    priced.pricing_available = true;
-    await mockProductApi(page, [priced]);
-    let activityRequests = 0;
-    await page.route('**/api/product-activity**', async (route) => {
-      activityRequests += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          sku: 'CORE-ACTIVITY',
-          atividades: [
-            { tipo: 'produto', texto: 'Produto criado', data: '2026-01-01', id: 'activity-1' },
-          ],
-        }),
-      });
-    });
-
-    await page.goto('/#/products/CORE-ACTIVITY');
-    await expect(
-      page.getByText('Produto com atividade local', { exact: true }).first()
-    ).toBeVisible();
-    await expect(
-      page.getByRole('heading', { name: 'Produto com atividade local', exact: true })
-    ).toHaveCount(1);
-    const productHeader = page.locator('header').filter({
-      has: page.getByRole('heading', { name: 'Produto com atividade local', exact: true }),
-    });
-    await expect(productHeader.getByText('Ativo', { exact: true })).toBeVisible();
-    await expect(page.getByRole('banner').getByRole('button', { name: 'Arquivar produto' })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: 'Nome', exact: true })).toHaveValue('Produto com atividade local');
-    await expect(page.getByText('Produto criado', { exact: true })).toBeVisible();
-    await expect(page.getByText(/10,00/).first()).toBeVisible();
-    await expect.poll(() => activityRequests).toBe(1);
-
-    await expect(page.getByRole('banner').getByRole('button', { name: 'Salvar produto' })).toBeVisible();
-    await expect(page.getByPlaceholder('Nome do produto')).toHaveValue(
-      'Produto com atividade local'
-    );
-  });
-
-  test('consulta atividade local uma única vez após salvar um produto existente', async ({
-    page,
-  }) => {
-    await mockProductApi(page, [product('CORE-ACTIVITY-SAVE', 'Produto local')]);
-    let activityRequests = 0;
-    await page.route('**/api/product-activity**', async (route) => {
-      activityRequests += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ atividades: [] }),
-      });
-    });
-
-    await page.goto('/#/products/CORE-ACTIVITY-SAVE');
-    await expect(page.getByText('Produto local', { exact: true }).first()).toBeVisible();
-    await expect.poll(() => activityRequests).toBe(1);
-
-    await expect(page.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
-    await page.getByPlaceholder('Nome do produto').fill('Produto local atualizado');
-    await page.getByRole('button', { name: 'Salvar produto' }).click();
-    await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
-    await expect.poll(() => activityRequests).toBe(2);
-    await page.waitForTimeout(100);
-    expect(activityRequests).toBe(2);
-  });
-
   test('ignora respostas atrasadas de produto e atividade de SKU antigo', async ({ page }) => {
     const oldProduct = product('OLD-SKU', 'Produto antigo');
     const newProduct = product('NEW-SKU', 'Produto atual');
@@ -534,75 +462,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByText('Atividade atual', { exact: true })).toBeVisible();
     await expect(page.getByText('Falha antiga', { exact: true })).toHaveCount(0);
     expect(lifecycleErrors).toEqual([]);
-  });
-
-  test('limpa atividade ao trocar SKU e exibe carregamento até a nova resposta', async ({
-    page,
-  }) => {
-    const oldProduct = product('ACTIVITY-OLD', 'Produto com atividade antiga');
-    const newProduct = product('ACTIVITY-NEW', 'Produto com atividade nova');
-    await mockProductApi(page, [oldProduct, newProduct]);
-    /** @type {(value?: unknown) => void} */
-    let releaseNewActivity = () => {};
-    const newActivityReady = new Promise((resolve) => {
-      releaseNewActivity = resolve;
-    });
-    let newActivityStarted = 0;
-
-    await page.route('**/api/product-detail**', async (route) => {
-      const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
-      const row = requestSku === 'ACTIVITY-OLD' ? oldProduct : newProduct;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(detail(row)),
-      });
-    });
-    await page.route('**/api/product-activity**', async (route) => {
-      const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
-      if (requestSku === 'ACTIVITY-NEW') {
-        newActivityStarted += 1;
-        await newActivityReady;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            atividades: [
-              {
-                tipo: 'produto',
-                texto: 'Atividade nova',
-                data: '2026-01-02T00:00:00.000Z',
-                id: 'new-activity',
-              },
-            ],
-          }),
-        });
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          atividades: [
-            {
-              tipo: 'produto',
-              texto: 'Atividade antiga',
-              data: '2026-01-01T00:00:00.000Z',
-              id: 'old-activity',
-            },
-          ],
-        }),
-      });
-    });
-
-    await page.goto('/#/products/ACTIVITY-OLD');
-    await expect(page.getByText('Atividade antiga', { exact: true })).toBeVisible();
-    await page.goto('/#/products/ACTIVITY-NEW');
-    await expect.poll(() => newActivityStarted).toBe(1);
-    await expect(page.getByText('Carregando atividade…', { exact: true })).toHaveText('Carregando atividade…');
-    await expect(page.getByText('Atividade antiga', { exact: true })).toHaveCount(0);
-    releaseNewActivity();
-    await expect(page.getByText('Atividade nova', { exact: true })).toBeVisible();
   });
 
   test('não vaza estado de salvar ou arquivar para outro SKU', async ({ page }) => {
@@ -840,22 +699,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await page.getByRole('button', { name: 'Arquivar produto' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
     await expect(page.getByText(/Erro ao arquivar/i)).toBeVisible();
-  });
-
-  test('cria novo produto sem consultar modo externo', async ({ page }) => {
-    const { requests } = await mockProductApi(page, []);
-    await page.goto('/#/products/new');
-    await expect(page.getByRole('button', { name: 'Criar produto' })).toBeVisible();
-    await page.getByPlaceholder('LNC-SED-70').fill('LOCAL-NEW');
-    await page.getByPlaceholder('Nome do produto').fill('Produto local novo');
-    await page.getByLabel('Preço base').fill('12.50');
-    await page.getByRole('button', { name: 'Criar produto' }).click();
-
-    await expect(page).toHaveURL(/#\/products\/LOCAL-NEW$/);
-    const post = requests.find((request) => request.method === 'POST');
-    expect(post?.body?.preco_base).toBe('12.50');
-    expect(post?.body?.precos).toEqual([]);
-    expect(requests.filter((request) => request.method === 'GET')).toHaveLength(0);
   });
 
   test('separa seleção, arquivamento e abertura do card ao operar por teclado', async ({

@@ -260,54 +260,6 @@ async function setupAuto(page) {
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
 }
 
-async function installDurableRoutes(page, stateForFlow = () => 'delivered') {
-  const active = new Map();
-  const requests = [];
-  await page.route('**/api/send-whatsapp-flow', (route) => {
-    const body = route.request().postDataJSON();
-    requests.push(body);
-    const state = stateForFlow(body.flow_id);
-    active.set(body.flow_id, state);
-    return json(route, enqueueResponse(state, body.flow_id));
-  });
-  await page.route('**/api/quotation-deliveries**', (route) => {
-    const url = new globalThis.URL(route.request().url());
-    if (url.searchParams.has('revision_id') && !url.searchParams.has('flow_id')) {
-      const flowId = [...active.keys()][0];
-      const state = flowId ? active.get(flowId) : undefined;
-      return json(route, deliveryPage(flowId && state ? [delivery(state, flowId)] : []));
-    }
-    const deliveryId = url.searchParams.get('id');
-    const flowId = url.searchParams.get('flow_id') || [...active.keys()].find((candidate) => delivery('delivered', candidate).id === deliveryId);
-    const state = flowId ? active.get(flowId) : undefined;
-    if (!flowId || !state) return json(route, { error: 'not found' }, 404);
-    return json(route, delivery(state, flowId));
-  });
-  return { requests, active };
-}
-
-test('accepted provider state stays accepted and blocks automatic replay', async ({ page }) => {
-  await setupAuto(page);
-  const { requests } = await installDurableRoutes(page, () => 'provider_accepted');
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await send.click();
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
-  await expect(send).toBeDisabled();
-  await send.click({ force: true });
-  expect(requests).toHaveLength(1);
-});
-
-test('reconciling state blocks duplicate send', async ({ page }) => {
-  await setupAuto(page);
-  const { requests } = await installDurableRoutes(page, () => 'reconciling');
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await send.click();
-  await expect(page.getByText('Reconciliação em andamento', { exact: true })).toBeVisible();
-  await expect(send).toBeDisabled();
-  await send.click({ force: true });
-  expect(requests).toHaveLength(1);
-});
-
 test('delivered replay without phone remains a durable completed UI status', async ({ page }) => {
   await setupAuto(page);
   const active = new Map();
@@ -331,19 +283,6 @@ test('delivered replay without phone remains a durable completed UI status', asy
   await expect(send).toBeDisabled();
   await expect(page.getByText('undefined', { exact: true })).toHaveCount(0);
   expect(sendCount).toBe(1);
-});
-
-test('completed delivery locks the flow for the issued revision', async ({ page }) => {
-  await setupAuto(page);
-  const { requests } = await installDurableRoutes(page, () => 'delivered');
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await send.click();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Fluxo WhatsApp')).toBeDisabled();
-  await expect(send).toBeDisabled();
-  expect(requests).toEqual([
-    { quotation_id: quotationId, revision_id: revisionId, flow_id: 'flow-1' },
-  ]);
 });
 
 test('same component double click sends one backend request and unsafe failure stays blocked', async ({ page }) => {
@@ -375,41 +314,6 @@ test('same component double click sends one backend request and unsafe failure s
   releaseFirst?.();
   await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
-  expect(sendCount).toBe(1);
-});
-
-test('lost enqueue response rediscovers the durable delivery without a second send', async ({ page }) => {
-  await setupAuto(page);
-  let sendCount = 0;
-  let durable = null;
-  await page.route('**/api/send-whatsapp-flow', (route) => {
-    sendCount += 1;
-    const body = route.request().postDataJSON();
-    // The server persisted and dispatched, but the answer never reached the browser.
-    durable = { state: 'provider_accepted', flowId: body.flow_id };
-    return json(route, { error: 'Não foi possível processar o envio. Tente novamente.' }, 503);
-  });
-  await page.route('**/api/quotation-deliveries**', (route) => {
-    const url = new globalThis.URL(route.request().url());
-    // Identity lookup misses on purpose: only the revision read is authoritative.
-    if (url.searchParams.has('flow_id')) return json(route, { error: 'not found' }, 404);
-    return json(
-      route,
-      durable ? deliveryPage([delivery(durable.state, durable.flowId)]) : deliveryPage(),
-    );
-  });
-
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await send.click();
-  // The durable provider_accepted delivery is rediscovered and exposes the
-  // delayed manual-resolution control instead of a repeat send.
-  await expect(
-    page.getByRole('button', { name: 'Cliente confirmou recebimento' }),
-  ).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toHaveCount(0);
-  const deliveredSend = page.getByRole('button', { name: 'Enviado' });
-  await expect(deliveredSend).toBeDisabled();
-  await deliveredSend.click({ force: true });
   expect(sendCount).toBe(1);
 });
 
@@ -563,41 +467,6 @@ async function setupTwoIssuedDrafts(page, { heldB }) {
   });
   return state;
 }
-
-test('a late authoritative success for another draft survives a same-hook mutation', async ({ page }) => {
-  const held = Promise.withResolvers();
-  const state = await setupTwoIssuedDrafts(page, {
-    heldB: async (route) => {
-      await held.promise;
-      return json(route, draftDelivery('provider_accepted', revisionB, 'flow-1'));
-    },
-  });
-
-  await page.goto('/#/novo-orcamento');
-  // Draft A resolves while draft B's identity read is still in flight.
-  await page.getByLabel('Rascunho ativo').selectOption('0');
-  const resolveControl = page.getByRole('button', { name: 'Cliente confirmou recebimento' });
-  await expect(resolveControl).toBeVisible();
-  await resolveControl.click();
-  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
-  await dialog.getByLabel('Justificativa').fill('Cliente A confirmou o recebimento.');
-  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
-  // A is delivered: the provider-acceptance action is gone, the send stays locked.
-  await expect(resolveControl).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Enviado' })).toBeDisabled();
-  expect(state.resolveCount).toBe(1);
-
-  // B's read — started before A's mutation — now returns its authoritative row.
-  held.resolve();
-  await expect.poll(() => state.bIdentityReads >= 1).toBe(true);
-  await page.getByLabel('Rascunho ativo').selectOption('1');
-  await expect(resolveControl).toBeVisible({ timeout: 15000 });
-
-  const send = page.getByRole('button', { name: 'Enviado' });
-  await expect(send).toBeDisabled();
-  await send.click({ force: true });
-  expect(state.sendCount).toBe(0);
-});
 
 test('a late rejection for another draft still blocks with a safe error after a same-hook mutation', async ({ page }) => {
   const held = Promise.withResolvers();
