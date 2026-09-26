@@ -6,6 +6,7 @@ import { readConnectedAccountId } from '../_infrastructure/integrations/evolutio
 import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import { conversationId as technicalConversationId } from '../_shared/contact-phone.js';
 import { safeErrorSummary } from '../_shared/safe-error.js';
+import { ORDER_MAX_CHARS } from './atendimento-contact.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,6 +37,14 @@ function contactText(value: unknown, label: string, max: number): string {
   if (value === undefined || value === null) return '';
   if (typeof value !== 'string' || value.trim().length > max) throw new InputError(`${label} inválido.`);
   return value.replace(/\s+/g, ' ').trim();
+}
+
+// The client's order keeps its line breaks.
+function orderText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  const text = typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : null;
+  if (text === null || text.length > ORDER_MAX_CHARS) throw new InputError('Pedido inválido.');
+  return text;
 }
 
 // Demands prepared before the contact extraction also recorded the selected message IDs.
@@ -113,14 +122,16 @@ export function createAtendimentoQuoteDraftHandler(dependencies: QuoteDraftDepen
       const empresa = contactText(contact.company, 'Empresa', 255);
       const email = contactText(contact.email, 'E-mail', 320).toLowerCase();
       if (email && !EMAIL.test(email)) throw new InputError('E-mail inválido.');
+      const pedido = orderText(contact.order);
       const conversation = await attendance.getConversation(conversationId);
       if (!conversation) return json(404, { error: 'Conversa não encontrada.' });
       const telefone = conversation.identityStatus === 'conflict' ? '' : conversation.canonicalPhone || '';
-      // Same header the quote screen writes for a known client; the operator adds the request below.
-      const text = [`Nome: ${nome}`, ...(empresa ? [`Empresa: ${empresa}`] : []), `E-mail: ${email}`, `Telefone: ${telefone}`].join('\n');
+      // Same header the quote screen writes for a known client, then the client's own order messages.
+      const header = [`Nome: ${nome}`, ...(empresa ? [`Empresa: ${empresa}`] : []), `E-mail: ${email}`, `Telefone: ${telefone}`].join('\n');
+      const text = pedido ? `${header}\n\nPedido:\n${pedido}` : header;
       const lead = await leads.admitWhatsappDraft({
         source: 'whatsapp', externalId: conversationId, demandId,
-        nome, empresa, email, telefone, raw: { atendimentoDraft: { text } },
+        nome, empresa, email, telefone, ...(pedido ? { pedidoTexto: pedido } : {}), raw: { atendimentoDraft: { text } },
       });
       return json(201, await project(lead));
     } catch (error) {

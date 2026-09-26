@@ -20,22 +20,31 @@ export interface ContactEvidence {
   at: string;
 }
 
+/** The client's own messages describing what to quote, copied verbatim. */
+export interface ContactOrder {
+  text: string;
+  messageIds: string[];
+  at: string;
+}
+
 export interface AtendimentoContact {
   conversationId: string;
   name: ContactEvidence | null;
   company: ContactEvidence | null;
+  order: ContactOrder | null;
   email: ContactEvidence | null;
   /** WhatsApp number of the conversation; null while the identity is in conflict. */
   phone: string | null;
   profileName: string | null;
-  /** The name read failed; a null name then means "not read", not "not found". */
-  nameUnavailable: boolean;
+  /** The model read failed; a null name, company or order then means "not read", not "not found". */
+  modelUnavailable: boolean;
 }
 
 export interface AtendimentoQuoteContact {
   name: string;
   company: string;
   email: string;
+  order: string;
 }
 
 export function extractAtendimentoContact(conversationId: string) {
