@@ -14,7 +14,10 @@ import PageShell from '@/components/shared/PageShell';
 import Skeleton from '@/components/shared/Skeleton';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
+import { Text } from '@/components/ui/text';
+import { cn } from '@/lib/utils';
 import { TabBar } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -120,6 +123,68 @@ function formatCompactBRL(value: number): string {
   return `R$\u00a0${(value / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`;
 }
 
+function formatAxisValue(value: number): string {
+  if (value < 1000) return value.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+  return `${(value / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`;
+}
+
+function formatShare(part: number, whole: number): string {
+  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : '0%';
+}
+
+/** Marcas redondas do eixo Y (0 incluso) cobrindo o maior valor em 3 a 5 passos. */
+function axisTicks(max: number): number[] {
+  const rough = max / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const step = ([1, 2, 2.5, 5].find((factor) => factor * magnitude >= rough) ?? 10) * magnitude;
+  return Array.from({ length: Math.ceil(max / step) + 1 }, (_, index) => index * step);
+}
+
+type ChartTooltipAlign = 'start' | 'center' | 'end';
+
+const CHART_TOOLTIP_ALIGN: Record<ChartTooltipAlign, string> = {
+  start: 'left-0',
+  center: 'left-1/2 -translate-x-1/2',
+  end: 'right-0',
+};
+
+/** Nas bordas do gráfico o texto cresce para dentro, sem sair da área do card. */
+function edgeAlign(index: number, count: number): ChartTooltipAlign {
+  if (count < 3) return 'center';
+  if (index < count / 5) return 'start';
+  return index >= count - count / 5 ? 'end' : 'center';
+}
+
+/**
+ * Leitura da marca sob o ponteiro (a marca declara `group/mark`); o mesmo dado está
+ * na legenda ou na lista para leitor de tela.
+ */
+function ChartTooltip({
+  value,
+  label,
+  align = 'center',
+  className,
+}: {
+  value: string;
+  label: string;
+  align?: ChartTooltipAlign;
+  className: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'pointer-events-none absolute z-floating hidden w-max flex-col rounded-control border border-line bg-surface px-3 py-2 shadow-floating group-hover/mark:flex',
+        CHART_TOOLTIP_ALIGN[align],
+        className
+      )}
+    >
+      <Text variant="value">{value}</Text>
+      <Text variant="caption">{label}</Text>
+    </span>
+  );
+}
+
 function formatComparison(value: number | null, noOrders = false): string {
   if (noOrders || value === null) return 'Comparação indisponível';
   if (value === 0) return 'Sem variação';
@@ -171,41 +236,90 @@ function RevenueChart({
       </>
     );
 
+  const ticks = axisTicks(maxRevenue);
+  const top = ticks[ticks.length - 1];
+  const count = series.items.length;
+  const labelEvery = count <= 7 ? 1 : Math.ceil(count / 6);
+  const peak = series.items.findIndex((day) => day.revenue === maxRevenue);
+  const toPercent = (value: number) => `${(value / top) * 100}%`;
+
   return (
-    <div className="overflow-x-auto" role="img" aria-label="Receita por dia">
-      <div
-        className="relative flex h-56 min-w-(--chart-min-w) items-end justify-around gap-2 border-b border-line px-3 pb-5 pl-9 pt-7"
-        style={{ '--chart-min-w': `${Math.max(180, series.items.length * 42 + 40)}px` } as CSSProperties}
-      >
-        <span className="pointer-events-none absolute left-1 top-3 text-xs text-fg-muted">
-          {formatCompactBRL(maxRevenue)}
-        </span>
-        <span className="pointer-events-none absolute bottom-5 left-1 text-xs text-fg-muted">
-          R$ 0
-        </span>
-        {series.items.map((day) => {
-          const height = Math.round((day.revenue / maxRevenue) * 100);
-          return (
-            <div
-              key={day.date}
-              className="flex min-w-6 max-w-16 flex-1 flex-col items-center justify-end gap-1"
-            >
-              <span className="text-xs tabular-nums text-fg-muted">
-                {formatCompactBRL(day.revenue)}
+    <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col gap-2" role="img" aria-label="Receita por dia">
+        <div className="flex min-h-52 flex-1 gap-2 pt-5">
+          <div className="relative w-9 shrink-0" aria-hidden="true">
+            {ticks.map((tick) => (
+              <span
+                key={tick}
+                className="absolute bottom-(--tick-y) right-0 translate-y-1/2 text-2xs tabular-nums text-fg-muted"
+                style={{ '--tick-y': toPercent(tick) } as CSSProperties}
+              >
+                {formatAxisValue(tick)}
               </span>
-              <div className="flex h-36 w-full items-end">
+            ))}
+          </div>
+          <div className="relative flex-1">
+            {ticks.map((tick) => (
+              <div
+                key={tick}
+                className={cn(
+                  'absolute inset-x-0 bottom-(--tick-y) border-t',
+                  tick === 0 ? 'border-border-strong' : 'border-line'
+                )}
+                style={{ '--tick-y': toPercent(tick) } as CSSProperties}
+                aria-hidden="true"
+              />
+            ))}
+            <div className="absolute inset-0 flex">
+              {series.items.map((day, index) => (
                 <div
-                  className="h-(--bar-h) w-full rounded-t-xs bg-bar-one"
-                  style={{ '--bar-h': `${height}%` } as CSSProperties}
-                  aria-hidden="true"
-                />
-              </div>
-              <span className="whitespace-nowrap text-xs text-fg-muted">
-                {formatChartDate(day.date)}
-              </span>
+                  key={day.date}
+                  className="group/mark relative flex min-w-0 flex-1 items-end justify-center px-px hover:bg-fg/5"
+                  style={{ '--bar-top': toPercent(day.revenue) } as CSSProperties}
+                >
+                  <div
+                    className={cn(
+                      'h-(--bar-height) w-full max-w-6 rounded-t-xs bg-chart-one group-hover/mark:brightness-110',
+                      day.revenue > 0 && 'min-h-0.5'
+                    )}
+                    style={{ '--bar-height': toPercent(day.revenue) } as CSSProperties}
+                    aria-hidden="true"
+                  />
+                  {index === peak && (
+                    <span
+                      className={cn(
+                        'absolute bottom-(--bar-top) -translate-y-1 whitespace-nowrap text-2xs font-medium text-fg-muted group-hover/mark:invisible',
+                        CHART_TOOLTIP_ALIGN[edgeAlign(index, count)]
+                      )}
+                      aria-hidden="true"
+                    >
+                      {formatCompactBRL(day.revenue)}
+                    </span>
+                  )}
+                  <ChartTooltip
+                    value={formatBRL(day.revenue)}
+                    label={`${formatChartDate(day.date)} · ${day.orders} ${day.orders === 1 ? 'pedido' : 'pedidos'}`}
+                    align={edgeAlign(index, count)}
+                    className="bottom-(--bar-top) -translate-y-2"
+                  />
+                </div>
+              ))}
             </div>
-          );
-        })}
+          </div>
+        </div>
+        <div className="flex gap-2" aria-hidden="true">
+          <div className="w-9 shrink-0" />
+          <div className="flex flex-1">
+            {series.items.map((day, index) => (
+              <span
+                key={day.date}
+                className="flex min-w-0 flex-1 justify-center whitespace-nowrap text-2xs text-fg-muted"
+              >
+                {index % labelEvery === 0 ? formatChartDate(day.date) : null}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
       <ul className="sr-only">
         {series.items.map((day) => (
@@ -248,33 +362,72 @@ function SummaryMetrics({ summary }: { summary: DashboardSummaryView }) {
   );
 }
 
+const ORDER_SOURCE_LABELS: Record<string, string> = {
+  site_form: 'Site',
+  whatsapp: 'WhatsApp',
+  typebot: 'Typebot',
+  sem_origem: 'Sem origem',
+};
+
+/** Canais listados mesmo zerados: saber que um canal não trouxe pedidos também é resposta. */
+const ORDER_SOURCE_CHANNELS = ['site_form', 'whatsapp', 'typebot'];
+
 function OrderSourcesPanel({ data }: { data: DashboardViewData }) {
-  const rows = data.ordersBySource?.items || [];
+  const rows = data.ordersBySource?.items ?? [];
   const total = rows.reduce((sum, row) => sum + row.orders, 0);
-  const colors = ['rgb(var(--chart-one))', 'rgb(var(--chart-two))', 'rgb(var(--chart-three))', 'rgb(var(--chart-four))'];
-  const swatches = ['bg-chart-one', 'bg-chart-two', 'bg-chart-three', 'bg-chart-four'];
-  const labels: Record<string, string> = { site_form: 'Site', whatsapp: 'WhatsApp', typebot: 'Typebot', sem_origem: 'Sem origem' };
-  let start = 0;
-  const stops = rows.map((row, index) => {
-    const end = start + (total > 0 ? row.orders / total * 100 : 0);
-    const stop = `${colors[index % colors.length]} ${start}% ${end}%`;
-    start = end;
-    return stop;
-  });
+  const counts = new Map(rows.map((row) => [row.source, row.orders]));
+  const sources = [
+    ...ORDER_SOURCE_CHANNELS,
+    ...rows
+      .map((row) => row.source)
+      .filter((source) => !ORDER_SOURCE_CHANNELS.includes(source) && source !== 'sem_origem'),
+    ...(counts.has('sem_origem') ? ['sem_origem'] : []),
+  ];
   return (
-    <section className="flex min-h-[340px] min-w-0 flex-col rounded-card bg-surface p-5" aria-label="Origem dos pedidos">
-      <Heading as="h2" level="subsection">Origem dos pedidos</Heading>
-      {/* Sem dados de origem não há anel: um "0 pedidos" contradiria o total ao lado. */}
-      {data.ordersBySource !== null && (
-        <>
-        <div className={`mx-auto mt-4 grid size-40 shrink-0 place-items-center rounded-full ${total > 0 ? 'bg-(image:--pie)' : 'bg-surface-subtle'}`} style={total > 0 ? { '--pie': `conic-gradient(${stops.join(', ')})` } as CSSProperties : undefined} role="img" aria-label={rows.map((row) => `${labels[row.source] || row.source}: ${row.orders} pedidos`).join('; ') || 'Nenhum pedido no período'}>
-          <span className="grid size-24 place-content-center rounded-full bg-surface text-center text-xs"><strong className="block text-xl tabular-nums">{total}</strong>pedido{total === 1 ? '' : 's'}</span>
+    <Card as="section" aria-labelledby="order-sources-title">
+      <div className="flex flex-col gap-5">
+        <div className="flex items-baseline justify-between gap-3">
+          <Heading level="section" id="order-sources-title">
+            Origem dos pedidos
+          </Heading>
+          {total > 0 && (
+            <Text variant="meta">
+              {total} {total === 1 ? 'pedido' : 'pedidos'}
+            </Text>
+          )}
         </div>
-        <div className="mt-auto grid grid-cols-2 gap-3 pt-4">{rows.slice(0, 4).map((row, index) => <div key={row.source} className="flex items-start gap-2 text-2xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${swatches[index % swatches.length]}`} /><span>{labels[row.source] || row.source}<strong className="block text-base tabular-nums">{total > 0 ? Math.round(row.orders / total * 100) : 0}%</strong></span></div>)}</div>
-        </>
-      )}
-      {data.ordersBySource === null && <p className="pt-4 text-sm text-fg-muted">Origem indisponível.</p>}
-    </section>
+        {data.ordersBySource === null ? (
+          <Unavailable>Origem indisponível.</Unavailable>
+        ) : total === 0 ? (
+          <Unavailable>Nenhum pedido no período.</Unavailable>
+        ) : (
+          <ul className="flex flex-col gap-4">
+            {sources.map((source) => {
+              const orders = counts.get(source) ?? 0;
+              return (
+                <li key={source} className="flex flex-col gap-1.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <Text truncate>{ORDER_SOURCE_LABELS[source] ?? source}</Text>
+                    <span className="flex shrink-0 items-baseline gap-2">
+                      <Text variant="value">{orders}</Text>
+                      <Text variant="caption">{formatShare(orders, total)}</Text>
+                    </span>
+                  </div>
+                  <div
+                    className={cn(
+                      'h-2 w-(--share) rounded-r-xs',
+                      source === 'sem_origem' ? 'bg-chart-neutral' : 'bg-chart-one'
+                    )}
+                    style={{ '--share': formatShare(orders, total) } as CSSProperties}
+                    aria-hidden="true"
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -299,19 +452,16 @@ function OverviewPanel({
       className="space-y-4"
     >
       <SummaryMetrics summary={summary} />
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <OrderSourcesPanel data={data} />
-        <section
-          className="min-h-[340px] min-w-0 rounded-card bg-surface p-5"
-          aria-labelledby="revenue-chart-title"
-        >
-          <Heading level="section" id="revenue-chart-title">
-            Receita por dia · R$ mil
-          </Heading>
-          <div className="mt-4">
+        <Card as="section" aria-labelledby="revenue-chart-title" className="flex flex-col">
+          <div className="flex flex-1 flex-col gap-4">
+            <Heading level="section" id="revenue-chart-title">
+              Receita por dia
+            </Heading>
             <RevenueChart series={data.salesByDay} />
           </div>
-        </section>
+        </Card>
         <FeaturedCustomersPanel data={data} onCustomers={onCustomers} />
       </div>
       <RecentQuotationsPanel data={recentQuotations} onNavigate={onNavigate} />
@@ -402,10 +552,7 @@ function FeaturedCustomersPanel({
 }) {
   const customers = data.topCustomers;
   return (
-    <section
-      className="min-h-[340px] rounded-card bg-surface p-5"
-      aria-labelledby="featured-customers-title"
-    >
+    <Card as="section" aria-labelledby="featured-customers-title">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Heading level="section" id="featured-customers-title">
           Clientes em destaque
@@ -453,7 +600,7 @@ function FeaturedCustomersPanel({
         </div>
       )}
       {customers ? <OmittedRowsNote omitted={customers.omitted} /> : null}
-    </section>
+    </Card>
   );
 }
 
@@ -480,27 +627,32 @@ function RankingPanel({ kind, rows, omitted, summary }: {
       </div>
       {rows === null ? <Unavailable>Receita por {title} não está disponível.</Unavailable> : rows.length === 0 ? <Unavailable>Nenhum {title} com venda no período.</Unavailable> : (
         <div className="grid gap-4 lg:grid-cols-2">
-          <section className="min-w-0 rounded-card bg-surface p-5" aria-label={`Receita por ${title}`}>
-            <Heading level="section">Receita por {title}</Heading>
-            <p className="mt-1 text-xs text-fg-muted">Distribuição da receita dos pedidos</p>
-            <div className="mt-8 space-y-6">
-              {rows.slice(0, 6).map((row) => (
-                <div key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3 text-2xs">
-                  <span className="truncate text-fg-muted" title={row.name}>{row.name}</span>
-                  <div className="h-5 overflow-hidden rounded-control bg-raised"><div className={`h-full w-(--bar-w) bg-chart-one`} style={{ '--bar-w': `${maxRevenue ? Math.max(2, (row.revenue / maxRevenue) * 100) : 0}%` } as CSSProperties} /></div>
-                  <span className="tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
-                </div>
-              ))}
+          <Card as="section" aria-label={`Receita por ${title}`}>
+            <div className="flex flex-col gap-6">
+              <Heading level="section">Receita por {title}</Heading>
+              <ul className="flex flex-col gap-5">
+                {rows.slice(0, 6).map((row) => (
+                  <li key={row.key} className="grid grid-cols-[minmax(80px,110px)_minmax(0,1fr)_auto] items-center gap-3">
+                    <Text variant="meta" truncate title={row.name}>{row.name}</Text>
+                    <div
+                      className="h-3 w-(--bar-w) rounded-r-xs bg-chart-one"
+                      style={{ '--bar-w': `${maxRevenue ? Math.max(1, (row.revenue / maxRevenue) * 100) : 0}%` } as CSSProperties}
+                      aria-hidden="true"
+                    />
+                    <span className="text-right text-2xs tabular-nums text-fg-muted">{formatCompactBRL(row.revenue)}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </section>
-          <section className="min-w-0 rounded-card bg-surface p-5" aria-label={`Participação por ${title}`}>
+          </Card>
+          <Card as="section" aria-label={`Participação por ${title}`}>
             <Heading level="section">{product ? 'Participação no catálogo' : 'Clientes por receita'}</Heading>
             <Table className="mt-6 min-w-[390px]">
               <TableHeader><TableRow><TableHead>{product ? 'Produto' : 'Cliente'}</TableHead><TableHead className="text-right">Receita</TableHead><TableHead className="text-right">Participação</TableHead></TableRow></TableHeader>
               <TableBody>{rows.map((row) => <TableRow key={row.key}><TableCell className="max-w-[230px] truncate font-medium">{row.name}</TableCell><TableCell className="text-right tabular-nums">{formatBRL(row.revenue)}</TableCell><TableCell className="text-right tabular-nums">{revenue > 0 ? formatPercent((row.revenue / revenue) * 100) : '—'}</TableCell></TableRow>)}</TableBody>
             </Table>
             <OmittedRowsNote omitted={omitted} />
-          </section>
+          </Card>
         </div>
       )}
     </div>
@@ -618,11 +770,14 @@ function FinancePanel({
     ['Lucro calculado', formatBRL(summary.lucro), false],
   ] as const;
   const segments = [
-    { label: 'Custo dos produtos', value: summary.custo, color: 'bg-finance-one' },
-    { label: 'Anúncios', value: summary.ads, color: 'bg-finance-two' },
-    { label: 'Impostos', value: summary.imposto, color: 'bg-finance-three' },
-    { label: 'Lucro calculado', value: Math.max(0, summary.lucro), color: 'bg-finance-four' },
+    { label: 'Custo dos produtos', value: summary.custo, color: 'bg-chart-one' },
+    { label: 'Anúncios', value: summary.ads, color: 'bg-chart-two' },
+    { label: 'Impostos', value: summary.imposto, color: 'bg-chart-three' },
+    { label: 'Lucro calculado', value: Math.max(0, summary.lucro), color: 'bg-chart-four' },
   ];
+  // Com prejuízo os custos passam da receita, e a barra passa a mostrar só a divisão dos custos.
+  const whole = Math.max(summary.total_revenue, segments.reduce((sum, item) => sum + item.value, 0));
+  const filled = segments.filter((item) => item.value > 0);
   return (
     <div
       id="results-panel-finance"
@@ -637,14 +792,52 @@ function FinancePanel({
         <MetricCard label="Lucro calculado" value={formatBRL(summary.lucro)} detail="Receita menos custos e gastos" />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-      <section className="min-w-0 rounded-card bg-surface p-5" aria-label="Composição financeira">
-        <Heading level="section">Composição financeira</Heading>
-        <p className="mt-1 text-xs text-fg-muted">Valores registrados no período</p>
-        <div className="mt-8 flex h-12 w-full overflow-hidden rounded-control bg-raised" role="img" aria-label={segments.map((item) => `${item.label}: ${formatBRL(item.value)}`).join('; ')}>
-          {segments.map((item) => <div key={item.label} className={`w-(--segment-w) ${item.color}`} style={{ '--segment-w': `${summary.total_revenue > 0 ? Math.max(0, item.value / summary.total_revenue * 100) : 0}%` } as CSSProperties} />)}
+      <Card as="section" aria-label="Composição financeira">
+        <div className="flex flex-col gap-6">
+          <Heading level="section">Composição financeira</Heading>
+          {filled.length === 0 ? (
+            <Unavailable>Nenhum valor registrado no período.</Unavailable>
+          ) : (
+            <div
+              className="flex h-6 w-full gap-0.5"
+              role="img"
+              aria-label={segments.map((item) => `${item.label}: ${formatBRL(item.value)}`).join('; ')}
+            >
+              {filled.map((item, index) => (
+                <div
+                  key={item.label}
+                  className={cn(
+                    'group/mark relative min-w-0.5 basis-0 grow-(--segment-grow) first:rounded-l-xs last:rounded-r-xs hover:brightness-110',
+                    item.color
+                  )}
+                  style={{ '--segment-grow': String(item.value) } as CSSProperties}
+                >
+                  <ChartTooltip
+                    value={formatBRL(item.value)}
+                    label={`${item.label} · ${formatShare(item.value, whole)}`}
+                    align={index === 0 ? 'start' : index === filled.length - 1 ? 'end' : 'center'}
+                    className="bottom-full -translate-y-2"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <ul className="grid gap-4 sm:grid-cols-2">
+            {segments.map((item) => (
+              <li key={item.label} className="flex flex-col gap-1">
+                <span className="flex items-center gap-2">
+                  <span className={cn('size-2.5 shrink-0 rounded-xs', item.color)} aria-hidden="true" />
+                  <Text variant="meta">{item.label}</Text>
+                </span>
+                <span className="flex items-baseline gap-2">
+                  <Text variant="value">{formatBRL(item.value)}</Text>
+                  <Text variant="caption">{formatShare(item.value, whole)}</Text>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">{segments.map((item) => <div key={item.label} className="flex items-start gap-2 text-xs"><span className={`mt-1 size-2 shrink-0 rounded-full ${item.color}`} /><div><span className="text-fg-muted">{item.label}</span><strong className="mt-1 block tabular-nums">{formatBRL(item.value)}</strong></div></div>)}</div>
-      </section>
+      </Card>
       <section className="min-w-0 rounded-card bg-surface p-5" aria-labelledby="finance-summary-title">
         <Heading level="section" id="finance-summary-title">Memória do cálculo</Heading>
         <div className="mt-4">

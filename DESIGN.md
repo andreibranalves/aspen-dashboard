@@ -29,6 +29,7 @@ names roles; it does not copy hex values, so it cannot drift from the code.
 | Action | `primary`, `on-primary`, `primary-soft`/`primary-soft-ink`, `link`, `primary-text` | buttons, active tab, links |
 | Status | `success`, `warning`, `destructive`, `info` (+ `-fill` for solid buttons) | status text, icons, tinted surfaces |
 | Focus | `focus` | the single focus outline |
+| Charts | `chart-one`…`chart-four`, `chart-neutral` | series in this fixed order (palette validated for color blindness and contrast in each theme); neutral for a category with no identity, such as `Sem origem` |
 
 Primary blue is an action and selection color, not decoration. Every status
 also carries text or an icon; color is never the only signal.
