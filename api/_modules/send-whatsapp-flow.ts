@@ -1,7 +1,8 @@
 // POST /api/send-whatsapp-flow
 //
-// Compatibility adapter for the durable quotation delivery outbox.
-// Dry-run requests retain the existing planner response without transport.
+// Records the envio in the durable quotation delivery outbox and wakes the
+// worker, which is the only sender (ADR 0013). Dry-run requests retain the
+// existing planner response without transport.
 
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 import type { HttpError } from '../_shared/http-error.js';
@@ -17,7 +18,6 @@ import {
   type DeliveryPlan,
   type DeliveryPlanInput,
 } from './quotation-delivery-plan.js';
-import type { EvolutionTransportDependencies } from './evolution-transport.js';
 import {
   createQuotationDeliveryModule,
   type QuotationDeliveryModule,
@@ -110,7 +110,6 @@ export type SendWhatsappFlowDependencies = {
   resolveDeal?: Parameters<typeof loadPostgresSendContext>[0]['resolveDeal'];
   resolveMedia?: DeliveryPlanInput['resolveMedia'];
   resolveFlow?: DeliveryPlanInput['resolveFlow'];
-  transport?: EvolutionTransportDependencies;
   deliveryModule?: QuotationDeliveryModule;
   wakeWorker?: typeof wakeWorker;
 };
@@ -181,7 +180,6 @@ export async function handler(
       try {
         const deliveryModule = dependencies.deliveryModule || createQuotationDeliveryModule({
           planner: (identity) => createDeliveryPlan(planInputFor(identity)),
-          transportDependencies: dependencies.transport,
         });
         const delivery = await deliveryModule.enqueue({ revisionId, flowId });
         if (!delivery) return deliveryErrorResponse(new Error('Entrega ausente.'));

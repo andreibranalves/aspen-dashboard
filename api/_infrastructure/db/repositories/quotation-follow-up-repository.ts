@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, sql, type SQL } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
-import { createDbDeadline, runBoundedStatement, type DbDeadline } from '../deadline.js';
 import { addBusinessDays, calendarDateInSaoPaulo } from '../../../_shared/calendar-sao-paulo.js';
 import {
   buildDefaultFollowUpMessage,
@@ -156,7 +155,6 @@ export interface CandidatePage<T> {
   // while a saturated source still has candidates.
   hasMore: boolean;
 }
-export type ProjectionAttemptOptions = { deadline?: DbDeadline; timeoutMs?: number };
 export interface QuotationFollowUpRepository {
   list(input?: FollowUpListInput): Promise<FollowUpListResult>;
   get(quotationId: string, options?: FollowUpGetOptions): Promise<FollowUpProjection | null>;
@@ -168,30 +166,25 @@ export interface QuotationFollowUpRepository {
       revisionId: string;
       phone: string;
       providerMessageId: string;
-    },
-    options?: ProjectionAttemptOptions
+    }
   ): Promise<void>;
   listAcceptedDeliveriesMissingFollowUp?(
     filter?: {
       deliveryId?: string;
       limit?: number;
-    },
-    options?: ProjectionAttemptOptions
+    }
   ): Promise<CandidatePage<AcceptedDeliveryCandidate>>;
   markAcceptanceProjectionAttempt?(
-    input: { deliveryId: string },
-    options?: ProjectionAttemptOptions
+    input: { deliveryId: string }
   ): Promise<void>;
   listAwaitingReceiptWithCompletedDelivery?(
     filter?: {
       deliveryId?: string;
       limit?: number;
-    },
-    options?: ProjectionAttemptOptions
+    }
   ): Promise<CandidatePage<AwaitingReceiptCandidate>>;
   markReceiptProjectionAttempt?(
-    input: { followUpId: string },
-    options?: ProjectionAttemptOptions
+    input: { followUpId: string }
   ): Promise<void>;
   upsertFromDeliveryReceipt?(
     input: {
@@ -201,8 +194,7 @@ export interface QuotationFollowUpRepository {
       providerConversationId: string;
       allStepsDelivered: boolean;
       receivedAt: Date;
-    },
-    options?: ProjectionAttemptOptions
+    }
   ): Promise<void>;
   applyConversationToOpenFollowUps?(input: {
     instance: string;
@@ -436,13 +428,7 @@ function unique(error: unknown): boolean {
     }
     return false;
 }
-function projectionDeadline(options: ProjectionAttemptOptions = {}): DbDeadline | null {
-  if (options.deadline) return options.deadline;
-  if (typeof options.timeoutMs === 'number') return createDbDeadline(options.timeoutMs);
-  return null;
-}
-
-async function runUnbounded<T = Record<string, unknown>>(
+async function runStatement<T = Record<string, unknown>>(
   db: Database,
   fragment: SQL,
 ): Promise<T[]> {
@@ -1612,8 +1598,7 @@ export function createPostgresQuotationFollowUpRepository(
                 revisionId: string;
                 phone: string;
                 providerMessageId: string;
-            },
-            options: ProjectionAttemptOptions = {}
+            }
         ) {
             const deliveryId = id(input.deliveryId, 'delivery_id');
             const revisionId = id(input.revisionId, 'revision_id');
@@ -1633,9 +1618,7 @@ export function createPostgresQuotationFollowUpRepository(
             const identityUnresolved = !canonicalPhone;
             // One atomic statement: `source` takes the per-quotation advisory lock
             // and the client row lock, and `upsert` folds the acceptance in the
-            // same statement. A queued or slow execution is cancelled directly by
-            // the deadline, so no JavaScript callback can hold the sole pooled
-            // connection past the caller's return.
+            // same statement.
             const fragment = sql `
           WITH source AS MATERIALIZED (
             SELECT q.id AS quotation_id, pg_advisory_xact_lock(hashtextextended(
@@ -1814,10 +1797,7 @@ export function createPostgresQuotationFollowUpRepository(
           SELECT (SELECT COUNT(*) FROM source) AS source_count
         `;
             try {
-                const deadline = projectionDeadline(options);
-                const result = deadline
-                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
-                    : await runUnbounded(getDb(), fragment);
+                const result = await runStatement(getDb(), fragment);
                 const sourceCount = Number(result[0]?.source_count ?? result[0]?.sourceCount ?? 0);
                 if (sourceCount === 0)
                     // The delivery/revision pair vanished between planning and projection.
@@ -1830,8 +1810,7 @@ export function createPostgresQuotationFollowUpRepository(
             }
         },
         async listAcceptedDeliveriesMissingFollowUp(
-            filter: { deliveryId?: string; limit?: number } = {},
-            options: ProjectionAttemptOptions = {}
+            filter: { deliveryId?: string; limit?: number } = {}
         ) {
             const started = tracking();
             if (!started)
@@ -1894,10 +1873,7 @@ export function createPostgresQuotationFollowUpRepository(
           LIMIT ${limit + 1}
         `;
             try {
-                const deadline = projectionDeadline(options);
-                const rows = deadline
-                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
-                    : await runUnbounded(getDb(), fragment);
+                const rows = await runStatement(getDb(), fragment);
                 const hasMore = rows.length > limit;
                 const window = hasMore ? rows.slice(0, limit) : rows;
                 const data = window.flatMap((row) => {
@@ -1925,8 +1901,7 @@ export function createPostgresQuotationFollowUpRepository(
         // dedicated column, never the delivery's business clock (`updated_at`),
         // so the resolution deadline is untouched.
         async markAcceptanceProjectionAttempt(
-            input: { deliveryId: string },
-            options: ProjectionAttemptOptions = {}
+            input: { deliveryId: string }
         ) {
             const deliveryId = id(input?.deliveryId, 'delivery_id');
             const fragment = sql `
@@ -1935,11 +1910,7 @@ export function createPostgresQuotationFollowUpRepository(
           WHERE id = ${deliveryId}
         `;
             try {
-                const deadline = projectionDeadline(options);
-                if (deadline)
-                    await runBoundedStatement(getDb(), deadline, fragment);
-                else
-                    await runUnbounded(getDb(), fragment);
+                await runStatement(getDb(), fragment);
             }
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
@@ -1961,8 +1932,7 @@ export function createPostgresQuotationFollowUpRepository(
         // invocation, so it can neither starve later candidates nor monopolize
         // the worker. The caller bounds the slice and re-reads the next window.
         async listAwaitingReceiptWithCompletedDelivery(
-            filter: { deliveryId?: string; limit?: number } = {},
-            options: ProjectionAttemptOptions = {}
+            filter: { deliveryId?: string; limit?: number } = {}
         ) {
             const deliveryId = filter.deliveryId ? id(filter.deliveryId, 'delivery_id') : null;
             const limit = filter.limit === undefined ? 50 : Math.min(Math.max(1, Math.trunc(filter.limit)), 100);
@@ -2000,10 +1970,7 @@ export function createPostgresQuotationFollowUpRepository(
           LIMIT ${limit + 1}
         `;
             try {
-                const deadline = projectionDeadline(options);
-                const rows = deadline
-                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
-                    : await runUnbounded(getDb(), fragment);
+                const rows = await runStatement(getDb(), fragment);
                 const hasMore = rows.length > limit;
                 const window = hasMore ? rows.slice(0, limit) : rows;
                 const data = window.flatMap((row) => {
@@ -2029,8 +1996,7 @@ export function createPostgresQuotationFollowUpRepository(
         // what gives the retry slice its rotation. The projection itself is
         // idempotent, so a concurrent duplicate attempt is harmless.
         async markReceiptProjectionAttempt(
-            input: { followUpId: string },
-            options: ProjectionAttemptOptions = {}
+            input: { followUpId: string }
         ) {
             const followUpId = id(input?.followUpId, 'follow_up_id');
             const fragment = sql `
@@ -2039,11 +2005,7 @@ export function createPostgresQuotationFollowUpRepository(
           WHERE id = ${followUpId}
         `;
             try {
-                const deadline = projectionDeadline(options);
-                if (deadline)
-                    await runBoundedStatement(getDb(), deadline, fragment);
-                else
-                    await runUnbounded(getDb(), fragment);
+                await runStatement(getDb(), fragment);
             }
             catch (error) {
                 if (error instanceof InputError || error instanceof RepositoryError)
@@ -2059,8 +2021,7 @@ export function createPostgresQuotationFollowUpRepository(
                 providerConversationId: string;
                 allStepsDelivered: boolean;
                 receivedAt: Date;
-            },
-            options: ProjectionAttemptOptions = {}
+            }
         ) {
             const deliveryId = id(input.deliveryId, 'delivery_id');
             const revisionId = id(input.revisionId, 'revision_id');
@@ -2482,10 +2443,7 @@ export function createPostgresQuotationFollowUpRepository(
               (SELECT COUNT(*) FROM link_existing_action) AS commercial_action_count
         `;
             try {
-                const deadline = projectionDeadline(options);
-                const result = deadline
-                    ? await runBoundedStatement<Record<string, unknown>>(getDb(), deadline, fragment)
-                    : await runUnbounded(getDb(), fragment);
+                const result = await runStatement(getDb(), fragment);
                 const sourceCount = Number(result[0]?.source_count ?? result[0]?.sourceCount ?? 0);
                 if (sourceCount === 0)
                     // The delivery/revision pair vanished between planning and projection.

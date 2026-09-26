@@ -25,6 +25,7 @@ import {
   quotationDeliverySteps,
   quotationDeliveryWorkerRuns,
   quoteRevisions,
+  whatsappConversations,
   quotations,
   whatsappContactActivity,
   whatsappMessages,
@@ -32,8 +33,11 @@ import {
 } from '../../api/_infrastructure/db/schema.js';
 import { closeDatabase } from '../../api/_infrastructure/db/client.js';
 import { createPostgresQuotationDeliveryOutboxRepository } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
+import { createPostgresWhatsappAttendanceRepository } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
+import { createPostgresWhatsappMessageOutboxRepository } from '../../api/_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import { readWorkerSchedule } from '../../api/_infrastructure/db/repositories/worker-schedule-repository.js';
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
+import { postOperatorMessage } from '../../api/_modules/whatsapp-message-send.js';
 import { createLiveWorkerCycle } from '../../api/_worker/live-cycle.js';
 import { createWorkerScheduler } from '../../api/_worker/scheduler.js';
 import { createWorkerServer } from '../../api/_worker/server.js';
@@ -114,11 +118,15 @@ async function seedRevision() {
   return revisionId;
 }
 
-async function withEvolutionStub(fn: (stub: { url: string; requests: Array<{ path: string; apikey: string }> }) => Promise<void>) {
-  const requests: Array<{ path: string; apikey: string }> = [];
-  const server: Server = createServer((req, res) => {
-    req.resume();
-    requests.push({ path: req.url || '', apikey: String(req.headers.apikey || '') });
+type StubRequest = { path: string; apikey: string; text: string };
+
+async function withEvolutionStub(fn: (stub: { url: string; requests: StubRequest[] }) => Promise<void>) {
+  const requests: StubRequest[] = [];
+  const server: Server = createServer(async (req, res) => {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    const text = String((JSON.parse(raw || '{}') as { text?: unknown }).text ?? '');
+    requests.push({ path: req.url || '', apikey: String(req.headers.apikey || ''), text });
     res.writeHead(201, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ key: { id: `stub-${requests.length}` }, status: 'PENDING' }));
   });
@@ -134,6 +142,24 @@ async function withEvolutionStub(fn: (stub: { url: string; requests: Array<{ pat
   }
 }
 
+function liveEnv(stubUrl: string) {
+  setEnv({
+    DATABASE_URL: TEST_DATABASE_URL,
+    VERCEL_ENV: undefined,
+    APP_ENV: 'production',
+    EXTERNAL_WRITES_ENABLED: '1',
+    EVOLUTION_BASE_URL: stubUrl,
+    EVOLUTION_API_KEY: 'stub-key',
+    EVOLUTION_INSTANCE: INSTANCE,
+  });
+}
+
+// The worker takes every due row, so another file's leftovers would be sent too.
+async function clearWork() {
+  await clearCommercialFixtures(db as never);
+  await db.execute(sql`DELETE FROM whatsapp_message_outbox`);
+}
+
 async function until(condition: () => Promise<boolean>, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -147,16 +173,9 @@ test(
   'a /wake makes the worker send a queued envio through Evolution and record its heartbeat',
   { skip: TEST_DATABASE_URL ? false : databaseSkip },
   async () => {
+    await clearWork();
     await withEvolutionStub(async (stub) => {
-      setEnv({
-        DATABASE_URL: TEST_DATABASE_URL,
-        VERCEL_ENV: undefined,
-        APP_ENV: 'production',
-        EXTERNAL_WRITES_ENABLED: '1',
-        EVOLUTION_BASE_URL: stub.url,
-        EVOLUTION_API_KEY: 'stub-key',
-        EVOLUTION_INSTANCE: INSTANCE,
-      });
+      liveEnv(stub.url);
       const errors: string[] = [];
       const scheduler = createWorkerScheduler({
         runCycle: createLiveWorkerCycle((task) => errors.push(task)),
@@ -225,11 +244,108 @@ test(
 );
 
 test(
+  'a reply and an envio recorded by the request leave only through the worker, each step after its pause',
+  { skip: TEST_DATABASE_URL ? false : databaseSkip },
+  async () => {
+    await clearWork();
+    await withEvolutionStub(async (stub) => {
+      liveEnv(stub.url);
+      const outbox = createPostgresWhatsappMessageOutboxRepository(() => db as never);
+      const phone = `55119${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+      const { conversationId } = await createPostgresWhatsappAttendanceRepository(() => db as never).ingestConversation({
+        instance: INSTANCE,
+        providerConversationId: `${phone}@s.whatsapp.net`,
+        origin: 'live',
+        contactName: 'Cliente worker',
+        resolveIdentity: () => ({
+          canonicalPhone: phone,
+          identityStatus: 'verified',
+          identitySource: 'chat.phone',
+          identityConfidence: 'high',
+        }),
+        messages: [
+          {
+            providerMessageId: `in-${randomUUID()}`,
+            direction: 'inbound',
+            messageType: 'text',
+            body: 'Oi',
+            preview: 'Oi',
+            providerTimestamp: new Date(Date.now() - 60_000),
+          },
+        ],
+      });
+      const [{ identityVersion }] = await db
+        .select({ identityVersion: whatsappConversations.identityVersion })
+        .from(whatsappConversations)
+        .where(eq(whatsappConversations.id, conversationId));
+
+      // The requests only record and ask for a wake.
+      let wakes = 0;
+      const reply = await postOperatorMessage(
+        {
+          httpMethod: 'POST',
+          headers: {},
+          queryStringParameters: {},
+          body: JSON.stringify({ clientRequestId: randomUUID(), conversationId, expectedIdentityVersion: identityVersion, body: 'Resposta.' }),
+        },
+        {
+          repository: outbox,
+          wakeWorker: async () => {
+            wakes += 1;
+            return 'sent';
+          },
+        },
+      );
+      assert.equal(reply.statusCode, 202);
+      const { messageId } = JSON.parse(reply.body || '{}').message;
+      const revisionId = await seedRevision();
+      const delivery = await createPostgresQuotationDeliveryOutboxRepository(() => db as never).enqueue({
+        revisionId,
+        flowId: `flow-${revisionId}`,
+        phone: '5511900000001',
+        flowName: 'Fluxo com pausa',
+        steps: [
+          { position: 0, type: 'text', payload: { text: 'Passo 1.' }, delayMs: 0 },
+          { position: 1, type: 'text', payload: { text: 'Passo 2.' }, delayMs: 1_500 },
+        ],
+      } as never);
+      assert.equal(wakes, 1);
+      assert.deepEqual(stub.requests, [], 'nothing leaves inside the request');
+      assert.equal((await outbox.findByMessageId(messageId))?.state, 'queued');
+
+      const errors: string[] = [];
+      const scheduler = createWorkerScheduler({
+        runCycle: createLiveWorkerCycle((task) => errors.push(task)),
+        reportError: (task) => errors.push(task),
+      });
+      const steps = () =>
+        db
+          .select({ acceptedAt: quotationDeliverySteps.acceptedAt })
+          .from(quotationDeliverySteps)
+          .where(eq(quotationDeliverySteps.deliveryId, delivery.id))
+          .orderBy(quotationDeliverySteps.position);
+      try {
+        scheduler.wake();
+        await until(async () => (await steps()).every((step) => Boolean(step.acceptedAt)));
+      } finally {
+        await scheduler.stop();
+      }
+
+      assert.deepEqual(errors, []);
+      // The reply does not wait behind the envio's pause.
+      assert.deepEqual(stub.requests.map((request) => request.text), ['Passo 1.', 'Resposta.', 'Passo 2.']);
+      assert.equal((await outbox.findByMessageId(messageId))?.state, 'provider_accepted');
+      const [first, second] = await steps();
+      assert.ok(second.acceptedAt!.getTime() - first.acceptedAt!.getTime() >= 1_500, 'step 2 left before its pause');
+    });
+  },
+);
+
+test(
   'a lease left between two steps holds the next step until it expires',
   { skip: TEST_DATABASE_URL ? false : databaseSkip },
   async () => {
-    await clearCommercialFixtures(db as never);
-    await db.execute(sql`DELETE FROM whatsapp_message_outbox`);
+    await clearWork();
     const revisionId = await seedRevision();
     const delivery = await createPostgresQuotationDeliveryOutboxRepository(() => db as never).enqueue({
       revisionId,

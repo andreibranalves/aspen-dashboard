@@ -28,7 +28,9 @@ import {
 } from './product-category.js';
 
 const MAX_STEPS = 64;
-const MAX_FLOW_DURATION_MS = 45_000;
+// The worker waits out every pause (ADR 0013); a flow must still fit well
+// inside the 30 min send window, which interrupts whatever is left.
+const MAX_FLOW_DURATION_MS = 10 * 60_000;
 const DEFAULT_ORIGIN = 'https://project-xr5jg.vercel.app';
 
 const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
@@ -495,7 +497,7 @@ export async function createDeliveryPlan(input: DeliveryPlanInput): Promise<Deli
   const maximumDurationMs = Math.max(0, steps.length - 1) * maxDelayMs;
   const plannedDurationMs = steps.reduce((total, step) => total + step.delayMs, 0);
   if (!Number.isFinite(maximumDurationMs) || !Number.isFinite(plannedDurationMs) || maximumDurationMs > MAX_FLOW_DURATION_MS || plannedDurationMs > MAX_FLOW_DURATION_MS) {
-    inputError('O fluxo deve caber no limite de 45 segundos.');
+    inputError('O fluxo deve caber em 10 minutos.');
   }
   return {
     revisionId,

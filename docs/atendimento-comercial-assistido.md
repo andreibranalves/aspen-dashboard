@@ -49,7 +49,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 **D1 — A tela de conversa volta ao Aspen.** Em 21/08/2026 (`1116b8b`) a Inbox foi retirada e o WhatsApp Web com a extensão passou a ser a superfície de conversa. [S17] Em 23/09/2026 o operador decidiu reverter: o Atendimento passa a ser a superfície de conversa do Aspen. A extensão continua funcionando sem mudança neste escopo, com o mesmo serviço de contexto e a mesma tabela de vínculos; aposentá-la é decisão posterior.
 
-**D2 — Envio despachado na própria requisição.** O POST de envio grava a intenção, faz commit e chama o transporte antes de responder. O acionador periódico dos envios de orçamento (na época, o agendamento QStash; desde o ADR 0013, o aspen-worker) ganha uma varredura de recuperação limitada depois do lote de orçamentos. Detalhes em §10.
+**D2 — Envio despachado na própria requisição.** O POST de envio grava a intenção, faz commit e chama o transporte antes de responder. O acionador periódico dos envios de orçamento (na época, o agendamento QStash; desde o ADR 0013, o aspen-worker) ganha uma varredura de recuperação limitada depois do lote de orçamentos. Substituída pelo ADR 0013: a requisição só grava e acorda o worker, que é o único remetente. Detalhes em §10.
 
 **D3 — Sem importação do histórico do KV.** O histórico novo nasce no PostgreSQL a partir do webhook e de um backfill pela Evolution. O KV recebe só um snapshot protegido e sai do código. Detalhes em §16.
 
@@ -228,18 +228,15 @@ Depois do backfill inicial, a mesma rotina serve de reconciliação sob demanda.
 
 ## 10. Envio confiável
 
-### 10.1 Aceitação e despacho na requisição
+### 10.1 Registro na requisição, envio pelo worker
 
 O cliente gera `clientRequestId` antes do primeiro POST e conserva a chave até conhecer o resultado. A requisição de envio, em ordem:
 
 1. Verifica autenticação, conteúdo (validação de `evolution-transport.ts`), anexos e identidade (`expectedIdentityVersion`).
 2. Numa transação, resolve a idempotência por `clientRequestId` e grava mensagem e outbox em `queued`. Mesma impressão digital devolve a operação existente; impressão diferente responde `409 IDEMPOTENCY_CONFLICT`.
-3. Depois do commit, reserva a operação atomicamente (`queued` → `dispatching`, com lease) e grava `transport_started_at` antes de chamar o transporte.
-4. Chama o transporte existente, com o timeout atual de 15 s e a proteção `EXTERNAL_WRITES_ENABLED`.
-5. Grava o resultado: `provider_accepted` com ID real; `retry_scheduled` ou `failed` para falha comprovadamente anterior ao transporte; `needs_review` para resultado incerto.
-6. Responde `202` com o estado persistido. A resposta nunca é comprovante de entrega.
+3. Depois do commit, acorda o worker por `/wake` e responde `202` com o estado persistido e o resultado do aviso (`worker_wake`); um aviso recusado aparece na tela. A resposta nunca é comprovante de entrega.
 
-Tudo acontece dentro da requisição, aguardado; nada roda depois da resposta. Se a reserva não for obtida (operação cancelada ou tomada pela varredura), a resposta traz o estado atual. Se a Function for encerrada depois de `transport_started_at`, a varredura leva a operação a `needs_review`, nunca a novo envio. Repetir a requisição com a mesma chave devolve a mesma operação sem novo transporte; `GET` por `clientRequestId` recupera uma resposta perdida. Uma segunda intenção deliberada recebe nova chave.
+A requisição nunca chama o transporte (ADR 0013). O aspen-worker reserva a operação atomicamente (`queued` → `dispatching`, com lease), grava `transport_started_at`, chama o transporte com o timeout de 15 s e a proteção `EXTERNAL_WRITES_ENABLED`, e grava o resultado: `provider_accepted` com ID real; `retry_scheduled` ou `failed` para falha comprovadamente anterior ao transporte; `needs_review` para resultado incerto. Se o worker parar depois de `transport_started_at`, a varredura leva a operação a `needs_review`, nunca a novo envio. Repetir a requisição com a mesma chave devolve a mesma operação sem novo registro; `GET` por `clientRequestId` recupera uma resposta perdida. Uma segunda intenção deliberada recebe nova chave.
 
 ### 10.2 Varredura de recuperação
 
@@ -247,10 +244,10 @@ O ciclo do aspen-worker no VPS (ADR 0013; antes, o agendamento QStash de 2 minut
 
 - Primeiro, transições só de banco: lease vencido sem `transport_started_at` volta a `queued`; lease vencido com `transport_started_at` vai para `needs_review`.
 - Depois, transporte de `queued` e `retry_scheduled` vencidos, um por vez, só enquanto o tempo restante couber um timeout de transporte com margem. O restante fica para o próximo ciclo.
-- Ignora `queued` criados há pouco, para não disputar com o despacho na requisição; a reserva atômica garante a correção de qualquer forma.
+- Respostas vencidas saem na ordem em que foram escritas.
 - Nunca reduz nem atrasa o lote de orçamentos.
 
-Quando uma resposta não sai na hora, a Function acorda o worker por `/wake`; sem o aviso, a retentativa espera o próximo vencimento registrado no banco. O caminho feliz não depende da varredura. A varredura registra seu resultado separado do lote de orçamentos, para o diagnóstico (RNF-04).
+Sem o aviso de `/wake`, a resposta sai no próximo vencimento registrado no banco. A varredura registra seu resultado separado do lote de orçamentos, para o diagnóstico (RNF-04).
 
 Registrar a aceitação real do provedor, ID de mensagem e recibos. Um identificador sentinela como `accepted` não é ID de mensagem e não pode entrar na chave de deduplicação. Aceitação sem correlação permanece pendente de reconciliação, sem criar identidade fictícia.
 

@@ -1,6 +1,5 @@
-// Dispatches operator replies recorded in the message outbox (spec §10). The
-// same path serves the send request itself and the recovery sweep in the
-// delivery-worker tick, so both obey one reservation and one failure policy.
+// Dispatches operator replies recorded in the message outbox (spec §10). Only
+// the worker's sweep sends them (ADR 0013): the request just records the intent.
 
 import {
   createPostgresWhatsappMessageOutboxRepository,
@@ -20,8 +19,6 @@ export const MAX_MESSAGE_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000];
 const TRANSPORT_TIMEOUT_MS = 15_000;
 const SWEEP_MARGIN_MS = 5_000;
-// Fresh intents belong to the request that recorded them.
-const SWEEP_MIN_AGE_MS = 60_000;
 
 export type SendText = (input: { phone: string; text: string; attachment?: WhatsappAttachment | null }) => Promise<{ providerMessageId: string }>;
 
@@ -130,8 +127,8 @@ export interface SweepResult {
 }
 
 /**
- * Recovery sweep run after the quotation batch: database-only lease recovery
- * first, then one transport at a time while a full timeout still fits and the
+ * The worker's reply pass: database-only lease recovery first, then one
+ * transport at a time, oldest first, while a full timeout still fits and the
  * worker is not stopping.
  */
 export async function sweepOperatorMessages(input: {
@@ -147,7 +144,7 @@ export async function sweepOperatorMessages(input: {
   let dispatched = 0;
   const tried = new Set<string>();
   while (!input.stop?.aborted && clock() + TRANSPORT_TIMEOUT_MS + SWEEP_MARGIN_MS <= input.deadlineAt) {
-    const id = await repository.nextDue({ now: new Date(clock()), minAgeMs: SWEEP_MIN_AGE_MS });
+    const id = await repository.nextDue(new Date(clock()));
     if (!id || tried.has(id)) break;
     tried.add(id);
     const result = await dispatchOutboxMessage(id, {

@@ -28,7 +28,7 @@ export function createLiveWorkerCycle(reportError: WorkerCycleDependencies['repo
   return createWorkerCycle({
     // Um módulo por lote: o cache de páginas WebP dele só é limpo por envio
     // concluído, e o processo do worker não termina.
-    processDue: (limit, stop) => createQuotationDeliveryModule().processDue(limit, undefined, stop),
+    processDue: (limit, stop) => createQuotationDeliveryModule().processDue(limit, stop),
     drainEffects: async (deadlineAt) => {
       if (!instance) return { applied: 0, failed: 0 };
       return drainWebhookEffects({ instance, runners: effectRunners, limit: EFFECTS_BATCH_LIMIT, deadlineAt });

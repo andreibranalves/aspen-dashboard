@@ -22,7 +22,7 @@ import {
   createWhatsappConversationsHandler,
   createWhatsappMessagesHandler,
 } from '../../api/_modules/whatsapp-attendance.js';
-import type { SendText } from '../../api/_modules/whatsapp-message-dispatch.js';
+import { dispatchOutboxMessage, type SendText } from '../../api/_modules/whatsapp-message-dispatch.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 
 // AC-35 at handler level: receive → open → reply → receipt, every step through
@@ -93,11 +93,28 @@ function journey() {
     sent.push(text);
     return { providerMessageId };
   };
-  const dependencies = { repository: attendance, instance: () => instance, send: { repository: outbox, send } };
+  let wakes = 0;
+  const dependencies = {
+    repository: attendance,
+    instance: () => instance,
+    send: {
+      repository: outbox,
+      wakeWorker: async () => {
+        wakes += 1;
+        return 'sent' as const;
+      },
+    },
+  };
   return {
     instance,
     receive,
     sent,
+    wakes: () => wakes,
+    // What the worker's sweep does with this reply (ADR 0013).
+    dispatch: async (messageId: string) => {
+      const queued = await outbox.findByMessageId(messageId);
+      return dispatchOutboxMessage(queued!.id, { repository: outbox, send });
+    },
     providerMessageId,
     conversations: createWhatsappConversationsHandler(dependencies),
     messages: createWhatsappMessagesHandler(dependencies),
@@ -132,7 +149,7 @@ test('AC-35: an inbound message is opened, answered and its receipt reaches the 
   const read = parsed(await flow.conversations(request('PATCH', { id: listed.id, readRevision: opened.revision })));
   assert.equal(read.conversation.unreadCount, 0);
 
-  // Reply: one transport, accepted synchronously.
+  // Reply: the request records it and wakes the worker, which sends it once.
   const reply = await flow.messages(
     request('POST', {
       clientRequestId: randomUUID(),
@@ -142,7 +159,10 @@ test('AC-35: an inbound message is opened, answered and its receipt reaches the 
     }),
   );
   assert.equal(reply.statusCode, 202);
-  assert.equal(parsed(reply).message.state, 'provider_accepted');
+  assert.equal(parsed(reply).message.state, 'queued');
+  assert.deepEqual(flow.sent, [], 'the request never transports');
+  assert.equal(flow.wakes(), 1);
+  assert.equal((await flow.dispatch(parsed(reply).message.messageId))?.state, 'provider_accepted');
   assert.deepEqual(flow.sent, ['Bom dia! Já te envio.']);
 
   // The provider echo of the reply converges instead of adding a second bubble.

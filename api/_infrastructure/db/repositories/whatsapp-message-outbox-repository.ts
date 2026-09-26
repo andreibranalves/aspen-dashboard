@@ -103,8 +103,8 @@ export interface WhatsappMessageOutboxRepository {
   ): Promise<OutboxRecord | null>;
   /** Expired leases: never started → back to the queue; started → needs review. */
   recoverExpiredLeases(now?: Date): Promise<{ requeued: number; toReview: number }>;
-  /** Oldest dispatchable intent id, skipping fresh ones the request may still dispatch. */
-  nextDue(input: { now?: Date; minAgeMs: number }): Promise<string | null>;
+  /** Oldest dispatchable intent id. */
+  nextDue(now?: Date): Promise<string | null>;
   /** `expectedRevision` is the message revision the operator acted on. */
   cancel(messageId: string, expectedRevision: number, now?: Date): Promise<OutboxRecord>;
   resolveReview(
@@ -543,17 +543,13 @@ export function createPostgresWhatsappMessageOutboxRepository(
       });
     },
 
-    async nextDue({ now = new Date(), minAgeMs }) {
+    async nextDue(now = new Date()) {
       const [row] = await getDb()
         .select({ id: outbox.id })
         .from(outbox)
-        .where(
-          or(
-            and(eq(outbox.state, 'queued'), lte(outbox.createdAt, new Date(now.getTime() - minAgeMs))),
-            and(eq(outbox.state, 'retry_scheduled'), lte(outbox.nextAttemptAt, now)),
-          ),
-        )
-        .orderBy(outbox.nextAttemptAt, outbox.id)
+        .where(and(inArray(outbox.state, ['queued', 'retry_scheduled']), lte(outbox.nextAttemptAt, now)))
+        // Two quick replies in one conversation leave in the order written.
+        .orderBy(outbox.nextAttemptAt, outbox.createdAt, outbox.id)
         .limit(1);
       return row?.id || null;
     },
