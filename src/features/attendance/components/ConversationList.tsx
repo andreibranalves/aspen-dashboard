@@ -50,7 +50,7 @@ export default function ConversationList({
     return <ErrorState title="Não foi possível carregar as conversas" description={error} onRetry={onRetry} />;
   }
   if (loading && items.length === 0) {
-    return <LoadingSpinner label="Carregando conversas" />;
+    return <LoadingSpinner label="Carregando conversas" className="flex-1" />;
   }
   if (items.length === 0) {
     return filtered ? (

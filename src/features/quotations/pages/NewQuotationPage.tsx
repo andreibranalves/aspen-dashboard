@@ -2007,7 +2007,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <Card ref={quoteCardRef} variant="outline" padding="none" className="mx-auto w-full max-w-4xl scroll-mt-4">
+        <Card ref={quoteCardRef} variant="outline" padding="none" className="mx-auto my-auto w-full max-w-4xl scroll-mt-4">
           <header className="flex items-center px-5 pb-3.5 pt-4 md:px-6">
             <QuoteSteps
               current={quoteStep}

@@ -127,7 +127,7 @@ export default function ContextPanel({ conversationId, identityVersion, onUseSug
     );
   }
   if (!context) {
-    return <LoadingSpinner label="Carregando contexto" />;
+    return <LoadingSpinner label="Carregando contexto" className="flex-1" />;
   }
 
   const { linking } = context;
