@@ -49,10 +49,10 @@ export default function ListPagination({
       )}
       <div className="flex items-center gap-2">
         <span className="px-2 text-sm tabular-nums text-fg-muted" aria-live="polite">{range}</span>
-        <Button type="button" variant="outline" size="sm" disabled={disabled || page <= 1} onClick={() => onPageChange(page - 1)}>
+        <Button type="button" variant="outline" disabled={disabled || page <= 1} onClick={() => onPageChange(page - 1)}>
           <ChevronLeft aria-hidden="true" /> Anterior
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={disabled || !hasNext} onClick={() => onPageChange(page + 1)}>
+        <Button type="button" variant="outline" disabled={disabled || !hasNext} onClick={() => onPageChange(page + 1)}>
           Próximo <ChevronRight aria-hidden="true" />
         </Button>
       </div>

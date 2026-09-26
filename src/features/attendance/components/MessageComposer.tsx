@@ -211,7 +211,7 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
           tone={notice.tone}
           action={
             pending && !sending ? (
-              <Button variant="outline" size="sm" onClick={() => void recover()}>
+              <Button variant="outline" onClick={() => void recover()}>
                 Verificar envio
               </Button>
             ) : undefined

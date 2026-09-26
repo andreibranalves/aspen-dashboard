@@ -101,7 +101,6 @@ export default function WhatsAppSendPanel({
             <>
               <Button
                 type="button"
-                size="lg"
                 className="w-full"
                 title={
                   isPending

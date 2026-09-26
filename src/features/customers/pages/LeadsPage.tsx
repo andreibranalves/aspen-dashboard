@@ -594,10 +594,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     const label = rowLabel(row);
     return (
       <div className="flex items-center justify-end gap-1">
-        <Button variant="soft" size="icon-sm" title={`Novo orçamento para ${label}`} aria-label={`Novo orçamento para ${label}`} onClick={() => createQuoteForClient(row, navigate)}>
+        <Button variant="soft" size="icon" title={`Novo orçamento para ${label}`} aria-label={`Novo orçamento para ${label}`} onClick={() => createQuoteForClient(row, navigate)}>
           <ReceiptText />
         </Button>
-        <Button variant="ghost-muted" size="icon-sm" onClick={() => void openDrawer(row)} aria-label={`Visualização rápida ${label}`} title="Visualização rápida">
+        <Button variant="ghost-muted" size="icon" onClick={() => void openDrawer(row)} aria-label={`Visualização rápida ${label}`} title="Visualização rápida">
           <Eye />
         </Button>
         <CustomerActionMenu
@@ -803,7 +803,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 {!editMode ? (
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => {
                       setEditFields(fieldsFromDetail(detail));
                       setEditMode(true);
@@ -813,12 +812,11 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   </Button>
                 ) : (
                   <>
-                    <Button size="sm" onClick={() => void updateDetail()} disabled={detailSaving}>
+                    <Button onClick={() => void updateDetail()} disabled={detailSaving}>
                       <Check size={14} /> Salvar
                     </Button>
                     <Button
                       variant="outline"
-                      size="sm"
                       onClick={() => {
                         setEditFields(fieldsFromDetail(detail));
                         setEditMode(false);
@@ -849,7 +847,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         {detailError && !detailLoading && (
           <InlineAlert
             action={
-              <Button variant="outline" size="sm" onClick={() => selectedId && void loadDrawerDetail(selectedId)}>
+              <Button variant="outline" onClick={() => selectedId && void loadDrawerDetail(selectedId)}>
                 Tentar novamente
               </Button>
             }
@@ -905,7 +903,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             {detail.latest_quotation && (
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() =>
                   requestDrawerClose(() =>
                     navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`)

@@ -56,7 +56,7 @@ function ProductionCard({
       </a>
       <DeadlineBar order={order} />
       {order.production_stage !== 'entregue' && (
-        <Button variant="outline" size="sm" className="w-full" onClick={onAdvance}>
+        <Button variant="outline" className="w-full" onClick={onAdvance}>
           {ADVANCE_LABELS[order.production_stage]}
         </Button>
       )}

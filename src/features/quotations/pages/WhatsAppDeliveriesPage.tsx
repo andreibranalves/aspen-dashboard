@@ -773,7 +773,7 @@ export default function WhatsAppDeliveriesPage() {
         {activeTab === 'pending' && error && (
           <InlineAlert
             action={
-              <Button variant="outline" size="sm" onClick={() => setReloadVersion((value) => value + 1)}>
+              <Button variant="outline" onClick={() => setReloadVersion((value) => value + 1)}>
                 Tentar novamente
               </Button>
             }
@@ -856,7 +856,6 @@ export default function WhatsAppDeliveriesPage() {
                           <Button
                             type="button"
                             variant="outline"
-                            size="sm"
                             aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
                             onClick={() => selectDelivery(delivery)}
                           >

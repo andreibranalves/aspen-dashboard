@@ -150,7 +150,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                     <div className="mt-4 flex-1">
                       {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-3xs text-fg-muted">{item.sku}</span></div>)}
                     </div>
-                    <Button className="mt-4 self-start" variant="outline" size="sm" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
+                    <Button className="mt-4 self-start" variant="outline" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
                   </article>
                 ))}
               </div>
@@ -171,7 +171,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             {mediaUploadOpen && (
               <aside className="space-y-3">
                 <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setMediaUploadOpen(false)}>
+                  <Button variant="ghost" onClick={() => setMediaUploadOpen(false)}>
                     <X size={16} /> Fechar painel
                   </Button>
                 </div>

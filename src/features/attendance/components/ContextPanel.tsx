@@ -160,7 +160,7 @@ export default function ContextPanel({ conversationId, identityVersion, onUseSug
       )}
 
       {linking.version && (
-        <Button variant="outline" size="sm" className="self-start" disabled={Boolean(pending)} onClick={remove}>
+        <Button variant="outline" className="self-start" disabled={Boolean(pending)} onClick={remove}>
           Desvincular
         </Button>
       )}
@@ -202,7 +202,7 @@ export default function ContextPanel({ conversationId, identityVersion, onUseSug
             containerClassName="flex-1"
           />
           {searching && (
-            <Button type="button" variant="ghost" size="md" onClick={() => void load('')}>
+            <Button type="button" variant="ghost" onClick={() => void load('')}>
               Limpar
             </Button>
           )}

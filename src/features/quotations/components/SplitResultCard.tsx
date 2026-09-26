@@ -807,7 +807,7 @@ export default function SplitResultCard({
                         onClick={() => handleRemoveItem(ii)}
                         disabled={editingBlocked}
                         variant="ghost-muted-destructive"
-                        size="icon-sm"
+                        size="icon"
                         aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
                         title="Excluir produto"
                       >
@@ -1017,7 +1017,7 @@ export default function SplitResultCard({
               {templateError ? (
                 <div className="flex items-center justify-between gap-2 text-xs text-destructive">
                   <span>{templateError}</span>
-                  <Button type="button" variant="outline" size="sm" onClick={onRetryTemplates}>Tentar novamente</Button>
+                  <Button type="button" variant="outline" onClick={onRetryTemplates}>Tentar novamente</Button>
                 </div>
               ) : (
                 <Select
@@ -1192,14 +1192,13 @@ export default function SplitResultCard({
         )}
         {!isDone && !reviewOnly && (
           <>
-            <Button variant="ghost" size="sm" onClick={toggleEditing} disabled={editingBlocked}>
+            <Button variant="ghost" onClick={toggleEditing} disabled={editingBlocked}>
               <Pencil size={14} />
               {editing ? 'Concluir' : 'Editar'}
             </Button>
             {editing && (
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={() => onAddItem(draft.index)}
                 disabled={editingBlocked}
               >
@@ -1230,7 +1229,6 @@ export default function SplitResultCard({
             )}
             {waSendEnabled ? (
               <Button
-                size="sm"
                 disabled={whatsappSendBlocked}
                 title={deliveryError || (delivery ? 'Este orçamento já possui uma entrega pelo WhatsApp.' : undefined)}
                 onClick={() => onSendWhatsApp?.(draft.index)}
@@ -1241,15 +1239,14 @@ export default function SplitResultCard({
           </>
         ) : reviewOnly ? (
           <>
-            <Button variant="outline" size="sm" onClick={onDiscard} disabled={actionBlocked}>Descartar resultado</Button>
-            <Button size="sm" onClick={onApply} disabled={actionBlocked || !canApply}>Aplicar ao orçamento ativo</Button>
+            <Button variant="outline" onClick={onDiscard} disabled={actionBlocked}>Descartar resultado</Button>
+            <Button onClick={onApply} disabled={actionBlocked || !canApply}>Aplicar ao orçamento ativo</Button>
           </>
         ) : (
           <>
             {!editing && (
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={() => onReviewQuote(draft.index)}
                 disabled={actionBlocked || !canCreate}
                 title="Abre uma pré-visualização temporária sem salvar ou emitir."
@@ -1261,7 +1258,6 @@ export default function SplitResultCard({
             )}
             {!editing && (
               <Button
-                size="sm"
                 onClick={() => onCreateQuote(draft.index)}
                 disabled={actionBlocked || !canCreate}
                 aria-describedby={actionBlockMessage ? actionStatusId : undefined}
@@ -1273,7 +1269,6 @@ export default function SplitResultCard({
             {isProcessing && draft.result?.error && savedDraft.issueRecoveryRequired && onClearIssueRecovery && (
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => onClearIssueRecovery(draft.index)}
               >
                 Confirmar ausência e liberar nova tentativa
@@ -1282,7 +1277,6 @@ export default function SplitResultCard({
             {isProcessing && draft.result?.error && !savedDraft.issueRecoveryRequired && onRecoverIssue && (
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => onRecoverIssue(draft.index)}
               >
                 Consultar novamente

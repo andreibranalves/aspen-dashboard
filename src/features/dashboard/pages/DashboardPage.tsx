@@ -335,7 +335,7 @@ function RecentQuotationsPanel({
         <Heading level="section" id="recent-quotations-title">
           Últimos orçamentos
         </Heading>
-        <Button type="button" variant="outline" size="sm" onClick={() => onNavigate('/quotations')}>
+        <Button type="button" variant="outline" onClick={() => onNavigate('/quotations')}>
           Ver todos
         </Button>
       </div>
@@ -413,7 +413,6 @@ function FeaturedCustomersPanel({
         <Button
           type="button"
           variant="outline-ink"
-          size="sm"
           onClick={onCustomers}
         >
           Ver clientes

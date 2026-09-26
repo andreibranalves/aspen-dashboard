@@ -143,7 +143,6 @@ export default function LoginPage({ navigate }: LoginPageProps) {
               disabled={loading || !password.trim()}
               aria-busy={loading}
               className="mt-2 w-full"
-              size="lg"
             >
               {loading ? (
                 <span

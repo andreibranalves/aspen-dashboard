@@ -199,7 +199,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
       {categoryError && (
         <InlineAlert
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadGroups()}>
+            <Button variant="outline" onClick={() => void loadGroups()}>
               Tentar novamente
             </Button>
           }

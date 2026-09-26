@@ -6,8 +6,10 @@ import BottomNav from './BottomNav';
 import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
 import { routePath } from '@/app/match-route';
 import { BreadcrumbLabelProvider } from './BreadcrumbLabelContext';
+import { PageActionsSlotProvider } from './PageActionsSlot';
 import { useProductionAttentionCount } from '@/features/sales-orders/production';
 import { useOverdueTaskCount } from '@/features/tasks/tasks';
+import { QuickTaskProvider } from '@/features/tasks/components/QuickTask';
 
 export interface BreadcrumbItem {
   label: string;
@@ -92,7 +94,7 @@ function getBreadcrumb(route: string, detailLabel: string | null): BreadcrumbIte
     return [
       { label: 'Início', hash: '/dashboard' },
       getProductParent(),
-      { label: sku === 'new' ? 'Novo produto' : decodeLabel(sku), hash: null },
+      { label: sku === 'new' ? 'Novo produto' : detailLabel || decodeLabel(sku), hash: null },
     ];
   }
   if (path.startsWith('/leads/')) {
@@ -128,6 +130,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
     return false;
   });
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   const [detailBreadcrumb, setDetailBreadcrumb] = useState<{
     route: string;
     label: string | null;
@@ -153,44 +156,48 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   }, [isMobile, route]);
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-canvas md:flex-row md:gap-frame md:p-frame">
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        mobile={isMobile}
-        onToggle={toggleSidebar}
-        currentRoute={route}
-        onNavigate={onNavigate}
-        badges={{ '/sales-orders': productionAttention, '/tarefas': overdueTasks }}
-      />
-      <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
-        <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">
-          <div key={routePath(route)} className={`relative min-h-full motion-safe:animate-page-enter ${isQuotationComposer ? 'flex flex-col' : ''}`}>
-            <TopBar
-              route={route}
-              isMobile={isMobile}
-              breadcrumbItems={breadcrumbItems}
-              onNavigate={onNavigate}
-            />
-            <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
-              <main
-                className={isQuotationComposer ? 'flex min-h-0 flex-1 flex-col' : undefined}
-                inert={isMobile && !sidebarCollapsed ? true : undefined}
-              >
-                {children}
-              </main>
-            </BreadcrumbLabelProvider>
-          </div>
-        </div>
-      </div>
-      {isMobile && (
-        <BottomNav
-          currentPath={routePath(route)}
+    <QuickTaskProvider route={route}>
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-canvas md:flex-row md:gap-frame md:p-frame">
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          mobile={isMobile}
+          onToggle={toggleSidebar}
+          currentRoute={route}
           onNavigate={onNavigate}
-          onMore={toggleSidebar}
-          moreOpen={!sidebarCollapsed}
           badges={{ '/sales-orders': productionAttention, '/tarefas': overdueTasks }}
         />
-      )}
-    </div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-page text-fg md:rounded-shell">
+          <div className="aspen-workspace h-full min-h-0 overflow-y-auto p-4 md:p-workspace">
+            <div key={routePath(route)} className={`relative min-h-full motion-safe:animate-page-enter ${isQuotationComposer ? 'flex flex-col' : ''}`}>
+              <TopBar
+                isMobile={isMobile}
+                breadcrumbItems={breadcrumbItems}
+                onNavigate={onNavigate}
+                actionsRef={setActionsSlot}
+              />
+              <BreadcrumbLabelProvider setLabel={setDetailBreadcrumbLabel}>
+                <PageActionsSlotProvider slot={actionsSlot}>
+                  <main
+                    className={isQuotationComposer ? 'flex min-h-0 flex-1 flex-col' : undefined}
+                    inert={isMobile && !sidebarCollapsed ? true : undefined}
+                  >
+                    {children}
+                  </main>
+                </PageActionsSlotProvider>
+              </BreadcrumbLabelProvider>
+            </div>
+          </div>
+        </div>
+        {isMobile && (
+          <BottomNav
+            currentPath={routePath(route)}
+            onNavigate={onNavigate}
+            onMore={toggleSidebar}
+            moreOpen={!sidebarCollapsed}
+            badges={{ '/sales-orders': productionAttention, '/tarefas': overdueTasks }}
+          />
+        )}
+      </div>
+    </QuickTaskProvider>
   );
 }

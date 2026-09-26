@@ -95,7 +95,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
       {!loading && error && (
         <InlineAlert title="Não foi possível carregar a biblioteca."
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadMedia()}>
+            <Button variant="outline" onClick={() => void loadMedia()}>
               Tentar novamente
             </Button>
           }

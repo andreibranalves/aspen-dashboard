@@ -256,10 +256,10 @@ test('mantém as quatro abas de Resultados e os destinos finais da navegação @
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
   }
 
-  // Novo orçamento é a ação global da TopBar; a sidebar tem só destinos.
-  await expect(page.getByRole('banner').getByRole('button', { name: 'Novo orçamento' })).toBeVisible();
+  // Novo orçamento é a ação global da sidebar; a TopBar tem só o breadcrumb e as ações da página.
   const sidebar = page.getByRole('complementary', { name: 'Navegação principal' });
-  await expect(sidebar.getByRole('button', { name: 'Novo orçamento' })).toHaveCount(0);
+  await expect(sidebar.getByRole('button', { name: 'Novo orçamento' })).toBeVisible();
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Novo orçamento' })).toHaveCount(0);
   for (const label of [
     'Atendimento',
     'Orçamentos',

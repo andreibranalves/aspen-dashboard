@@ -173,7 +173,7 @@ export function ProductionSection({
           />
         </div>
         {stage !== 'entregue' && !readOnly && (
-          <Button variant="outline" size="sm" onClick={() => setAdvancing(order)}>
+          <Button variant="outline" onClick={() => setAdvancing(order)}>
             {ADVANCE_LABELS[stage]}
           </Button>
         )}
@@ -283,7 +283,6 @@ function NoteRow({
         <Textarea value={draft} rows={3} maxLength={4000} onChange={(event) => setDraft(event.target.value)} aria-label="Editar anotação" />
         <div className="flex gap-2">
           <Button
-            size="sm"
             disabled={!draft.trim()}
             onClick={() =>
               void onAction({ action: 'edit_note', note_id: note.id, body: draft }).then((ok) => ok && setEditing(false))
@@ -291,7 +290,7 @@ function NoteRow({
           >
             Salvar
           </Button>
-          <Button size="sm" variant="outline" onClick={() => { setDraft(note.body); setEditing(false); }}>
+          <Button variant="outline" onClick={() => { setDraft(note.body); setEditing(false); }}>
             Cancelar
           </Button>
         </div>
@@ -304,12 +303,12 @@ function NoteRow({
         <span>{formatDateTime(note.created_at)}{note.kind === 'stage' ? ' · Etapa' : ''}</span>
         {note.kind === 'note' && !editing && (
           <span className="flex gap-1">
-            <Button variant="ghost-muted" size="icon-sm" aria-label="Editar anotação" onClick={() => setEditing(true)}>
+            <Button variant="ghost-muted" size="icon" aria-label="Editar anotação" onClick={() => setEditing(true)}>
               <Pencil aria-hidden="true" />
             </Button>
             <Button
               variant="ghost-muted-destructive"
-              size="icon-sm"
+              size="icon"
               aria-label="Excluir anotação"
               onClick={() => void onAction({ action: 'delete_note', note_id: note.id })}
             >
@@ -370,7 +369,7 @@ export function NotesSection({
           onChange={(event) => setDraft(event.target.value)}
           aria-label="Nova anotação"
         />
-        <Button type="submit" size="sm" className="justify-self-end" disabled={saving || !draft.trim()}>
+        <Button type="submit" className="justify-self-end" disabled={saving || !draft.trim()}>
           Adicionar
         </Button>
       </form>

@@ -434,7 +434,7 @@ function SalesOrdersList({ navigate, tabs }: SalesOrdersPageProps & { tabs: Reac
       {!summaryData && summaryError && (
         <InlineAlert
           action={
-            <Button variant="outline" size="sm" onClick={() => void fetchSummary()}>
+            <Button variant="outline" onClick={() => void fetchSummary()}>
               Tentar novamente
             </Button>
           }

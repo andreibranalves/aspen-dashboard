@@ -38,7 +38,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
       <div className="mt-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {item.active === false && <span className="rounded-control bg-raised px-2 py-1 text-3xs text-fg-muted">Inativa</span>}
-          {onDelete && <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"><Button type="button" variant="ghost-muted-destructive" size="icon-sm" onClick={() => onDelete(item)} aria-label={`Remover ${item.title || 'mídia'}`}><Trash2 aria-hidden="true" /></Button></span>}
+          {onDelete && <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"><Button type="button" variant="ghost-muted-destructive" size="icon" onClick={() => onDelete(item)} aria-label={`Remover ${item.title || 'mídia'}`}><Trash2 aria-hidden="true" /></Button></span>}
         </div>
         {item.blob_url && <Button asChild variant="outline" size="xs"><a href={item.blob_url} target="_blank" rel="noopener noreferrer"><ArrowUpRight aria-hidden="true" />Ver mídia</a></Button>}
       </div>

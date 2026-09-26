@@ -1465,7 +1465,6 @@ function CoreQuotationDetail({
                               {eligible && (
                                 <Button
                                   variant="outline"
-                                  size="sm"
                                   disabled={lifecycleAction !== null}
                                   onClick={() => createRevision(entry.revisionId)}
                                 >
@@ -1599,7 +1598,6 @@ function CoreQuotationDetail({
               {createdSalesOrderId ? (
                 <Button
                   variant="outline"
-                  size="sm"
                   onClick={() =>
                     navigate(`/sales-orders/${encodeURIComponent(createdSalesOrderId)}`)
                   }
@@ -1651,7 +1649,6 @@ function CoreQuotationDetail({
                   {data.quotationOrigin.salesOrderNumber && (
                     <Button
                       variant="ghost"
-                      size="sm"
                       onClick={() =>
                         navigate(
                           `/sales-orders/${encodeURIComponent(data.quotationOrigin!.salesOrderNumber!)}`
@@ -1747,7 +1744,7 @@ function CoreQuotationDetail({
                       <div
                         role="menu"
                         aria-label="Ações do orçamento"
-                        className="absolute right-0 top-12 z-floating w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
+                        className="absolute right-0 top-9 z-floating w-52 rounded-control border border-line bg-surface p-1 shadow-lg"
                       >
                         {issuedView && data.revisionId && (
                           <MenuItem
@@ -1802,7 +1799,7 @@ function CoreQuotationDetail({
         {conflict && (
           <InlineAlert className="mt-4"
             action={
-              <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
+              <Button variant="outline" onClick={reloadAfterConflict}>
                 Recarregar
               </Button>
             }
@@ -2237,7 +2234,7 @@ function CoreQuotationDetail({
                                   <Button
                                     type="button"
                                     variant="ghost-muted-destructive"
-                                    size="icon-sm"
+                                    size="icon"
                                     onClick={() => removeItem(item._key)}
                                     aria-label={`Remover item ${item.item_name || item.sku}`}
                                   >
@@ -2264,7 +2261,7 @@ function CoreQuotationDetail({
                     </div>
                   )}
                   {editing && (
-                    <Button variant="outline" size="sm" className="mt-3" onClick={addItem}>
+                    <Button variant="outline" className="mt-3" onClick={addItem}>
                       <Plus size={14} /> Item
                     </Button>
                   )}
@@ -2381,7 +2378,6 @@ function CoreQuotationDetail({
                                 {eligible && (
                                   <Button
                                     variant="outline"
-                                    size="sm"
                                     disabled={lifecycleAction !== null}
                                     onClick={() => createRevision(entry.revisionId)}
                                   >
@@ -2719,7 +2715,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
         <InlineAlert
           tone="warning"
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadDetail()}>
+            <Button variant="outline" onClick={() => void loadDetail()}>
               Tentar novamente
             </Button>
           }

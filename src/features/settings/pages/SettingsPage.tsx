@@ -307,7 +307,7 @@ export default function SettingsPage() {
           {!loading && loadError && (activeTab === 'patterns' || activeTab === 'company') && (
             <InlineAlert title="Não foi possível carregar as configurações."
               action={
-                <Button variant="outline" size="sm" onClick={() => void loadSettings()}>
+                <Button variant="outline" onClick={() => void loadSettings()}>
                   Tentar novamente
                 </Button>
               }

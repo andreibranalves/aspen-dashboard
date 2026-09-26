@@ -503,11 +503,10 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
 
   return (
     <PageShell>
-      {/* No celular a conversa aberta ocupa a tela; o voltar fica no cabeçalho dela. */}
-      <PageHeader title="Atendimento" className={selectedId ? 'max-lg:hidden' : undefined} />
+      <PageHeader title="Atendimento" />
       <div
         className={cn(
-          'grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-12rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]',
+          'grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-10rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]',
           // A coluna de contexto só existe com uma conversa aberta.
           selectedId && 'max-lg:h-workarea max-lg:min-h-0 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]'
         )}
@@ -567,7 +566,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               title="Selecione uma conversa"
               description={unread.length > 0 ? `${unread.length} ${unread.length === 1 ? 'conversa com mensagens não lidas' : 'conversas com mensagens não lidas'}` : undefined}
               actions={unread.slice(0, 3).map((item) => (
-                <Button key={item.id} variant="outline" size="sm" onClick={() => selectConversation(item.id)}>
+                <Button key={item.id} variant="outline" onClick={() => selectConversation(item.id)}>
                   {conversationName(item)} ({item.unreadCount})
                 </Button>
               ))}
@@ -635,7 +634,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               {selectedForQuote.length > 0 && (
                 <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-3 py-2 text-xs">
                   <span>{selectedForQuote.length} mensagens selecionadas</span>
-                  <Button size="sm" disabled={preparingQuote} onClick={() => void prepareQuote()}>
+                  <Button disabled={preparingQuote} onClick={() => void prepareQuote()}>
                     {preparingQuote ? 'Preparando…' : 'Preparar orçamento'}
                   </Button>
                 </div>
@@ -661,7 +660,6 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               )}
               {hasUnseenBelow && (
                 <Button
-                  size="sm"
                   className="absolute bottom-28 left-1/2 -translate-x-1/2 shadow-md"
                   onClick={scrollToEnd}
                 >
