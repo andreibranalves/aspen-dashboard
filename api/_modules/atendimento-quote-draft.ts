@@ -8,10 +8,9 @@ import { conversationId as technicalConversationId } from '../_shared/contact-ph
 import { safeErrorSummary } from '../_shared/safe-error.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const MAX_QUOTE_MESSAGES = 50;
-export const MAX_QUOTE_TEXT = 12_000;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Attendance = Pick<WhatsappAttendanceRepository, 'getConversation' | 'getConversationScope' | 'loadQuoteSelection'>;
+type Attendance = Pick<WhatsappAttendanceRepository, 'getConversation' | 'getConversationScope'>;
 type Leads = Pick<QuoteLeadRepository, 'findByDemandId' | 'admitWhatsappDraft'>;
 
 export interface QuoteDraftDependencies {
@@ -33,12 +32,18 @@ function uuid(value: unknown, label: string): string {
   return value.toLowerCase();
 }
 
-function selection(lead: QuoteLeadRecord): { text: string; messageIds: string[] } | null {
+function contactText(value: unknown, label: string, max: number): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string' || value.trim().length > max) throw new InputError(`${label} inválido.`);
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+// Demands prepared before the contact extraction also recorded the selected message IDs.
+function selection(lead: QuoteLeadRecord): { text: string } | null {
   const value = lead.raw?.atendimentoDraft;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const draft = value as Record<string, unknown>;
-  if (typeof draft.text !== 'string' || !Array.isArray(draft.messageIds) || !draft.messageIds.every((id) => typeof id === 'string')) return null;
-  return { text: draft.text, messageIds: draft.messageIds as string[] };
+  return typeof draft.text === 'string' ? { text: draft.text } : null;
 }
 
 async function liveLinkedClientId(conversationId: string, attendance: Attendance): Promise<string | null> {
@@ -74,8 +79,9 @@ export function createAtendimentoQuoteDraftHandler(dependencies: QuoteDraftDepen
       conversationId: conversation.id,
       text: draft.text,
       clientId: await linkedClientId(conversation.id),
-      phone: conversation.canonicalPhone,
-      name: conversation.displayName,
+      phone: lead.telefone || conversation.canonicalPhone,
+      name: lead.nome || conversation.displayName,
+      email: lead.email || null,
       destination: `/#/novo-orcamento?demandId=${encodeURIComponent(lead.demandId || '')}&quoteLeadId=${encodeURIComponent(lead.id)}&crmDealId=${encodeURIComponent(lead.crmDealId || '')}`,
     };
   }
@@ -102,23 +108,19 @@ export function createAtendimentoQuoteDraftHandler(dependencies: QuoteDraftDepen
         if (existing.externalId !== conversationId) throw new InputError('Esta demanda já está vinculada a outra conversa.', 409);
         return json(200, await project(existing));
       }
-      if (!Array.isArray(body.messageIds) || body.messageIds.length < 1 || body.messageIds.length > MAX_QUOTE_MESSAGES) {
-        throw new InputError(`Selecione de 1 a ${MAX_QUOTE_MESSAGES} mensagens.`, 413);
-      }
-      const ids = body.messageIds.map((id) => uuid(id, 'Mensagem'));
-      if (new Set(ids).size !== ids.length) throw new InputError('Seleção de mensagens duplicada.');
+      const contact = body.contact && typeof body.contact === 'object' && !Array.isArray(body.contact) ? body.contact as Record<string, unknown> : {};
+      const nome = contactText(contact.name, 'Nome', 255);
+      const empresa = contactText(contact.company, 'Empresa', 255);
+      const email = contactText(contact.email, 'E-mail', 320).toLowerCase();
+      if (email && !EMAIL.test(email)) throw new InputError('E-mail inválido.');
       const conversation = await attendance.getConversation(conversationId);
       if (!conversation) return json(404, { error: 'Conversa não encontrada.' });
-      const messages = await attendance.loadQuoteSelection(conversationId, ids);
-      if (messages.length !== ids.length || messages.some((message) => message.messageType !== 'text' || !message.body)) {
-        throw new InputError('Selecione apenas mensagens de texto desta conversa.');
-      }
-      const text = messages.map((message) => message.body).join('\n\n');
-      if (text.length > MAX_QUOTE_TEXT) throw new InputError('Seleção muito longa. Reduza o trecho para até 12.000 caracteres.', 413);
+      const telefone = conversation.identityStatus === 'conflict' ? '' : conversation.canonicalPhone || '';
+      // Same header the quote screen writes for a known client; the operator adds the request below.
+      const text = [`Nome: ${nome}`, ...(empresa ? [`Empresa: ${empresa}`] : []), `E-mail: ${email}`, `Telefone: ${telefone}`].join('\n');
       const lead = await leads.admitWhatsappDraft({
         source: 'whatsapp', externalId: conversationId, demandId,
-        nome: conversation.displayName || '', telefone: conversation.canonicalPhone || '',
-        pedidoTexto: text, raw: { atendimentoDraft: { text, messageIds: messages.map((message) => message.id) } },
+        nome, empresa, email, telefone, raw: { atendimentoDraft: { text } },
       });
       return json(201, await project(lead));
     } catch (error) {

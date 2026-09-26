@@ -1342,6 +1342,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         edited: {
           ...draft.edited,
           nome: draft.edited.nome || activeQuoteDraft.name || '',
+          email: draft.edited.email || activeQuoteDraft.email || '',
           telefone: draft.edited.telefone || activeQuoteDraft.phone || '',
           origem: 'WhatsApp',
           quote_lead_id: activeQuoteDraft.quoteLeadId,
