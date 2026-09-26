@@ -1,8 +1,8 @@
 import {
-  createPostgresQuotationDeliveryRepository,
+  createQuotationDeliveryDocuments,
   type PreparedDeliveryDocument,
   type PreparedDeliveryImage,
-} from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
+} from './quotation-delivery-documents.js';
 import {
   createPostgresWhatsappContactActivityRepository,
   type WhatsappContactActivityRepository,
@@ -610,9 +610,7 @@ export function createQuotationDeliveryModule(
     dependencies.preparePdf ||
     dependencies.pdfRenderer ||
     (() => {
-      fallbackDocumentPreparer ||= createPostgresQuotationDeliveryRepository(undefined, {
-        now,
-      }).prepareDeliveryDocument;
+      fallbackDocumentPreparer ||= createQuotationDeliveryDocuments({ now }).prepareDeliveryDocument;
       return fallbackDocumentPreparer;
     })();
   let fallbackImagePreparer: DeliveryImagePreparer | undefined;
@@ -620,9 +618,7 @@ export function createQuotationDeliveryModule(
     dependencies.prepareDeliveryImages ||
     dependencies.prepareImages ||
     (() => {
-      fallbackImagePreparer ||= createPostgresQuotationDeliveryRepository(undefined, {
-        now,
-      }).prepareDeliveryImages;
+      fallbackImagePreparer ||= createQuotationDeliveryDocuments({ now }).prepareDeliveryImages;
       return fallbackImagePreparer;
     })();
   const inFlight = new Map<string, Promise<DeliveryAggregate | null>>();

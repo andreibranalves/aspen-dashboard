@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
@@ -15,17 +15,17 @@ import {
   quotations,
   quoteRevisionItems,
   quoteRevisions,
-  quotationDeliveries,
   quotationTemplateVersions,
   quotationTemplates,
 } from '../../api/_infrastructure/db/schema.js';
+import { createQuotationTemplateRepository } from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';
 import {
-  canRecordQuotationDeliveryState,
-  createPostgresQuotationDeliveryRepository,
+  createQuotationDeliveryDocuments,
   QuotationDeliveryConflictError,
   QuotationDeliveryPdfError,
   QuotationDeliveryRepositoryError,
-} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
+  type QuotationDeliveryDocumentsOptions,
+} from '../../api/_modules/quotation-delivery-documents.js';
 import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import {
   createQuotationSectionsSnapshot,
@@ -76,13 +76,6 @@ function fakePreparationDatabase(options: {
     clienteCep: null, clienteNotas: null, subtotal: revisionTotal, total: revisionTotal,
     sectionsSnapshot: canonicalSections,
   } as any;
-  const delivery = {
-    id: '00000000-0000-4000-8000-000000000004', revisionId, phone: '5511999990000', flowId: 'flow',
-    state: 'pending', providerAcceptanceId: null, publicError: null,
-    diagnosticsExpiresAt: new Date('2026-11-11T12:00:00.000Z'), resumableUntil: new Date('2026-09-12T12:00:00.000Z'),
-    createdAt: now, updatedAt: now,
-  };
-  let revisionReads = 0;
   class Query {
     private rows: unknown[];
     private failure?: Error;
@@ -102,13 +95,10 @@ function fakePreparationDatabase(options: {
     }
   }
   const db: any = {
-    transaction: async (callback: (tx: unknown) => unknown) => callback(db),
-    execute: async () => undefined,
     select: () => ({
       from: (table: unknown) => {
         if (table === quoteRevisions) {
-          revisionReads += 1;
-          return new Query([revision], options.failRevisionRead && revisionReads > 1 ? new Error('database read failed') : undefined);
+          return new Query([revision], options.failRevisionRead ? new Error('database read failed') : undefined);
         }
         if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: templateSource, sourceHash: templateHash, contractVersion: 2 }]);
         if (table === quoteRevisionItems) return new Query(options.items || []);
@@ -123,26 +113,22 @@ function fakePreparationDatabase(options: {
         return new Query([]);
       },
     }),
-    insert: () => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [delivery] }) }) }),
   };
   return { db, now, revisionId };
 }
 
-test('durable terminal and active delivery states cannot regress to transport', () => {
-  assert.equal(canRecordQuotationDeliveryState('completed', 'pending'), false);
-  assert.equal(canRecordQuotationDeliveryState('completed', 'transporting'), false);
-  assert.equal(canRecordQuotationDeliveryState('reconciling', 'pending'), false);
-  assert.equal(canRecordQuotationDeliveryState('reconciling', 'transporting'), false);
-  assert.equal(canRecordQuotationDeliveryState('accepted_partial', 'retryable'), false);
-  assert.equal(canRecordQuotationDeliveryState('retryable', 'transporting'), true);
-  assert.equal(canRecordQuotationDeliveryState('reconciling', 'completed'), true);
-});
+function documents(db: any, now: Date, options: Omit<QuotationDeliveryDocumentsOptions, 'now' | 'repository'> = {}) {
+  return createQuotationDeliveryDocuments({
+    now: () => now,
+    repository: createQuotationTemplateRepository(() => db),
+    ...options,
+  });
+}
 
-test('repository does not classify database reads as PDF failures', async () => {
+test('database reads are not classified as PDF failures', async () => {
   const { db, now, revisionId } = fakePreparationDatabase({ failRevisionRead: true });
-  const repository = createPostgresQuotationDeliveryRepository(() => db, { now: () => now });
   await assert.rejects(
-    repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' }),
+    documents(db, now).prepareDeliveryDocument(revisionId),
     (error: unknown) => error instanceof QuotationDeliveryRepositoryError && !(error instanceof QuotationDeliveryPdfError),
   );
 });
@@ -150,15 +136,14 @@ test('repository does not classify database reads as PDF failures', async () => 
 test('delivery PDF formats issue and validity dates for display', async () => {
   const { db, now, revisionId } = fakePreparationDatabase();
   let renderedHtml = '';
-  const repository = createPostgresQuotationDeliveryRepository(() => db, {
-    now: () => now,
+  const repository = documents(db, now, {
     renderPdf: async (html) => {
       renderedHtml = html;
       return pdfWithEof();
     },
   });
 
-  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+  await repository.prepareDeliveryDocument(revisionId);
 
   assert.match(renderedHtml, /Andrei Alves/);
   assert.match(renderedHtml, /Telefone: \(21\) 99999-9999/);
@@ -189,8 +174,7 @@ test('delivery PDF uses the canonical document output for section content and vi
   });
   let seamCalls = 0;
   let renderedHtml = '';
-  const repository = createPostgresQuotationDeliveryRepository(() => db, {
-    now: () => now,
+  const repository = documents(db, now, {
     renderDocument: (snapshot) => {
       seamCalls += 1;
       return renderQuotationDocument(snapshot);
@@ -201,7 +185,7 @@ test('delivery PDF uses the canonical document output for section content and vi
     },
   });
 
-  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+  await repository.prepareDeliveryDocument(revisionId);
 
   assert.equal(seamCalls, 1);
   assert.match(renderedHtml, /Pagamento customizado/);
@@ -227,15 +211,14 @@ test('delivery PDF supplies comparison data to the comparative template', async 
     }],
   });
   let renderedHtml = '';
-  const repository = createPostgresQuotationDeliveryRepository(() => db, {
-    now: () => now,
+  const repository = documents(db, now, {
     renderPdf: async (html) => {
       renderedHtml = html;
       return pdfWithEof();
     },
   });
 
-  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+  await repository.prepareDeliveryDocument(revisionId);
 
   assert.match(renderedHtml, /30 - 99/);
   assert.match(renderedHtml, /Produto comparativo/);
@@ -256,15 +239,14 @@ test('delivery PDF removes storage scale from integer quantities', async () => {
     }],
   });
   let renderedHtml = '';
-  const repository = createPostgresQuotationDeliveryRepository(() => db, {
-    now: () => now,
+  const repository = documents(db, now, {
     renderPdf: async (html) => {
       renderedHtml = html;
       return pdfWithEof();
     },
   });
 
-  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+  await repository.prepareDeliveryDocument(revisionId);
 
   assert.match(renderedHtml, /Quantidade: 70(?:<|\s)/);
   assert.doesNotMatch(renderedHtml, /Quantidade: 70\.000/);
@@ -273,36 +255,35 @@ test('delivery PDF removes storage scale from integer quantities', async () => {
 test('delivery PDF formats monetary totals with thousands separator', async () => {
   const { db, now, revisionId } = fakePreparationDatabase({ total: '2500.00' });
   let renderedHtml = '';
-  const repository = createPostgresQuotationDeliveryRepository(() => db, {
-    now: () => now,
+  const repository = documents(db, now, {
     renderPdf: async (html) => {
       renderedHtml = html;
       return pdfWithEof();
     },
   });
 
-  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+  await repository.prepareDeliveryDocument(revisionId);
 
   assert.match(renderedHtml, /R\$ 2\.500,00/);
   assert.doesNotMatch(renderedHtml, /R\$ 2500,00/);
 });
 
-test('repository classifies renderer failures and invalid bytes as PDF failures', async () => {
+test('renderer failures, invalid bytes and oversized PDFs are PDF failures', async () => {
   const { db, now, revisionId } = fakePreparationDatabase();
   for (const renderPdf of [
     async () => { throw new Error('renderer failed'); },
     async () => Buffer.from('not a pdf'),
+    async () => Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(11 * 1024 * 1024, 0x20), Buffer.from('\n%%EOF')]),
   ]) {
-    const repository = createPostgresQuotationDeliveryRepository(() => db, { now: () => now, renderPdf });
     await assert.rejects(
-      repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' }),
+      documents(db, now, { renderPdf }).prepareDeliveryDocument(revisionId),
       (error: unknown) => error instanceof QuotationDeliveryPdfError,
     );
   }
 });
 
 test(
-  'quotation delivery freezes revision operation, retains safe summary and renders immutable snapshot',
+  'delivery PDF renders the immutable revision snapshot and refuses expired or draft revisions',
   { skip: !DATABASE_URL },
   async () => {
     const sql = postgres(DATABASE_URL!, { max: 2, prepare: false, connect_timeout: 10, onnotice: () => undefined });
@@ -398,8 +379,7 @@ test(
         manualRate: true,
       });
 
-      const repository = createPostgresQuotationDeliveryRepository(() => db, {
-        now: () => now,
+      const repository = documents(db, now, {
         renderPdf: async (html) => {
           assert.match(html, /Cliente Entrega/);
           assert.match(html, /Produto snapshot/);
@@ -409,77 +389,17 @@ test(
           return pdfWithEof();
         },
       });
-      const first = await repository.reserve({ revisionId: ids.revision, phone: '(21) 99541-9741', flowId: 'already-talking' });
-      assert.equal(first.phone, '5521995419741');
-      assert.equal(first.flowId, 'already-talking');
-      const retry = await repository.reserve({ revisionId: ids.revision, phone: '55 21 99541 9741', flowId: 'already-talking' });
-      assert.equal(retry.id, first.id);
-      await assert.rejects(repository.reserve({
-        revisionId: ids.revision,
-        phone: '5511999999999',
-        flowId: 'email-first-contact',
-      }), QuotationDeliveryConflictError);
-
-      const prepared = await repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId });
+      const prepared = await repository.prepareDeliveryDocument(ids.revision);
       assert.equal(prepared.pdfSize, pdfWithEof().length);
       assert.match(prepared.pdfSignature, /^[0-9a-f]{64}$/);
-      assert.equal(prepared.delivery.id, first.id);
-
-      await assert.rejects(repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId, maxPdfBytes: Number.NaN }), /Limite de PDF inválido/i);
-      await assert.rejects(repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId, maxPdfBytes: Number.POSITIVE_INFINITY }), /Limite de PDF inválido/i);
-      await assert.rejects(repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId, maxPdfBytes: -1 }), /Limite de PDF inválido/i);
-      const oversized = createPostgresQuotationDeliveryRepository(() => db, { now: () => now, renderPdf: async () => pdfWithEof() });
-      await assert.rejects(oversized.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId, maxPdfBytes: 10 }), /PDF da revisão é inválido/i);
-      const badSignature = createPostgresQuotationDeliveryRepository(() => db, { now: () => now, renderPdf: async () => Buffer.from('not a pdf') });
-      await assert.rejects(badSignature.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId }), /PDF da revisão é inválido/i);
-
-      const completed = await repository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'completed', providerAcceptanceId: 'accepted-1', publicError: 'temporary diagnostic' });
-      assert.equal(completed.state, 'completed');
-      assert.equal(completed.providerAcceptanceId, 'accepted-1');
-      await assert.rejects(repository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'transporting' }), /estado.*entrega|reconciliação|concluída/i);
-      await assert.rejects(repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId }), /concluída|reconciliação|nova revisão/i);
-      await db.update(quotationDeliveries).set({ state: 'retry_scheduled', providerAcceptanceId: null, publicError: null, updatedAt: now }).where(and(eq(quotationDeliveries.revisionId, ids.revision), eq(quotationDeliveries.flowId, first.flowId)));
-      const casRepository = createPostgresQuotationDeliveryRepository(() => db, {
-        now: () => now,
-        beforeStateUpdate: async () => {
-          await db.update(quotationDeliveries).set({ state: 'retry_scheduled', updatedAt: new Date(now.getTime() + 1) })
-            .where(and(eq(quotationDeliveries.revisionId, ids.revision), eq(quotationDeliveries.flowId, first.flowId)));
-        },
-      });
+      assert.equal(prepared.validUntil.toISOString(), '2026-08-28T12:00:00.000Z');
       await assert.rejects(
-        casRepository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'accepted_partial' }),
-        (error: unknown) => error instanceof QuotationDeliveryConflictError && /outra tentativa/i.test(error.message),
+        documents(db, now, { renderPdf: async () => Buffer.from('not a pdf') }).prepareDeliveryDocument(ids.revision),
+        /PDF da revisão é inválido/i,
       );
-      const read = await repository.readDeliveryByRevision(ids.revision, first.flowId);
-      assert.equal(read?.state, 'retryable');
-      assert.equal(read?.publicError, null);
-      const reclaimed = await repository.claimTransport(ids.revision, first.flowId);
-      assert.equal(reclaimed?.state, 'transporting');
-      assert.equal(await repository.claimTransport(ids.revision, first.flowId), null);
-
-      await repository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'transporting', publicError: 'diagnostic retained' });
-      const lateRepository = createPostgresQuotationDeliveryRepository(() => db, {
-        now: () => new Date(now.getTime() + 31 * 86400000),
-      });
-      const late = await lateRepository.readDeliveryByRevision(ids.revision, first.flowId);
-      assert.equal(late?.readOnly, true);
-      assert.equal(late?.publicError, 'diagnostic retained');
-      const redactedRepository = createPostgresQuotationDeliveryRepository(() => db, {
-        now: () => new Date(now.getTime() + 91 * 86400000),
-      });
-      const redacted = await redactedRepository.readDeliveryByRevision(ids.revision, first.flowId);
-      assert.equal(redacted?.readOnly, true);
-      assert.equal(redacted?.publicError, null);
-      assert.equal(redacted?.phone, '5521995419741');
-      assert.equal(redacted?.flowId, 'already-talking');
-
-      const expiredRepository = createPostgresQuotationDeliveryRepository(() => db, {
-        now: () => new Date('2026-09-01T12:00:00.000Z'),
-      });
-      await db.update(quoteRevisions).set({ issuedAt: new Date('2020-01-01T12:00:00.000Z') }).where(eq(quoteRevisions.id, ids.revision));
       await assert.rejects(
-        expiredRepository.reserve({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId }),
-        /vencida/i,
+        documents(db, new Date('2026-09-01T12:00:00.000Z')).prepareDeliveryDocument(ids.revision),
+        (error: unknown) => error instanceof QuotationDeliveryConflictError && /vencida/i.test(error.message),
       );
 
       const draftRevision = randomUUID();
@@ -504,9 +424,8 @@ test(
         total: '0.00',
         createdAt: now,
       });
-      await assert.rejects(repository.reserve({ revisionId: draftRevision, phone: first.phone, flowId: first.flowId }), /emitidas/i);
+      await assert.rejects(repository.prepareDeliveryDocument(draftRevision), /emitidas/i);
     } finally {
-      await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, ids.revision));
       await db.delete(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, ids.revision));
       await db.delete(quoteRevisions).where(eq(quoteRevisions.quotationId, ids.quotation));
       await db.delete(quotations).where(eq(quotations.id, ids.quotation));

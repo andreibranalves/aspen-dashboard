@@ -8,7 +8,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 import type { HttpError } from '../_shared/http-error.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
-import { loadPostgresSendContext } from './send-whatsapp.js';
+import { loadQuotationSendContext } from './quotation-send-context.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 import {
   canonicalFlowQuotationId,
@@ -99,15 +99,14 @@ function publicFrozenStep(step: DeliveryPlan['steps'][number]): Record<string, u
 
 export type SendWhatsappFlowDependencies = {
   repository?: ReturnType<typeof createQuotationTemplateRepository>;
-  store?: Parameters<typeof loadPostgresSendContext>[0]['store'];
+  store?: Parameters<typeof loadQuotationSendContext>[0]['store'];
   token?: () => string;
   headBlob?: DeliveryPlanInput['headBlob'];
   blobToken?: string;
   blobStoreId?: string;
-  renderPdf?: Parameters<typeof loadPostgresSendContext>[0]['renderPdf'];
   mediaRecords?: Array<Record<string, unknown>>;
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
-  resolveDeal?: Parameters<typeof loadPostgresSendContext>[0]['resolveDeal'];
+  resolveDeal?: Parameters<typeof loadQuotationSendContext>[0]['resolveDeal'];
   resolveMedia?: DeliveryPlanInput['resolveMedia'];
   resolveFlow?: DeliveryPlanInput['resolveFlow'];
   deliveryModule?: QuotationDeliveryModule;
@@ -159,12 +158,10 @@ export async function handler(
       revisionId: identity.revisionId,
       flowId: identity.flowId,
       baseUrl,
-      needPdf: false,
       resolveFlow: flowResolver,
       repository: dependencies.repository || createQuotationTemplateRepository(),
       store: dependencies.store,
       token: dependencies.token,
-      renderPdf: dependencies.renderPdf,
       mediaRecords: dependencies.mediaRecords,
       readMediaRecords: dependencies.readMediaRecords,
       resolveDeal: dependencies.resolveDeal,
@@ -198,7 +195,7 @@ export async function handler(
       }
     }
 
-    let context!: Awaited<ReturnType<typeof loadPostgresSendContext>>;
+    let context!: Awaited<ReturnType<typeof loadQuotationSendContext>>;
     const plan = await createDeliveryPlan({
       ...planInputFor({ revisionId, flowId }),
       onContext: (resolved) => { context = resolved; },

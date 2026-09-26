@@ -4,10 +4,7 @@ import {
   type EvolutionConfig,
 } from '../_infrastructure/integrations/evolution/client.js';
 import { normalizeEvolutionDelivery } from '../_infrastructure/integrations/evolution/evolution-delivery.js';
-import type {
-  PreparedDeliveryDocument,
-  PreparedDeliveryImage,
-} from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
+import type { PreparedDeliveryDocument, PreparedDeliveryImage } from './quotation-delivery-documents.js';
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import type { TransportFailureKind } from './quotation-delivery-state.js';
 import { hasDisallowedWhatsappControls } from './quotation-follow-up-state.js';
