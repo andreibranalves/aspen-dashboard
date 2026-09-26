@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 // Read-only WhatsApp delivery readiness check.
 //
-// Purpose: before/after any operational change, prove that the real callback and
-// scheduler destinations resolve and are reachable, and that the durable outbox
-// has no stale runnable work hiding behind a healthy-looking worker.
+// Purpose: before/after any operational change, prove that the VPS worker's wake
+// endpoint resolves and is reachable, and that the durable outbox has no stale
+// runnable work hiding behind a healthy-looking worker.
 //
 // Safety:
 // - never sends a message and never invokes the worker;
 // - never prints credentials, headers, query strings or hashes;
 // - the database section runs plain SELECTs only;
-// - destination probing is mandatory: a report cannot be OK unless both
-//   canonical endpoints answered the side-effect-free probe with their expected
-//   handler status (`405` on unsupported `HEAD`). `--no-probe` exists for
-//   diagnosis only and always yields FALHA/nonzero.
+// - destination probing is mandatory: a report cannot be OK unless the worker
+//   answered the side-effect-free probe with its expected handler status (`405`
+//   on unsupported `HEAD`). `--no-probe` exists for diagnosis only and always
+//   yields FALHA/nonzero. The Evolution webhook reaches the worker only on the
+//   internal Docker network, so it is not probed from here.
 //
 // Usage:
 //   node scripts/whatsapp-delivery-readiness.mjs \
-//     --webhook-url https://app.example.com/api/evolution-webhook \
-//     --worker-url  https://aspen-worker.example.com/wake
+//     --worker-url https://aspen-worker.example.com/wake
 //
 // DATABASE_URL (when present) enables the stale-backlog section. The URL is read
 // only from the environment/config; `--database-url` is forbidden and fails
@@ -117,21 +117,10 @@ export function formatReadinessFailure(error) {
   return `FAIL readiness WhatsApp: ${detail} (${classifyFailure(error)})\n`;
 }
 
-// Endpoint-specific safe probes. Each sends an unsupported `HEAD` without
-// credentials or body, and the handler rejects it with `405` before bearer
-// validation or any work. On Vercel the real pipeline lets the canonical machine
-// route through global auth; a wrong protected path returns `401` before route
-// lookup and therefore fails readiness. The VPS worker (ADR 0013) answers `404`
-// on any path but its own.
-// `OPTIONS` is unusable here: the Node adapter short-circuits it with `204`.
+// Safe probe: an unsupported `HEAD` without credentials or body, which the
+// handler rejects with `405` before bearer validation or any work. The VPS
+// worker (ADR 0013) answers `404` on any path but its own.
 export const DESTINATION_SPECS = [
-  {
-    name: 'webhook',
-    method: 'HEAD',
-    expectedStatus: 405,
-    envKey: 'EVOLUTION_WEBHOOK_URL',
-    path: '/api/evolution-webhook',
-  },
   {
     name: 'worker',
     method: 'HEAD',
@@ -301,7 +290,6 @@ export function readinessFailures(report) {
 }
 
 export async function runReadiness({
-  webhookUrl,
   workerUrl,
   databaseUrl,
   probe = true,
@@ -312,7 +300,7 @@ export async function runReadiness({
 } = {}) {
   const destinations = [];
   for (const spec of DESTINATION_SPECS) {
-    const value = (spec.name === 'webhook' ? webhookUrl : workerUrl) || env[spec.envKey];
+    const value = workerUrl || env[spec.envKey];
     const destination = parseDestination(value, spec.name);
     if (!destination) {
       destinations.push({ ...spec, missing: true, dns: null, probe: null });
@@ -366,7 +354,6 @@ export async function main(argv = process.argv.slice(2)) {
     return index >= 0 ? argv[index + 1] : undefined;
   };
   const report = await runReadiness({
-    webhookUrl: valueAfter('--webhook-url'),
     workerUrl: valueAfter('--worker-url'),
     // Probing is mandatory; `--no-probe` is a diagnosis escape hatch that always
     // produces FALHA because readiness cannot be proven without it.

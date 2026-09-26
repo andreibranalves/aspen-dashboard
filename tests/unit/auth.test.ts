@@ -41,13 +41,13 @@ describe('auth guard', () => {
   });
 
   it('lets explicit machine routes reach their own bearer guards only', () => {
-    assert.equal(isMachineRoute('evolution-webhook'), true);
+    assert.equal(isMachineRoute('evolution-webhook'), false);
     assert.equal(isMachineRoute('quotation-delivery-worker'), false);
     assert.equal(isMachineRoute('quotation-follow-up-worker'), false);
     assert.equal(isMachineRoute('site-quote-leads'), true);
     assert.equal(isMachineRoute('whatsapp-backfill'), true);
     assert.equal(isMachineRoute('quotation-deliveries'), false);
-    assert.equal(isAuthenticated({ url: '/api/evolution-webhook' }, {}), true);
+    assert.equal(isAuthenticated({ url: '/api/evolution-webhook' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/site-quote-leads', method: 'POST' }, {}), true);
   });
   it('requires a valid signed cookie and never accepts the removed header fallback', async () => {

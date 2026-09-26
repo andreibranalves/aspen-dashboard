@@ -4,7 +4,6 @@ import { isValidSessionSecret, SESSION_COOKIE_NAME, verifySessionToken } from '.
 
 const AUTH_ROUTES = new Set(['login', 'logout']);
 const MACHINE_ROUTES = new Set([
-  'evolution-webhook',
   'site-quote-leads',
   'whatsapp-backfill',
 ]);

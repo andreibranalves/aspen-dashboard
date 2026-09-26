@@ -40,14 +40,9 @@ function runCli(args: string[], env: Record<string, string> = {}) {
   });
 }
 
-const MACHINE_ROUTES = new Set(['evolution-webhook']);
-
-// A local, side-effect-free server that mirrors the real request pipelines: the
-// Node adapter answers OPTIONS before routing, global auth runs before route
-// lookup, only the canonical machine routes bypass it, the VPS worker serves
-// `/wake` on its own, and each handler rejects unsupported HEAD with 405 before
-// any bearer check or work. It never parses webhooks, never wakes the worker and
-// never contacts Evolution.
+// A local, side-effect-free server that mirrors the VPS worker (ADR 0013): it
+// answers 404 on any path but `/wake`, and `/wake` rejects unsupported HEAD with
+// 405 before any bearer check or work. It never wakes anything.
 async function withRouteAwareServer(
   fn: (input: {
     port: number;
@@ -57,17 +52,11 @@ async function withRouteAwareServer(
   const requests: Array<{ method: string; path: string }> = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
-    const routeName = url.pathname.replace(/^\/api\/?/, '').split('/')[0];
     const method = String(request.method || '');
     requests.push({ method, path: url.pathname });
-    if (method === 'OPTIONS') {
-      response.writeHead(204);
-      response.end();
-      return;
-    }
-    if (url.pathname !== '/wake' && !MACHINE_ROUTES.has(routeName)) {
-      response.writeHead(401);
-      response.end('unauthorized');
+    if (url.pathname !== '/wake') {
+      response.writeHead(404);
+      response.end('not found');
       return;
     }
     if (method !== 'POST') {
@@ -87,19 +76,15 @@ async function withRouteAwareServer(
   }
 }
 
-function destination(name: 'webhook' | 'worker') {
-  const spec = DESTINATION_SPECS.find((entry: { name: string }) => entry.name === name)!;
-  return parseDestination(
-    name === 'webhook' ? 'https://app.example.com/api/evolution-webhook' : 'https://aspen-worker.example.com/wake',
-    spec.name,
-  )!;
+function destination() {
+  return parseDestination('https://aspen-worker.example.com/wake', 'worker')!;
 }
 
 function healthyReport() {
   return {
     destinations: DESTINATION_SPECS.map((spec: { name: string; expectedStatus: number }) => ({
       ...spec,
-      ...destination(spec.name as 'webhook' | 'worker'),
+      ...destination(),
       missing: false,
       dns: { ok: true, addresses: ['203.0.113.10'] },
       probe: { ok: true, status: spec.expectedStatus },
@@ -109,15 +94,15 @@ function healthyReport() {
 }
 
 test('destination parsing accepts http(s) origins and rejects credentials or other schemes', () => {
-  assert.deepEqual(parseDestination('https://app.example.com/api/evolution-webhook', 'webhook'), {
-    origin: 'https://app.example.com',
-    host: 'app.example.com',
-    path: '/api/evolution-webhook',
+  assert.deepEqual(parseDestination('https://aspen-worker.example.com/wake', 'worker'), {
+    origin: 'https://aspen-worker.example.com',
+    host: 'aspen-worker.example.com',
+    path: '/wake',
   });
-  assert.equal(parseDestination('', 'webhook'), null);
-  assert.throws(() => parseDestination('ftp://app.example.com', 'webhook'), /http ou https/);
+  assert.equal(parseDestination('', 'worker'), null);
+  assert.throws(() => parseDestination('ftp://aspen-worker.example.com', 'worker'), /http ou https/);
   assert.throws(
-    () => parseDestination('https://user:secret@app.example.com', 'webhook'),
+    () => parseDestination('https://user:secret@aspen-worker.example.com', 'worker'),
     /credenciais/,
   );
 });
@@ -132,19 +117,19 @@ test('destination DNS resolution reports addresses or a redacted failure', async
 });
 
 test('probe reports only the HTTP status and never throws', async () => {
-  const webhook = { ...destination('webhook'), method: 'GET' };
+  const worker = { ...destination(), method: 'GET' };
   const unauthorized = await probeDestination(
-    webhook,
+    worker,
     async () => new Response('nope', { status: 401 }),
   );
   assert.deepEqual(unauthorized, { ok: true, status: 401 });
-  const unreachable = await probeDestination(webhook, async () => {
+  const unreachable = await probeDestination(worker, async () => {
     throw Object.assign(new Error('fetch failed'), { name: 'TypeError', cause: { code: 'ECONNREFUSED' } });
   });
   assert.deepEqual(unreachable, { ok: false, error: 'CONNECTION_REFUSED' });
 });
 
-test('endpoint specs use the canonical paths with a side-effect-free HEAD probe', () => {
+test('the worker spec uses the canonical path with a side-effect-free HEAD probe', () => {
   assert.deepEqual(
     DESTINATION_SPECS.map(
       (spec: { name: string; method: string; expectedStatus: number; path: string }) => [
@@ -154,10 +139,7 @@ test('endpoint specs use the canonical paths with a side-effect-free HEAD probe'
         spec.path,
       ],
     ),
-    [
-      ['webhook', 'HEAD', 405, '/api/evolution-webhook'],
-      ['worker', 'HEAD', 405, '/wake'],
-    ],
+    [['worker', 'HEAD', 405, '/wake']],
   );
 });
 
@@ -210,7 +192,6 @@ test('an invalid backlog shape fails closed instead of becoming a green empty qu
 
 test('a malformed database result is reported as an unchecked, failing backlog', async () => {
   const report = await runReadiness({
-    webhookUrl: 'https://app.example.com/api/evolution-webhook',
     workerUrl: 'https://aspen-worker.example.com/wake',
     databaseUrl: 'postgres://user:pass@127.0.0.1:5432/aspen',
     env: {},
@@ -230,8 +211,7 @@ test('a malformed database result is reported as an unchecked, failing backlog',
 
 test('readiness report shows the destination host and fails on unresolved DNS without leaking URLs', async () => {
   const report = await runReadiness({
-    webhookUrl: 'https://old.example.com/api/evolution-webhook',
-    workerUrl: 'https://aspen-worker.example.com/wake',
+    workerUrl: 'https://old.example.com/wake',
     env: {},
     resolve: async (host: string) => {
       if (host === 'old.example.com') {
@@ -243,16 +223,13 @@ test('readiness report shows the destination host and fails on unresolved DNS wi
   });
   assert.equal(report.backlog.checked, false);
   const output = formatReadiness(report);
-  assert.match(output, /destino webhook: host=old\.example\.com dns=FAIL \(HOST_NOT_FOUND\)/);
-  assert.match(output, /destino worker: host=aspen-worker\.example\.com dns=OK/);
-  assert.match(output, /resultado: FALHA em webhook, fila/);
-  assert.doesNotMatch(output, /api\/evolution-webhook/);
+  assert.match(output, /destino worker: host=old\.example\.com dns=FAIL \(HOST_NOT_FOUND\)/);
+  assert.match(output, /resultado: FALHA em worker, fila/);
   assert.doesNotMatch(output, /\/wake/);
 });
 
 test('missing, wrong-route and failing destinations make readiness fail closed', async () => {
   const base = {
-    webhookUrl: 'https://app.example.com/api/evolution-webhook',
     workerUrl: 'https://aspen-worker.example.com/wake',
     probe: true,
   };
@@ -261,11 +238,11 @@ test('missing, wrong-route and failing destinations make readiness fail closed',
   const missing = await runReadiness({ ...base, env: {}, resolve });
   assert.deepEqual(
     missing.destinations.map((entry: { missing: boolean }) => entry.missing),
-    [false, false],
+    [false],
   );
   const noUrls = await runReadiness({ env: {}, resolve });
-  assert.deepEqual(readinessFailures(noUrls), ['webhook', 'worker', 'fila']);
-  assert.match(formatReadiness(noUrls), /destino webhook: AUSENTE/);
+  assert.deepEqual(readinessFailures(noUrls), ['worker', 'fila']);
+  assert.match(formatReadiness(noUrls), /destino worker: AUSENTE/);
 
   for (const status of [404, 500, 401]) {
     const report = await runReadiness({
@@ -274,23 +251,22 @@ test('missing, wrong-route and failing destinations make readiness fail closed',
       resolve,
       fetchImpl: async () => new Response('', { status }),
     });
-    // A wrong route (404), a broken route (500), or a protected path answered by
-    // global auth before route lookup (401) must fail: only the canonical
-    // handler reached with HEAD yields 405.
-    assert.ok(readinessFailures(report).includes('webhook'));
+    // A wrong route (404), a broken route (500) or an auth rejection (401) must
+    // fail: only the canonical handler reached with HEAD yields 405.
+    assert.ok(readinessFailures(report).includes('worker'));
     assert.match(formatReadiness(report), new RegExp(`probe=HTTP ${status} \\(esperado 405\\)`));
   }
 
-  // A machine route that is not the canonical endpoint can still answer 405, so
-  // the configured path itself must match the canonical one.
+  // Another route can still answer 405, so the configured path itself must match
+  // the canonical one.
   const wrongPath = await runReadiness({
     ...base,
-    webhookUrl: 'https://app.example.com/api/not-the-webhook',
+    workerUrl: 'https://aspen-worker.example.com/not-the-worker',
     env: {},
     resolve,
     fetchImpl: async () => new Response('', { status: 405 }),
   });
-  assert.ok(readinessFailures(wrongPath).includes('webhook'));
+  assert.ok(readinessFailures(wrongPath).includes('worker'));
   assert.match(formatReadiness(wrongPath), /rota=divergente/);
 });
 
@@ -312,15 +288,14 @@ test('an omitted probe can never produce an OK report', async () => {
     ...entry,
     probe: null,
   }));
-  assert.deepEqual(readinessFailures(omitted), ['webhook', 'worker']);
+  assert.deepEqual(readinessFailures(omitted), ['worker']);
   assert.match(formatReadiness(omitted), /probe=OMITIDO \(obrigatório\)/);
-  assert.match(formatReadiness(omitted), /resultado: FALHA em webhook, worker/);
+  assert.match(formatReadiness(omitted), /resultado: FALHA em worker/);
 
-  // The default path probes both endpoints; an explicit opt-out is a failure,
-  // never an implicit pass.
+  // The default path probes the worker; an explicit opt-out is a failure, never
+  // an implicit pass.
   let probes = 0;
   const probing = await runReadiness({
-    webhookUrl: 'https://app.example.com/api/evolution-webhook',
     workerUrl: 'https://aspen-worker.example.com/wake',
     env: {},
     resolve: async () => ({ address: '203.0.113.20' }),
@@ -329,12 +304,11 @@ test('an omitted probe can never produce an OK report', async () => {
       return new Response('', { status: 405 });
     },
   });
-  assert.equal(probes, 2);
+  assert.equal(probes, 1);
   assert.deepEqual(readinessFailures(probing), ['fila']);
 
   probes = 0;
   const optedOut = await runReadiness({
-    webhookUrl: 'https://app.example.com/api/evolution-webhook',
     workerUrl: 'https://aspen-worker.example.com/wake',
     probe: false,
     env: {},
@@ -345,25 +319,16 @@ test('an omitted probe can never produce an OK report', async () => {
     },
   });
   assert.equal(probes, 0);
-  assert.deepEqual(readinessFailures(optedOut), ['webhook', 'worker', 'fila']);
+  assert.deepEqual(readinessFailures(optedOut), ['worker', 'fila']);
 });
 
-test('the process probes both canonical endpoints with HEAD and fails closed with --no-probe', async () => {
+test('the process probes the worker with HEAD and fails closed with --no-probe', async () => {
   await withRouteAwareServer(async ({ port, requests }) => {
-    const urls = [
-      '--webhook-url',
-      `http://127.0.0.1:${port}/api/evolution-webhook`,
-      '--worker-url',
-      `http://127.0.0.1:${port}/wake`,
-    ];
+    const urls = ['--worker-url', `http://127.0.0.1:${port}/wake`];
     const probed = await runCli(urls, { DATABASE_URL: '' });
     assert.match(probed.stdout, /probe=HTTP 405 OK/g);
-    // Only unsupported HEAD reaches the handlers: no worker or webhook work ran.
-    assert.deepEqual(requests.map((entry) => entry.method), ['HEAD', 'HEAD']);
-    assert.deepEqual(requests.map((entry) => entry.path), [
-      '/api/evolution-webhook',
-      '/wake',
-    ]);
+    // Only unsupported HEAD reaches the handler: no worker work ran.
+    assert.deepEqual(requests, [{ method: 'HEAD', path: '/wake' }]);
     // No database is configured here, so the overall result is still FALHA; the
     // probes themselves must have run.
     assert.equal(probed.status, 1);
@@ -376,49 +341,27 @@ test('the process probes both canonical endpoints with HEAD and fails closed wit
   });
 });
 
-test('a wrong protected path returns 401 before route lookup and fails readiness', async () => {
+test('a wrong worker path answers 404 and fails readiness', async () => {
   await withRouteAwareServer(async ({ port, requests }) => {
     const base = `http://127.0.0.1:${port}`;
-    // Canonical machine routes reach the handler and answer HEAD with 405.
-    assert.deepEqual(
-      await probeDestination({ origin: base, path: '/api/evolution-webhook', method: 'HEAD' }),
-      { ok: true, status: 405 },
-    );
-    assert.deepEqual(
-      await probeDestination({
-        origin: base,
-        path: '/wake',
-        method: 'HEAD',
-      }),
-      { ok: true, status: 405 },
-    );
-    // Both canonical probes were side-effect-free HEAD requests.
-    assert.ok(requests.every((entry) => entry.method === 'HEAD'));
-
-    // A wrong protected path returns 401, the same blanket status the old
-    // accepted-method probe wrongly treated as healthy.
-    requests.length = 0;
-    assert.deepEqual(
-      await probeDestination({ origin: base, path: '/api/not-the-webhook', method: 'HEAD' }),
-      { ok: true, status: 401 },
-    );
-    assert.deepEqual(
-      await probeDestination({ origin: base, path: '/api/not-the-worker', method: 'HEAD' }),
-      { ok: true, status: 401 },
-    );
+    assert.deepEqual(await probeDestination({ origin: base, path: '/wake', method: 'HEAD' }), {
+      ok: true,
+      status: 405,
+    });
+    assert.deepEqual(await probeDestination({ origin: base, path: '/not-the-worker', method: 'HEAD' }), {
+      ok: true,
+      status: 404,
+    });
     assert.ok(requests.every((entry) => entry.method === 'HEAD'));
   });
 
   const report = await runReadiness({
-    webhookUrl: 'https://app.example.com/api/not-the-webhook',
-    workerUrl: 'https://app.example.com/api/not-the-worker',
+    workerUrl: 'https://aspen-worker.example.com/not-the-worker',
     env: {},
     resolve: async () => ({ address: '203.0.113.20' }),
-    fetchImpl: async () => new Response('', { status: 401 }),
+    fetchImpl: async () => new Response('', { status: 404 }),
   });
-  const failures = readinessFailures(report);
-  assert.ok(failures.includes('webhook'));
-  assert.ok(failures.includes('worker'));
+  assert.ok(readinessFailures(report).includes('worker'));
   assert.doesNotMatch(formatReadiness(report), /resultado: OK/);
 });
 
@@ -454,12 +397,7 @@ test('a database failure is reported without leaking the connection string', asy
 
   await withRouteAwareServer(async ({ port }) => {
     const child = await runCli(
-      [
-        '--webhook-url',
-        `http://127.0.0.1:${port}/api/evolution-webhook`,
-        '--worker-url',
-        `http://127.0.0.1:${port}/wake`,
-      ],
+      ['--worker-url', `http://127.0.0.1:${port}/wake`],
       { DATABASE_URL: `postgres://hermes:${secret}@127.0.0.1:1/aspen` },
     );
     assert.equal(child.status, 1);
@@ -504,18 +442,10 @@ test('an arbitrary driver code or secret-bearing message never reaches stdout, s
   const report = {
     destinations: [
       {
-        name: 'webhook',
-        missing: false,
-        expectedStatus: 405,
-        host: 'app.example.com',
-        dns: { ok: true, addresses: ['203.0.113.10'] },
-        probe: { ok: true, status: 405 },
-      },
-      {
         name: 'worker',
         missing: false,
         expectedStatus: 405,
-        host: 'app.example.com',
+        host: 'aspen-worker.example.com',
         dns: { ok: true, addresses: ['203.0.113.10'] },
         probe: { ok: true, status: 405 },
       },
@@ -539,12 +469,7 @@ test('an arbitrary driver code or secret-bearing message never reaches stdout, s
   // though the database is unreachable for an unrelated reason.
   await withRouteAwareServer(async ({ port }) => {
     const child = await runCli(
-      [
-        '--webhook-url',
-        `http://127.0.0.1:${port}/api/evolution-webhook`,
-        '--worker-url',
-        `http://127.0.0.1:${port}/wake`,
-      ],
+      ['--worker-url', `http://127.0.0.1:${port}/wake`],
       { DATABASE_URL: `postgres://hermes:${codeSecret}@127.0.0.1:1/aspen` },
     );
     const output = `${child.stdout}${child.stderr}`;
@@ -560,27 +485,16 @@ test('an arbitrary driver code or secret-bearing message never reaches stdout, s
 test('the real CLI exits nonzero for a failed readiness report without leaking paths', () => {
   const child = spawnSync(
     process.execPath,
-    [
-      SCRIPT,
-      '--webhook-url',
-      'https://nonexistent.invalid/api/evolution-webhook',
-      '--worker-url',
-      'https://nonexistent.invalid/wake',
-    ],
+    [SCRIPT, '--worker-url', 'https://nonexistent.invalid/wake'],
     { encoding: 'utf8', timeout: 30_000, env: { ...process.env, DOTENV_CONFIG_PATH: '/dev/null' } },
   );
   assert.equal(child.status, 1);
   assert.match(child.stdout, /resultado: FALHA/);
-  assert.doesNotMatch(child.stdout, /api\/evolution-webhook/);
+  assert.doesNotMatch(child.stdout, /\/wake/);
 });
 
 test('main reports a healthy run as acceptable only when destinations and backlog pass', async () => {
-  const failing = await main([
-    '--webhook-url',
-    'https://nonexistent.invalid/api/evolution-webhook',
-    '--worker-url',
-    'https://nonexistent.invalid/wake',
-  ]);
+  const failing = await main(['--worker-url', 'https://nonexistent.invalid/wake']);
   assert.equal(failing.ok, false);
   assert.match(failing.output, /resultado: FALHA/);
 });
@@ -591,12 +505,7 @@ test('a database credential on argv is refused and never echoed', async () => {
   for (const argv of [
     ['--database-url', url],
     [`--database-url=${url}`],
-    [
-      '--webhook-url',
-      'https://app.example.com/api/evolution-webhook',
-      '--database-url',
-      url,
-    ],
+    ['--worker-url', 'https://aspen-worker.example.com/wake', '--database-url', url],
   ]) {
     const result = await main(argv);
     assert.equal(result.ok, false);

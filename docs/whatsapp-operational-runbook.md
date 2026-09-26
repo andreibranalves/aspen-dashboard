@@ -26,7 +26,7 @@ WORKER_WAKE_SECRET
 
 Configure o webhook da Evolution com os eventos `MESSAGES_UPSERT` (mensagens do Atendimento) e `MESSAGES_UPDATE` (recibos), `webhookBase64: false` e um cabeçalho `Authorization` personalizado.
 
-A URL do webhook é `http://aspen-worker:8080/webhook/evolution`, pela rede Docker do VPS ([runbook](worker-runbook.md), passo 8), com o mesmo bearer em `EVOLUTION_WEBHOOK_SECRET` no `.env` do worker. Enquanto existir, `/api/evolution-webhook` na Vercel atende o mesmo contrato. Confirme que as duas rotas rejeitam requisições sem bearer e com bearer incorreto.
+A URL do webhook é `http://aspen-worker:8080/webhook/evolution`, pela rede Docker do VPS ([runbook](worker-runbook.md), passo 8), com o mesmo bearer em `EVOLUTION_WEBHOOK_SECRET` no `.env` do worker. Confirme que a rota rejeita requisições sem bearer e com bearer incorreto.
 
 Envios, respostas do Atendimento, retornos, recibos e efeitos do webhook saem do container `aspen-worker` no VPS ([ADR 0013](adr/0013-worker-whatsapp-no-vps.md), [runbook](worker-runbook.md)). Depois de gravar trabalho, a Function chama `POST WORKER_WAKE_URL` (`https://aspen-worker.srv1892439.hstgr.cloud/wake`) com `Authorization: Bearer <WORKER_WAKE_SECRET>`, o mesmo valor do `.env` do worker. O wake é só um aviso: o worker relê o banco, trabalha até esvaziar o que venceu e dorme até o próximo vencimento registrado, no máximo uma hora. Se o wake falhar, a tela avisa o operador e o trabalho sai nessa varredura.
 
@@ -44,34 +44,30 @@ Não registre valores dessas variáveis neste repositório, em comandos ou em re
 
 ## Prontidão do envio WhatsApp (somente leitura)
 
-Antes de investigar um relato de envio parcial, confirme que o webhook e o wake
-apontam para o destino ativo e que não há fila executável vencida. O comando não envia
-mensagem, não aciona o worker e não imprime credenciais, cabeçalhos ou telefones.
+Antes de investigar um relato de envio parcial, confirme que o wake aponta para o
+worker ativo e que não há fila executável vencida. O comando não envia mensagem, não
+aciona o worker e não imprime credenciais, cabeçalhos ou telefones. O webhook do
+Evolution só alcança o worker pela rede Docker do VPS; confira-o pelo passo 8 do
+[runbook do worker](worker-runbook.md).
 
 ```bash
 node scripts/whatsapp-delivery-readiness.mjs \
-  --webhook-url https://<host-ativo>/api/evolution-webhook \
-  --worker-url  https://aspen-worker.srv1892439.hstgr.cloud/wake
+  --worker-url https://aspen-worker.srv1892439.hstgr.cloud/wake
 ```
 
 A URL do banco vem apenas do ambiente protegido (`DATABASE_URL`). `--database-url` é
 proibido e encerra com código diferente de zero, sem ecoar o valor, para não expor
 credenciais no histórico do shell ou na listagem de processos.
 
-- `dns=FAIL` significa que o destino configurado não resolve — o webhook ou o wake
-  não chegam ao destino ativo, mesmo com o worker saudável.
+- `dns=FAIL` significa que o destino configurado não resolve — o wake não chega
+  ao worker ativo, mesmo com o worker saudável.
 - A sondagem é obrigatória: ela envia a menor requisição sem credenciais nem
-  corpo no método não suportado `HEAD` para exatamente `/api/evolution-webhook` e
-  o `/wake` do worker e reporta o status observado e o esperado,
-  sempre `405` (método rejeitado antes do bearer e de qualquer
-  trabalho). Nada é processado: na Vercel a pipeline libera a rota de máquina
-  canônica e o handler rejeita `HEAD` antes de qualquer ação; no VPS o worker
-  rejeita `HEAD` no `/wake`. Caminho protegido errado na Vercel responde `401`
-  antes do roteamento e reprova, caminho desconhecido no worker responde `404`
-  e reprova, e rota quebrada (`500`) também reprova. `OPTIONS` não é usado porque o adapter Node o responde
-  com `204` antes do roteamento. `probe=OMITIDO` (por exemplo com `--no-probe`,
-  que existe só para diagnóstico) também reprova e termina com código diferente
-  de zero.
+  corpo no método não suportado `HEAD` para exatamente o `/wake` do worker e
+  reporta o status observado e o esperado, sempre `405` (método rejeitado antes
+  do bearer e de qualquer trabalho). Caminho desconhecido no worker responde
+  `404` e reprova, e rota quebrada (`500`) também reprova. `probe=OMITIDO` (por
+  exemplo com `--no-probe`, que existe só para diagnóstico) também reprova e
+  termina com código diferente de zero.
 - `fila executável agora` conta etapas `queued`/`retry_scheduled` vencidas e
   reprova a verificação quando há atraso acima de 30 minutos.
 - Sem `DATABASE_URL` a fila não é verificada e o resultado é `FALHA`; informe a URL

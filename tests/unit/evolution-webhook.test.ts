@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
-import { Readable } from 'node:stream';
 import test from 'node:test';
 
-import apiHandler from '../../api/[...path].js';
-import {
-  handler as webhook,
-  MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
-  receiveEvolutionWebhook,
-} from '../../api/_modules/evolution-webhook.js';
+import { MAX_EVOLUTION_WEBHOOK_BODY_BYTES, receiveEvolutionWebhook } from '../../api/_modules/evolution-webhook.js';
 import type { IngestWhatsappConversationInput } from '../../api/_infrastructure/db/repositories/whatsapp-attendance-repository.js';
 import type {
   WebhookEffect,
   WebhookEffectInput,
   WebhookEffectRecord,
 } from '../../api/_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
+
+/** Como o worker atende: responde e depois aplica os efeitos adiados. */
+async function webhook(...args: Parameters<typeof receiveEvolutionWebhook>) {
+  const { response, afterResponse } = await receiveEvolutionWebhook(...args);
+  const applied = afterResponse ? await afterResponse() : true;
+  return { ...response, applied };
+}
 
 function memoryEffects() {
   const rows = new Map<string, WebhookEffectRecord>();
@@ -159,23 +160,6 @@ function dependencies() {
 }
 
 const authorization = { authorization: `Bearer ${webhookSecret}` };
-
-function responseFixture() {
-  return {
-    statusCode: 0,
-    value: undefined as unknown,
-    status(code: number) {
-      this.statusCode = code;
-      return this;
-    },
-    json(value: unknown) {
-      this.value = value;
-    },
-    send(value: unknown) {
-      this.value = value;
-    },
-  };
-}
 
 test('webhook projects UPSERT activity after recording it', async () => {
   const deps = dependencies();
@@ -325,44 +309,6 @@ test('webhook fails closed when machine secret is absent or shorter than 32 UTF-
     environment: { ...base, EVOLUTION_WEBHOOK_SECRET: 's'.repeat(31) },
   });
   assert.equal(shortSecret.statusCode, 401);
-});
-
-test('deployed catch-all rejects oversized valid webhook JSON before dispatch', async () => {
-  const body = JSON.stringify({ ...payload(), padding: 'x'.repeat(MAX_EVOLUTION_WEBHOOK_BODY_BYTES) });
-  assert.ok(Buffer.byteLength(body, 'utf8') > MAX_EVOLUTION_WEBHOOK_BODY_BYTES);
-
-  const response = responseFixture();
-  await apiHandler(
-    {
-      method: 'POST',
-      url: '/api/evolution-webhook',
-      headers: {
-        authorization: `Bearer ${webhookSecret}`,
-        'content-length': String(Buffer.byteLength(body, 'utf8')),
-      },
-      body,
-    } as any,
-    response as any,
-  );
-
-  assert.equal(response.statusCode, 413);
-  assert.deepEqual(response.value, { error: 'Corpo da requisição excede o limite permitido.' });
-});
-
-test('deployed catch-all rejects an unbounded readable webhook without content length', async () => {
-  const body = JSON.stringify({ ...payload(), padding: 'x'.repeat(MAX_EVOLUTION_WEBHOOK_BODY_BYTES) });
-  const request = Readable.from([body]);
-  Object.assign(request, {
-    method: 'POST',
-    url: '/api/evolution-webhook',
-    headers: { authorization: `Bearer ${webhookSecret}` },
-  });
-  const response = responseFixture();
-
-  await apiHandler(request as any, response as any);
-
-  assert.equal(response.statusCode, 413);
-  assert.deepEqual(response.value, { error: 'Corpo da requisição excede o limite permitido.' });
 });
 
 test('webhook normalizes the event name while preserving recognized receipt statuses', async () => {
@@ -585,7 +531,8 @@ test('webhook keeps a failed follow-up pending and resumes it without repeating 
   };
 
   const first = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
-  assert.equal(first.statusCode, 503);
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.applied, false);
   assert.equal(deps.activityCalls.length, 1);
   assert.deepEqual(deps.effectsRepository.failures, [['5511999990000@s.whatsapp.net|inbound-message-1', 'follow_up']]);
   assert.equal(deps.healthCalls.filter(([kind]) => kind === 'mark').length, 0, 'no ingestion watermark on failure');
@@ -593,6 +540,7 @@ test('webhook keeps a failed follow-up pending and resumes it without repeating 
   failFollowUp = false;
   const retry = await webhook(event(authorization, upsertPayload(upsertItem())), deps);
   assert.equal(retry.statusCode, 200);
+  assert.equal(retry.applied, true);
   assert.equal(deps.activityCalls.length, 1, 'the finished activity is not repeated');
   assert.equal(deps.followUpCalls.length, 1);
   const [row] = deps.effectsRepository.rows.values();
@@ -615,7 +563,8 @@ test('webhook stops at the first failed effect and leaves later events pending i
     ),
     deps,
   );
-  assert.equal(result.statusCode, 503);
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.applied, false);
   assert.equal(deps.activityCalls.length, 0);
   assert.equal(deps.followUpCalls.length, 0);
   assert.equal([...deps.effectsRepository.rows.values()].every((row) => !row.activityDone), true);

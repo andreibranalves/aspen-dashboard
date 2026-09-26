@@ -361,7 +361,7 @@ Todos os endpoints seguem o pipeline autenticado atual e o registro único em `a
 | `GET /api/whatsapp-messages?conversationId=...&clientRequestId=...` | Recupera uma operação cujo resultado HTTP se perdeu. | M1b |
 | `POST /api/whatsapp-message-actions` | Cancelamento elegível, retentativa segura ou resolução manual explícita; exige versão e ação permitida. | M1b |
 | `POST /api/quotation-delivery-worker` | Endpoint existente; ganha a varredura de mensagens depois do lote de orçamentos (§10.2). | M1b |
-| `POST /api/evolution-webhook` | Endpoint existente ampliado, preservando autenticação, conta e consumidores atuais. | M1a |
+| `POST /webhook/evolution` | No worker do VPS desde o [ADR 0013](adr/0013-worker-whatsapp-no-vps.md); preserva autenticação, conta e consumidores. | M1a |
 | `GET /api/whatsapp-message-media?id=...` | Acesso controlado ao conteúdo de anexo validado. | M2 |
 | `GET /api/atendimento-context?conversationId=...` | Contexto comercial resolvido pelo backend a partir da conversa local, com o serviço da extensão e adapter sem CORS. | M2 |
 | `POST /api/atendimento-client-link` | Confirma/remove vínculo pela mesma regra e versão do vínculo existente. | M2 |

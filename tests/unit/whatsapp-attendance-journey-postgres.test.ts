@@ -16,7 +16,7 @@ import { createPostgresWhatsappContactActivityRepository } from '../../api/_infr
 import { createPostgresWhatsappMessageOutboxRepository } from '../../api/_infrastructure/db/repositories/whatsapp-message-outbox-repository.js';
 import { createPostgresWhatsappWebhookEffectsRepository } from '../../api/_infrastructure/db/repositories/whatsapp-webhook-effects-repository.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
-import { handler as webhook } from '../../api/_modules/evolution-webhook.js';
+import { receiveEvolutionWebhook } from '../../api/_modules/evolution-webhook.js';
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
 import {
   createWhatsappConversationsHandler,
@@ -63,6 +63,13 @@ function request(httpMethod: string, body?: unknown, query: Record<string, strin
 
 function parsed(result: { statusCode: number; body?: string }) {
   return JSON.parse(result.body || '{}');
+}
+
+/** Como o worker atende: responde e depois aplica os efeitos adiados. */
+async function webhook(...args: Parameters<typeof receiveEvolutionWebhook>) {
+  const { response, afterResponse } = await receiveEvolutionWebhook(...args);
+  if (afterResponse) assert.equal(await afterResponse(), true);
+  return response;
 }
 
 function journey() {
