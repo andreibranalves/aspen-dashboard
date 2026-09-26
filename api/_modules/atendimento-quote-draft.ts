@@ -126,9 +126,11 @@ export function createAtendimentoQuoteDraftHandler(dependencies: QuoteDraftDepen
       const conversation = await attendance.getConversation(conversationId);
       if (!conversation) return json(404, { error: 'Conversa não encontrada.' });
       const telefone = conversation.identityStatus === 'conflict' ? '' : conversation.canonicalPhone || '';
-      // Same header the quote screen writes for a known client, then the client's own order messages.
-      const header = [`Nome: ${nome}`, ...(empresa ? [`Empresa: ${empresa}`] : []), `E-mail: ${email}`, `Telefone: ${telefone}`].join('\n');
-      const text = pedido ? `${header}\n\nPedido:\n${pedido}` : header;
+      // Same header the quote screen writes for a known client, with the order as its last line.
+      const text = [
+        `Nome: ${nome}`, ...(empresa ? [`Empresa: ${empresa}`] : []), `E-mail: ${email}`, `Telefone: ${telefone}`,
+        ...(pedido ? [`Pedido: ${pedido}`] : []),
+      ].join('\n');
       const lead = await leads.admitWhatsappDraft({
         source: 'whatsapp', externalId: conversationId, demandId,
         nome, empresa, email, telefone, ...(pedido ? { pedidoTexto: pedido } : {}), raw: { atendimentoDraft: { text } },

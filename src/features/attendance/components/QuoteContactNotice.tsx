@@ -1,32 +1,20 @@
-import type { ReactNode } from 'react';
 import InlineAlert from '@/components/shared/InlineAlert';
 import { Button } from '@/components/ui/button';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import type { AtendimentoContact } from '@/lib/api/atendimentoQuoteDraftApi';
 
-const messageTime = new Intl.DateTimeFormat('pt-BR', {
-  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo',
-});
-
-/** The client sent a name, e-mail and phone the operator can trust. */
+/** Name (written or from the WhatsApp profile), e-mail and phone are known. */
 export function contactComplete(contact: AtendimentoContact): boolean {
-  return Boolean(contact.name && contact.email && contact.phone);
+  return Boolean((contact.name || contact.profileName) && contact.email && contact.phone);
 }
 
-function Row({ label, value, source }: { label: string; value: ReactNode; source?: ReactNode }) {
+function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-3">
       <dt className="w-16 shrink-0 text-fg-muted">{label}</dt>
-      <dd className="min-w-0 break-words text-fg">
-        {value}
-        {source && <span className="text-xs text-fg-muted"> · {source}</span>}
-      </dd>
+      <dd className="min-w-0 break-words text-fg">{value}</dd>
     </div>
   );
-}
-
-function fromMessage(evidence: { at: string }) {
-  return `mensagem de ${messageTime.format(new Date(evidence.at))}`;
 }
 
 export default function QuoteContactNotice({ contact, pending, onContinue, onDismiss }: {
@@ -36,36 +24,15 @@ export default function QuoteContactNotice({ contact, pending, onContinue, onDis
   onDismiss: () => void;
 }) {
   const unread = contact.modelUnavailable ? 'Leitura indisponível' : 'Não encontrado na conversa';
-  const orderCount = contact.order?.messageIds.length || 0;
   return (
     <InlineAlert tone="warning" className="m-2" title="Dados do cliente incompletos">
       <div className="space-y-2">
         <dl className="space-y-1">
-          {contact.name ? (
-            <Row label="Nome" value={contact.name.value} source={fromMessage(contact.name)} />
-          ) : (
-            <Row label="Nome" value={unread} source={contact.profileName && `perfil do WhatsApp: ${contact.profileName}`} />
-          )}
-          {contact.company && <Row label="Empresa" value={contact.company.value} source={fromMessage(contact.company)} />}
-          {contact.email ? (
-            <Row label="E-mail" value={contact.email.value} source={fromMessage(contact.email)} />
-          ) : (
-            <Row label="E-mail" value="Não encontrado na conversa" />
-          )}
-          {contact.phone ? (
-            <Row label="Telefone" value={fmtPhone(contact.phone)} source="WhatsApp" />
-          ) : (
-            <Row label="Telefone" value="Não identificado" />
-          )}
-          {contact.order ? (
-            <Row
-              label="Pedido"
-              value={orderCount === 1 ? '1 mensagem do cliente' : `${orderCount} mensagens do cliente`}
-              source={`última de ${messageTime.format(new Date(contact.order.at))}`}
-            />
-          ) : (
-            <Row label="Pedido" value={unread} />
-          )}
+          <Row label="Nome" value={contact.name?.value || contact.profileName || unread} />
+          {contact.company && <Row label="Empresa" value={contact.company.value} />}
+          <Row label="E-mail" value={contact.email?.value || 'Não encontrado na conversa'} />
+          <Row label="Telefone" value={contact.phone ? fmtPhone(contact.phone) : 'Não identificado'} />
+          <Row label="Pedido" value={contact.order?.text || unread} />
         </dl>
         <div className="flex flex-wrap gap-2">
           <Button size="xs" disabled={pending} onClick={onContinue}>

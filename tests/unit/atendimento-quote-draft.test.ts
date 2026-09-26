@@ -75,7 +75,7 @@ test('the client order follows the header and becomes the demand text', async ()
   const order = 'Quero 100 camisetas pretas\r\nCom logo nas costas';
   const draft = await flow.post({ conversationId, demandId, contact: { name: 'Maria', order } });
   assert.equal(draft.status, 201);
-  assert.equal(draft.body.text, 'Nome: Maria\nE-mail: \nTelefone: 5511999999999\n\nPedido:\nQuero 100 camisetas pretas\nCom logo nas costas');
+  assert.equal(draft.body.text, 'Nome: Maria\nE-mail: \nTelefone: 5511999999999\nPedido: Quero 100 camisetas pretas\nCom logo nas costas');
   assert.equal(flow.rows.get(demandId)?.pedidoTexto, 'Quero 100 camisetas pretas\nCom logo nas costas');
   assert.equal((await flow.post({ conversationId, demandId: randomUUID(), contact: { order: 'x'.repeat(4_001) } })).status, 400);
 });

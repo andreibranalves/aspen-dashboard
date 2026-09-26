@@ -87,39 +87,43 @@ test('drops a name that is not written in the cited message', async () => {
   }
 });
 
-test('copies the order messages the model points at, verbatim and oldest first', async () => {
-  const hello = message('Bom dia!', 'inbound', '2026-09-25T12:00:00Z');
-  const order = message('Quero 100 camisetas pretas, tamanho M', 'inbound', '2026-09-25T12:01:00Z');
-  const reply = message('Claro, com estampa?', 'outbound', '2026-09-25T12:02:00Z');
-  const detail = message('  Com logo nas costas  ', 'inbound', '2026-09-25T12:03:00Z');
+const noName = { name: { value: '', messageId: '' }, company: { value: '', messageId: '' } };
+
+test('keeps the one-line order summary when its numbers are written in the cited messages', async () => {
+  const hello = message('Olá, gostaria de um orçamento para Cangas personalizadas.', 'inbound', '2026-09-25T12:00:00Z');
+  const reply = message('Qual a quantidade?', 'outbound', '2026-09-25T12:01:00Z');
+  const quantity = message('Caso nao tenha quantidade mínima, inicialmente 10', 'inbound', '2026-09-25T12:02:00Z');
   const flow = setup({
-    messages: [hello, order, reply, detail],
+    messages: [hello, reply, quantity],
     answer: () => ({
-      name: { value: '', messageId: '' }, company: { value: '', messageId: '' },
+      ...noName,
       // Out of order, repeated, an operator message and an unknown ID.
-      order: [detail.id, order.id, detail.id, reply.id, randomUUID()],
+      order: { summary: '  10 cangas   personalizadas ', messageIds: [quantity.id, hello.id, quantity.id, reply.id, randomUUID()] },
     }),
   });
   const result = await flow.post();
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.order, {
-    text: 'Quero 100 camisetas pretas, tamanho M\nCom logo nas costas',
-    messageIds: [order.id, detail.id],
-    at: '2026-09-25T12:03:00.000Z',
-  });
+  assert.deepEqual(result.body.order, { text: '10 cangas personalizadas', messageIds: [hello.id, quantity.id] });
 });
 
-test('no order when the model points at none, and the newest order messages fit the cap', async () => {
-  const none = setup({ messages: [message('Oi')], answer: () => ({ name: { value: '', messageId: '' }, company: { value: '', messageId: '' }, order: [] }) });
+test('a summary with a number the client did not write falls back to the cited messages', async () => {
+  const hello = message('Quero cangas personalizadas', 'inbound', '2026-09-25T12:00:00Z');
+  const detail = message('  Com logo  ', 'inbound', '2026-09-25T12:01:00Z');
+  const flow = setup({
+    messages: [hello, detail],
+    answer: () => ({ ...noName, order: { summary: '30 cangas personalizadas com logo', messageIds: [detail.id, hello.id] } }),
+  });
+  assert.deepEqual((await flow.post()).body.order, { text: 'Quero cangas personalizadas\nCom logo', messageIds: [hello.id, detail.id] });
+});
+
+test('no order without a cited client message, and the fallback keeps the newest messages within the cap', async () => {
+  const none = setup({ messages: [message('Oi')], answer: () => ({ ...noName, order: { summary: 'camisetas', messageIds: [] } }) });
   assert.equal((await none.post()).body.order, null);
 
   const old = message('a'.repeat(3_000), 'inbound', '2026-09-25T12:00:00Z');
   const recent = message('b'.repeat(3_000), 'inbound', '2026-09-25T12:01:00Z');
-  const capped = setup({
-    messages: [old, recent],
-    answer: () => ({ name: { value: '', messageId: '' }, company: { value: '', messageId: '' }, order: [old.id, recent.id] }),
-  });
-  assert.deepEqual((await capped.post()).body.order.messageIds, [recent.id]);
+  const capped = setup({ messages: [old, recent], answer: () => ({ ...noName, order: { summary: '', messageIds: [old.id, recent.id] } }) });
+  assert.deepEqual((await capped.post()).body.order, { text: 'b'.repeat(3_000), messageIds: [recent.id] });
 });
 
 test('reports a failed name read apart from a name that is not there', async () => {
