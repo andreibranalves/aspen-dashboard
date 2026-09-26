@@ -26,7 +26,7 @@ WORKER_WAKE_SECRET
 
 Configure o webhook da Evolution com os eventos `MESSAGES_UPSERT` (mensagens do Atendimento) e `MESSAGES_UPDATE` (recibos), `webhookBase64: false` e um cabeçalho `Authorization` personalizado.
 
-Confirme que `/api/evolution-webhook` rejeita requisições sem bearer e com bearer incorreto.
+A URL do webhook é `http://aspen-worker:8080/webhook/evolution`, pela rede Docker do VPS ([runbook](worker-runbook.md), passo 8), com o mesmo bearer em `EVOLUTION_WEBHOOK_SECRET` no `.env` do worker. Enquanto existir, `/api/evolution-webhook` na Vercel atende o mesmo contrato. Confirme que as duas rotas rejeitam requisições sem bearer e com bearer incorreto.
 
 Envios, respostas do Atendimento, retornos, recibos e efeitos do webhook saem do container `aspen-worker` no VPS ([ADR 0013](adr/0013-worker-whatsapp-no-vps.md), [runbook](worker-runbook.md)). Depois de gravar trabalho, a Function chama `POST WORKER_WAKE_URL` (`https://aspen-worker.srv1892439.hstgr.cloud/wake`) com `Authorization: Bearer <WORKER_WAKE_SECRET>`, o mesmo valor do `.env` do worker. O wake é só um aviso: o worker relê o banco, trabalha até esvaziar o que venceu e dorme até o próximo vencimento registrado, no máximo uma hora. Se o wake falhar, a tela avisa o operador e o trabalho sai nessa varredura.
 

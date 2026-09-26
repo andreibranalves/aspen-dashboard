@@ -27,6 +27,9 @@ import {
   quoteRevisions,
   whatsappConversations,
   quotations,
+  whatsappContactActivity,
+  whatsappMessages,
+  whatsappWebhookEffects,
 } from '../../api/_infrastructure/db/schema.js';
 import { closeDatabase } from '../../api/_infrastructure/db/client.js';
 import { createPostgresQuotationDeliveryOutboxRepository } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
@@ -38,6 +41,7 @@ import { postOperatorMessage } from '../../api/_modules/whatsapp-message-send.js
 import { createLiveWorkerCycle } from '../../api/_worker/live-cycle.js';
 import { createWorkerScheduler } from '../../api/_worker/scheduler.js';
 import { createWorkerServer } from '../../api/_worker/server.js';
+import { createWorkerEvolutionWebhook } from '../../api/_worker/webhook.js';
 import { resolveDisposableTestDatabaseUrl } from '../support/disposable-postgres.js';
 import { clearCommercialFixtures } from '../support/commercial-fixtures.ts';
 
@@ -45,6 +49,7 @@ const TEST_DATABASE_URL = resolveDisposableTestDatabaseUrl(process.env);
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');
 const databaseSkip = 'TEST_DATABASE_URL is required for the PostgreSQL-backed worker test.';
 const WAKE_SECRET = 'w'.repeat(32);
+const WEBHOOK_SECRET = 'e'.repeat(32);
 const INSTANCE = 'worker-test-instance';
 
 let sqlClient: Sql | undefined;
@@ -361,5 +366,97 @@ test(
     );
     assert.equal(schedule.dueNow, false);
     assert.equal(schedule.nextAt?.getTime(), leaseUntil.getTime());
+  },
+);
+
+test(
+  'the worker records an Evolution webhook, answers, then applies its effects once',
+  { skip: TEST_DATABASE_URL ? false : databaseSkip },
+  async () => {
+    await withEvolutionStub(async (stub) => {
+      setEnv({
+        DATABASE_URL: TEST_DATABASE_URL,
+        VERCEL_ENV: undefined,
+        APP_ENV: 'production',
+        EXTERNAL_WRITES_ENABLED: '1',
+        EVOLUTION_BASE_URL: stub.url,
+        EVOLUTION_API_KEY: 'stub-key',
+        EVOLUTION_INSTANCE: INSTANCE,
+        EVOLUTION_WEBHOOK_SECRET: WEBHOOK_SECRET,
+      });
+      const errors: string[] = [];
+      const scheduler = createWorkerScheduler({
+        runCycle: createLiveWorkerCycle((task) => errors.push(task)),
+        reportError: (task) => errors.push(task),
+      });
+      let wakes = 0;
+      const webhook = createWorkerEvolutionWebhook({
+        wake: () => {
+          wakes += 1;
+          scheduler.wake();
+        },
+      });
+      const worker = createWorkerServer({
+        sha: 'test',
+        evolutionWebhook: webhook.handle,
+        reportError: (task) => errors.push(task),
+      });
+      worker.listen(0, '127.0.0.1');
+      await once(worker, 'listening');
+      const address = worker.address();
+      assert.ok(address && typeof address === 'object');
+      const url = `http://127.0.0.1:${address.port}/webhook/evolution`;
+      const providerMessageId = `in-${randomUUID()}`;
+      const body = JSON.stringify({
+        event: 'MESSAGES_UPSERT',
+        instance: INSTANCE,
+        data: {
+          key: { id: providerMessageId, remoteJid: '5511900000003@s.whatsapp.net', fromMe: false },
+          pushName: 'Cliente Webhook',
+          messageTimestamp: Math.floor(Date.now() / 1000) - 30,
+          message: { conversation: 'Bom dia' },
+        },
+      });
+      try {
+        const refused = await fetch(url, { method: 'POST', body });
+        assert.equal(refused.status, 401);
+
+        for (let delivery = 0; delivery < 2; delivery += 1) {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${WEBHOOK_SECRET}`, 'Content-Type': 'application/json' },
+            body,
+          });
+          assert.equal(response.status, 200);
+          await webhook.settle();
+        }
+        await scheduler.stop();
+
+        assert.deepEqual(errors, []);
+        assert.equal(wakes, 2);
+        const messages = await db
+          .select({ direction: whatsappMessages.direction, body: whatsappMessages.body })
+          .from(whatsappMessages)
+          .where(eq(whatsappMessages.providerMessageId, providerMessageId));
+        assert.deepEqual(messages, [{ direction: 'inbound', body: 'Bom dia' }]);
+        const effects = await db
+          .select()
+          .from(whatsappWebhookEffects)
+          .where(eq(whatsappWebhookEffects.providerMessageId, providerMessageId));
+        assert.equal(effects.length, 1);
+        assert.ok(effects[0].activityDoneAt && effects[0].followUpDoneAt);
+        assert.equal(effects[0].attempts, 0);
+        const [activity] = await db
+          .select({ lastInbound: whatsappContactActivity.lastInboundProviderMessageId })
+          .from(whatsappContactActivity)
+          .where(eq(whatsappContactActivity.providerConversationId, '5511900000003@s.whatsapp.net'));
+        assert.equal(activity.lastInbound, providerMessageId);
+        assert.deepEqual(stub.requests, [], 'receiving a message sends nothing');
+      } finally {
+        await scheduler.stop();
+        worker.close();
+        await once(worker, 'close');
+      }
+    });
   },
 );
