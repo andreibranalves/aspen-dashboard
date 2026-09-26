@@ -1,4 +1,4 @@
-import { noticeWorkerWake } from '@/lib/workerWake';
+import { noticeWorkerWake } from '../workerWake.ts';
 
 export type FollowUpListView = 'ready' | 'waiting' | 'sent' | 'dismissed' | 'attention';
 export type FollowUpState =

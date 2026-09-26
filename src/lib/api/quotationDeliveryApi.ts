@@ -1,4 +1,4 @@
-import { noticeWorkerWake } from '@/lib/workerWake';
+import { noticeWorkerWake } from '../workerWake.ts';
 
 export type DeliveryState =
   | 'queued'
