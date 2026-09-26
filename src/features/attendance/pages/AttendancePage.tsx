@@ -28,6 +28,7 @@ import { enqueueDelivery } from '@/lib/api/quotationDeliveryApi';
 import { extractAtendimentoContact, prepareAtendimentoQuoteDraft, type AtendimentoContact } from '@/lib/api/atendimentoQuoteDraftApi';
 import ContextPanel from '@/features/attendance/components/ContextPanel';
 import ConversationList, { conversationName } from '@/features/attendance/components/ConversationList';
+import LoadingSpinner from '@/features/attendance/components/LoadingSpinner';
 import MessageComposer from '@/features/attendance/components/MessageComposer';
 import MessageTimeline, { type MessageActionName } from '@/features/attendance/components/MessageTimeline';
 import QuoteContactNotice, { contactComplete } from '@/features/attendance/components/QuoteContactNotice';
@@ -582,9 +583,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               className="h-full"
             />
           ) : thread.loading || !conversation ? (
-            <p className="px-4 py-6 text-sm text-fg-muted" role="status">
-              Carregando mensagens…
-            </p>
+            <LoadingSpinner label="Carregando mensagens" className="flex-1" />
           ) : (
             <>
               <header className="flex items-center gap-2 border-b border-border-subtle px-3 py-2.5">

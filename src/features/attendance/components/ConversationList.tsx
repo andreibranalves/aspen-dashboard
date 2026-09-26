@@ -3,6 +3,7 @@ import EmptyState from '@/components/shared/EmptyState';
 import { EntityAvatar } from '@/components/shared/EntityIdentity';
 import ErrorState from '@/components/shared/ErrorState';
 import { Button } from '@/components/ui/button';
+import LoadingSpinner from '@/features/attendance/components/LoadingSpinner';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { contactPhotoUrl, type AttendanceConversation } from '@/lib/api/attendanceApi';
@@ -49,7 +50,7 @@ export default function ConversationList({
     return <ErrorState title="Não foi possível carregar as conversas" description={error} onRetry={onRetry} />;
   }
   if (loading && items.length === 0) {
-    return <p className="px-4 py-6 text-sm text-fg-muted" role="status">Carregando conversas…</p>;
+    return <LoadingSpinner label="Carregando conversas" />;
   }
   if (items.length === 0) {
     return filtered ? (
