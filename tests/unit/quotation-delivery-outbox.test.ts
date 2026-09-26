@@ -963,7 +963,7 @@ test('expired reconciliation is promoted before due processing', async () => {
   assert.equal(reconciling.state, 'reconciling');
   clock.value = new Date(start.getTime() + 120_000);
   const batch = await module.processDue(20);
-  assert.deepEqual(batch, { processed: 0, remaining: false });
+  assert.deepEqual(batch, { processed: 1, remaining: false });
   assert.equal((await module.get({ deliveryId: reconciling.id }))?.state, 'needs_review');
 });
 
@@ -1345,6 +1345,35 @@ test('processDue continues short inter-step delays within its time budget', asyn
     delayed.transport.calls.map((call) => call.step.position),
     [0, 1, 2]
   );
+});
+
+test('processDue stops before the next claim once the worker is stopping', async () => {
+  const stop = new AbortController();
+  const steps = [textStep(0), textStep(1, 1_000)];
+  const delayed = dependencies({
+    steps,
+    // Only the stop ends this wait.
+    sleep: () => {
+      stop.abort();
+      return new Promise<void>(() => {});
+    },
+  });
+  await delayed.repository.enqueue({ ...plan(steps), flowId: 'worker-stopping' });
+
+  const batch = await delayed.module.processDue(3, undefined, stop.signal);
+
+  assert.deepEqual(batch, { processed: 1, remaining: true });
+  assert.deepEqual(
+    delayed.transport.calls.map((call) => call.step.position),
+    [0]
+  );
+});
+
+test('processDue counts expired reconciliations and keeps a full expiry batch remaining', async () => {
+  const { module, repository } = dependencies({ steps: [textStep(0)] });
+  repository.expireReconciliations = async (limit: number) => limit;
+
+  assert.deepEqual(await module.processDue(2), { processed: 2, remaining: true });
 });
 
 // Instrument the deadline timers created by `processDue` (two per invocation:

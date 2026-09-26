@@ -13,7 +13,7 @@ homologação.
   de `PRODUCTION_DATABASE_URL`
   ([client.ts](../api/_infrastructure/db/client.ts)). A comparação trata
   `ep-x` e `ep-x-pooler` do Neon como o mesmo banco.
-- Evolution, e-mail, Blob, QStash e Google Data Manager só escrevem com
+- Evolution, e-mail, Blob, o wake do worker e Google Data Manager só escrevem com
   `VERCEL_ENV` de produção, `APP_ENV=production` e
   `EXTERNAL_WRITES_ENABLED=1` ([external-writes.ts](../api/_shared/external-writes.ts)).
   Envio real só acontece em Production.

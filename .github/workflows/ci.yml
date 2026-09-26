@@ -224,6 +224,12 @@ jobs:
           done
           docker logs aspen-worker
           exit 1
+      - name: Render
+        run: >-
+          docker run --rm --init --read-only --tmpfs /tmp:size=512m
+          --cap-drop ALL --security-opt no-new-privileges:true --memory 1g --network none
+          -v "$PWD/deploy/worker/render-smoke.mjs:/smoke.mjs:ro"
+          aspen-worker:ci node /smoke.mjs
 
   smoke:
     needs: [build]

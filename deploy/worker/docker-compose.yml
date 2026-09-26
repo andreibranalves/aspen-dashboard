@@ -19,7 +19,8 @@ services:
     security_opt:
       - no-new-privileges:true
     mem_limit: 1g
-    stop_grace_period: 30s
+    # Cobre o passo de envio em curso; ver SHUTDOWN_GRACE_MS em api/_worker/main.ts.
+    stop_grace_period: 90s
     # Gate do deploy (`up --wait`). Fica aqui, e não só na imagem, para um commit
     # não conseguir desligá-lo. Não toca o banco.
     healthcheck:

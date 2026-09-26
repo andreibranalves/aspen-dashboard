@@ -43,9 +43,8 @@ O comando:
    credenciais de WhatsApp (`EVOLUTION_*`), e-mail (`RESEND_*`, `SMTP_*`), IA
    (`OPENROUTER_*`), storage (`BLOB_*`, `QUOTATION_BLOB_*`), KV (`KV_*`), Ads
    (`GOOGLE_ADS_*`, `GOOGLE_DATA_MANAGER_*`), Typebot/Meta (`TYPEBOT_*`,
-   `META_CAPI_*`, `META_PIXEL_*`), publicação QStash/cron (`QSTASH_*`,
-   `CRON_SECRET`), follow-up (`QUOTATION_FOLLOW_UP_*`, incluindo a URL do
-   worker), origem da extensão de navegador
+   `META_CAPI_*`, `META_PIXEL_*`), wake do worker e cron (`WORKER_WAKE_*`,
+   `CRON_SECRET`), follow-up (`QUOTATION_FOLLOW_UP_*`), origem da extensão de navegador
    (`WHATSAPP_CONTEXT_EXTENSION_ORIGIN`), tokens de ingestão (`QUOTE_LEADS_*`,
    incluindo o token anterior que a machine-auth ainda aceita), segredos de
    sessão (`APP_PASSWORD_HASH`, `APP_SESSION_SECRET`, `E2E_*`), URLs de banco

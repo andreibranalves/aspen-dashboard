@@ -121,6 +121,12 @@ async function pdfWithSystemBrowser(
 
 // ── Strategy 2: @sparticuz/chromium + puppeteer-core (serverless fallback) ──
 
+// A imagem do aspen-worker extrai o chromium no build, porque o /tmp do
+// container é noexec; sem a variável, o pacote extrai no /tmp.
+async function sparticuzExecutablePath(chromium: { executablePath(): Promise<string> }) {
+  return getEnv('SPARTICUZ_CHROMIUM_PATH') || chromium.executablePath();
+}
+
 async function pdfWithSparticuz(html: string, opts: { timeout?: number } = {}): Promise<Buffer> {
   const timeout = opts.timeout || 60000;
 
@@ -135,7 +141,7 @@ async function pdfWithSparticuz(html: string, opts: { timeout?: number } = {}): 
 
   const browser = await puppeteer.launch({
     args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
-    executablePath: await chromium.executablePath(),
+    executablePath: await sparticuzExecutablePath(chromium),
     timeout,
   });
 
@@ -259,7 +265,7 @@ async function webpWithSparticuz(html: string): Promise<Buffer[]> {
   const chromium = chromiumMod.default;
   const browser = await puppeteer.launch({
     args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
-    executablePath: await chromium.executablePath(),
+    executablePath: await sparticuzExecutablePath(chromium),
     timeout: 60000,
   });
   try {

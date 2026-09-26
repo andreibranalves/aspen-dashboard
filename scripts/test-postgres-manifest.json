@@ -50,5 +50,6 @@
   "tests/unit/whatsapp-contact-activity-postgres.test.ts",
   "tests/unit/whatsapp-crm-postgres.test.ts",
   "tests/unit/whatsapp-message-outbox-postgres.test.ts",
-  "tests/unit/whatsapp-webhook-effects-postgres.test.ts"
+  "tests/unit/whatsapp-webhook-effects-postgres.test.ts",
+  "tests/unit/worker-cycle-postgres.test.ts"
 ]

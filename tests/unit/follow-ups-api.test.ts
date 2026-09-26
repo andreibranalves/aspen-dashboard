@@ -139,23 +139,26 @@ test('POST approve is blocked when the kill switch is off', async () => {
   assert.equal(JSON.parse(result.body || '{}').error, 'Envio automático desativado');
 });
 
-test('POST approve publishes after insert and keeps the row if publish fails', async () => {
-  const published: unknown[] = [];
+test('POST approve wakes the worker after insert and reports a refused wake', async () => {
+  let wakes = 0;
   const handler = createFollowUpsHandler({
     followUpModule: module(),
     environment: enabledEnv,
-    now: () => now,
-    publish: async (input) => {
-      published.push(input);
-      throw new Error('qstash down');
+    wakeWorker: async () => {
+      wakes += 1;
+      return 'failed';
     },
   });
   const result = await handler(
     event('POST', { quotation_id: quotationId, eligibility_version: version, message: 'Olá.' }),
   );
   assert.equal(result.statusCode, 201);
-  assert.deepEqual(JSON.parse(result.body || '{}'), { follow_up_id: followUpId, state: 'approved' });
-  assert.equal(published.length, 1);
+  assert.deepEqual(JSON.parse(result.body || '{}'), {
+    follow_up_id: followUpId,
+    state: 'approved',
+    worker_wake: 'failed',
+  });
+  assert.equal(wakes, 1);
 });
 
 test('PATCH dismiss returns dismissed even when writes are off', async () => {

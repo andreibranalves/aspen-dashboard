@@ -15,6 +15,7 @@ import {
   type DeliveryListResult,
 } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import { isRevisionUnavailableFailure, type DeliveryState } from './quotation-delivery-state.js';
+import { wakeWorker, type WorkerWakeResult } from '../_infrastructure/integrations/worker/client.js';
 
 const DELIVERY_STATES: readonly DeliveryState[] = [
   'queued',
@@ -31,7 +32,21 @@ type PublicDeliveryView = Record<string, unknown>;
 
 export type QuotationDeliveriesDependencies = {
   deliveryModule?: QuotationDeliveryModule;
+  wakeWorker?: typeof wakeWorker;
 };
+
+/**
+ * Avisa o worker do VPS quando o envio ainda tem passo que só ele manda
+ * (ADR 0013). `undefined` quando não há nada para ele.
+ */
+export async function wakeWorkerFor(
+  delivery: Pick<DeliveryAggregate, 'steps'>,
+  wake: typeof wakeWorker = wakeWorker,
+): Promise<WorkerWakeResult | undefined> {
+  const steps = Array.isArray(delivery.steps) ? delivery.steps : [];
+  if (!steps.some((step) => step.state === 'queued' || step.state === 'retry_scheduled')) return undefined;
+  return wake();
+}
 
 class HandlerInputError extends Error {
   readonly statusCode = 400;
@@ -385,7 +400,8 @@ export async function handler(
       note: resolution.note,
       resolvedBy: 'authenticated-operator',
     });
-    return json(200, toPublicDeliveryView(resolved, { includePhone: true }));
+    const workerWake = await wakeWorkerFor(resolved, dependencies.wakeWorker);
+    return json(200, { ...toPublicDeliveryView(resolved, { includePhone: true }), worker_wake: workerWake });
   } catch (error) {
     return deliveryErrorResponse(error);
   }

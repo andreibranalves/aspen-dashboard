@@ -1,4 +1,5 @@
 import { apiGet, apiPatch, apiPost } from '@/lib/api/api';
+import { noticeWorkerWake } from '@/lib/workerWake';
 
 export type AttendanceStatus = 'open' | 'waiting_customer' | 'closed' | 'ignored';
 export type AttendanceStatusFilter = AttendanceStatus | 'active';
@@ -164,6 +165,7 @@ export async function sendOperatorMessage(input: {
   const body = await apiPost<{ message: SendResult }>('/whatsapp-messages', {
     ...input, attachmentIds: input.attachmentId ? [input.attachmentId] : [],
   });
+  noticeWorkerWake(body);
   return body.message;
 }
 

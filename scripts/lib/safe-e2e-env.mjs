@@ -74,9 +74,9 @@ const OPERATIONAL_KEY_PATTERNS = [
   /^TYPEBOT_/,
   /^META_(?:CAPI|PIXEL)_/,
   /^QUOTE_LEADS_/,
-  // QStash publication and cron/worker auth. These are real credentials and
-  // remote targets consumed by the follow-up pipeline and delivery workers.
-  /^QSTASH_/,
+  // Worker wake and cron auth. These are real credentials and remote targets
+  // of the VPS worker and the backfill.
+  /^WORKER_WAKE_/,
   /^CRON_/,
   /^QUOTATION_FOLLOW_UP_/,
   // The browser extension origin alters the server CORS headers.

@@ -4,8 +4,7 @@ export type ExternalWriteProvider =
   | 'evolution'
   | 'email'
   | 'google-data-manager'
-  | 'blob'
-  | 'qstash';
+  | 'blob';
 
 type Environment = typeof process.env;
 

@@ -219,6 +219,30 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
 });
 
+test('a refused worker wake after a resend warns the operator', async ({ page }) => {
+  const needsReview = delivery('needs_review', { number: 'ORC-WAKE' });
+  let requeued = null;
+  await mockList(page, (route) => {
+    if (route.request().method() === 'PATCH') {
+      expect(route.request().postDataJSON().decision).toBe('confirmed_not_received');
+      requeued = delivery('queued', { id: needsReview.id, number: 'ORC-WAKE' });
+      return json(route, { ...requeued, worker_wake: 'failed' });
+    }
+    return json(route, listResponse([requeued || needsReview]));
+  });
+  await page.route('**/api/communication-send-events**', (route) =>
+    json(route, { success: true, items: [], total: 0, source: 'postgres' })
+  );
+
+  await page.goto('/#/whatsapp-deliveries');
+  await page.getByRole('button', { name: 'Abrir detalhes de ORC-WAKE, linha 1' }).click();
+  const drawer = page.getByRole('dialog', { name: needsReview.id });
+  await drawer.getByRole('button', { name: 'Confirmado que não recebeu, reenviar' }).click();
+  await page.getByLabel('Justificativa').fill('Cliente avisou por ligação que não recebeu.');
+  await page.getByRole('button', { name: 'Confirmar resolução' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'O worker de envio não respondeu.' })).toBeVisible();
+});
+
 test('limpar fila permite cancelar a confirmação e só então cancela tentativas pendentes', async ({
   page,
 }) => {
@@ -249,22 +273,14 @@ test('limpar fila permite cancelar a confirmação e só então cancela tentativ
   expect(clearRequests).toBe(1);
 });
 
-test('browser absent while cron completes delivery leaves one durable delivered row', async ({ page, context }) => {
+test('browser absent while the worker completes delivery leaves one durable delivered row', async ({ page }) => {
   let durableState = 'processing';
-  let workerCalls = 0;
-  let transportCalls = 0;
   let sendCalls = 0;
   const cronRow = () =>
     delivery(durableState, { number: 'ORC-CRON-COMPLETE', id: 'delivery-cron-complete' });
   await page.route('**/api/send-whatsapp-flow', (route) => {
     sendCalls += 1;
     return json(route, { success: false, error: 'browser send must not run' }, 500);
-  });
-  await context.route('**/api/quotation-delivery-worker', (route) => {
-    workerCalls += 1;
-    transportCalls += 1;
-    durableState = 'delivered';
-    return json(route, { processed: 1, remaining: false });
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
     const url = new globalThis.URL(route.request().url());
@@ -279,12 +295,8 @@ test('browser absent while cron completes delivery leaves one durable delivered 
   const drawerSteps = drawer.getByLabel('Passos da entrega ORC-CRON-COMPLETE');
   await expect(drawerSteps.getByText('Enviando', { exact: true })).toBeVisible();
 
-  const cronPage = await context.newPage();
-  const workerResponse = await cronPage.goto('/api/quotation-delivery-worker');
-  expect(workerResponse?.status()).toBe(200);
-  await expect(workerResponse).toBeTruthy();
-  expect(await workerResponse.json()).toEqual({ processed: 1, remaining: false });
-  await cronPage.close();
+  // O worker do VPS conclui o envio fora do navegador (ADR 0013).
+  durableState = 'delivered';
 
   // The list and the open detail poll the durable state: no browser reload needed.
   await expect(page.getByLabel(/^Estado: Entregue\./)).toBeVisible({ timeout: 15000 });
@@ -293,8 +305,6 @@ test('browser absent while cron completes delivery leaves one durable delivered 
   await page.reload();
   await expect(page.getByText('ORC-CRON-COMPLETE', { exact: true })).toHaveCount(1);
   await expect(page.getByLabel(/^Estado: Entregue\./)).toBeVisible();
-  expect(workerCalls).toBe(1);
-  expect(transportCalls).toBe(1);
   expect(sendCalls).toBe(0);
   expect(durableState).toBe('delivered');
 });

@@ -14,7 +14,7 @@ test('local E2E strips operational credentials and fixes test runtime before dis
     APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1',
     VERCEL_ENV: 'production', VERCEL: '1',
     RESEND_API_KEY: 'sentinel', BLOB_READ_WRITE_TOKEN: 'sentinel',
-    APP_SESSION_SECRET: 'sentinel', QSTASH_TOKEN: 'sentinel', UNKNOWN_SECRET: 'sentinel',
+    APP_SESSION_SECRET: 'sentinel', WORKER_WAKE_SECRET: 'sentinel', UNKNOWN_SECRET: 'sentinel',
     NODE_OPTIONS: '--import /hostile.mjs', NODE_PATH: '/hostile',
     npm_config_node_options: '--import /hostile.mjs',
     DOTENV_CONFIG_PATH: '/operational.env',
