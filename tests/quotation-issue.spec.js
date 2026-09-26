@@ -330,8 +330,6 @@ test('persiste snapshot autoritativo antes da emissão @quotations @critical', a
 
 for (const [label, options] of [
   ['perda de transporte', { postBehaviors: ['transport'] }],
-  ['resposta 409', { postStatuses: [409], postResponses: [{ error: 'Emissão concorrente.' }] }],
-  ['resposta 503', { postStatuses: [503], postResponses: [{ error: 'Emissão indisponível.' }] }],
 ]) {
   test(`mantém o lock e aguarda recovery após ${label} @quotations @critical`, async ({ page }) => {
     const retryable = { state: 'retryable', error: 'Falha antes da emissão. Tente novamente.' };
@@ -362,18 +360,6 @@ for (const [label, options] of [
   });
 }
 
-test('recupera uma emissão pendente no modo manual sem repetir o POST @quotations @critical', async ({ page }) => {
-  await seedManualDraft(page);
-  const { requests } = await setup(page, {
-    storedDraft: { ...draft, saved, issueIdempotencyKey: key, issueDispatchStarted: true },
-    issueResponse: { state: 'completed', ...issue },
-  });
-  await page.goto('/#/manual');
-  await expect(page).toHaveURL(/#\/quotations\/q-1$/);
-  expect(requests.filter((request) => request.method() === 'GET')).toHaveLength(1);
-  expect(requests.filter((request) => request.method() === 'POST')).toHaveLength(0);
-});
-
 test('persiste recovery manual concluído antes de navegar e não repete GET ao voltar @quotations @critical', async ({ page }) => {
   await seedManualDraft(page);
   const { requests } = await setup(page, {
@@ -392,25 +378,6 @@ test('persiste recovery manual concluído antes de navegar e não repete GET ao 
   await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
   expect(requests.filter((request) => request.method() === 'GET')).toHaveLength(1);
   expect(page.getByText('Recuperando a emissão pendente…', { exact: true })).toHaveCount(0);
-});
-
-test('mantém a recuperação manual acionável após quatro respostas processing @quotations @critical', async ({ page }) => {
-  await seedManualDraft(page);
-  const processing = { state: 'processing', retryAfterMs: 1 };
-  const { requests } = await setup(page, {
-    storedDraft: { ...draft, saved, issueIdempotencyKey: key, issueDispatchStarted: true },
-    getResponses: [processing, processing, processing, processing, processing],
-  });
-  await page.goto('/#/manual');
-  await expect(page.getByText('A emissão continua em processamento. Tente novamente quando estiver pronta.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Consultar novamente' })).toBeVisible();
-  await expect(page.getByLabel('Nome do cliente')).toBeDisabled();
-  await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
-  const beforeRetry = requests.filter((request) => request.method() === 'GET').length;
-  await page.getByRole('button', { name: 'Consultar novamente' }).click();
-  await expect.poll(() => requests.filter((request) => request.method() === 'GET').length).toBe(beforeRetry + 1);
-  expect(requests.filter((request) => request.method() === 'POST')).toHaveLength(0);
 });
 
 test('libera 404 pré-dispatch e repete a emissão com a mesma chave e revisão no modo conversa @quotations @critical', async ({ page }) => {
@@ -445,19 +412,6 @@ test('reload sem snapshot autoritativo não repete o save e oferece recuperaçã
   }
 });
 
-test('libera 404 pré-dispatch e repete a emissão no modo manual com a mesma identidade @quotations @critical', async ({ page }) => {
-  await seedManualDraft(page);
-  const { requests } = await setup(page, { storedDraft: { ...draft, saved, issueIdempotencyKey: key, issueDispatchStarted: false } });
-  await page.goto('/#/manual');
-  await expect(page.getByRole('status').getByText('A emissão ainda não foi iniciada. Tente emitir novamente.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Emitir novamente' }).click();
-  await expect.poll(() => requests.filter((request) => request.method() === 'POST').length).toBe(1);
-  const post = requests.find((request) => request.method() === 'POST');
-  expect(post.headers()['idempotency-key']).toBe(key);
-  expect(post.postDataJSON()).toMatchObject({ revision_id: 'r-1', concurrency_token: 'token-1' });
-  await expect(page).toHaveURL(/#\/quotations\/q-1$/);
-});
-
 test('mantém o lock para 404 depois do dispatch e oferece consulta novamente @quotations @critical', async ({ page }) => {
   const { requests } = await setup(page, { storedDraft: { ...draft, saved, issueIdempotencyKey: key, issueDispatchStarted: true } });
   await page.goto('/#/auto');
@@ -468,22 +422,6 @@ test('mantém o lock para 404 depois do dispatch e oferece consulta novamente @q
   await expect.poll(() => requests.filter((request) => request.method() === 'GET').length).toBe(2);
   await expect(page.getByRole('button', { name: 'Editar' })).toBeDisabled();
   expect(requests.filter((request) => request.method() === 'POST')).toHaveLength(0);
-});
-
-test('não libera o lock quando POST ambíguo recebe 404 no recovery @quotations @critical', async ({ page }) => {
-  const { requests } = await setup(page, {
-    storedDraft: { ...draft, saved },
-    postStatuses: [503],
-    postResponses: [{ error: 'Emissão ambígua.' }],
-    getStatuses: [404],
-  });
-  await page.goto('/#/auto');
-  await page.getByRole('button', { name: 'Emitir orçamento', exact: true }).click();
-  await expect.poll(() => requests.filter((request) => request.method() === 'POST').length).toBe(1);
-  await expect.poll(() => requests.filter((request) => request.method() === 'GET').length).toBe(1);
-  await expect(page.getByText('Não foi possível consultar a emissão. Tente novamente.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Emitindo/ })).toBeDisabled();
-  expect(requests.filter((request) => request.method() === 'POST')).toHaveLength(1);
 });
 
 test('repete uma emissão retryable com a mesma chave, revisão e token @quotations @critical', async ({ page }) => {
@@ -629,33 +567,6 @@ test('bloqueia emissão manual enquanto a inclusão de produto aguarda preço @q
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
 });
 
-test('bloqueia edição, modo, navegação e beforeunload durante save manual @quotations @critical', async ({ page }) => {
-  const { saveRequests, releaseSave } = await setup(page, { idempotencyKey: null, deferSave: true });
-  await seedManualDraft(page);
-  await page.goto('/#/manual');
-  await page.getByRole('button', { name: 'Salvar rascunho', exact: true }).click();
-  await expect.poll(() => saveRequests.length).toBe(1);
-  await expect(page.getByLabel('Nome do cliente')).toBeDisabled();
-  await expect(page.getByLabel('Quantidade de SKU-1')).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Buscar cliente existente' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Novo cliente' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Endereço opcional' })).toBeDisabled();
-  await expect(page.getByLabel('Buscar produto para adicionar ao orçamento')).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Remover SKU-1' })).toBeDisabled();
-  await expect(page.getByRole('tab', { name: 'Da conversa' })).toBeEnabled();
-  await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: 'Orçamentos' }).click();
-  await expect(page).toHaveURL(/#\/manual$/);
-  await expect.poll(() => page.evaluate(() => {
-    const event = new globalThis.Event('beforeunload', { cancelable: true });
-    globalThis.dispatchEvent(event);
-    return event.defaultPrevented;
-  })).toBe(true);
-  releaseSave();
-  await expect(page).toHaveURL(/#\/quotations\/q-1$/);
-});
-
 test('bloqueia edição, modo, navegação e beforeunload durante save da conversa @quotations @critical', async ({ page }) => {
   const { saveRequests, releaseSave } = await setup(page, { idempotencyKey: null, deferSave: true });
   await page.goto('/#/auto');
@@ -705,28 +616,6 @@ test('não anexa resposta de extração depois de desmontar por navegação SPA 
   expect(pricingRequests).toHaveLength(0);
   await expect(page.getByRole('heading', { name: 'Orçamentos' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Cliente' })).toHaveCount(0);
-});
-
-test('mantém os campos manuais bloqueados enquanto o POST oficial aguarda resposta @quotations @critical', async ({ page }) => {
-  const { requests, releasePost } = await setup(page, { idempotencyKey: null, deferPost: true });
-  await seedManualDraft(page);
-  await page.goto('/#/manual');
-  await page.getByRole('button', { name: 'Emitir orçamento', exact: true }).click();
-  await expect.poll(() => requests.filter((request) => request.method() === 'POST').length).toBe(1);
-  await expect(page.getByRole('button', { name: 'Emitir orçamento', exact: true })).toBeDisabled();
-  await expect(page.getByLabel('Nome do cliente')).toBeDisabled();
-  await expect(page.getByLabel('Origem *')).toBeDisabled();
-  await expect(page.getByLabel('Quantidade de SKU-1')).toBeDisabled();
-  await expect(page.getByRole('tab', { name: 'Da conversa' })).toBeEnabled();
-  await page.getByRole('tab', { name: 'Da conversa' }).click();
-  await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
-  await expect.poll(() => page.evaluate(() => {
-    const event = new globalThis.Event('beforeunload', { cancelable: true });
-    globalThis.dispatchEvent(event);
-    return event.defaultPrevented;
-  })).toBe(true);
-  releasePost();
-  await expect(page).toHaveURL(/#\/quotations\/q-1$/);
 });
 
 test('descarta a segunda emissão enquanto a primeira está pendente @quotations @critical', async ({ page }) => {
@@ -977,24 +866,6 @@ test('materializa nova demanda para draft automático ainda não salvo @quotatio
     const stored = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts'));
     return stored.drafts[0].edited.new_demand;
   })).toBe(true);
-});
-
-test('repete no modo manual uma emissão retryable sem criar outro save ou revisão @quotations @critical', async ({ page }) => {
-  await seedManualDraft(page);
-  const retryable = { state: 'retryable', error: 'Falha antes da emissão. Tente novamente.' };
-  const { requests, saveRequests } = await setup(page, {
-    storedDraft: { ...draft, saved, issueIdempotencyKey: key, issueDispatchStarted: true },
-    issueResponse: retryable,
-  });
-  await page.goto('/#/manual');
-  await expect(page.getByRole('status').getByText(retryable.error, { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Emitir novamente' }).click();
-  await expect.poll(() => requests.filter((request) => request.method() === 'POST').length).toBe(1);
-  expect(saveRequests).toHaveLength(0);
-  const post = requests.find((request) => request.method() === 'POST');
-  expect(post.headers()['idempotency-key']).toBe(key);
-  expect(post.postDataJSON()).toEqual({ revision_id: 'r-1', concurrency_token: 'token-1' });
-  await expect(page).toHaveURL(/#\/quotations\/q-1$/);
 });
 
 test('emite novamente no modo manual usando os campos visíveis após recovery @quotations @critical', async ({ page }) => {

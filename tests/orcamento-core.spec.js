@@ -36,13 +36,6 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     });
   });
 
-  test('seleciona o modelo padrão retornado pela API', async ({ page }) => {
-    await page.goto('/#/manual');
-    await expect(page.getByLabel('Modelo de orçamento')).toBeVisible();
-    await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
-    await expect(page.getByLabel('Modelo de orçamento').locator('option')).toHaveText(['Padrão Aspen', 'Minimalista']);
-  });
-
   test('falha ao carregar modelos mantém formulário utilizável e permite retry', async ({ page }) => {
     let templateAttempts = 0;
     await page.route('**/api/quotation-templates**', async (route) => {

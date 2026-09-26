@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { routes } from '../../api/_app/routes.js';
 
-test('routes: 58 nomes únicos e bem formados', () => {
+test('routes: 59 nomes únicos e bem formados', () => {
   const names = Object.keys(routes);
-  assert.equal(names.length, 58);
+  assert.equal(names.length, 59);
   assert.equal(new Set(names).size, names.length, 'nomes duplicados');
   for (const name of names) assert.match(name, /^[a-z][a-z0-9-]*$/, name);
 });
@@ -22,6 +22,7 @@ test('routes: não registra endpoints aposentados', () => {
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'atendimento-quote-draft'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'atendimento-ai'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'whatsapp-message-media'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(routes, 'whatsapp-contact-photo'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'whatsapp-attachments'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'quotation-email-template'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'whatsapp-send-status'), false);

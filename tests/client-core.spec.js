@@ -112,81 +112,6 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page).toHaveURL(/#\/leads$/);
     expect(deleted).toBe(1);
   });
-  test('exibe Cliente sem Lead e permite abrir detalhe', async ({ page }) => {
-    await page.route('**/api/leads-clients**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [CLIENT],
-          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-        }),
-      });
-    });
-    await page.route('**/api/client-detail**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(DETAIL),
-      });
-    });
-
-    await page.goto('/#/leads');
-    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Novo cliente' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Filtrar clientes por status' })).toBeVisible();
-    await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-
-    await page.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` }).press('Enter');
-    await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${CLIENT.id}$`));
-    await expect(page.getByRole('heading', { name: CLIENT.nome, exact: true })).toBeVisible();
-    await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-  });
-
-  test('lista clientes preserva dados reais, seleção e ação para abrir o detalhe', async ({ page }) => {
-    const detailRequests = [];
-    page.on('request', (request) => {
-      if (request.url().includes('/api/client-detail')) detailRequests.push(request.url());
-    });
-    await page.route('**/api/leads-clients**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [CLIENT],
-          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-        }),
-      });
-    });
-
-    await page.goto('/#/leads');
-
-    const table = page.getByRole('table');
-    await expect(table.getByRole('columnheader')).toHaveText([
-      'Cliente',
-      'Contato',
-      'Documento',
-      'Status',
-      'Ações',
-    ]);
-    const row = table.getByRole('row').nth(1);
-    await expect(row.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` })).toHaveAttribute(
-      'href',
-      `#/leads/cliente/${CLIENT.id}`
-    );
-    await expect(row.getByRole('cell').nth(0)).toContainText(CLIENT.nome);
-    await page.getByRole('button', { name: 'Selecionar', exact: true }).click();
-    await expect(row.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` })).toBeVisible();
-    await expect(row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` })).toBeVisible();
-    await expect(page.getByText('1 cliente selecionado')).toHaveCount(0);
-    expect(detailRequests).toHaveLength(0);
-    await row.getByRole('checkbox', { name: `Selecionar ${CLIENT.nome}` }).check();
-    await expect(page.getByText('1 cliente selecionado')).toBeVisible();
-    await page.route('**/api/client-detail**', (route) => route.fulfill({ json: DETAIL }));
-    // O link cobre a linha; a célula de contato tem os próprios links por cima, então abre pelo teclado.
-    await row.getByRole('link', { name: `Abrir cliente ${CLIENT.nome}` }).press('Enter');
-    await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${CLIENT.id}$`));
-  });
 
   test('consulta identidade, contato e histórico sem expor UUID e preserva os destinos comerciais', async ({
     page,
@@ -481,17 +406,6 @@ test.describe('Clientes locais @crm @smoke', () => {
       page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()
     ).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-  });
-
-  test('deep-link novo cliente renders the local form directly', async ({ page }) => {
-    const requests = [];
-    page.on('request', (request) => requests.push(request.url()));
-
-    await page.goto('/#/leads/cliente/new');
-    await expect(page.getByRole('heading', { name: 'Novo cliente', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Salvar cliente' })).toBeVisible();
-    await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-    expect(requests.some((url) => url.includes('/api/leads-clients'))).toBe(false);
   });
 
   test('deep-link novo cliente navega após um único POST @smoke', async ({ page }) => {

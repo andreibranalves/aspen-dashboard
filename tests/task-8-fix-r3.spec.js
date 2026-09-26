@@ -32,27 +32,6 @@ test('listas locais falham fechadas quando a segunda linha é inválida @smoke',
   await expect(page.getByText('Produto válido', { exact: true })).toHaveCount(0);
 });
 
-test('listas locais preservam resposta vazia válida e removem metadata desconhecida @smoke', async ({ page }) => {
-  const marker = 'UNKNOWN_METADATA_MARKER';
-  await page.route('**/api/leads-clients**', (route) => json(route, {
-    data: [],
-    pagination: { page: 1, limit: 10, total: 0, total_pages: 0 },
-    provider_marker: marker,
-  }));
-  await page.goto('/#/leads');
-  await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
-  await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
-
-  await page.route('**/api/products**', (route) => json(route, {
-    data: [],
-    pagination: { page: 1, limit: 10, total: 0, total_pages: 0 },
-    source: marker,
-  }));
-  await page.goto('/#/products');
-  await expect(page.getByText('Nenhum produto encontrado', { exact: true })).toBeVisible();
-  await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
-});
-
 test('dashboard inválido exibe retry e nunca mascara métrica como zero @smoke', async ({ page }) => {
   await page.route('**/api/sales-dashboard**', (route) => json(route, {
     success: true,

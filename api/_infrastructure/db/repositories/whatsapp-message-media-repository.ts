@@ -18,3 +18,14 @@ export async function findReceivedMediaMessage(id: string) {
     .where(eq(whatsappMessages.id, id));
   return message || null;
 }
+
+export async function findContactPhotoConversation(id: string) {
+  const [conversation] = await getDatabase()
+    .select({
+      instance: whatsappConversations.instance,
+      providerConversationId: whatsappConversations.providerConversationId,
+    })
+    .from(whatsappConversations)
+    .where(eq(whatsappConversations.id, id));
+  return conversation || null;
+}
