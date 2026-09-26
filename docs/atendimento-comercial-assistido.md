@@ -33,7 +33,7 @@ O produto já declara operador único, desktop, Evolution como único transporte
 
 **M1b — Resposta de texto.** Compositor, envio com registro prévio e despacho na própria requisição, varredura de recuperação, reconciliação e ações sobre envios incertos.
 
-**M2 — Atendimento comercial integrado.** Painel de cliente e histórico, confirmação de vínculo, recebimento de imagens/PDFs/áudios suportados, envio manual de imagens/PDFs validados, seleção de mensagens para preparar orçamento no Novo orçamento e apresentação dos envios de orçamento na conversa sem criar outro envio.
+**M2 — Atendimento comercial integrado.** Painel de cliente e histórico, confirmação de vínculo, recebimento de imagens/PDFs/áudios suportados, envio manual de imagens/PDFs validados, leitura dos dados do cliente para preparar orçamento no Novo orçamento e apresentação dos envios de orçamento na conversa sem criar outro envio.
 
 **M3 — Assistência contextual.** Sugerir resposta, identificar informações faltantes e resumir a negociação. A IA produz resultados internos revisáveis; não envia mensagens nem emite orçamentos.
 
@@ -53,7 +53,7 @@ Também não criar novo CRM, novo motor de preços, novo editor de orçamentos, 
 
 **D3 — Sem importação do histórico do KV.** O histórico novo nasce no PostgreSQL a partir do webhook e de um backfill pela Evolution. O KV recebe só um snapshot protegido e sai do código. Detalhes em §16.
 
-**D4 — "Preparar orçamento" entrega ao Novo orçamento.** O Atendimento registra a seleção e a demanda e abre `#/novo-orcamento` em modo conversa, que já faz extração, revisão de itens e identidade do cliente no Split Card. Não há segunda revisão dentro do Atendimento. Detalhes em §12.
+**D4 — "Orçamento" entrega ao Novo orçamento.** O Atendimento lê os dados de contato do cliente, registra a demanda e abre `#/novo-orcamento` em modo conversa, que já faz extração, revisão de itens e identidade do cliente no Split Card. O Atendimento só mostra os dados lidos quando falta algum. Detalhes em §12.
 
 ## 3. Base existente e decisão de reaproveitamento
 
@@ -81,9 +81,9 @@ A partir do M1b, o operador escreve, revisa e envia. A mensagem passa a existir 
 
 ### 4.3 Preparar orçamento
 
-O operador seleciona as mensagens que representam a demanda e escolhe "Preparar orçamento". O servidor registra a seleção e a demanda (§12) e o app abre o Novo orçamento em modo conversa com esse texto. Extração, itens, pendências, identidade do cliente, cálculo, salvamento, emissão e envio seguem os fluxos atuais.
+O operador escolhe "Orçamento" no cabeçalho da conversa. O servidor lê nome, e-mail e telefone do cliente, registra a demanda (§12) e o app abre o Novo orçamento em modo conversa com esses dados; o operador escreve o pedido abaixo. Extração, itens, pendências, identidade do cliente, cálculo, salvamento, emissão e envio seguem os fluxos atuais.
 
-Ao voltar à conversa, o rascunho de resposta e a seleção continuam acessíveis durante a sessão.
+Ao voltar à conversa, o rascunho de resposta continua acessível durante a sessão.
 
 ### 4.4 Usar a IA
 
@@ -107,7 +107,7 @@ Quando identidade, cadastro, entrega ou contexto estiverem em conflito, mostrar 
 | RF-08 | Exibir cliente, oportunidades, orçamentos e entregas a partir dos registros existentes. | M2 |
 | RF-09 | Confirmar/remover vínculo comercial com controle de versão, sem criar identidade paralela à extensão. | M2 |
 | RF-10 | Abrir mídia recebida suportada e enviar imagem/PDF validado por ação manual. | M2 |
-| RF-11 | Selecionar mensagens, registrar seleção e demanda e abrir o Novo orçamento com elas, sem segunda revisão no Atendimento. | M2 |
+| RF-11 | Ler da conversa nome, e-mail e telefone do cliente, registrar a demanda e abrir o Novo orçamento com esses dados; revisão no Atendimento só quando faltar dado. | M2 |
 | RF-12 | Exibir orçamento emitido/enviado e suas entregas na conversa sem repetir o transporte. | M2 |
 | RF-13 | Sugerir resposta, apontar pendências e resumir contexto, sempre internamente e sob solicitação. | M3 |
 | RF-14 | Identificar sugestões desatualizadas e impedir sua aplicação silenciosa a outra conversa ou outro cliente. | M3 |
@@ -289,18 +289,24 @@ Orçamentos oficiais mantêm suas URLs e revisões atuais. O chat não gera um n
 
 ## 12. Preparação de orçamento e vínculo com a demanda
 
-**RF-11 não autoriza extração, emissão ou envio no Atendimento.** "Preparar orçamento" registra a demanda e entrega ao Novo orçamento; não cria documento oficial nem dispara WhatsApp.
+**RF-11 só lê dados de contato no Atendimento; não extrai itens, não emite nem envia.** O botão "Orçamento" registra a demanda e entrega ao Novo orçamento; não cria documento oficial nem dispara WhatsApp.
 
-O operador seleciona mensagens da conversa. `POST /api/atendimento-quote-draft`:
+`POST /api/atendimento-contact` lê as mensagens de texto recebidas (as 200 mais recentes; as enviadas nunca entram) e só devolve o que o cliente escreveu:
 
-1. Verifica que as mensagens pertencem à conversa e respeita o limite inicial de até 50 mensagens e 12.000 caracteres, o mesmo do extrator. Excesso retorna pedido de seleção menor; não truncar silenciosamente. [S12]
-2. Registra o texto exato que o Novo orçamento vai receber e as mensagens de origem.
+- E-mail: o mais recente, por padrão de endereço, sem IA.
+- Telefone: o número do WhatsApp da conversa; nulo com identidade em conflito. Não é lido do texto.
+- Nome e empresa: a IA indica valor e mensagem; o backend descarta o valor que não estiver escrito nessa mensagem. Falha da IA é informada à parte (`nameUnavailable`), não como ausência.
+
+Com nome, e-mail e telefone, o app registra a demanda e navega. Faltando algum, o Atendimento mostra o que achou, com a origem, e "Não encontrado na conversa" no resto; "Abrir orçamento assim" segue com o nome do perfil do WhatsApp no lugar do nome. `POST /api/atendimento-quote-draft`:
+
+1. Recebe nome, empresa e e-mail revisados; o telefone vem da conversa.
+2. Registra o cabeçalho `Nome:`/`Empresa:`/`E-mail:`/`Telefone:` que o Novo orçamento vai receber; o operador acrescenta o pedido abaixo. Demandas antigas guardam o texto das mensagens selecionadas e continuam abrindo igual.
 3. Cria ou recupera a admissão pela regra atual: quote lead com `source: 'whatsapp'`, `externalId` igual ao ID local da conversa e `demandId` estável. A mesma tentativa não cria dois quote leads/oportunidades; nova demanda na mesma conversa recebe nova identidade, sem sobrescrever a anterior. [S05]
 4. Retorna `demandId`, `quoteLeadId`, `crmDealId` quando existir e o destino de navegação.
 
 O app abre `#/novo-orcamento?demandId=...&quoteLeadId=...&crmDealId=...` em modo conversa. A página carrega o texto registrado pelo `demandId` (`GET /api/atendimento-quote-draft`), e o prefill em `sessionStorage` (`quotationOriginPrefill.ts`) só acelera a apresentação. Se houver rascunho Auto com trabalho, vale a regra atual de isolar o conteúdo novo para revisão explícita. Extração, itens interpretados, pendências, identidade do cliente (§7), cálculo e salvamento são os do Novo orçamento e de `/api/orcamento`. Essa é a única mudança no fluxo de orçamento: aceitar `demandId` e levar a origem até o salvamento. [S13]
 
-A confiança fixa de 0.8 desaparece com a ação `extract-quote`. Na primeira entrega, a seleção usa texto. Imagem segue o fluxo de imagem do extrator por ação explícita (M2). Áudio sem transcrição não é interpretado como texto pelo orçamento ou pela IA.
+A confiança fixa de 0.8 desaparece com a ação `extract-quote`. Imagem segue o fluxo de imagem do extrator por ação explícita (M2). Áudio sem transcrição não é interpretado como texto pelo orçamento ou pela IA.
 
 `quotationId` só existe depois do salvamento pelo fluxo de orçamento. Não chamar uma extração em memória de orçamento salvo.
 
@@ -365,8 +371,9 @@ Todos os endpoints seguem o pipeline autenticado atual e o registro único em `a
 | `GET /api/whatsapp-message-media?id=...` | Acesso controlado ao conteúdo de anexo validado. | M2 |
 | `GET /api/atendimento-context?conversationId=...` | Contexto comercial resolvido pelo backend a partir da conversa local, com o serviço da extensão e adapter sem CORS. | M2 |
 | `POST /api/atendimento-client-link` | Confirma/remove vínculo pela mesma regra e versão do vínculo existente. | M2 |
-| `POST /api/atendimento-quote-draft` | Registra seleção e demanda de forma idempotente; retorna `demandId`, `quoteLeadId`, `crmDealId` quando houver e destino (§12). | M2 |
-| `GET /api/atendimento-quote-draft?demandId=...` | Devolve o texto registrado da seleção ao Novo orçamento. | M2 |
+| `POST /api/atendimento-contact` | Lê nome, empresa e e-mail escritos pelo cliente e o telefone da conversa, com a mensagem de origem (§12). | M2 |
+| `POST /api/atendimento-quote-draft` | Registra dados do cliente e demanda de forma idempotente; retorna `demandId`, `quoteLeadId`, `crmDealId` quando houver e destino (§12). | M2 |
+| `GET /api/atendimento-quote-draft?demandId=...` | Devolve o texto registrado da demanda ao Novo orçamento. | M2 |
 | `POST /api/atendimento-ai` | Ação interna permitida, conversa/seleção e contexto; retorna resultado estruturado revisável. | M3 |
 | `GET /api/whatsapp-context` | Endpoint da extensão; contrato e CORS inalterados. | — |
 
@@ -469,9 +476,9 @@ Cada cenário deve ter evidência na entrega correspondente. A presença de um t
 | AC-22 | Mensagem de backfill ou recibo alterado aparece pelo cursor incremental sem depender da data da última mensagem. | RF-02 | M1a |
 | AC-23 | Mídia válida abre com acesso controlado; mídia expirada/inválida/grande preserva a mensagem com estado adequado. | RF-10 | M2 |
 | AC-24 | URL maliciosa, objeto público indevido, MIME adulterado ou anexo de outro escopo não contorna a validação. | RNF-01/06 | M2 |
-| AC-25 | O Novo orçamento recebe exatamente o texto registrado da seleção; acima de 50 mensagens ou 12.000 caracteres, o Atendimento pede recorte sem truncar. | RF-11 | M2 |
-| AC-26 | Repetir "Preparar orçamento" com o mesmo `demandId` recupera a mesma demanda e quote lead; nova demanda na mesma conversa não sobrescreve a anterior. | RF-11, INV-08 | M2 |
-| AC-27 | "Preparar orçamento" não extrai, emite nem envia; extração, identidade, cálculo e salvamento acontecem no Novo orçamento e em `/api/orcamento`. | INV-08/09 | M2 |
+| AC-25 | O Novo orçamento recebe o cabeçalho registrado com os dados do cliente; nome ou empresa que não estejam escritos na mensagem citada nunca chegam a ele. | RF-11 | M2 |
+| AC-26 | Repetir "Orçamento" com o mesmo `demandId` recupera a mesma demanda e quote lead; nova demanda na mesma conversa não sobrescreve a anterior. | RF-11, INV-08 | M2 |
+| AC-27 | "Orçamento" só lê dados de contato; não extrai itens, não emite nem envia; extração, identidade, cálculo e salvamento acontecem no Novo orçamento e em `/api/orcamento`. | INV-08/09 | M2 |
 | AC-28 | Entrega existente de orçamento aparece na conversa sem criar outro envio ou PDF divergente. | RF-12, INV-11 | M2 |
 | AC-29 | IA sem preço/prazo confirmado registra pendência; fontes fora do contexto são rejeitadas. | RF-13 | M3 |
 | AC-30 | Texto de cliente tentando instruir o assistente não executa ferramenta, altera cadastro ou envia mensagem. | INV-09 | M3 |
@@ -480,13 +487,13 @@ Cada cenário deve ter evidência na entrega correspondente. A presença de um t
 | AC-33 | Backfill repetido conserva IDs e contagens e não cria não lidas, reabertura, atividade, follow-up ou demanda. | INV-11/12 | M1a |
 | AC-34 | Depois do M1a, nenhum código lê ou escreve conversa/mensagem no KV; mensagens gravadas sobrevivem à suspensão de envio. | INV-12 | M1a |
 | AC-35 | Teste integrado cobre receber → abrir conversa → responder → refletir recibo (M1b) e abrir contexto (M2), com transporte simulado e PostgreSQL descartável. | M1b/M2 | M1b/M2 |
-| AC-36 | Teste integrado cobre seleção → demanda → Novo orçamento com o texto registrado → rascunho revisável (M2) → sugestão inserida manualmente, sem envio autônomo (M3). | M2/M3 | M2/M3 |
+| AC-36 | Teste integrado cobre dados do cliente → demanda → Novo orçamento com o texto registrado → rascunho revisável (M2) → sugestão inserida manualmente, sem envio autônomo (M3). | M2/M3 | M2/M3 |
 | AC-37 | Cancelamento e reserva concorrentes têm um único vencedor: ou cancela sem transporte, ou informa que o envio já foi reservado; nunca mostra cancelamento falso. | RF-04, INV-01 | M1b |
 | AC-38 | Envio e varredura em Preview com writes-off não chamam transporte real, mesmo quando acionados diretamente. | RNF-02 | M1b |
 | AC-39 | Com o lote de orçamentos ocupando o tick, a varredura não inicia transporte sem tempo para um timeout completo; o lote de orçamentos não muda de tamanho nem de ordem. | RF-04, INV-11 | M1b |
 | AC-40 | Com vínculo confirmado, o Novo orçamento recebe `client_id`; sem vínculo, telefone sozinho resulta em revisão no Split Card, nunca em cliente escolhido ou criado automaticamente. | RF-11, INV-08 | M2 |
 | AC-41 | `/api/whatsapp-context` mantém contrato, CORS e correspondência; os testes atuais da extensão continuam passando depois da retirada do KV. | INV-11 | M1a |
-| AC-42 | Rascunho Auto com trabalho não é sobrescrito quando chega uma seleção do Atendimento; o conteúdo novo fica isolado para revisão. | RF-11 | M2 |
+| AC-42 | Rascunho Auto com trabalho não é sobrescrito quando chega uma demanda do Atendimento; o conteúdo novo fica isolado para revisão. | RF-11 | M2 |
 
 Testes unitários cobrem parsers, identidade, preservação de corpo, estados e validação. Testes PostgreSQL cobrem transações, idempotência, concorrência, cursores e backfill. E2E cobre as jornadas na interface. Testes de contrato usam fixtures saneadas correspondentes à versão instalada da Evolution, não payloads adivinhados.
 

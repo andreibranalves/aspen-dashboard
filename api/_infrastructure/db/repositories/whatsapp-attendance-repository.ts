@@ -138,7 +138,6 @@ export interface WhatsappAttendanceRepository {
   listConversations(input: ListConversationsInput): Promise<{ items: WhatsappConversationRecord[]; hasMore: boolean }>;
   getConversation(id: string): Promise<WhatsappConversationRecord | null>;
   getConversationScope(id: string): Promise<WhatsappConversationScope | null>;
-  loadQuoteSelection(conversationId: string, messageIds: string[]): Promise<Array<{ id: string; body: string | null; messageType: WhatsappMessageType }>>;
   /** Newest page first in the query, returned in chronological order. */
   listMessagesBefore(input: {
     conversationId: string;
@@ -484,20 +483,6 @@ export function createPostgresWhatsappAttendanceRepository(
             identityVersion: Number(row.identityVersion),
           }
         : null;
-    },
-
-    async loadQuoteSelection(conversationId, messageIds) {
-      if (messageIds.length === 0) return [];
-      const rows = await getDb()
-        .select({ id: messages.id, body: messages.body, messageType: messages.messageType })
-        .from(messages)
-        .where(and(
-          eq(messages.conversationId, conversationId),
-          inArray(messages.id, messageIds),
-          isNull(messages.supersededBy),
-        ))
-        .orderBy(asc(messages.providerTimestamp), asc(messages.id));
-      return rows.map((row) => ({ ...row, messageType: row.messageType as WhatsappMessageType }));
     },
 
     async listMessagesBefore(input) {
