@@ -49,6 +49,7 @@ import { atendimentoClientLink, atendimentoContext } from '../_modules/atendimen
 import { atendimentoQuoteDraft } from '../_modules/atendimento-quote-draft.js';
 import { atendimentoAi } from '../_modules/atendimento-ai.js';
 import { whatsappMessageMedia } from '../_modules/whatsapp-message-media.js';
+import { whatsappContactPhoto } from '../_modules/whatsapp-contact-photo.js';
 import { whatsappAttachments } from '../_modules/whatsapp-attachments.js';
 import { handler as communicationFlowPreview } from '../_modules/communication-flow-preview.js';
 import { handler as communicationSendEvents } from '../_modules/communication-send-events.js';
@@ -112,6 +113,7 @@ export const routes: Record<string, LegacyHandler> = {
   'atendimento-quote-draft': atendimentoQuoteDraft,
   'atendimento-ai': atendimentoAi,
   'whatsapp-message-media': whatsappMessageMedia,
+  'whatsapp-contact-photo': whatsappContactPhoto,
   'whatsapp-attachments': whatsappAttachments,
   'communication-flow-preview': communicationFlowPreview,
   'communication-send-events': communicationSendEvents,

@@ -45,6 +45,10 @@ export interface AttendanceMessage {
   supersededBy: string | null;
 }
 
+export function contactPhotoUrl(conversationId: string): string {
+  return `/api/whatsapp-contact-photo?id=${encodeURIComponent(conversationId)}`;
+}
+
 export async function openReceivedMedia(messageId: string): Promise<void> {
   const response = await fetch(`/api/whatsapp-message-media?id=${encodeURIComponent(messageId)}`, { credentials: 'same-origin' });
   if (response.status === 401) {
