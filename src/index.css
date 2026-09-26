@@ -46,15 +46,11 @@
   --color-avatar-one: rgb(var(--avatar-one));
   --color-avatar-two: rgb(var(--avatar-two));
   --color-avatar-three: rgb(var(--avatar-three));
-  --color-bar-one: rgb(var(--bar-one));
   --color-chart-one: rgb(var(--chart-one));
   --color-chart-two: rgb(var(--chart-two));
   --color-chart-three: rgb(var(--chart-three));
   --color-chart-four: rgb(var(--chart-four));
-  --color-finance-one: rgb(var(--finance-one));
-  --color-finance-two: rgb(var(--finance-two));
-  --color-finance-three: rgb(var(--finance-three));
-  --color-finance-four: rgb(var(--finance-four));
+  --color-chart-neutral: rgb(var(--chart-neutral));
   --color-raised: rgb(var(--surface-subtle));
   --color-page: rgb(var(--page));
   --color-surface: rgb(var(--surface));
@@ -233,15 +229,14 @@
     --avatar-one: 218 229 246;
     --avatar-two: 240 233 203;
     --avatar-three: 222 214 236;
-    --chart-one: 54 90 173;
-    --chart-two: 117 90 157;
-    --chart-three: 117 201 200;
-    --chart-four: 247 244 234;
-    --bar-one: 54 90 173;
-    --finance-one: 192 185 221;
-    --finance-two: 117 201 200;
-    --finance-three: 247 244 234;
-    --finance-four: 128 161 212;
+    /* Séries categóricas na ordem fixa azul, verde, violeta, âmbar; cada tema foi
+       validado (faixa de luminosidade, croma, daltonismo e contraste) contra a sua superfície. */
+    --chart-one: 57 135 229;
+    --chart-two: 25 158 112;
+    --chart-three: 144 133 233;
+    --chart-four: 201 133 0;
+    /* Categoria sem identidade (ex.: "Sem origem"); nunca é uma série. */
+    --chart-neutral: 137 135 129;
 
     /* Compatibility aliases for existing Aspen consumers. */
     --surface-muted: var(--surface-subtle);
@@ -309,8 +304,10 @@
     --skeleton: 229 232 240;
     --skeleton-mid: 243 244 248;
     --scroll-thumb: 183 188 203;
-    --finance-one: 153 140 185;
-    --finance-three: 218 208 179;
+    --chart-one: 42 120 214;
+    --chart-two: 27 175 122;
+    --chart-three: 74 58 167;
+    --chart-four: 237 161 0;
   }
 
   * {
