@@ -314,7 +314,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <Button
           type="button"
           variant="ghost-muted"
-          size="icon-sm"
+          size="icon"
           popoverTarget={menuId}
           popoverTargetAction="toggle"
           aria-controls={menuId}
@@ -476,9 +476,16 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   return (
     <ListPageLayout
-      className={selectedCount > 0 ? 'max-sm:pb-48' : undefined}
         header={
-  <PageHeader title="Orçamentos" />
+          <PageHeader
+            title="Orçamentos"
+            actions={
+              <Button onClick={() => navigate('/novo-orcamento')}>
+                <PlusCircle />
+                Novo orçamento
+              </Button>
+            }
+          />
         }
       >
 
@@ -501,7 +508,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           />
           <div className="flex w-full min-w-0 items-center gap-2 lg:w-auto lg:flex-1">
             <SearchField placeholder="Buscar orçamento ou cliente" value={search} onChange={onSearchChange} aria-label="Buscar orçamentos" />
-            <Button type="button" variant="ghost" size="md" className="ml-auto shrink-0" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
+            <Button type="button" variant="ghost" className="ml-auto shrink-0" onClick={() => { setSelectionMode((current) => !current); setSelectedIds([]); }} aria-pressed={selectionMode}>{selectionMode ? 'Cancelar seleção' : 'Selecionar'}</Button>
           </div>
         </>}
       >

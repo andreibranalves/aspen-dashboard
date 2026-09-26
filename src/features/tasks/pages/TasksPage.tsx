@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, ListTodo } from 'lucide-react';
+import { Check, ListTodo, Plus } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import ListPageLayout from '@/components/shared/ListPageLayout';
 import SkeletonTable from '@/components/shared/SkeletonTable';
@@ -20,12 +20,14 @@ import {
   updateTaskDueOn,
   type OperatorTask,
 } from '../tasks';
+import { useQuickTask } from '../components/QuickTask';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export default function TasksPage({ navigate }: { navigate: (hash: string) => void }) {
   // A dica do atalho T só vale com teclado e ponteiro fino.
   const hasKeyboard = useMediaQuery('(pointer: fine)');
   const { toast } = useToast();
+  const openQuickTask = useQuickTask();
   const [tasks, setTasks] = useState<OperatorTask[]>([]);
   const [today, setToday] = useState('');
   const [loading, setLoading] = useState(true);
@@ -76,7 +78,19 @@ export default function TasksPage({ navigate }: { navigate: (hash: string) => vo
   })).filter((group) => group.tasks.length > 0);
 
   return (
-    <ListPageLayout header={<PageHeader title="Tarefas" />}>
+    <ListPageLayout
+      header={
+        <PageHeader
+          title="Tarefas"
+          actions={
+            <Button type="button" onClick={openQuickTask} title={hasKeyboard ? 'Nova tarefa (T)' : undefined}>
+              <Plus aria-hidden="true" />
+              Nova tarefa
+            </Button>
+          }
+        />
+      }
+    >
       {loading && <SkeletonTable rows={4} />}
       {!loading && error && (
         <ErrorState title="Não foi possível carregar as tarefas" onRetry={() => void load()} />
@@ -85,7 +99,7 @@ export default function TasksPage({ navigate }: { navigate: (hash: string) => vo
         <EmptyState
           icon={ListTodo}
           title="Nenhuma tarefa aberta."
-          description={hasKeyboard ? 'Pressione T ou use + Tarefa para anotar.' : 'Use o botão de tarefa no topo para anotar.'}
+          description={hasKeyboard ? 'Pressione T ou use Nova tarefa para anotar.' : 'Use Nova tarefa para anotar.'}
         />
       )}
       {!loading &&
@@ -113,7 +127,7 @@ export default function TasksPage({ navigate }: { navigate: (hash: string) => vo
                   <Button
                     type="button"
                     variant="ghost-muted"
-                    size="icon-sm"
+                    size="icon"
                     aria-label={`Concluir ${task.title}`}
                     title="Concluir"
                     onClick={() => void complete(task)}

@@ -535,7 +535,6 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
                         className="mt-3 w-full"
                         onClick={() => startQuotation(deal, leadName)}
                       >
@@ -691,7 +690,7 @@ export default function CrmKanbanPage({ embedded = false }: CrmKanbanPageProps) 
                                 <span className="grid size-7 place-items-center rounded-full bg-avatar-one text-3xs font-bold text-avatar-ink">AS</span>
                               </div>
                               {leadHref && <a href={leadHref} onClick={(event) => navigateFromLink(event, leadHref)} className="mt-4 flex items-center justify-center gap-2 border-t border-line pt-3 text-xs text-fg-muted hover:text-fg"><ArrowUpRight size={14} aria-hidden="true" />Ver negócio</a>}
-                              <details className="mt-2 text-2xs text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" size="sm" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select size="sm" ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
+                              <details className="mt-2 text-2xs text-fg-muted"><summary className="cursor-pointer">Mais ações</summary><div className="mt-2 space-y-2"><DealProposals opportunityId={deal.id} />{deal.quote_lead_id && <Button variant="ghost" className="w-full" onClick={() => startQuotation(deal, leadName)}><PlusCircle />Novo orçamento</Button>}<Select ref={(element) => setMoveMenuRef(deal.id, element)} value={deal.status || col.status} disabled={moving} aria-label={`Mover ${displayLeadName} para outra etapa`} className="w-full" onChange={(event) => moveDeal(deal.id, event.target.value)}>{moveColumns(deal.status || col.status).map((destinationColumn) => <option key={destinationColumn.status} value={destinationColumn.status}>{destinationColumn.name}</option>)}</Select></div></details>
                             </article>
                           );
                         })}

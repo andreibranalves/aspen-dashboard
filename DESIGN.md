@@ -43,14 +43,13 @@ by lint.
 
 | Role | Class / weight | Where |
 | --- | --- | --- |
-| Page title | `text-title` 28px / 700 (`text-stat` 22px below `md`) | `PageHeader` only |
 | Dialog title | `text-lg` 18px / 700 | `Dialog`, `Drawer` |
 | Section title | `Heading level="section"` 16px / 600 | top-level cards in a page |
 | Sub-section | `Heading level="subsection"` 14px / 600 | groups inside a section card |
 | Card title | `Heading level="card"` 15px / 600 | kanban and grid cards |
 | Eyebrow | `Heading level="eyebrow"` 12px / 600 caps | group labels |
 | Body / controls | `text-sm` 14px / 400–600 | text, inputs, selects, buttons |
-| Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb |
+| Secondary / meta | `text-compact` 13px | page meta, tabs, breadcrumb (the page name) |
 | Caption | `text-xs` 12px | field labels, table headers |
 | Badge | `text-2xs` 11px / 600 | `StatusBadge`, quality badges |
 | Micro | `text-3xs` 10px | counters, dense captions |
@@ -90,11 +89,13 @@ never add their own focus ring. Rows inside clipped containers add
 
 ### Controls
 
-Fields, selects and the default button are 40px. Button sizes: `xs` 28, `sm`
-32 (dense rows, inline retry), `md` 36, default/`lg` 40, `icon` 36, `icon-sm`
-32, `inline` (no box and inherited font size, for links in text or tables). `Input` and `Select` take `size` `default` 40, `sm`
-32, `xs` 28; `Select size="icon"` is the compact move-to menu. Filled buttons
-show a tinted disabled state at full opacity; quiet variants fade.
+Every control is 32px with `px-3` and `text-sm`: buttons (`default`, and
+`icon` for icon-only), fields and selects. `xs` 28 only in dense rows (message
+timeline, split cards); `inline` (no box and inherited font size, for links in
+text or tables). `Input` and `Select` take `size` `default` 32 or `xs` 28;
+`Select size="icon"` is the compact move-to menu. Tabs, status
+filters and sidebar items take the same `buttonSizes` as `Button`. Filled
+buttons show a tinted disabled state at full opacity; quiet variants fade.
 
 Appearance comes from props, never from `className` on a `components/ui`
 primitive or a `components/shared` composition (`settings.shadcn.ui` covers
@@ -137,19 +138,24 @@ Navigation comes from `nav` in `src/app/routes.tsx`: `group` places a
 destination in the sidebar (**Operação**, **Cadastros**, **Acompanhamento**;
 Configurações in the footer) and `bottom` places it in the mobile bottom bar
 (Atendimento, Orçamentos, Comercial, Pedidos; `Mais` opens the sidebar with the
-rest). `Novo orçamento` is the single global primary action, in the TopBar at
-every width next to `Tarefa` (T); page headers do not repeat it, while empty
-states and client-prefilled entries keep their contextual version. Desktop
-shows the breadcrumb; below `md` the TopBar shows back to the parent (or the
-brand on top-level pages) and the canvas/shell double frame is dropped.
+rest). `Novo orçamento` is the single global primary action, at the top of the
+sidebar (below `md`, under `Mais`); page headers do not repeat it, while empty
+states and client-prefilled entries keep their contextual version. `T` opens a
+new task anywhere (linked to the order or client on screen); Tarefas also has
+`Nova tarefa`. The TopBar names the page and holds only that page's actions:
+desktop shows the breadcrumb, below `md` back to the parent plus the page name,
+and the canvas/shell double frame is dropped. It is one button tall (32px) and
+sits in the workspace padding, with the same gap below it before the page.
 
-`PageHeader` is the first element of every page, in normal flow: optional
-`leading` visual, `eyebrow`, the `h1`, optional operational `description`,
-a `meta` row (status, revision, dates), and `actions` on the right (secondary
-→ primary). Descriptions are context (period, counts), never slogans.
+`PageHeader` is the first element of every page. The breadcrumb is the
+visible page name, so its `h1` is screen-reader only and its `actions`
+(secondary → primary) render in the TopBar through a portal. What stays in the
+page, in normal flow, is the entity context row: optional `leading` visual,
+`eyebrow`, operational `description` and `meta` (status, revision, dates).
+Descriptions are context (period, counts), never slogans.
 
 List pages (Clientes, Orçamentos, Pedidos, Produtos) use `ListPageLayout`
-(24px rhythm, bottom reserve for `BulkActionBar`) with an optional summary
+(24px rhythm; `BulkActionBar` reserves its space only while visible) with an optional summary
 row, then `ListSection`: filters → content → pagination, 20px apart, on one
 surface card (`surface={false}` when the content is already a card grid).
 State, search and selection stay in the page.
@@ -210,7 +216,7 @@ Rows that open a record support keyboard activation and visible focus.
 use `Button`, `MenuItem` or `TableRow`. A pointer-only layer (click outside to
 close) declares `aria-hidden="true"`; a wrapper that only calls
 `stopPropagation` is allowed.
-Icon-only controls have accessible names (`Button size="icon|icon-sm"` without
+Icon-only controls have accessible names (`Button size="icon"` without
 `aria-label` fails lint). Hover affordances have focus-visible
 or persistent keyboard and touch equivalents.
 

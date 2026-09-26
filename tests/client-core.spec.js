@@ -222,7 +222,7 @@ test.describe('Clientes locais @crm @smoke', () => {
       'href',
       `https://wa.me/${CLIENT.telefone}`
     );
-    await expect(page.locator('main').getByRole('button', { name: 'Novo orçamento' })).toBeVisible();
+    await expect(page.getByRole('banner').getByRole('button', { name: 'Novo orçamento' })).toBeVisible();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(

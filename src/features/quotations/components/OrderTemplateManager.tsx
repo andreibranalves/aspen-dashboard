@@ -226,7 +226,7 @@ export default function OrderTemplateManager({
                       ? `${templates.length} modelo${templates.length === 1 ? '' : 's'}`
                       : 'Nenhum modelo criado'}
                   </p>
-                  <Button type="button" size="sm" onClick={startCreate} disabled={saving}>
+                  <Button type="button" onClick={startCreate} disabled={saving}>
                     <Plus size={14} />
                     Novo modelo
                   </Button>
@@ -246,7 +246,6 @@ export default function OrderTemplateManager({
                       <Button
                         type="button"
                         variant="outline"
-                        size="sm"
                         onClick={() => startEdit(template)}
                         disabled={saving}
                       >
@@ -256,7 +255,6 @@ export default function OrderTemplateManager({
                       <Button
                         type="button"
                         variant="ghost"
-                        size="sm"
                         aria-label={`Arquivar ${template.name}`}
                         onClick={() => !operationRef.current && setArchiveTarget(template)}
                         disabled={saving}
@@ -276,7 +274,6 @@ export default function OrderTemplateManager({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
                     onClick={() => cancelEdit()}
                     disabled={saving}
                   >
@@ -376,7 +373,7 @@ export default function OrderTemplateManager({
                           onClick={() => moveItem(index, -1)}
                           disabled={saving || index === 0}
                           variant="ghost-muted"
-                          size="icon-sm"
+                          size="icon"
                         >
                           <ChevronUp size={16} />
                         </Button>
@@ -386,7 +383,7 @@ export default function OrderTemplateManager({
                           onClick={() => moveItem(index, 1)}
                           disabled={saving || index === selectedItems.length - 1}
                           variant="ghost-muted"
-                          size="icon-sm"
+                          size="icon"
                         >
                           <ChevronDown size={16} />
                         </Button>
@@ -400,7 +397,7 @@ export default function OrderTemplateManager({
                           }
                           disabled={saving}
                           variant="ghost-muted-destructive"
-                          size="icon-sm"
+                          size="icon"
                         >
                           <Trash2 size={16} />
                         </Button>

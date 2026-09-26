@@ -224,7 +224,7 @@ export default function SendHistoryTab({
       {error && (
         <InlineAlert title="Não foi possível carregar o histórico."
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadEvents()}>
+            <Button variant="outline" onClick={() => void loadEvents()}>
               Tentar novamente
             </Button>
           }
@@ -262,7 +262,7 @@ export default function SendHistoryTab({
                   <td className="px-3 py-4"><span className="block font-medium">WhatsApp</span><span className="mt-1 block text-fg-muted">{stepsLabel(event) || '—'}</span></td>
                   <td className="px-3 py-4"><StatusBadge status={meta.badgeStatus} label={meta.label} />{event.duplicate_warning && <span className="mt-1 block text-warning">Possível duplicidade</span>}{event.error_message && <span className="mt-1 block text-destructive">{event.error_message}</span>}</td>
                   <td className="px-3 py-4 text-fg-muted">{formatDateTime(event.sent_at || event.created_at) || '—'}</td>
-                  <td className="px-3 py-4 text-right">{onOpenDelivery && <Button type="button" variant="outline" size="sm" aria-label={`Inspecionar envio ${event.id}`} onClick={() => onOpenDelivery(event)}>Inspecionar</Button>}</td>
+                  <td className="px-3 py-4 text-right">{onOpenDelivery && <Button type="button" variant="outline" aria-label={`Inspecionar envio ${event.id}`} onClick={() => onOpenDelivery(event)}>Inspecionar</Button>}</td>
                 </tr>;
               })}
             </tbody>

@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import { Menu, PanelLeftClose, PanelLeftOpen, PlusCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AspenBrand from '@/components/shared/AspenBrand';
-import { NAV_FOOTER, NAV_GROUPS, isNavActive, type NavItem } from '@/app/navigation';
+import { Button, buttonSizes } from '@/components/ui/button';
+import { NAV_ACTION, NAV_FOOTER, NAV_GROUPS, isNavActive, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
 
 export interface SidebarProps {
@@ -14,10 +15,6 @@ export interface SidebarProps {
   onNavigate: (hash: string) => void;
   /** Contadores por hash do item de menu. */
   badges?: Record<string, number>;
-  /** @deprecated Theme controls are rendered by TopBar. */
-  darkMode?: boolean;
-  /** @deprecated Theme controls are rendered by TopBar. */
-  toggleDarkMode?: () => void;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -47,8 +44,10 @@ export default function Sidebar({
         type="button"
         onClick={() => onNavigate(item.hash)}
         className={cn(
-          'mx-3 flex min-h-[45px] w-[calc(100%-1.5rem)] items-center gap-3 rounded-nav px-4 py-2 text-sm font-medium transition-colors',
-          collapsed && 'justify-center gap-0 px-0',
+          'flex items-center gap-2 rounded-control font-medium transition-colors',
+          collapsed
+            ? cn(buttonSizes.icon, 'mx-auto justify-center')
+            : cn(buttonSizes.default, 'mx-3 w-[calc(100%-1.5rem)]'),
           'focus-inset',
           isActive ? 'bg-shell-active text-white' : 'text-shell-muted hover:bg-shell-hover hover:text-shell-text'
         )}
@@ -58,7 +57,7 @@ export default function Sidebar({
       >
         <span className="relative shrink-0">
           <Icon
-            size={20}
+            size={16}
             className={cn(isActive ? 'text-white' : 'text-shell-muted')}
             aria-hidden="true"
           />
@@ -170,13 +169,30 @@ export default function Sidebar({
           )}
         </div>
 
-        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto pt-2" aria-label="Destinos">
+        {NAV_ACTION && (
+          <div className={cn('shrink-0 px-3 pt-3', collapsed && 'flex justify-center')}>
+            <Button
+              type="button"
+              size={collapsed ? 'icon' : 'default'}
+              className={collapsed ? undefined : 'w-full'}
+              onClick={() => onNavigate(NAV_ACTION.hash)}
+              aria-label={collapsed ? NAV_ACTION.label : undefined}
+              title={collapsed ? NAV_ACTION.label : undefined}
+              aria-current={isNavActive(NAV_ACTION, currentPath) ? 'page' : undefined}
+            >
+              <PlusCircle aria-hidden="true" />
+              {!collapsed && NAV_ACTION.label}
+            </Button>
+          </div>
+        )}
+
+        <nav className="flex flex-1 flex-col gap-4 overflow-y-auto pt-4" aria-label="Destinos">
           {NAV_GROUPS.map((group) => (
             <section key={group.id} aria-label={group.label} className="flex flex-col gap-1">
               {collapsed ? (
                 group.id !== NAV_GROUPS[0].id && <span className="mx-5 h-px bg-shell-hover" aria-hidden="true" />
               ) : (
-                <span className="px-7 pb-1 text-2xs font-semibold uppercase tracking-wider text-shell-muted" aria-hidden="true">
+                <span className="px-6 pb-1 text-2xs font-semibold uppercase tracking-wider text-shell-muted" aria-hidden="true">
                   {group.label}
                 </span>
               )}

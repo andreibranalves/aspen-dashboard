@@ -134,11 +134,10 @@ export default function PipelineStagesDialog({
                       disabled={saving}
                       autoFocus
                     />
-                    <Button size="sm" type="submit" disabled={saving || !editingName.trim()}>
+                    <Button type="submit" disabled={saving || !editingName.trim()}>
                       Salvar
                     </Button>
                     <Button
-                      size="sm"
                       variant="ghost"
                       type="button"
                       onClick={() => setEditingKey(null)}

@@ -390,7 +390,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
     return (
       <Button
         variant="ghost-muted-destructive"
-        size="icon-sm"
+        size="icon"
         aria-label={`${archived ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
         title={`${archived ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
         onClick={() => requestArchive(sku, archived)}
@@ -451,7 +451,7 @@ export default function ProductsPage({ showHeader = true, onCountChange }: Produ
               >
                 Exportar faixas de preço
               </ExportCsvButton>
-              <Button size="md" onClick={() => navigate('/products/new')}>
+              <Button onClick={() => navigate('/products/new')}>
                 <PlusCircle />
                 Novo produto
               </Button>

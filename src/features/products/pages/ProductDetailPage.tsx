@@ -30,6 +30,7 @@ import ErrorState from '@/components/shared/ErrorState';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import MobileActionBar from '@/components/shared/MobileActionBar';
+import { useBreadcrumbLabel } from '@/components/layout/BreadcrumbLabelContext';
 import { Select } from '@/components/ui/select';
 import { StatusBadge, type StatusTone } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -643,6 +644,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     }
   }, [decodedSku, fetchProduct, isNewProduct, product, refreshActivity, toast]);
 
+  useBreadcrumbLabel(isNewProduct ? null : product?.produto?.nome?.trim() || null);
+
   if (loading) return <SkeletonDetail />;
 
   if (error === 'not_found') {
@@ -697,7 +700,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       {!isNewProduct && (
         <Button
           variant="outline"
-          size="sm"
           onClick={() => navigate(`/products/new?duplicate=${encodeURIComponent(decodedSku)}`)}
           disabled={saving || deleting}
           aria-label="Duplicar produto"
@@ -711,7 +713,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <Button
             onClick={saveProduct}
             disabled={saving || deleting}
-            size="sm"
             className="max-md:hidden"
             aria-label={isNewProduct ? 'Criar produto' : 'Salvar produto'}
           >
@@ -720,7 +721,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           </Button>
           <Button
             variant="outline"
-            size="sm"
             className="max-md:hidden"
             onClick={cancelEditing}
             disabled={saving || deleting}
@@ -730,7 +730,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           </Button>
         </>
       ) : (
-        <Button size="sm" aria-label="Editar produto" onClick={startEditing} disabled={deleting}>
+        <Button aria-label="Editar produto" onClick={startEditing} disabled={deleting}>
           <Edit3 size={14} /> Editar
         </Button>
       )}
@@ -958,7 +958,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                   </div>
                   <Button
                     type="button"
-                    size="sm"
                     variant="outline"
                     aria-label="Adicionar faixa de preço"
                     onClick={() =>
@@ -1030,7 +1029,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                       <Button
                         type="button"
                         variant="outline-destructive"
-                        size="sm"
                         aria-label={`Remover faixa ${index + 1}`}
                         onClick={() =>
                           setEdited((previous) => ({
@@ -1119,7 +1117,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           ) : activityError ? (
             <div className="space-y-3" role="alert">
               <p className="text-sm text-destructive">{activityError}</p>
-              <Button variant="outline" className="min-h-10" onClick={refreshActivity}>
+              <Button variant="outline" onClick={refreshActivity}>
                 Tentar novamente
               </Button>
             </div>

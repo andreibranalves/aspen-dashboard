@@ -34,14 +34,11 @@ const variants = {
     'bg-success-fill text-success-foreground hover:brightness-105 active:scale-[0.98] disabled:bg-success/10 disabled:text-success disabled:hover:bg-success/10',
 } as const;
 
+/** Um tamanho de ação (32px); `xs` só em linhas densas. */
 const sizes = {
   xs: 'h-7 px-2 text-xs',
-  sm: 'h-8 px-3 text-sm',
-  md: 'h-9 px-3 text-sm',
-  default: 'h-10 px-4 text-sm',
-  lg: 'h-10 px-4 text-sm',
-  icon: 'size-9 p-0',
-  'icon-sm': 'size-8 p-0',
+  default: 'h-8 px-3 text-sm',
+  icon: 'size-8 p-0',
   /** Sem altura, padding nem tamanho de fonte próprio: herda do texto ao redor (ex.: variant="link"). */
   inline: 'h-auto p-0',
 } as const;
@@ -102,5 +99,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = 'Button';
 
-export { Button };
+/** Os mesmos tamanhos para itens clicáveis que não são Button (ex.: menu lateral). */
+export { Button, sizes as buttonSizes };
 export type { ButtonProps, ButtonVariant, ButtonSize };

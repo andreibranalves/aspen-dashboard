@@ -3,8 +3,7 @@ import { useFieldControl } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 const sizes = {
-  default: 'h-10 text-sm',
-  sm: 'h-8 text-xs',
+  default: 'h-8 text-sm',
   xs: 'h-7 text-xs',
 } as const;
 
@@ -17,7 +16,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
 }
 
 /**
- * Input is the canonical 40px Aspen text control.
+ * Input is the canonical 32px Aspen text control, the same height as Button.
  * Labels, helper text and validation messaging remain with the consumer.
  */
 const Input = forwardRef<HTMLInputElement, InputProps>(
@@ -28,7 +27,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         ref={ref}
         type={type}
         className={cn(
-          'flex w-full min-w-0 rounded-control border border-border-control bg-input-surface px-3 py-2 leading-5 text-fg',
+          'flex w-full min-w-0 rounded-control border border-border-control bg-input-surface px-3 py-1 leading-5 text-fg',
           sizes[size],
           'placeholder:text-fg-muted',
           'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',
