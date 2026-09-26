@@ -2,6 +2,7 @@ import { Fragment, type Ref } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { BreadcrumbItem } from './Layout';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export interface TopBarProps {
   isMobile?: boolean;
@@ -13,30 +14,30 @@ export interface TopBarProps {
 
 /** TopBar — o breadcrumb nomeia a página; à direita ficam só as ações dela. */
 export default function TopBar({ isMobile = false, breadcrumbItems, onNavigate, actionsRef }: TopBarProps) {
-  const current = breadcrumbItems[breadcrumbItems.length - 1];
-  // No celular o breadcrumb vira "voltar" para o item-pai + o nome da página.
+  // No celular o breadcrumb vira só "voltar" para o item-pai; o nome da página fica oculto.
   const parent = breadcrumbItems.length > 2 ? breadcrumbItems[breadcrumbItems.length - 2] : null;
 
   return (
-    <header className="mb-4 flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-page md:mb-workspace">
+    <header
+      className={cn(
+        'mb-4 flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-page md:mb-workspace',
+        // Sem voltar nem ações da página, o celular não reserva a faixa.
+        isMobile && 'hidden has-[>:not(:empty)]:flex'
+      )}
+    >
       {isMobile ? (
-        <div className="flex min-w-0 items-center gap-1">
-          {parent?.hash && (
-            <Button
-              type="button"
-              variant="ghost-muted"
-              size="icon"
-              onClick={() => onNavigate(parent.hash!)}
-              aria-label={`Voltar para ${parent.label}`}
-              title={`Voltar para ${parent.label}`}
-            >
-              <ChevronLeft aria-hidden="true" />
-            </Button>
-          )}
-          <span className="truncate text-sm font-semibold text-fg" aria-current="page">
-            {current?.label}
-          </span>
-        </div>
+        parent?.hash && (
+          <Button
+            type="button"
+            variant="ghost-muted"
+            size="icon"
+            onClick={() => onNavigate(parent.hash!)}
+            aria-label={`Voltar para ${parent.label}`}
+            title={`Voltar para ${parent.label}`}
+          >
+            <ChevronLeft aria-hidden="true" />
+          </Button>
+        )
       ) : (
         <nav
           className="flex min-w-0 items-center gap-2 overflow-hidden text-compact text-fg-muted"

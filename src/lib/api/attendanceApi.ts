@@ -138,19 +138,6 @@ export function fetchMessagesAfter(conversationId: string, afterRevision: number
   );
 }
 
-export async function updateConversationStatus(
-  id: string,
-  status: AttendanceStatus,
-  expectedRevision: number
-): Promise<AttendanceConversation> {
-  const body = await apiPatch<{ conversation: AttendanceConversation }>('/whatsapp-conversations', {
-    id,
-    status,
-    expectedRevision,
-  });
-  return body.conversation;
-}
-
 export async function markConversationRead(id: string, readRevision: number): Promise<AttendanceConversation> {
   const body = await apiPatch<{ conversation: AttendanceConversation }>('/whatsapp-conversations', {
     id,

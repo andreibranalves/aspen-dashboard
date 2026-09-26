@@ -10,7 +10,6 @@ import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { SearchField } from '@/components/ui/search-field';
-import { Select } from '@/components/ui/select';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
@@ -20,11 +19,8 @@ import {
   fetchMessagesBefore,
   markConversationRead,
   runMessageAction,
-  updateConversationStatus,
   type AttendanceConversation,
   type AttendanceMessage,
-  type AttendanceStatus,
-  type AttendanceStatusFilter,
 } from '@/lib/api/attendanceApi';
 import type { ApiError } from '@/lib/api/api';
 import { fetchAttendanceContext, type ContextDelivery } from '@/lib/api/attendanceContextApi';
@@ -35,7 +31,6 @@ import ConversationList, { conversationName } from '@/features/attendance/compon
 import MessageComposer from '@/features/attendance/components/MessageComposer';
 import MessageTimeline, { type MessageActionName } from '@/features/attendance/components/MessageTimeline';
 import QuoteContactNotice, { contactComplete } from '@/features/attendance/components/QuoteContactNotice';
-import { STATUS_FILTERS, STATUS_LABELS } from '@/features/attendance/attendanceLabels';
 import { useVisiblePolling } from '@/features/attendance/useVisiblePolling';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 
@@ -110,7 +105,6 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(selectedFromHash);
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
-  const [statusFilter, setStatusFilter] = useState<AttendanceStatusFilter>('active');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -202,7 +196,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
       const request = ++listRequest.current;
       if (mode === 'replace') setListLoading(true);
       try {
-        const page = await fetchConversations({ status: statusFilter, q: debouncedSearch });
+        const page = await fetchConversations({ status: 'active', q: debouncedSearch });
         if (request !== listRequest.current) return;
         setListError(null);
         setConversations((current) => {
@@ -225,7 +219,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
         if (request === listRequest.current) setListLoading(false);
       }
     },
-    [statusFilter, debouncedSearch]
+    [debouncedSearch]
   );
 
   useEffect(() => {
@@ -239,7 +233,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
     const request = listRequest.current;
     setListLoadingMore(true);
     try {
-      const page = await fetchConversations({ status: statusFilter, q: debouncedSearch, cursor: listCursor });
+      const page = await fetchConversations({ status: 'active', q: debouncedSearch, cursor: listCursor });
       if (request !== listRequest.current) return;
       setConversations((current) => {
         const known = new Set(current.map((item) => item.id));
@@ -414,25 +408,6 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
     void markRead();
   };
 
-  const changeStatus = async (status: AttendanceStatus) => {
-    const current = threadRef.current;
-    if (!current?.conversation || current.conversation.status === status) return;
-    setStatusNotice(null);
-    try {
-      const updated = await updateConversationStatus(current.conversationId, status, current.conversation.revision);
-      setThread((previous) =>
-        previous && previous.conversationId === updated.id
-          ? { ...previous, conversation: updated, revision: Math.max(previous.revision, updated.revision) }
-          : previous
-      );
-      patchListItem(updated);
-    } catch (error) {
-      const apiError = error as ApiError;
-      setStatusNotice(errorMessage(error, 'Não foi possível alterar a situação.'));
-      if (apiError?.status === 409) void pollThread();
-    }
-  };
-
   const copyForResend = (messageId: string) => {
     const source = threadRef.current?.messages.find((message) => message.id === messageId);
     if (source?.body) setPrefill({ text: source.body, token: Date.now() });
@@ -509,7 +484,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
   };
 
   const selectConversation = (id: string) => navigate(`/atendimento?conversationId=${encodeURIComponent(id)}`);
-  const filtered = statusFilter !== 'active' || Boolean(debouncedSearch);
+  const filtered = Boolean(debouncedSearch);
   const conversation = thread?.conversation || null;
 
   const unread = conversations.filter((item) => item.unreadCount > 0);
@@ -528,7 +503,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
           aria-label="Lista de conversas"
           className={cn('flex min-h-0 flex-col border-border-subtle lg:border-r', selectedId && 'max-lg:hidden')}
         >
-          <div className="flex flex-col gap-2 border-b border-border-subtle p-3">
+          <div className="border-b border-border-subtle p-3">
             <SearchField
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -536,19 +511,6 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
               aria-label="Buscar conversas"
               containerClassName="sm:max-w-none"
             />
-            <Select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as AttendanceStatusFilter)}
-              aria-label="Filtrar por situação"
-              containerClassName="w-full"
-              className="w-full"
-            >
-              {STATUS_FILTERS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
           </div>
           {listError && conversations.length > 0 && (
             <InlineAlert tone="warning" className="m-2">
@@ -627,18 +589,6 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                 >
                   {preparingQuote ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <FilePlus aria-hidden="true" />}
                 </Button>
-                <Select
-                  value={conversation.status}
-                  onChange={(event) => void changeStatus(event.target.value as AttendanceStatus)}
-                  aria-label="Situação do atendimento"
-                  className="w-28 sm:w-auto"
-                >
-                  {(Object.keys(STATUS_LABELS) as AttendanceStatus[]).map((status) => (
-                    <option key={status} value={status}>
-                      {STATUS_LABELS[status]}
-                    </option>
-                  ))}
-                </Select>
                 {!wide && (
                   <Button variant="ghost" size="icon" onClick={() => setContextOpen(true)} aria-label="Contexto comercial">
                     <PanelRight aria-hidden="true" />
