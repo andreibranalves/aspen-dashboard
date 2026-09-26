@@ -1,12 +1,11 @@
-import { Loader2 } from 'lucide-react';
-
+import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import type { OpportunityChoice } from '@/lib/api/proposalOpportunitiesApi';
 import {
   NEW_DEMAND_SELECTION,
   type OpportunitySelection,
 } from '@/features/quotations/opportunitySelection';
-import { cn } from '@/lib/utils';
 
 interface OpportunitySelectorProps {
   choices: OpportunityChoice[];
@@ -15,6 +14,8 @@ interface OpportunitySelectorProps {
   disabled?: boolean;
   onChange: (value: OpportunitySelection) => void;
 }
+
+const NEW_DEMAND_VALUE = '__new__';
 
 function choiceLabel(choice: OpportunityChoice): string {
   const demand = choice.demandSummary || 'Demanda sem resumo';
@@ -29,69 +30,48 @@ export default function OpportunitySelector({
   disabled = false,
   onChange,
 }: OpportunitySelectorProps) {
+  const selected = value.mode === 'new' ? NEW_DEMAND_VALUE : value.opportunityId || '';
   return (
-    <fieldset className="space-y-2" disabled={disabled}>
-      <legend className="text-xs font-medium text-fg-muted">Oportunidade</legend>
-      {loading ? (
-        <p className="flex items-center gap-2 text-xs text-fg-muted">
-          <Loader2 size={14} className="animate-spin" /> Carregando demandas…
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {choices.map((choice) => {
-            const checked = value.mode === 'existing' && value.opportunityId === choice.opportunityId;
-            return (
-              <label
-                key={choice.opportunityId}
-                className={cn(
-                  'flex cursor-pointer items-center gap-3 rounded-control border p-3 text-sm',
-                  checked ? 'border-primary/40 bg-primary/5' : 'border-line'
-                )}
-              >
-                <input
-                  type="radio"
-                  name="opportunity-selection"
-                  className="h-4 w-4 accent-primary"
-                  checked={checked}
-                  onChange={() =>
-                    onChange({ mode: 'existing', opportunityId: choice.opportunityId, demandSummary: '' })
-                  }
-                />
-                <span className="min-w-0 truncate">{choiceLabel(choice)}</span>
-              </label>
-            );
-          })}
-          <label
-            className={cn(
-              'flex cursor-pointer items-center gap-3 rounded-control border p-3 text-sm',
-              value.mode === 'new' ? 'border-primary/40 bg-primary/5' : 'border-line'
-            )}
-          >
-            <input
-              type="radio"
-              name="opportunity-selection"
-              className="h-4 w-4 accent-primary"
-              checked={value.mode === 'new'}
-              onChange={() => onChange({ ...NEW_DEMAND_SELECTION })}
-            />
-            <span>Nova demanda</span>
-          </label>
-          {value.mode === 'new' && (
-            <Input
-              aria-label="Resumo da nova demanda"
-              placeholder="Resumo da demanda (opcional)"
-              value={value.demandSummary}
-              onChange={(event) =>
-                onChange({
-                  mode: 'new',
-                  opportunityId: null,
-                  demandSummary: event.target.value,
-                })
-              }
-            />
+    <div className="flex flex-col gap-2">
+      <Field label="Oportunidade">
+        <Select
+          value={loading ? '' : selected}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === NEW_DEMAND_VALUE) onChange({ ...NEW_DEMAND_SELECTION });
+            else onChange({ mode: 'existing', opportunityId: next || null, demandSummary: '' });
+          }}
+          disabled={disabled || loading}
+          className="w-full"
+          containerClassName="w-full"
+        >
+          {loading ? (
+            <option value="">Carregando demandas…</option>
+          ) : (
+            <>
+              {!selected && <option value="">Escolha a demanda…</option>}
+              {choices.map((choice) => (
+                <option key={choice.opportunityId} value={choice.opportunityId}>
+                  {choiceLabel(choice)}
+                </option>
+              ))}
+              <option value={NEW_DEMAND_VALUE}>Nova demanda</option>
+            </>
           )}
-        </div>
+        </Select>
+      </Field>
+      {/* Sem demandas abertas a nova é o padrão; o resumo só nomeia uma escolha feita. */}
+      {value.mode === 'new' && choices.length > 0 && !loading && (
+        <Input
+          aria-label="Resumo da nova demanda"
+          placeholder="Resumo (opcional)"
+          value={value.demandSummary}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({ mode: 'new', opportunityId: null, demandSummary: event.target.value })
+          }
+        />
       )}
-    </fieldset>
+    </div>
   );
 }

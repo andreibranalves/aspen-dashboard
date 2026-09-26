@@ -291,6 +291,11 @@ async function setupLeadsMocks(page) {
   });
 }
 
+/** Etapa atual do card de novo orçamento (Pedido, Revisão ou Envio). */
+function currentStep(page) {
+  return page.getByRole('list', { name: 'Etapas do orçamento' }).locator('[aria-current="step"]');
+}
+
 // ── Tests ──
 
 test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
@@ -335,7 +340,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.locator('textarea').first().fill('Cliente: Andrei9@gmail.com pediu 30 lenços.');
     await page.getByRole('button', { name: /Extrair/i }).click();
 
-    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(currentStep(page)).toHaveText(/Revisão/, { timeout: 30000 });
     await expect(page.getByText(/Modelo não encontrado/i)).toHaveCount(0);
     expect(extractRequests).toHaveLength(1);
     expect(extractRequests[0].orderTemplateSelections).toBeUndefined();
@@ -391,32 +396,30 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
 
     // Aguarda a extração terminar e os rascunhos aparecerem
     // O texto "Resultados (1)" aparece quando os drafts estão prontos
-    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
-    await expect(page.getByRole('button', { name: 'Extrair mais', exact: true })).toHaveCount(0);
-
-    // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
-    await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
+    await expect(currentStep(page)).toHaveText(/Revisão/, { timeout: 30000 });
+    await expect(page.getByRole('heading', { name: 'João Silva' })).toBeVisible();
+    // Um só pedido: sem contador de pedidos nem campo de mensagem na Revisão.
+    await expect(page.getByText(/Pedido 1 de 1/i)).toHaveCount(0);
+    await expect(page.getByLabel('Mensagem do cliente para extração')).toHaveCount(0);
     await expect(page.getByText('Selecione a origem para continuar.', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Revisar', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Pré-visualizar', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
     await expect(page.getByText('(11) 99999-0001', { exact: true })).toBeVisible();
-    await expect(page.getByText(/Nada será criado/i)).toHaveCount(0);
     const customItemName = 'Lenço 100 x 100 cm';
-    await page.getByRole('button', { name: 'Editar' }).click();
-    await expect(page.getByRole('button', { name: 'Revisar', exact: true })).toHaveCount(0);
     await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
-    await page.getByLabel('Origem').selectOption('Google Ads');
-    await page.getByRole('button', { name: 'Modelo de orçamento' }).click();
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
     await page.getByLabel('Modelo de orçamento').selectOption('minimalista');
+    await page.getByRole('button', { name: 'Editar cliente' }).click();
+    await page.getByLabel('Origem').selectOption('Google Ads');
     await page.getByRole('button', { name: 'Concluir' }).click();
+    await expect(page.getByRole('heading', { name: 'João Silva' })).toBeVisible();
 
     const previewRequest = context.waitForEvent('request',
       (request) => request.url().endsWith('/api/quotation-preview?format=html') && request.method() === 'POST',
     );
     const popupPromise = page.waitForEvent('popup');
-    await page.getByRole('button', { name: 'Revisar', exact: true }).click();
+    await page.getByRole('button', { name: 'Pré-visualizar', exact: true }).click();
     const preview = await popupPromise;
     const request = await previewRequest;
     const payload = JSON.parse(new URLSearchParams(request.postData() || '').get('payload') || '{}');
@@ -428,6 +431,13 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await preview.close();
     await expect(page).toHaveURL(/#\/auto$/);
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
+
+    // Voltar ao pedido preserva o texto e o rascunho; a etapa Revisão reabre sem nova extração.
+    await page.getByRole('button', { name: 'Voltar ao pedido' }).click();
+    await expect(currentStep(page)).toHaveText(/Pedido/);
+    await expect(page.getByLabel('Mensagem do cliente para extração')).toHaveValue(TEST_INPUT);
+    await page.getByRole('list', { name: 'Etapas do orçamento' }).getByRole('button', { name: /Revisão/ }).click();
+    await expect(page.getByLabel('Nome exibido no orçamento LNC-SED-70')).toHaveValue(customItemName);
     expect(orcamentoRequests).toHaveLength(0);
     expect(issueRequests).toHaveLength(0);
   });
@@ -458,10 +468,10 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.goto('/#/auto');
     await page.locator('textarea').first().fill(TEST_INPUT);
     await page.getByRole('button', { name: /Extrair/i }).click();
-    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(currentStep(page)).toHaveText(/Revisão/, { timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toBeEnabled();
 
-    await page.getByRole('button', { name: 'Editar' }).click();
+    await page.getByRole('button', { name: 'Editar cliente' }).click();
     await expect(page.getByLabel('Empresa')).toHaveValue('');
     await page.getByLabel('Empresa').fill('Silva Eventos');
     await page.getByLabel('Origem').selectOption('Google Ads');
@@ -514,15 +524,21 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.waitForSelector('textarea', { timeout: 10000 });
     await page.locator('textarea').first().fill(TEST_INPUT);
     await page.getByRole('button', { name: /Extrair/i }).click();
-    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
-    await page.getByRole('button', { name: 'Editar' }).click();
+    await expect(currentStep(page)).toHaveText(/Revisão/, { timeout: 30000 });
+    await page.getByRole('button', { name: 'Editar cliente' }).click();
     await page.getByLabel('Origem').selectOption('Google Ads');
     await page.getByRole('button', { name: 'Concluir' }).click();
     await page.getByRole('button', { name: 'Emitir orçamento' }).click();
     await expect(page).toHaveURL(/#\/auto$/);
-    await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Fluxo WhatsApp')).toBeVisible();
+    await expect(currentStep(page)).toHaveText(/Envio/);
+    await expect(page.getByRole('heading', { name: 'Orçamento emitido' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Fluxo WhatsApp' }).getByRole('radio', { name: /Enviar orçamento/ })).toBeChecked();
     await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toHaveCount(0);
+
+    // Novo orçamento volta ao pedido vazio.
+    await page.getByRole('main').getByRole('button', { name: 'Novo orçamento' }).click();
+    await expect(currentStep(page)).toHaveText(/Pedido/);
+    await expect(page.getByLabel('Mensagem do cliente para extração')).toHaveValue('');
   });
 
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {
@@ -545,8 +561,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
     await expect(page.getByRole('button', { name: 'Tentar novamente' })).toHaveCount(0);
     await page.getByRole('button', { name: /Extrair/i }).click();
-    await expect(page.getByRole('region', { name: 'Resultado da conversa' }).getByRole('heading', { name: 'Resultado', exact: true })).toBeVisible({ timeout: 30000 });
-    await page.getByRole('button', { name: 'Modelo de orçamento' }).click();
+    await expect(currentStep(page)).toHaveText(/Revisão/, { timeout: 30000 });
     await expect(page.getByLabel('Modelo de orçamento')).toBeEnabled();
     await expect(page.getByLabel('Modelo de orçamento')).toHaveValue('padrao');
     expect(templateAttempts).toBeGreaterThanOrEqual(2);
