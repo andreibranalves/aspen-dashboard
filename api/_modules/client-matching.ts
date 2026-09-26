@@ -205,6 +205,26 @@ export function isSearchableClientMatchInput(input: NormalizedClientMatchInput):
   return Boolean(input.documento || input.email || input.telefone) || input.textTerms.length > 0;
 }
 
+// Brazilian national number: area code, then a 9-digit mobile or 8-digit landline.
+const BRAZIL_NATIONAL_PHONE = /^[1-9]{2}(?:9\d{8}|[2-8]\d{7})$/;
+
+/**
+ * Stored forms of one phone. Clients are registered with and without the
+ * Brazilian country code (21995419741 and 5521995419741), and WhatsApp always
+ * sends it, so both forms of a Brazilian number are the same phone. Other
+ * numbers only match themselves; the mobile ninth digit is never added.
+ */
+export function clientPhoneVariants(phone: string): string[] {
+  const national = phone.startsWith('55') && BRAZIL_NATIONAL_PHONE.test(phone.slice(2))
+    ? phone.slice(2)
+    : BRAZIL_NATIONAL_PHONE.test(phone) ? phone : null;
+  return national ? [national, `55${national}`] : [phone];
+}
+
+function sameIdentifier(field: ClientMatchStrongField, left: string, right: string): boolean {
+  return field === 'telefone' ? clientPhoneVariants(left).includes(right) : left === right;
+}
+
 /** Full document is only disclosed for the client actually linked; the query
  * returns a masked form so a candidate can still be told apart. */
 export function maskClientDocument(value: string | null): string | null {
@@ -222,7 +242,9 @@ function matchedFieldsFor(
   const fields: ClientMatchField[] = [];
   if (input.documento && record.documento === input.documento) fields.push('documento');
   if (input.email && record.email === input.email) fields.push('email');
-  if (input.telefone && record.telefone === input.telefone) fields.push('telefone');
+  if (input.telefone && record.telefone && sameIdentifier('telefone', input.telefone, record.telefone)) {
+    fields.push('telefone');
+  }
 
   for (const text of [input.nome, input.empresa]) {
     if (!text) continue;
@@ -316,9 +338,11 @@ export function classifyClientMatch(
     }
     if (active.length > 1) return envelope('review', null, active, input, 'multiple_matches');
     const candidate = active[0];
-    const diverges = STRONG_FIELDS.some(
-      (field) => input[field] && candidate[field] && candidate[field] !== input[field]
-    );
+    const diverges = STRONG_FIELDS.some((field) => {
+      const wanted = input[field];
+      const stored = candidate[field];
+      return Boolean(wanted && stored && !sameIdentifier(field, wanted, stored));
+    });
     if (diverges) return envelope('review', null, active, input, 'identifier_conflict');
     return envelope('matched', candidate.id, active, input);
   }
