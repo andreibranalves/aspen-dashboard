@@ -92,7 +92,6 @@
   --color-shell-text: rgb(var(--shell-text));
   --color-shell-muted: rgb(var(--shell-muted));
   --color-shell-hover: rgb(var(--shell-hover));
-  --color-shell-active: rgb(var(--shell-active));
   --color-shell-primary: rgb(var(--shell-primary));
   --color-fg: rgb(var(--fg));
   --color-fg-muted: rgb(var(--fg-muted));
@@ -255,7 +254,6 @@
     --shell-text: 26 28 33;
     --shell-muted: 102 105 117;
     --shell-hover: 241 241 245;
-    --shell-active: 54 90 173;
     --shell-primary: 54 90 173;
 
     /* Standard primitive aliases. */
