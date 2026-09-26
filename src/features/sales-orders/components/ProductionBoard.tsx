@@ -153,16 +153,16 @@ export default function ProductionBoard({ navigate }: { navigate: (path: string)
   return (
     <>
       <div className="overflow-x-auto pb-2">
-        <div className="flex w-max gap-3">
+        <div className="flex gap-3">
           {PRODUCTION_STAGES.map((stage) => {
             const orders = byStage.get(stage) ?? [];
             return (
               <section
                 key={stage}
-                // Etapa vazia fica estreita para as etapas com pedidos ganharem espaço.
+                // Ocupa a largura toda; etapa vazia cresce menos para as etapas com pedidos ganharem espaço.
                 className={cn(
-                  'flex shrink-0 flex-col gap-3 rounded-card bg-surface-subtle p-3',
-                  orders.length > 0 ? 'w-[15rem]' : 'w-40'
+                  'flex flex-col gap-3 rounded-card bg-surface-subtle p-3',
+                  orders.length > 0 ? 'min-w-60 flex-2' : 'min-w-40 flex-1'
                 )}
                 aria-labelledby={`production-stage-${stage}`}
               >

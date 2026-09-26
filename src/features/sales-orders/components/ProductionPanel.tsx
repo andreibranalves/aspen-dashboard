@@ -67,7 +67,6 @@ function EditableField({
     <Field label={label}>
       <Input
         type={type}
-        size="sm"
         value={draft}
         min={min}
         max={max}
@@ -111,7 +110,6 @@ function EditableMoneyField({
   return (
     <Field label={label}>
       <MoneyInput
-        size="sm"
         value={draft}
         disabled={disabled}
         onValueChange={setDraft}

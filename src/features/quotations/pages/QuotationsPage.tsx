@@ -478,7 +478,15 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     <ListPageLayout
       className={selectedCount > 0 ? 'max-sm:pb-48' : undefined}
         header={
-  <PageHeader title="Orçamentos" />
+          <PageHeader
+            title="Orçamentos"
+            actions={
+              <Button onClick={() => navigate('/novo-orcamento')}>
+                <PlusCircle />
+                Novo orçamento
+              </Button>
+            }
+          />
         }
       >
 

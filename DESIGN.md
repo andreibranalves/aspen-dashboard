@@ -89,10 +89,11 @@ never add their own focus ring. Rows inside clipped containers add
 
 ### Controls
 
-Fields and selects are 40px. Buttons have one size: 32px (`default`, and
-`icon` for icon-only); `xs` 28 only in dense rows (message timeline, split
-cards), `inline` (no box and inherited font size, for links in text or tables). `Input` and `Select` take `size` `default` 40, `sm`
-32, `xs` 28; `Select size="icon"` is the compact move-to menu. Tabs, status
+Every control is 32px with `px-3` and `text-sm`: buttons (`default`, and
+`icon` for icon-only), fields and selects. `xs` 28 only in dense rows (message
+timeline, split cards); `inline` (no box and inherited font size, for links in
+text or tables). `Input` and `Select` take `size` `default` 32 or `xs` 28;
+`Select size="icon"` is the compact move-to menu. Tabs, status
 filters and sidebar items take the same `buttonSizes` as `Button`. Filled
 buttons show a tinted disabled state at full opacity; quiet variants fade.
 

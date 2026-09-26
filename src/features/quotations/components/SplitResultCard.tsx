@@ -1025,7 +1025,6 @@ export default function SplitResultCard({
                   value={draft.edited.template_key || ''}
                   onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                   disabled={editingBlocked || templateLoading || templates.length === 0}
-                  size="sm"
                   className="w-full"
                   containerClassName="w-full"
                 >
@@ -1043,7 +1042,6 @@ export default function SplitResultCard({
       {!isDone && (
         <ProductionTermsFields
           className="border-b border-border-subtle px-4 py-3"
-          size="sm"
           productionDays={draft.edited.prazo_producao_dias ?? defaultProductionDays}
           surchargePercent={draft.edited.acrescimo_percent}
           disabled={editingBlocked}

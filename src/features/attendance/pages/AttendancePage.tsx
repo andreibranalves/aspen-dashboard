@@ -606,7 +606,6 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
                   value={conversation.status}
                   onChange={(event) => void changeStatus(event.target.value as AttendanceStatus)}
                   aria-label="Situação do atendimento"
-                  size="sm"
                   className="w-28 sm:w-auto"
                 >
                   {(Object.keys(STATUS_LABELS) as AttendanceStatus[]).map((status) => (

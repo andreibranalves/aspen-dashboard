@@ -84,27 +84,25 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
     <PageShell className="space-y-4 pb-28">
       <PageHeader
         title={legacy ? 'Produtos' : 'Catálogo'}
+        actions={<>
+          {activeTab === 'products' && (
+            <>
+              <ExportMenu id="catalog-export-menu">
+                <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar produtos</ExportCsvButton>
+                <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar preços</ExportCsvButton>
+              </ExportMenu>
+              <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
+            </>
+          )}
+          {activeTab === 'sets' && <Button onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button>}
+        </>}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabList
-            label="Seções do catálogo"
-            items={TABS.map((tab) => (tab.value === 'products' ? { ...tab, badge: productCount } : tab))}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            {activeTab === 'products' && (
-              <>
-                <ExportMenu id="catalog-export-menu">
-                  <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar produtos</ExportCsvButton>
-                  <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar preços</ExportCsvButton>
-                </ExportMenu>
-                <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
-              </>
-            )}
-            {activeTab === 'sets' && <Button onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button>}
-          </div>
-        </div>
+        <TabList
+          label="Seções do catálogo"
+          items={TABS.map((tab) => (tab.value === 'products' ? { ...tab, badge: productCount } : tab))}
+        />
 
         <TabPanel value="products">
           <ProductsPage showHeader={false} onCountChange={setProductCount} />

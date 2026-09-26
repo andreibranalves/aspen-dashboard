@@ -1117,7 +1117,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           ) : activityError ? (
             <div className="space-y-3" role="alert">
               <p className="text-sm text-destructive">{activityError}</p>
-              <Button variant="outline" className="min-h-10" onClick={refreshActivity}>
+              <Button variant="outline" onClick={refreshActivity}>
                 Tentar novamente
               </Button>
             </div>
