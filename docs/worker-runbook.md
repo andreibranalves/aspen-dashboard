@@ -49,8 +49,8 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
 
 5. Tailscale, no painel:
    - Na política da tailnet, acrescente `"tagOwners": {"tag:ci": ["autogroup:admin"]}`.
-   - Em **Settings › OAuth clients**, gere um cliente com escopo **Auth Keys** (escrita) e tag `tag:ci`.
-   - O nó do CI é efêmero e some ao fim do job. Com a regra padrão que libera tudo, ele alcança a tailnet inteira enquanto roda. Para limitar, troque a regra padrão por regras explícitas e inclua `{"action": "accept", "src": ["tag:ci"], "dst": ["100.125.165.20:2222"]}`.
+   - Em **Settings › Trust credentials**, gere uma credencial OAuth com escopo **Auth Keys** (escrita) e tag `tag:ci`.
+   - O nó do CI é efêmero e some ao fim do job. Com a regra padrão que libera tudo, ele alcança a tailnet inteira enquanto roda. Para limitar, troque o grant padrão por grants explícitos e inclua `{"src": ["tag:ci"], "dst": ["100.125.165.20"], "ip": ["tcp:2222"]}`.
 
 6. GitHub, em **Settings › Environments**, crie `aspen-worker` com **Deployment branches** restrito a `master`, e os secrets:
    - `TS_OAUTH_CLIENT_ID` e `TS_OAUTH_SECRET`, do cliente OAuth;
