@@ -81,7 +81,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   };
 
   return (
-    <PageShell className="space-y-4 pb-28">
+    <PageShell className="space-y-4">
       <PageHeader
         title={legacy ? 'Produtos' : 'Catálogo'}
         actions={<>

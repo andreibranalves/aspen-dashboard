@@ -633,7 +633,7 @@ export default function WhatsAppDeliveriesPage() {
   const summaryCount = (value: number | undefined) => (loading && !result ? null : value);
 
   return (
-    <PageShell className="space-y-5 pb-10">
+    <PageShell className="space-y-5">
       <PageHeader
         title="Envios"
         actions={<>

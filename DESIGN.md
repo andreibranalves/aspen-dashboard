@@ -155,7 +155,7 @@ page, in normal flow, is the entity context row: optional `leading` visual,
 Descriptions are context (period, counts), never slogans.
 
 List pages (Clientes, Orçamentos, Pedidos, Produtos) use `ListPageLayout`
-(24px rhythm, bottom reserve for `BulkActionBar`) with an optional summary
+(24px rhythm; `BulkActionBar` reserves its space only while visible) with an optional summary
 row, then `ListSection`: filters → content → pagination, 20px apart, on one
 surface card (`surface={false}` when the content is already a card grid).
 State, search and selection stay in the page.

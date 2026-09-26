@@ -476,7 +476,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   return (
     <ListPageLayout
-      className={selectedCount > 0 ? 'max-sm:pb-48' : undefined}
         header={
           <PageHeader
             title="Orçamentos"
