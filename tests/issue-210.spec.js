@@ -105,7 +105,7 @@ test.describe('issue #210 — fundação e pedidos', () => {
     await expect(page.getByText(order.customer_name, { exact: true }).first()).toBeVisible();
     await expect(page.getByText(order.customer, { exact: true })).toHaveCount(0);
     await expect(page.locator('#aspen-sidebar')).toHaveCSS('width', '248px');
-    await expect(page.locator('header')).toHaveCSS('height', '56px');
+    await expect(page.locator('header')).toHaveCSS('height', '32px');
     await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(221, 221, 221)');
     await expect(page.locator('#aspen-sidebar')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
     await expect(page.locator('thead th')).toHaveText([

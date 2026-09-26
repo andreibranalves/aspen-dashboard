@@ -114,11 +114,11 @@ describe('Aspen UI contract', () => {
     const button = read('src/components/ui/button.tsx');
     const input = read('src/components/ui/input.tsx');
     const select = read('src/components/ui/select.tsx');
-    assert.match(button, /default: 'h-10/);
-    assert.match(button, /sm: 'h-8/);
+    assert.match(button, /default: 'h-8/);
+    assert.doesNotMatch(button, /(?:sm|md|lg): 'h-/);
     assert.match(button, /rounded-control/);
-    assert.match(input, /h-10/);
-    assert.match(select, /h-10/);
+    assert.match(input, /default: 'h-8/);
+    assert.match(select, /default: 'h-8/);
     assert.match(read('src/components/ui/badge.tsx'), /rounded-badge[^']*text-2xs/);
   });
 

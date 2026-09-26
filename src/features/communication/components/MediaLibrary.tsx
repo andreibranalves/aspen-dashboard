@@ -86,8 +86,8 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <div className="relative w-52 max-w-full"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar mídia ou descrição" aria-label="Buscar mídia ou descrição" className="h-10 pl-9" /></div>
-        {groups.length > 0 && <Select aria-label="Filtrar por grupo de produto" value={filterGroup} onChange={(event) => setFilterGroup(event.target.value as ProductGroup | '')} className="h-10 w-auto"><option value="">Todos os grupos</option>{groups.map((group) => <option key={group} value={group}>{formatProductGroup(group)}</option>)}</Select>}
+        <div className="relative w-52 max-w-full"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar mídia ou descrição" aria-label="Buscar mídia ou descrição" className="pl-9" /></div>
+        {groups.length > 0 && <Select aria-label="Filtrar por grupo de produto" value={filterGroup} onChange={(event) => setFilterGroup(event.target.value as ProductGroup | '')} className="w-auto"><option value="">Todos os grupos</option>{groups.map((group) => <option key={group} value={group}>{formatProductGroup(group)}</option>)}</Select>}
       </div>
 
       {loading && <SkeletonComunicacao />}
@@ -95,7 +95,7 @@ export default function MediaLibrary({ refreshKey, onAdd }: MediaLibraryProps) {
       {!loading && error && (
         <InlineAlert title="Não foi possível carregar a biblioteca."
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadMedia()}>
+            <Button variant="outline" onClick={() => void loadMedia()}>
               Tentar novamente
             </Button>
           }

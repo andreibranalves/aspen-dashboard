@@ -224,7 +224,7 @@ export function QuotationTemplateManager({
       {listError && (
         <InlineAlert
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadTemplates()}>
+            <Button variant="outline" onClick={() => void loadTemplates()}>
               Recarregar modelos
             </Button>
           }
@@ -235,7 +235,7 @@ export function QuotationTemplateManager({
       {!listError && !(loading && !templates.length) && (
         <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
           <div className="space-y-2">
-            <Button type="button" variant="outline" size="sm" onClick={resetNew}>
+            <Button type="button" variant="outline" onClick={resetNew}>
               <Plus size={14} /> Novo modelo
             </Button>
             {templates.map((template) => (
@@ -273,7 +273,7 @@ export function QuotationTemplateManager({
             {detailError && selectedId && (
               <InlineAlert
                 action={
-                  <Button variant="outline" size="sm" onClick={() => void loadDetail(selectedId)}>
+                  <Button variant="outline" onClick={() => void loadDetail(selectedId)}>
                     Tentar novamente
                   </Button>
                 }

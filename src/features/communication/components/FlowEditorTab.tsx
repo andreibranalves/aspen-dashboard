@@ -475,7 +475,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
           )}
           </section>
         </details>
-        <Button onClick={addFlow} size="sm">
+        <Button onClick={addFlow}>
           <Plus size={14} aria-hidden="true" /> Novo fluxo
         </Button>
       </div>
@@ -483,7 +483,7 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
       {loadError && (
         <InlineAlert title="Não foi possível carregar os fluxos."
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadFlows()}>
+            <Button variant="outline" onClick={() => void loadFlows()}>
               Tentar novamente
             </Button>
           }
@@ -584,7 +584,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                 <Button
                   type="button"
                   onClick={handleSave}
-                  size="sm"
                   disabled={!isDirty || saving || delayRangeInvalid}
                 >
                   <Save size={14} aria-hidden="true" />
@@ -608,7 +607,6 @@ export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
                     <Button
                       type="button"
                       onClick={() => addStep(selectedFlow.id)}
-                      size="sm"
                       variant="outline"
                     >
                       <Plus size={14} aria-hidden="true" /> Etapa

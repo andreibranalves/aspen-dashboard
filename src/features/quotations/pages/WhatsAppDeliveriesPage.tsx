@@ -40,6 +40,7 @@ import {
 import { fmtPhone, formatDateTime } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
+  parseHashAllowedInteger,
   parseHashOption,
   parseHashPositiveInteger,
   useHashQueryState,
@@ -53,8 +54,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Heading } from '@/components/ui/heading';
+import { Card } from '@/components/ui/card';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZES = [10, 25, 50];
+const parseDeliveryLimit = parseHashAllowedInteger(PAGE_SIZES);
 
 interface DeliveryFilters {
   requiresAction: boolean;
@@ -362,6 +365,7 @@ export default function WhatsAppDeliveriesPage() {
     serializeDeliveryFilters
   );
   const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
+  const [limit, setLimit] = useHashQueryState('limit', 25, parseDeliveryLimit);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [result, setResult] = useState<DeliveryPage | null>(null);
   const [selectedDelivery, setSelectedDelivery] = useState<DeliveryView | null>(null);
@@ -434,9 +438,9 @@ export default function WhatsAppDeliveriesPage() {
       includeActive: filters.includeActive,
       ...(filters.delayed ? { delayed: true } : {}),
       page,
-      pageSize: PAGE_SIZE,
+      pageSize: limit,
     }),
-    [filters, page]
+    [filters, page, limit]
   );
 
   useEffect(() => {
@@ -589,7 +593,11 @@ export default function WhatsAppDeliveriesPage() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil((result?.total || 0) / limit));
+  const changeLimit = (value: number) => {
+    setPage(1);
+    setLimit(value);
+  };
 
   const openHistoryDetails = async (event: SendEvent) => {
     const requestId = ++historyDetailRequestRef.current;
@@ -625,25 +633,25 @@ export default function WhatsAppDeliveriesPage() {
   const summaryCount = (value: number | undefined) => (loading && !result ? null : value);
 
   return (
-    <PageShell className="space-y-5 pb-10">
-      <PageHeader title="Envios" />
-      <DeliveryAlarm diagnostics={diagnostics} failed={diagnosticsFailed} />
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TabList
-          label="Seções de envios"
-          items={[
-            { value: 'pending', label: 'Pendências' },
-            { value: 'history', label: 'Histórico' },
-          ]}
-        />
-        <div className="flex items-center gap-2">
+    <PageShell className="space-y-5">
+      <PageHeader
+        title="Envios"
+        actions={<>
           <Button type="button" variant="outline" onClick={() => setReloadVersion((value) => value + 1)} disabled={loading || clearing}><RefreshCw className={loading ? 'animate-spin' : undefined} />Atualizar</Button>
           {/* Ação destrutiva e rara: discreta, sempre com confirmação. */}
           {activeTab === 'pending' && <Button type="button" variant="ghost-muted-destructive" size="icon" aria-label="Limpar fila" title="Limpar fila" onClick={() => setClearConfirmOpen(true)} disabled={loading || clearing}><Trash2 /></Button>}
-        </div>
-      </div>
+        </>}
+      />
+      <DeliveryAlarm diagnostics={diagnostics} failed={diagnosticsFailed} />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <TabList
+        label="Seções de envios"
+        items={[
+          { value: 'pending', label: 'Pendências' },
+          { value: 'history', label: 'Histórico' },
+        ]}
+      />
 
       {activeTab === 'pending' && (
         <StatusFilterBar
@@ -688,7 +696,7 @@ export default function WhatsAppDeliveriesPage() {
           <PageToolbar className="mb-4">
             <SearchField value={filters.search} onChange={(event) => updateFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Buscar cliente ou orçamento" aria-label="Buscar cliente ou orçamento" />
 
-            <details className="relative ml-auto text-sm text-fg-muted"><summary className="flex h-10 cursor-pointer list-none items-center rounded-control px-3 font-semibold hover:bg-raised hover:text-fg">Filtros avançados</summary>
+            <details className="relative ml-auto text-sm text-fg-muted"><summary className="flex h-8 cursor-pointer list-none items-center rounded-control px-3 font-semibold hover:bg-raised hover:text-fg">Filtros avançados</summary>
             <section className="absolute right-10 z-floating mt-2 max-h-[70vh] w-[min(880px,80vw)] space-y-4 overflow-auto rounded-card border border-line bg-surface p-5 shadow-lg" aria-label="Filtros de entregas">
             <div className="flex flex-wrap gap-2">
               <label className={filterInputClass(filters.requiresAction)}>
@@ -798,7 +806,7 @@ export default function WhatsAppDeliveriesPage() {
         {activeTab === 'pending' && error && (
           <InlineAlert
             action={
-              <Button variant="outline" size="sm" onClick={() => setReloadVersion((value) => value + 1)}>
+              <Button variant="outline" onClick={() => setReloadVersion((value) => value + 1)}>
                 Tentar novamente
               </Button>
             }
@@ -835,8 +843,8 @@ export default function WhatsAppDeliveriesPage() {
             Nenhuma entrega encontrada para os filtros selecionados.
           </div>
         ) : result ? (
-          <>
-            <div className="rounded-b-card bg-surface px-5">
+          <Card>
+            <div className="flex flex-col gap-5">
               <Table
                 aria-label="Tabela de entregas WhatsApp"
                 aria-busy={loading}
@@ -881,7 +889,6 @@ export default function WhatsAppDeliveriesPage() {
                           <Button
                             type="button"
                             variant="outline"
-                            size="sm"
                             aria-label={`Abrir detalhes de ${delivery.businessNumber}, linha ${index + 1}`}
                             onClick={() => selectDelivery(delivery)}
                           >
@@ -893,18 +900,20 @@ export default function WhatsAppDeliveriesPage() {
                   })}
                 </TableBody>
               </Table>
-            </div>
 
-            <ListPagination
-              label="Paginação de envios"
-              page={page}
-              limit={PAGE_SIZE}
-              total={result.total}
-              hasNext={page < totalPages}
-              disabled={loading}
-              onPageChange={setPage}
-            />
-          </>
+              <ListPagination
+                label="Paginação de envios"
+                page={page}
+                limit={limit}
+                pageSizes={PAGE_SIZES}
+                total={result.total}
+                hasNext={page < totalPages}
+                disabled={loading}
+                onPageChange={setPage}
+                onLimitChange={changeLimit}
+              />
+            </div>
+          </Card>
         ) : null}
       </TabPanel>
       </Tabs>

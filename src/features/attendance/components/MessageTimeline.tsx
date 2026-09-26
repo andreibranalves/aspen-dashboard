@@ -97,7 +97,7 @@ function MessageBubble({
         {message.type === 'text' && message.body && (
           <Button
             variant={selected ? 'soft' : 'ghost-muted'}
-            size="icon-sm"
+            size="icon"
             aria-pressed={selected}
             aria-label="Selecionar para orçamento"
             title={selected ? 'Selecionada para orçamento' : 'Selecionar para orçamento'}

@@ -990,7 +990,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
             <span>
               {suggestion.label} sugerido: {formatDate(suggestion.date)}
             </span>
-            <Button type="button" variant="outline" size="sm" onClick={useManualContactSuggestion}>
+            <Button type="button" variant="outline" onClick={useManualContactSuggestion}>
               Usar sugestão
             </Button>
           </div>
@@ -1085,7 +1085,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       return (
         <div className="space-y-2">
           {terminalContext(item)}
-          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+          <Button type="button" variant="ghost" onClick={() => void openHistory(item)}>
             Histórico
           </Button>
         </div>
@@ -1094,15 +1094,15 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     if (item.reasonCode === 'associate_response') {
       return (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" onClick={() => openAssociateResponse(item)}>
+          <Button type="button" onClick={() => openAssociateResponse(item)}>
             Associar resposta
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+          <Button type="button" variant="ghost" onClick={() => void openHistory(item)}>
             Histórico
           </Button>
           {item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact') &&
             (item.blockedContactPhone || item.contactPhone) && (
-              <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+              <Button type="button" variant="outline" onClick={() => openUnblockContact(item)}>
                 Desbloquear contato
               </Button>
             )}
@@ -1116,11 +1116,11 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       return (
         <div className="flex flex-wrap gap-2">
           {(item.blockedContactPhone || item.contactPhone) && (
-            <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+            <Button type="button" variant="outline" onClick={() => openUnblockContact(item)}>
               Desbloquear contato
             </Button>
           )}
-          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+          <Button type="button" variant="ghost" onClick={() => void openHistory(item)}>
             Histórico
           </Button>
         </div>
@@ -1134,10 +1134,10 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
     if (item.reasonCode === 'follow_up_decide_continuity') {
       return (
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" onClick={() => openContinueFollowUp(item)}>
+          <Button type="button" onClick={() => openContinueFollowUp(item)}>
             Decidir continuidade
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+          <Button type="button" variant="ghost" onClick={() => void openHistory(item)}>
             Histórico
           </Button>
         </div>
@@ -1149,32 +1149,31 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
           <Button
             type="button"
             variant="success"
-            size="sm"
             disabled={followUpReviewLoading}
             onClick={() => void openFollowUpReview(item)}
           >
             {followUpReviewLoading ? 'Carregando…' : 'Revisar retorno'}
           </Button>
         )}
-        <Button type="button" variant="outline" size="sm" onClick={() => openCreate(item)}>
+        <Button type="button" variant="outline" onClick={() => openCreate(item)}>
           Nova ação
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => openSchedule(item)}>
+        <Button type="button" variant="outline" onClick={() => openSchedule(item)}>
           Reagendar
         </Button>
-        <Button type="button" size="sm" onClick={() => openComplete(item)}>
+        <Button type="button" onClick={() => openComplete(item)}>
           Concluir
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => openManualContact(item)}>
+        <Button type="button" variant="outline" onClick={() => openManualContact(item)}>
           Registrar contato
         </Button>
         {item.contactContext.blockers.some((blocker) => blocker.code === 'do_not_contact') &&
           (item.blockedContactPhone || item.contactPhone) && (
-            <Button type="button" variant="outline" size="sm" onClick={() => openUnblockContact(item)}>
+            <Button type="button" variant="outline" onClick={() => openUnblockContact(item)}>
               Desbloquear contato
             </Button>
           )}
-        <Button type="button" variant="ghost" size="sm" onClick={() => void openHistory(item)}>
+        <Button type="button" variant="ghost" onClick={() => void openHistory(item)}>
           Histórico
         </Button>
       </div>
@@ -1227,7 +1226,6 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       <Button
         type="button"
         variant={item.isUrgent ? 'default' : 'outline'}
-        size="sm"
         aria-label={item.isUrgent ? 'Remover urgência' : 'Marcar como urgente'}
         aria-pressed={item.isUrgent}
         disabled={submittingUrgency}
@@ -1267,7 +1265,7 @@ export default function CommercialQueuePanel({ navigate }: CommercialQueuePanelP
       {error && (
         <InlineAlert
           action={
-            <Button variant="outline" size="sm" onClick={() => void load(page, filter)}>
+            <Button variant="outline" onClick={() => void load(page, filter)}>
               Tentar novamente
             </Button>
           }

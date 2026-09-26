@@ -129,7 +129,6 @@ export function QuotationSectionsEditor<T extends EditorSections>({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
                 onClick={() => onRestore(key)}
                 disabled={!editable}
               >

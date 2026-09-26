@@ -81,30 +81,28 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
   };
 
   return (
-    <PageShell className="space-y-4 pb-28">
+    <PageShell className="space-y-4">
       <PageHeader
         title={legacy ? 'Produtos' : 'Catálogo'}
+        actions={<>
+          {activeTab === 'products' && (
+            <>
+              <ExportMenu id="catalog-export-menu">
+                <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar produtos</ExportCsvButton>
+                <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar preços</ExportCsvButton>
+              </ExportMenu>
+              <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
+            </>
+          )}
+          {activeTab === 'sets' && <Button onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button>}
+        </>}
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabList
-            label="Seções do catálogo"
-            items={TABS.map((tab) => (tab.value === 'products' ? { ...tab, badge: productCount } : tab))}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            {activeTab === 'products' && (
-              <>
-                <ExportMenu id="catalog-export-menu">
-                  <ExportCsvButton resource="products" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar produtos</ExportCsvButton>
-                  <ExportCsvButton resource="product-pricing" filters={{ search: productSearch, status: productStatus, order_by: productSort }} className="w-full justify-start">Exportar preços</ExportCsvButton>
-                </ExportMenu>
-                <Button onClick={() => navigate('/products/new')}><PlusCircle /> Novo produto</Button>
-              </>
-            )}
-            {activeTab === 'sets' && <Button onClick={() => openTemplateManager(null)}><PlusCircle /> Novo conjunto</Button>}
-          </div>
-        </div>
+        <TabList
+          label="Seções do catálogo"
+          items={TABS.map((tab) => (tab.value === 'products' ? { ...tab, badge: productCount } : tab))}
+        />
 
         <TabPanel value="products">
           <ProductsPage showHeader={false} onCountChange={setProductCount} />
@@ -150,7 +148,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
                     <div className="mt-4 flex-1">
                       {template.items.map((item) => <div key={item.sku} className="flex items-center justify-between gap-2 border-b border-line py-3 text-xs"><span className="truncate">{item.name || item.sku}</span><span className="shrink-0 font-mono text-3xs text-fg-muted">{item.sku}</span></div>)}
                     </div>
-                    <Button className="mt-4 self-start" variant="outline" size="sm" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
+                    <Button className="mt-4 self-start" variant="outline" onClick={() => openTemplateManager(template)}>Editar conjunto</Button>
                   </article>
                 ))}
               </div>
@@ -171,7 +169,7 @@ export default function CatalogPage({ legacy = false }: CatalogPageProps) {
             {mediaUploadOpen && (
               <aside className="space-y-3">
                 <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setMediaUploadOpen(false)}>
+                  <Button variant="ghost" onClick={() => setMediaUploadOpen(false)}>
                     <X size={16} /> Fechar painel
                   </Button>
                 </div>

@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * PageShell — contrato único de página (largura fluida e ritmo).
- * Reserva para barras inferiores fixas via className="pb-28".
+ * Barras inferiores fixas reservam o próprio espaço (BulkActionBar, MobileActionBar).
  */
 export interface PageShellProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;

@@ -4,8 +4,7 @@ import { useFieldControl } from '@/components/ui/field';
 import { cn } from '@/lib/utils';
 
 const sizes = {
-  default: 'h-10 text-sm',
-  sm: 'h-8 text-xs',
+  default: 'h-8 text-sm',
   xs: 'h-7 text-xs',
   /** Só o chevron visível, para mover/trocar valor a partir de uma ação compacta. */
   icon: 'h-8 w-9 max-w-9 cursor-pointer overflow-hidden border-0 bg-surface-subtle px-0 text-transparent',
@@ -14,7 +13,7 @@ const sizes = {
 type SelectSize = keyof typeof sizes;
 
 /**
- * Select keeps the native browser behavior while matching the 40px Aspen
+ * Select keeps the native browser behavior while matching the 32px Aspen
  * control contract.
  */
 interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {

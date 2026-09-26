@@ -32,7 +32,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 - Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Atendimento, Novo orçamento (conversa e manual), Orçamentos, Comercial, Pedidos, Tarefas, Clientes, Catálogo, Envios, Resultados, Configurações e telas de detalhe.
 - Evolution API é o único transporte de WhatsApp; sem fallbacks de provedor/transporte/persistência novos.
 - Sem biblioteca de estado global; preferência por estado local/contexto.
-- Tema claro por padrão, com alternância para escuro; contrato visual em `DESIGN.md`.
+- Tema claro por padrão, com alternância para escuro na tela de login; contrato visual em `DESIGN.md`.
 - Prioridade declarada pelo dono: criação de orçamento é o trabalho central; a parte comercial (CRM, pedidos, follow-up) é a frente de evolução.
 - Telas pouco usadas podem ser removidas em prol de integrações e contexto comercial (decisão registrada pelo dono).
 

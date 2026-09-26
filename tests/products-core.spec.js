@@ -412,13 +412,13 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
       has: page.getByRole('heading', { name: 'Produto com atividade local', exact: true }),
     });
     await expect(productHeader.getByText('Ativo', { exact: true })).toBeVisible();
-    await expect(productHeader.getByRole('button', { name: 'Arquivar produto' })).toBeVisible();
+    await expect(page.getByRole('banner').getByRole('button', { name: 'Arquivar produto' })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Nome', exact: true })).toHaveValue('Produto com atividade local');
     await expect(page.getByText('Produto criado', { exact: true })).toBeVisible();
     await expect(page.getByText(/10,00/).first()).toBeVisible();
     await expect.poll(() => activityRequests).toBe(1);
 
-    await expect(productHeader.getByRole('button', { name: 'Salvar produto' })).toBeVisible();
+    await expect(page.getByRole('banner').getByRole('button', { name: 'Salvar produto' })).toBeVisible();
     await expect(page.getByPlaceholder('Nome do produto')).toHaveValue(
       'Produto com atividade local'
     );

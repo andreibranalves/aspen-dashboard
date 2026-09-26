@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { buttonSizes } from '@/components/ui/button';
 
 export interface StatusFilterOption<T extends string> {
   value: T;
@@ -41,7 +42,8 @@ export default function StatusFilterBar<T extends string>({
             aria-pressed={active}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              'inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-control px-3 text-compact font-semibold transition-colors',
+              'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-control font-semibold transition-colors',
+              buttonSizes.default,
               active
                 ? 'bg-primary-soft text-primary-soft-ink'
                 : 'text-fg-muted hover:bg-surface-hover hover:text-fg'
