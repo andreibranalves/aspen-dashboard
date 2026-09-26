@@ -30,6 +30,10 @@ export function createWebhookEffectRunners(
 }
 
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
+// A done row only dedupes Evolution resends, which arrive within minutes; after
+// 14 days it goes (ADR 0013), so the table does not keep contacts forever.
+export const EFFECT_RETENTION_MS = 14 * 86_400_000;
+const PRUNE_BATCH = 500;
 const DRAIN_LEASE_MS = 2 * 60_000;
 // A live webhook may still be applying a fresh row; the drain leaves it alone.
 const DRAIN_MIN_AGE_MS = 60_000;
@@ -73,6 +77,18 @@ export async function applyWebhookEffects(
     }
     await repository.markDone(record.id, effect);
   }
+}
+
+/** Deletes the oldest done rows past the retention; returns how many. */
+export async function pruneWebhookEffects(
+  input: { repository?: Pick<WhatsappWebhookEffectsRepository, 'pruneDone'>; now?: () => Date } = {},
+): Promise<number> {
+  const repository = input.repository || createPostgresWhatsappWebhookEffectsRepository();
+  const now = (input.now || (() => new Date()))();
+  return repository.pruneDone({
+    completedBefore: new Date(now.getTime() - EFFECT_RETENTION_MS),
+    limit: PRUNE_BATCH,
+  });
 }
 
 export interface DrainWebhookEffectsInput {

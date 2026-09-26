@@ -14,11 +14,15 @@ Até setembro de 2026, envios, retornos, respostas do Atendimento, recibos e efe
 - **Envio com pausas reais.** Saem o orçamento de tempo do envio na hora (`PROCESS_DUE_TIME_BUDGET_MS`) e o módulo de prazos de banco (`api/_infrastructure/db/deadline.ts`).
 - **Trava de idade.** Um passo de envio ou uma resposta do Atendimento só sai até 30 min depois do pedido do operador. Passado esse prazo, o envio fica interrompido e vai para revisão; nada é retomado sozinho. Retornos seguem suas próprias regras, porque o teto diário de aprovações os adia de propósito.
 - **Webhook direto no worker**, pela rede Docker interna, sem passar pelo Traefik, e com bearer. O worker grava mensagem, recibo e efeito como hoje, responde 200 e aplica os efeitos depois. O Evolution 2.3 reenvia com backoff o webhook que falha.
-- **Tabela de tarefas só para trabalho sem dono no domínio**: efeitos do webhook, recibos por correlacionar, heartbeat, varreduras e limpeza, num executor próprio sobre `FOR UPDATE SKIP LOCKED`. Envio e passos, retorno e resposta do Atendimento continuam agendados na própria linha, porque é o lease e o `transport_started_at` dessa linha que impedem envio duplicado.
+- **Cada trabalho agendado na própria linha.** Envio e passos, retorno e resposta do Atendimento têm lease e `transport_started_at` na própria linha, e é isso que impede envio duplicado. O mesmo vale para o que não tem dono no domínio:
+  - Efeitos do webhook têm tabela própria, com lease.
+  - Recibos que chegam antes do aceite ficam numa caixa de entrada e são aplicados no próprio aceite.
+  - O heartbeat é uma linha por fonte.
+  - A varredura é o timer de uma hora.
 - **Mesmo código.** O worker usa o mesmo repositório, o mesmo schema Drizzle e o mesmo build TypeScript, e renderiza PDF e imagens com o mesmo `@sparticuz/chromium` da Vercel, para o documento enviado ser igual à prévia. Roda uma instância só.
 - **Topologia e segredos.** Projeto compose próprio em `/docker/aspen-worker/`, ligado à rede `evolution-api-zscx_default` como externa; nunca edita nem reinicia o projeto do Evolution, que pertence à Hostinger. Os segredos ficam em `/docker/aspen-worker/.env` (root, 0600), escritos pelo operador por SSH. O GitHub não guarda credencial de banco nem do Evolution.
 - **Deploy e rollback.** Um push em `master` que toque o worker dispara o GitHub Actions, que entra na tailnet com chave efêmera (`tailscale/github-action`) e manda `git archive` por SSH a uma chave restrita por `command=` a `deploy-worker.sh <sha>`. O script builda `aspen-worker:<sha>` no VPS, sobe o container e espera `/health`; se falhar, volta à tag anterior. Ficam as 5 últimas imagens, e o rollback manual é um `workflow_dispatch` com o sha, sem rebuild. O redeploy do worker faz parte da autorização de merge; operações no Evolution continuam exigindo autorização própria.
-- **Logs.** Driver `json-file` com rotação de 10 MB × 5, nas mesmas regras de `safeErrorSummary`; erros vão ao Sentry. No banco ficam só o heartbeat e as tarefas: a tarefa concluída perde o payload na hora e é apagada após 14 dias.
+- **Logs.** Driver `json-file` com rotação de 10 MB × 5, nas mesmas regras de `safeErrorSummary`; erros vão ao Sentry. No banco, o worker apaga o efeito do webhook 14 dias depois de concluído, e os recibos com 30 dias.
 - **Alarme em Envios e em Configurações › Canais** quando houver trabalho vencido há mais de 10 min sem ser pego, quando o heartbeat da varredura passar de 2 h, ou, na hora do envio, quando o aviso for recusado.
 
 ## Transição
@@ -29,7 +33,7 @@ Seis fases, cada uma um PR que deixa o sistema funcionando. Nenhuma flag escolhe
 2. O worker roda o que o QStash chamava, e a Vercel chama `/wake` quando o envio na hora deixa passos pendentes. O mesmo PR apaga o código do QStash e as rotas de worker da Vercel, que não têm chamador em produção. O schedule do QStash é apagado depois que o worker estiver saudável.
 3. O worker recebe o webhook, a URL no Evolution é trocada (operação autorizada) e o PR seguinte apaga `/api/evolution-webhook`.
 4. Envios e respostas do Atendimento só pelo worker; sai o orçamento de 45 s.
-5. Tabela de tarefas, em expand–contract com migration.
+5. O worker apaga os efeitos do webhook concluídos há mais de 14 dias.
 6. Limpeza: `/api/send-whatsapp`, o repositório antigo de envios (`quotation-delivery-repository.ts`) e helpers compartilhados.
 
 ## Opções descartadas
@@ -40,6 +44,7 @@ Seis fases, cada uma um PR que deixa o sistema funcionando. Nenhuma flag escolhe
 - **`LISTEN/NOTIFY`.** Exige conexão direta permanente, que o pooler do Neon não repassa e que impede o scale-to-zero.
 - **Mesmo compose do Evolution.** O arquivo pertence ao projeto da Hostinger, que pode reescrevê-lo, e o deploy do worker passaria a tocar no Evolution.
 - **Imagem no GHCR.** A cota gratuita privada (500 MB e 1 GB/mês de transferência) não comporta imagens com Chromium.
+- **Tabela de tarefas genérica** para efeitos, recibos, heartbeat, varreduras e limpeza, com executor próprio sobre `FOR UPDATE SKIP LOCKED`. Decidida no início e descartada em 26/09/2026. Cada um desses trabalhos já tinha dono e funcionava, e a tabela exigiria migration em expand–contract e um segundo executor. O único problema real era a tabela de efeitos guardar toda linha para sempre, e a fase 5 resolveu isso só com a limpeza.
 - **Evento bruto do webhook numa tabela.** Seria mais uma cópia de textos e telefones, e falha de parse já é pega pelo bloqueio `unparsed_upsert`.
 
 ## Consequências

@@ -4,6 +4,7 @@ import {
   DELIVERY_BATCH_LIMIT,
   MAX_DELIVERY_PASSES,
   MAX_FOLLOW_UPS_PER_CYCLE,
+  PRUNE_INTERVAL_MS,
   SCHEDULE_RETRY_MS,
   THROTTLED_FOLLOW_UP_INTERVAL_MS,
   createWorkerCycle,
@@ -26,6 +27,10 @@ function harness(overrides: Partial<WorkerCycleDependencies> = {}) {
     drainEffects: async () => {
       calls.push('effects');
       return { applied: 0, failed: 0 };
+    },
+    pruneEffects: async () => {
+      calls.push('prune');
+      return 0;
     },
     sweepMessages: async () => {
       calls.push('messages');
@@ -64,10 +69,10 @@ function harness(overrides: Partial<WorkerCycleDependencies> = {}) {
   };
 }
 
-test('cycle runs deliveries, webhook effects, replies and follow-ups in order and records both heartbeats', async () => {
+test('cycle runs deliveries, webhook effects, replies, follow-ups and cleanup in order and records both heartbeats', async () => {
   const { calls, records, runCycle } = harness();
   const result = await runCycle();
-  assert.deepEqual(calls, [`deliveries:${DELIVERY_BATCH_LIMIT}`, 'effects', 'messages', 'follow-up']);
+  assert.deepEqual(calls, [`deliveries:${DELIVERY_BATCH_LIMIT}`, 'effects', 'messages', 'follow-up', 'prune']);
   assert.deepEqual(records, [
     { run: { result: 'success', processed: 0, remaining: false } },
     { sweep: { result: 'success', requeued: 0, toReview: 0, dispatched: 0 } },
@@ -111,9 +116,30 @@ test('one failing source never stops the others and the heartbeat records the fa
     },
   });
   await runCycle();
-  assert.deepEqual(calls, ['messages', 'follow-up']);
+  assert.deepEqual(calls, ['messages', 'follow-up', 'prune']);
   assert.deepEqual(errors, ['envios', 'efeitos do webhook']);
   assert.deepEqual(records[0], { run: { result: 'failure' } });
+});
+
+test('cleanup runs at most once an hour, and a failed one waits for the next hour', async () => {
+  let prunes = 0;
+  const { errors, runCycle, advance } = harness({
+    pruneEffects: async () => {
+      prunes += 1;
+      throw new Error('db down');
+    },
+  });
+  await runCycle();
+  await runCycle();
+  assert.equal(prunes, 1);
+  assert.deepEqual(errors, ['limpeza dos efeitos']);
+
+  advance(PRUNE_INTERVAL_MS - 1);
+  await runCycle();
+  assert.equal(prunes, 1);
+  advance(1);
+  await runCycle();
+  assert.equal(prunes, 2);
 });
 
 test('a failing heartbeat is reported and does not hide the schedule', async () => {
