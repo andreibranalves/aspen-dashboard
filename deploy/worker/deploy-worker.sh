@@ -25,18 +25,22 @@ fail() {
   exit 1
 }
 
+# A tag vai como prefixo do próprio `docker`: prefixo numa função shell não
+# sobrevive ao retorno no dash, e o compose recusa qualquer comando sem ela.
 compose() {
-  docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" "$@"
+  tag=$1
+  shift
+  ASPEN_WORKER_TAG=$tag docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" "$@"
 }
 
-# Sobe a tag e espera o HEALTHCHECK da imagem ficar saudável.
+# Sobe a tag e espera o healthcheck do compose ficar saudável.
 up() {
-  ASPEN_WORKER_TAG=$1 compose up -d --wait --wait-timeout "$WAIT_SECONDS" worker
+  compose "$1" up -d --wait --wait-timeout "$WAIT_SECONDS" worker
 }
 
 # Mantém as KEEP_IMAGES imagens mais novas, além da atual e da anterior.
 prune() {
-  docker image ls aspen-worker --format '{{.CreatedAt}}	{{.Tag}}' |
+  docker image ls aspen-worker --format '{{.CreatedAt}}\t{{.Tag}}' |
     sort -r |
     tail -n +$((KEEP_IMAGES + 1)) |
     cut -f2 |
@@ -45,6 +49,8 @@ prune() {
     done
 }
 
+# release <tag> [descartar]: com "descartar", uma imagem que não subiu é
+# apagada para não ocupar uma das vagas de rollback.
 release() {
   target=$1
   previous=$(cat "$DIR/current-tag" 2>/dev/null || true)
@@ -55,7 +61,11 @@ release() {
     return 0
   fi
   log "aspen-worker:$target não ficou saudável; veja 'docker logs aspen-worker' no VPS"
-  if [ -n "$previous" ] && [ "$previous" != "$target" ]; then
+  if [ "$previous" = "$target" ]; then
+    # Era a versão em uso: fica como está, sem outra para onde voltar.
+    exit 1
+  fi
+  if [ -n "$previous" ]; then
     if up "$previous"; then
       log "voltou para aspen-worker:$previous"
     else
@@ -63,7 +73,10 @@ release() {
     fi
   else
     # Primeiro deploy: sem imagem anterior, não deixa um worker quebrado reiniciando.
-    compose down || true
+    compose "$target" down || true
+  fi
+  if [ "${2:-}" = descartar ]; then
+    docker image rm "aspen-worker:$target" >/dev/null 2>&1 || true
   fi
   exit 1
 }
@@ -76,7 +89,7 @@ deploy() {
   # O tar vai direto ao BuildKit como contexto; nada é extraído no host.
   docker build --progress=plain -f deploy/worker/Dockerfile \
     --build-arg GIT_SHA="$1" -t "aspen-worker:$1" - <"$workdir/source.tar"
-  release "$1"
+  release "$1" descartar
 }
 
 rollback() {

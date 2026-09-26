@@ -31,6 +31,8 @@ Uma vez, antes do primeiro deploy. Comandos no VPS rodam como root; `<sha>` é o
    tailscale serve --bg --tcp 2222 tcp://localhost:22
    ```
 
+   Essa porta leva ao mesmo sshd da porta 22 pública: com `PasswordAuthentication yes` ou `PermitRootLogin yes`, qualquer nó da tailnet pode tentar a senha do root por ela. Confira com `sshd -T | grep -Ei 'passwordauth|permitrootlogin'` e prefira `PasswordAuthentication no` e `PermitRootLogin prohibit-password`.
+
 4. Chave de deploy, gerada no seu computador:
 
    ```bash

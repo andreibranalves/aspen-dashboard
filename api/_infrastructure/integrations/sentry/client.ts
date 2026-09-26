@@ -1,5 +1,10 @@
 import * as Sentry from '@sentry/node';
-import { safeErrorFields, safeErrorForReport } from '../../../_shared/safe-error.js';
+import type { ErrorEvent, EventHint } from '@sentry/node';
+import {
+  safeErrorFields,
+  safeErrorForReport,
+  safeErrorSummary,
+} from '../../../_shared/safe-error.js';
 
 const dsn = process.env.SENTRY_DSN?.trim();
 
@@ -10,6 +15,8 @@ if (dsn) {
     release: process.env.VERCEL_GIT_COMMIT_SHA || process.env.ASPEN_WORKER_SHA,
     sampleRate: 1,
     defaultIntegrations: Sentry.getDefaultIntegrationsWithoutPerformance(),
+    // O modo padrão ("warn") imprime o stack cru da rejeição no log.
+    integrations: [Sentry.onUnhandledRejectionIntegration({ mode: 'none' })],
     dataCollection: {
       userInfo: false,
       cookies: false,
@@ -23,13 +30,28 @@ if (dsn) {
       stackFrameVariables: false,
     },
     beforeBreadcrumb: () => null,
-    beforeSend(event) {
+    beforeSend(event, hint) {
       event.request = undefined;
       event.user = undefined;
       event.breadcrumbs = [];
-      return event;
+      return scrubUnhandledException(event, hint);
     },
   });
+}
+
+/**
+ * Exceção não tratada que o próprio SDK captura (processo do worker, promise
+ * solta) chega com a mensagem crua, que pode trazer SQL e valores; fica só o
+ * resumo seguro. As capturas do código já passam por `safeErrorForReport`.
+ */
+export function scrubUnhandledException(event: ErrorEvent, hint: EventHint): ErrorEvent {
+  const values = event.exception?.values ?? [];
+  if (!values.some((value) => value.mechanism?.handled === false)) return event;
+  const summary = safeErrorSummary(hint.originalException);
+  for (const value of values) value.value = summary;
+  // Rejeição com valor que não é Error vai serializada em `extra`.
+  event.extra = undefined;
+  return event;
 }
 
 function captureSafely(error: unknown, tags: Record<string, string>): void {

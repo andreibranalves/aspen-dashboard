@@ -11,7 +11,7 @@ Preserve dados reais e contratos em uso. Não crie compatibilidade para consumid
 ## Convenções
 
 - Use apenas ESM; imports do backend para arquivos locais incluem a extensão `.js`.
-- Handlers recebem eventos no formato Lambda e retornam `{ statusCode, headers?, body }`. Registre cada endpoint uma única vez em `api/_app/routes.ts`.
+- Handlers recebem eventos no formato Lambda e retornam `{ statusCode, headers?, body }`. Registre cada endpoint da Function uma única vez em `api/_app/routes.ts`; o worker do VPS (`api/_worker`, ADR 0013) tem rotas próprias.
 - Mensagens HTTP destinadas ao usuário são escritas em português brasileiro.
 - O frontend é para um operador único experiente. Não acrescente texto de ajuda abaixo de campos, descrições de PageHeader/seção que repetem o título, nem copy tutorial. Deixe texto auxiliar só quando a consequência não aparece no rótulo: efeito colateral, ação bloqueada, ou empty state com o próximo passo.
 - As rotas do frontend são por hash, em `src/app/routes.tsx`; não adicione React Router.

@@ -20,6 +20,13 @@ async function exitWithError(task: string, error: unknown): Promise<void> {
   process.exit(1);
 }
 
+// Sem este handler o Node imprimiria a mensagem crua no log. O Sentry já captura
+// a exceção sozinho, com a mensagem trocada pelo resumo seguro (beforeSend).
+function crash(error: unknown): void {
+  console.error(`[worker] erro não tratado: ${safeErrorSummary(error)}`);
+  void flushErrorReports(2_000).finally(() => process.exit(1));
+}
+
 function shutdown(signal: 'SIGTERM' | 'SIGINT'): void {
   console.log(`[worker] ${signal}: encerrando`);
   server.close(() => process.exit(0));
@@ -27,6 +34,8 @@ function shutdown(signal: 'SIGTERM' | 'SIGINT'): void {
 }
 
 server.on('error', (error) => void exitWithError('startup', error));
+process.on('uncaughtException', crash);
+process.on('unhandledRejection', crash);
 server.listen(PORT, '0.0.0.0', () => console.log(`[worker] ${sha} na porta ${PORT}`));
 process.once('SIGTERM', shutdown);
 process.once('SIGINT', shutdown);

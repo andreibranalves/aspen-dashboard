@@ -23,8 +23,10 @@ on:
 permissions:
   contents: read
 
+# Um grupo por evento: um push na fila não cancela um rollback pendente. No VPS
+# o script serializa os dois com flock.
 concurrency:
-  group: worker-deploy
+  group: worker-deploy-${{ github.event_name }}
   cancel-in-progress: false
 
 env:
@@ -48,28 +50,33 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
           ping: ${{ env.WORKER_HOST }}
-      - name: Chave de deploy
+      - name: Acesso SSH
         env:
           DEPLOY_KEY: ${{ secrets.WORKER_DEPLOY_SSH_KEY }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/worker_deploy
           chmod 600 ~/.ssh/worker_deploy
+          cat > ~/.ssh/config <<EOF
+          Host worker
+            HostName $WORKER_HOST
+            Port $WORKER_SSH_PORT
+            User root
+            IdentityFile ~/.ssh/worker_deploy
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile $GITHUB_WORKSPACE/deploy/worker/known_hosts
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          EOF
       - name: Deploy
         if: github.event_name == 'push'
-        run: |
-          git archive --format=tar "$GITHUB_SHA" |
-            ssh -i ~/.ssh/worker_deploy -o IdentitiesOnly=yes -o BatchMode=yes \
-              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/worker/known_hosts \
-              -o ConnectTimeout=20 -o ServerAliveInterval=30 \
-              -p "$WORKER_SSH_PORT" "root@$WORKER_HOST" "deploy $GITHUB_SHA"
+        run: git archive --format=tar "$GITHUB_SHA" | ssh worker "deploy $GITHUB_SHA"
       - name: Rollback
         if: github.event_name == 'workflow_dispatch'
         env:
           SHA: ${{ inputs.sha }}
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha inválido"; exit 1; }
-          ssh -i ~/.ssh/worker_deploy -o IdentitiesOnly=yes -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=deploy/worker/known_hosts \
-            -o ConnectTimeout=20 -o ServerAliveInterval=30 \
-            -p "$WORKER_SSH_PORT" "root@$WORKER_HOST" "rollback $SHA" < /dev/null
+          ssh worker "rollback $SHA" < /dev/null

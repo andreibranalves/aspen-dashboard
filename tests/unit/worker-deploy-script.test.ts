@@ -2,7 +2,15 @@
 // recebido pela chave restrita, o rollback automático e a retenção de imagens.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import test, { afterEach } from 'node:test';
@@ -42,7 +50,7 @@ function setup({ current, images = [] }: { current?: string; images?: string[] }
   dirs.push(root);
   const bin = join(root, 'bin');
   const workerDir = join(root, 'aspen-worker');
-  for (const dir of [bin, workerDir]) spawnSync('mkdir', ['-p', dir]);
+  for (const dir of [bin, workerDir]) mkdirSync(dir, { recursive: true });
   writeFileSync(join(bin, 'docker'), FAKE_DOCKER);
   writeFileSync(join(bin, 'flock'), '#!/bin/sh\nexit 0\n');
   chmodSync(join(bin, 'docker'), 0o755);
@@ -132,12 +140,38 @@ test('deploy script: an unhealthy commit goes back to the previous image', () =>
   assert.match(result.stderr, /voltou para aspen-worker:a{40}/);
 });
 
+test('deploy script: an unhealthy build is discarded so it takes no rollback slot', () => {
+  const { run } = setup({ current: SHA_A, images: [SHA_A] });
+  const result = withUnhealthy(SHA_B, () => run(`deploy ${SHA_B}`, 'tar'));
+  assert.equal(result.status, 1);
+  assert.ok(result.log.includes(`|image rm aspen-worker:${SHA_B}`));
+  assert.ok(!result.log.includes(`|image rm aspen-worker:${SHA_A}`));
+});
+
 test('deploy script: a failed first deploy leaves no worker running', () => {
   const { run } = setup();
   const result = withUnhealthy(SHA_A, () => run(`deploy ${SHA_A}`, 'tar'));
   assert.equal(result.status, 1);
-  assert.ok(result.log.some((line) => / down$/.test(line)));
+  // O compose recusa qualquer comando sem a tag; o down precisa levá-la.
+  assert.ok(result.log.some((line) => line.startsWith(`${SHA_A}|compose `) && / down$/.test(line)));
   assert.equal(result.currentTag, null);
+});
+
+test('deploy script: redeploying the running commit never takes it down', () => {
+  const { run } = setup({ current: SHA_A, images: [SHA_A] });
+  const result = withUnhealthy(SHA_A, () => run(`deploy ${SHA_A}`, 'tar'));
+  assert.equal(result.status, 1);
+  assert.equal(result.log.filter((line) => line.includes(' up -d --wait ')).length, 1);
+  assert.ok(!result.log.some((line) => / down$/.test(line) || line.includes('|image rm ')));
+  assert.equal(result.currentTag, SHA_A);
+});
+
+test('deploy script: a rollback that fails keeps its image', () => {
+  const { run } = setup({ current: SHA_B, images: [SHA_A, SHA_B] });
+  const result = withUnhealthy(SHA_A, () => run(`rollback ${SHA_A}`));
+  assert.equal(result.status, 1);
+  assert.ok(!result.log.some((line) => line.includes('|image rm ')));
+  assert.equal(result.currentTag, SHA_B);
 });
 
 test('deploy script: rollback reuses a built image and never builds', () => {
