@@ -32,6 +32,8 @@
   --color-sage-ink: rgb(var(--sage-ink));
   --color-light-sage: rgb(var(--light-sage));
   --color-chat-background: rgb(var(--chat-background));
+  --color-chat-bubble: rgb(var(--chat-bubble));
+  --color-chat-ink: rgb(var(--chat-ink));
   --color-orange: rgb(var(--orange));
   --color-orange-ink: rgb(var(--orange-ink));
   --color-taupe: rgb(var(--taupe));
@@ -178,7 +180,7 @@
     @media (max-width: 47.9375rem) {
       --mobile-nav-h: calc(3.75rem + env(safe-area-inset-bottom, 0px));
     }
-    --canvas: 229 229 229;
+    --canvas: 4 4 4;
     --page: 13 13 13;
     --surface: 22 22 22;
     --surface-subtle: 36 36 36;
@@ -217,7 +219,10 @@
     --taupe-ink: 41 34 56;
     --cream: 247 244 234;
     --light-sage: 180 199 238;
+    /* A prévia do WhatsApp imita o app claro nos dois temas. */
     --chat-background: 245 243 248;
+    --chat-bubble: 255 255 255;
+    --chat-ink: 26 28 33;
     --rust: 219 187 198;
     --input-surface: 34 34 35;
     --segment-active: 58 58 64;
@@ -245,11 +250,11 @@
     --fg: var(--text-primary);
     --fg-muted: var(--text-secondary);
     --on-solid: var(--on-primary);
-    --shell: 255 255 255;
-    --shell-border: 231 233 240;
-    --shell-text: 26 28 33;
-    --shell-muted: 102 105 117;
-    --shell-hover: 241 241 245;
+    --shell: 22 22 22;
+    --shell-border: 49 49 49;
+    --shell-text: 245 245 243;
+    --shell-muted: 160 160 157;
+    --shell-hover: 36 36 36;
     --shell-primary: 54 90 173;
 
     /* Standard primitive aliases. */
@@ -310,6 +315,11 @@
     --chart-three: 74 58 167;
     --chart-four: 237 161 0;
     --chart-neutral: 201 199 193;
+    --shell: 255 255 255;
+    --shell-border: 231 233 240;
+    --shell-text: 26 28 33;
+    --shell-muted: 102 105 117;
+    --shell-hover: 241 241 245;
   }
 
   * {

@@ -1011,7 +1011,7 @@ function FlowPreview({ step }: { step?: FlowStep }) {
       <div className="mt-5 overflow-hidden rounded-card border-8 border-surface-subtle bg-surface-subtle">
         <div className="px-4 py-3 text-xs font-semibold text-fg">Aspen · prévia</div>
         <div className="min-h-48 bg-chat-background p-3">
-          <div className="whitespace-pre-line rounded-control bg-shell p-3 text-xs leading-5 text-shell-text shadow-xs">{content}</div>
+          <div className="whitespace-pre-line rounded-control bg-chat-bubble p-3 text-xs leading-5 text-chat-ink shadow-xs">{content}</div>
         </div>
       </div>
       <p className="mt-3 text-xs text-fg-muted">{note}</p>
