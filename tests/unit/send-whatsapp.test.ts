@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  handler as sendWhatsapp,
-  loadPostgresSendContext,
-} from '../../api/_modules/send-whatsapp.js';
+import { loadQuotationSendContext } from '../../api/_modules/quotation-send-context.js';
 import {
   canonicalFlowQuotationId,
   createDeliveryPlan,
@@ -16,11 +13,6 @@ import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
 } from '../../api/_modules/postgres-media.js';
-import {
-  createPostgresQuotationDeliveryRepository,
-  QuotationDeliveryConflictError,
-} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
-import { quoteRevisions, quotationDeliveries } from '../../api/_infrastructure/db/schema.js';
 import { normalizeEvolutionDelivery } from '../../api/_infrastructure/integrations/evolution/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import {
@@ -35,28 +27,6 @@ const revisionId = 'revision-0000-0000-4000-8000-000000000001';
 const businessNumber = 'ORC-20260001';
 const publicToken = 'A'.repeat(32);
 const ownedMediaUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
-
-function mediaRecords() {
-  return [{
-    id: 'media-1',
-    product_group: 'canga',
-    blob_url: ownedMediaUrl,
-    active: true,
-    content_type: 'image/jpeg',
-    size_bytes: 11,
-    pathname: 'aspen-media/canga/reference.jpg',
-  }];
-}
-
-function mediaHeadResult(overrides: Record<string, unknown> = {}) {
-  return {
-    url: ownedMediaUrl,
-    pathname: 'aspen-media/canga/reference.jpg',
-    contentType: 'image/jpeg',
-    size: 11,
-    ...overrides,
-  } as any;
-}
 
 function canonicalSectionsSnapshot(
   legacy: { pagamento: string; entrega: string; observacoes: string; prazoProducao: string }
@@ -167,113 +137,6 @@ function store() {
   };
 }
 
-function quotationDeliveryConditionPairs(condition: unknown): Record<string, unknown> {
-  const pairs: Record<string, unknown> = {};
-  const walk = (value: unknown) => {
-    if (!value || typeof value !== 'object') return;
-    const chunks = (value as { queryChunks?: unknown }).queryChunks;
-    if (!Array.isArray(chunks)) return;
-    let column: string | undefined;
-    for (const chunk of chunks) {
-      if (chunk && typeof chunk === 'object' && 'name' in chunk && (chunk as { table?: unknown }).table === quotationDeliveries) {
-        column = String((chunk as { name: string }).name);
-      } else if (column && chunk && typeof chunk === 'object' && 'value' in chunk && !Array.isArray((chunk as { value?: unknown }).value)) {
-        pairs[column] = (chunk as { value: unknown }).value;
-        column = undefined;
-      } else {
-        walk(chunk);
-      }
-    }
-  };
-  walk(condition);
-  return pairs;
-}
-
-function twoFlowDeliveryDatabase(revision: string) {
-  const now = new Date('2026-08-13T12:00:00.000Z');
-  const revisionRow = {
-    id: revision,
-    status: 'emitido',
-    issuedAt: now,
-    createdAt: now,
-    validadeDias: 30,
-  } as any;
-  const rows: Array<Record<string, any>> = [];
-  const camelColumn: Record<string, string> = {
-    revision_id: 'revisionId',
-    flow_id: 'flowId',
-    updated_at: 'updatedAt',
-    id: 'id',
-  };
-  const matches = (row: Record<string, any>, condition: unknown) => Object.entries(quotationDeliveryConditionPairs(condition))
-    .every(([column, value]) => {
-      const actual = row[camelColumn[column] || column];
-      return actual instanceof Date && value instanceof Date
-        ? actual.getTime() === value.getTime()
-        : actual === value;
-    });
-  const query = (source: unknown[]) => {
-    let result = [...source];
-    return {
-      where(condition: unknown) {
-        result = result.filter((row) => matches(row as Record<string, any>, condition));
-        return this;
-      },
-      limit(count: number) {
-        return Promise.resolve(result.slice(0, count));
-      },
-      then(resolve: (value: unknown[]) => unknown, reject: (error: unknown) => unknown) {
-        return Promise.resolve(result).then(resolve, reject);
-      },
-    };
-  };
-  const db = {
-    transaction: async (callback: (tx: unknown) => unknown) => callback(db),
-    execute: async () => undefined,
-    select: () => ({
-      from(table: unknown) {
-        if (table === quoteRevisions) return query([revisionRow]);
-        if (table === quotationDeliveries) return query(rows);
-        return query([]);
-      },
-    }),
-    insert: () => ({
-      values(values: Record<string, unknown>) {
-        return {
-          onConflictDoNothing: () => ({
-            returning: async () => {
-              if (rows.some((row) => row.revisionId === values.revisionId && row.flowId === values.flowId)) return [];
-              const row = { ...values } as Record<string, any>;
-              rows.push(row);
-              return [row];
-            },
-          }),
-        };
-      },
-    }),
-    update: (table: unknown) => ({
-      set(values: Record<string, unknown>) {
-        return {
-          where(condition: unknown) {
-            const selected = table === quotationDeliveries ? rows.filter((row) => matches(row, condition)) : [];
-            return {
-              returning: async (projection?: Record<string, unknown>) => {
-                for (const row of selected) {
-                  for (const [key, value] of Object.entries(values)) {
-                    if (value !== undefined) row[key] = value;
-                  }
-                }
-                return projection ? selected.map((row) => ({ id: row.id })) : selected;
-              },
-            };
-          },
-        };
-      },
-    }),
-  };
-  return { db, now, rows };
-}
-
 function event(body: Record<string, unknown>) {
   return {
     httpMethod: 'POST',
@@ -281,78 +144,6 @@ function event(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   } as any;
 }
-
-test('quotation delivery rejects a second flow and scopes existing delivery reads and updates', async () => {
-  const deliveryRevisionId = '22222222-2222-4222-8222-222222222222';
-  const fixture = twoFlowDeliveryDatabase(deliveryRevisionId);
-  const repository = createPostgresQuotationDeliveryRepository(() => fixture.db as any, { now: () => fixture.now });
-  await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511999990000', flowId: 'flow-a' });
-  await assert.rejects(
-    repository.reserve({ revisionId: deliveryRevisionId, phone: '5511888880000', flowId: 'flow-b' }),
-    QuotationDeliveryConflictError,
-  );
-  // Historical rows remain addressable by their exact flow identity.
-  fixture.rows.push({ ...fixture.rows[0], id: 'historical-flow-b', phone: '5511888880000', flowId: 'flow-b' });
-
-  await repository.recordState({ revisionId: deliveryRevisionId, flowId: 'flow-b', state: 'completed' });
-  const claimed = await repository.claimTransport(deliveryRevisionId, 'flow-a');
-  assert.equal(claimed?.state, 'transporting');
-  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-a'))?.phone, '5511999990000');
-  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-a'))?.state, 'transporting');
-  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-b'))?.phone, '5511888880000');
-  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-b'))?.state, 'completed');
-
-  await assert.rejects(repository.getByRevision(deliveryRevisionId), QuotationDeliveryConflictError);
-  await assert.rejects(repository.recordState({ revisionId: deliveryRevisionId, state: 'reconciling' }), QuotationDeliveryConflictError);
-});
-
-test('send-whatsapp rejects PostgreSQL send without quotation before transport', async () => {
-  const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response('{}', { status: 202 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({ revision_id: revisionId, template: 'Olá' }),
-    );
-    assert.equal(response.statusCode, 400);
-    assert.match(response.body || '', /Cotação PostgreSQL é obrigatória/);
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('PostgreSQL revision send does not resolve quotation data externally', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  const calls: string[] = [];
-  globalThis.fetch = (async (input) => {
-    calls.push(String(input));
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-local-context' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }, { type: 'document', source: 'quotation_pdf' }] },
-      }),
-      {
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-      },
-    );
-    assert.equal(response.statusCode, 200);
-    assert.equal(calls.every((url) => url.startsWith('https://evolution.test')), true);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
 
 test('send-whatsapp-flow rejects PostgreSQL send without quotation before transport', async () => {
   const response = await sendWhatsappFlow(
@@ -374,7 +165,7 @@ test('communication preview rejects PostgreSQL send without revision before tran
   assert.match(response.body || '', /Revisão PostgreSQL do orçamento é obrigatória/);
 });
 
-test('loadPostgresSendContext rejects a revision owned by another quotation', async () => {
+test('loadQuotationSendContext rejects a revision owned by another quotation', async () => {
   const calls = { store: 0 };
   const tokenStore = store();
   const originalSet = tokenStore.set;
@@ -383,10 +174,9 @@ test('loadPostgresSendContext rejects a revision owned by another quotation', as
     return originalSet(...args);
   };
   await assert.rejects(
-    loadPostgresSendContext({
+    loadQuotationSendContext({
       quotationId: 'ORC-20260002',
       revisionId,
-      needPdf: false,
       baseUrl: 'https://app.test',
       repository: repositoryFor(),
       store: tokenStore,
@@ -397,14 +187,13 @@ test('loadPostgresSendContext rejects a revision owned by another quotation', as
   assert.equal(calls.store, 0);
 });
 
-test('loadPostgresSendContext rejects caller phone not belonging to snapshot', async () => {
+test('loadQuotationSendContext rejects caller phone not belonging to snapshot', async () => {
   const tokenStore = store();
   await assert.rejects(
-    loadPostgresSendContext({
+    loadQuotationSendContext({
       quotationId: businessNumber,
       revisionId,
       recipientPhone: '11988880000',
-      needPdf: false,
       baseUrl: 'https://app.test',
       repository: repositoryFor(),
       store: tokenStore,
@@ -415,19 +204,16 @@ test('loadPostgresSendContext rejects caller phone not belonging to snapshot', a
   assert.equal(tokenStore.values.size, 0);
 });
 
-test('loadPostgresSendContext returns canonical immutable revision context', async () => {
+test('loadQuotationSendContext returns canonical immutable revision context', async () => {
   const tokenStore = store();
-  const context = await loadPostgresSendContext({
+  const context = await loadQuotationSendContext({
     quotationId: businessNumber,
     revisionId,
     businessNumber,
-    needPdf: false,
     baseUrl: 'https://app.test',
     repository: repositoryFor(),
     store: tokenStore,
     token: () => publicToken,
-    mediaCandidates: [ownedMediaUrl],
-    mediaRecords: mediaRecords(),
     resolveDeal: async (resolvedQuotationId, resolvedBusinessNumber) => {
       assert.equal(resolvedQuotationId, quotationId);
       assert.equal(resolvedBusinessNumber, businessNumber);
@@ -446,7 +232,6 @@ test('loadPostgresSendContext returns canonical immutable revision context', asy
   assert.equal(view.client.name, 'Cliente Teste');
   assert.equal(view.items[0]?.item_code, 'CNG-001');
   assert.equal(context.publicLink, `https://app.test/api/public-quotation?token=${publicToken}`);
-  assert.deepEqual(context.permittedMedia, [ownedMediaUrl]);
   assert.equal(tokenStore.values.size, 1);
 });
 
@@ -466,66 +251,6 @@ test('PostgreSQL media policy requires an owned Blob record and rejects unsafe U
   ]) {
     assert.throws(() => normalizePostgresMediaUrl(value, 'https://app.test'), /Mídia pública/);
   }
-});
-
-test('PostgreSQL context rejects mixed media before provider configuration', async () => {
-  const tokenStore = store();
-  await assert.rejects(
-    loadPostgresSendContext({
-      quotationId: businessNumber,
-      revisionId,
-      needPdf: false,
-      baseUrl: 'https://app.test',
-      repository: repositoryFor(),
-      store: tokenStore,
-      token: () => publicToken,
-      mediaRecords: [],
-      mediaCandidates: ['/media/a.jpg', 'https://evil.test/b.jpg'],
-    }),
-    /Mídia pública inválida/,
-  );
-  assert.equal(tokenStore.values.size, 0);
-});
-
-test('loadPostgresSendContext rejects draft PDF sharing before rendering', async () => {
-  const draft = snapshot();
-  draft.quotation = { ...draft.quotation, status: 'rascunho' };
-  draft.revision = { ...draft.revision, status: 'rascunho' };
-  await assert.rejects(
-    loadPostgresSendContext({
-      quotationId: businessNumber,
-      revisionId,
-      needPdf: true,
-      baseUrl: 'https://app.test',
-      repository: repositoryFor(draft),
-      store: store(),
-      token: () => publicToken,
-      renderPdf: async () => { throw new Error('renderer must not run'); },
-    }),
-    (error: unknown) => {
-      assert.equal((error as { statusCode?: number }).statusCode, 409);
-      assert.equal((error as Error).message, 'Emita o orçamento antes de enviar WhatsApp.');
-      return true;
-    },
-  );
-});
-
-test('loadPostgresSendContext reports PDF preparation failure without provider access', async () => {
-  const tokenStore = store();
-  await assert.rejects(
-    loadPostgresSendContext({
-      quotationId: businessNumber,
-      revisionId,
-      needPdf: true,
-      baseUrl: 'https://app.test',
-      repository: repositoryFor(),
-      store: tokenStore,
-      token: () => publicToken,
-      renderPdf: async () => { throw new Error('synthetic PDF failure'); },
-    }),
-    /PDF do orçamento/,
-  );
-  assert.equal(tokenStore.values.size, 0);
 });
 
 test('flow PostgreSQL content and duplicate keys use canonical snapshot values', () => {
@@ -557,7 +282,6 @@ test('flow planner keeps dry-run PDF references free of binary content', async (
 test('send-whatsapp-flow dry-run uses the extracted planner without rendering or transport', async () => {
   const originalFetch = globalThis.fetch;
   let providerCalls = 0;
-  let pdfCalls = 0;
   globalThis.fetch = (async () => {
     providerCalls += 1;
     return new Response(JSON.stringify({ accepted: true, message_id: 'must-not-send' }), { status: 200 });
@@ -577,10 +301,6 @@ test('send-whatsapp-flow dry-run uses the extracted planner without rendering or
         repository: repositoryFor(),
         store: store(),
         token: () => publicToken,
-        renderPdf: async () => {
-          pdfCalls += 1;
-          throw new Error('PDF must not render in dry-run');
-        },
       },
     );
     const body = JSON.parse(response.body || '{}');
@@ -590,7 +310,6 @@ test('send-whatsapp-flow dry-run uses the extracted planner without rendering or
     assert.equal(body.send_status, 'dry_run');
     assert.deepEqual(body.steps.map((step: { type: string }) => step.type), ['text', 'document']);
     assert.equal(JSON.stringify(body.steps).includes('base64'), false);
-    assert.equal(pdfCalls, 0);
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
@@ -727,225 +446,6 @@ test('Evolution response requires explicit provider acceptance', () => {
   assert.equal(normalizeEvolutionDelivery({}), null);
 });
 
-function withEvolutionEnv() {
-  const previous = {
-    appEnv: process.env.APP_ENV,
-    externalWrites: process.env.EXTERNAL_WRITES_ENABLED,
-    baseUrl: process.env.EVOLUTION_BASE_URL,
-    apiKey: process.env.EVOLUTION_API_KEY,
-    instance: process.env.EVOLUTION_INSTANCE,
-  };
-  process.env.APP_ENV = 'production';
-  process.env.EXTERNAL_WRITES_ENABLED = '1';
-  process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
-  process.env.EVOLUTION_API_KEY = 'test-key';
-  process.env.EVOLUTION_INSTANCE = 'test-instance';
-  return () => {
-    for (const [key, value] of Object.entries({
-      APP_ENV: previous.appEnv,
-      EXTERNAL_WRITES_ENABLED: previous.externalWrites,
-      EVOLUTION_BASE_URL: previous.baseUrl,
-      EVOLUTION_API_KEY: previous.apiKey,
-      EVOLUTION_INSTANCE: previous.instance,
-    })) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  };
-}
-
-test('PostgreSQL endpoint rejects recipient ownership before provider setup', async () => {
-  let providerCalls = 0;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-owner' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        telefone: '11988880000',
-        sequence: { steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] },
-      }),
-      { repository: repositoryFor(), store: store(), token: () => publicToken },
-    );
-    assert.equal(response.statusCode, 400);
-    assert.match(response.body || '', /telefone informado não pertence/i);
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('PostgreSQL endpoint completes local send after Evolution acceptance', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-postgres' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }, { type: 'document', source: 'quotation_pdf' }] },
-      }),
-      {
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-      },
-    );
-    assert.equal(response.statusCode, 200);
-    assert.equal(providerCalls, 2);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('PostgreSQL endpoint rejects PDF preparation before provider setup', async () => {
-  let providerCalls = 0;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-pdf' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: {
-          steps: [{ type: 'document', source: 'quotation_pdf' }],
-        },
-      }),
-      {
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        renderPdf: async () => {
-          throw new Error('synthetic PDF failure');
-        },
-      },
-    );
-    assert.equal(response.statusCode, 503);
-    assert.match(response.body || '', /PDF do orçamento/i);
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('PostgreSQL endpoint rejects arbitrary media before provider setup', async () => {
-  let providerCalls = 0;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-media' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: {
-          steps: [{ type: 'image', media: 'https://evil.test/reference.jpg' }, { type: 'document', source: 'quotation_pdf' }],
-        },
-      }),
-      { repository: repositoryFor(), store: store(), token: () => publicToken },
-    );
-    assert.equal(response.statusCode, 503);
-    assert.match(response.body || '', /validar as mídias cadastradas/i);
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('PostgreSQL send downloads only an owned Blob media before Evolution', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  const evolutionBodies: Array<Record<string, unknown>> = [];
-  globalThis.fetch = (async (input, init) => {
-    if (String(input) === ownedMediaUrl) return new Response('image-bytes', {
-      status: 200,
-      headers: { 'Content-Type': 'image/jpeg', 'Content-Length': '11' },
-    });
-    evolutionBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-owned-media' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: {
-          delay_min_ms: 0,
-          delay_max_ms: 0,
-          steps: [{ type: 'image', media: ownedMediaUrl }, { type: 'document', source: 'quotation_pdf' }],
-        },
-      }),
-      {
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        mediaRecords: mediaRecords(),
-        headBlob: async () => mediaHeadResult(),
-        blobStoreId: 'store',
-        renderPdf: async () => Buffer.from('%PDF-1.7\n%%EOF'),
-      },
-    );
-    assert.equal(response.statusCode, 200);
-    assert.equal(evolutionBodies.length, 2);
-    assert.equal(evolutionBodies[0]?.media, Buffer.from('image-bytes').toString('base64'));
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('PostgreSQL send rejects stale or foreign-store media before provider transport', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-should-not-run' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    for (const dependencies of [
-      { headBlob: async () => mediaHeadResult({ size: 12 }) },
-      { headBlob: async () => { throw new Error('BlobAccessError'); } },
-      { headBlob: async () => mediaHeadResult(), blobStoreId: 'different-store' },
-    ]) {
-      const response = await sendWhatsapp(
-        event({
-          quotation_id: businessNumber,
-          revision_id: revisionId,
-          sequence: { steps: [{ type: 'image', media: ownedMediaUrl }, { type: 'document', source: 'quotation_pdf' }] },
-        }),
-        {
-          repository: repositoryFor(),
-          store: store(),
-          token: () => publicToken,
-          mediaRecords: mediaRecords(),
-          ...dependencies,
-        },
-      );
-      assert.ok([400, 503].includes(response.statusCode || 0));
-    }
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
 test('PostgreSQL flow endpoint accepts an injected durable delivery module', async () => {
   const response = await sendWhatsappFlow(
     event({ flow_id: 'flow-postgres', quotation_id: quotationId, revision_id: revisionId }),
@@ -1010,95 +510,4 @@ test('PostgreSQL preview rejects external media before rendering output', async 
   );
   assert.equal(response.statusCode, 400);
   assert.match(response.body || '', /Mídia externa proibida/);
-});
-
-test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
-    assert.equal(response.statusCode, 200);
-    assert.equal(JSON.parse(response.body || '{}').evolution.providerMessageId, 'provider-1');
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('quotation references without a local revision cannot use the direct send path', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const previousDatabaseUrl = process.env.DATABASE_URL;
-  process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/should-not-connect';
-  const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-unexpected' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(event({
-      telefone: '11999990000',
-      mensagem: 'Olá',
-      quotation_uuid: quotationId,
-      revision_id: revisionId,
-      business_number: businessNumber,
-    }));
-    assert.equal(response.statusCode, 400);
-    assert.match(response.body || '', /exatamente um PDF/i);
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
-    else process.env.DATABASE_URL = previousDatabaseUrl;
-  }
-});
-
-test('non-dry endpoint rejects a successful HTTP response without provider acceptance', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => new Response('{}', { status: 200 })) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
-    assert.equal(response.statusCode, 502);
-    assert.match(response.body || '', /provedor não confirmou/);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('multi-step send exposes partial provider acceptance', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  let calls = 0;
-  globalThis.fetch = (async () => {
-    calls += 1;
-    return calls === 1
-      ? new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })
-      : new Response('{}', { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(event({
-      telefone: '11999990000',
-      sequence: {
-        delay_min_ms: 0,
-        delay_max_ms: 0,
-        steps: [
-          { type: 'text', template: 'Primeira' },
-          { type: 'text', template: 'Segunda' },
-        ],
-      },
-    }));
-    const body = JSON.parse(response.body || '{}');
-    assert.equal(response.statusCode, 502);
-    assert.equal(body.provider_accepted, true);
-    assert.equal(body.partial_send, true);
-    assert.equal(body.accepted_steps, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
 });

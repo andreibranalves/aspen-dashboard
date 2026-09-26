@@ -34,10 +34,6 @@ import {
   type EnqueueDeliveryRecord,
   type FrozenDeliveryStep,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
-import {
-  createPostgresQuotationDeliveryRepository,
-  QuotationDeliveryConflictError,
-} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
 import {
   createQuotationDeliveryModule,
@@ -361,27 +357,6 @@ databaseTest('single-revision policy atomically rejects concurrent cross-flow en
   assert.equal(fulfilled.length, 1);
   assert.equal(rejected.length, 1);
   assert.ok((rejected[0] as PromiseRejectedResult).reason instanceof QuotationDeliveryOutboxConflictError);
-});
-
-databaseTest('single-revision policy is atomic across current and legacy send repositories', async () => {
-  await db.delete(quotationDeliveries).where(eq(quotationDeliveries.revisionId, ids.revision));
-  const legacyRepository = createPostgresQuotationDeliveryRepository(() => db, { now: () => now });
-  const results = await Promise.allSettled([
-    repository.enqueue(input({ flowId: 'current-flow' })),
-    legacyRepository.reserve({
-      revisionId: ids.revision,
-      phone: '5511999999999',
-      flowId: 'legacy-flow',
-    }),
-  ]);
-  const fulfilled = results.filter((result) => result.status === 'fulfilled');
-  const rejected = results.filter((result) => result.status === 'rejected');
-  assert.equal(fulfilled.length, 1);
-  assert.equal(rejected.length, 1);
-  assert.ok(
-    (rejected[0] as PromiseRejectedResult).reason instanceof QuotationDeliveryOutboxConflictError
-      || (rejected[0] as PromiseRejectedResult).reason instanceof QuotationDeliveryConflictError,
-  );
 });
 
 databaseTest('claim and markAccepted enforce ordered predecessor gating after unsafe outcomes', async () => {
