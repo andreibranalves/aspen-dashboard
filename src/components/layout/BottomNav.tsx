@@ -1,4 +1,4 @@
-import { Menu, Plus } from 'lucide-react';
+import { Menu, PlusCircle } from 'lucide-react';
 import { NAV_ACTION, NAV_BOTTOM, isNavActive, type NavItem } from '@/app/navigation';
 import { cn } from '@/lib/utils';
 
@@ -76,7 +76,7 @@ export default function BottomNav({
             aria-current={onAction ? 'page' : undefined}
             className="focus-inset flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
-            <Plus size={24} strokeWidth={2.5} aria-hidden="true" />
+            <PlusCircle size={24} aria-hidden="true" />
           </button>
         </div>
       )}
