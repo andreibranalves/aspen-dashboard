@@ -1,9 +1,10 @@
-import { eq, or, sql, type SQL } from 'drizzle-orm';
+import { eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { clients } from '../client-schema.js';
 import {
+  clientPhoneVariants,
   foldClientText,
   type ClientMatchRecord,
   type NormalizedClientMatchInput,
@@ -34,7 +35,7 @@ function foldedColumnExpression(column: AnyPgColumn): SQL {
 
 /**
  * Reads every candidate the input can point at: strong equality on document,
- * e-mail and phone (no `LIKE`), plus an accent- and case-insensitive text
+ * e-mail and phone (either stored form of a Brazilian number; no `LIKE`), plus an accent- and case-insensitive text
  * search on name and company. Archived clients are deliberately included so a
  * consumer cannot manufacture a false "not found".
  */
@@ -45,7 +46,7 @@ export async function searchClientMatchCandidates(
   const filters: SQL[] = [];
   if (input.documento) filters.push(eq(clients.documento, input.documento));
   if (input.email) filters.push(eq(clients.email, input.email));
-  if (input.telefone) filters.push(eq(clients.telefone, input.telefone));
+  if (input.telefone) filters.push(inArray(clients.telefone, clientPhoneVariants(input.telefone)));
   for (const term of input.textTerms) {
     const pattern = `%${escapeLikeSearchPattern(foldClientText(term))}%`;
     filters.push(

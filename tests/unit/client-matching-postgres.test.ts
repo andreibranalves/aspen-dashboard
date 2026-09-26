@@ -190,6 +190,15 @@ test(
 );
 
 test(
+  'client-matches PostgreSQL: telefone com 55 encontra o cadastro salvo sem 55',
+  { skip: !TEST_DATABASE_URL, concurrency: false },
+  async () => {
+    const records = await searchClientMatchCandidates(db, normalizeClientMatchInput({ telefone: `+55 ${PHONE}` }));
+    assert.ok(records.some((record) => record.id === CLIENT_IDS[0] && record.telefone === PHONE));
+  }
+);
+
+test(
   'client-matches PostgreSQL: busca textual ignora caixa, acentos e espaços repetidos',
   { skip: !TEST_DATABASE_URL, concurrency: false },
   async () => {

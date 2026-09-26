@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   classifyClientMatch,
   clientNamesMatch,
+  clientPhoneVariants,
   foldClientText,
   maskClientDocument,
   normalizeClientMatchInput,
@@ -118,6 +119,35 @@ test('classificação: nome e telefone (máscara diferente) reutilizam o cadastr
   ]);
   assert.equal(response.status, 'matched');
   assert.equal(response.matched_client_id, 'a');
+});
+
+test('telefone: número brasileiro com e sem o 55 é o mesmo; nono dígito e outros países não', () => {
+  assert.deepEqual(clientPhoneVariants('5521995419741'), ['21995419741', '5521995419741']);
+  assert.deepEqual(clientPhoneVariants('21995419741'), ['21995419741', '5521995419741']);
+  assert.deepEqual(clientPhoneVariants('2133334444'), ['2133334444', '552133334444']);
+  // DDD 55 without the country code stays a national number.
+  assert.deepEqual(clientPhoneVariants('55991234567'), ['55991234567', '5555991234567']);
+  assert.deepEqual(clientPhoneVariants('552199541974'), ['552199541974']);
+  assert.deepEqual(clientPhoneVariants('14155552671'), ['14155552671']);
+});
+
+test('classificação: telefone com 55 vincula cadastro salvo sem 55, e o inverso', () => {
+  const withCode = classify({ nome: 'Andrei', email: 'andrei@example.com', telefone: '5521995419741' }, [
+    record({ id: 'a', nome: 'Andrei', email: 'andrei@example.com', telefone: '21995419741' }),
+  ]);
+  assert.equal(withCode.status, 'matched');
+  assert.equal(withCode.matched_client_id, 'a');
+  assert.deepEqual(withCode.candidates[0].matched_by, ['email', 'telefone', 'nome']);
+
+  const withoutCode = classify({ nome: 'Andrei', telefone: '(21) 99541-9741' }, [
+    record({ id: 'a', nome: 'Andrei', telefone: '5521995419741' }),
+  ]);
+  assert.equal(withoutCode.status, 'matched');
+
+  const other = classify({ nome: 'Andrei', email: 'andrei@example.com', telefone: '5521995419740' }, [
+    record({ id: 'a', nome: 'Andrei', email: 'andrei@example.com', telefone: '21995419741' }),
+  ]);
+  assert.equal(other.reason, 'identifier_conflict');
 });
 
 test('classificação: e-mail e telefone iguais vinculam mesmo com o nome escrito de outro jeito', () => {
