@@ -20,8 +20,6 @@ interface QuoteOrderStepProps {
   onExtract: () => void;
   canReset: boolean;
   onReset: () => void;
-  onManual: () => void;
-  manualDisabled: boolean;
   onManageTemplates: () => void;
   /** Avisos do pedido: demanda do Atendimento, falha de extração ou de modelos. */
   notices?: ReactNode;
@@ -43,8 +41,6 @@ export default function QuoteOrderStep({
   onExtract,
   canReset,
   onReset,
-  onManual,
-  manualDisabled,
   onManageTemplates,
   notices,
 }: QuoteOrderStepProps) {
@@ -52,7 +48,7 @@ export default function QuoteOrderStep({
     <>
       <div className="flex flex-col gap-3 px-5 py-3.5 md:px-6">
         <div className="flex items-center justify-between gap-3">
-          <Heading level="subject">Cole o pedido do cliente</Heading>
+          <Heading level="card">Cole o pedido do cliente</Heading>
           <Button type="button" variant="ghost-muted" size="xs" onClick={onManageTemplates} disabled={blocked}>
             <SlidersHorizontal size={14} /> Gerenciar modelos
           </Button>
@@ -101,9 +97,6 @@ export default function QuoteOrderStep({
       <footer className="flex flex-wrap items-center gap-2 px-5 pb-4 pt-5 md:px-6">
         <Button type="button" variant="ghost" onClick={onReset} disabled={!canReset}>
           Limpar
-        </Button>
-        <Button type="button" variant="ghost-muted" onClick={onManual} disabled={manualDisabled}>
-          Preencher manualmente
         </Button>
         <Button type="button" className="ml-auto" onClick={onExtract} disabled={!canExtract}>
           {extracting ? <><Loader2 size={14} className="animate-spin" /> Extraindo…</> : <><PackagePlus size={14} /> Extrair dados</>}

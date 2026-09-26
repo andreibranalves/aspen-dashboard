@@ -185,7 +185,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect.poll(() => storedDraftNames(page)).toEqual(['Cliente novo']);
   });
 
-  test('identifica o pedido ativo quando a conversa produz múltiplos pedidos', async ({ page }) => {
+  test('usa só o primeiro pedido quando a conversa produz vários', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -196,7 +196,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByLabel('Mensagem do cliente para extração').fill('dois pedidos');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('heading', { name: 'Cliente um' })).toBeVisible();
-    await expect(page.getByText('Pedido 1 de 2', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Pedido \d de \d/)).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Cliente dois' })).toHaveCount(0);
   });
 
