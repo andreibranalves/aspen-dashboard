@@ -205,19 +205,6 @@ function makeKey(value: string): string {
   return `${value}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function draftHasWork(draft: Draft | null | undefined): boolean {
-  if (!draft) return false;
-  return Boolean(
-    draft.edited.nome.trim() ||
-      draft.edited.email.trim() ||
-      draft.edited.telefone.trim() ||
-      draft.edited.items.some((item) => item.item_code || item.item_name || item.qty > 0) ||
-      draft.edited.origem ||
-      draft.edited.prazo_producao_dias ||
-      draft.edited.observacoes,
-  );
-}
-
 function draftIssued(draft: Draft): boolean {
   return Boolean((draft as StoredAutoQuoteDraft).issue || (draft.status === 'done' && draft.result?.success));
 }
@@ -516,7 +503,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [manualStorageHydrated, setManualStorageHydrated] = useState(false);
   const [manualIssuing, setManualIssuing] = useState(false);
   const [text, setText] = useState('');
-  const [incomingQuoteDraft, setIncomingQuoteDraft] = useState<AtendimentoQuoteDraft | null>(null);
   const [activeQuoteDraft, setActiveQuoteDraft] = useState<AtendimentoQuoteDraft | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
@@ -838,13 +824,10 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     void fetchAtendimentoQuoteDraft(demandId).then((draft) => {
       if (cancelled) return;
       if (draft.demandId !== demandId) return;
-      if (draftsRef.current.some(draftHasWork) || text.trim()) {
-        setIncomingQuoteDraft(draft);
-        setOrderOpen(true);
-      } else {
-        setText(draft.text);
-        setActiveQuoteDraft(draft);
-      }
+      // Um orçamento por vez: a demanda nova substitui o que estiver em andamento.
+      if (draftsRef.current.length) replaceConversationDrafts([]);
+      setText(draft.text);
+      setActiveQuoteDraft(draft);
     }).catch(() => {
       if (!cancelled) setExtractError('Não foi possível carregar a demanda da conversa.');
     });
@@ -1293,7 +1276,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         setExtractError('Nenhum pedido identificado no texto.');
         return;
       }
-      const extracted = buildDraftsFromOrders(response.orders, templateKey).map((draft) => activeQuoteDraft ? {
+      const extracted = buildDraftsFromOrders(response.orders.slice(0, 1), templateKey).map((draft) => activeQuoteDraft ? {
         ...draft,
         edited: {
           ...draft.edited,
@@ -1935,7 +1918,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     extractionGeneration.current += 1;
     setText('');
     setActiveQuoteDraft(null);
-    setIncomingQuoteDraft(null);
     clearImage();
     setExtractError(null);
     replaceConversationDrafts([]);
@@ -2050,26 +2032,11 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 blocked={liveDraftOperation}
                 canExtract={!extracting && !liveDraftOperation && Boolean(text.trim() || imageData)}
                 onExtract={() => void handleExtract()}
-                canReset={!clearResultsBlocked && Boolean(text || imageData || activeDrafts.length || activeQuoteDraft || incomingQuoteDraft)}
+                canReset={!clearResultsBlocked && Boolean(text || imageData || activeDrafts.length || activeQuoteDraft)}
                 onReset={resetConversation}
-                onManual={() => switchMode('manual')}
-                manualDisabled={liveDraftOperation || pricingPending}
                 onManageTemplates={() => setOrderTemplateOpen(true)}
                 notices={
                   <>
-                    {incomingQuoteDraft && (
-                      <InlineAlert tone="warning" action={
-                        <Button type="button" variant="outline" onClick={() => {
-                          setText(incomingQuoteDraft.text);
-                          setActiveQuoteDraft(incomingQuoteDraft);
-                          setIncomingQuoteDraft(null);
-                        }}>
-                          {text.trim() ? 'Substituir texto' : 'Carregar seleção'}
-                        </Button>
-                      }>
-                        Demanda da conversa pronta para revisão. Os rascunhos existentes foram preservados.
-                      </InlineAlert>
-                    )}
                     {extractError && <InlineAlert>{extractError}</InlineAlert>}
                     {templateError && (
                       <InlineAlert
