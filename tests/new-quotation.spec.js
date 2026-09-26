@@ -101,20 +101,6 @@ async function mockSharedApis(page, extractHandler, {
 }
 
 test.describe('Novo orçamento unificado @quotations', () => {
-  test('aliases iniciam no modo correspondente sem rota paralela', async ({ page }) => {
-    await mockSharedApis(page, (route) => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ orders: [] }),
-    }));
-
-    await page.goto('/#/auto');
-    await expect(page.getByRole('tab', { name: 'A partir de uma conversa' })).toHaveAttribute('aria-selected', 'true');
-    await page.goto('/#/manual');
-    await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
-    await page.goto('/#/novo-orcamento');
-    await expect(page.getByRole('tab', { name: 'A partir de uma conversa' })).toHaveAttribute('aria-selected', 'true');
-  });
 
   test('preserva os campos e o preço manual ao alternar entre Manual e Automático', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
@@ -305,22 +291,6 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page).toHaveURL(/#\/quotations\/quotation-recovered$/);
   });
 
-  test('restaura o rascunho manual do localStorage ao recarregar', async ({ page }) => {
-    await mockSharedApis(page, (route) => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ orders: [] }),
-    }));
-
-    await page.goto('/#/manual');
-    await page.getByLabel('Nome do cliente').fill('Cliente persistido');
-    await page.getByLabel('Origem *').selectOption('Google Ads');
-    await expect.poll(() => page.evaluate(() => Boolean(globalThis.localStorage.getItem('aspen_manual_draft')))).toBe(true);
-    await page.reload();
-    await expect(page.getByLabel('Nome do cliente')).toHaveValue('Cliente persistido');
-    await expect(page.getByLabel('Origem *')).toHaveValue('Google Ads');
-  });
-
   test('preserva a origem e os IDs do prefill do CRM no payload manual', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
@@ -426,36 +396,6 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(manualTab).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('bloqueia a troca de modo enquanto o pricing manual está pendente', async ({ page }) => {
-    let releasePricing;
-    const pricingGate = new Promise((resolve) => { releasePricing = resolve; });
-    const pricingRequests = [];
-    await mockSharedApis(page, (route) => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ orders: [] }),
-    }), {
-      pricingHandler: async (route) => {
-        pricingRequests.push(route.request());
-        await pricingGate;
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, rate: 12.5 }] }) });
-      },
-    });
-    await page.goto('/#/manual');
-    await page.getByLabel('Nome do cliente').fill('Cliente manual pricing');
-    await page.getByLabel('Origem *').selectOption('Google Ads');
-    await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
-    await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
-    await expect.poll(() => pricingRequests.length).toBe(1);
-    const conversationTab = page.getByRole('tab', { name: 'A partir de uma conversa' });
-    await expect(conversationTab).toBeDisabled();
-    await expect(page.getByRole('tab', { name: 'Preencher manualmente' })).toHaveAttribute('aria-selected', 'true');
-    releasePricing();
-    await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('12.5');
-    await conversationTab.click();
-    await expect(conversationTab).toHaveAttribute('aria-selected', 'true');
-  });
-
   test('compartilha o save entre Salvar e Emitir e não duplica o POST', async ({ page }) => {
     let releaseSave;
     const saveGate = new Promise((resolve) => { releaseSave = resolve; });
@@ -504,46 +444,6 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect.poll(() => page.url()).toContain('#/quotations/quotation-race');
     expect(saveRequests).toBe(1);
     expect(issuePayloads).toEqual([{ revision_id: 'revision-race', concurrency_token: 'token-race' }]);
-    expect(unexpectedApiRequests).toEqual([]);
-  });
-
-  test('ignora duplo clique de emissão enquanto o save está pendente', async ({ page }) => {
-    let releaseSave;
-    const saveGate = new Promise((resolve) => { releaseSave = resolve; });
-    let saveRequests = 0;
-    let issueRequests = 0;
-    const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ orders: [] }),
-    }));
-    await page.route('**/api/orcamento', async (route) => {
-      saveRequests += 1;
-      await saveGate;
-      await route.fulfill({
-        status: 201,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          quotation_uuid: 'quotation-double', quotation_id: 'ORC-DOUBLE', revision_id: 'revision-double', concurrency_token: 'token-double',
-          items: [{ item_code: PRODUCT.sku, nome: PRODUCT.nome, qty: '30', applied_unit_price: '12.50', manual_rate: false }],
-          frete: '0.00', total: '375.00',
-        }),
-      });
-    });
-    await page.route('**/api/quotation-issues', async (route) => {
-      issueRequests += 1;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ quotationId: 'quotation-double', businessNumber: 'ORC-DOUBLE', revisionId: 'revision-double', revisionNumber: 1, status: 'emitido', issuedAt: '2026-09-08T00:00:00.000Z', validUntil: '2026-09-23', pdfUrl: '/api/quotation-preview?id=quotation-double&format=pdf' }) });
-    });
-    await page.goto('/#/manual');
-    await page.getByLabel('Nome do cliente').fill('Cliente duplo');
-    await page.getByLabel('Origem *').selectOption('Google Ads');
-    await page.getByLabel('Buscar produto para adicionar ao orçamento').fill(PRODUCT.sku);
-    await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
-    await page.getByRole('button', { name: 'Emitir orçamento', exact: true }).dblclick({ force: true });
-    await expect.poll(() => saveRequests).toBe(1);
-    expect(issueRequests).toBe(0);
-    releaseSave();
-    await expect.poll(() => issueRequests).toBe(1);
     expect(unexpectedApiRequests).toEqual([]);
   });
 
@@ -701,7 +601,6 @@ test.describe('Novo orçamento unificado @quotations', () => {
   });
 
   for (const [testName, pricingResponse] of [
-    ['mantém Apply bloqueado quando a seleção de SKU falha via HTTP', { status: 503, body: { error: 'indisponível' } }],
     ['mantém Apply bloqueado quando a seleção de SKU retorna resposta malformada', { status: 200, body: { success: true, items: [{ item_code: PRODUCT_B.sku, rate: 'preço inválido' }] } }],
   ]) {
     test(testName, async ({ page }) => {

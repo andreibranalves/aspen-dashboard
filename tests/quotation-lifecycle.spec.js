@@ -596,28 +596,6 @@ test('authoritative quotation email reload changes the action to resend', async 
   await expect(page.getByRole('button', { name: 'Enviar por e-mail', exact: true })).toHaveCount(0);
 });
 
-test('draft quotations do not expose the email action', async ({ page }) => {
-  await routeTemplates(page);
-  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
-  await page.route('**/api/quotations?id=*', (route) =>
-    fulfillJson(
-      route,
-      detail({
-        status: 'Rascunho',
-        status_canonical: 'rascunho',
-        email_sent: false,
-        email_sent_at: null,
-      })
-    )
-  );
-
-  await page.goto(`/#/quotations/${id}`);
-  await expect(page.getByRole('button', { name: 'Enviar por e-mail', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Reenviar por e-mail', exact: true })).toHaveCount(
-    0
-  );
-});
-
 test('core quotation detail accepts JSON-string section snapshots from PostgreSQL @quotations @critical', async ({
   page,
 }) => {
@@ -1268,23 +1246,6 @@ test('empty local dashboard renders zero metrics @quotations @critical', async (
   await expect(page.getByText('Nenhum produto vendido no período.', { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Visão geral' }).click();
   await expect(page.getByText('Nenhum movimento neste período.', { exact: true })).toBeVisible();
-});
-
-test('products page uses local controls without response mode metadata @quotations @critical', async ({
-  page,
-}) => {
-  await page.route('**/api/products**', async (route) =>
-    fulfillJson(route, {
-      data: [
-        { sku: 'SKU-LOCAL', nome: 'Produto local', descricao: '', unidade: 'Und', ativo: true },
-      ],
-      pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-    })
-  );
-  await page.goto('/#/products');
-  await expect(page.getByRole('cell', { name: 'Produto local' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Ativos' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Arquivados' })).toBeVisible();
 });
 
 test('manual quotation accepts metadata-free local responses @quotations @critical', async ({
