@@ -7,7 +7,7 @@ import {
 } from './media-schema.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
-import { loadPostgresSendContext } from './send-whatsapp.js';
+import { loadQuotationSendContext } from './quotation-send-context.js';
 import {
   isRevisionBoundPublicQuotationUrl,
 } from './public-quotation.js';
@@ -51,7 +51,7 @@ const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   ecobag: 'f',
   cachecol: 'm',
 };
-type LoadedContext = Awaited<ReturnType<typeof loadPostgresSendContext>>;
+type LoadedContext = Awaited<ReturnType<typeof loadQuotationSendContext>>;
 type ContextInput = Partial<LoadedContext> & Record<string, unknown>;
 
 export type DeliveryFlow = Record<string, unknown> & {
@@ -89,20 +89,18 @@ export interface DeliveryPlanInput {
   businessNumber?: string;
   phone?: string;
   baseUrl?: string;
-  needPdf?: boolean;
   flow?: DeliveryFlow;
   context?: ContextInput;
   resolveFlow?: (flowId: string) => Promise<DeliveryFlow | null>;
   flowResolver?: (flowId: string) => Promise<DeliveryFlow | null>;
   resolveMedia?: DeliveryMediaResolver;
   mediaResolver?: DeliveryMediaResolver;
-  repository?: Parameters<typeof loadPostgresSendContext>[0]['repository'];
-  store?: Parameters<typeof loadPostgresSendContext>[0]['store'];
+  repository?: Parameters<typeof loadQuotationSendContext>[0]['repository'];
+  store?: Parameters<typeof loadQuotationSendContext>[0]['store'];
   token?: () => string;
-  renderPdf?: Parameters<typeof loadPostgresSendContext>[0]['renderPdf'];
   mediaRecords?: Array<Record<string, unknown>>;
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
-  resolveDeal?: Parameters<typeof loadPostgresSendContext>[0]['resolveDeal'];
+  resolveDeal?: Parameters<typeof loadQuotationSendContext>[0]['resolveDeal'];
   headBlob?: BlobHead;
   blobToken?: string;
   blobStoreId?: string;
@@ -318,19 +316,15 @@ async function resolveContext(input: DeliveryPlanInput, baseUrl: string): Promis
   if (input.context) return input.context;
   const quotationId = firstNonEmpty(input.quotationId, input.businessNumber);
   if (!quotationId) inputError('Cotação PostgreSQL é obrigatória.');
-  const context = await loadPostgresSendContext({
+  const context = await loadQuotationSendContext({
     quotationId,
     revisionId: input.revisionId,
     businessNumber: input.businessNumber,
     recipientPhone: input.phone,
-    needPdf: input.needPdf === true,
     baseUrl,
     repository: input.repository || createQuotationTemplateRepository(),
     store: input.store,
     token: input.token,
-    renderPdf: input.renderPdf,
-    mediaRecords: input.mediaRecords,
-    readMediaRecords: input.readMediaRecords,
     resolveDeal: input.resolveDeal,
   });
   input.onContext?.(context);

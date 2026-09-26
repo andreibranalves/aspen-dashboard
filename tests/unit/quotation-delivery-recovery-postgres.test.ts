@@ -26,7 +26,7 @@ import {
   createPostgresQuotationDeliveryOutboxRepository,
   QuotationDeliveryOutboxConflictError,
 } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
-import { QuotationDeliveryConflictError } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
+import { QuotationDeliveryConflictError } from '../../api/_modules/quotation-delivery-documents.js';
 import { createPostgresQuotationFollowUpRepository } from '../../api/_infrastructure/db/repositories/quotation-follow-up-repository.js';
 import { createPostgresWhatsappContactActivityRepository } from '../../api/_infrastructure/db/repositories/whatsapp-contact-activity-repository.js';
 import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
