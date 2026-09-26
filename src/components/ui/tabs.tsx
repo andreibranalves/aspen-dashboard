@@ -2,6 +2,7 @@ import { Tabs as RadixTabs } from 'radix-ui';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { buttonSizes } from './button';
 
 /**
  * Tabs — the only tab pattern in Aspen. Radix owns roving focus, arrow/Home/End
@@ -45,9 +46,9 @@ const listVariants = {
 } as const;
 
 const triggerVariants = {
-  page: 'h-9 rounded-control px-3.5 text-fg-muted hover:bg-raised hover:text-fg data-[state=active]:bg-primary-soft data-[state=active]:text-primary-soft-ink data-[state=active]:hover:bg-primary-soft',
+  page: `${buttonSizes.default} rounded-control text-fg-muted hover:bg-raised hover:text-fg data-[state=active]:bg-primary-soft data-[state=active]:text-primary-soft-ink data-[state=active]:hover:bg-primary-soft`,
   segmented:
-    'h-8 rounded-badge px-3 text-fg-muted hover:text-fg data-[state=active]:bg-segment-active data-[state=active]:text-fg data-[state=active]:shadow-[0_1px_2px_rgb(0_0_0/0.18)]',
+    `${buttonSizes.default} rounded-badge text-fg-muted hover:text-fg data-[state=active]:bg-segment-active data-[state=active]:text-fg data-[state=active]:shadow-[0_1px_2px_rgb(0_0_0/0.18)]`,
 } as const;
 
 interface TabListProps<T extends string> {
@@ -69,7 +70,7 @@ export function TabList<T extends string>({ label, items, variant = 'page', idPr
           disabled={disabled}
           {...(idPrefix ? { id: `${idPrefix}-tab-${value}`, 'aria-controls': `${idPrefix}-panel-${value}` } : {})}
           className={cn(
-            'inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-compact font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50',
+            'inline-flex shrink-0 items-center gap-2 whitespace-nowrap font-semibold transition-colors disabled:pointer-events-none disabled:opacity-50',
             triggerVariants[variant]
           )}
         >

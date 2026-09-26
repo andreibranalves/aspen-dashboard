@@ -97,7 +97,7 @@ test('shell do sketch mantém contraste na navegação da sidebar', async ({ pag
   await expectSidebarNavigationContrast(page);
 });
 
-test('TopBar e busca permanecem visíveis ao rolar o conteúdo da página', async ({ page }) => {
+test('TopBar e breadcrumb permanecem visíveis ao rolar o conteúdo da página', async ({ page }) => {
   await openDashboard(page, { width: 1440, height: 900 });
 
   const main = page.locator('main');
@@ -109,7 +109,7 @@ test('TopBar e busca permanecem visíveis ao rolar o conteúdo da página', asyn
     element.scrollTop = element.scrollHeight;
   });
 
-  const search = page.getByRole('searchbox', { name: 'Buscar uma tela' });
-  await expect(page.locator('header').filter({ has: search })).toBeInViewport();
-  await expect(search).toBeInViewport();
+  const breadcrumb = page.getByRole('navigation', { name: 'Trilha de navegação' });
+  await expect(page.getByRole('banner').filter({ has: breadcrumb })).toBeInViewport();
+  await expect(breadcrumb).toBeInViewport();
 });

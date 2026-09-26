@@ -52,7 +52,7 @@ export default function ChannelsTab() {
             <div className="flex justify-between gap-4 border-b border-line py-3"><dt className="text-fg-muted">Verificação</dt><dd>Não executada</dd></div>
           </dl>
           <details className="mt-4 text-xs text-fg-muted">
-            <summary className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line px-3 text-fg"><Info size={14} aria-hidden="true" /> Ver orientação <ChevronDown size={14} aria-hidden="true" /></summary>
+            <summary className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-line px-3 text-fg"><Info size={14} aria-hidden="true" /> Ver orientação <ChevronDown size={14} aria-hidden="true" /></summary>
             <div className="mt-3 space-y-2 leading-relaxed">
               <p>A configuração da Evolution API é mantida fora deste painel. O estado da conexão não é verificado aqui.</p>
               <p>{diagnosticsError ? 'Não foi possível ler o diagnóstico das entregas.' : !diagnostics ? 'Consultando entregas…' : `Última execução: ${diagnostics.worker?.lastRunAt ? formatDateTime(diagnostics.worker.lastRunAt) : 'nenhuma registrada'}. Etapas em reconciliação: ${diagnostics.reconcilingSteps}. Recibos sem correlação: ${diagnostics.pendingReceipts}.`}</p>
@@ -75,7 +75,7 @@ export default function ChannelsTab() {
             <div className="flex justify-between gap-4 border-b border-line py-3"><dt className="text-fg-muted">Verificação</dt><dd>Não executada</dd></div>
           </dl>
           <details className="mt-4 text-xs text-fg-muted">
-            <summary className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-control border border-line px-3 text-fg"><Info size={14} aria-hidden="true" /> Ver orientação <ChevronDown size={14} aria-hidden="true" /></summary>
+            <summary className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-control border border-line px-3 text-fg"><Info size={14} aria-hidden="true" /> Ver orientação <ChevronDown size={14} aria-hidden="true" /></summary>
             <p className="mt-3 leading-relaxed">A configuração de e-mail é mantida fora deste painel. O estado do canal não é verificado aqui.</p>
           </details>
         </article>

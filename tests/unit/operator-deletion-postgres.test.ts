@@ -26,7 +26,7 @@ test('operator deletes issued quotation then client, preserving orders and in-fl
   try {
     await connection`CREATE TEMP TABLE clients (id uuid PRIMARY KEY)`;
     await connection`SET search_path = pg_temp`;
-    await connection`CREATE TEMP TABLE quotations (id uuid PRIMARY KEY, business_number text, client_id uuid REFERENCES clients(id), quote_lead_id uuid, opportunity_id uuid, creation_request_id uuid, creation_fingerprint text, status text, issued_at timestamptz, loss_reason text, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`;
+    await connection`CREATE TEMP TABLE quotations (id uuid PRIMARY KEY, business_number text, client_id uuid REFERENCES clients(id), quote_lead_id uuid, opportunity_id uuid, lead_source varchar(40), creation_request_id uuid, creation_fingerprint text, status text, issued_at timestamptz, loss_reason text, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`;
     await connection`CREATE TEMP TABLE quote_revisions (id uuid PRIMARY KEY, quotation_id uuid REFERENCES quotations(id) ON DELETE CASCADE)`;
     await connection`CREATE TEMP TABLE sales_orders (id uuid PRIMARY KEY, client_id uuid REFERENCES clients(id), quotation_id uuid REFERENCES quotations(id), quotation_revision_id uuid REFERENCES quote_revisions(id))`;
     await connection`CREATE TEMP TABLE crm_deals (id uuid PRIMARY KEY, client_id uuid REFERENCES clients(id), quotation_id uuid REFERENCES quotations(id))`;

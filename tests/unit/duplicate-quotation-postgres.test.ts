@@ -139,6 +139,7 @@ test(
         ],
         frete: '1.25',
         observacoes: 'Observação da origem',
+        origem: 'Google Ads',
       });
       sourceQuotationId = source.quotation_uuid;
 
@@ -226,6 +227,7 @@ test(
       assert.notEqual(duplicateQuotation.id, sourceQuotationBefore.id);
       assert.notEqual(duplicateQuotation.businessNumber, sourceQuotationBefore.businessNumber);
       assert.equal(duplicateQuotation.clientId, sourceQuotationBefore.clientId);
+      assert.equal(duplicateQuotation.leadSource, 'Google Ads');
       assert.equal(duplicateQuotation.status, 'rascunho');
 
       const [duplicateRevision] = await db

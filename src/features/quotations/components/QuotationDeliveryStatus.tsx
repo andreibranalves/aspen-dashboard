@@ -128,7 +128,6 @@ export function QuotationDeliveryStatus({
         <div className="flex flex-wrap gap-2 pt-1">
           <Button
             type="button"
-            size="sm"
             variant="outline"
             onClick={() => openDialog('confirmed_received')}
           >
@@ -136,7 +135,6 @@ export function QuotationDeliveryStatus({
           </Button>
           <Button
             type="button"
-            size="sm"
             variant="outline"
             onClick={() => openDialog('confirmed_not_received')}
           >
@@ -148,7 +146,6 @@ export function QuotationDeliveryStatus({
         <div className="pt-1">
           <Button
             type="button"
-            size="sm"
             variant="outline"
             onClick={() => openDialog('retry_same_revision')}
           >

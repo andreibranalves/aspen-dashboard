@@ -437,11 +437,11 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
 
   const headerActions = editing ? (
     <>
-      <Button size="sm" onClick={() => void save()} disabled={saving}>
+      <Button onClick={() => void save()} disabled={saving}>
         <Save size={14} />
         {saving ? 'Salvando…' : isNewClient ? 'Criar cliente' : 'Salvar'}
       </Button>
-      <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving}>
+      <Button variant="outline" onClick={cancelEditing} disabled={saving}>
         <X size={14} /> Cancelar
       </Button>
     </>
@@ -449,7 +449,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     <>
       <Button
         variant="outline"
-        size="sm"
         onClick={() => {
           if (detail) {
             setFields(fieldsFromDetail(detail));
@@ -460,7 +459,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         <Edit3 size={14} /> Editar cadastro
       </Button>
       <Button
-        size="sm"
         onClick={() => createQuoteForClient(current, navigate)}
       >
         <Sparkles size={14} /> Novo orçamento
@@ -479,7 +477,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       <fieldset disabled={saving} className="space-y-2">
         <PageHeader
           title={editing && !isNewClient ? 'Editar cliente' : title}
-          description={editing && !isNewClient ? title : undefined}
           meta={
             !isNewClient && !editing ? (
               <>
@@ -652,7 +649,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                     </div>
                     <Button
                       variant="outline"
-                      size="sm"
                       onClick={() =>
                         navigate(`/crm?search=${encodeURIComponent(current.deal!.name)}`)
                       }
@@ -682,7 +678,6 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
                         </div>
                         <Button
                           variant="outline"
-                          size="sm"
                           onClick={() =>
                             navigate(`/sales-orders/${encodeURIComponent(order.name)}`)
                           }

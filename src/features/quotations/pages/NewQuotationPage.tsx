@@ -2075,7 +2075,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       {templateError && mode === 'conversation' && (
         <InlineAlert
           action={
-            <Button variant="outline" size="sm" onClick={() => void loadTemplates()}>
+            <Button variant="outline" onClick={() => void loadTemplates()}>
               Tentar novamente
             </Button>
           }
@@ -2110,20 +2110,20 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 lg:grid-cols-2">
+        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 lg:min-h-auto lg:flex-1 lg:grid-cols-2 lg:items-stretch">
           <section aria-label="Conversa" className="min-w-0 space-y-3 rounded-card border border-line bg-surface p-5 md:p-6">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
                 <Heading level="section">Pedido do cliente</Heading>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
+              <Button type="button" variant="outline" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
                 <Settings size={14} /> <span className="max-sm:sr-only">Gerenciar modelos</span>
               </Button>
             </div>
             {incomingQuoteDraft && (
               <InlineAlert tone="warning" action={
-                <Button type="button" variant="outline" size="sm" onClick={() => {
+                <Button type="button" variant="outline" onClick={() => {
                   setText(incomingQuoteDraft.text);
                   setActiveQuoteDraft(incomingQuoteDraft);
                   setIncomingQuoteDraft(null);
@@ -2174,7 +2174,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               <Button type="button" onClick={() => void handleExtract()} disabled={extracting || liveDraftOperation || (!text.trim() && !imageData)}>
                 {extracting ? <><Loader2 size={14} className="animate-spin" /> Extraindo…</> : <><PackagePlus size={14} /> Extrair dados</>}
               </Button>
-              {(text || imageData) && <Button type="button" variant="ghost" size="sm" disabled={liveDraftOperation} onClick={() => { extractionGeneration.current += 1; setText(''); setActiveQuoteDraft(null); clearImage(); setExtractError(null); }}>Limpar</Button>}
+              {(text || imageData) && <Button type="button" variant="ghost" disabled={liveDraftOperation} onClick={() => { extractionGeneration.current += 1; setText(''); setActiveQuoteDraft(null); clearImage(); setExtractError(null); }}>Limpar</Button>}
             </div>
           </section>
 
@@ -2190,7 +2190,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 <Button
                   type="button"
                   variant="ghost-muted"
-                  size="sm"
                   className="shrink-0"
                   disabled={clearResultsBlocked}
                   onClick={clearResultQueue}
@@ -2343,17 +2342,17 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
               </div>
               {manual.opportunity.mode === 'new' && !manual.originPrefill && <Input aria-label="Resumo da nova demanda" className="mt-3" placeholder="Resumo da nova demanda (opcional)" value={manual.opportunity.demandSummary} disabled={manualActionsBlocked} onChange={(event) => setManual((current) => ({ ...current, opportunity: { mode: 'new', opportunityId: null, demandSummary: event.target.value } }))} />}
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <Button type="button" variant="ghost" size="sm" onClick={() => openClientPanel('new')} disabled={manualActionsBlocked}>+ Cadastrar outro cliente</Button>
+                <Button type="button" variant="ghost" onClick={() => openClientPanel('new')} disabled={manualActionsBlocked}>+ Cadastrar outro cliente</Button>
                 {(manual.cnpj || hasAnyAddressField(manual.address)) && <span className="text-xs text-fg-muted">{manual.cnpj ? formatCnpj(manual.cnpj) : formatAddressSummary(manual.address)}</span>}
               </div>
-              <details className="mt-2 text-xs text-fg-muted"><summary className="cursor-pointer">Dados fiscais e endereço</summary><div className="mt-3 grid gap-3 md:grid-cols-2"><label className="flex flex-col gap-1">CNPJ (opcional)<Input aria-label="CNPJ (opcional)" value={manual.cnpj ? formatCnpj(manual.cnpj) : ''} disabled={manualActionsBlocked} onChange={(event) => setManualValue('cnpj', normalizeCnpj(event.target.value))} /></label><div className="flex items-end"><Button type="button" variant="outline" size="sm" onClick={() => openClientPanel('address')} disabled={manualActionsBlocked}><MapPin size={14} /> Editar endereço</Button></div></div></details>
+              <details className="mt-2 text-xs text-fg-muted"><summary className="cursor-pointer">Dados fiscais e endereço</summary><div className="mt-3 grid gap-3 md:grid-cols-2"><label className="flex flex-col gap-1">CNPJ (opcional)<Input aria-label="CNPJ (opcional)" value={manual.cnpj ? formatCnpj(manual.cnpj) : ''} disabled={manualActionsBlocked} onChange={(event) => setManualValue('cnpj', normalizeCnpj(event.target.value))} /></label><div className="flex items-end"><Button type="button" variant="outline" onClick={() => openClientPanel('address')} disabled={manualActionsBlocked}><MapPin size={14} /> Editar endereço</Button></div></div></details>
             </section>
 
             <section aria-label="Itens do orçamento" className="rounded-card border border-line bg-surface p-5 md:p-6">
               <div className="flex items-start justify-between gap-3"><Heading level="section">Produtos e quantidades</Heading><span className="text-sm text-fg-muted">{manual.items.length} {manual.items.length === 1 ? 'item' : 'itens'}</span></div>
               <Heading level="subsection" className="mt-5 flex items-center gap-2"><span className="rounded-control bg-surface-subtle px-2 py-1 text-xs text-fg-muted">02</span> Monte a proposta</Heading>
               <div className="relative mt-4"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" /><Input aria-label="Buscar produto para adicionar ao orçamento" className="pl-9" value={productSearch} disabled={manualActionsBlocked} onChange={onProductSearch} placeholder="Buscar SKU ou nome…" />{productSearching && <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />}</div>
-              {productResults.length > 0 && <div className="mt-2 divide-y divide-border overflow-hidden rounded-control border border-line">{productResults.map((product) => <div key={product.sku} className="flex items-center justify-between gap-3 p-3"><span className="min-w-0 truncate text-sm"><span className="font-mono text-primary">{product.sku}</span> · {product.nome}</span><div className="flex shrink-0 items-center gap-2">{isUnpricedProduct(product) && <span className="text-xs text-fg-muted">Preço indisponível</span>}<Button type="button" size="sm" aria-label={`Adicionar ${product.sku} ao orçamento`} onClick={() => void addProduct(product)} disabled={manualActionsBlocked || Boolean(addingSku) || isUnpricedProduct(product)}>{addingSku === product.sku ? 'Adicionando…' : 'Adicionar'}</Button></div></div>)}</div>}
+              {productResults.length > 0 && <div className="mt-2 divide-y divide-border overflow-hidden rounded-control border border-line">{productResults.map((product) => <div key={product.sku} className="flex items-center justify-between gap-3 p-3"><span className="min-w-0 truncate text-sm"><span className="font-mono text-primary">{product.sku}</span> · {product.nome}</span><div className="flex shrink-0 items-center gap-2">{isUnpricedProduct(product) && <span className="text-xs text-fg-muted">Preço indisponível</span>}<Button type="button" aria-label={`Adicionar ${product.sku} ao orçamento`} onClick={() => void addProduct(product)} disabled={manualActionsBlocked || Boolean(addingSku) || isUnpricedProduct(product)}>{addingSku === product.sku ? 'Adicionando…' : 'Adicionar'}</Button></div></div>)}</div>}
               {manual.items.length === 0 ? <div className="mt-4 rounded-control border border-dashed border-line px-4 py-10 text-center text-sm text-fg-muted">Nenhum produto na tabela</div> : <div className="mt-4">{compactLayout ? <ul aria-label="Produtos do orçamento" className="divide-y divide-line">{manual.items.map((item) => (
                 <li key={item._key} className="flex flex-col gap-2 py-3">
                   <div className="flex items-start gap-2">
@@ -2379,7 +2378,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
             <section aria-label="Condições do orçamento" className="rounded-card border border-line bg-surface p-5 md:p-6">
               <Heading level="section">Condições e fechamento</Heading>
-              {templateError && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-destructive"><p role="alert">{templateError}</p><Button type="button" variant="outline" size="sm" onClick={() => void loadTemplates()}>Tentar novamente</Button></div>}
+              {templateError && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-destructive"><p role="alert">{templateError}</p><Button type="button" variant="outline" onClick={() => void loadTemplates()}>Tentar novamente</Button></div>}
               <div className="mt-4 grid gap-3 md:grid-cols-2"><label className="flex flex-col gap-1 text-xs font-medium text-fg-muted">Modelo de orçamento<Select aria-label="Modelo de orçamento" value={manual.templateKey} disabled={manualActionsBlocked || templateLoading || !templates.length} onChange={(event) => { setTemplateKey(event.target.value); setManualValue('templateKey', event.target.value); }} className="w-full">{templates.map((template) => <option key={template.key} value={template.key}>{template.name}</option>)}</Select></label>
                 <ProductionTermsFields
                   productionDays={manual.prazoDias ?? defaultProductionDays}

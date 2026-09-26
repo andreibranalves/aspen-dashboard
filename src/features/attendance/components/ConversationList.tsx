@@ -118,7 +118,7 @@ export default function ConversationList({
       </ul>
       {hasMore && (
         <div className="border-t border-border-subtle p-2">
-          <Button variant="ghost" size="sm" className="w-full" onClick={onLoadMore} disabled={loadingMore}>
+          <Button variant="ghost" className="w-full" onClick={onLoadMore} disabled={loadingMore}>
             {loadingMore ? 'Carregando…' : 'Carregar mais conversas'}
           </Button>
         </div>

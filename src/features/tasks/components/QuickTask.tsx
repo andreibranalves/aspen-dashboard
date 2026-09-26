@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ListPlus, Plus } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -13,10 +12,18 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
 }
 
-/** `compact`: só o ícone, para a barra superior do celular. */
-export default function QuickTaskLauncher({ route, compact = false }: { route: string; compact?: boolean }) {
+const QuickTaskContext = createContext<() => void>(() => undefined);
+
+/** Abre o diálogo de nova tarefa (o atalho T faz o mesmo em qualquer tela). */
+export function useQuickTask(): () => void {
+  return useContext(QuickTaskContext);
+}
+
+/** Diálogo de nova tarefa, vinculável ao pedido ou cliente da rota. */
+export function QuickTaskProvider({ route, children }: { route: string; children: ReactNode }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const openDialog = useCallback(() => setOpen(true), []);
   const [title, setTitle] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [linked, setLinked] = useState(true);
@@ -64,18 +71,8 @@ export default function QuickTaskLauncher({ route, compact = false }: { route: s
   };
 
   return (
-    <>
-      <Button
-        type="button"
-        variant="soft"
-        size={compact ? 'icon' : 'sm'}
-        onClick={() => setOpen(true)}
-        title={compact ? undefined : 'Nova tarefa (T)'}
-        aria-label={compact ? 'Nova tarefa' : undefined}
-      >
-        {compact ? <ListPlus aria-hidden="true" /> : <Plus aria-hidden="true" />}
-        {!compact && 'Tarefa'}
-      </Button>
+    <QuickTaskContext.Provider value={openDialog}>
+      {children}
       <Dialog
         open={open}
         onClose={close}
@@ -114,12 +111,12 @@ export default function QuickTaskLauncher({ route, compact = false }: { route: s
             ) : (
               <span />
             )}
-            <Button type="submit" size="sm" disabled={!title.trim() || saving}>
+            <Button type="submit" disabled={!title.trim() || saving}>
               {saving ? 'Salvando...' : 'Criar'}
             </Button>
           </div>
         </form>
       </Dialog>
-    </>
+    </QuickTaskContext.Provider>
   );
 }

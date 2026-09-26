@@ -5,18 +5,17 @@ import { cn } from '@/lib/utils';
 
 /**
  * ListPageLayout — ritmo das páginas de lista: cabeçalho, resumo opcional, ListSection
- * e sobreposições (BulkActionBar, gavetas, diálogos). Reserva o espaço da BulkActionBar.
+ * e sobreposições (BulkActionBar, gavetas, diálogos).
  * Estado, busca e seleção permanecem em cada página.
  */
 export interface ListPageLayoutProps {
   header?: ReactNode;
   children: ReactNode;
-  className?: string;
 }
 
-export default function ListPageLayout({ header, children, className }: ListPageLayoutProps) {
+export default function ListPageLayout({ header, children }: ListPageLayoutProps) {
   return (
-    <PageShell className={cn('space-y-6 pb-28', className)}>
+    <PageShell className="space-y-6">
       {header}
       {children}
     </PageShell>
