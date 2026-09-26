@@ -200,6 +200,31 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  worker-image:
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # Mesmo contexto do deploy no VPS: só arquivos versionados, via git archive.
+      - run: >-
+          git archive --format=tar HEAD |
+          docker build --progress=plain -f deploy/worker/Dockerfile
+          --build-arg GIT_SHA="$GITHUB_SHA" -t aspen-worker:ci -
+      - name: Health
+        run: |
+          docker run -d --name aspen-worker --init --read-only --tmpfs /tmp:size=512m \
+            --cap-drop ALL --security-opt no-new-privileges:true aspen-worker:ci
+          for _ in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' aspen-worker)" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs aspen-worker
+          exit 1
+
   smoke:
     needs: [build]
     if: >-
