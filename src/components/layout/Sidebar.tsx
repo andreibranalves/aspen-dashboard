@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
-import { Menu, PanelLeftClose, PanelLeftOpen, PlusCircle, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Menu, Moon, PanelLeftClose, PanelLeftOpen, PlusCircle, Sun, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AspenBrand from '@/components/shared/AspenBrand';
 import { Button, buttonSizes } from '@/components/ui/button';
 import { NAV_ACTION, NAV_FOOTER, NAV_GROUPS, isNavActive, type NavItem } from '@/app/navigation';
 import { routePath } from '@/app/match-route';
+import { applyTheme, readTheme } from '@/lib/theme';
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -32,6 +33,14 @@ export default function Sidebar({
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const currentPath = routePath(currentRoute);
   const sidebarOpen = !collapsed;
+  const [theme, setTheme] = useState(readTheme);
+  const themeLabel = `Ativar modo ${theme === 'dark' ? 'claro' : 'escuro'}`;
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(nextTheme);
+    setTheme(nextTheme);
+  };
 
   const renderItem = (item: NavItem) => {
     const isActive = isNavActive(item, currentPath);
@@ -200,8 +209,23 @@ export default function Sidebar({
             </section>
           ))}
         </nav>
-        <div className="shrink-0 pb-3 pt-2">
-          {NAV_FOOTER.map((item) => renderItem(item))}
+        <div className={cn('flex shrink-0 pb-3 pt-2', collapsed ? 'flex-col items-center gap-1' : 'items-center')}>
+          <div className={collapsed ? 'w-full' : 'min-w-0 flex-1'}>
+            {NAV_FOOTER.map((item) => renderItem(item))}
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={cn(
+              buttonSizes.icon,
+              'grid shrink-0 place-items-center rounded-control text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text focus-inset',
+              !collapsed && 'mr-3'
+            )}
+            aria-label={themeLabel}
+            title={themeLabel}
+          >
+            {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+          </button>
         </div>
       </aside>
     </>

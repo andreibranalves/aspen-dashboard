@@ -97,6 +97,24 @@ test('shell do sketch mantém contraste na navegação da sidebar', async ({ pag
   await expectSidebarNavigationContrast(page);
 });
 
+test('botão ao lado de Configurações alterna e persiste o tema, com shell e fundo escuros', async ({ page }) => {
+  await openDashboard(page, { width: 1440, height: 900 });
+
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: 'Ativar modo escuro' }).click();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  await expect(html).toHaveClass(/dark/);
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(4, 4, 4)');
+  await expect(page.locator('#aspen-sidebar')).toHaveCSS('background-color', 'rgb(22, 22, 22)');
+
+  await page.reload();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  await expectSidebarNavigationContrast(page);
+  await page.getByRole('button', { name: 'Ativar modo claro' }).click();
+  await expect(html).toHaveAttribute('data-theme', 'light');
+});
+
 test('TopBar e breadcrumb permanecem visíveis ao rolar o conteúdo da página', async ({ page }) => {
   await openDashboard(page, { width: 1440, height: 900 });
 
