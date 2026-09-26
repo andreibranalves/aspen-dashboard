@@ -39,6 +39,8 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=evolution-api-zscx_default
+      # Só /health e /wake saem para a internet; o webhook do Evolution chega
+      # pela rede Docker em http://aspen-worker:8080/webhook/evolution.
       - traefik.http.routers.aspen-worker.rule=Host(`aspen-worker.srv1892439.hstgr.cloud`) && (Path(`/health`) || Path(`/wake`))
       - traefik.http.routers.aspen-worker.entrypoints=websecure
       - traefik.http.routers.aspen-worker.tls.certresolver=letsencrypt
