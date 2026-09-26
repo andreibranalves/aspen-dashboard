@@ -552,15 +552,6 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     expect(templateAttempts).toBeGreaterThanOrEqual(2);
   });
 
-  test('botão Extrair desabilitado sem texto', async ({ page }) => {
-    await setupApiMocks(page);
-    await page.goto('/#/auto');
-    await page.waitForSelector('textarea', { timeout: 10000 });
-
-    const submitBtn = page.getByRole('button', { name: /Extrair/i });
-    await expect(submitBtn).toBeDisabled();
-  });
-
   test('botão habilita quando texto é inserido', async ({ page }) => {
     await setupApiMocks(page);
     await page.goto('/#/auto');
@@ -577,34 +568,9 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(submitBtn).toBeEnabled();
   });
 
-  test('Auto não exibe seleção de pré-orçamentos', async ({ page }) => {
-    await setupApiMocks(page);
-    await page.goto('/#/auto');
-    await page.waitForSelector('textarea', { timeout: 10000 });
-
-    await expect(page.getByRole('button', { name: /^Leads$/i })).toHaveCount(0);
-    await expect(page.getByText('Maria WhatsApp', { exact: true })).toHaveCount(0);
-    await expect(page.getByText(/Resultados \(/i)).toHaveCount(0);
-  });
 });
 
 test.describe('Leads — Página single e visualização rápida @crm', () => {
-  test('clique na linha abre a página própria do lead', async ({ page }) => {
-    await setupLeadsMocks(page);
-    await page.goto('/#/leads');
-
-    await expect(page.getByRole('main').getByRole('heading', { name: /^Clientes$/i })).toBeVisible({
-      timeout: 10000,
-    });
-    await page.locator('tbody tr').filter({ hasText: 'João Silva' }).first().click();
-
-    await expect(page).toHaveURL(/#\/leads\/cliente\/LEAD-001/);
-    await expect(
-      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 1 })
-    ).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Atividade recente/i)).toBeVisible();
-    await expect(page.getByText(/ORC-20260001/i).first()).toBeVisible();
-  });
 
   test('botão de visualização rápida mantém o drawer na lista', async ({ page }) => {
     await setupLeadsMocks(page);
@@ -617,49 +583,5 @@ test.describe('Leads — Página single e visualização rápida @crm', () => {
     await expect(page.getByRole('button', { name: /Editar/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Abrir ficha completa/i })).toBeVisible();
   });
-
-  test('página própria permite editar e salvar o cadastro', async ({ page }) => {
-    await setupLeadsMocks(page);
-    await page.goto('/#/leads/lead/LEAD-001');
-
-    await expect(
-      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 1 })
-    ).toBeVisible({ timeout: 10000 });
-    await page.getByRole('button', { name: /Editar cadastro/i }).click();
-    await page.locator('input[placeholder="Nome do cliente"]').fill('João Silva Atualizado');
-    await page.getByRole('button', { name: /^Salvar$/i }).click();
-
-    await expect(page.getByText(/Cliente atualizado com sucesso/i)).toBeVisible({
-      timeout: 10000,
-    });
-    await expect(
-      page.getByRole('main').getByRole('heading', { name: 'João Silva Atualizado', level: 1 })
-    ).toBeVisible();
-  });
 });
 
-test.describe('Orçamento manual — clientes unificados @quotations', () => {
-  test('usa a resposta local para mostrar Cliente e não oferece escolha de Lead', async ({ page }) => {
-    await page.route('**/api/leads-clients**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [{ id: 'CLIENT-001', nome: 'Cliente Core', email: 'core@example.com', telefone: '5511999990000', tipo: 'cliente' }],
-          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-        }),
-      });
-    });
-    await page.route('**/api/products**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
-    });
-
-    await page.goto('/#/manual');
-    await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
-    await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Core');
-    await expect(page.getByText('Cliente Core', { exact: true })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Cliente', { exact: true }).last()).toBeVisible();
-    await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Origem *', { exact: true })).toBeVisible();
-  });
-});

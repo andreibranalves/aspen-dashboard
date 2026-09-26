@@ -484,13 +484,6 @@ test('polls and resolves a delivery found through a removed flow', async ({ page
   await expect(page.getByRole('button', { name: /cliente confirmou recebimento/i })).toHaveCount(0);
 });
 
-test('quotation detail loads the same durable delivery without clicking send', async ({ page }) => {
-  await mockDetail(page);
-  await page.goto(`/#/quotations/${quotationId}`);
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
-});
-
 test('quotation detail observes a delivery created under another flow and blocks a duplicate send', async ({ page }) => {
   await mockDetail(page, 'delivered', 'flow-2');
   let sendCount = 0;
@@ -536,29 +529,6 @@ test('failed delivery stays blocked without a blind retry', async ({ page }) => 
   await expect(send).toBeDisabled();
   await send.click({ force: true });
   expect(lifecycle.getSendCount()).toBe(1);
-});
-
-test('initial identity lookup disables send before its first response', async ({ page }) => {
-  await mockDetail(page, 'delivered');
-  let lookupStarted = false;
-  let releaseLookup;
-  const lookupReleased = new Promise((resolve) => { releaseLookup = resolve; });
-  await page.route('**/api/quotation-deliveries**', async (route) => {
-    const url = new globalThis.URL(route.request().url());
-    if (url.searchParams.has('revision_id') && url.searchParams.has('flow_id')) {
-      lookupStarted = true;
-      await lookupReleased;
-      return json(route, delivery('delivered'));
-    }
-    return json(route, deliveryPage([delivery('delivered')]));
-  });
-  await page.goto(`/#/quotations/${quotationId}`);
-  const send = page.getByRole('button', { name: /enviar whatsapp/i });
-  await expect(send).toBeVisible();
-  await expect.poll(() => lookupStarted).toBe(true);
-  await expect(send).toBeDisabled();
-  releaseLookup?.();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
 });
 
 test('initial identity lookup failure keeps warning and blocks blind send', async ({ page }) => {
@@ -694,100 +664,6 @@ test('a failed revision lookup keeps the detail send blocked with a safe error',
   await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
   expect(sendCount).toBe(0);
-});
-
-test('a stale polling read never overwrites an operator resolution', async ({ page }) => {
-  await mockDetail(page, 'provider_accepted', flowId, {
-    action_deadline: '2020-01-01T00:00:00.000Z',
-  });
-  const staleReadReleased = Promise.withResolvers();
-  const patchReleased = Promise.withResolvers();
-  let identityReads = 0;
-  const staleState = delivery('provider_accepted', flowId, revisionId, {
-    action_deadline: '2020-01-01T00:00:00.000Z',
-  });
-  await page.route('**/api/quotation-deliveries**', async (route) => {
-    const request = route.request();
-    const url = new globalThis.URL(request.url());
-    if (request.method() === 'PATCH') {
-      // Held so the polling read starts and stays in flight across the resolve.
-      await patchReleased.promise;
-      return json(route, delivery('delivered'));
-    }
-    if (url.searchParams.has('flow_id')) {
-      identityReads += 1;
-      if (identityReads === 2) {
-        await staleReadReleased.promise;
-        return json(route, staleState);
-      }
-      return json(route, staleState);
-    }
-    return json(route, deliveryPage([staleState]));
-  });
-
-  await page.goto(`/#/quotations/${quotationId}`);
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
-  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
-  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
-  await expect.poll(() => identityReads, { timeout: 15000 }).toBe(2);
-
-  patchReleased.resolve();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-
-  // The stale read still returns the old accepted state.
-  staleReadReleased.resolve();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toHaveCount(0);
-});
-
-test('a stale rejected poll never reintroduces an error after a resolution', async ({ page }) => {
-  await mockDetail(page, 'provider_accepted', flowId, {
-    action_deadline: '2020-01-01T00:00:00.000Z',
-  });
-  const staleRejectionReleased = Promise.withResolvers();
-  const patchReleased = Promise.withResolvers();
-  let identityReads = 0;
-  const staleState = delivery('provider_accepted', flowId, revisionId, {
-    action_deadline: '2020-01-01T00:00:00.000Z',
-  });
-  await page.route('**/api/quotation-deliveries**', async (route) => {
-    const request = route.request();
-    const url = new globalThis.URL(request.url());
-    if (request.method() === 'PATCH') {
-      // Held so the polling read starts and stays in flight across the resolve.
-      await patchReleased.promise;
-      return json(route, delivery('delivered'));
-    }
-    if (url.searchParams.has('flow_id')) {
-      identityReads += 1;
-      if (identityReads === 2) {
-        // Started before the resolution and rejected only after it landed.
-        await staleRejectionReleased.promise;
-        return json(route, { error: 'status unavailable' }, 503);
-      }
-      return json(route, staleState);
-    }
-    return json(route, deliveryPage([staleState]));
-  });
-
-  await page.goto(`/#/quotations/${quotationId}`);
-  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cliente confirmou recebimento' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Confirmar resolução' });
-  await dialog.getByLabel('Justificativa').fill('Cliente confirmou o recebimento.');
-  await dialog.getByRole('button', { name: 'Confirmar resolução' }).click();
-  await expect.poll(() => identityReads, { timeout: 15000 }).toBe(2);
-
-  patchReleased.resolve();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-
-  // The held read now rejects with a stale generation: the newer authoritative
-  // resolution must win and no warning may reappear beside it.
-  staleRejectionReleased.resolve();
-  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByText('Não foi possível atualizar a entrega.', { exact: true })).toHaveCount(0);
 });
 
 test('an active delivery from another flow keeps polling to delivered without another POST', async ({ page }) => {

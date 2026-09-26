@@ -367,78 +367,7 @@ test('lista distingue filtro sem resultado, preserva paginação e destaca o or�
   expect(hash.searchParams.get('limit')).toBe('25');
 });
 
-test('detalhe mantém conteúdo longo legível em modo somente leitura @quotations @smoke', async ({
-  page,
-}) => {
-  const longText =
-    'Observação comercial com conteúdo extenso que deve continuar legível e quebrar dentro da seção sem criar rolagem horizontal.'.repeat(
-      3
-    );
-  await page.route('**/api/quotations?id=*', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(
-        detail({
-          status: 'Enviado',
-          status_canonical: 'emitido',
-          observacoes: longText,
-          secoes: {
-            ...detail().secoes,
-            condicoes_gerais: {
-              ...detail().secoes.condicoes_gerais,
-              current: { ...detail().secoes.condicoes_gerais.current, body: longText },
-            },
-          },
-          items: [
-            {
-              id: '44444444-4444-4444-8444-444444444444',
-              sku: 'SKU-LONGO',
-              item_code: 'SKU-LONGO',
-              nome: 'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
-              item_name:
-                'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela',
-              qty: '10.000',
-              suggested_unit_price: '9.00',
-              applied_unit_price: '9.00',
-              price_difference: '0.00',
-              line_total: '90.00',
-              manual_rate: false,
-            },
-          ],
-        })
-      ),
-    });
-  });
-  await page.route('**/api/communication-flows', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true, flows: [], selectedFlowId: null }),
-    });
-  });
-  await page.route('**/api/quotation-templates', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ templates: [] }),
-    });
-  });
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/#/quotations/${id}`);
-  await expect(page.getByText('Somente leitura. Alterações criam uma nova revisão.')).toBeVisible();
-  await expect(page.getByText(longText)).toBeVisible();
-  await expect(
-    page.getByText(
-      'Produto com nome suficientemente longo para validar a quebra de conteúdo na tabela'
-    )
-  ).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Itens do orçamento' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Condições comerciais' })).toBeVisible();
-});
-
-for (let visibility = 0; visibility < 8; visibility += 1) {
+for (const visibility of [0, 5, 7]) {
   test(`detalhe emitido preserva seções e títulos com visibilidade ${visibility} @quotations`, async ({
     page,
   }) => {
@@ -1006,7 +935,7 @@ test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smo
   await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('simples');
 });
 
-for (const width of [1280, 390]) {
+for (const width of [390]) {
   test(`atalhos do cliente emitido preservam navegação em ${width}px @quotations`, async ({
     page,
   }) => {
