@@ -80,7 +80,7 @@ test('Mais abre a sidebar no celular, fecha com Escape e restaura o foco', async
   await expect(menu).toBeFocused();
 
   await menu.click();
-  await page.locator('[data-sidebar-backdrop="true"]').click({ position: { x: 380, y: 100 } });
+  await page.locator('[data-sidebar-backdrop="true"]').click({ position: { x: 10, y: 100 } });
   await expect(page.locator('#aspen-sidebar')).not.toBeVisible();
   await expect(menu).toBeFocused();
 });

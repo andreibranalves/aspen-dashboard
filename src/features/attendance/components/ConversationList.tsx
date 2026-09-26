@@ -2,9 +2,7 @@ import { MessagesSquare } from 'lucide-react';
 import EmptyState from '@/components/shared/EmptyState';
 import { EntityAvatar } from '@/components/shared/EntityIdentity';
 import ErrorState from '@/components/shared/ErrorState';
-import { StatusBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { STATUS_BADGE, STATUS_LABELS } from '@/features/attendance/attendanceLabels';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { contactPhotoUrl, type AttendanceConversation } from '@/lib/api/attendanceApi';
@@ -95,14 +93,6 @@ export default function ConversationList({
                       {item.lastMessageDirection === 'outbound' && 'Você: '}
                       {item.lastMessagePreview}
                     </span>
-                    {item.status !== 'open' && (
-                      <StatusBadge
-                        status={STATUS_BADGE[item.status].status}
-                        tone={STATUS_BADGE[item.status].tone}
-                        className="shrink-0"
-                        label={STATUS_LABELS[item.status]}
-                      />
-                    )}
                     {item.unreadCount > 0 && (
                       <span
                         className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-primary px-1.5 text-2xs font-bold text-on-solid"

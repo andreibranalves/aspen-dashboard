@@ -128,7 +128,7 @@ export default function Sidebar({
         aria-modal={mobile && sidebarOpen ? true : undefined}
         className={cn(
           'z-nav flex h-full shrink-0 flex-col overflow-hidden bg-shell text-shell-text transition-[width] duration-200',
-          mobile ? 'fixed inset-y-0 left-0 w-[248px] rounded-none' : 'relative rounded-shell',
+          mobile ? 'fixed inset-y-0 right-0 w-[248px] rounded-none' : 'relative rounded-shell',
           !mobile && (collapsed ? 'w-[76px]' : 'w-[248px]'),
           mobile && collapsed && 'hidden',
           mobile && sidebarOpen && 'shadow-2xl'
