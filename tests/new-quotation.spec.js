@@ -100,6 +100,19 @@ async function mockSharedApis(page, extractHandler, {
   return { unexpectedApiRequests };
 }
 
+/** Etapas do card de novo orçamento (Pedido, Revisão, Envio). */
+function steps(page) {
+  return page.getByRole('list', { name: 'Etapas do orçamento' });
+}
+
+/** Nomes dos rascunhos da conversa guardados na sessão; null sem armazenamento. */
+function storedDraftNames(page) {
+  return page.evaluate(() => {
+    const stored = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts') || 'null');
+    return Array.isArray(stored?.drafts) ? stored.drafts.map((draft) => draft.edited?.nome) : null;
+  });
+}
+
 test.describe('Novo orçamento unificado @quotations', () => {
 
   test('preserva os campos e o preço manual ao alternar entre Manual e Automático', async ({ page }) => {
@@ -119,7 +132,7 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await page.getByLabel(`Quantidade de ${PRODUCT.sku}`).fill('7');
     await page.getByLabel(`Preço unitário de ${PRODUCT.sku}`).fill('19.75');
-    await page.getByLabel('Prazo de produção (dias úteis)').fill('10');
+    await page.getByLabel('Prazo de produção', { exact: true }).fill('10');
     await page.getByLabel('Observações do orçamento').fill('Condição negociada');
 
     await page.getByRole('tab', { name: 'A partir de uma conversa' }).click();
@@ -130,16 +143,14 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await expect(page.getByLabel('Nome do cliente')).toHaveValue('Cliente alternância');
     await expect(page.getByLabel(`Quantidade de ${PRODUCT.sku}`)).toHaveValue('7');
     await expect(page.getByLabel(`Preço unitário de ${PRODUCT.sku}`)).toHaveValue('19.75');
-    await expect(page.getByLabel('Prazo de produção (dias úteis)')).toHaveValue('10');
+    await expect(page.getByLabel('Prazo de produção', { exact: true })).toHaveValue('10');
     await expect(page.getByLabel('Observações do orçamento')).toHaveValue('Condição negociada');
   });
 
-  test('mantém a extração por imagem e isola resultado novo ou falha do trabalho ativo', async ({ page }) => {
+  test('uma nova extração substitui o rascunho e uma falha preserva o atual', async ({ page }) => {
     let extractionCount = 0;
-    const requests = [];
     await mockSharedApis(page, async (route) => {
       extractionCount += 1;
-      requests.push(route.request().postDataJSON());
       if (extractionCount === 3) {
         await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'falha controlada' }) });
         return;
@@ -147,35 +158,34 @@ test.describe('Novo orçamento unificado @quotations', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ orders: [order(extractionCount === 1 ? 'Cliente imagem' : 'Cliente novo')] }),
+        body: JSON.stringify({ orders: [order(extractionCount === 1 ? 'Cliente antigo' : 'Cliente novo')] }),
       });
     });
 
     await page.goto('/#/novo-orcamento');
-    await page.locator('#new-quotation-image').setInputFiles({
-      name: 'pedido.png',
-      mimeType: 'image/png',
-      buffer: globalThis.Buffer.from('imagem fictícia'),
-    });
+    const input = page.getByLabel('Mensagem do cliente para extração');
+    await input.fill('primeiro pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText(/Resultados \(1\)/)).toBeVisible();
-    await expect.poll(() => requests.length).toBe(1);
-    expect(requests[0].imageBase64).toBeTruthy();
+    await expect(page.getByRole('heading', { name: 'Cliente antigo' })).toBeVisible();
 
-    await page.getByLabel('Mensagem do cliente para extração').fill('novo pedido');
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+    await expect(input).toHaveValue('primeiro pedido');
+    await input.fill('segundo pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText('Novo resultado para revisão (1/1)', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Cliente Imagem' })).toBeVisible();
-    await expect(page.getByLabel('Nome', { exact: true })).toHaveValue('Cliente novo');
+    await expect(page.getByRole('heading', { name: 'Cliente novo' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cliente antigo' })).toHaveCount(0);
+    await expect.poll(() => storedDraftNames(page)).toEqual(['Cliente novo']);
 
-    await page.getByLabel('Mensagem do cliente para extração').fill('falha posterior');
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+    await input.fill('falha posterior');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('alert').getByText('Não foi possível extrair os pedidos. Tente novamente.', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Cliente Imagem' })).toBeVisible();
-    await expect(page.getByLabel('Nome', { exact: true })).toHaveValue('Cliente novo');
+    await steps(page).getByRole('button', { name: /Revisão/ }).click();
+    await expect(page.getByRole('heading', { name: 'Cliente novo' })).toBeVisible();
+    await expect.poll(() => storedDraftNames(page)).toEqual(['Cliente novo']);
   });
 
-  test('identifica o draft ativo quando a conversa produz múltiplos pedidos', async ({ page }) => {
+  test('identifica o pedido ativo quando a conversa produz múltiplos pedidos', async ({ page }) => {
     await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -185,39 +195,33 @@ test.describe('Novo orçamento unificado @quotations', () => {
     await page.goto('/#/auto');
     await page.getByLabel('Mensagem do cliente para extração').fill('dois pedidos');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText(/Resultados \(2\)/)).toBeVisible();
-    await expect(page.getByLabel('Rascunho ativo')).toHaveValue('0');
-    await page.getByLabel('Rascunho ativo').selectOption('1');
-    await expect(page.getByText(/ativo: Cliente dois/)).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Cliente dois' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Cliente um' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Cliente um' })).toBeVisible();
+    await expect(page.getByText('Pedido 1 de 2', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cliente dois' })).toHaveCount(0);
   });
 
-  test('limpa a fila local de resultados imediatamente', async ({ page }) => {
-    const { unexpectedApiRequests } = await mockSharedApis(page, (route) => route.fulfill({
+  test('Limpar descarta o pedido e os rascunhos da conversa', async ({ page }) => {
+    await mockSharedApis(page, (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ orders: [order('Cliente um'), order('Cliente dois')] }),
     }));
 
     await page.goto('/#/novo-orcamento');
-    await page.getByLabel('Mensagem do cliente para extração').fill('dois pedidos');
+    const input = page.getByLabel('Mensagem do cliente para extração');
+    await input.fill('dois pedidos');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText(/Resultados \(2\)/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cliente um' })).toBeVisible();
 
-    const clearResults = page.getByRole('button', { name: 'Limpar lista' });
-    await expect(clearResults).toBeVisible();
-    await clearResults.click();
-    await expect(page.getByRole('region', { name: 'Resultado da conversa' })).toHaveCount(0);
-    await expect(page.getByLabel('Rascunho ativo')).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => {
-      const stored = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts') || 'null');
-      return Array.isArray(stored?.drafts) ? stored.drafts.length : -1;
-    })).toBe(0);
-    expect(unexpectedApiRequests).toEqual([]);
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
+    await page.getByRole('button', { name: 'Limpar', exact: true }).click();
+    await expect(input).toHaveValue('');
+    await expect(steps(page).getByRole('button')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Limpar', exact: true })).toBeDisabled();
+    await expect.poll(() => storedDraftNames(page)).toEqual([]);
   });
 
-  test('bloqueia a limpeza da fila enquanto uma nova extração está em andamento', async ({ page }) => {
+  test('bloqueia Limpar enquanto uma nova extração está em andamento', async ({ page }) => {
     let extractionCount = 0;
     let releaseExtraction;
     const extractionGate = new Promise((resolve) => { releaseExtraction = resolve; });
@@ -235,16 +239,16 @@ test.describe('Novo orçamento unificado @quotations', () => {
     const input = page.getByLabel('Mensagem do cliente para extração');
     await input.fill('primeiro pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText(/Resultados \(1\)/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Cliente 1' })).toBeVisible();
 
+    await page.getByRole('button', { name: 'Voltar', exact: true }).click();
     await input.fill('segundo pedido');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('button', { name: 'Extraindo…' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Limpar lista' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Limpar', exact: true })).toBeDisabled();
 
     releaseExtraction();
-    await expect(page.getByRole('button', { name: 'Extrair dados' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Limpar lista' })).toBeEnabled();
+    await expect(page.getByRole('heading', { name: 'Cliente 2' })).toBeVisible();
   });
 
   test('recupera emissão iniciada no modo manual e redireciona mesmo pela rota comum', async ({ page }) => {
@@ -514,133 +518,46 @@ test.describe('Novo orçamento unificado @quotations', () => {
     expect(unexpectedApiRequests).toEqual([]);
   });
 
-  test('mantém irmãos pendentes, fila nova e ativo ao aplicar ou descartar', async ({ page }) => {
-    let extractionCount = 0;
-    const { unexpectedApiRequests } = await mockSharedApis(page, async (route) => {
-      extractionCount += 1;
-      const orders = extractionCount === 1
-        ? [order('Cliente ativo')]
-        : extractionCount === 2
-          ? [order('Pendente um'), order('Pendente dois')]
-          : [order('Pendente três')];
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders }) });
-    });
-    await page.goto('/#/novo-orcamento');
-    const input = page.getByLabel('Mensagem do cliente para extração');
-    await input.fill('ativo');
-    await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
-    await input.fill('pendentes');
-    await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText('Novo resultado para revisão (2/2)', { exact: true })).toBeVisible();
-    await input.fill('mais um');
-    await page.getByRole('button', { name: 'Extrair dados' }).click();
-    await expect(page.getByText('Novo resultado para revisão (3/3)', { exact: true })).toBeVisible();
-
-    const pendingCards = page.getByText(/Novo resultado para revisão \(/).locator('..');
-    await pendingCards.nth(0).getByRole('button', { name: 'Aplicar ao orçamento ativo' }).click();
-    await expect(page.getByText('Novo resultado para revisão (2/2)', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Pendente um' })).toBeVisible();
-    await page.getByLabel('Rascunho ativo').selectOption('0');
-    await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
-    await page.getByText('Novo resultado para revisão (2/2)', { exact: true }).locator('..').getByRole('button', { name: 'Descartar resultado' }).click();
-    await expect(page.getByText('Novo resultado para revisão (1/1)', { exact: true })).toBeVisible();
-    expect(unexpectedApiRequests).toEqual([]);
-  });
-
-  test('mantém o resultado pendente bloqueado até concluir a seleção de produto', async ({ page }) => {
-    let extractionCount = 0;
+  test('atualiza o preço do item depois de trocar o SKU na revisão', async ({ page }) => {
     let pricingCount = 0;
     let releaseSelectionPricing;
     const selectionPricing = new Promise((resolve) => { releaseSelectionPricing = resolve; });
-    const pricingRequests = [];
-    await mockSharedApis(page, async (route) => {
-      extractionCount += 1;
-      const orders = extractionCount === 1 ? [order('Cliente ativo')] : [order('Cliente pendente')];
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders }) });
-    }, {
+    await mockSharedApis(page, (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ orders: [order('Cliente ativo')] }),
+    }), {
       productData: [PRODUCT, PRODUCT_B],
       pricingHandler: async (route) => {
         pricingCount += 1;
-        pricingRequests.push(route.request());
-        if (pricingCount === 3) await selectionPricing;
-        const rate = pricingCount === 1 ? 11 : pricingCount === 2 ? 17 : 42;
+        if (pricingCount === 2) await selectionPricing;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, rate }] }),
+          body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, rate: pricingCount === 1 ? 11 : 42 }] }),
         });
       },
     });
 
     await page.goto('/#/novo-orcamento');
-    const input = page.getByLabel('Mensagem do cliente para extração');
-    await input.fill('ativo');
+    await page.getByLabel('Mensagem do cliente para extração').fill('ativo');
     await page.getByRole('button', { name: 'Extrair dados' }).click();
     await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
-    await input.fill('pendente');
-    await page.getByRole('button', { name: 'Extrair dados' }).click();
-    const pending = page.getByText('Novo resultado para revisão (1/1)', { exact: true }).locator('..');
-    await expect(pending).toBeVisible();
-    await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT.sku}`)).toHaveValue('17');
+    await page.getByRole('button', { name: 'Editar', exact: true }).click();
+    await expect(page.getByLabel(`Preço unitário do item ${PRODUCT.sku}`)).toHaveValue('11,00');
+    const issue = page.getByRole('button', { name: 'Emitir orçamento' });
+    await expect(issue).toBeEnabled();
 
-    const sku = pending.getByPlaceholder('Buscar SKU ou nome…');
-    await sku.fill(PRODUCT_B.sku);
-    await expect(pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) })).toBeVisible();
-    await pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) }).click();
-    await expect.poll(() => pricingRequests.length).toBe(3);
-    await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('');
-    await expect(pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' })).toBeDisabled();
+    await page.getByPlaceholder('Buscar SKU ou nome…').fill(PRODUCT_B.sku);
+    await page.getByRole('button', { name: new RegExp(PRODUCT_B.sku) }).click();
+    await expect.poll(() => pricingCount).toBe(2);
+    await expect(issue).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Pré-visualizar' })).toBeDisabled();
 
     releaseSelectionPricing();
-    await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('42');
-    await expect(pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' })).toBeEnabled();
-    await pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' }).click();
-    await expect(page.getByRole('heading', { name: 'Cliente pendente' })).toBeVisible();
-    await expect(page.getByText('R$ 42,00', { exact: true })).toBeVisible();
+    await expect(page.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('42,00');
+    await expect(issue).toBeEnabled();
   });
-
-  for (const [testName, pricingResponse] of [
-    ['mantém Apply bloqueado quando a seleção de SKU retorna resposta malformada', { status: 200, body: { success: true, items: [{ item_code: PRODUCT_B.sku, rate: 'preço inválido' }] } }],
-  ]) {
-    test(testName, async ({ page }) => {
-      let extractionCount = 0;
-      let pricingCount = 0;
-      const pricingRequests = [];
-      await mockSharedApis(page, async (route) => {
-        extractionCount += 1;
-        const orders = extractionCount === 1 ? [order('Cliente ativo')] : [order('Cliente pendente')];
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ orders }) });
-      }, {
-        productData: [PRODUCT, PRODUCT_B],
-        pricingHandler: async (route) => {
-          pricingCount += 1;
-          pricingRequests.push(route.request());
-          const response = pricingCount === 3
-            ? pricingResponse
-            : { status: 200, body: { success: true, items: [{ item_code: PRODUCT.sku, rate: pricingCount === 1 ? 11 : 17 }] } };
-          await route.fulfill({ status: response.status, contentType: 'application/json', body: JSON.stringify(response.body) });
-        },
-      });
-
-      await page.goto('/#/novo-orcamento');
-      const input = page.getByLabel('Mensagem do cliente para extração');
-      await input.fill('ativo');
-      await page.getByRole('button', { name: 'Extrair dados' }).click();
-      await expect(page.getByRole('heading', { name: 'Cliente ativo' })).toBeVisible();
-      await input.fill('pendente');
-      await page.getByRole('button', { name: 'Extrair dados' }).click();
-      const pending = page.getByText('Novo resultado para revisão (1/1)', { exact: true }).locator('..');
-      await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT.sku}`)).toHaveValue('17');
-
-      await pending.getByPlaceholder('Buscar SKU ou nome…').fill(PRODUCT_B.sku);
-      await expect(pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) })).toBeVisible();
-      await pending.getByRole('button', { name: new RegExp(PRODUCT_B.sku) }).click();
-      await expect.poll(() => pricingRequests.length).toBe(3);
-      await expect(pending.getByLabel(`Preço unitário do item ${PRODUCT_B.sku}`)).toHaveValue('');
-      await expect(pending.getByRole('button', { name: 'Aplicar ao orçamento ativo' })).toBeDisabled();
-    });
-  }
 
   test('preserva um rascunho salvo ao alternar sem editar', async ({ page }) => {
     const savedDraft = {

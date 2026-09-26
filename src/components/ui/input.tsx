@@ -7,10 +7,18 @@ const sizes = {
   xs: 'h-7 text-xs',
 } as const;
 
+const variants = {
+  default: 'border-border-control bg-input-surface',
+  /** Sem moldura até hover ou foco, para células editáveis de uma tabela. */
+  ghost: 'border-transparent bg-transparent hover:border-border-control focus-visible:border-border-control focus-visible:bg-input-surface',
+} as const;
+
 type InputSize = keyof typeof sizes;
+type InputVariant = keyof typeof variants;
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   size?: InputSize;
+  variant?: InputVariant;
   /** Esconde as setas nativas de incremento em campos numéricos. */
   hideSpinButtons?: boolean;
 }
@@ -20,14 +28,15 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
  * Labels, helper text and validation messaging remain with the consumer.
  */
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, size = 'default', hideSpinButtons = false, ...rest }, ref) => {
+  ({ className, type, size = 'default', variant = 'default', hideSpinButtons = false, ...rest }, ref) => {
     const props = useFieldControl(rest);
     return (
       <input
         ref={ref}
         type={type}
         className={cn(
-          'flex w-full min-w-0 rounded-control border border-border-control bg-input-surface px-3 py-1 leading-5 text-fg',
+          'flex w-full min-w-0 rounded-control border px-3 py-1 leading-5 text-fg',
+          variants[variant],
           sizes[size],
           'placeholder:text-fg-muted',
           'aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive',
@@ -45,4 +54,4 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 Input.displayName = 'Input';
 
 export { Input };
-export type { InputProps, InputSize };
+export type { InputProps, InputSize, InputVariant };

@@ -5,21 +5,16 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type ClipboardEvent,
 } from 'react';
 import {
   ChevronDown,
   Loader2,
-  ClipboardList,
   MapPin,
-  PackagePlus,
   RotateCcw,
   Search,
-  Settings,
   Trash2,
   MessagesSquare,
   PencilLine,
-  X,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
 import { isApiError } from '@/types/api';
@@ -46,6 +41,8 @@ import {
   type OpportunityChoice,
 } from '@/lib/api/proposalOpportunitiesApi';
 import OpportunitySelector from '@/features/quotations/components/OpportunitySelector';
+import QuoteOrderStep from '@/features/quotations/components/QuoteOrderStep';
+import QuoteSteps, { type QuoteStep } from '@/features/quotations/components/QuoteSteps';
 import {
   NEW_DEMAND_SELECTION,
   initialOpportunitySelection,
@@ -80,12 +77,12 @@ import { formatBRL, formatPhoneInput, normalizePhoneDigits, fmtPhone } from '@/l
 import { Button } from '@/components/ui/button';
 import InlineAlert from '@/components/shared/InlineAlert';
 import { TabBar } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import PageHeader from '@/components/shared/PageHeader';
-import EmptyState from '@/components/shared/EmptyState';
 import PageShell from '@/components/shared/PageShell';
 import { DetailDrawer } from '@/components/shared/DetailDrawer';
 import { useToast } from '@/components/shared/toast';
@@ -219,6 +216,10 @@ function draftHasWork(draft: Draft | null | undefined): boolean {
       draft.edited.prazo_producao_dias ||
       draft.edited.observacoes,
   );
+}
+
+function draftIssued(draft: Draft): boolean {
+  return Boolean((draft as StoredAutoQuoteDraft).issue || (draft.status === 'done' && draft.result?.success));
 }
 
 function opportunitySelectionFromDraft(draft: Draft): OpportunitySelection {
@@ -509,10 +510,11 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const [activeDraftIndex, setActiveDraftIndex] = useState<number | null>(
     initialMode === 'conversation' ? initialDrafts.at(-1)?.index ?? null : null,
   );
+  // O operador reabriu o Pedido com um rascunho ativo; sem rascunho o card já mostra o Pedido.
+  const [orderOpen, setOrderOpen] = useState(false);
   const [manual, setManual] = useState<ManualForm>(emptyManual);
   const [manualStorageHydrated, setManualStorageHydrated] = useState(false);
   const [manualIssuing, setManualIssuing] = useState(false);
-  const [pendingExtraction, setPendingExtraction] = useState<Draft[]>([]);
   const [text, setText] = useState('');
   const [incomingQuoteDraft, setIncomingQuoteDraft] = useState<AtendimentoQuoteDraft | null>(null);
   const [activeQuoteDraft, setActiveQuoteDraft] = useState<AtendimentoQuoteDraft | null>(null);
@@ -558,8 +560,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const manualIssueKey = useRef<{ fingerprint: string; key: string } | null>(null);
   const previousInitialMode = useRef(initialMode);
   const extractionGeneration = useRef(0);
-  const nextPendingId = useRef(-1);
-  const pendingPricingVersions = useRef<Record<number, number>>({});
   const manualSourceDraft = useRef<number | null>(null);
   const restoredManual = useRef(false);
   const opportunityClientRef = useRef<string | null>(null);
@@ -571,7 +571,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
   const manualPricingPendingRef = useRef(false);
   const [manualPricingPending, setManualPricingPending] = useState(false);
   const [conversationPricingPending, setConversationPricingPending] = useState<Record<string, boolean>>({});
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const clientPanelInput = useRef<HTMLInputElement>(null);
   const [clientPanel, setClientPanel] = useState<'existing' | 'new' | 'address' | null>(null);
   const [drawerManual, setDrawerManual] = useState<ManualForm | null>(null);
@@ -644,16 +643,26 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
   const activeDrafts = useMemo(() => drafts.filter((draft) => !draft.discarded), [drafts]);
   const activeDraft = activeDrafts.find((draft) => draft.index === activeDraftIndex) || null;
-  // No celular o Resultado fica abaixo do pedido: ao chegar um novo rascunho, a tela desce até ele.
   const compactLayout = useMediaQuery(MOBILE_MEDIA_QUERY);
-  const resultSectionRef = useRef<HTMLElement>(null);
-  const previousDraftCount = useRef(activeDrafts.length);
+  const activeIssued = Boolean(activeDraft && draftIssued(activeDraft));
+  // Outro pedido da mesma conversa ainda não emitido, oferecido depois do Envio.
+  const nextOrder = activeIssued
+    ? activeDrafts.find((draft) => draft.index !== activeDraft?.index && !draftIssued(draft))
+    : undefined;
+  const quoteStep: QuoteStep = !activeDraft || orderOpen ? 'order' : activeIssued ? 'send' : 'review';
+  // A troca de etapa desmonta o botão que a causou: o foco vai para o conteúdo
+  // da nova etapa e, se o topo do card saiu da tela, a tela sobe até ele.
+  const quoteCardRef = useRef<HTMLDivElement>(null);
+  const quoteStepBodyRef = useRef<HTMLDivElement>(null);
+  const previousQuoteStep = useRef(quoteStep);
   useEffect(() => {
-    if (compactLayout && activeDrafts.length > previousDraftCount.current) {
-      resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (previousQuoteStep.current === quoteStep) return;
+    previousQuoteStep.current = quoteStep;
+    quoteStepBodyRef.current?.focus({ preventScroll: true });
+    if ((quoteCardRef.current?.getBoundingClientRect().top ?? 0) < 0) {
+      quoteCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    previousDraftCount.current = activeDrafts.length;
-  }, [activeDrafts.length, compactLayout]);
+  }, [quoteStep]);
   // Identity resolution for every unsaved automatic card. Frozen while a save
   // or issue is in flight so a pending response cannot change the payload that
   // was already dispatched.
@@ -831,6 +840,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       if (draft.demandId !== demandId) return;
       if (draftsRef.current.some(draftHasWork) || text.trim()) {
         setIncomingQuoteDraft(draft);
+        setOrderOpen(true);
       } else {
         setText(draft.text);
         setActiveQuoteDraft(draft);
@@ -1220,6 +1230,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         manualSourceDraft.current = index;
       }
     }
+    if (nextMode === 'conversation') setOrderOpen(false);
     setMode(nextMode);
   }, [activeDraft, conversationPricingPending, drafts, liveDraftOperation, manual, manualPricingPending, mode, navigateToQuotation, setDrafts]);
 
@@ -1229,90 +1240,35 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     switchMode(initialMode);
   }, [initialMode, switchMode]);
 
-  const updatePendingField = useCallback((draftIdx: number, field: keyof DraftEdited, value: unknown) => {
-    if (liveDraftOperation) return;
-    setPendingExtraction((current) => current.map((draft) => draft.index === draftIdx
-      ? { ...draft, edited: { ...draft.edited, [field]: value } }
-      : draft));
-  }, [liveDraftOperation]);
-
-  const updatePendingItem = useCallback((draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => {
-    if (liveDraftOperation) return;
-    setPendingExtraction((current) => current.map((draft) => {
-      if (draft.index !== draftIdx) return draft;
-      const items = draft.edited.items.map((item, index) => index === itemIdx
-        ? { ...item, [field]: value, ...(field === 'rate' ? { _rateManual: true } : {}) }
-        : item);
-      return { ...draft, edited: { ...draft.edited, items } };
-    }));
-  }, [liveDraftOperation]);
-
-  const updatePendingProduct = useCallback(async (draftIdx: number, itemIdx: number, product: Product) => {
-    if (liveDraftOperation) return;
-    if (isUnpricedProduct(product)) return;
-    const current = pendingExtraction.find((draft) => draft.index === draftIdx);
-    if (!current || !current.edited.items[itemIdx]) return;
-    const updated = {
-      ...current,
-      edited: {
-        ...current.edited,
-        items: current.edited.items.map((item, index) => index === itemIdx
-          ? { ...item, item_code: product.sku, item_name: product.nome || product.sku, rate: null, _rateManual: undefined }
-          : item),
-      },
-    };
-    setPendingExtraction((all) => all.map((draft) => draft.index === draftIdx ? updated : draft));
-    const version = (pendingPricingVersions.current[draftIdx] || 0) + 1;
-    pendingPricingVersions.current[draftIdx] = version;
-    const priced = await fetchPricing([updated], updated.edited.acrescimo_percent);
-    if (pendingPricingVersions.current[draftIdx] !== version || !priced[0]) return;
-    setPendingExtraction((all) => all.map((draft) => {
-      if (draft.index !== draftIdx || draft.edited.acrescimo_percent !== updated.edited.acrescimo_percent) return draft;
-      const items = draft.edited.items.map((item, index) => {
-        const requested = updated.edited.items[index];
-        const pricedItem = priced[0].edited.items[index];
-        return requested && pricedItem && item.item_code === requested.item_code && item.qty === requested.qty && !item._rateManual
-          ? { ...item, rate: pricedItem.rate, item_name: item.item_name || pricedItem.item_name }
-          : item;
-      });
-      return { ...draft, edited: { ...draft.edited, items } };
-    }));
-  }, [fetchPricing, liveDraftOperation, pendingExtraction]);
-
-  const refetchPendingPricing = useCallback(async (draftIdx: number): Promise<Draft | undefined> => {
-    const current = pendingExtraction.find((draft) => draft.index === draftIdx);
-    if (!current) return undefined;
-    const requested = { ...current, edited: { ...current.edited, items: current.edited.items.map((item) => ({ ...item })) } };
-    const version = (pendingPricingVersions.current[draftIdx] || 0) + 1;
-    pendingPricingVersions.current[draftIdx] = version;
-    const priced = await fetchPricing([requested], requested.edited.acrescimo_percent);
-    if (pendingPricingVersions.current[draftIdx] !== version || !priced[0]) return priced[0];
-    setPendingExtraction((all) => all.map((draft) => {
-      if (draft.index !== draftIdx || draft.edited.acrescimo_percent !== requested.edited.acrescimo_percent) return draft;
-      const items = draft.edited.items.map((item, index) => {
-        const requestedItem = requested.edited.items[index];
-        const pricedItem = priced[0].edited.items[index];
-        if (!requestedItem || !pricedItem || item.item_code !== requestedItem.item_code || item.qty !== requestedItem.qty || Boolean(item._rateManual) !== Boolean(requestedItem._rateManual)) return item;
-        return { ...item, rate: pricedItem.rate, item_name: item.item_name || pricedItem.item_name };
-      });
-      return { ...draft, edited: { ...draft.edited, items } };
-    }));
-    return priced[0];
-  }, [fetchPricing, pendingExtraction]);
-
-  const appendOrQueueExtraction = useCallback((newDrafts: Draft[]) => {
-    if (liveDraftOperation) return;
-    const current = activeDrafts.find((draft) => draft.index === activeDraftIndex);
-    if ((current && draftHasWork(current)) || pendingExtraction.length > 0) {
-      const pending = newDrafts.map((draft) => ({ ...draft, index: nextPendingId.current-- }));
-      setPendingExtraction((previous) => [...previous, ...pending]);
-      return;
+  // Descarta a fila local da conversa com o que cada rascunho carregava:
+  // recuperações de emissão, erros, fluxo de WhatsApp e demandas carregadas.
+  const replaceConversationDrafts = useCallback((next: StoredAutoQuoteDraft[]) => {
+    recoveryTokens.current.clear();
+    recoveryHandled.current.clear();
+    recoveryAttempts.current.clear();
+    for (const timer of recoveryTimers.current.values()) clearTimeout(timer);
+    recoveryTimers.current.clear();
+    recoveryTimerKeys.current.clear();
+    setWaFlowByDraft({});
+    setIssueErrorByDraft({});
+    draftOpportunityRequests.current.clear();
+    setDraftOpportunityChoices({});
+    setDraftOpportunityLoading({});
+    setActiveDraftIndex(next[0]?.index ?? null);
+    setOrderOpen(false);
+    if (!persistDrafts(next)) {
+      draftsRef.current = next;
+      setDrafts(next);
+      toast('A tela foi atualizada, mas o navegador não permitiu salvar os rascunhos localmente.', 'error');
     }
+  }, [persistDrafts, setDrafts, toast]);
+
+  // Um pedido novo substitui o anterior: o card só mostra um orçamento por vez.
+  const replaceWithExtraction = useCallback((newDrafts: Draft[]) => {
+    if (liveDraftOperation) return;
     const start = Math.max(-1, ...drafts.map((draft) => draft.index)) + 1;
-    const appended = newDrafts.map((draft, offset) => ({ ...draft, index: start + offset }));
-    setDrafts((previous) => [...previous, ...appended]);
-    setActiveDraftIndex(appended[0]?.index ?? null);
-  }, [activeDraftIndex, activeDrafts, drafts, liveDraftOperation, pendingExtraction.length, setDrafts]);
+    replaceConversationDrafts(newDrafts.map((draft, offset) => ({ ...draft, index: start + offset })));
+  }, [drafts, liveDraftOperation, replaceConversationDrafts]);
 
   const handleExtract = useCallback(async () => {
     if (liveDraftOperation || (!text.trim() && !imageData)) return;
@@ -1358,7 +1314,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         const pricedDrafts = extracted.length ? await fetchPricing(extracted, 0) : [];
         if (!isCurrent()) return;
         const priced = new Map(pricedDrafts.map((draft) => [draft.index, draft]));
-        appendOrQueueExtraction(extracted.map((draft) => priced.get(draft.index) || draft));
+        replaceWithExtraction(extracted.map((draft) => priced.get(draft.index) || draft));
       } finally {
         if (isCurrent()) {
           setConversationPricingPending((current) => {
@@ -1373,23 +1329,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
     } finally {
       if (isCurrent()) setExtracting(false);
     }
-  }, [activeQuoteDraft, appendOrQueueExtraction, buildDraftsFromOrders, fetchPricing, imageData, liveDraftOperation, orderTemplates, templateKey, text]);
-
-  const applyPending = useCallback((pending: Draft) => {
-    if (liveDraftOperation) return;
-    const index = Math.max(-1, ...drafts.map((draft) => draft.index)) + 1;
-    const applied = { ...pending, index };
-    setDrafts((current) => [...current, applied]);
-    setActiveDraftIndex(index);
-    setPendingExtraction((current) => current.filter((draft) => draft.index !== pending.index));
-  }, [drafts, liveDraftOperation, setDrafts]);
-
-  const discardPending = useCallback((draftIdx: number) => {
-    if (liveDraftOperation) return;
-    setPendingExtraction((current) => {
-      return current.filter((draft) => draft.index !== draftIdx);
-    });
-  }, [liveDraftOperation]);
+  }, [activeQuoteDraft, buildDraftsFromOrders, replaceWithExtraction, fetchPricing, imageData, liveDraftOperation, orderTemplates, templateKey, text]);
 
   const responseSaved = useCallback((response: OrcamentoResponse) => {
     const quotationId = [response.quotation_uuid, response.quote_id].find((value) => typeof value === 'string' && value)?.toString() || '';
@@ -1989,28 +1929,17 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
   const clearResultsBlocked = extracting || liveDraftOperation || pricingPending;
 
-  const clearResultQueue = useCallback(() => {
+  // Limpar e Novo orçamento: volta ao pedido vazio, sem rascunhos.
+  const resetConversation = useCallback(() => {
     if (clearResultsBlocked) return;
     extractionGeneration.current += 1;
-    recoveryTokens.current.clear();
-    recoveryHandled.current.clear();
-    recoveryAttempts.current.clear();
-    for (const timer of recoveryTimers.current.values()) clearTimeout(timer);
-    recoveryTimers.current.clear();
-    recoveryTimerKeys.current.clear();
-    setPendingExtraction([]);
-    setActiveDraftIndex(null);
-    setWaFlowByDraft({});
-    setIssueErrorByDraft({});
-    draftOpportunityRequests.current.clear();
-    setDraftOpportunityChoices({});
-    setDraftOpportunityLoading({});
-    if (!persistDrafts([])) {
-      draftsRef.current = [];
-      setDrafts([]);
-      toast('A fila foi limpa desta tela, mas o navegador não permitiu atualizar o armazenamento local.', 'error');
-    }
-  }, [clearResultsBlocked, persistDrafts, setDrafts, toast]);
+    setText('');
+    setActiveQuoteDraft(null);
+    setIncomingQuoteDraft(null);
+    clearImage();
+    setExtractError(null);
+    replaceConversationDrafts([]);
+  }, [clearImage, clearResultsBlocked, replaceConversationDrafts]);
 
   const activeStoredDraft = activeDraft as StoredAutoQuoteDraft | null;
   const activeResultData = activeDraft?.result?.data;
@@ -2045,7 +1974,7 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
 
   return (
     <PageShell className="min-w-0 flex min-h-0 flex-1 flex-col space-y-6 overflow-x-hidden pb-0">
-      <PageHeader
+    <PageHeader
         title="Novo orçamento"
         className="items-center"
         actions={
@@ -2068,21 +1997,6 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
         <p className="text-sm text-fg-muted" role="status">
           Origem: {manual.originPrefill.source === 'site_form' ? 'Formulário do site' : manual.originPrefill.source || 'Oportunidade CRM'}
         </p>
-      )}
-
-      {extractError && mode === 'conversation' && (
-        <InlineAlert>{extractError}</InlineAlert>
-      )}
-      {templateError && mode === 'conversation' && (
-        <InlineAlert
-          action={
-            <Button variant="outline" onClick={() => void loadTemplates()}>
-              Tentar novamente
-            </Button>
-          }
-        >
-          {templateError}
-        </InlineAlert>
       )}
 
       {mode === 'manual' && manualRecoveryDraft && (
@@ -2111,108 +2025,71 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
       )}
 
       {mode === 'conversation' ? (
-        <div id="quotation-mode-panel-conversation" role="tabpanel" aria-labelledby="quotation-mode-tab-conversation" tabIndex={0} className="grid min-h-0 grid-cols-1 items-start gap-5 lg:min-h-auto lg:flex-1 lg:grid-cols-2 lg:items-stretch">
-          <section aria-label="Conversa" className="min-w-0 space-y-3 rounded-card border border-line bg-surface p-5 md:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className="grid size-7 place-items-center rounded-control bg-raised text-xs text-fg-muted">01</span>
-                <Heading level="section">Pedido do cliente</Heading>
-              </div>
-              <Button type="button" variant="outline" onClick={() => setOrderTemplateOpen(true)} disabled={liveDraftOperation}>
-                <Settings size={14} /> <span className="max-sm:sr-only">Gerenciar modelos</span>
-              </Button>
-            </div>
-            {incomingQuoteDraft && (
-              <InlineAlert tone="warning" action={
-                <Button type="button" variant="outline" onClick={() => {
-                  setText(incomingQuoteDraft.text);
-                  setActiveQuoteDraft(incomingQuoteDraft);
-                  setIncomingQuoteDraft(null);
-                }}>
-                  {text.trim() ? 'Substituir texto' : 'Carregar seleção'}
-                </Button>
-              }>
-                Demanda da conversa pronta para revisão. Os rascunhos existentes foram preservados.
-              </InlineAlert>
-            )}
-            <div className="relative mt-4 rounded-control border border-border-control bg-raised">
-              <Textarea
-                ref={textareaRef}
-                aria-label="Mensagem do cliente para extração"
-                value={text}
-                disabled={extracting || liveDraftOperation}
-                onChange={(event) => setText(event.target.value)}
-                onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
-                  for (const item of Array.from(event.clipboardData?.items || [])) {
-                    if (item.type.startsWith('image/')) { event.preventDefault(); handleImageFile(item.getAsFile()); break; }
-                  }
-                }}
+        <Card ref={quoteCardRef} variant="outline" padding="none" className="mx-auto w-full max-w-4xl scroll-mt-4">
+          <header className="flex items-center px-5 pb-3.5 pt-4 md:px-6">
+            <QuoteSteps
+              current={quoteStep}
+              reachable={quoteStep === 'order' && activeDraft
+                ? (activeIssued ? 'send' : 'review')
+                : quoteStep === 'review' && !liveDraftOperation ? 'order' : null}
+              onSelect={(step) => setOrderOpen(step === 'order')}
+            />
+          </header>
+          <div ref={quoteStepBodyRef} tabIndex={-1} className="outline-none">
+            {quoteStep === 'order' || !activeDraft ? (
+              <QuoteOrderStep
+                text={text}
+                onTextChange={setText}
+                imagePreview={imagePreview}
+                onImageFile={handleImageFile}
+                onClearImage={clearImage}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
-                placeholder="Cole aqui a mensagem do cliente..."
-                variant="bare"
-                className={imagePreview ? 'mt-0 min-h-[190px] pt-20' : 'mt-0 min-h-[190px]'}
+                extracting={extracting}
+                blocked={liveDraftOperation}
+                canExtract={!extracting && !liveDraftOperation && Boolean(text.trim() || imageData)}
+                onExtract={() => void handleExtract()}
+                canReset={!clearResultsBlocked && Boolean(text || imageData || activeDrafts.length || activeQuoteDraft || incomingQuoteDraft)}
+                onReset={resetConversation}
+                onManual={() => switchMode('manual')}
+                manualDisabled={liveDraftOperation || pricingPending}
+                onManageTemplates={() => setOrderTemplateOpen(true)}
+                notices={
+                  <>
+                    {incomingQuoteDraft && (
+                      <InlineAlert tone="warning" action={
+                        <Button type="button" variant="outline" onClick={() => {
+                          setText(incomingQuoteDraft.text);
+                          setActiveQuoteDraft(incomingQuoteDraft);
+                          setIncomingQuoteDraft(null);
+                        }}>
+                          {text.trim() ? 'Substituir texto' : 'Carregar seleção'}
+                        </Button>
+                      }>
+                        Demanda da conversa pronta para revisão. Os rascunhos existentes foram preservados.
+                      </InlineAlert>
+                    )}
+                    {extractError && <InlineAlert>{extractError}</InlineAlert>}
+                    {templateError && (
+                      <InlineAlert
+                        action={
+                          <Button variant="outline" onClick={() => void loadTemplates()}>
+                            Tentar novamente
+                          </Button>
+                        }
+                      >
+                        {templateError}
+                      </InlineAlert>
+                    )}
+                  </>
+                }
               />
-              {imagePreview && (
-                // eslint-disable-next-line no-restricted-syntax -- miniatura da imagem é o próprio botão
-                <button
-                  type="button"
-                  aria-label="Remover imagem colada"
-                  title="Remover imagem"
-                  disabled={liveDraftOperation}
-                  onClick={clearImage}
-                  className="group absolute left-3 top-3 size-14 overflow-hidden rounded-control disabled:opacity-50"
-                >
-                  <img src={imagePreview} alt="" className="size-full object-cover" />
-                  <span aria-hidden="true" className="absolute inset-0 grid place-items-center bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-                    <X size={14} />
-                  </span>
-                </button>
-              )}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-              <Button type="button" onClick={() => void handleExtract()} disabled={extracting || liveDraftOperation || (!text.trim() && !imageData)}>
-                {extracting ? <><Loader2 size={14} className="animate-spin" /> Extraindo…</> : <><PackagePlus size={14} /> Extrair dados</>}
-              </Button>
-              {(text || imageData) && <Button type="button" variant="ghost" disabled={liveDraftOperation} onClick={() => { extractionGeneration.current += 1; setText(''); setActiveQuoteDraft(null); clearImage(); setExtractError(null); }}>Limpar</Button>}
-            </div>
-          </section>
-
-          <section ref={resultSectionRef} aria-label="Resultado da conversa" className="flex min-h-0 min-w-0 scroll-mt-4 flex-col rounded-card border border-line bg-surface p-5 md:p-6 lg:col-start-2 lg:row-start-1">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <span className="grid size-7 shrink-0 place-items-center rounded-control bg-raised text-xs text-fg-muted">02</span>
-                <div>
-                  <Heading level="section">Resultado</Heading>
-                </div>
-              </div>
-              {(activeDrafts.length > 0 || pendingExtraction.length > 0) && (
-                <Button
-                  type="button"
-                  variant="ghost-muted"
-                  className="shrink-0"
-                  disabled={clearResultsBlocked}
-                  onClick={clearResultQueue}
-                >
-                  <RotateCcw size={14} /> Limpar lista
-                </Button>
-              )}
-            </div>
-            {activeDrafts.length === 0 && pendingExtraction.length === 0 && (
-              <EmptyState
-                icon={ClipboardList}
-                title="Nenhum orçamento na fila"
-                description="Cole um pedido e extraia os dados para preencher a fila."
-                variant="bare"
-                className="min-h-48 flex-1"
-              />
-            )}
-            {activeDraft && (
+            ) : (
               <SplitResultCard
+                key={activeDraft.index}
                 draft={activeDraft}
-                displayIdx={activeDrafts.findIndex((draft) => draft.index === activeDraft.index)}
-                totalDrafts={activeDrafts.length}
+                position={{ index: activeDrafts.findIndex((draft) => draft.index === activeDraft.index), total: activeDrafts.length }}
                 isProcessing={activeDraft.status === 'processing'}
                 issueBlocked={liveDraftOperation}
                 editingBlocked={liveDraftOperation}
@@ -2224,11 +2101,15 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 onRefetchPricing={refetchDraftPricing}
                 defaultProductionDays={defaultProductionDays}
                 onCreateQuote={handleAutoIssue}
+                onReviewQuote={handleAutoReview}
                 onRecoverIssue={retryQuotationIssueRecovery}
                 onClearIssueRecovery={releaseUnconfirmedIssue}
                 onPricingPendingChange={reportConversationPricing}
                 isSavingDraft={Boolean(savingDraft[activeDraft.index])}
-                onReviewQuote={handleAutoReview}
+                onBackToOrder={() => setOrderOpen(true)}
+                onNewQuote={resetConversation}
+                newQuoteDisabled={clearResultsBlocked}
+                onNextOrder={nextOrder ? () => setActiveDraftIndex(nextOrder.index) : undefined}
                 issue={(activeDraft as StoredAutoQuoteDraft).issue}
                 issueError={issueErrorByDraft[activeDraft.index] || activeDraft.result?.error}
                 viewUrl={(activeDraft as StoredAutoQuoteDraft).issue?.pdfUrl}
@@ -2248,8 +2129,9 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 templateLoading={templateLoading}
                 templateError={templateError}
                 onRetryTemplates={loadTemplates}
+                // Com 0 ou 1 demanda aberta a escolha é automática; o campo só aparece com várias.
                 opportunitySelector={
-                  draftHasOrigin(activeDraft) ? undefined : (
+                  draftHasOrigin(activeDraft) || (draftOpportunityChoices[activeDraft.index] || []).length < 2 ? undefined : (
                     <OpportunitySelector
                       choices={draftOpportunityChoices[activeDraft.index] || []}
                       loading={Boolean(draftOpportunityLoading[activeDraft.index])}
@@ -2288,33 +2170,8 @@ export default function NewQuotationPage({ initialMode }: { initialMode: NewQuot
                 clientBlockMessage={conversationClientBlockMessage(activeDraft, activeClientResolution)}
               />
             )}
-            {pendingExtraction.map((pending, index) => (
-              <div key={pending.index} className="mt-4 border-t border-line pt-4">
-                <p className="mb-2 text-sm font-medium text-fg">Novo resultado para revisão ({index + 1}/{pendingExtraction.length})</p>
-                <SplitResultCard
-                  draft={pending}
-                  displayIdx={index}
-                  totalDrafts={pendingExtraction.length}
-                  reviewOnly
-                  onApply={() => applyPending(pending)}
-                  onDiscard={() => discardPending(pending.index)}
-                  onUpdateField={updatePendingField}
-                  onUpdateItem={updatePendingItem}
-                  onRemoveItem={(draftIndex, itemIndex) => setPendingExtraction((current) => current.map((draft) => draft.index === draftIndex ? { ...draft, edited: { ...draft.edited, items: draft.edited.items.filter((_, i) => i !== itemIndex) } } : draft))}
-                  onAddItem={(draftIndex) => setPendingExtraction((current) => current.map((draft) => draft.index === draftIndex ? { ...draft, edited: { ...draft.edited, items: [...draft.edited.items, { item_code: '', qty: DEFAULT_QTY, rate: null, _rateManual: true }] } } : draft))}
-                  selectProduct={updatePendingProduct}
-                  onRefetchPricing={refetchPendingPricing}
-                  defaultProductionDays={defaultProductionDays}
-                  issueBlocked={liveDraftOperation}
-                  editingBlocked={liveDraftOperation}
-                  onPricingPendingChange={reportConversationPricing}
-                  onCreateQuote={() => undefined}
-                  onReviewQuote={() => undefined}
-                />
-              </div>
-            ))}
-          </section>
-        </div>
+          </div>
+        </Card>
       ) : (
         <div id="quotation-mode-panel-manual" role="tabpanel" aria-labelledby="quotation-mode-tab-manual" tabIndex={0} className="!mt-3 grid min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-main-aside">
           <div className="min-w-0 space-y-5">
