@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Paperclip, Send } from 'lucide-react';
 import InlineAlert from '@/components/shared/InlineAlert';
 import { Button } from '@/components/ui/button';
@@ -60,6 +60,7 @@ function blockedReason(conversation: AttendanceConversation): string | null {
 export default function MessageComposer({ conversation, onSent, prefill }: MessageComposerProps) {
   const conversationId = conversation.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [draft, setDraft] = useState(() => readSession<string>(draftKey(conversationId)) || '');
   const [pending, setPending] = useState<PendingSend | null>(() => readSession<PendingSend>(pendingKey(conversationId)));
   const [sending, setSending] = useState(false);
@@ -159,6 +160,14 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
     });
   }, [prefill, conversationId]);
 
+  // Starts at one line, level with the buttons, and grows with the text up to max-h-48.
+  useLayoutEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight + element.offsetHeight - element.clientHeight}px`;
+  }, [draft]);
+
   const canSend = !blocked && !sending && !uploading && !pending && (draft.trim().length > 0 || Boolean(attachment)) && draft.length <= MAX_REPLY_CHARS;
 
   const send = () => {
@@ -241,13 +250,15 @@ export default function MessageComposer({ conversation, onSent, prefill }: Messa
           <Paperclip aria-hidden="true" />
         </Button>
         <Textarea
+          ref={textareaRef}
           value={draft}
           onChange={(event) => updateDraft(event.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Escreva uma resposta"
           aria-label="Resposta"
-          rows={2}
-          className="max-h-48 min-h-[44px] flex-1 resize-y"
+          rows={1}
+          variant="inline"
+          className="max-h-48 min-h-8 flex-1 resize-none"
         />
         <Button onClick={send} disabled={!canSend} aria-label="Enviar resposta">
           <Send aria-hidden="true" /> Enviar

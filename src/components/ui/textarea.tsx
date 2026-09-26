@@ -6,6 +6,8 @@ const variants = {
   default: 'rounded-control border border-border-control bg-input-surface px-3 py-2 text-sm',
   /** Edição de código ou template. */
   code: 'rounded-control border border-border-control bg-input-surface px-3 py-2 font-mono text-xs leading-snug',
+  /** Uma linha na altura dos botões (h-8), para compositores que crescem com o texto. */
+  inline: 'rounded-control border border-border-control bg-input-surface px-3 py-1.25 text-sm',
   /** Sem moldura, para compositores que já estão dentro de um contêiner com borda. */
   bare: 'rounded-control border-0 bg-transparent px-3 py-4 text-sm leading-6',
 } as const;
