@@ -18,7 +18,7 @@ export default function TopBar({ isMobile = false, breadcrumbItems, onNavigate, 
   const parent = breadcrumbItems.length > 2 ? breadcrumbItems[breadcrumbItems.length - 2] : null;
 
   return (
-    <header className="mb-5 flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-page">
+    <header className="mb-4 flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-page md:mb-workspace">
       {isMobile ? (
         <div className="flex min-w-0 items-center gap-1">
           {parent?.hash && (

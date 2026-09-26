@@ -143,7 +143,8 @@ states and client-prefilled entries keep their contextual version. `T` opens a
 new task anywhere (linked to the order or client on screen); Tarefas also has
 `Nova tarefa`. The TopBar names the page and holds only that page's actions:
 desktop shows the breadcrumb, below `md` back to the parent plus the page name,
-and the canvas/shell double frame is dropped.
+and the canvas/shell double frame is dropped. It is one button tall (32px) and
+sits in the workspace padding, with the same gap below it before the page.
 
 `PageHeader` is the first element of every page. The breadcrumb is the
 visible page name, so its `h1` is screen-reader only and its `actions`

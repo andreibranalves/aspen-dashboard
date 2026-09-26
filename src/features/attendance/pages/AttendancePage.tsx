@@ -506,7 +506,7 @@ export default function AttendancePage({ navigate }: AttendancePageProps) {
       <PageHeader title="Atendimento" />
       <div
         className={cn(
-          'grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-10rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]',
+          'grid min-h-[480px] grid-cols-[minmax(0,1fr)] overflow-hidden rounded-card border border-border-subtle bg-surface lg:h-[calc(100dvh-8.75rem)] lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]',
           // A coluna de contexto só existe com uma conversa aberta.
           selectedId && 'max-lg:h-workarea max-lg:min-h-0 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)_minmax(260px,320px)]'
         )}
