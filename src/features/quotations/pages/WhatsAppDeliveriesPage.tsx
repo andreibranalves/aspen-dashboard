@@ -10,6 +10,11 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
 import InlineAlert from '@/components/shared/InlineAlert';
+import DeliveryAlarm from '@/components/shared/DeliveryAlarm';
+import {
+  fetchDeliveryDiagnostics,
+  type DeliveryDiagnostics,
+} from '@/lib/api/whatsappDeliveryDiagnosticsApi';
 import StatusFilterBar from '@/components/shared/StatusFilterBar';
 import PageToolbar from '@/components/shared/PageToolbar';
 import { SearchField } from '@/components/ui/search-field';
@@ -388,7 +393,26 @@ export default function WhatsAppDeliveriesPage() {
   const [clearing, setClearing] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DeliveryDiagnostics | null>(null);
+  const [diagnosticsFailed, setDiagnosticsFailed] = useState(false);
   const { toast } = useToast();
+
+  // The alarm is a side read: failing to read it never blocks the list.
+  useEffect(() => {
+    let active = true;
+    fetchDeliveryDiagnostics()
+      .then((next) => {
+        if (!active) return;
+        setDiagnostics(next);
+        setDiagnosticsFailed(false);
+      })
+      .catch(() => {
+        if (active) setDiagnosticsFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reloadVersion]);
 
   // Texto em edição nos campos de data; o filtro só recebe data completa e válida.
   const [dateDraft, setDateDraft] = useState({ from: '', to: '' });
@@ -603,6 +627,7 @@ export default function WhatsAppDeliveriesPage() {
   return (
     <PageShell className="space-y-5 pb-10">
       <PageHeader title="Envios" />
+      <DeliveryAlarm diagnostics={diagnostics} failed={diagnosticsFailed} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
       <div className="flex flex-wrap items-center justify-between gap-3">
